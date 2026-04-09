@@ -1,0 +1,124 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Grob",
+    "scopeName": "source.grob",
+    "comment": "Grob language TextMate grammar. Keyword list from Grob___Language_Fundamentals.md.",
+    "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#keywords" },
+        { "include": "#numbers" },
+        { "include": "#operators" }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.double-slash.grob",
+                    "match": "//.*$"
+                },
+                {
+                    "name": "comment.block.grob",
+                    "begin": "/\\*",
+                    "end": "\\*/"
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.grob",
+                    "match": "\\b(if|else|while|for|in|return|break|continue|select|case|default|try|catch|step|switch)\\b"
+                },
+                {
+                    "name": "keyword.declaration.grob",
+                    "match": "\\b(fn|const|type|param|import|as)\\b"
+                },
+                {
+                    "name": "constant.language.grob",
+                    "match": "\\b(true|false|nil)\\b"
+                },
+                {
+                    "name": "support.function.builtin.grob",
+                    "match": "\\b(print|exit)\\b"
+                }
+            ]
+        },
+        "strings": {
+            "patterns": [
+                {
+                    "name": "string.quoted.double.grob",
+                    "begin": "\"",
+                    "end": "\"",
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.grob",
+                            "match": "\\\\."
+                        },
+                        {
+                            "name": "meta.embedded.expression.grob",
+                            "begin": "\\$\\{",
+                            "end": "\\}",
+                            "patterns": [
+                                { "include": "source.grob" }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "string.quoted.raw.grob",
+                    "begin": "`",
+                    "end": "`"
+                }
+            ]
+        },
+        "numbers": {
+            "patterns": [
+                {
+                    "name": "constant.numeric.hex.grob",
+                    "match": "\\b0[xX][0-9a-fA-F_]+\\b"
+                },
+                {
+                    "name": "constant.numeric.binary.grob",
+                    "match": "\\b0[bB][01_]+\\b"
+                },
+                {
+                    "name": "constant.numeric.float.grob",
+                    "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9]+)?\\b"
+                },
+                {
+                    "name": "constant.numeric.integer.grob",
+                    "match": "\\b[0-9][0-9_]*\\b"
+                }
+            ]
+        },
+        "operators": {
+            "patterns": [
+                {
+                    "name": "keyword.operator.assignment.grob",
+                    "match": ":=|[+\\-*/%]=|="
+                },
+                {
+                    "name": "keyword.operator.comparison.grob",
+                    "match": "==|!=|<=|>=|<|>"
+                },
+                {
+                    "name": "keyword.operator.logical.grob",
+                    "match": "&&|\\|\\||!"
+                },
+                {
+                    "name": "keyword.operator.nil.grob",
+                    "match": "\\?\\?|\\?\\."
+                },
+                {
+                    "name": "keyword.operator.arrow.grob",
+                    "match": "=>"
+                },
+                {
+                    "name": "keyword.operator.range.grob",
+                    "match": "\\.\\."
+                }
+            ]
+        }
+    }
+}

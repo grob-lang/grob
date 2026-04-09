@@ -1,0 +1,47 @@
+{
+  "name": "grob-lang",
+  "displayName": "Grob",
+  "description": "Grob language support — syntax highlighting and language server",
+  "version": "0.1.0",
+  "publisher": "grob-lang",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "grob",
+        "aliases": [
+          "Grob",
+          "grob"
+        ],
+        "extensions": [
+          ".grob"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "grob",
+        "scopeName": "source.grob",
+        "path": "./syntaxes/grob.tmLanguage.json"
+      }
+    ]
+  },
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  }
+}

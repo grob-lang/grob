@@ -6,6 +6,7 @@
     <Project Path="src\Grob.Vm\Grob.Vm.csproj" />
     <Project Path="src\Grob.Stdlib\Grob.Stdlib.csproj" />
     <Project Path="src\Grob.Cli\Grob.Cli.csproj" />
+    <Project Path="src\Grob.Lsp\Grob.Lsp.csproj" />
   </Folder>
   <Folder Name="/plugins/">
     <Project Path="plugins\Grob.Http\Grob.Http.csproj" />
