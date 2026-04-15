@@ -2,7 +2,7 @@
 
 > Work in progress. Captured incrementally during retrospective session, April 2026.
 > Sections 1 and 2 complete. Sections 3–9 and Grob inputs summary to follow.
-> Output file: `retrospective.md`
+> Output file: `SharpBASIC___Retrospective.md`
 
 -----
 
@@ -489,7 +489,7 @@ begin to imagine what it will feel like if Grob gains even one real user.
 ## Grob Inputs Summary
 
 Every item below either changes or confirms a decision in the Grob decisions log.
-OQ numbers reference open questions in `decisions-log.md`.
+OQ numbers reference open questions in `Grob___Decisions___Context_Log.md`.
 
 -----
 

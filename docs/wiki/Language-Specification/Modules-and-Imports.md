@@ -2,94 +2,53 @@
 
 ## Core Modules
 
-Twelve modules are auto-available in every script. No `import` required.
+Thirteen core modules are auto-available in every script. No `import` required:
+`fs`, `strings`, `json`, `csv`, `env`, `process`, `date`, `math`, `log`,
+`regex`, `path`, `format`, `guid`.
 
-| Module | Purpose |
-|--------|---------|
-| `fs` | File system — list, read, write, rename, copy, move, delete |
-| `strings` | String module function (`join`) |
-| `json` | JSON parse and serialise |
-| `csv` | CSV parse and serialise |
-| `env` | Environment variables |
-| `process` | External command execution |
-| `date` | Date and time |
-| `math` | Mathematics |
-| `log` | Structured logging to stderr |
-| `regex` | Regular expressions |
-| `path` | Path string manipulation |
-| `format` | Output formatting |
+A script with no imports is self-contained. A script with imports has external
+dependencies. This signal value is intentional.
 
-If a reasonable developer expects it in any scripting language, it is core.
-
-A script with no `import` statements is self-contained. A script with `import`
-statements has external dependencies. The `import` lines double as a dependency
-manifest — this signal value is why core modules do not require import.
-
-## Plugin Imports
-
-Plugins require explicit `import` and a prior `grob install`.
+## Importing Plugins
 
 ```grob
 import Grob.Http
+import Grob.Crypto
 ```
 
-The default alias is the last segment of the module name, lowercased:
-
-| Import | Alias |
-|--------|-------|
-| `import Grob.Http` | `http.*` (also exposes `auth.*`) |
-| `import AcmeCorp.Xml` | `xml.*` |
-| `import Grob.Crypto` | `crypto.*` |
-
-This is convention, not configuration. Always predictable.
+Plugins require explicit `import` and prior `grob install`. The default alias
+is the last segment lowercased: `import Grob.Http` → `http.*`.
 
 `Grob.Http` is a special case: it exposes both `http.*` and `auth.*` as
-sub-namespaces from a single import. This is the only case where one `import`
-produces two namespace prefixes.
+sub-namespaces from a single import.
 
-## Explicit Aliases
-
-Use `as` only for collision resolution:
+## Explicit Alias
 
 ```grob
-import AcmeCorp.Strings as acme     // 'strings' is a core module
-import OldCo.Http as legacy_http    // 'http' already taken
+import Grob.Http as client
 ```
 
-`as` exists for collision resolution, not for personal preference.
+Available for collision resolution only — not for personality.
 
 ## Package Resolution
 
-When a script contains `import Grob.Http`, the compiler resolves the package
-by checking locations in this order:
+On `import`, the compiler checks locations in this order:
 
-1. `.grob\packages\` — project local (highest priority)
+1. `.grob\packages\` — project local
 2. `%USERPROFILE%\.grob\packages\` — user global
 3. `%ProgramFiles%\Grob\packages\` — system global
 
-If the package is not found:
+If not found, compilation fails with a helpful message:
 
 ```
 error: 'Grob.Http' is not installed.
        Run: grob install Grob.Http
 ```
 
-## `grob.json` Manifest
+## Circular Imports
 
-Optional project manifest for multi-script projects sharing dependencies.
+Not supported. Grob scripts do not export types to other scripts in v1. One
+script cannot import another script.
 
-```json
-{
-  "name": "ado-tools",
-  "version": "1.0.0",
-  "dependencies": {
-    "Grob.Http": "^1.0.0"
-  }
-}
-```
-
-`grob.json` discovery walks up from the script file's location, not the current
-working directory. `grob restore` installs all declared dependencies.
-
-See also: [Install Strategy](../CLI/Install-Strategy.md),
-[Plugins Overview](../Plugins/Overview.md)
+See also: [Script Parameters](Script-Parameters.md),
+[Error Handling](Error-Handling.md)

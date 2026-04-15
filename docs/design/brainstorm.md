@@ -247,11 +247,11 @@ Grob targets that gap.
 
 > **Note (April 2026):** Most items in this table have been resolved in the
 > decisions log. This table is preserved for historical context. See
-> `decisions-log.md` for current status.
+> `Grob___Decisions___Context_Log.md` for current status.
 
 |Feature               |Notes                                             |Status (April 2026)                         |
 |----------------------|--------------------------------------------------|--------------------------------------------|
-|Standard library shape|fs, strings, process — needs detailed API design  |✅ Resolved — all 12 core modules specified  |
+|Standard library shape|fs, strings, process — needs detailed API design  |✅ Resolved — all 13 core modules specified  |
 |Collections API       |Required before fluent syntax is useful           |✅ Resolved — array methods, filter/map/sort |
 |Content mutability    |Mutable binding vs mutable value distinction      |⬜ Deferred to post-MVP                      |
 |Error handling model  |Go-style values vs exceptions — not decided       |✅ Resolved — exceptions with try/catch      |
@@ -274,5 +274,5 @@ Grob targets that gap.
 -----
 
 *This document is an early sketch from February 2026. The authoritative decisions
-record is `decisions-log.md`. This document is preserved for
+record is `Grob___Decisions___Context_Log.md`. This document is preserved for
 historical context.*

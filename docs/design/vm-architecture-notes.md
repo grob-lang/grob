@@ -397,12 +397,12 @@ of names to values. Requires the same parent chain for scope support:
 ```csharp
 class TypeEnvironment(TypeEnvironment? parent = null)
 {
-    private readonly Dictionary<string, GroType> _types = new();
+    private readonly Dictionary<string, GrobType> _types = new();
 
-    public GroType? Get(string name) =>
+    public GrobType? Get(string name) =>
         _types.TryGetValue(name, out var t) ? t : parent?.Get(name);
 
-    public void Define(string name, GroType type) => _types[name] = type;
+    public void Define(string name, GrobType type) => _types[name] = type;
 }
 ```
 
@@ -596,8 +596,8 @@ case OpCode.Call:
 ```csharp
 vm.RegisterNative("print", 
     signature: new FunctionSignature(
-        parameters: [new Parameter("value", GroType.Any)],
-        returnType: GroType.Nil
+        parameters: [new Parameter("value", GrobType.Any)],
+        returnType: GrobType.Nil
     ),
     implementation: args => {
         Console.WriteLine(args[0].ToString());
@@ -629,8 +629,8 @@ public class HttpPlugin : IGrobPlugin
     {
         vm.RegisterNative("http.get",
             signature: new FunctionSignature(
-                parameters: [new Parameter("url", GroType.String)],
-                returnType: GroType.String
+                parameters: [new Parameter("url", GrobType.String)],
+                returnType: GrobType.String
             ),
             implementation: args => {
                 var url = args[0].AsString();
@@ -732,21 +732,30 @@ compile Grob’s VM loop to efficient native code. Don’t fight the platform.
 
 ## Implementation Order
 
-Don’t design all of this upfront. Build it in layers:
+Don’t design all of this upfront. Build it in layers.
+Steps 1–2 use hand-constructed chunks in tests — the compiler is not yet involved.
+Steps 3 onwards touch both VM and compiler.
 
 1. Chunk + constant pool + a few opcodes (`CONSTANT`, `RETURN`)
-2. Value stack + arithmetic opcodes
-3. Global variables
-4. Control flow — jump, backpatching
-5. Local variables + call frames
-6. Functions + CALL/RETURN
-7. Native functions + standard library
-8. GC (if not relying entirely on C#’s GC)
-9. Plugin system
-10. Module/import system
+2. Value stack + arithmetic opcodes (chunks hand-constructed in tests — no compiler yet)
+3. Global variables — `LOAD_GLOBAL`, `STORE_GLOBAL` — VM + compiler both involved
+4. Control flow — conditional/unconditional jump, backpatching — VM + compiler
+5. Local variables + call frames — VM + compiler
+6. Functions + `CALL`/`RETURN`, `CallFrame` push/pop — VM + compiler
+7a. Plugin infrastructure — `IGrobPlugin`, `RegisterNative`, `FunctionSignature`,
+    `Parameter` (`Grob.Runtime`). This is the registration mechanism the stdlib
+    depends on. It is not the user-facing plugin loader — that is step 9.
+7b. Core stdlib — all thirteen modules as `IGrobPlugin` implementations, auto-registered
+    at VM startup (`Grob.Stdlib`): `fs`, `strings`, `json`, `csv`, `env`, `process`,
+    `date`, `math`, `log`, `regex`, `path`, `format`, `guid`
+8. GC — tentative: lean on C# entirely; if a custom GC is required, implement here.
+   In the lean-on-C# path (current decision) this step is a no-op.
+9. Third-party plugin loading — `Assembly.LoadFrom`, `PluginLoader`, `--dev-plugin` flag
+   (`Grob.Vm`). `Grob.Http` is the first exercise of this path. Distinct from step 7a:
+   that step defines the interface; this step opens it to external assemblies.
+10. Import resolution + module system + namespace aliasing (`Grob.Compiler`)
 
 Each layer is independently testable. Each one builds on the previous.
-This is the same phase-based discipline as SharpBASIC — it works.
 
 -----
 
@@ -765,3 +774,7 @@ This is the same phase-based discipline as SharpBASIC — it works.
 *Nothing in this document is final until SharpBASIC retrospective is written*
 *and clox is fully worked through. These are design intentions, not commitments.*
 *Update with dated entries as decisions are confirmed during formal design phase.*
+*Updated April 2026 — implementation order clarified: step 7 split into 7a (plugin*
+*infrastructure) and 7b (stdlib modules); step 9 explicitly scoped to third-party plugin*
+*loading only; compiler involvement from step 3 onwards made explicit; GC step 8 no-op*
+*note added; `guid` confirmed as 13th core module in step 7b.*

@@ -358,5 +358,5 @@ confusing resolution failures when scripts are invoked from unexpected directori
 -----
 
 *Document created April 2026 — install strategy design session.*
-*Authorised decisions recorded in decisions-log.md.*
+*Authorised decisions recorded in Grob___Decisions___Context_Log.md.*
 *This document is the implementation reference — the decisions log is the authority.*

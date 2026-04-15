@@ -1,53 +1,27 @@
-# Plugins — Overview
+# Plugin Overview
 
-A plugin is a C# class library implementing `IGrobPlugin` that registers native
-functions with the Grob VM. Those functions become available to the type checker
-at compile time — scripts get compile-time type safety at the plugin boundary.
+Plugins extend Grob with additional capabilities beyond the core modules.
 
-## Core vs Plugins
+## Architecture
 
-**Core modules** (`fs`, `strings`, `json`, `csv`, `env`, `process`, `date`,
-`math`, `log`, `regex`, `path`, `format`) are auto-available. No import, no
-install.
+Every plugin is a C# class library implementing `IGrobPlugin`. The standard
+library itself is implemented as `IGrobPlugin` — the mechanism is identical.
 
-**Everything else** requires `import` and a prior `grob install`.
+Plugins provide type signatures alongside implementations. The type checker
+registers these and verifies call sites at compile time.
 
-## The Plugin Interface
+## First-Party Plugins
 
-```csharp
-public interface IGrobPlugin
-{
-    string Name { get; }
-    void Register(GrobVM vm);
-}
-```
-
-`Register` is called at compile time. It registers native functions with type
-signatures that the type checker verifies before execution begins.
-
-## Official Plugins
-
-| Plugin | Alias | Description |
-|--------|-------|-------------|
-| `Grob.Http` | `http` | HTTP client with auth helpers |
-| `Grob.Crypto` | `crypto` | Checksums and hashing |
-| `Grob.Zip` | `zip` | Zip archive compression and expansion |
-
-## Using Plugins
-
-```grob
-import Grob.Http
-
-pat    := env.require("ADO_PAT")
-result := http.get("https://api.example.com", auth.bearer(pat))
-data   := result.asJson()
-```
+| Plugin | Purpose |
+|--------|---------|
+| [Grob.Http](Grob-Http.md) | HTTP client with auth helpers |
+| [Grob.Crypto](Grob-Crypto.md) | Checksums and hashing |
+| [Grob.Zip](Grob-Zip.md) | Archive compression and extraction |
 
 ## Security
 
-Loading a plugin is equivalent to running arbitrary code. It executes with full
-.NET permissions. No sandbox claims are ever made. This is documented prominently
-and users are expected to review plugin source or trust the author.
+Loading a plugin is equivalent to running arbitrary code. This is documented
+prominently. No sandbox claims are made.
 
-See also: [Writing Plugins](Writing-Plugins.md), [Grob.Http](Grob-Http.md),
-[Install Strategy](../CLI/Install-Strategy.md)
+See also: [Writing Plugins](Writing-Plugins.md),
+[Community Registry](Community-Registry.md)

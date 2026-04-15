@@ -205,9 +205,11 @@ entries := fs.list(path, recursive: true)
         size_mb: (f.size / 1024.0 / 1024.0).round(2)
     })
 
-entries
-    .sort(e => e.size_mb, descending: true)
-    .format.table()
+print(
+    entries
+        .sort(e => e.size_mb, descending: true)
+        .format.table()
+)
 ```
 
 **What this demonstrates:**
@@ -281,7 +283,7 @@ type Repo {
     ssh_url: string
 }
 
-fs.ensureDir(backup_dir)   // [ASSUMPTION]
+fs.ensureDir(backup_dir)
 
 token_header := auth.bearer(token)
 url          := "https://api.github.com/orgs/${org}/repos?per_page=100"
@@ -363,11 +365,13 @@ type Employee {
     start_date: string
 }
 
-csv.read(input_file).mapAs<Employee>()
-    .filter(e => e.department == department && e.salary < max_salary)
-    .select(e => #{ name: e.name, job_title: e.job_title, salary: e.salary, start_date: e.start_date })
-    .sort(e => e.salary, descending: true)
-    .format.table()
+print(
+    csv.read(input_file).mapAs<Employee>()
+        .filter(e => e.department == department && e.salary < max_salary)
+        .select(e => #{ name: e.name, job_title: e.job_title, salary: e.salary, start_date: e.start_date })
+        .sort(e => e.salary, descending: true)
+        .format.table()
+)
 ```
 
 **What this demonstrates:**
@@ -564,15 +568,17 @@ issues := http.get(
     auth.bearer(token)
 ).asJson().mapAs<Issue>()
 
-issues
-    .filter(i => date.parse(i.created_at) < cutoff)
-    .select(i => #{
-        number: i.number
-        title:  i.title
-        age:    date.parse(i.created_at).daysUntil(date.today())
-        author: i.user.login
-    })
-    .format.table()
+print(
+    issues
+        .filter(i => date.parse(i.created_at) < cutoff)
+        .select(i => #{
+            number: i.number
+            title:  i.title
+            age:    date.parse(i.created_at).daysUntil(date.today())
+            author: i.user.login
+        })
+        .format.table()
+)
 ```
 
 **What this demonstrates:**
@@ -643,19 +649,21 @@ raw := process.runOrFail("git", [
     "--format=%(refname:short)|%(committerdate:iso)|%(authorname)"
 ])
 
-raw.stdout
-    .split("\n")                                         // [ASSUMPTION] string.split on newline
-    .filter(line => line.length > 0)
-    .map(line => {
-        parts  := line.split("|")
-        BranchInfo {
-            branch: parts[0],
-            date:   parts[1],
-            author: parts[2]
-        }
-    })
-    .filter(b => !b.branch.contains("HEAD") && date.parse(b.date) < cutoff)
-    .format.table()
+print(
+    raw.stdout
+        .split("\n")
+        .filter(line => line.length > 0)
+        .map(line => {
+            parts  := line.split("|")
+            BranchInfo {
+                branch: parts[0],
+                date:   parts[1],
+                author: parts[2]
+            }
+        })
+        .filter(b => !b.branch.contains("HEAD") && date.parse(b.date) < cutoff)
+        .format.table()
+)
 ```
 
 **What this demonstrates:**
@@ -830,11 +838,10 @@ param expected_hash: string
 log.info("Downloading ${url}...")
 http.download(url, destination)
 
-actual := crypto.sha256File(destination).lower()   // [ASSUMPTION] Grob.Crypto API shape
-
-if (actual == expected_hash.lower()) {
+if (crypto.verifySha256(destination, expected_hash)) {
     log.info("Checksum verified ✓")
 } else {
+    actual := crypto.sha256File(destination)
     log.error("Checksum mismatch! Expected: ${expected_hash}  Got: ${actual}")
     fs.delete(destination)
     exit(1)
@@ -845,14 +852,159 @@ if (actual == expected_hash.lower()) {
 
 - `Grob.Http` and `Grob.Crypto` as first-party plugins working together
 - `http.download()` — streams file to disk, does not load into memory
-- `crypto.sha256File()` from `Grob.Crypto` `[ASSUMPTION — Grob.Crypto not yet specified]`
+- `crypto.verifySha256()` — constant-time comparison, names the intent
+- `crypto.sha256File()` — lowercase hex output, streams file internally
 - `fs.delete()` for file removal
 - `exit(1)` to signal failure to calling process
 - `log.info()` / `log.error()` for output
 
-**Gaps noted:**
+**Gaps noted:** None — `Grob.Crypto` API fully specified.
 
-- `crypto.sha256File(path)` — `Grob.Crypto` API not yet designed `[GAP]`
+-----
+
+## Script 11 — Azure Resource Provisioning Helper
+
+**Use case:** DevOps / cloud engineer. Generate deterministic resource IDs for
+idempotent Azure deployments, verify template integrity before deploying, call
+Azure REST API. Real-world Bicep/ARM automation.
+
+**Confidence:** ⭐⭐⭐
+
+-----
+
+### PowerShell equivalent (sketch)
+
+```powershell
+param (
+    [Parameter(Mandatory)] [string]$SubscriptionId,
+    [Parameter(Mandatory)] [string]$TenantId,
+    [string]$ResourceGroup,
+    [string]$Environment     = "dev",
+    [string]$TemplatePath    = "main.bicep",
+    [string]$ExpectedHash
+)
+
+# Verify template
+$actual = (Get-FileHash -Path $TemplatePath -Algorithm SHA256).Hash.ToLower()
+if ($actual -ne $ExpectedHash.ToLower()) {
+    Write-Error "Template integrity check failed."
+    exit 1
+}
+
+# PowerShell has no built-in deterministic GUID — requires .NET interop
+$ns  = [guid]"6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+# ... complex .NET GuidV5 implementation omitted ...
+
+$tags = @{ environment = $Environment; deployedBy = "grob" }
+
+$token = $env:AZURE_TOKEN
+$uri   = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.Resources/deployments/grob-deploy?api-version=2021-04-01"
+$body  = @{ properties = @{ mode = "Incremental"; templateLink = @{ uri = $TemplatePath } } } | ConvertTo-Json -Depth 10
+$headers = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
+
+$response = Invoke-RestMethod -Uri $uri -Method Put -Headers $headers -Body $body
+```
+
+**Notes:** PowerShell has no built-in deterministic GUID generation — requires complex
+.NET interop for v5 GUIDs. The `ConvertTo-Json -Depth 10` is a common gotcha. The
+`@{}` hashtable syntax for tags and body construction is verbose.
+
+-----
+
+### Grob equivalent
+
+```grob
+import Grob.Http
+import Grob.Crypto
+
+@secure
+param subscriptionId: string
+
+@secure
+param tenantId:       string
+
+param resourceGroup:  string
+param environment:    string = "dev"
+param templatePath:   string = "main.bicep"
+param expectedHash:   string
+
+// Verify template integrity before deploying
+actual := crypto.sha256File(templatePath)
+if (!crypto.verifySha256(templatePath, expectedHash)) {
+    log.error("Template integrity check failed.")
+    log.error("Expected: ${expectedHash}")
+    log.error("Got:      ${actual}")
+    exit(1)
+}
+log.info("Template verified ✓")
+
+// Generate deterministic resource IDs — same inputs always produce same GUIDs
+storageId  := guid.newV5(guid.namespaces.url, subscriptionId, resourceGroup, "storage",  environment)
+functionId := guid.newV5(guid.namespaces.url, subscriptionId, resourceGroup, "function", environment)
+cosmosId   := guid.newV5(guid.namespaces.url, subscriptionId, resourceGroup, "cosmos",   environment)
+
+log.info("Resource IDs (deterministic):")
+log.info("  storage:  ${storageId}")
+log.info("  function: ${functionId}")
+log.info("  cosmos:   ${cosmosId}")
+
+// Build deployment tags as a map
+tags := map<string, string>{
+    "environment": environment
+    "deployedBy":  "grob"
+    "storageId":   storageId.toString()
+    "functionId":  functionId.toString()
+}
+
+log.info("Deployment tags:")
+for k, v in tags {
+    log.info("  ${k}: ${v}")
+}
+
+// Deploy via Azure REST API
+token  := env.require("AZURE_TOKEN")
+url    := "https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.Resources/deployments/grob-deploy?api-version=2021-04-01"
+
+body := #{
+    properties: #{
+        mode: "Incremental"
+        templateLink: #{ uri: templatePath }
+        parameters: #{
+            environment: #{ value: environment }
+            storageId:   #{ value: storageId.toString() }
+        }
+    }
+    tags: tags
+}
+
+response := http.put(url, json.encode(body), auth.bearer(token))
+
+if (response.isSuccess) {
+    log.info("Deployment accepted. Status: ${response.statusCode}")
+} else {
+    log.error("Deployment failed. Status: ${response.statusCode}")
+    log.error(response.asText())
+    exit(1)
+}
+```
+
+**What this demonstrates:**
+
+- `guid.newV5()` for deterministic resource naming — same inputs, same GUIDs
+- `guid.namespaces.url` well-known namespace constant
+- `guid.toString()` for map key insertion (v1: string keys only)
+- `Grob.Crypto` for template integrity verification — `sha256File()` and `verifySha256()`
+- `map<string, string>` construction with literal syntax
+- `for k, v in tags` — map iteration
+- `Grob.Http` `http.put()` for Azure ARM REST API
+- `json.encode()` to serialise anonymous struct body before `http.put()`
+- `auth.bearer()` for token authentication
+- `env.require()` for credential access
+- `@secure` params for subscription and tenant IDs
+- Anonymous struct nesting (`#{ }` inside `#{ }`) for JSON body construction
+- `response.isSuccess` and `response.statusCode` on `Response` type
+
+**Gaps noted:** None — this script uses only confirmed language features, stdlib and plugins.
 
 -----
 
@@ -862,7 +1014,6 @@ if (actual == expected_hash.lower()) {
 
 |Gap                                            |Surfaces in|Priority                                                                                      |
 |-----------------------------------------------|-----------|----------------------------------------------------------------------------------------------|
-|`Grob.Crypto` API shape — `sha256File()` etc   |Script 10  |Low — first-party plugin, not core                                                            |
 |`sys` / disk introspection module              |Script 9   |Low — workaround via `process.run()` exists                                                   |
 
 ### Resolved since original version
@@ -886,6 +1037,7 @@ if (actual == expected_hash.lower()) {
 |`date.daysUntil()` — interval between two dates                                   |`daysUntil(other: date) → int` and `daysSince(other: date) → int` added to `date` registry.  |
 |`http.get(url, token).asJson()` chaining                                          |Confirmed — `Response.asJson()` returns `json.Node`.                                         |
 |`http.download(url, path)`                                                        |Confirmed — streaming to disk, does not load into memory.                                    |
+|`Grob.Crypto` API shape — `sha256File()` etc                                      |Full API specified — `sha256File`, `md5File`, `sha256`, `md5`, `verifySha256`, `verifyMd5`. All hex output lowercase.|
 
 -----
 
@@ -893,7 +1045,7 @@ if (actual == expected_hash.lower()) {
 
 |Assumption                                     |Used in  |Notes                                                                        |
 |-----------------------------------------------|---------|-----------------------------------------------------------------------------|
-|`crypto.sha256File(path)`                      |Script 10|`Grob.Crypto` API not yet specified                                          |
+|*(none outstanding)*                            |—        |—                                                                            |
 
 ### Confirmed since original version
 
@@ -907,11 +1059,18 @@ if (actual == expected_hash.lower()) {
 |`http.get(url, auth).asJson()` chaining                        |Confirmed — `Grob.Http` API fully specified                        |
 |`http.download(url, path)` for file saves                      |Confirmed — streaming to disk                                      |
 |Nested struct field access (`issue.user.login`)                |Confirmed — type checker resolves field chains against the registry; undeclared field at any level is a compile error. See decisions log.|
+|`crypto.sha256File(path)`                                      |Confirmed — `Grob.Crypto` API fully specified. Lowercase hex output, streams internally.|
 
 -----
 
-*Last updated: April 2026 — nested struct field access confirmed; Script 8 confidence corrected to ⭐⭐⭐.*
-*Previous session: Grob.Http full API, auth sub-namespace, daysUntil/daysSince,*
-*format.table() calling convention, left()/right() string methods all confirmed.*
+*Last updated: April 2026 — pre-implementation review: Script 11 fixed*
+*(`json.encode()` added before `http.put()` — body must be string per locked API);*
+*Scripts 3, 5, 7, 8 fixed (dangling `.format.table()` wrapped in `print()`);*
+*Script 4 `[ASSUMPTION]` tag on `fs.ensureDir()` cleared (confirmed);*
+*Script 8 `[ASSUMPTION]` tag on `string.split` cleared (confirmed).*
+*Previous: Script 10 updated with resolved `Grob.Crypto` API;*
+*Script 11 (Azure Resource Provisioning Helper) added — exercises `guid.newV5()`,*
+*`Grob.Crypto`, `map<K, V>` iteration, `Grob.Http`. `Grob.Crypto` gap resolved.*
+*Previous: nested struct field access confirmed; Script 8 confidence corrected to ⭐⭐⭐.*
 *Update this document after every design session that affects the API surface.*
 *Remaining gaps are inputs to the next design session.*

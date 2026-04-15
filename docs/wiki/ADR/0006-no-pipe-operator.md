@@ -2,44 +2,22 @@
 
 **Status:** Accepted
 **Date:** April 2026
-**Decision:** No `|` pipe operator inside Grob scripts.
+**Decision:** No `|` pipe operator inside Grob scripts. Fluent method chaining is the in-script pipe idiom.
 
 ## Context
 
-Shell languages use `|` to pipe output between commands. Some modern languages
-(F#, Elixir) have a pipe operator for function composition. The question was
-whether Grob should have one.
+Shell languages use `|` for pipeline composition. The question was whether Grob scripts should have a pipe operator for function composition.
 
 ## Decision
 
-No pipe operator. Fluent method chaining is the in-script composition idiom:
-
-```grob
-results := files
-    .filter(f => f.extension == ".log")
-    .map(f => f.name)
-    .sort()
-```
-
-Grob scripts can participate in OS-level shell pipelines as consumers —
-`json.stdin()` and `csv.stdin()` read from process stdin. This is not a Grob
-language feature; it is an OS mechanism surfaced through named functions.
+No pipe operator. Method chaining with leading-dot continuation is the idiomatic way to compose operations in Grob scripts. `json.stdin()` and `json.stdout()` exist for genuine shell pipeline composition at the process boundary.
 
 ## Alternatives Considered
 
-**`|>` pipe operator (F# style)** — transforms `x |> f` to `f(x)`. Duplicates
-what method chaining already provides. Adding a second composition syntax creates
-a style split in the community with no functional benefit.
-
-**`|` shell-style pipe** — would require fundamentally different execution
-semantics (subprocesses, stream buffering). Not appropriate for a compiled
-language with a type system.
+**`|>` pipe operator** — F#/Elixir style. Adds grammar complexity for minimal benefit when method chaining already works well.
 
 ## Consequences
 
-Positive: one composition idiom, no style fragmentation. Method chaining is
-already familiar to C# developers via LINQ.
+Positive: simpler grammar, no operator precedence complications, method chaining reads naturally for the target audience.
 
-Negative: users expecting a pipe operator from shell experience will not find
-one. The leading-dot continuation syntax and fluent methods provide equivalent
-expressiveness.
+Negative: functional-style composition is more verbose. Acceptable — Grob targets C#/Go developers, not Haskell developers.

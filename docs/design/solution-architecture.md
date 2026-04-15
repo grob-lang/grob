@@ -117,7 +117,7 @@ A program with type errors never reaches the VM. The VM stops on the FIRST runti
 **LSP dependency:** `Grob.Lsp` is a consumer of `Grob.Compiler`. Every AST node
 must carry a `SourceLocation` and every identifier node must carry a `Declaration`
 back-reference set by the type checker. This is a day-one compiler construction
-requirement — see `tooling-strategy.md`.
+requirement — see `Grob___Tooling___Strategy.md`.
 
 ---
 
@@ -163,6 +163,7 @@ by `Grob.Cli` — not hardwired into the VM itself.
 | `RegexPlugin` | `regex` | Registers `Regex` and `Match` types; module-level convenience functions |
 | `PathPlugin` | `path` | Path string manipulation — no I/O |
 | `FormatPlugin` | `format` | Human-readable output formatters |
+| `GuidPlugin` | `guid` | GUID generation (v4, v5, v7), parsing; registers `guid` type |
 
 **Key constraint:** `Grob.Stdlib` references `Grob.Core` and `Grob.Runtime` only.
 It is independently testable — register a plugin into a VM instance and assert outputs.
@@ -292,18 +293,28 @@ The VM loop can be trusted once verified on simple cases.
 
 ## Implementation Order
 
-The solution structure maps directly onto the locked implementation order:
+The solution structure maps directly onto the locked implementation order.
+Steps 1–2 use hand-constructed chunks in tests — the compiler is not yet involved.
+Steps 3 onwards name both assemblies where both are touched.
 
 1. `Grob.Core` — `Chunk`, `OpCode`, `GrobType`, constant pool, `CONSTANT`/`RETURN`
-2. `Grob.Vm` — value stack, arithmetic opcodes
-3. `Grob.Vm` — global variables
-4. `Grob.Vm` + `Grob.Compiler` — control flow, jump, backpatching
+2. `Grob.Vm` — value stack, arithmetic opcodes (chunks hand-constructed in tests — no compiler yet)
+3. `Grob.Vm` + `Grob.Compiler` — global variables — `LOAD_GLOBAL`, `STORE_GLOBAL`
+4. `Grob.Vm` + `Grob.Compiler` — control flow — conditional/unconditional jump, backpatching
 5. `Grob.Vm` + `Grob.Compiler` — local variables, call frames
-6. `Grob.Compiler` — functions, `CALL`/`RETURN`
-7. `Grob.Runtime` + `Grob.Stdlib` — native functions, stdlib registration
-8. GC — lean on C# entirely (tentative; revisit after clox)
-9. `Grob.Runtime` — plugin system, `IGrobPlugin`, `PluginLoader`
-10. `Grob.Compiler` — import resolution, module system
+6. `Grob.Vm` + `Grob.Compiler` — functions — `CALL`/`RETURN`, `CallFrame` push/pop
+7a. `Grob.Runtime` — plugin infrastructure — `IGrobPlugin`, `RegisterNative`,
+    `FunctionSignature`, `Parameter`. This is the registration mechanism the stdlib
+    depends on. It is not the user-facing plugin loader — that is step 9.
+7b. `Grob.Stdlib` — all thirteen core modules as `IGrobPlugin` implementations,
+    auto-registered at VM startup: `fs`, `strings`, `json`, `csv`, `env`, `process`,
+    `date`, `math`, `log`, `regex`, `path`, `format`, `guid`
+8. GC — tentative: lean on C# entirely; if a custom GC is required, implement here.
+   In the lean-on-C# path (current decision) this step is a no-op.
+9. `Grob.Vm` (`PluginLoader`) — third-party plugin loading — `Assembly.LoadFrom`,
+   `PluginLoader`, `--dev-plugin` flag. `Grob.Http` is the first exercise of this path.
+   Distinct from step 7a: that step defines the interface; this step opens it to external assemblies.
+10. `Grob.Compiler` — import resolution, module system, namespace aliasing
 
 -----
 
@@ -320,6 +331,10 @@ The solution structure maps directly onto the locked implementation order:
 -----
 
 *Confirmed April 2026. Updated April 2026 — `Grob.Lsp` and `tooling/Grob.VsCode` added.*
-*Supersedes structural notes in vm-architecture-notes.md.*
-*See `tooling-strategy.md` for LSP phased plan and SourceLocation requirements.*
+*Updated April 2026 — implementation order clarified: step 7 split into 7a (plugin infrastructure)*
+*and 7b (stdlib modules); step 9 explicitly scoped to third-party plugin loading only;*
+*compiler involvement from step 3 onwards made explicit; GC step 8 no-op note added.*
+*`guid` confirmed as 13th core module in step 7b.*
+*Supersedes structural notes in Grob___VM_Architecture___Design_Notes.md.*
+*See `Grob___Tooling___Strategy.md` for LSP phased plan and SourceLocation requirements.*
 *`Gro` as a type prefix abbreviation is explicitly not a Grob convention — always `Grob`.*

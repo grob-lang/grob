@@ -37,7 +37,7 @@ gets a compile-time error, not a runtime crash.
 ### Core vs plugins
 
 **Core modules** (`fs`, `strings`, `json`, `csv`, `env`, `process`, `date`, `math`,
-`log`, `regex`, `path`, `format`) are auto-available in every script. No import
+`log`, `regex`, `path`, `format`, `guid`) are auto-available in every script. No import
 required. No install required.
 
 **Everything else** requires an explicit `import` and a prior `grob install`.
@@ -151,8 +151,8 @@ public class HelloPlugin : IGrobPlugin
         vm.RegisterNative(
             name: "hello.greet",
             signature: new FunctionSignature(
-                parameters: [new Parameter("name", GroType.String)],
-                returnType: GroType.String
+                parameters: [new Parameter("name", GrobType.String)],
+                returnType: GrobType.String
             ),
             implementation: args => {
                 var name = args[0].AsString();

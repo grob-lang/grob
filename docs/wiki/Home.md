@@ -23,7 +23,7 @@ handling, script parameters and the module system.
 
 ## Standard Library
 
-Twelve core modules, auto-available in every script. No `import` required.
+Thirteen core modules, auto-available in every script. No `import` required.
 
 - [fs](Standard-Library/fs.md) — file system operations
 - [strings](Standard-Library/strings.md) — string utilities
@@ -37,6 +37,7 @@ Twelve core modules, auto-available in every script. No `import` required.
 - [regex](Standard-Library/regex.md) — regular expressions
 - [path](Standard-Library/path.md) — path string manipulation
 - [format](Standard-Library/format.md) — output formatting
+- [guid](Standard-Library/guid.md) — GUID generation and parsing
 
 ## Type Registry
 
@@ -48,12 +49,19 @@ and properties exist on each type.
 - [float](Type-Registry/float.md)
 - [bool](Type-Registry/bool.md)
 - [array](Type-Registry/array.md)
+- [map](Type-Registry/map.md)
 - [File](Type-Registry/File.md)
 - [date](Type-Registry/date.md)
 - [Regex](Type-Registry/Regex.md)
 - [Match](Type-Registry/Match.md)
+- [guid](Type-Registry/guid.md)
 - [CsvTable](Type-Registry/CsvTable.md)
 - [CsvRow](Type-Registry/CsvRow.md)
+- [json.Node](Type-Registry/json-Node.md)
+- [ProcessResult](Type-Registry/ProcessResult.md)
+- [Response](Type-Registry/Response.md)
+- [AuthHeader](Type-Registry/AuthHeader.md)
+- [ZipEntry](Type-Registry/ZipEntry.md)
 
 ## VM Architecture
 
@@ -82,6 +90,8 @@ registry.
 - [Overview](Plugins/Overview.md)
 - [Writing Plugins](Plugins/Writing-Plugins.md)
 - [Grob.Http](Plugins/Grob-Http.md)
+- [Grob.Crypto](Plugins/Grob-Crypto.md)
+- [Grob.Zip](Plugins/Grob-Zip.md)
 - [Community Registry](Plugins/Community-Registry.md)
 
 ## Architecture Decision Records
@@ -94,8 +104,13 @@ Key design decisions with full rationale.
 - [ADR-0004: Constrained Generics](ADR/0004-constrained-generics.md)
 - [ADR-0005: C# GC over Custom](ADR/0005-csharp-gc-over-custom.md)
 - [ADR-0006: No Pipe Operator](ADR/0006-no-pipe-operator.md)
-- [ADR-0007: Windows-First Design](ADR/0007-windows-first-design.md)
-- [ADR-0008: No Var Keyword](ADR/0008-no-var-keyword.md)
-- [ADR-0009: Select Statement vs Switch Expression](ADR/0009-select-statement-vs-switch-expression.md)
-- [ADR-0010: Core Modules Auto-Available](ADR/0010-core-modules-auto-available.md)
-- [ADR-0011: NuGet as Plugin Registry](ADR/0011-nuget-as-plugin-registry.md)
+- [ADR-0007: Solution Structure and Naming](ADR/0007-solution-structure-and-naming.md)
+- [ADR-0008: Windows-First Design](ADR/0008-windows-first-design.md)
+- [ADR-0009: No Var Keyword](ADR/0009-no-var-keyword.md)
+- [ADR-0010: Select Statement vs Switch Expression](ADR/0010-select-statement-vs-switch-expression.md)
+- [ADR-0011: Core Modules Auto-Available](ADR/0011-core-modules-auto-available.md)
+- [ADR-0012: NuGet as Plugin Registry](ADR/0012-nuget-as-plugin-registry.md)
+- [ADR-0013: Three-Tier Install Scope](ADR/0013-three-tier-install-scope.md)
+- [ADR-0014: Source Locations from Day One](ADR/0014-source-locations-from-day-one.md)
+- [ADR-0015: Bare Brace Rule](ADR/0015-bare-brace-rule.md)
+- [ADR-0016: Const Means Fully Immutable](ADR/0016-const-means-fully-immutable.md)

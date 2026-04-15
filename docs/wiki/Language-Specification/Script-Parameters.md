@@ -1,92 +1,37 @@
 # Script Parameters
 
-## The `param` Block
+## `param` Block
 
-Scripts declare parameters at the top of the file using `param`. Parameters are
-typed, optionally defaultable and validated at the parameter boundary before the
-script body runs.
+Scripts declare parameters in a `param` block at the top of the file, after
+any `import` statements.
 
 ```grob
-param env:     string
-param dry_run: bool = false
-param days:    int  = 30
+@secure
+param token: string
+
+param env: string
+param days: int = 30
+param dryRun: bool = false
 ```
 
-Required parameters have no default. Optional parameters have a default value.
+Parameters are typed and may have defaults. Required parameters have no default.
 The type checker validates at compile time — wrong type or missing required
 parameter is a compile error before execution.
 
-## Invoking with Parameters
+## Decorators
+
+| Decorator | Purpose |
+|-----------|---------|
+| `@secure` | Value masked in logs and error output |
+| `@allowed("dev", "staging", "prod")` | Restricted to enumerated values |
+| `@minLength(n)` | Minimum string length |
+| `@maxLength(n)` | Maximum string length |
+
+## Invocation
 
 ```
-grob run deploy.grob --env staging
-grob run deploy.grob --env staging --dry_run true
-grob run deploy.grob --env staging --days 60
-```
-
-## Param Files
-
-The `.grobparams` file format provides reusable parameter sets. Key-value pairs
-with `//` comments, designed to feel native to Grob.
-
-```
-// deploy.grobparams
-env = staging
-days = 30
-// pat is intentionally absent — supply via --pat or env.require()
-```
-
-```
+grob run deploy.grob --token $env:ADO_PAT --env staging
 grob run deploy.grob --params deploy.grobparams
 ```
 
-Command-line arguments override param file values:
-
-```
-grob run deploy.grob --params deploy.grobparams --env production
-```
-
-Param files are committable to source control. They are not JSON, not YAML, not
-TOML — they are readable and diffable by design.
-
-## Decorators
-
-Decorators on parameters provide validation and handling instructions. Validated
-at the parameter boundary before the script body runs.
-
-| Decorator | Effect |
-|-----------|--------|
-| `@secure` | Value not echoed in output, not included in error messages, not logged |
-| `@allowed(...)` | Value must be one of the listed options |
-| `@minLength(n)` | String value must be at least `n` characters |
-| `@maxLength(n)` | String value must be at most `n` characters |
-
-```grob
-param env: string
-    @allowed("dev", "staging", "production")
-
-param pat: string
-    @secure
-
-param project_name: string
-    @minLength(1)
-    @maxLength(64)
-```
-
-### `@secure`
-
-`@secure` is a handling instruction, not a type. The value is still `string` at
-runtime. Effect: not echoed in output, not included in error messages, not
-logged. The compiler warns if a `@secure` param appears in a `.grobparams` file
-in plain text.
-
-The canonical pattern for credentials is `env.require()`:
-
-```grob
-pat := env.require("ADO_PAT")
-```
-
-`@secure` params should be absent from `.grobparams` files — provide via command
-line or `env.require()` instead.
-
-See also: [Syntax](Syntax.md), [Modules and Imports](Modules-and-Imports.md)
+See also: [Functions](Functions.md), [Modules and Imports](Modules-and-Imports.md)

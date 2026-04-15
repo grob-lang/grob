@@ -7,13 +7,8 @@
 | `+` | Addition / string concatenation | `string + int` is a compile error |
 | `-` | Subtraction | |
 | `*` | Multiplication | |
-| `/` | Division | `int / int → int` (truncating) |
+| `/` | Division | `int / int` truncates; `float / float` is float |
 | `%` | Modulo | |
-
-Integer division truncates: `7 / 2` produces `3`. Mixed operands promote to
-`float`: `7 / 2.0` produces `3.5`. String concatenation with `+` requires both
-operands to be strings — use `.toString()` or string interpolation for mixed
-types.
 
 ## Comparison
 
@@ -38,69 +33,43 @@ types.
 
 | Operator | Operation |
 |----------|-----------|
-| `:=` | Declare and assign (first use of a name) |
-| `=` | Reassign (name must already exist) |
-| `+=` | Add and assign |
-| `-=` | Subtract and assign |
-| `*=` | Multiply and assign |
-| `/=` | Divide and assign |
-| `%=` | Modulo and assign |
+| `:=` | Declare and assign |
+| `=` | Reassign |
+| `+=` `-=` `*=` `/=` `%=` | Compound assignment |
 
-All compound assignment operators are statements — they do not produce a value
-and cannot appear in expression position. Assignment is not an expression.
-`if (x := foo())` is a compile error.
+All compound assignment operators are statements — they do not produce a value.
 
 ## Increment and Decrement
 
-| Operator | Operation |
-|----------|-----------|
-| `i++` | Increment by 1 |
-| `i--` | Decrement by 1 |
+`i++` and `i--` — postfix only. Both are statements, not expressions. Apply to
+`int` only. The compiler lowers `i++` to `i = i + 1`.
 
-Postfix form only — prefix `++i` and `--i` are not valid. Both are statements,
-not expressions. The compiler lowers `i++` to `i = i + 1`. Applies to `int`
-only. `float++` is a compile error. `++` on a `const` binding is a compile error.
-
-## Nil Handling
+## Other
 
 | Operator | Operation |
 |----------|-----------|
-| `??` | Nil coalescing — `a ?? b` returns `a` if non-nil, otherwise `b` |
-| `?.` | Optional chaining — `a?.foo` returns nil if `a` is nil |
-
-## Range
-
-| Operator | Operation |
-|----------|-----------|
-| `..` | Inclusive range (numeric for loops only in v1) |
-
-## Unary
-
-| Operator | Operation |
-|----------|-----------|
-| `-` | Arithmetic negation |
-| `!` | Logical NOT |
+| `??` | Nil coalescing |
+| `?.` | Optional chaining |
+| `..` | Range (numeric `for` loops only in v1) |
 
 Bitwise operators are not in scope for v1.
 
-## Precedence
-
-Highest to lowest. Parentheses override precedence at any level.
+## Precedence (Highest to Lowest)
 
 | Level | Operators | Notes |
 |-------|-----------|-------|
-| 1 (highest) | `-` (unary), `!` | |
-| 2 | `*`, `/`, `%` | |
-| 3 | `+`, `-` | |
-| 4 | `<`, `>`, `<=`, `>=` | |
-| 5 | `==`, `!=` | |
-| 6 | `&&` | |
-| 7 | `\|\|` | |
-| 8 | `??` | |
-| 9 | `? :` (ternary) | |
-| 10 (lowest) | `:=`, `=`, `+=`, `-=`, `*=`, `/=`, `%=` | |
-
-This matches C-family precedence. The Pratt parser implements this as binding
-powers.
+| 1 | `()`, `[]`, `.`, `?.` | Postfix |
+| 2 | `-` (unary), `!` | Prefix |
+| 3 | `*`, `/`, `%` | Multiplicative |
+| 4 | `+`, `-` | Additive |
+| 5 | `..` | Range |
+| 6 | `<`, `>`, `<=`, `>=` | Comparison |
+| 7 | `==`, `!=` | Equality |
+| 8 | `&&` | Logical AND |
+| 9 | `\|\|` | Logical OR |
+| 10 | `? :` | Ternary |
+| 11 | `??` | Nil coalescing |
+| 12 | `:=`, `=`, `+=`, `-=`, `*=`, `/=`, `%=` | Assignment |
+| 13 | `=>` | Lambda arrow |
 
 See also: [Expressions](Expressions.md), [Types](Types.md)

@@ -1,34 +1,13 @@
-# Match — Type Registry
+# Match
 
 Returned by `Regex.match()` and `Regex.matchAll()`.
 
-## Properties
+| Member | Kind | Signature | Notes |
+|--------|------|-----------|-------|
+| `value` | property | `→ string` | Matched text |
+| `index` | property | `→ int` | Zero-based position |
+| `length` | property | `→ int` | |
+| `groups` | property | `→ string[]` | Index 0 = full match, 1+ = captures |
+| `group(name: string)` | method | `→ string?` | Named capture group |
 
-| Member | Signature | Notes |
-|--------|-----------|-------|
-| `value` | `→ string` | The matched text |
-| `index` | `→ int` | Zero-based position in input |
-| `length` | `→ int` | Length of match |
-| `groups` | `→ string[]` | `groups[0]` is full match; `groups[1]+` are capture groups |
-
-## Methods
-
-| Member | Signature | Notes |
-|--------|-----------|-------|
-| `group(name: string)` | `→ string?` | Named capture group. Nil if not present |
-
-## Examples
-
-```grob
-pattern := /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/
-m := pattern.match("Date: 2026-04-05")
-
-if (m != nil) {
-    print(m.value)           // "2026-04-05"
-    print(m.index)           // 6
-    print(m.groups[1])       // "2026"
-    print(m.group("month"))  // "04"
-}
-```
-
-See also: [Regex type](Regex.md), [regex module](../Standard-Library/regex.md)
+See also: [Regex](Regex.md)

@@ -7,73 +7,27 @@ import required.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `process.run(cmd: string, args: string[])` | `→ ProcessResult` | Safe form — no shell interpolation |
-| `process.runOrFail(cmd: string, args: string[])` | `→ ProcessResult` | Safe form — throws on non-zero exit |
-| `process.runShell(cmd: string)` | `→ ProcessResult` | Shell form — full command string |
-| `process.runShellOrFail(cmd: string)` | `→ ProcessResult` | Shell form — throws on non-zero exit |
+| `process.run(cmd, args: string[], timeout: int = 0)` | `→ ProcessResult` | Safe form — no shell interpolation |
+| `process.runOrFail(cmd, args: string[], timeout: int = 0)` | `→ ProcessResult` | Throws on non-zero exit |
+| `process.runShell(cmd: string, timeout: int = 0)` | `→ ProcessResult` | Shell form — full command string |
+| `process.runShellOrFail(cmd: string, timeout: int = 0)` | `→ ProcessResult` | Shell form — throws on non-zero exit |
 
-## `ProcessResult` Type
-
-| Member | Type | Description |
-|--------|------|-------------|
-| `stdout` | `string` | Standard output |
-| `stderr` | `string` | Standard error |
-| `exitCode` | `int` | Process exit code |
-
-## Safe vs Shell Form
-
-`process.run()` is the primary form — arguments are never shell-interpolated,
-preventing command injection. Use it whenever any argument comes from data (user
-input, API responses, file content, environment variables).
-
-`process.runShell()` passes the full command string to the shell. Use it only
-when the command is a known trusted literal where shell interpretation is wanted.
-The name makes shell involvement explicit.
-
-The safe path has the shorter name by design.
+`timeout` is in seconds. `0` means infinite. On timeout, throws `ProcessError`.
 
 ## Examples
 
-### Run a command safely
-
 ```grob
-result := process.run("az", ["group", "show", "--name", group_name])
+result := process.run("az", ["group", "show", "--name", groupName])
 print(result.stdout)
-```
 
-### Fail fast
-
-```grob
 process.runOrFail("git", ["commit", "-m", message])
+
+result := process.runShell("az group list")
+result := process.run("az", ["deployment", "wait"], timeout: 300)
 ```
 
-If the command returns a non-zero exit code, `runOrFail` throws `ProcessError`.
+`process.run()` is the primary form — arguments are never shell-interpolated.
+`process.runShell()` is for full command strings where shell interpretation is
+intentional.
 
-### Shell form for trusted commands
-
-```grob
-result := process.runShell("az bicep build --file main.bicep")
-```
-
-### Check exit code
-
-```grob
-result := process.run("git", ["status", "--porcelain"])
-if (result.exitCode != 0) {
-    log.error("Git status failed: ${result.stderr}")
-    exit(1)
-}
-```
-
-## Error Behaviour
-
-`process.run()` and `process.runShell()` do not throw on non-zero exit codes —
-check `exitCode` manually. `process.runOrFail()` and `process.runShellOrFail()`
-throw `ProcessError` on any non-zero exit code.
-
-## Security
-
-`process.run(cmd, args[])` prevents command injection by never interpolating
-arguments through a shell. This is the safe default and the recommended form for
-all scripts. `process.runShell()` makes shell involvement visible at the call
-site — the risk is documented, not hidden.
+See also: [ProcessResult](../Type-Registry/ProcessResult.md)

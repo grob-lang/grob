@@ -2,10 +2,10 @@
 
 > This document covers the editor tooling plan for Grob: syntax highlighting,
 > the VS Code extension, and the Language Server Protocol implementation.
-> It is a companion to `solution-architecture.md`.
+> It is a companion to `Grob___Solution_Architecture.md`.
 > The decisions log is the authority — this document is supplementary.
 
----
+-----
 
 ## Foundational Constraint — Source Location From Day One
 
@@ -74,53 +74,82 @@ identifier resolution. The cost of adding it later is a full type checker audit.
 
 **This is a day-one requirement, not a tooling phase concern.**
 
----
+-----
 
 ## Phases
 
-### Phase 1 — TextMate Grammar
+### Phase 1 — TextMate Grammar and Language Configuration
 
 **When:** Now. Before the compiler is built. No dependencies.
 
-**What it is:** A static `.tmLanguage.json` file that defines token patterns using
-regex. Runs entirely in the editor — no language server involved. Gives users
-keyword colouring, string literals, comments, and number literals immediately.
+**What it is:** Two static files that together give VS Code enough information
+to provide a useful editing experience before the LSP exists. No compiler
+dependency. No TypeScript. No build step.
 
-**Covers:**
+**File 1 — `grob.tmLanguage.json`**
+
+A static TextMate grammar defining token patterns using regex. Runs entirely
+in the editor. Gives users keyword colouring, string literals, comments and
+number literals immediately.
+
+Covers:
 
 - Keywords: `fn`, `if`, `else`, `for`, `in`, `while`, `const`, `type`, `import`,
   `param`, `return`, `try`, `catch`, `select`, `case`, `break`, `continue`,
-  `nil`, `true`, `false`
-- Literals: strings (double-quoted and backtick raw), integers (decimal, hex `0x`,
-  binary `0b`, underscore-separated), floats
-- String interpolation: `${...}` regions inside double-quoted strings — highlighted
-  as an embedded expression scope
-- Comments: `//` line comments, `/* */` block comments
-- Operators and punctuation
+  `nil`, `true`, `false`, `step`, `switch`, `exit`, `print`
+- Literals: double-quoted strings with `${...}` interpolation regions highlighted
+  as an embedded expression scope; single backtick raw strings; triple backtick
+  raw block strings; integers (decimal, hex `0x`, binary `0b`, underscore-separated);
+  floats
+- Comments: `//` line comments, `/* */` block comments, `///` doc comment reserved
+- Operators and punctuation including `#{` as a distinct token
 - Type annotations: `: TypeName` pattern — type names distinguished from identifiers
 - Function declarations: `fn name(` heuristic for function name detection
 - Type declarations: `type Name` heuristic for type name detection
 
-**Deliverable:** `grob.tmLanguage.json` in the `Grob.VsCode` extension project.
+**File 2 — `language-configuration.json`**
 
-**Ships with:** The first VS Code extension release. Users get readable `.grob`
-files before the LSP exists.
+A static JSON file declaring editor behaviours that VS Code handles natively —
+no LSP, no TypeScript involvement. Gives developers automatic bracket matching,
+comment toggling and basic indentation from the moment the extension is installed.
 
----
+Covers:
+
+- **Bracket pairs:** `()`, `[]`, `{}`, ``` ``` (single backtick),
+  ````` ````` (triple backtick)
+- **Auto-closing pairs:** `"` → `"`, ``` → ```, `(` → `)`, `[` → `]`,
+  `{` → `}` — editor inserts the closing delimiter automatically
+- **Surrounding pairs:** same set — wraps selected text when delimiter is typed
+- **Comment toggling:** line comment `//`, block comment `/* */`
+- **Indentation rules:** increase indent after `{`, decrease after `}`
+- **Word pattern:** identifiers including `_` separator
+
+This file requires no maintenance as the language evolves — bracket pairs and
+comment syntax are stable. It is not the formatter; `grob fmt` remains the
+formatting story. This covers only the editor conveniences developers expect
+without thinking about them.
+
+**Deliverables:** `grob.tmLanguage.json` and `language-configuration.json`
+in the `Grob.VsCode` extension project.
+
+**Ships with:** The first VS Code extension release. Users get readable,
+editor-friendly `.grob` files before the LSP exists.
+
+-----
 
 ### Phase 2 — Source Location in the Compiler
 
 **When:** During compiler construction. This is not a separate phase — it is a
 discipline applied throughout compiler build.
 
-**See:** The "Foundational Constraint" section above. This is the only phase
+**See:** The “Foundational Constraint” section above. This is the only phase
 with a hard dependency on current implementation work.
 
 **Verification:** `Grob.Compiler.Tests` should assert that every node in a parsed
 AST carries a non-default `SourceLocation`. This makes the constraint testable
 and prevents regression.
 
----
+-----
 
 ### Phase 3 — VS Code Extension Shell
 
@@ -137,11 +166,12 @@ process. The TypeScript is roughly 30 lines.
 ```
 tooling/
 └── Grob.VsCode/
-    ├── package.json              ← extension manifest — language ID, file extension, grammar
+    ├── package.json                      ← extension manifest — language ID, file extension, grammar
+    ├── language-configuration.json       ← bracket pairs, comment toggling, indentation rules
     ├── syntaxes/
-    │   └── grob.tmLanguage.json  ← from Phase 1
+    │   └── grob.tmLanguage.json          ← from Phase 1
     └── src/
-        └── extension.ts          ← start the LSP process, wire to VS Code
+        └── extension.ts                  ← start the LSP process, wire to VS Code
 ```
 
 **`package.json` declares:**
@@ -154,7 +184,7 @@ tooling/
 **`extension.ts`** starts `Grob.Lsp` as a child process and connects its
 stdin/stdout to the VS Code LSP client. This is the complete TypeScript scope.
 
----
+-----
 
 ### Phase 4 — `Grob.Lsp` Project
 
@@ -245,7 +275,7 @@ return new Location(decl.Location.File, decl.Location.Line, decl.Location.Column
 For v1, go-to-definition and go-to-implementation are the same handler.
 Grob has no interface/implementation split.
 
----
+-----
 
 ### Phase 5 — Semantic Tokens (Post-MVP)
 
@@ -264,7 +294,7 @@ Implemented as an additional handler on the existing LSP:
 
 This is the only phase that is explicitly post-MVP.
 
----
+-----
 
 ## Updated Solution Structure
 
@@ -291,13 +321,14 @@ Grob.sln
 └── tooling/
     └── Grob.VsCode/             ← Phase 1 + Phase 3
         ├── package.json
+        ├── language-configuration.json
         ├── syntaxes/
         │   └── grob.tmLanguage.json
         └── src/
             └── extension.ts
 ```
 
----
+-----
 
 ## Dependency Graph Addition
 
@@ -315,31 +346,33 @@ Grob.Lsp
 
 `Grob.Lsp` does not reference `Grob.Vm` — it never executes code, only analyses it.
 
----
+-----
 
 ## Phase Summary
 
-| Phase                       | What                                                           | When                  | Hard dependency              |
-| --------------------------- | -------------------------------------------------------------- | --------------------- | ---------------------------- |
-| 1 — TextMate grammar        | Static syntax highlighting                                     | Now                   | None                         |
-| 2 — Source locations        | `SourceLocation` on all AST nodes, declaration back-references | During compiler build | Day one — cannot be deferred |
-| 3 — VS Code extension shell | TypeScript wrapper, starts LSP process                         | After compiler stable | Phase 1                      |
-| 4 — `Grob.Lsp`              | Diagnostics, completions, hover, go-to-definition              | After compiler stable | Phase 2                      |
-| 5 — Semantic tokens         | Type-aware highlighting overlay                                | Post-MVP              | Phase 4 stable               |
+|Phase                                 |What                                                          |When                 |Hard dependency             |
+|--------------------------------------|--------------------------------------------------------------|---------------------|----------------------------|
+|1 — TextMate grammar + language config|Static syntax highlighting, bracket pairs, comment toggling   |Now                  |None                        |
+|2 — Source locations                  |`SourceLocation` on all AST nodes, declaration back-references|During compiler build|Day one — cannot be deferred|
+|3 — VS Code extension shell           |TypeScript wrapper, starts LSP process                        |After compiler stable|Phase 1                     |
+|4 — `Grob.Lsp`                        |Diagnostics, completions, hover, go-to-definition             |After compiler stable|Phase 2                     |
+|5 — Semantic tokens                   |Type-aware highlighting overlay                               |Post-MVP             |Phase 4 stable              |
 
----
+-----
 
 ## Related Documents
 
-| Document                   | Relevance                                                                 |
-| -------------------------- | ------------------------------------------------------------------------- |
-| `solution-architecture.md` | Solution structure, `Grob.Lsp` fits the same pattern as `Grob.Cli`        |
-| `language-fundamentals.md` | Keyword list and operator set — authoritative source for TextMate grammar |
-| `type-registry.md`         | Type methods and properties — completions and hover data source           |
-| `decisions-Log.md`         | Authority — this document is supplementary                                |
+|Document                           |Relevance                                                                |
+|-----------------------------------|-------------------------------------------------------------------------|
+|`Grob___Solution_Architecture.md`  |Solution structure, `Grob.Lsp` fits the same pattern as `Grob.Cli`       |
+|`Grob___Language_Fundamentals.md`  |Keyword list and operator set — authoritative source for TextMate grammar|
+|`Grob___Type___Registry.md`        |Type methods and properties — completions and hover data source          |
+|`Grob___Decisions___Context_Log.md`|Authority — this document is supplementary                               |
 
----
+-----
 
-_Created April 2026 — tooling strategy session._
-_Phase 2 (source location) is a day-one compiler construction requirement._
-_`Grob.Lsp` added to solution structure. `tooling/Grob.VsCode` added alongside solution._
+*Created April 2026 — tooling strategy session.*
+*Updated April 2026 — language-configuration.json added to Phase 1; string literal*
+*coverage updated for single and triple backtick forms; keyword list updated.*
+*Phase 2 (source location) is a day-one compiler construction requirement.*
+*`Grob.Lsp` added to solution structure. `tooling/Grob.VsCode` added alongside solution.*

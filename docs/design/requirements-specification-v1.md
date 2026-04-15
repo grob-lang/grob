@@ -3,19 +3,19 @@
 > **Purpose:** This document defines exactly what Grob v1 includes. It is the
 > build guide. Every feature listed here ships with the public release. Every
 > feature not listed here does not.
->
+> 
 > **Authority:** This document draws from the decisions log (the authority on
 > all design decisions), the language fundamentals spec, the stdlib reference,
 > the type registry, the VM architecture notes, the install strategy and the
 > personality doc. Where those documents describe post-MVP features, this
 > document excludes them. Where they describe v1 features, this document
 > includes them and specifies acceptance criteria.
->
+> 
 > **Methodology:** The build plan follows agile methodology. Each sprint
 > produces a working, testable, valuable increment. Opcodes, enums and
 > infrastructure are built out completely — never in an additive, drip-feed
 > manner. Error handling and line tracking are present from day one.
->
+> 
 > **Last updated:** April 2026
 
 -----
@@ -69,10 +69,10 @@ most common personal automation tasks on GitHub. It exercises:
 - `fs.ensureDir()` and `file.moveTo()`
 - `print()` for user feedback
 
-### Release Gate — All Ten Sample Scripts
+### Release Gate — All Eleven Sample Scripts
 
-The sample scripts document contains ten real-world scripts that validate
-the API surface. All ten must compile and run correctly against the v1
+The sample scripts document contains eleven real-world scripts that validate
+the API surface. All eleven must compile and run correctly against the v1
 implementation before public release. Any script that fails reveals a gap
 in the implementation.
 
@@ -125,7 +125,7 @@ Grob Script (.grob)
 
 ### C# Solution Structure
 
-> **Authority:** `solution-architecture.md` (confirmed April 2026).
+> **Authority:** `Grob___Solution_Architecture.md` (confirmed April 2026).
 > This section summarises the confirmed solution architecture. The full
 > document covers assembly responsibilities, dependency constraints,
 > naming conventions and the Chunk boundary rationale in detail.
@@ -169,14 +169,14 @@ knows about the other.
 
 ### Assembly Responsibilities (Summary)
 
-| Assembly | Responsibility | Key Constraint |
-|----------|---------------|----------------|
-| `Grob.Core` | `Chunk`, `OpCode`, `GrobType`, `GrobValue`, `SourceLocation`, `ConstantPool` | No dependencies on any other Grob assembly |
-| `Grob.Runtime` | `IGrobPlugin`, `FunctionSignature`, `GrobVM` registration surface, `GrobError` hierarchy | Published as NuGet package — plugin authors reference this only |
-| `Grob.Compiler` | Lexer → Parser → AST → TypeChecker → Compiler | References Core + Runtime. Does NOT reference Vm. Job ends at Chunk production |
-| `Grob.Vm` | Fetch/decode/execute loop, ValueStack, CallFrame[256], Globals, PluginLoader | References Core + Runtime. Does NOT reference Compiler |
-| `Grob.Stdlib` | 12 core modules as `IGrobPlugin` implementations | References Core + Runtime only. Auto-registered by Cli at startup |
-| `Grob.Cli` | Composition root, CLI commands, REPL, error formatting | References all `src/` assemblies. Nothing references Cli |
+|Assembly       |Responsibility                                                                          |Key Constraint                                                                |
+|---------------|----------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
+|`Grob.Core`    |`Chunk`, `OpCode`, `GrobType`, `GrobValue`, `SourceLocation`, `ConstantPool`            |No dependencies on any other Grob assembly                                    |
+|`Grob.Runtime` |`IGrobPlugin`, `FunctionSignature`, `GrobVM` registration surface, `GrobError` hierarchy|Published as NuGet package — plugin authors reference this only               |
+|`Grob.Compiler`|Lexer → Parser → AST → TypeChecker → Compiler                                           |References Core + Runtime. Does NOT reference Vm. Job ends at Chunk production|
+|`Grob.Vm`      |Fetch/decode/execute loop, ValueStack, CallFrame[256], Globals, PluginLoader            |References Core + Runtime. Does NOT reference Compiler                        |
+|`Grob.Stdlib`  |13 core modules as `IGrobPlugin` implementations                                        |References Core + Runtime only. Auto-registered by Cli at startup             |
+|`Grob.Cli`     |Composition root, CLI commands, REPL, error formatting                                  |References all `src/` assemblies. Nothing references Cli                      |
 
 ### Naming Convention
 
@@ -193,7 +193,7 @@ unambiguously.
   by concern (expressions, statements, declarations, control flow).
 - **Stack-based VM** — confirmed, not register-based. The .NET JIT compiles
   the VM loop to efficient native code.
-- **Lean on C#'s GC** — structs for value types (int, float, bool), classes
+- **Lean on C#’s GC** — structs for value types (int, float, bool), classes
   for heap objects (string, array, function) only. No custom mark-sweep
   unless profiling proves it necessary.
 - **Tagged union for values** (tentative, OQ-005) — `GrobValue` struct with
@@ -236,12 +236,12 @@ does not require a full type checker audit to retrofit.
 
 **`ResolvedType` on identifier nodes:** The type checker sets
 `GrobType ResolvedType` on every identifier node during its pass. This
-is the data the LSP's hover handler returns and the completions handler
+is the data the LSP’s hover handler returns and the completions handler
 uses to query the type registry.
 
 **`Declaration` back-reference on identifier nodes:** The type checker
 sets `AstNode? Declaration` on every identifier node, pointing to the
-AST node where that name was declared. This is the data the LSP's
+AST node where that name was declared. This is the data the LSP’s
 go-to-definition handler returns.
 
 **`DeclaredAt` on symbol table entries:** Every `Symbol` in the symbol
@@ -269,7 +269,7 @@ identifier node in a type-checked AST carries a non-null `ResolvedType`
 and a non-null `Declaration`. This makes the constraint testable and
 prevents regression.
 
-See `tooling-strategy.md` for full rationale.
+See `Grob___Tooling___Strategy.md` for full rationale.
 
 ### 3.2 Diagnostic Infrastructure
 
@@ -406,7 +406,7 @@ the type checker to emit specialised opcodes (`AddInt` vs `AddFloat` vs
 `Concat`). No runtime type checks — the type checker already verified
 correctness. This is a confirmed design decision from the VM architecture
 sessions. The full set is defined here so that the `OpCode` enum, the
-compiler's opcode selection logic and the VM's dispatch switch are all
+compiler’s opcode selection logic and the VM’s dispatch switch are all
 built once, correctly, and never revisited for additive expansion.
 
 ### 3.4 Token Kind Enum — Complete from Sprint 1
@@ -422,7 +422,10 @@ Keywords:       fn, if, else, while, for, in, return, const, type, param,
 Operators:      + - * / % = := == != < > <= >= ! && || ? : ?? ?.
                 += -= *= /= %= ++ -- .. =>
 Punctuation:    ( ) { } [ ] , . #{ ///
-Literals:       IntLiteral, FloatLiteral, StringLiteral, RawStringLiteral,
+Literals:       IntLiteral, FloatLiteral,
+                StringStart, StringPart, StringEnd,
+                InterpStart, InterpEnd,
+                RawStringLiteral, RawStringBlockLiteral,
                 RegexLiteral, Identifier
 Structure:      Newline, EOF, Error
 Decorators:     @ (followed by identifier: secure, allowed, minLength, maxLength)
@@ -452,7 +455,7 @@ sprint includes tests for the features it delivers.
 
 ## 4. Build Plan — Sprint Breakdown
 
-Each sprint produces a working increment. "Working" means: the existing
+Each sprint produces a working increment. “Working” means: the existing
 test suite passes, the REPL (from Sprint 3 onwards) can exercise the
 new features interactively, and the increment can run meaningful scripts.
 
@@ -465,7 +468,7 @@ new features interactively, and the increment can run meaningful scripts.
 - C# solution with six `src/` projects (`Grob.Core`, `Grob.Runtime`,
   `Grob.Compiler`, `Grob.Vm`, `Grob.Stdlib`, `Grob.Cli`), three
   `plugins/` projects, and five `tests/` projects — as specified in
-  `solution-architecture.md`. .NET 10, self-contained deployment
+  `Grob___Solution_Architecture.md`. .NET 10, self-contained deployment
   target. Dependency graph enforced: Compiler and Vm never reference
   each other.
 - `TokenKind` enum — complete (see §3.4).
@@ -577,7 +580,13 @@ file.
 - `while (condition) { }` — `Loop` backward jump, `JumpIfFalse` exit.
 - `for item in collection { }` — lowered to while by compiler. Iterator
   variable immutable within body (compile error on reassignment).
-- `for i, item in collection { }` — index form, `i` is zero-based int.
+- `for i, item in collection { }` — index form for arrays, `i` is
+  zero-based int.
+- `for k, v in myMap { }` — map iteration. Two-identifier form required.
+  Single-identifier form on a `map<K, V>` is a compile error with a
+  suggestion to use `for k in myMap.keys` instead. Iterates insertion
+  order. Lowered to while over an internal keys array.
+- Any other type in `for...in` subject position is a compile error.
 - `for i in 0..10 { }` — numeric range, inclusive both bounds.
 - `for i in 0..100 step 5 { }` — step form.
 - `for i in 10..0 step -1 { }` — descending. Descending without explicit
@@ -594,9 +603,10 @@ file.
 - Switch expression: `value switch { pattern => result, _ => default }` —
   exhaustiveness enforced by type checker. All arms same type.
 
-**Acceptance:** All control flow constructs work correctly. The calculator
-smoke test script runs. Nested loops with `break`/`continue` behave as
-specified.
+**Acceptance:** All control flow constructs work correctly. Array `for...in`
+and map `for k, v in` iteration work correctly. Single-identifier `for k in`
+on a map produces a clear compile error. The calculator smoke test script
+runs. Nested loops with `break`/`continue` behave as specified.
 
 ### Sprint 5 — Functions and Closures
 
@@ -621,8 +631,7 @@ closures.
   copy to heap on enclosing function return.
 - `BytecodeFunction` and `NativeFunction` as function representations.
   VM dispatches transparently.
-- Native function registration mechanism: `RegisterNative(name, signature,
-  implementation)`.
+- Native function registration mechanism: `RegisterNative(name, signature, implementation)`.
 - Flow-sensitive type narrowing for optionals: inside `if (x != nil) { }`
   the type checker narrows `x` from `T?` to `T`.
 
@@ -651,7 +660,7 @@ structs.
   Type checker creates internal structural type. Field access is type-safe.
 - Bare `{ }` is always a block. `#{ }` is always an anonymous struct.
   `TypeName { }` is always named construction. No parser ambiguity.
-- Type declarations registered in the type checker's type registry.
+- Type declarations registered in the type checker’s type registry.
   Accessing undefined fields is a compile error.
 
 **Acceptance:** Types can be declared, constructed, accessed. Anonymous
@@ -687,7 +696,7 @@ diagnostics. `exit()` cannot be caught.
 ### Sprint 8 — Core Standard Library (Part 1)
 
 **Delivers:** `print`, `exit`, `math`, `strings`, `path`, `env`, `log`,
-`format` modules as `IGrobPlugin` implementations.
+`format`, `guid` modules as `IGrobPlugin` implementations.
 
 **Scope:**
 
@@ -698,6 +707,10 @@ validation.
 - **`print()`** — variadic, stdout, newline appended, void return.
   Already built-in from Sprint 2; now formalised as part of the stdlib.
 - **`exit()`** — already built-in from Sprint 2.
+- **`input()`** — `input(prompt: string = ""): string`. Writes prompt to
+  stdout (no trailing newline). Reads one line from stdin. Returns string
+  with newline stripped. Throws `IoError` if stdin is closed before a line
+  is read. No namespace — always available, same category as `print()`.
 - **`math`** — `pi`, `e`, `tau` constants. `sqrt()`, `pow()`, `log()`,
   `log10()`, `sin()`, `cos()`, `tan()`, `asin()`, `acos()`, `atan()`,
   `atan2()`, `toRadians()`, `toDegrees()`, `random()`, `randomInt()`,
@@ -716,8 +729,15 @@ validation.
 - **`format`** — `format.table()`, `format.list()`, `format.csv()`.
   Column names derived from type field registry at compile time. Works
   on named structs and anonymous structs.
+- **`guid`** — `guid.newV4()`, `guid.newV7()`, `guid.newV5()`.
+  `guid.parse()`, `guid.tryParse()`, `guid.empty`. Well-known
+  namespaces: `guid.namespaces.dns`, `guid.namespaces.url`,
+  `guid.namespaces.oid`. `guid` type with `version`, `isEmpty`
+  properties, `toString()`, `toUpperString()` methods. `==`, `!=`
+  operators. Compile-time validation on `guid.parse()` with string
+  literal argument. `guid` is a primitive type distinct from `string`.
 
-**Acceptance:** Each module's full API works. `math.sqrt(9.0)` returns
+**Acceptance:** Each module’s full API works. `math.sqrt(9.0)` returns
 `3.0`. `env.require("MISSING")` throws `RuntimeError`. `log.error()`
 writes to stderr. `format.table()` produces aligned column output.
 
@@ -730,10 +750,13 @@ writes to stderr. `format.table()` produces aligned column output.
 - **`fs`** — full API as specified. `File` type registered with type
   checker. `list()`, `exists()`, `isFile()`, `isDirectory()`,
   `ensureDir()`, `createDir()`, `delete()`, `deleteRecursive()`,
-  `readText()`, `readLines()`, `writeText()`, `appendText()`, `copy()`,
-  `move()`. `File` properties: `name`, `path`, `directory`, `extension`,
-  `size`, `modified`, `created`, `isDirectory`. `File` methods:
-  `rename()`, `moveTo()`, `copyTo()`, `delete()`.
+  `readText()`, `readLines()`, `writeText()`, `appendText()`,
+  `copy(src, dest, overwrite: bool = false)`,
+  `move(src, dest, overwrite: bool = false)`. `File` properties: `name`,
+  `path`, `directory`, `extension`, `size`, `modified`, `created`,
+  `isDirectory`. `File` methods: `rename()`,
+  `moveTo(destDir, overwrite: bool = false)`,
+  `copyTo(destDir, overwrite: bool = false)`, `delete()`.
 - **`date`** — full API as specified. `now()`, `today()`, `of()`,
   `ofTime()`, `parse()`. Properties: `year`, `month`, `day`, `hour`,
   `minute`, `second`, `dayOfWeek`, `dayOfYear`, `utcOffset`. Methods:
@@ -742,10 +765,12 @@ writes to stderr. `format.table()` produces aligned column output.
   `toIsoDateTime()`, `format()`, `toUnixSeconds()`, `toUnixMillis()`,
   `toUtc()`, `toLocal()`, `toZone()`, `daysUntil()`, `daysSince()`.
   Static: `fromUnixSeconds()`, `fromUnixMillis()`.
-- **`json`** — `read()`, `write()`, `parse()`, `stdin()`, `stdout()`.
+- **`json`** — `read()`, `write(compact: bool = false)`, `parse()`,
+  `encode(compact: bool = false)`, `stdin()`, `stdout(compact: bool = false)`.
   `json.Node` type with indexer access `node["key"]`. `asString()`,
   `asInt()`, `asFloat()`, `asBool()`, `asArray()`. `mapAs<T>()` for
   typed deserialization (constrained generic — type checker handles).
+  Pretty-printed output by default; `compact: true` for single-line.
 - **`csv`** — `read()`, `write()`, `parse()`, `stdin()`, `stdout()`.
   `csv.Table` type: `headers`, `rowCount`, `rows`. `CsvRow`: `get(name)`,
   `get(index)`, indexer syntax. `mapAs<T>()`. RFC 4180 compliance.
@@ -755,8 +780,11 @@ writes to stderr. `format.table()` produces aligned column output.
   `replaceAll()`, `split()`, `pattern`, `flags`. `Match` type: `value`,
   `index`, `length`, `groups`, `group(name)`. Module convenience
   functions for one-shot use. .NET regex engine underneath.
-- **`process`** — `run(cmd, args[])`, `runShell(cmd)`, `runOrFail()`,
+- **`process`** — `run(cmd, args[], timeout: int = 0)`,
+  `runShell(cmd, timeout: int = 0)`, `runOrFail()`,
   `runShellOrFail()`. `ProcessResult`: `stdout`, `stderr`, `exitCode`.
+  `timeout: int = 0` on all four functions — `0` means infinite.
+  Throws `ProcessError` on timeout expiry.
 
 **Acceptance:** The file organiser real-program target runs correctly.
 JSON and CSV round-trip works. Regex matching and replacement works.
@@ -848,7 +876,7 @@ type-checked at compile time. `grob install` downloads from NuGet.
 
 **Acceptance:** All CLI commands work. `grob fmt` produces consistent
 formatting. `grob check` reports errors without executing. The Windows
-Terminal profile registers correctly. All ten sample scripts compile and
+Terminal profile registers correctly. All eleven sample scripts compile and
 run.
 
 -----
@@ -911,8 +939,10 @@ run.
 - **Int:** `42`, `0xFF`, `0b1010`, `1_000_000`.
 - **Float:** `3.14`, `0.5`. Leading dot `.5` is NOT valid.
   Scientific notation `1.5e10` is NOT in v1.
-- **String:** `"hello"` with escape sequences (`\n`, `\t`, `\\`, `\"`,
-  `\$`). Interpolation: `"Hello ${name}"`. Raw strings: `` `no escapes` ``.
+- **String:** `"hello"` with escape sequences (`\n`, `\r`, `\t`, `\\`, `\"`, `\$`).
+  Interpolation: `"Hello ${name}"`. Single backtick raw: `C:\path\file`
+  (inline verbatim, no escapes, no newlines). Triple backtick raw: multiline
+  verbatim block, content preserved exactly as written, no trimming.
 - **Bool:** `true`, `false`.
 - **Nil:** `nil`.
 - **Array:** `[1, 2, 3]`. Empty array requires type: `items: int[] := []`.
@@ -922,8 +952,9 @@ run.
 - `if (condition) { }` / `else if (condition) { }` / `else { }` —
   parentheses required on conditions.
 - `while (condition) { }`
-- `for item in collection { }` / `for i, item in collection { }`
-- `for i in 0..10 { }` / `for i in 0..100 step 5 { }`
+- `for item in collection { }` / `for i, item in collection { }` — arrays
+- `for k, v in myMap { }` — maps (two-identifier form required)
+- `for i in 0..10 { }` / `for i in 0..100 step 5 { }` — numeric ranges
 - `select (value) { case X { } default { } }` — first match, no
   fall-through.
 - `break`, `continue` — innermost loop only. Compile error outside loop.
@@ -956,6 +987,12 @@ run.
 - `try { } catch TypedError e { } catch e { }`.
 - Bare `catch e` is catch-all — must be last.
 
+### Built-in Functions
+
+- `print(values...)` — variadic, stdout, newline appended, void.
+- `input(prompt: string = "")` — reads one line from stdin, returns `string`.
+- `exit(code: int = 0)` — exits script. Cannot be caught.
+
 ### Modules
 
 - Core modules auto-available — no import.
@@ -967,15 +1004,17 @@ run.
 
 ### Built-in Types
 
-| Type | Description | Default |
-|------|-------------|---------|
-| `int` | 64-bit signed integer | `0` |
-| `float` | 64-bit IEEE 754 | `0.0` |
-| `bool` | Boolean | `false` |
-| `string` | Immutable UTF-16 string | `""` |
-| `nil` | Absence of value | — |
-| `T[]` | Typed array | — |
-| `T?` | Nullable variant of any type | `nil` |
+|Type       |Description                         |Default|
+|-----------|------------------------------------|-------|
+|`int`      |64-bit signed integer               |`0`    |
+|`float`    |64-bit IEEE 754                     |`0.0`  |
+|`bool`     |Boolean                             |`false`|
+|`string`   |Immutable UTF-16 string             |`""`   |
+|`nil`      |Absence of value                    |—      |
+|`T[]`      |Typed array                         |—      |
+|`map<K, V>`|Key-value map (v1: string keys only)|—      |
+|`guid`     |Universally unique identifier       |—      |
+|`T?`       |Nullable variant of any type        |`nil`  |
 
 ### Type Inference
 
@@ -1005,82 +1044,96 @@ Conversions are methods on the source type: `"42".toInt()`. Never
 
 ### Built-in Type Methods (v1 — from Type Registry)
 
-**string:** `length`, `isEmpty` (properties). `contains()`, `startsWith()`,
-`endsWith()`, `trim()`, `trimStart()`, `trimEnd()`, `toLower()`,
-`toUpper()`, `replace()`, `split()`, `substring()`, `indexOf()`,
-`lastIndexOf()`, `padLeft()`, `padRight()`, `repeat()`, `truncate()`,
-`left()`, `right()`, `toInt()`, `toFloat()`, `toBool()`, `toString()`
-(methods).
+> **Authority:** `Grob___Type___Registry.md`. The registry is the definitive
+> list — this section summarises it. If the two conflict, the registry wins.
 
-**int:** `abs()`, `clamp()`, `toString()`, `toFloat()` (methods).
+**string:** `length`, `isEmpty` (properties). `toInt()`, `toFloat()`,
+`trim()`, `trimStart()`, `trimEnd()`, `upper()`, `lower()`, `split()`,
+`contains()`, `startsWith()`, `endsWith()`, `replace()`, `indexOf()`,
+`lastIndexOf()`, `substring()`, `padLeft()`, `padRight()`, `repeat()`,
+`truncate()`, `left()`, `right()`, `toString()` (methods).
+
+**int:** `toString()`, `toFloat()`, `abs()` (methods).
 `int.min()`, `int.max()`, `int.clamp()` (static).
 
-**float:** `abs()`, `floor()`, `ceil()`, `round()`, `clamp()`,
-`toString()`, `toInt()` (methods). `float.min()`, `float.max()` (static).
+**float:** `toString()`, `toInt()`, `round()`, `round(decimals)`,
+`floor()`, `ceil()`, `abs()` (methods).
+`float.min()`, `float.max()`, `float.clamp()` (static).
 
 **bool:** `toString()` (method).
 
-**array (T[]):** `length`, `isEmpty` (properties). `contains()`, `add()`,
-`remove()`, `removeAt()`, `insert()`, `clear()`, `indexOf()`, `first()`,
-`last()`, `sort()`, `reverse()`, `distinct()`, `slice()`, `flatten()`,
-`toString()` (methods). `filter()`, `map()`, `select()`, `any()`,
-`all()`, `count()`, `sum()`, `min()`, `max()`, `average()`, `take()`,
-`skip()`, `groupBy()`, `sortBy()`, `join()` (functional methods taking
-lambdas or operating on values).
+**array (T[]):** `length`, `isEmpty` (properties). `first()`, `last()`,
+`contains()`, `filter()`, `map()`, `each()`, `sort()`, `select()`
+(read-only / functional — return new arrays). `append()`, `insert()`,
+`remove()`, `clear()` (mutation — compile error on `const`-bound array).
+
+**map<K, V>:** `length`, `isEmpty`, `keys`, `values` (properties).
+`get()`, `set()`, `contains()`, `remove()`, `clear()` (methods).
+`m[key]` indexer (read), `m[key] = value` indexer (write). v1: string
+keys only. Construction: `map<string, string>{ "key": value }`.
+`env.all()` and `Response.headers` return `map<string, string>`.
+
+**guid:** `version`, `isEmpty` (properties). `toString()`,
+`toUpperString()`, `toCompactString()` (methods). `==`, `!=` (operators).
+Static: `guid.newV4()`, `guid.newV7()`, `guid.newV5()`, `guid.parse()`,
+`guid.tryParse()`, `guid.empty`. Namespaces: `guid.namespaces.dns`,
+`guid.namespaces.url`, `guid.namespaces.oid`. Primitive type distinct
+from `string`.
 
 -----
 
 ## 7. Standard Library — v1 Modules
 
-All twelve core modules ship with v1. All are auto-available — no import
+All thirteen core modules ship with v1. All are auto-available — no import
 required. All are implemented as `IGrobPlugin` classes.
 
-| Module | Functions | Types Registered |
-|--------|-----------|-----------------|
-| `fs` | 15 module functions | `File` |
-| `strings` | 1 (`join`) | — |
-| `json` | 5 module functions | `json.Node` |
-| `csv` | 5 module functions | `csv.Table`, `CsvRow` |
-| `env` | 4 module functions | — |
-| `process` | 4 module functions | `ProcessResult` |
-| `date` | 6 constructors/statics | `date` |
-| `math` | 13 functions, 3 constants | — |
-| `log` | 5 functions | — |
-| `regex` | 7 convenience functions | `Regex`, `Match` |
-| `path` | 11 functions, 1 constant | — |
-| `format` | 3 functions | — |
+|Module   |Functions                |Types Registered     |
+|---------|-------------------------|---------------------|
+|`fs`     |15 module functions      |`File`               |
+|`strings`|1 (`join`)               |—                    |
+|`json`   |5 module functions       |`json.Node`          |
+|`csv`    |5 module functions       |`csv.Table`, `CsvRow`|
+|`env`    |5 module functions       |—                    |
+|`process`|4 module functions       |`ProcessResult`      |
+|`date`   |6 constructors/statics   |`date`               |
+|`math`   |13 functions, 3 constants|—                    |
+|`log`    |5 functions              |—                    |
+|`regex`  |7 convenience functions  |`Regex`, `Match`     |
+|`path`   |11 functions, 1 constant |—                    |
+|`format` |6 functions              |—                    |
+|`guid`   |6 statics, 3 namespaces  |`guid`               |
 
-Full API detail for each module is in `stdlib-reference.md`
-and the confirmed decisions in `decisions-log.md`.
+Full API detail for each module is in `Grob___Stdlib___Reference.md`
+and the confirmed decisions in `Grob___Decisions___Context_Log.md`.
 
 -----
 
 ## 8. CLI — v1 Commands
 
-| Command | Description |
-|---------|-------------|
-| `grob run <file>` | Compile and execute a script |
-| `grob run <file> --params <file>` | Execute with parameter file |
-| `grob run <file> --verbose` | Execute with debug output |
-| `grob repl` | Interactive REPL (`G>` prompt) |
-| `grob check <file>` | Lex, parse, type-check only — no execution |
-| `grob fmt <file>` | Format source code (never automatic) |
-| `grob new <name>` | Scaffold new script or project |
-| `grob install <package>` | Install plugin from NuGet |
-| `grob install <package> --system` | Install system-wide (elevation) |
-| `grob install <package> --local` | Install project-local |
-| `grob restore` | Install all `grob.json` dependencies |
-| `grob search <query>` | Search NuGet for `grob-plugin` packages |
-| `grob version` | Print version |
-| `grob --help` | Print command listing |
+|Command                          |Description                               |
+|---------------------------------|------------------------------------------|
+|`grob run <file>`                |Compile and execute a script              |
+|`grob run <file> --params <file>`|Execute with parameter file               |
+|`grob run <file> --verbose`      |Execute with debug output                 |
+|`grob repl`                      |Interactive REPL (`G>` prompt)            |
+|`grob check <file>`              |Lex, parse, type-check only — no execution|
+|`grob fmt <file>`                |Format source code (never automatic)      |
+|`grob new <name>`                |Scaffold new script or project            |
+|`grob install <package>`         |Install plugin from NuGet                 |
+|`grob install <package> --system`|Install system-wide (elevation)           |
+|`grob install <package> --local` |Install project-local                     |
+|`grob restore`                   |Install all `grob.json` dependencies      |
+|`grob search <query>`            |Search NuGet for `grob-plugin` packages   |
+|`grob version`                   |Print version                             |
+|`grob --help`                    |Print command listing                     |
 
 ### Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Runtime error (unhandled exception) |
-| 2 | Compile error (type/syntax error) |
+|Code|Meaning                            |
+|----|-----------------------------------|
+|0   |Success                            |
+|1   |Runtime error (unhandled exception)|
+|2   |Compile error (type/syntax error)  |
 
 -----
 
@@ -1098,11 +1151,11 @@ and the confirmed decisions in `decisions-log.md`.
 
 ### First-Party Plugins (v1)
 
-| Plugin | Purpose | Status |
-|--------|---------|--------|
-| `Grob.Http` | HTTP client, auth helpers | v1 target |
-| `Grob.Crypto` | Checksums and hashing | v1 target |
-| `Grob.Zip` | Archive compress/expand | v1 target |
+|Plugin       |Purpose                  |Status   |
+|-------------|-------------------------|---------|
+|`Grob.Http`  |HTTP client, auth helpers|v1 target|
+|`Grob.Crypto`|Checksums and hashing — `sha256File()`, `md5File()`, `sha256()`, `md5()`, `verifySha256()`, `verifyMd5()`. All hex output lowercase. File functions stream internally. Verify functions use constant-time comparison.|v1 target|
+|`Grob.Zip`   |Archive compress/expand  |v1 target|
 
 ### Security
 
@@ -1151,7 +1204,7 @@ error[E001]: type mismatch
 - Show variable names and types. Never show values.
 - `--verbose` overrides the value suppression for debugging.
 - Suggested fix when the fix is obvious.
-- Never "simply" in any error message text.
+- Never “simply” in any error message text.
 - No emoji in any compiler or CLI output.
 - Errors to stderr. Results to stdout.
 
@@ -1174,13 +1227,13 @@ error[E001]: type mismatch
 
 ### Test Projects (from Solution Architecture)
 
-| Test Project | Covers | Approach | Quantity Target |
-|---|---|---|---|
-| `Grob.Core.Tests` | Value representation, chunk construction, opcode encoding | Unit tests on shared primitives | 50+ |
-| `Grob.Compiler.Tests` | Lexer (token stream), parser (AST shape), type checker (error detection, inference), compiler (bytecode output) | Given source → assert tokens/AST/diagnostics/bytecode. **Highest priority — this is where bugs will live** | 500+ |
-| `Grob.Vm.Tests` | Fetch/decode/execute, stack behaviour, call frames, closures | Construct chunks by hand → assert execution results | 100+ |
-| `Grob.Stdlib.Tests` | All 12 core module APIs | Register plugin into VM instance → assert outputs | 200+ |
-| `Grob.Integration.Tests` | End-to-end through full pipeline | Given `.grob` source file → assert stdout, stderr, exit code. The ten sample scripts live here | 50+ |
+|Test Project            |Covers                                                                                                         |Approach                                                                                                  |Quantity Target|
+|------------------------|---------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|---------------|
+|`Grob.Core.Tests`       |Value representation, chunk construction, opcode encoding                                                      |Unit tests on shared primitives                                                                           |50+            |
+|`Grob.Compiler.Tests`   |Lexer (token stream), parser (AST shape), type checker (error detection, inference), compiler (bytecode output)|Given source → assert tokens/AST/diagnostics/bytecode. **Highest priority — this is where bugs will live**|500+           |
+|`Grob.Vm.Tests`         |Fetch/decode/execute, stack behaviour, call frames, closures                                                   |Construct chunks by hand → assert execution results                                                       |100+           |
+|`Grob.Stdlib.Tests`     |All 13 core module APIs                                                                                        |Register plugin into VM instance → assert outputs                                                         |200+           |
+|`Grob.Integration.Tests`|End-to-end through full pipeline                                                                               |Given `.grob` source file → assert stdout, stderr, exit code. The eleven sample scripts live here            |50+            |
 
 ### Test Discipline
 
@@ -1189,7 +1242,7 @@ error[E001]: type mismatch
   live (per SharpBASIC retrospective).
 - The VM loop can be trusted once verified on simple cases.
 - Edge cases and failure paths are tested as thoroughly as the happy path.
-- The ten sample scripts are integration tests in `Grob.Integration.Tests`.
+- The eleven sample scripts are integration tests in `Grob.Integration.Tests`.
 
 -----
 
@@ -1198,24 +1251,26 @@ error[E001]: type mismatch
 These features are NOT in v1. They are confirmed as post-MVP in the
 decisions log.
 
-| Feature | Notes |
-|---------|-------|
-| Compile to executable | Transpile to C# via Roslyn — post-MVP |
-| VS Code extension | TextMate grammar, LSP — post-MVP |
-| JIT compilation | Explicitly out of scope, permanently |
-| Concurrent GC | Not needed for scripting |
-| Content mutability | Mutable binding vs mutable value — defer |
-| AI tutor | Guided learning companion — post-MVP |
-| User-defined exceptions | Custom typed throws — post-MVP |
-| Range/span indexing | `[..n]`, `[^n..]`, `[start..end]` — post-MVP |
-| User-facing generics | Declare generic fns/types — post-MVP |
-| `do...while` loop | Expressible as `while` — post-MVP |
-| Labelled break | Restructure into function for v1 — post-MVP |
-| Return type inference | v1 requires explicit return types — post-MVP |
-| Doc comment semantics | `///` recognised and discarded in v1 — post-MVP |
-| Scientific notation | `1.5e10` float literals — post-MVP |
-| Sparky plushie | Post-release |
-| Sparky commissioned art | Execute when project is public |
+|Feature                |Notes                                                                                                                                    |
+|-----------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
+|Compile to executable  |Transpile to C# via Roslyn — post-MVP                                                                                                    |
+|VS Code extension      |TextMate grammar, LSP — post-MVP                                                                                                         |
+|JIT compilation        |Explicitly out of scope, permanently                                                                                                     |
+|Concurrent GC          |Not needed for scripting                                                                                                                 |
+|Content mutability     |Mutable binding vs mutable value distinction — `append`/`insert`/`remove`/`clear` ship in v1; full semantic distinction deferred post-MVP|
+|AI tutor               |Guided learning companion — post-MVP                                                                                                     |
+|User-defined exceptions|Custom typed throws — post-MVP                                                                                                           |
+|Range/span indexing    |`[..n]`, `[^n..]`, `[start..end]` — post-MVP                                                                                             |
+|User-facing generics   |Declare generic fns/types — post-MVP                                                                                                     |
+|`do...while` loop      |Expressible as `while` — post-MVP                                                                                                        |
+|Labelled break         |Restructure into function for v1 — post-MVP                                                                                              |
+|Return type inference  |v1 requires explicit return types — post-MVP                                                                                             |
+|Doc comment semantics  |`///` recognised and discarded in v1 — post-MVP                                                                                          |
+|Scientific notation    |`1.5e10` float literals — post-MVP                                                                                                       |
+|Tuples                |Additive grammar extension — structs serve the same purpose with named fields in v1                                                      |
+|Out parameters        |Not planned — nullable return pattern (`toInt() → int?`) covers try-parse use case                                                       |
+|Sparky plushie         |Post-release                                                                                                                             |
+|Sparky commissioned art|Execute when project is public                                                                                                           |
 
 -----
 
@@ -1224,18 +1279,19 @@ decisions log.
 These ten scripts from the sample scripts document serve as the release
 gate. All must compile and run correctly before v1 ships.
 
-| # | Script | Exercises |
-|---|--------|-----------|
-| 1 | Bulk file renamer | `param`, `fs.list`, `for...in`, `File.rename`, `string.contains/replace` |
-| 2 | Photo organiser | `fs.list`, `date` components, `fs.ensureDir`, `file.moveTo`, string interpolation |
-| 3 | Azure DevOps stale branch report | `import Grob.Http`, `json`, `date`, `filter`, `format.table` |
-| 4 | Bicep deployment wrapper | `process.run`, `env.require`, `param`, `@secure`, `try/catch` |
-| 5 | CSV data cleaner | `csv.read`, `filter`, `map`, `csv.write`, lambdas |
-| 6 | Log file parser | `fs.readLines`, `regex`, `mapAs`, `sort`, `format.table` |
-| 7 | Disk space monitor | `process.run`, `json.parse`, `select/case`, `log`, `exit` |
-| 8 | Multi-repo Git status | `fs.list`, `process.run`, `for...in`, `format.table` |
-| 9 | SharePoint list export | `import Grob.Http`, `json`, `csv.write`, `while` pagination |
-| 10 | Self-updating agent hook | `json.stdin`, `select/case`, `process.run`, `json.stdout` |
+|# |Script                          |Exercises                                                                        |
+|--|--------------------------------|---------------------------------------------------------------------------------|
+|1 |Bulk file renamer               |`param`, `fs.list`, `for...in`, `File.rename`, `string.contains/replace`         |
+|2 |Photo organiser                 |`fs.list`, `date` components, `fs.ensureDir`, `file.moveTo`, string interpolation|
+|3 |Azure DevOps stale branch report|`import Grob.Http`, `json`, `date`, `filter`, `format.table`                     |
+|4 |Bicep deployment wrapper        |`process.run`, `env.require`, `param`, `@secure`, `try/catch`                    |
+|5 |CSV data cleaner                |`csv.read`, `filter`, `map`, `csv.write`, lambdas                                |
+|6 |Log file parser                 |`fs.readLines`, `regex`, `mapAs`, `sort`, `format.table`                         |
+|7 |Disk space monitor              |`process.run`, `json.parse`, `select/case`, `log`, `exit`                        |
+|8 |Multi-repo Git status           |`fs.list`, `process.run`, `for...in`, `format.table`                             |
+|9 |SharePoint list export          |`import Grob.Http`, `json`, `csv.write`, `while` pagination                      |
+|10|Self-updating agent hook        |`json.stdin`, `select/case`, `process.run`, `json.stdout`                        |
+|11|Azure resource provisioning helper|`guid.newV5`, `Grob.Crypto`, `map<K,V>` iteration, `Grob.Http`, `env.require`  |
 
 -----
 
@@ -1243,8 +1299,8 @@ gate. All must compile and run correctly before v1 ships.
 
 Grob v1 is ready for public release when:
 
-- [ ] All twelve core stdlib modules pass their test suites
-- [ ] All ten validation scripts compile and run correctly
+- [ ] All thirteen core stdlib modules pass their test suites
+- [ ] All eleven validation scripts compile and run correctly
 - [ ] The calculator smoke test works
 - [ ] The file organiser real-program target works end-to-end
 - [ ] `grob run`, `grob repl`, `grob check`, `grob fmt` all work
@@ -1261,13 +1317,27 @@ Grob v1 is ready for public release when:
 
 -----
 
+*This document was updated April 2026 — pre-implementation review: `env` module*
+*corrected to 5 functions; `format` module corrected to 6 functions;*
+*`Grob.Stdlib.Tests` corrected to 13 core modules; `guid` type summary*
+*updated with `toCompactString()`. Escape sequences aligned with Language*
+*Fundamentals (`\r` added). Operator precedence aligned with Language Fundamentals*
+*(13-level table). Scientific notation confirmed as post-MVP.*
+*Previous: OQ-011 resolved (`Grob.Crypto` API shape expanded);*
+*OQ-012 resolved (`process.run()` timeout parameter added); `guid` core module added to*
+*built-in types, Sprint 8 scope, and stdlib table; `fs.copy`/`fs.move` overwrite parameter*
+*added to Sprint 9; Script 11 (Azure Resource Provisioning Helper) added to validation suite;*
+*module count updated to thirteen core modules.*
+*Previous: OQ-007 resolved: `for...in` map iteration added to Sprint 4 scope and acceptance*
+*criteria, Section 5 control flow summary updated. `input()` built-in added; array mutation*
+*methods confirmed; `map<K, V>` added as first-class built-in type.*
 *This document was created April 2026.*
-*It draws from: decisions-log.md (authority),*
-*solution-architecture.md, language-fundamentals.md,*
-*stdlib-reference.md, type-registry.md,*
-*vm-architecture-notes.md, install-strategy.md,*
-*personality.md,*
-*sample-scripts.md, plugins.md,*
-*retrospective.md, ADR-0007 (solution structure and naming),*
+*It draws from: Grob___Decisions___Context_Log.md (authority),*
+*Grob___Solution_Architecture.md, Grob___Language_Fundamentals.md,*
+*Grob___Stdlib___Reference.md, Grob___Type___Registry.md,*
+*Grob___VM_Architecture___Design_Notes.md, Grob___Install___Strategy.md,*
+*Grob___Personality___Identity.md,*
+*Grob___Sample_Scripts___API_Surface_Validation.md, Grob_Plugins.md,*
+*SharpBASIC___Retrospective.md, ADR-0007 (solution structure and naming),*
 *and past design session conversations.*
 *Update when the decisions log changes or sprint scope is adjusted.*

@@ -12,6 +12,7 @@
 - [regex](regex.md)
 - [path](path.md)
 - [format](format.md)
+- [guid](guid.md)
 
 ---
 

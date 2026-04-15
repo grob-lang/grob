@@ -1,50 +1,14 @@
-# int — Type Registry
+# int
 
-All members known to the type checker at compile time. Calling an undefined
-member is a compile error.
+64-bit signed integer. Checked arithmetic — overflow throws `RuntimeError`.
 
-## Methods
+| Member | Kind | Signature | Notes |
+|--------|------|-----------|-------|
+| `toString()` | method | `→ string` | |
+| `toFloat()` | method | `→ float` | Always succeeds |
+| `abs()` | method | `→ int` | |
+| `int.min(a, b)` | static | `(int, int) → int` | |
+| `int.max(a, b)` | static | `(int, int) → int` | |
+| `int.clamp(v, lo, hi)` | static | `(int, int, int) → int` | |
 
-| Member | Signature | Notes |
-|--------|-----------|-------|
-| `toString()` | `→ string` | |
-| `toFloat()` | `→ float` | Always succeeds |
-| `abs()` | `→ int` | |
-
-## Static Functions
-
-| Member | Signature | Notes |
-|--------|-----------|-------|
-| `int.min(a, b)` | `(int, int) → int` | |
-| `int.max(a, b)` | `(int, int) → int` | |
-| `int.clamp(v, lo, hi)` | `(int, int, int) → int` | |
-
-## Literals
-
-```grob
-42              // decimal
-0xFF            // hexadecimal
-0b1010          // binary
-1_000_000       // underscore separator
-```
-
-Hex digits are case-insensitive. Underscores are ignored by the compiler —
-readability only.
-
-## Examples
-
-```grob
-x := -42
-x.abs()                    // 42
-x.toString()               // "-42"
-x.toFloat()                // -42.0
-
-int.min(10, 20)            // 10
-int.max(10, 20)            // 20
-int.clamp(150, 0, 100)     // 100
-```
-
-## Integer Division
-
-`int / int → int` (truncating). `int / float` and `float / int` promote to
-`float`. See [Operators](../Language-Specification/Operators.md).
+See also: [float](float.md), [math module](../Standard-Library/math.md)
