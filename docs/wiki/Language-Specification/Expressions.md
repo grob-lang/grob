@@ -82,7 +82,7 @@ item := #{ name: "report.xlsx", size: 2048 }
 // Common use — projection in data pipelines
 results
     .select(r => #{ repo: r.name, stale: r.staleCount })
-    .format.table()
+    .formatAs.table()
 ```
 
 The type checker creates an internal structural type for each anonymous struct.

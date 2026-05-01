@@ -739,8 +739,8 @@ diagnostics. `exit()` cannot be caught.
 
 ### Sprint 8 — Core Standard Library (Part 1)
 
-**Delivers:** `print`, `exit`, `input`, `log`, `env`, `strings`, `path`,
-`math`, `guid`, `formatAs` modules as `IGrobPlugin` implementations.
+**Delivers:** `print`, `exit`, `math`, `strings`, `path`, `env`, `log`,
+`format`, `guid` modules as `IGrobPlugin` implementations.
 
 **Scope:**
 
@@ -748,39 +748,31 @@ All modules implemented as `IGrobPlugin` classes, auto-registered at VM
 startup. Type signatures registered with the type checker for compile-time
 validation.
 
-Modules are listed in dependency-driven build order: those with no
-dependencies first, then those that lean on a primitive type or struct
-introspection. The order is the order in which Sprint 8 should be worked.
-
 - **`print()`** — variadic, stdout, newline appended, void return.
-  Already built-in from Sprint 2; now formalised as part of the stdlib
-  via a registered native function.
+  Already built-in from Sprint 2; now formalised as part of the stdlib.
 - **`exit()`** — already built-in from Sprint 2.
 - **`input()`** — `input(prompt: string = ""): string`. Writes prompt to
   stdout (no trailing newline). Reads one line from stdin. Returns string
   with newline stripped. Throws `IoError` if stdin is closed before a line
   is read. No namespace — always available, same category as `print()`.
-- **`log`** — `debug()`, `info()`, `warning()`, `error()`. All to stderr.
-  `setLevel()`. `debug` suppressed by default, visible with `--verbose`.
-  No internal stdlib dependencies — landed early so other modules can use
-  `log.debug()` in their own implementations during development.
-- **`env`** — `get(key) → string?`, `require(key) → string` (throws
-  `LookupError` if absent), `set(key, value)`, `has(key) → bool`,
-  `all() → map<string, string>`. Depends on `map<K, V>` from Sprint 7.
-- **`strings`** — `strings.join(parts, separator)`. Single function on
-  the module; all other string operations are instance methods on the
-  `string` type (already in the type registry).
-- **`path`** — `join()`, `joinAll()`, `extension()`, `filename()`,
-  `stem()`, `directory()`, `resolve()`, `normalise()`, `isAbsolute()`,
-  `isRelative()`, `changeExtension()`, `separator` constant. Pure
-  string manipulation — no I/O, no `fs` dependency.
 - **`math`** — `pi`, `e`, `tau` constants. `sqrt()`, `pow()`, `log()`,
   `log10()`, `sin()`, `cos()`, `tan()`, `asin()`, `acos()`, `atan()`,
   `atan2()`, `toRadians()`, `toDegrees()`, `random()`, `randomInt()`,
-  `randomSeed()`. 16 functions plus 3 constants. No internal
-  dependencies. Throws `ArithmeticError` on domain violations
-  (`sqrt(negative)`, `log(<= 0)`, `asin`/`acos` outside `[-1, 1]`); IEEE
-  754 non-finite values otherwise propagate silently.
+  `randomSeed()`.
+- **`strings`** — `strings.join(parts, separator)`. All other string
+  operations are instance methods on the `string` type (already in the
+  type registry).
+- **`path`** — `join()`, `joinAll()`, `extension()`, `filename()`,
+  `stem()`, `directory()`, `resolve()`, `normalise()`, `isAbsolute()`,
+  `isRelative()`, `changeExtension()`, `separator` constant.
+- **`env`** — `get(key) → string?`, `require(key) → string` (throws
+  `LookupError` if absent), `set(key, value)`, `has(key) → bool`,
+  `all() → map<string, string>`.
+- **`log`** — `debug()`, `info()`, `warning()`, `error()`. All to stderr.
+  `setLevel()`. `debug` suppressed by default, visible with `--verbose`.
+- **`format`** — `format.table()`, `format.list()`, `format.csv()`.
+  Column names derived from type field registry at compile time. Works
+  on named structs and anonymous structs.
 - **`guid`** — `guid.newV4()`, `guid.newV7()`, `guid.newV5()`.
   `guid.parse()`, `guid.tryParse()`, `guid.empty`. Well-known
   namespaces: `guid.namespaces.dns`, `guid.namespaces.url`,
@@ -788,59 +780,17 @@ introspection. The order is the order in which Sprint 8 should be worked.
   properties, `toString()`, `toUpperString()` methods. `==`, `!=`
   operators. Compile-time validation on `guid.parse()` with string
   literal argument. `guid` is a primitive type distinct from `string`.
-  Lands later within Sprint 8 because it registers a new primitive
-  type and adds compile-time literal validation.
-- **`formatAs`** — `formatAs.table()`, `formatAs.list()`, `formatAs.csv()`.
-  Column names derived from type field registry at compile time. Works
-  on named structs and anonymous structs. Lands last in Sprint 8 because
-  it depends on the type registry being fully wired for struct field
-  introspection.
 
 **Acceptance:** Each module’s full API works. `math.sqrt(9.0)` returns
 `3.0`. `env.require("MISSING")` throws `LookupError`. `log.error()`
-writes to stderr. `formatAs.table()` produces aligned column output.
-A script that uses every Sprint 8 module compiles, runs and produces
-the expected output.
+writes to stderr. `format.table()` produces aligned column output.
 
 ### Sprint 9 — Core Standard Library (Part 2)
 
-**Delivers:** `date`, `regex`, `process`, `fs`, `json`, `csv` modules.
+**Delivers:** `fs`, `date`, `json`, `csv`, `regex`, `process` modules.
 
 **Scope:**
 
-Modules are listed in dependency-driven build order. `date` lands first
-because the `File` type registered by `fs` carries `date` properties
-(`File.modified`, `File.created`). `regex` and `process` are independent
-of the others and can run in parallel with `date` if useful. `fs` follows
-`date`. `json` and `csv` depend on `fs` only at the implementation level
-(file-read paths) — they could in principle land before `fs` by reading
-files directly, but the cleaner build order is to land `fs` first and
-have `json`/`csv` use it.
-
-- **`date`** — full API as specified. `now()`, `today()`, `of()`,
-  `ofTime()`, `parse()`. Properties: `year`, `month`, `day`, `hour`,
-  `minute`, `second`, `dayOfWeek`, `dayOfYear`, `utcOffset`. Methods:
-  `addDays()`, `minusDays()`, `addMonths()`, `addHours()`,
-  `addMinutes()`, `isBefore()`, `isAfter()`, `toIso()`,
-  `toIsoDateTime()`, `format()`, `toUnixSeconds()`, `toUnixMillis()`,
-  `toUtc()`, `toLocal()`, `toZone()`, `daysUntil()`, `daysSince()`.
-  Static: `fromUnixSeconds()`, `fromUnixMillis()`. Lands first within
-  Sprint 9 because `fs` depends on `date` for `File.modified` and
-  `File.created`.
-- **`regex`** — regex literal `/pattern/flags` (flags: `i`, `m`). `Regex`
-  type: `match()`, `matchAll()`, `isMatch()`, `replace()`,
-  `replaceAll()`, `split()`, `pattern`, `flags`. `Match` type: `value`,
-  `index`, `length`, `groups`, `group(name)`. Module convenience
-  functions for one-shot use. .NET regex engine underneath. Independent
-  of other Sprint 9 modules but adds grammar (regex literal
-  disambiguation in the lexer) — that grammar work is part of
-  Sprint 9's regex slice.
-- **`process`** — `run(cmd, args[], timeout: int = 0)`,
-  `runShell(cmd, timeout: int = 0)`, `runOrFail()`,
-  `runShellOrFail()`. `ProcessResult`: `stdout`, `stderr`, `exitCode`.
-  `timeout: int = 0` on all four functions — `0` means infinite.
-  Throws `ProcessError` on timeout expiry. Independent of other
-  Sprint 9 modules.
 - **`fs`** — full API as specified. `File` type registered with type
   checker. `list()`, `exists()`, `isFile()`, `isDirectory()`,
   `ensureDir()`, `createDir()`, `delete()`, `deleteRecursive()`,
@@ -850,84 +800,39 @@ have `json`/`csv` use it.
   `path`, `directory`, `extension`, `size`, `modified`, `created`,
   `isDirectory`. `File` methods: `rename()`,
   `moveTo(destDir, overwrite: bool = false)`,
-  `copyTo(destDir, overwrite: bool = false)`, `delete()`. Depends on
-  `date` (via `File.modified` and `File.created`). Heaviest module in
-  Sprint 9 by surface area.
+  `copyTo(destDir, overwrite: bool = false)`, `delete()`.
+- **`date`** — full API as specified. `now()`, `today()`, `of()`,
+  `ofTime()`, `parse()`. Properties: `year`, `month`, `day`, `hour`,
+  `minute`, `second`, `dayOfWeek`, `dayOfYear`, `utcOffset`. Methods:
+  `addDays()`, `minusDays()`, `addMonths()`, `addHours()`,
+  `addMinutes()`, `isBefore()`, `isAfter()`, `toIso()`,
+  `toIsoDateTime()`, `format()`, `toUnixSeconds()`, `toUnixMillis()`,
+  `toUtc()`, `toLocal()`, `toZone()`, `daysUntil()`, `daysSince()`.
+  Static: `fromUnixSeconds()`, `fromUnixMillis()`.
 - **`json`** — `read()`, `write(compact: bool = false)`, `parse()`,
   `encode(compact: bool = false)`, `stdin()`, `stdout(compact: bool = false)`.
   `json.Node` type with indexer access `node["key"]`. `asString()`,
   `asInt()`, `asFloat()`, `asBool()`, `asArray()`. `mapAs<T>()` for
   typed deserialization (constrained generic — type checker handles).
   Pretty-printed output by default; `compact: true` for single-line.
-  Implementation reads files via `fs.readText`/`fs.writeText` once
-  `fs` is available.
 - **`csv`** — `read()`, `write()`, `parse()`, `stdin()`, `stdout()`.
   `csv.Table` type: `headers`, `rowCount`, `rows`. `CsvRow`: `get(name)`,
   `get(index)`, indexer syntax. `mapAs<T>()`. RFC 4180 compliance.
-  `hasHeaders`, `delimiter` named parameters. Implementation reads
-  files via `fs.readText`/`fs.writeText` once `fs` is available.
+  `hasHeaders`, `delimiter` named parameters.
+- **`regex`** — regex literal `/pattern/flags` (flags: `i`, `m`). `Regex`
+  type: `match()`, `matchAll()`, `isMatch()`, `replace()`,
+  `replaceAll()`, `split()`, `pattern`, `flags`. `Match` type: `value`,
+  `index`, `length`, `groups`, `group(name)`. Module convenience
+  functions for one-shot use. .NET regex engine underneath.
+- **`process`** — `run(cmd, args[], timeout: int = 0)`,
+  `runShell(cmd, timeout: int = 0)`, `runOrFail()`,
+  `runShellOrFail()`. `ProcessResult`: `stdout`, `stderr`, `exitCode`.
+  `timeout: int = 0` on all four functions — `0` means infinite.
+  Throws `ProcessError` on timeout expiry.
 
 **Acceptance:** The file organiser real-program target runs correctly.
 JSON and CSV round-trip works. Regex matching and replacement works.
-Process execution captures stdout/stderr. A script that uses every
-Sprint 9 module compiles, runs and produces the expected output.
-
-### Stdlib Module Dependency Graph
-
-The 16 stdlib units (13 core modules plus the three built-ins
-`print`/`exit`/`input`) form a directed acyclic dependency graph. Edges
-are *implementation* dependencies — what one module needs to be in place
-before it can be implemented. No core module exposes another core module
-in its public API beyond the language-level type system (`int`, `float`,
-`string`, `array`, `map`, struct types).
-
-|Module    |Sprint|Depends on (stdlib)|Depends on (language)                           |Dependency weight|
-|----------|------|-------------------|------------------------------------------------|-----------------|
-|`print`   |8     |—                  |variadic args, string interp                    |trivial          |
-|`exit`    |8     |—                  |`int`                                           |trivial          |
-|`input`   |8     |—                  |`string`, `IoError`                             |trivial          |
-|`log`     |8     |—                  |`string`                                        |light            |
-|`env`     |8     |—                  |`map<K, V>`, `LookupError`                      |light            |
-|`strings` |8     |—                  |`string`, `string[]`                            |trivial          |
-|`path`    |8     |—                  |`string`, `string[]`                            |medium           |
-|`math`    |8     |—                  |`int`, `float`, `ArithmeticError`               |medium           |
-|`guid`    |8     |—                  |new primitive type, compile-time literal validation|medium-heavy   |
-|`formatAs`|8     |—                  |type registry: struct field introspection       |heavy            |
-|`date`    |9     |—                  |new type, `string`, `int`                       |medium-heavy     |
-|`regex`   |9     |—                  |new types, regex literal grammar                |medium-heavy     |
-|`process` |9     |—                  |new type, `string[]`, `ProcessError`            |medium           |
-|`fs`      |9     |**`date`** (hard)  |new type (`File`), `IoError`, `string[]`        |heavy            |
-|`json`    |9     |`fs` (soft, file I/O)|new type (`json.Node`), `mapAs<T>`, `JsonError`|medium-heavy   |
-|`csv`     |9     |`fs` (soft, file I/O)|new types (`Table`, `CsvRow`), `mapAs<T>`     |medium           |
-
-**Hard dependency** — the depending module cannot land until the depended-on
-module has its public type registered: `fs → date`, because the `File`
-type registers `modified: date` and `created: date` properties on the type
-checker.
-
-**Soft dependency** — the depending module is more easily implemented once
-the depended-on module is in place, but is not blocked: `json → fs` and
-`csv → fs` for file-read paths. Either could read files directly via the
-runtime's I/O facilities, but the cleaner build is to land `fs` first
-and route file I/O through `fs.readText`/`fs.writeText` for consistency.
-
-**No cross-sprint dependencies.** No Sprint 8 module depends on a Sprint 9
-module. No Sprint 9 module depends on anything in Sprint 8 beyond the
-language-level types and exception hierarchy that landed in Sprints 1–7.
-The sprint boundary is honest — Sprint 8 ships a working slice; Sprint 9
-ships a working slice; both can be evaluated independently.
-
-**Validation suite coverage of stdlib modules.** The thirteen validation
-scripts in `grob-sample-scripts.md` exercise every core stdlib module.
-`fs`, `json`, `process`, `formatAs` are exercised by multiple scripts;
-`regex` is the focal feature of Script 12; `math`, `strings.join` and
-`input` each appear in at least one script after the validation-suite
-coverage session closed those gaps. The remaining modules (`date`, `csv`,
-`guid`, `log`, `env`, `path`) are each exercised by at least one script.
-Scripts 12 and 13 are dedicated coverage scripts for regex literals and
-validation decorators respectively — both also feature on the §16 v1
-scope-cut list, so activating either cut requires removing or rewriting
-the corresponding script before v1 ships.
+Process execution captures stdout/stderr.
 
 ### Sprint 10 — Script Parameters and Decorators
 
@@ -1123,11 +1028,11 @@ required. All are implemented as `IGrobPlugin` classes.
 |`env`    |5 module functions       |—                    |
 |`process`|4 module functions       |`ProcessResult`      |
 |`date`   |6 constructors/statics   |`date`               |
-|`math`   |16 functions, 3 constants|—                    |
+|`math`   |13 functions, 3 constants|—                    |
 |`log`    |5 functions              |—                    |
 |`regex`  |7 convenience functions  |`Regex`, `Match`     |
 |`path`   |11 functions, 1 constant |—                    |
-|`formatAs`|6 functions             |—                    |
+|`format` |6 functions              |—                    |
 |`guid`   |6 statics, 3 namespaces  |`guid`               |
 
 Full API detail for each module is in `grob-stdlib-reference.md`
@@ -1316,24 +1221,22 @@ decisions log.
 
 ## 14. Validation Scripts
 
-These thirteen scripts from the sample scripts document serve as the release
+These ten scripts from the sample scripts document serve as the release
 gate. All must compile and run correctly before v1 ships.
 
-|# |Script                                        |Exercises                                                                            |
-|--|----------------------------------------------|-------------------------------------------------------------------------------------|
-|1 |Bulk File Rename by Pattern                   |`param`, `fs.list`, `for...in`, `File.rename`, `string.contains/replace`             |
-|2 |Organise Photos by Date                       |`fs.list`, `date` components, `path.join`, `fs.ensureDir`, `file.moveTo`             |
-|3 |Find Large Files and Report                   |`type`, fluent `filter`/`select`/`sort`, `formatAs.table`, `math.log10`              |
-|4 |GitHub Repos Backup                           |`Grob.Http`, `auth.bearer`, `.mapAs<T>`, `process.runOrFail`, `@secure`              |
-|5 |CSV Data Processing / Report                  |`csv.read`, `.mapAs<Employee>`, `filter`, `select`, `formatAs.table`                 |
-|6 |Azure CLI Wrapper / Bicep Deployment          |`process.runOrFail`, `process.run`, `try/catch`, `log`, `exit`                       |
-|7 |REST API Data Pull and JSON Report            |`Grob.Http`, `json`, nested struct types, `date.parse`, `formatAs.table`             |
-|8 |Stale Git Branches Report                     |`process.runOrFail`, closures with upvalue capture, `fn` predicate factory, `select` |
-|9 |Disk Space Monitor with Log                   |Switch expression, `log.warning`, `strings.join`, float arithmetic                   |
-|10|Download and Verify a File                    |`Grob.Http`, `Grob.Crypto`, `http.download`, `crypto.verifySha256`, `fs.delete`      |
-|11|Azure Resource Provisioning Helper            |`guid.newV5`, `Grob.Crypto`, `map<K,V>` iteration, `try/finally`, `input()`          |
-|12|Log File Filter by Severity and Time          |Regex literal `/pattern/flags`, `Regex.matchAll`, `Regex.isMatch`, `formatAs.table`  |
-|13|Release Promotion with Validated Inputs       |`@allowed`, `@minLength`, `@maxLength`, `@secure`, `Grob.Http`, `json.encode`        |
+|# |Script                          |Exercises                                                                        |
+|--|--------------------------------|---------------------------------------------------------------------------------|
+|1 |Bulk file renamer               |`param`, `fs.list`, `for...in`, `File.rename`, `string.contains/replace`         |
+|2 |Photo organiser                 |`fs.list`, `date` components, `fs.ensureDir`, `file.moveTo`, string interpolation|
+|3 |Azure DevOps stale branch report|`import Grob.Http`, `json`, `date`, `filter`, `format.table`                     |
+|4 |Bicep deployment wrapper        |`process.run`, `env.require`, `param`, `@secure`, `try/catch`                    |
+|5 |CSV data cleaner                |`csv.read`, `filter`, `map`, `csv.write`, lambdas                                |
+|6 |Log file parser                 |`fs.readLines`, `regex`, `mapAs`, `sort`, `format.table`                         |
+|7 |Disk space monitor              |`process.run`, `json.parse`, `select/case`, `log`, `exit`                        |
+|8 |Multi-repo Git status           |`fs.list`, `process.run`, `for...in`, `format.table`                             |
+|9 |SharePoint list export          |`import Grob.Http`, `json`, `csv.write`, `while` pagination                      |
+|10|Self-updating agent hook        |`json.stdin`, `select/case`, `process.run`, `json.stdout`                        |
+|11|Azure resource provisioning helper|`guid.newV5`, `Grob.Crypto`, `map<K,V>` iteration, `Grob.Http`, `env.require`  |
 
 -----
 
@@ -1342,7 +1245,7 @@ gate. All must compile and run correctly before v1 ships.
 Grob v1 is ready for public release when:
 
 - [ ] All thirteen core stdlib modules pass their test suites
-- [ ] All thirteen validation scripts compile and run correctly
+- [ ] All eleven validation scripts compile and run correctly
 - [ ] The calculator smoke test works
 - [ ] The file organiser real-program target works end-to-end
 - [ ] `grob run`, `grob repl`, `grob check`, `grob fmt` all work
@@ -1384,9 +1287,8 @@ consulted only when needed and shelved when not.
   on the three validation decorators only, not the decorator system as
   a whole.
 - v1.1 re-add is pure grammar addition. No scripts break.
-- Scripts affected on activation: one — Script 13 (Release Promotion with Validated
-  Inputs) uses validation decorators throughout. Activating this cut requires
-  rewriting Script 13 with manual body-validation before v1 ships.
+- Scripts affected on activation: zero — the eleven validation scripts
+  do not currently use validation decorators.
 
 **2. Regex literal grammar** — `/pattern/flags` with context-sensitive
 `/` disambiguation.
@@ -1397,10 +1299,13 @@ consulted only when needed and shelved when not.
   architecturally novel piece of lexer work in Sprint 1. Cutting it
   simplifies the lexer materially.
 - v1.1 re-add is pure grammar addition. No scripts break.
-- Scripts affected on activation: one — Script 12 (Log File Filter by Severity and
-  Time) uses regex literal grammar at two sites. Activating this cut requires
-  rewriting Script 12 to use the `regex.compile(pattern, flags)` function form
-  before v1 ships.
+- Scripts affected on activation: zero current use. However, activating
+  this cut **requires** adding a new validation script exercising
+  `regex.compile()` before v1 ships — otherwise the regex surface is
+  entirely untested by the release gate. Candidate new script: a log-
+  file filter using regex to match severity levels and extract
+  timestamps. This script is a release-gate requirement if and only if
+  this cut is activated.
 
 ### Defer-gracefully constraints
 
@@ -1413,8 +1318,8 @@ candidate is cut.
 
 Candidates considered and rejected during Session C Part 2:
 
-- **`formatAs.table()` compiler rewrite** — considered for cut during
-  Session C Part 2. The rewrite was simplified via the `formatAs`
+- **`format.table()` compiler rewrite** — considered and retired during
+  Session C Part 1. The rewrite was simplified via the `formatAs`
   reserved-identifier mechanism (D-282) and stays in v1.
 - **Switch expression exhaustiveness enforcement** — rejected.
   Non-exhaustive switch expressions are an identity compromise; if
@@ -1427,36 +1332,7 @@ Candidates considered and rejected during Session C Part 2:
 
 -----
 
-*This document was updated April 2026 — pre-Session-G cleanup: §14 validation-scripts*
-*table rebuilt with correct script titles matching `grob-sample-scripts.md` headings*
-*(rows 3–10 were mismatched from earlier drift); §14 lead-in updated from "ten scripts"*
-*to "thirteen scripts". §16 scope-cut list updated: both "Scripts affected on*
-*activation: zero" lines corrected to "one", naming Script 13 (validation decorators)*
-*and Script 12 (regex literals) respectively; stale "Candidate new script" sentence*
-*removed from the regex bullet.*
-*Previous: April 2026 — validation-suite coverage session:*
-*`format` → `formatAs` API rename swept through all sites in §4 (Sprint 8*
-*delivers list, Sprint 8 module bullet, Sprint 8 acceptance criterion,*
-*stdlib module dependency graph row, validation suite coverage paragraph),*
-*§7 (stdlib summary table row), §14 (three rows: Scripts 3, 6, 8 columns)*
-*and §16 (rejected-cut footnote). The validation-suite coverage paragraph*
-*in §4 was rewritten to reflect post-session reality: thirteen scripts,*
-*all core stdlib modules exercised, no remaining surface gaps, Scripts 12*
-*and 13 introduced as dedicated coverage scripts for the two §16 cut*
-*candidates. §14 validation scripts table extended with rows 12 (Log file*
-*filter) and 13 (Release promotion with validated inputs). §15 Definition*
-*of Done updated: "eleven validation scripts" → "thirteen validation*
-*scripts". §16 cut-list scripts-affected counts not updated — both cuts*
-*now affect one script each (Script 12 for regex, Script 13 for validation*
-*decorators); §16 was deliberately out of scope for this session per*
-*brief, the consequence is recorded in the session summary instead.*
-*Previous: Session F pre-Sprint-1 refinement:*
-*Sprint 8 / Sprint 9 stdlib build order reordered by dependency weight (D-299);*
-*new "Stdlib Module Dependency Graph" subsection added in §4 with full 16-row table*
-*and `fs → date` hard dependency identified; §7 stdlib module count table corrected*
-*for `math` from 13 functions to 16 functions (matches D-093, was a stale figure*
-*from before D-093 was authoritative).*
-*Previous: Session C Part 2 pre-implementation*
+*This document was updated April 2026 — Session C Part 2 pre-implementation*
 *review: Sprint 7 exception hierarchy expanded from six leaves to ten*
 *(`ArithmeticError`, `IndexError`, `ParseError`, `LookupError` added as*
 *direct children of `GrobError`); §10 Exception Hierarchy summary updated*
@@ -1493,6 +1369,6 @@ Candidates considered and rejected during Session C Part 2:
 *grob-vm-architecture.md, grob-install-strategy.md,*
 *grob-personality-identity.md,*
 *grob-sample-scripts.md, grob-plugins.md,*
-*sharpbasic-retrospective.md, ADR-0007 (solution structure and naming),*
+*sharpbasic-retrospective.md, ADR-0012 (solution structure and naming),*
 *and past design session conversations.*
 *Update when the decisions log changes or sprint scope is adjusted.*

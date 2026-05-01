@@ -448,7 +448,7 @@ read by `grob --explain Exxxx`.
 - **Introduced:** v1
 - **Status:** pre-release
 - **Description:** A bare `{` always begins a block. Use `#{ }` for an anonymous struct literal or `TypeName { }` for a named type construction.
-- **Source decision:** D-043; ADR-0015.
+- **Source decision:** D-043.
 
 -----
 

@@ -206,7 +206,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 |D-123|Apr 2026|grob runtime install        |`winget install Grob.Grob`; `grob restore` idempotent                                       |
 |D-124|Apr 2026|Nested struct field access  |Full chain resolution at compile time; undefined field = compile error                      |
 |D-125|Apr 2026|Solution structure          |Six `src/` assemblies; three `plugins/`; five `tests/`; DAG dependency                      |
-|D-126|Apr 2026|Type naming convention      |`Grob` prefix full — not `Gro`; ADR-0007                                                    |
+|D-126|Apr 2026|Type naming convention      |`Grob` prefix full — not `Gro`; ADR-0012                                                    |
 |D-127|Apr 2026|String literal forms        |Three forms: double-quoted, single backtick, triple backtick                                |
 |D-128|Apr 2026|Raw string newline rule     |Newline inside single backtick string is compile error                                      |
 |D-129|Apr 2026|Raw string indentation      |Triple backtick verbatim; no trimming in v1                                                 |
@@ -222,8 +222,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 |D-139|Apr 2026|input() built-in            |`input(prompt): string`; blocks on stdin; throws `IoError` on EOF                           |
 |D-140|Apr 2026|Array mutation methods      |`append`, `insert`, `remove`, `clear`; mutation on `const` = compile error                  |
 |D-141|Apr 2026|map<K, V> type              |First-class; string keys in v1; insertion order preserved                                   |
-|D-142|Apr 2026|OQ-009 opened               |`GrobValue` provisional — tagged union, documented as provisional *(superseded by D-297)*    |
-|D-143|Apr 2026|OQ-010 opened               |`.grobc` binary format spec needed before implementation *(superseded by D-298)*            |
+|D-142|Apr 2026|OQ-009 opened               |`GrobValue` provisional — tagged union, documented as provisional                           |
+|D-143|Apr 2026|OQ-010 opened               |`.grobc` binary format spec needed before implementation                                    |
 |D-144|Apr 2026|OQ-011 opened               |`Grob.Crypto` API shape — defer to Sprint 10 planning                                       |
 |D-145|Apr 2026|OQ-012 opened               |`process.run()` timeout — defer to Sprint 9                                                 |
 |D-146|Apr 2026|OQ-007 resolved             |`for...in` special-cased: ranges, arrays, maps; formal protocol post-MVP                    |
@@ -294,9 +294,6 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 |D-294|Apr 2026|Runtime                     |Top-level initialisation order: source order; three-state tag for circular detection        |
 |D-295|Apr 2026|User-defined types          |Type field default evaluation at construction time, construction-site scope                 |
 |D-296|Apr 2026|Closures                    |Four-category variable resolution in lambdas; `const` inlined, others via globals/upvalues |
-|D-297|Apr 2026|OQ-009 resolved             |`GrobValue` provisional: hand-rolled tagged-union struct under .NET 10 LTS; supersedes D-142|
-|D-298|Apr 2026|OQ-010 resolved             |`.grobc` binary format skeleton spec — see `grob-grobc-format.md`; supersedes D-143         |
-|D-299|Apr 2026|Stdlib build order          |Sprint 8 / Sprint 9 reordered by dependency weight; `fs → date` is the only hard dep        |
 
 -----
 
@@ -1556,7 +1553,7 @@ Area: Solution structure
 Supersedes: none
 Superseded by: none
 
-Six `src/` assemblies: `Grob.Core`, `Grob.Runtime`, `Grob.Compiler`, `Grob.Vm`, `Grob.Stdlib`, `Grob.Cli`. Three `plugins/` assemblies: `Grob.Http`, `Grob.Crypto`, `Grob.Zip`. Five `tests/` projects. Dependency graph is a DAG — compiler and VM never reference each other. `Chunk` lives in `Grob.Core` as the shared boundary between compiler output and VM input. See `grob-solution-architecture.md` and ADR-0007.
+Six `src/` assemblies: `Grob.Core`, `Grob.Runtime`, `Grob.Compiler`, `Grob.Vm`, `Grob.Stdlib`, `Grob.Cli`. Three `plugins/` assemblies: `Grob.Http`, `Grob.Crypto`, `Grob.Zip`. Five `tests/` projects. Dependency graph is a DAG — compiler and VM never reference each other. `Chunk` lives in `Grob.Core` as the shared boundary between compiler output and VM input. See `grob-solution-architecture.md` and ADR-0012.
 
 -----
 
@@ -1566,7 +1563,7 @@ Area: Type naming convention
 Supersedes: none
 Superseded by: none
 
-The naming prefix for all Grob runtime types is `Grob` in full. `Gro` as an abbreviation is not a convention in this codebase. Correct: `GrobType`, `GrobValue`, `GrobError`, `GrobVM`, `GrobFunction`. Early design notes containing `GroType` are superseded — treat as `GrobType` throughout. See ADR-0007.
+The naming prefix for all Grob runtime types is `Grob` in full. `Gro` as an abbreviation is not a convention in this codebase. Correct: `GrobType`, `GrobValue`, `GrobError`, `GrobVM`, `GrobFunction`. Early design notes containing `GroType` are superseded — treat as `GrobType` throughout. See ADR-0012.
 
 -----
 
@@ -1724,7 +1721,7 @@ First-class built-in type. Compiler support for indexer read (`m[key] → V?`) a
 
 Area: OQ-009 opened
 Supersedes: none
-Superseded by: D-297
+Superseded by: none
 
 `GrobValue` provisional representation — `Grob.Core` requires a `GrobValue` definition before Sprint 1 begins, but OQ-005 (full value representation) is deferred until clox is complete. Tentative: define as tagged union struct, encapsulated behind a clean boundary, documented as provisional. Decide at Sprint 1 start. See `grob-open-questions.md`.
 
@@ -1734,7 +1731,7 @@ Superseded by: D-297
 
 Area: OQ-010 opened
 Supersedes: none
-Superseded by: D-298
+Superseded by: none
 
 `.grobc` binary format specification — skeleton spec needed before implementation so the format is versionable from day one. Minimum: magic bytes, version header, endianness, constant pool serialisation, source location map inclusion. Defer until Sprint 1 structures are stable. See `grob-open-questions.md`.
 
@@ -2628,36 +2625,6 @@ The term **capture** applies only to category 4. A lambda that references a top-
 
 -----
 
-### D-297 — OQ-009 resolved: `GrobValue` provisional representation (Apr 2026)
-
-Area: VM runtime value representation
-Supersedes: D-142
-Superseded by: none
-
-`GrobValue` is the runtime value type for the Grob VM. The full representation question (OQ-005 — tagged union vs NaN boxing) is deferred until clox is complete. v1 ships a provisional representation that lets `Grob.Core` ship before that decision lands and confines the OQ-005 change to `Grob.Core/GrobValue.cs` when it resolves. Target framework: **.NET 10 LTS** — the .NET 11 preview `union` keyword and `[Union]` attribute are not used for v1. The .NET 11 `union` keyword's compiler-generated form boxes every value-type case via a single `object? Value` field, which is the wrong cost profile for a stack-based VM. The `[Union]` escape hatch buys compile-time exhaustiveness only, at the cost of a runtime dependency on a feature still in preview while .NET 10 is LTS. Shape: `readonly struct GrobValue : IEquatable<GrobValue>` with three private fields — a `GrobValueKind` discriminator (1 byte), a `long _scalar` (8 bytes, holds `int` directly, `bool` as 0/1, `float` via `BitConverter.DoubleToInt64Bits`) and an `object? _reference` (8 bytes, holds `string`, `GrobArray`, `GrobMap`, `GrobStruct`, `GrobFunction`). Total 24 bytes on x64 with alignment. Discriminator set: nine variants — `Nil` (= 0, so `default(GrobValue)` is `Nil`), `Bool`, `Int`, `Float`, `String`, `Array`, `Map`, `Struct`, `Function`. Plugin types (`date`, `guid`, `File`, `ProcessResult`, `json.Node`, `Regex`, `Match`, `csv.Table`, `CsvRow`, `Response`, `AuthHeader`, `ZipEntry`) and user-defined `type`s all use `Struct`; runtime type discrimination happens at the type-registry level via the boxed reference, not via `GrobValueKind`. Encapsulation boundary: private fields, public factory statics (`FromBool`, `FromInt`, `FromFloat`, `FromString`, `FromArray`, `FromMap`, `FromStruct`, `FromFunction`, plus `Nil` singleton); inspection via `Kind`/`IsX` predicates; strict accessors (`AsX()`) that throw `GrobInternalException` on kind mismatch; try-accessors (`TryAsX(out)`) for plugin/runtime defensive code; `Equals`/`GetHashCode`/`==`/`!=` operators. Equality: value equality for primitives and strings; reference equality for `Array`/`Map`/`Function`; delegate to `GrobStruct.Equals` (field-by-field per D-169) for `Struct`; cross-kind always false. Hashing: `HashCode.Combine(_kind, payload)` so `Int(42)` and `Float(42.0)` hash differently. Migration signposts: (1) OQ-005 resolution rewrites the internal layout (NaN boxing replaces `_scalar`+`_reference` with a single `ulong`) but keeps the public API identical — confined to `Grob.Core`; (2) post-GA .NET 11 migration adds `[Union]` and `IUnion` to gain compile-time exhaustiveness checking on `switch` over `Kind`, with no storage change — a one-commit upgrade. Test strategy: `Grob.Core.Tests/GrobValueTests.cs` covers construction round-trip, discrimination, `default` is `Nil`, kind-mismatch accessor behaviour, equality and hashing rules including IEEE 754 float edge cases, struct delegation and a `sizeof(GrobValue) == 24` canary. Full spec section in `grob-vm-architecture.md` titled "GrobValue provisional representation".
-
------
-
-### D-298 — OQ-010 resolved: `.grobc` binary format skeleton spec (Apr 2026)
-
-Area: Bytecode file format
-Supersedes: D-143
-Superseded by: none
-
-The `.grobc` binary format is specified in a dedicated document, `grob-grobc-format.md`. Skeleton content locked: 40-byte fixed header (magic bytes `0x47 0x52 0x4F 0x42` "GROB" per D-020 at offset 0; format version `uint16` at offset 4 starting at `1` per ADR-0008; flags `uint16` at offset 6 with bit 0 = source map present, bit 1 = symbol table present; six `uint32` (offset, size) pairs for constant pool, instruction stream, function table, source map sections); little-endian throughout with no per-section toggle; constant pool entries each prefixed with a `uint8` kind tag — seven kinds locked (`Nil` 0x00 / `Bool` 0x01 / `Int` 0x02 / `Float` 0x03 / `String` 0x04 / `Guid` 0x05 / `Function` 0x06); no literal arrays, maps or struct instances in the constant pool — those are constructed at runtime from primitive constants via opcodes; `Guid` payload is RFC 9562 byte order (matching `System.Guid.ToByteArray(bigEndian: true)`), not the mixed-endian Variant 1 default; `String` payload is `uint32` length prefix plus UTF-8 bytes, no terminator and no BOM; `Function` payload is a `uint32` index into the function table. Function table layout: each function is its own sub-chunk with name index (into symbol table; `0xFFFFFFFF` for anonymous lambdas), parameter count and (offset, size) pairs for its constant pool and instruction stream. Source map (optional, flag bit 0): file table (`uint32` count, 0 or 1 in v1; reserved for multi-file post-MVP), then PC entries each carrying `(pc, line, column, file index, function index)`, sorted ascending by `(function index, pc)` for binary search; column may be 0 in early sprint output and refined later. Symbol table (optional, flag bit 1): function index, name (UTF-8 length-prefixed), parameter count, parameter names — minimum content for non-trivial stack traces. Stripped builds omit both source map and symbol table; stack traces fall back to function indices. Versioning policy restated from ADR-0008: `uint16` starts at `1`, incremented on any breaking format change (reordered/removed opcode, new constant pool kind, new header field, source map / symbol table format change that older readers cannot ignore safely); higher-than-supported version produces a clear diagnostic naming both versions and suggesting `grob run` to recompile, never silent; lower-than-maximum versions remain readable via per-version deserialiser branches. `grob run` integration: `.grob` is canonical, `.grobc` is cache, cache lives in `.grob/cache/<stem>.grobc` next to the source file (matching Python `__pycache__` convention), mtime-driven invalidation, format-version mismatch discards cache, cache writes are best-effort (a read-only file system never aborts the script), corrupt cache is treated identically to absent cache, `grob run --no-cache` disables both reading and writing for that invocation. Explicit non-features for v1: cryptographic signing, compression, encryption, multi-chunk packaging, embedded resources, JIT-friendly precomputed metadata. Each is a deliberate omission documented with rationale; any future need enters via a format version bump per ADR-0008. Full byte-level layout, implementation notes (two-pass writer, round-trip tests, endianness canary) and rationale for every decision in `grob-grobc-format.md`.
-
------
-
-### D-299 — Sprint 8 / Sprint 9 stdlib build order reorder (Apr 2026)
-
-Area: Implementation sprint plan
-Supersedes: none (refines `grob-v1-requirements.md` §4 Sprint 8 and Sprint 9 scope)
-Superseded by: none
-
-Sprint 8 and Sprint 9 stdlib module scopes reordered by dependency weight, replacing the prior alphabetical/feature-area grouping. Dependency graph built for all 16 stdlib units (13 core modules plus the three built-ins `print`/`exit`/`input`); only one hard cross-module dependency exists — **`fs` depends on `date`** because the `File` type registers `modified: date` and `created: date` properties. Two soft dependencies: `json` and `csv` use `fs.readText`/`fs.writeText` for file I/O when `fs` is available (cleaner build order; either could read files directly via the runtime's I/O facilities if implemented before `fs`). No cross-sprint dependencies — no Sprint 8 module depends on a Sprint 9 module or vice versa. No modules move between sprints — the existing Sprint 8 / Sprint 9 partition was already correct on the dependency axis; the reorder is within-sprint. Sprint 8 build order (least-dependent first, ending with the most demanding): `print`/`exit`/`input` (built-ins formalised) → `log` → `env` → `strings` → `path` → `math` → `guid` → `format`. Rationale: `log` lands early so other modules can use `log.debug` during their own implementation; `format` lands last because it depends on the type registry being fully wired for struct field introspection; `guid` lands second-last because it registers a new primitive type and adds compile-time literal validation. Sprint 9 build order: `date` → (`regex`, `process` in any order) → `fs` → (`json`, `csv` in any order). Rationale: `date` first because `fs` depends on it; `regex` and `process` are independent of the others; `fs` follows once `date` is in place; `json` and `csv` prefer `fs` for cleaner file-I/O integration. Sprint-done acceptance restated under the new ordering: Sprint 8 done = a script that uses every Sprint 8 module compiles, runs and produces the expected output; Sprint 9 done = the file organiser real-program target plus a script using every Sprint 9 module both run correctly. Validation suite coverage gaps surfaced for follow-up (not addressed in F4): `math`, `strings.join` and `input` are not exercised by any of the eleven sample scripts. Full dependency graph (16-row table with Sprint, hard deps, language deps and weight) lives in `grob-v1-requirements.md` §4 under "Stdlib Module Dependency Graph".
-
------
-
 ## Post-MVP Decisions
 
 -----
@@ -2867,11 +2834,10 @@ staleDays = 30
 |`grob-open-questions.md`                            |Open and resolved design questions with full rationale                                                |
 |`grob-tooling-strategy.md`                          |LSP, syntax highlighting, VS Code extension — phased plan                                             |
 |`grob-language-brainstorm.md`                       |Early sketch notes — supplementary                                                                    |
-|`grob-vm-architecture.md`                           |VM and runtime architecture detail — `GroType` references superseded by ADR-0007                      |
-|`grob-grobc-format.md`                              |`.grobc` bytecode file format — header, constant pool wire format, source map, symbol table, cache integration|
+|`grob-vm-architecture.md`                           |VM and runtime architecture detail — `GroType` references superseded by ADR-0012                      |
 |`grob-personality-identity.md`                      |Character, tone, error messages, REPL, CLI                                                            |
 |`grob-sample-scripts.md`                            |Real-world script comparisons and API surface validation                                              |
-|`grob-plugins.md`                                   |Plugin ecosystem — authoring, registry, official plugins — `GroType` references superseded by ADR-0007|
+|`grob-plugins.md`                                   |Plugin ecosystem — authoring, registry, official plugins — `GroType` references superseded by ADR-0012|
 |`sharpbasic-retrospective.md`                       |Completed retrospective — Grob design inputs                                                          |
 |`sparky-character-sheet-v1.png`                     |Mascot reference — approved April 2026                                                                |
 |`sparky-illustrator-brief.pdf`                      |Brief for human illustrator commission                                                                |
@@ -2901,6 +2867,6 @@ staleDays = 30
 *Script 11 (Azure Resource Provisioning Helper) added to validation suite.*
 *Session A2: decisions table converted to 185 numbered ADR-style entries (D-001 through D-185) plus one post-MVP entry (D-PM-001). Summary index added. Supersedes/superseded-by links populated.*
 *Session A2 update (Apr 2026): D-270 through D-296 integrated from six session summary files (B Part 1, B Part 2, C Part 1, C Part 2, B Part 3, B Interlude, B Part 4). D-013, D-061, D-084, D-166, D-181 annotated with supersession/extension notes. C Part 2 scope-cut list assigned D-186 (first unused number in D-186–D-269 gap) after D-286 collision resolved.*
-*Session F (Apr 2026): three new entries — D-297 resolves OQ-009 (`GrobValue` provisional representation, hand-rolled tagged-union struct under .NET 10 LTS, supersedes D-142); D-298 resolves OQ-010 (`.grobc` binary format skeleton spec, see `grob-grobc-format.md`, supersedes D-143); D-299 reorders Sprint 8 / Sprint 9 stdlib build order by dependency weight (`fs → date` is the only hard dep). Math module reconciled with D-093 in `grob-stdlib-reference.md` (no D-### needed — D-093's content was correct, the D Part 1 ad-hoc stdlib section was the deviation).*
 *The brainstorm doc and VM architecture doc are supplementary — this document wins on conflict.*
 *`GroType` references in `grob-vm-architecture.md` and `grob-plugins.md` are superseded — read as `GrobType`.*
+*Updated April 2026 — post-reconciliation alignment: ADR-0007 references in this document changed to ADR-0012 to match the on-disk repository's ADR numbering. The repo is the canonical pin for ADR numbers. Same change applied to `grob-v1-requirements.md`.*

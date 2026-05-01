@@ -78,7 +78,7 @@ response := http.get(
 )
 
 repos := response.asJson().mapAs<Repo[]>()
-repos.format.table()
+repos.formatAs.table()
 ```
 
 ### POST with JSON body

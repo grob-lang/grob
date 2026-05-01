@@ -17,7 +17,7 @@ No pipe operator. Fluent method chaining is the in-script composition idiom:
 ```grob
 results := files
     .filter(f => f.extension == ".log")
-    .map(f => f.name)
+    .select(f => f.name)
     .sort()
 ```
 
