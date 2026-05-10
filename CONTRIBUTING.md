@@ -39,7 +39,7 @@ British English throughout. No Oxford comma. Never use the word "simply." All
 path examples use Windows conventions.
 
 The wiki specification in `docs/wiki/` is the language behaviour reference. The
-decisions log in `docs/design/decisions-log.md` is the design authority.
+decisions log in `docs/design/grob-decisions-log.md` is the design authority.
 
 ## Reporting Issues
 

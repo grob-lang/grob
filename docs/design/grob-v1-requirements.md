@@ -69,12 +69,12 @@ most common personal automation tasks on GitHub. It exercises:
 - `fs.ensureDir()` and `file.moveTo()`
 - `print()` for user feedback
 
-### Release Gate — All Eleven Sample Scripts
+### Release Gate — All Thirteen Sample Scripts
 
-The sample scripts document contains eleven real-world scripts that validate
-the API surface. All eleven must compile and run correctly against the v1
-implementation before public release. Any script that fails reveals a gap
-in the implementation.
+The sample scripts document contains thirteen real-world scripts that
+validate the API surface. All thirteen must compile and run correctly
+against the v1 implementation before public release. Any script that
+fails reveals a gap in the implementation.
 
 ### Non-Functional Requirements
 
@@ -489,15 +489,38 @@ new features interactively, and the increment can run meaningful scripts.
   `for...in` numeric range, `select`/`case`/`default`, `break`,
   `continue`, `fn` declarations, `return`, `type` declarations, `try`/
   `catch`, `param` block, `import`, `const`, `readonly`).
-- AST node types — every node carries source location.
-- `DiagnosticBag`, `Diagnostic`, error formatting to stderr.
+- **Error-recovering parser per D-300 — day-one requirement.** The
+  parser must recover from syntax errors using the synchronisation set
+  specified in `grob-language-fundamentals.md` §29.1 (statement-boundary
+  newlines outside any open bracket, closing `}` of an enclosing block,
+  top-level declaration keywords). On a parse failure, the parser
+  emits a diagnostic, builds a placeholder error node, advances to the
+  next anchor, and resumes. A single malformed construct never aborts
+  the parse. The parser is stateless across files and invocations.
+- AST node types — every node carries source location. Includes the
+  three error-node kinds (`ErrorExpr`, `ErrorStmt`, `ErrorDecl`)
+  produced by the error-recovering parser, each carrying its source
+  range and the diagnostic message that produced it. Every visitor in
+  `Grob.Compiler` handles these node kinds — see `grob-language-
+  fundamentals.md` §29.2.
+- `DiagnosticBag`, `Diagnostic`, error formatting to stderr. No per-file
+  diagnostic cap (per §29.4).
 - Line continuation: trailing-token heuristic (line ends with operator,
   comma, opening bracket, opening brace, `=>`) plus leading-dot chain
   suppression.
-- Lexer and parser tests — comprehensive.
+- Lexer and parser tests — comprehensive. Parser tests must include
+  error-recovery cases: malformed expression mid-function still allows
+  the rest of the file to parse, malformed declaration still allows
+  subsequent declarations to parse, multi-error files produce one
+  diagnostic per root cause without cascade.
 
 **Acceptance:** Lex and parse any valid Grob v1 source file into a correct
-AST. Report clear errors with line/column for any invalid source.
+AST. Report clear errors with line/column for any invalid source. **Error
+recovery works:** a file with a malformed expression in one function
+still produces a complete AST for the surrounding well-formed code, with
+an `ErrorExpr` placeholder at the failure site. A file with multiple
+unrelated errors produces multiple diagnostics, one per root cause, with
+no downstream cascade.
 
 ### Sprint 2 — Type Checker and Compiler Core
 
@@ -740,7 +763,7 @@ diagnostics. `exit()` cannot be caught.
 ### Sprint 8 — Core Standard Library (Part 1)
 
 **Delivers:** `print`, `exit`, `math`, `strings`, `path`, `env`, `log`,
-`format`, `guid` modules as `IGrobPlugin` implementations.
+`formatAs`, `guid` modules as `IGrobPlugin` implementations.
 
 **Scope:**
 
@@ -770,7 +793,7 @@ validation.
   `all() → map<string, string>`.
 - **`log`** — `debug()`, `info()`, `warning()`, `error()`. All to stderr.
   `setLevel()`. `debug` suppressed by default, visible with `--verbose`.
-- **`format`** — `format.table()`, `format.list()`, `format.csv()`.
+- **`formatAs`** — `formatAs.table()`, `formatAs.list()`, `formatAs.csv()`.
   Column names derived from type field registry at compile time. Works
   on named structs and anonymous structs.
 - **`guid`** — `guid.newV4()`, `guid.newV7()`, `guid.newV5()`.
@@ -783,7 +806,7 @@ validation.
 
 **Acceptance:** Each module’s full API works. `math.sqrt(9.0)` returns
 `3.0`. `env.require("MISSING")` throws `LookupError`. `log.error()`
-writes to stderr. `format.table()` produces aligned column output.
+writes to stderr. `formatAs.table()` produces aligned column output.
 
 ### Sprint 9 — Core Standard Library (Part 2)
 
@@ -920,8 +943,8 @@ type-checked at compile time. `grob install` downloads from NuGet.
 
 **Acceptance:** All CLI commands work. `grob fmt` produces consistent
 formatting. `grob check` reports errors without executing. The Windows
-Terminal profile registers correctly. All eleven sample scripts compile and
-run.
+Terminal profile registers correctly. All thirteen sample scripts compile
+and run.
 
 -----
 
@@ -1032,7 +1055,7 @@ required. All are implemented as `IGrobPlugin` classes.
 |`log`    |5 functions              |—                    |
 |`regex`  |7 convenience functions  |`Regex`, `Match`     |
 |`path`   |11 functions, 1 constant |—                    |
-|`format` |6 functions              |—                    |
+|`formatAs`|3 functions              |—                    |
 |`guid`   |6 statics, 3 namespaces  |`guid`               |
 
 Full API detail for each module is in `grob-stdlib-reference.md`
@@ -1139,10 +1162,11 @@ error[E0001]: type mismatch
 Every error has a unique `Exxxx` code. The thousands digit encodes the
 category (E0xxx type, E1xxx name resolution, E2xxx syntax, E3xxx module,
 E4xxx param, E5xxx runtime, E9xxx internal). The full registry of allocated
-codes lives in `grob-error-codes.md`. The numbering scheme, allocation rules,
-and stability guarantees are specified in ADR-0017. Long-form documentation
-for each code (cause, example, fix) is read by `grob --explain Exxxx` from
-`docs/errors/Exxxx.md`.
+codes lives in `grob-error-codes.md`. The numbering scheme and allocation
+rules are specified in ADR-0014; the stability guarantees (codes immutable
+once shipped, retired codes never reused) are specified in ADR-0017.
+Long-form documentation for each code (cause, example, fix) is read by
+`grob --explain Exxxx` from `docs/errors/Exxxx.md`.
 
 ### Error Message Rules
 
@@ -1178,7 +1202,7 @@ for each code (cause, example, fix) is read by `grob --explain Exxxx` from
 |`Grob.Compiler.Tests`   |Lexer (token stream), parser (AST shape), type checker (error detection, inference), compiler (bytecode output)|Given source → assert tokens/AST/diagnostics/bytecode. **Highest priority — this is where bugs will live**|500+           |
 |`Grob.Vm.Tests`         |Fetch/decode/execute, stack behaviour, call frames, closures                                                   |Construct chunks by hand → assert execution results                                                       |100+           |
 |`Grob.Stdlib.Tests`     |All 13 core module APIs                                                                                        |Register plugin into VM instance → assert outputs                                                         |200+           |
-|`Grob.Integration.Tests`|End-to-end through full pipeline                                                                               |Given `.grob` source file → assert stdout, stderr, exit code. The eleven sample scripts live here            |50+            |
+|`Grob.Integration.Tests`|End-to-end through full pipeline                                                                               |Given `.grob` source file → assert stdout, stderr, exit code. The thirteen sample scripts live here          |50+            |
 
 ### Test Discipline
 
@@ -1187,7 +1211,7 @@ for each code (cause, example, fix) is read by `grob --explain Exxxx` from
   live (per SharpBASIC retrospective).
 - The VM loop can be trusted once verified on simple cases.
 - Edge cases and failure paths are tested as thoroughly as the happy path.
-- The eleven sample scripts are integration tests in `Grob.Integration.Tests`.
+- The thirteen sample scripts are integration tests in `Grob.Integration.Tests`.
 
 -----
 
@@ -1221,22 +1245,24 @@ decisions log.
 
 ## 14. Validation Scripts
 
-These ten scripts from the sample scripts document serve as the release
-gate. All must compile and run correctly before v1 ships.
+These thirteen scripts from the sample scripts document serve as the
+release gate. All must compile and run correctly before v1 ships.
 
-|# |Script                          |Exercises                                                                        |
-|--|--------------------------------|---------------------------------------------------------------------------------|
-|1 |Bulk file renamer               |`param`, `fs.list`, `for...in`, `File.rename`, `string.contains/replace`         |
-|2 |Photo organiser                 |`fs.list`, `date` components, `fs.ensureDir`, `file.moveTo`, string interpolation|
-|3 |Azure DevOps stale branch report|`import Grob.Http`, `json`, `date`, `filter`, `format.table`                     |
-|4 |Bicep deployment wrapper        |`process.run`, `env.require`, `param`, `@secure`, `try/catch`                    |
-|5 |CSV data cleaner                |`csv.read`, `filter`, `map`, `csv.write`, lambdas                                |
-|6 |Log file parser                 |`fs.readLines`, `regex`, `mapAs`, `sort`, `format.table`                         |
-|7 |Disk space monitor              |`process.run`, `json.parse`, `select/case`, `log`, `exit`                        |
-|8 |Multi-repo Git status           |`fs.list`, `process.run`, `for...in`, `format.table`                             |
-|9 |SharePoint list export          |`import Grob.Http`, `json`, `csv.write`, `while` pagination                      |
-|10|Self-updating agent hook        |`json.stdin`, `select/case`, `process.run`, `json.stdout`                        |
-|11|Azure resource provisioning helper|`guid.newV5`, `Grob.Crypto`, `map<K,V>` iteration, `Grob.Http`, `env.require`  |
+|# |Script                            |Exercises                                                                              |
+|--|----------------------------------|---------------------------------------------------------------------------------------|
+|1 |Bulk file renamer                 |`param`, `fs.list`, `for...in`, `File.rename`, `string.contains/replace`               |
+|2 |Photo organiser                   |`fs.list`, `date` components, `fs.ensureDir`, `file.moveTo`, string interpolation      |
+|3 |Find large files and report       |`fs.list`, `filter`, `select`, `sort`, struct projection, `formatAs.table`             |
+|4 |GitHub repos backup               |`@secure`, `import Grob.Http`, `json` mapAs, `process.runOrFail`, `path.join`          |
+|5 |CSV data cleaner                  |`csv.read`, `mapAs`, `filter`, `select`, `sort`, lambdas, `formatAs.table`             |
+|6 |Bicep deployment wrapper          |`process.run`, `process.runOrFail`, `try/catch`, `log`, `exit`                         |
+|7 |REST API data pull and JSON report|`import Grob.Http`, `json`, `date`, `filter`, `select`, `formatAs.table`               |
+|8 |Stale Git branches report         |`process.runOrFail`, closure capture, `select`, `filter`, `formatAs.table`             |
+|9 |Disk space monitor                |`process.run`, `json.parse`, `select/case`, `log`, `exit`                              |
+|10|Download and verify a file        |`import Grob.Http`, `import Grob.Crypto`, `http.download`, `crypto.verifySha256`       |
+|11|Azure resource provisioning helper|`guid.newV5`, `Grob.Crypto`, `map<K,V>` iteration, `Grob.Http`, `env.require`          |
+|12|Log file filter by severity/time  |`fs.readText`, regex literal, `Regex.matchAll`, `select`, `filter`, `formatAs.table`   |
+|13|Release promotion validated inputs|`@allowed`, `@minLength`, `@maxLength`, `@secure`, `Grob.Http`, `json.encode`          |
 
 -----
 
@@ -1245,7 +1271,7 @@ gate. All must compile and run correctly before v1 ships.
 Grob v1 is ready for public release when:
 
 - [ ] All thirteen core stdlib modules pass their test suites
-- [ ] All eleven validation scripts compile and run correctly
+- [ ] All thirteen validation scripts compile and run correctly
 - [ ] The calculator smoke test works
 - [ ] The file organiser real-program target works end-to-end
 - [ ] `grob run`, `grob repl`, `grob check`, `grob fmt` all work
@@ -1278,7 +1304,7 @@ consulted only when needed and shelved when not.
 `@maxLength(n)` on param blocks.
 
 - `@secure` is **not** on this list. It remains in v1 and is exercised
-  in Scripts 4, 7 and 11.
+  in Scripts 4, 7, 11 and 13.
 - v1 fallback: manual validation in the script body, typically three
   to five lines per validated param (`if (!["dev", "staging", "prod"].contains(env)) { log.error(...); exit(1) }`).
 - Savings on activation: one sprint item in Sprint 10 (Script
@@ -1287,8 +1313,11 @@ consulted only when needed and shelved when not.
   on the three validation decorators only, not the decorator system as
   a whole.
 - v1.1 re-add is pure grammar addition. No scripts break.
-- Scripts affected on activation: zero — the eleven validation scripts
-  do not currently use validation decorators.
+- Scripts affected on activation: Script 13 uses `@allowed`,
+  `@minLength` and `@maxLength` directly. Activating this cut requires
+  rewriting Script 13 with manual in-body validation (the same
+  five-lines-per-param pattern the PowerShell original exhibits) before
+  v1 ships. Scripts 1–12 are unaffected.
 
 **2. Regex literal grammar** — `/pattern/flags` with context-sensitive
 `/` disambiguation.
@@ -1299,13 +1328,13 @@ consulted only when needed and shelved when not.
   architecturally novel piece of lexer work in Sprint 1. Cutting it
   simplifies the lexer materially.
 - v1.1 re-add is pure grammar addition. No scripts break.
-- Scripts affected on activation: zero current use. However, activating
-  this cut **requires** adding a new validation script exercising
-  `regex.compile()` before v1 ships — otherwise the regex surface is
-  entirely untested by the release gate. Candidate new script: a log-
-  file filter using regex to match severity levels and extract
-  timestamps. This script is a release-gate requirement if and only if
-  this cut is activated.
+- Scripts affected on activation: Script 12 (Log file filter by
+  severity and time) uses regex literals at `readonly LINE := /.../m`
+  and `readonly LEVELS := /.../`. Activating this cut requires
+  rewriting Script 12 against the `regex.compile(pattern, flags)`
+  function form before v1 ships. The script body — `matchAll`,
+  `isMatch`, capture-group access — is unchanged on activation.
+  Scripts 1–11 and Script 13 are unaffected.
 
 ### Defer-gracefully constraints
 
@@ -1318,7 +1347,7 @@ candidate is cut.
 
 Candidates considered and rejected during Session C Part 2:
 
-- **`format.table()` compiler rewrite** — considered and retired during
+- **`formatAs.table()` compiler rewrite** — considered and retired during
   Session C Part 1. The rewrite was simplified via the `formatAs`
   reserved-identifier mechanism (D-282) and stays in v1.
 - **Switch expression exhaustiveness enforcement** — rejected.
@@ -1332,7 +1361,37 @@ Candidates considered and rejected during Session C Part 2:
 
 -----
 
-*This document was updated April 2026 — Session C Part 2 pre-implementation*
+*This document was updated May 2026 — Session 4 side-finding remediation:*
+*Sprint 1 scope expanded to make the error-recovering parser an explicit*
+*day-one deliverable per D-300 — synchronisation set, error node kinds*
+*(`ErrorExpr`, `ErrorStmt`, `ErrorDecl`), no diagnostic cap, statelessness*
+*all named in scope. Sprint 1 acceptance criteria gain an explicit error-*
+*recovery clause: a file with one malformed expression must still produce*
+*a complete AST for surrounding well-formed code; multi-error files must*
+*produce one diagnostic per root cause without cascade. AST node types*
+*bullet now lists the three error-node kinds explicitly (S-3.3). §7 module*
+*table function count for `formatAs` corrected from 6 to 3 (`table`,*
+*`list`, `csv` per D-282 — `format.number()` and `format.date()` moved to*
+*instance methods on numeric/date types) (S-1.1). §10 ADR citation split:*
+*"numbering scheme, allocation rules" cite ADR-0014 (numbering scheme is*
+*ADR-0014's actual subject); "stability guarantees" cite ADR-0017 (S-2.3).*
+*Previous: May 2026 — Session 1 mechanical sweep:*
+*§14 Validation Scripts table expanded from eleven to thirteen rows*
+*(Scripts 12 — Log file filter by severity and time, and 13 — Release*
+*promotion with validated inputs — added to match the canonical*
+*sample-scripts file). §14 heading "These ten scripts" corrected to*
+*"These thirteen scripts". §1 Release Gate, §4 acceptance line,*
+*§12 testing strategy, §15 Definition of Done, §16 scope-cut*
+*paragraphs aligned to the thirteen-script gate. `format` module*
+*references in §7 stdlib bullets, §7 module table, §13 retired-*
+*features paragraph and Sprint 8 scope/acceptance renamed to*
+*`formatAs` per D-282. §14 row-3/5/6/7/8 exercise lists updated for*
+*`.select()` per D-280 and `formatAs.table` per D-282. §14 script*
+*titles realigned to the canonical sample-scripts script names.*
+*§16 cut-impact paragraphs corrected to reflect Script 12 (regex*
+*literals) and Script 13 (validation decorators) as the scripts now*
+*affected on activation.*
+*Previous: April 2026 — Session C Part 2 pre-implementation*
 *review: Sprint 7 exception hierarchy expanded from six leaves to ten*
 *(`ArithmeticError`, `IndexError`, `ParseError`, `LookupError` added as*
 *direct children of `GrobError`); §10 Exception Hierarchy summary updated*

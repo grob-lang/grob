@@ -8,14 +8,14 @@
 > change until v1.0 ships; codes marked `stable` are immutable.
 >
 > *Created April 2026 — initial allocation, error-code numbering scheme session.*
-> *Authority: ADR-0017.*
+> *Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule).*
 
 -----
 
 ## Format
 
 Every code is an entry of the form `Exxxx`. The thousands digit encodes the
-category; see ADR-0017 §Categories. Each entry in this registry has:
+category; see ADR-0014 §Categories. Each entry in this registry has:
 
 - `code` — the `Exxxx` identifier
 - `title` — short title rendered after `error[Exxxx]:`
@@ -1014,4 +1014,4 @@ None as of v1.
 
 -----
 
-*Initial allocation: 86 codes across 7 categories. All `pre-release` until v1.0 ships. Authority: ADR-0017.*
+*Initial allocation: 86 codes across 7 categories. All `pre-release` until v1.0 ships. Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule).*

@@ -49,12 +49,19 @@ and properties exist on each type.
 - [float](Type-Registry/float.md)
 - [bool](Type-Registry/bool.md)
 - [array](Type-Registry/array.md)
+- [map](Type-Registry/map.md)
+- [guid](Type-Registry/guid.md)
 - [File](Type-Registry/File.md)
 - [date](Type-Registry/date.md)
 - [Regex](Type-Registry/Regex.md)
 - [Match](Type-Registry/Match.md)
 - [CsvTable](Type-Registry/CsvTable.md)
 - [CsvRow](Type-Registry/CsvRow.md)
+- [json.Node](Type-Registry/json-Node.md)
+- [Response](Type-Registry/Response.md)
+- [AuthHeader](Type-Registry/AuthHeader.md)
+- [ProcessResult](Type-Registry/ProcessResult.md)
+- [ZipEntry](Type-Registry/ZipEntry.md)
 
 ## VM Architecture
 
@@ -103,6 +110,8 @@ Key design decisions with full rationale.
 - [ADR-0012: Solution Structure and Naming Convention](ADR/0012-solution-structure-and-naming.md)
 - [ADR-0013: Opcode Stability and Bytecode Format Versioning](ADR/0013-opcode-stability.md)
 - [ADR-0014: Error Code Numbering Scheme](ADR/0014-error-code-numbering.md)
+- [ADR-0016: Const Means Fully Immutable](ADR/0016-const-means-fully-immutable.md) — *Superseded by D-288 and D-291*
 - [ADR-0017: Error Code Stability](ADR/0017-error-code-stability.md)
 
-*ADR-0015 and ADR-0016 are not yet allocated.*
+*Full set of ADRs in `docs/wiki/ADR/`. The list above tracks the published set;
+unpublished slots are reserved at the directory level.*

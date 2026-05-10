@@ -6,7 +6,7 @@ required. Distinct from `json.stdout()` which is machine-readable.
 `formatAs` is a terminal operation on a collection: it takes a collection and
 produces human-readable output. It is not a pipeline stage — it does not return
 a new collection. Scalar formatting is handled by instance methods on the
-relevant types (e.g. `myFloat.toFixed(2)`, `myDate.format("yyyy-MM-dd")`).
+relevant types (e.g. `myFloat.format("F2")`, `myDate.format("yyyy-MM-dd")`).
 
 ## Calling Convention
 

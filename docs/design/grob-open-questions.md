@@ -42,6 +42,92 @@ One-line resolutions are recorded in the confirmed decisions table of
 
 -----
 
+### OQ-009 — `GrobValue` Provisional Representation
+
+**Status: RESOLVED — April 2026 (D-297)**
+
+**Decision:** `GrobValue` is a hand-rolled `readonly struct GrobValue : IEquatable<GrobValue>` under .NET 10 LTS. Three private fields:
+a `GrobValueKind` discriminator, a `long _scalar` slot holding `int`/`bool`/`float`
+(floats stored via `BitConverter.DoubleToInt64Bits` to avoid allocation), and an
+`object? _reference` slot for reference types. Total 24 bytes on x64 with alignment.
+
+**Discriminator set — nine variants:** `Nil`, `Bool`, `Int`, `Float`, `String`,
+`Array`, `Map`, `Struct`, `Function`. Plugin types (`date`, `guid`, `File`,
+`ProcessResult`, `json.Node`, `Regex`, `Match`, `csv.Table`, `CsvRow`,
+`Response`, `AuthHeader`, `ZipEntry`) and user-declared `type`s all use the
+`Struct` kind; runtime type discrimination happens at the type-registry level
+via the boxed reference. This keeps `GrobValueKind` small and stable as plugins
+register new types.
+
+**Encapsulation contract:** private fields, public factory statics
+(`FromBool`, `FromInt`, …, plus `Nil` singleton); inspection via `Kind` and
+`IsX` predicates; strict accessors (`AsX()`) that throw `GrobInternalException`
+on kind mismatch; try-accessors (`TryAsX(out)`) for plugin and runtime
+defensive code; full `Equals`/`GetHashCode`/`==`/`!=`. No callers outside
+`Grob.Core` access the fields directly.
+
+**Provisional-pending-OQ-005:** the internal layout is the only thing OQ-005
+may change; the public API surface is stable. Documented in code (XML doc on
+the struct), in `grob-vm-architecture.md`, and as the supersession chain
+D-142 → D-297. The .NET 11 `[Union]` attribute migration path (post-GA, when
+.NET 11 is battle-tested) is signposted in `grob-vm-architecture.md` as a
+future one-commit upgrade — adding `[Union]` and `IUnion` to the existing
+struct gains compile-time exhaustiveness checking on `switch` without
+disturbing layout, factories, or accessors.
+
+**Rationale:** `GrobValue` must be defined before the first line of `Grob.Core`
+is written. OQ-005’s full value representation decision (tagged union vs NaN
+boxing) is deferred until clox is complete because that decision requires
+real bytecode-VM experience to make well. The provisional shape isolates the
+OQ-005 decision behind a clean boundary so the eventual retrofit, whatever
+shape it takes, is localised to `Grob.Core` and does not leak into
+`Grob.Compiler` or `Grob.Vm`. Hand-rolled rather than .NET 11 `union` because
+the compiler-generated `union` form boxes value-type cases on every
+assignment — wrong cost profile for a VM hot path — and the `[Union]`
+escape hatch produces the same hand-rolled struct anyway, only with an
+attribute attached. .NET 10 LTS rather than .NET 11 STS because LTS gives
+v1 room to ship and stabilise without a forced migration.
+
+Full byte-level layout, encapsulation contract and rationale in
+`grob-vm-architecture.md`.
+
+-----
+
+### OQ-010 — `.grobc` Binary Format Specification
+
+**Status: RESOLVED — April 2026 (D-298)**
+
+**Decision:** `.grobc` files use a skeleton binary format with a fixed-shape
+header (magic bytes `0x47 0x52 0x4F 0x42` — ASCII “GROB” — followed by a
+`uint16` format version field starting at 1, little-endian throughout),
+followed by sectioned content for the constant pool, instruction stream,
+source map, and symbol table. Cache files live in a `.grob/cache/` side
+directory next to the source `.grob` file, mtime-driven invalidation,
+`.gitignore`-friendly. The `.grob` source file is canonical; `.grobc` is
+optional cache.
+
+The `.grob/cache/` side directory matches the convention used by Python’s
+`__pycache__` and similar tools — generated artefacts stay separate from
+source, are trivial to `.gitignore` and never clutter the working directory.
+
+Per-opcode operand encoding remains incremental, governed by ADR-0008 —
+opcodes land sprint-by-sprint and the operand layout is documented at the
+opcode’s source of definition. The skeleton spec covers the framing; the
+per-opcode detail follows.
+
+**Rationale:** The format needs to be versionable from day one because
+retrofitting versioning is expensive. ADR-0008 already locked the stability
+rule (immutable opcode numbers once shipped, format version increment on
+breaking change). What was left open — magic bytes, header layout, constant-
+pool wire format, source-map shape — is now fixed at the level needed for
+Sprint 1 implementation. Cryptographic signing, compression, encryption,
+and multi-chunk packaging are explicit non-features for v1.
+
+Full byte-level layout, implementation notes and rationale in
+`grob-grobc-format.md`. Supersession chain: D-143 → D-298.
+
+-----
+
 ### OQ-007 — `for...in` Loop and Iterable Protocol
 
 **Status: RESOLVED — April 2026**
@@ -190,106 +276,21 @@ available when the caller needs it. `ProcessError` on timeout with a clear messa
 
 -----
 
-### OQ-009 — `GrobValue` Provisional Representation
-
-**Status: RESOLVED — April 2026 (D-297)**
-
-**Decision:** `GrobValue` ships as a hand-rolled tagged-union `readonly struct` under
-**.NET 10 LTS**. Three private fields: `GrobValueKind` discriminator, `long _scalar`
-(holds `int`/`bool`/`float` non-allocating), `object? _reference` (holds reference
-types). Total 24 bytes on x64. Nine kinds: `Nil`, `Bool`, `Int`, `Float`, `String`,
-`Array`, `Map`, `Struct`, `Function`. `default(GrobValue)` is `Nil` by zero-init.
-Public API: factory statics, `Kind`/`IsX` predicates, strict accessors (throw
-`GrobInternalException` on kind mismatch), try-accessors, full equality and hashing.
-
-**Rationale:** OQ-005 (tagged union vs NaN boxing) defers until clox is complete, but
-`Grob.Core` cannot ship without a `GrobValue` definition. The provisional shape is
-the most likely final answer regardless of OQ-005's resolution and confines any later
-internal layout change to `Grob.Core/GrobValue.cs`. The .NET 11 preview `union`
-keyword is **not** used — its compiler-generated form boxes every value-type case
-(wrong cost profile for a stack-based VM) and depends on a feature still in preview
-while .NET 10 is LTS. The shape chosen is deliberately compatible with the .NET 11
-`[Union]` attribute escape hatch — adding it post-GA is a one-commit upgrade that
-gains compile-time exhaustiveness checking on `switch` over `Kind` without storage
-changes.
-
-**Plugin types** (`date`, `guid`, `File`, `ProcessResult`, `json.Node`, etc.) and
-user-defined `type`s all use the `Struct` kind. Discrimination between them is by
-the runtime type of the boxed reference, not by `GrobValueKind` — keeping the
-discriminator stable as plugins register new types.
-
-**Equality semantics** (defensive at runtime, with the language compiler enforcing
-type compatibility statically per D-169): value equality for `Nil`/`Bool`/`Int`/
-`Float`/`String`; reference equality for `Array`/`Map`/`Function`; delegated to
-`GrobStruct.Equals` (field-by-field) for `Struct`; cross-kind always false.
-
-Full spec section in `grob-vm-architecture.md` titled "GrobValue provisional
-representation". Test strategy in `Grob.Core.Tests/GrobValueTests.cs` covers
-construction round-trip, discrimination, default-is-Nil, kind-mismatch behaviour,
-equality (including IEEE 754 float edge cases), hashing, struct delegation and a
-`sizeof(GrobValue) == 24` canary.
-
------
-
-### OQ-010 — `.grobc` Binary Format Specification
-
-**Status: RESOLVED — April 2026 (D-298)**
-
-**Decision:** Skeleton specification locked in `grob-grobc-format.md`. Header is
-**40 bytes fixed**, magic bytes `0x47 0x52 0x4F 0x42` ("GROB") at offset 0, format
-version `uint16` at offset 4 starting at `1` (per ADR-0008), flags `uint16` at offset
-6 (bit 0 = source map present, bit 1 = symbol table present), six (offset, size)
-`uint32` pairs for constant pool, instruction stream, function table, source map
-sections. **Little-endian throughout**, no per-section toggle. **Constant pool**
-entries each prefixed with a `uint8` kind tag — seven kinds: `Nil` (0x00),
-`Bool` (0x01), `Int` (0x02, `int64`), `Float` (0x03, `double` IEEE 754), `String`
-(0x04, `uint32` length + UTF-8), `Guid` (0x05, 16 bytes RFC 9562 byte order),
-`Function` (0x06, `uint32` function table index). **Function table** holds each
-function as a sub-chunk with name index, parameter count and (offset, size) pairs
-for its constant pool and instruction stream. **Source map** (optional, flag bit 0):
-file table reserved for multi-file post-MVP, PC entries with `(pc, line, column,
-file index, function index)`. **Symbol table** (optional, flag bit 1): function
-index, name, parameter names — minimum content for stack traces. **Versioning**:
-`uint16` starts at `1`; mismatch produces a clear diagnostic naming both versions
-and suggesting `grob run` to recompile, never silent. **`grob run` integration**:
-`.grob` is canonical, `.grobc` is cache, lives in `.grob/cache/<stem>.grobc` next to
-the source, mtime-driven invalidation, best-effort writes (read-only file system
-never aborts the script), `grob run --no-cache` disables caching for that
-invocation. **Explicit non-features for v1** (deliberate omissions, not gaps):
-cryptographic signing, compression, encryption, multi-chunk packaging, embedded
-resources, JIT-friendly metadata.
-
-**Rationale:** Versioning from day one is essential — retrofitting it later is
-expensive (ADR-0008). The format is section-based with explicit (offset, size)
-pairs in the header so future versions can append fields without breaking older
-readers up to the offset they understand. Constant pool kinds are deliberately
-restricted to scalar primitives plus `Guid` and `Function`-by-reference — literal
-arrays, maps and structs are constructed at runtime from primitive constants via
-opcodes, keeping the wire format closed for v1. The `.grob/cache/` side directory
-matches the convention used by Python's `__pycache__` and similar tools — generated
-artefacts stay separate from source, are trivial to `.gitignore` and never clutter
-the working directory.
-
-Per-opcode operand encoding remains incremental, governed by ADR-0008 — opcodes
-land sprint-by-sprint and the operand layout is documented at the opcode's source
-of definition. The skeleton spec covers the framing; the per-opcode detail follows.
-
-Full byte-level layout, implementation notes and rationale in
-`grob-grobc-format.md`.
-
------
-
 *Resolved questions are summarised as one-line entries in the confirmed decisions*
 *table of `grob-decisions-log.md`. The full rationale is preserved here.*
 
 -----
 
-*Document updated April 2026 — OQ-009 resolved (`GrobValue` provisional representation,*
+*Document updated April 2026 — post-Session-G cleanup: OQ-009 and OQ-010*
+*body sections relocated from “Open Questions” to “Resolved Questions”*
+*to match their resolved status. No content change to the resolutions*
+*themselves — full rationale preserved.*
+*Previous: April 2026 — OQ-009 resolved (`GrobValue` provisional representation,*
 *hand-rolled tagged-union struct under .NET 10 LTS, see D-297);*
 *OQ-010 resolved (`.grobc` binary format skeleton spec, see D-298 and `grob-grobc-format.md`).*
 *Previous: OQ-011 resolved (`Grob.Crypto` API shape);*
-*OQ-012 resolved (`process.run()` timeout behaviour);*
-*OQ-007 resolved (`for...in` iterable types).*
+*OQ-012 resolved (`process.run()` timeout behaviour).*
+*Previous: OQ-007 resolved (`for...in` iterable types).*
 *OQ-005 (full value representation — tagged union vs NaN boxing) and*
 *OQ-006 (GC strategy) remain open, both deferred until clox is complete.*
 *Document created April 2026 — extracted from grob-decisions-log.md.*

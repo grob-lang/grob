@@ -95,11 +95,25 @@ Everything from source text to `Chunk`. Three passes in sequence.
 **Contents:**
 
 - `Lexer` — tokenises source text; reports all errors, never stops at first
-- `Parser` — produces AST from token stream; reports all errors, never stops at first
-- AST node types — one type per language construct
+- `Parser` — produces AST from token stream; **error-recovering and
+  stateless** per D-300. On a parse failure the parser emits a diagnostic,
+  builds an `ErrorExpr`/`ErrorStmt`/`ErrorDecl` placeholder, advances to the
+  next recovery anchor (statement-boundary newline outside any open bracket,
+  closing `}` of an enclosing block, or top-level declaration keyword), and
+  resumes. A single malformed construct never aborts the parse. Reports all
+  errors, never stops at first. Day-one Sprint 1 requirement — retrofitting
+  recovery later requires touching every parse method
+- AST node types — one type per language construct, including the three
+  error-node kinds (`ErrorExpr`, `ErrorStmt`, `ErrorDecl`). Every visitor
+  in the compiler, LSP, formatter, and any future tooling handles all three
 - `TypeChecker` — visitor over the AST; resolves types, infers where possible,
-  validates method calls against the type registry, reports all errors
-- `Compiler` — visitor over the type-annotated AST; emits bytecode into a `Chunk`
+  validates method calls against the type registry, reports all errors. Error
+  nodes are typed `Error` — assignable to and from every other type — so a
+  single parse error does not produce a downstream cascade of type-mismatch
+  diagnostics. See `grob-type-registry.md` for the `Error` type entry
+- `Compiler` — visitor over the type-annotated AST; emits bytecode into a `Chunk`.
+  A program containing any `Error`-typed node fails the type-check pass and
+  never reaches the bytecode emitter
 - `TypeRegistry` — compile-time knowledge of all built-in type methods and properties;
   populated at startup from `Grob.Stdlib` registrations
 - `Optimiser` — optional pass between type checker and compiler; deferred to post-MVP
@@ -109,15 +123,19 @@ over the same AST — visitor earns its place here. Implemented as `partial clas
 for physical separation of concerns within the same namespace.
 
 **Key constraint:** `Grob.Compiler` references `Grob.Core` and `Grob.Runtime`.
-It does not reference `Grob.Vm`. The compiler’s job ends at `Chunk` production.
+It does not reference `Grob.Vm`. The compiler's job ends at `Chunk` production.
 
 **Error strategy:** Compiler and type checker collect ALL errors before execution.
 A program with type errors never reaches the VM. The VM stops on the FIRST runtime error.
 
 **LSP dependency:** `Grob.Lsp` is a consumer of `Grob.Compiler`. Every AST node
 must carry a `SourceLocation` and every identifier node must carry a `Declaration`
-back-reference set by the type checker. This is a day-one compiler construction
-requirement — see `grob-tooling-strategy.md`.
+back-reference set by the type checker. The error-recovering parser is the other
+half of LSP enablement: editor diagnostics need the AST shape to mirror the source
+even when broken so go-to-definition, hover and completion keep working on the
+surrounding well-formed code. Both are day-one compiler construction
+requirements — see `grob-tooling-strategy.md` and
+`grob-language-fundamentals.md` §29.
 
 -----
 
@@ -330,6 +348,15 @@ Steps 3 onwards name both assemblies where both are touched.
 
 -----
 
+*Updated May 2026 — Session 4: Grob.Compiler Parser bullet expanded to*
+*name the error-recovering and stateless contract per D-300, including*
+*the synchronisation set and the three error-node kinds (`ErrorExpr`,*
+*`ErrorStmt`, `ErrorDecl`). AST node types bullet now lists the error-*
+*node kinds explicitly. TypeChecker bullet describes `Error`-typed*
+*propagation and the cascade-suppression contract. LSP dependency*
+*paragraph names error recovery as the second half of LSP enablement*
+*(alongside `SourceLocation`/`Declaration`) — both day-one Sprint 1*
+*requirements.*
 *Confirmed April 2026. Updated April 2026 — `Grob.Lsp` and `tooling/Grob.VsCode` added.*
 *Updated April 2026 — `format` module references corrected to `formatAs` in*
 *plugin class table and stdlib module list per D-282; the prose-form “formatter”*

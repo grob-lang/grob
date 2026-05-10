@@ -412,11 +412,57 @@ Defined in `Grob.Zip`. Available after `import Grob.Zip`.
 
 -----
 
+## `Error` (Compiler-Internal — Parser Error Recovery)
+
+`Error` is the type assigned to AST error nodes (`ErrorExpr`, `ErrorStmt`,
+`ErrorDecl`) produced by the error-recovering parser. It is part of the
+compile-time type system and never appears in user code, runtime values,
+plugin signatures, stdlib APIs, or the bytecode. It is documented here
+for completeness of the type registry.
+
+**Properties.** No members. The `Error` type has no methods, no
+properties, no constructors, no literal form, and no factory functions.
+There is no way to construct or reference an `Error` value from Grob
+source.
+
+**Assignability.** `Error` is uniquely assignable to and from every
+other type. `Error + int`, `Error.foo`, `f(Error)`, `let x: string :=
+Error` are all silent — the type checker emits no diagnostic against
+an expression whose type is `Error`. This is the cascade-suppression
+mechanism: a single parse error does not produce a downstream wave of
+type-mismatch diagnostics, because the broken expression's type is
+compatible with whatever context it appears in.
+
+**Lifecycle.** Produced only by the parser when it builds an error
+node during recovery (per D-300 and `grob-language-fundamentals.md`
+§29). Consumed only by the type checker, which propagates it
+silently. The compiler never emits bytecode for a node typed `Error` —
+a script that contains any `Error`-typed node has type errors and
+fails the type-check pass before compilation begins.
+
+**Why it lives in the registry.** The `Error` type is internal to the
+compiler, but it is part of the type system's surface. The type checker
+must know about it; downstream visitors (LSP, formatter) must handle it
+correctly; engineers reading the registry to understand "what types can
+exist" need to know it exists. Listing it here prevents the surprise
+discovery during implementation and makes the cascade-suppression
+contract explicit.
+
+For full semantics see `grob-language-fundamentals.md` §29 and D-300 in
+the decisions log.
+
+-----
+
 *This registry will grow as stdlib design progresses. Add entries here when locked.*
 
 -----
 
-*Document updated April 2026 — pre-implementation review: `string.toString()` added*
+*Document updated May 2026 — Session 4: `Error` (compiler-internal) type*
+*entry added (S-3.2). Compiler-internal type produced by error-recovering*
+*parser per D-300 and `grob-language-fundamentals.md` §29; assignable to*
+*and from every other type to suppress diagnostic cascades; never visible*
+*to user code or the runtime. Listed for registry completeness.*
+*Previous: April 2026 — pre-implementation review: `string.toString()` added*
 *(identity method for type uniformity — every type now has `toString()`).*
 *April 2026 (Session B Interlude) — array and map mutation rules updated to cover*
 *`const`- and `readonly`-bound containers equivalently following the*

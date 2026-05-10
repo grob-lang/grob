@@ -297,8 +297,11 @@ in Sparky’s world.
 
 *Last updated: April 2026 — Session E: stale diagnostic example in Error messages*
 *section replaced with canonical rustc-style `error[Exxxx]:` format per*
-*`grob-v1-requirements.md` §10 and ADR-0017. Opinionated Defaults Naming row*
-*verified as already updated (D-283 applied in prior session).*
+*`grob-v1-requirements.md` §10. (Earlier revision of this changelog also*
+*cited ADR-0017; the format itself is specified in §10. ADR-0014 governs*
+*error code numbering and ADR-0017 governs error code stability — neither*
+*ADR specifies the message-display format.) Opinionated Defaults Naming*
+*row verified as already updated (D-283 applied in prior session).*
 *Previous: April 2026*
 *Update this document when the character develops or new surfaces are designed.*
 *This document and the character sheet are the two halves of the same decision.*
