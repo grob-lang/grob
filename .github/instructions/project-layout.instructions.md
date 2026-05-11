@@ -24,6 +24,30 @@ Grob.Cli          <- the `grob` executable. Depends on: Core, Runtime,
 Grob.Lsp          <- language server. Depends on: Core, Compiler.
 ```
 
+## The seven test projects
+
+One test project per production project. Same DAG, same naming:
+
+```
+Grob.Core.Tests        <- references Grob.Core
+Grob.Runtime.Tests     <- references Grob.Runtime
+Grob.Compiler.Tests    <- references Grob.Compiler
+Grob.Vm.Tests          <- references Grob.Vm
+Grob.Stdlib.Tests      <- references Grob.Stdlib
+Grob.Cli.Tests         <- references Grob.Cli
+Grob.Lsp.Tests         <- references Grob.Lsp
+```
+
+A test project references exactly one production project plus any test
+support libraries. If you find yourself wanting to reference two production
+projects from one test project, the production design is probably wrong —
+surface it rather than papering over it.
+
+Each production project declares
+`[assembly: InternalsVisibleTo("Grob.<Project>.Tests")]` so internal types
+are reachable from tests. See `csharp.instructions.md` for when to test
+through internals vs the public surface.
+
 ## Hard rules
 
 1. **`Grob.Compiler` and `Grob.Vm` never reference each other.** This is the
@@ -45,6 +69,26 @@ Grob.Lsp          <- language server. Depends on: Core, Compiler.
    needs types from two production projects, the production design is
    probably wrong — surface it.
 
+## Central package management
+
+Shared dependencies — both production and test — are version-managed in
+`Directory.Packages.props` at the solution root. Individual `.csproj` files
+declare `<PackageReference Include="..." />` without a version; the version
+is set centrally.
+
+Shared test dependencies that every `*.Tests` project references:
+
+- `xunit` — test framework.
+- `xunit.runner.visualstudio` — test runner integration.
+- `FluentAssertions` — assertion library.
+- `FsCheck.Xunit` — property-based testing, in from day one.
+- `coverlet.collector` — coverage measurement for the 90% line-coverage bar.
+- `Microsoft.NET.Test.Sdk` — test SDK.
+
+These belong in `Directory.Build.props` (under a condition that targets
+`*.Tests` projects only) so every test project picks them up automatically
+without per-project boilerplate.
+
 ## What goes where
 
 | Concern                                       | Project          |
@@ -60,6 +104,7 @@ Grob.Lsp          <- language server. Depends on: Core, Compiler.
 | `fs`, `strings`, `json`, `process`, etc.      | `Grob.Stdlib`    |
 | `grob` command-line entry, argument parsing   | `Grob.Cli`       |
 | LSP protocol handling                         | `Grob.Lsp`       |
+| Ambient dependency abstractions (`IClock`, `IFileSystem`, `IConsole`, `IProcessRunner`) | `Grob.Core` (interface) + `Grob.Cli` (concrete) |
 
 ## When you create a new file
 

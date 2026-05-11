@@ -25,11 +25,20 @@ recommended for anything non-trivial.
 Exactly one of:
 
 - **`feat`** — new functionality visible to users of the library or CLI.
-- **`fix`** — bug fix in existing behaviour.
+  Includes the tests that cover it. Strict TDD means the test and the
+  implementation arrive together; a `feat` commit without tests is not a
+  `feat` commit.
+- **`fix`** — bug fix in existing behaviour. Includes the regression test
+  that fails before the fix and passes after.
 - **`refactor`** — change to internal structure that does not affect
   observable behaviour. No new tests should be required for a pure refactor;
   if you need new tests, it isn't a refactor.
-- **`test`** — adding or modifying tests without changing production code.
+- **`test`** — test-only changes that don't accompany a production-code
+  change. Use for: adding regression rows from property-test discoveries,
+  filling coverage gaps in already-shipped code, refactoring test
+  infrastructure, adding gold-master coverage for previously-uncovered
+  diagnostics. Do not use `test` to commit the tests for a feature
+  separately from the feature itself — that's a `feat`.
 - **`docs`** — changes to docs, comments, README, ADRs, spec files.
 - **`build`** — changes to csproj, .slnx, NuGet packages, build scripts.
 - **`ci`** — changes to GitHub Actions workflows or CI configuration.
@@ -71,6 +80,10 @@ and should be split.
 - One blank line between paragraphs.
 - Reference the decision log entry if the change implements a settled
   decision: `Implements D-300 (error-recovering parser).`
+- **Note coverage changes.** If the commit materially affects coverage —
+  adding `[ExcludeFromCodeCoverage]`, removing tested code, lowering a
+  project's percentage — say so in the body with the justification.
+  Silent coverage drops are how 90% becomes 85% becomes 70%.
 
 ## Footer
 
@@ -89,15 +102,29 @@ Supports escape sequences (\n \r \t \\ \" \$) and ${name}
 interpolation segments. Unterminated strings produce E0042
 with source location pointing at the opening quote.
 
+Includes happy-path, failure-path, and edge-case tests covering
+empty input, EOF mid-string, escape-at-buffer-boundary, and nested
+interpolation.
+
 Implements D-185 (string literal forms).
 ```
 
 ```
-test(compiler): cover lexer error recovery on unterminated strings
+fix(vm): handle stack underflow on Pop opcode before runtime values
 
-Adds gold-master tests for E0042 across three scenarios:
-unterminated single-line, unterminated with newline before EOF,
-and unterminated inside an interpolation segment.
+Pop against an empty stack now throws InternalVmError with the
+instruction offset rather than crashing the host process.
+
+Regression: see issue #142.
+```
+
+```
+test(compiler): add property-test discovery as regression row
+
+FsCheck found that lexer scanning of triple-backtick strings
+crashed on input containing exactly three backticks and no
+content. Adds the shrunk input as an InlineData row alongside
+the property test.
 ```
 
 ```
@@ -124,4 +151,10 @@ commits.
 If staged changes touch multiple concerns, **do not** invent a single
 commit that papers over the split. Surface it: "These changes look like
 two commits to me — one `feat(compiler)` for the lexer change, one
-`test(compiler)` for the new tests. Should I propose them separately?"
+`test(compiler)` for the regression rows from the property-test
+discovery. Should I propose them separately?"
+
+If staged changes contain a feature *without* tests, do not commit them
+as `feat`. Surface the gap: "These changes add behaviour but I don't
+see tests covering it. TDD discipline expects tests with the feature.
+Shall we add them before committing?"

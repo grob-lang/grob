@@ -19,6 +19,10 @@ branch at a time.
   spec.
 - `docs/design/grob-v1-requirements.md` is the Sprint 1 scope and acceptance
   gates.
+- `.github/instructions/tests.instructions.md` for the TDD discipline,
+  coverage taxonomy, and release-gate rules.
+- `.github/instructions/csharp.instructions.md` for design-for-testability
+  and the `[ExcludeFromCodeCoverage]` rule.
 - Other spec files as needed — don't load everything, load what's relevant.
 
 **Propose before code for anything non-trivial.** Multi-file changes, new
@@ -31,6 +35,29 @@ directly?" rather than walking through a full proposal.
 minimum to pass, refactor. The only exceptions are TDD-awkward structural work
 (solution skeleton, csproj generation, directory scaffolding) — name the
 exception explicitly when you take it.
+
+**All three test categories per feature.** Happy path, failure path, edge
+cases. A happy-path test alone is not done. The edge-case categories for
+lexer / parser / type checker / VM / stdlib are listed in
+`tests.instructions.md` — don't guess, read the list.
+
+**Property tests alongside examples.** For any lexer, parser, type checker,
+or VM work, the example-based tests are accompanied by an `FsCheck` property
+test asserting the relevant invariant. When the property test finds a
+failing input, add the shrunk input as a regression `[Theory]` row in the
+same change — the property catches the class, the row pins the case.
+
+**`internal` is the default; `public` is opt-in.** Production projects
+declare `InternalsVisibleTo` for their test assembly. If the type or member
+has no consumer outside the project (and its test assembly), it's
+`internal`. `public` is for the project's contract — the surface other
+projects depend on. Don't grow the public surface to enable testing.
+
+**Coverage is non-negotiable.** Before drafting the commit message, confirm
+the project is still at or above 90% line coverage. If it dropped, either
+add the missing tests or add `[ExcludeFromCodeCoverage]` with a substantive
+`Justification` — and note the change in the commit body. "Helper method"
+is not a justification. "Defensive branch unreachable while X holds" is.
 
 **Never on `main`.** Always work on a short-lived branch. If you find yourself
 on `main`, stop and create a branch first. Branches should live hours, not days.
@@ -66,6 +93,10 @@ file, not a diff.
   structural exceptions.
 - You do not write personality content, mascot references or first-run
   acknowledgements. That's a separate concern.
+- You do not declare a feature done with only a happy-path test. Failure
+  path and edge cases are part of done, not extras.
+- You do not commit a feature without its tests in the same commit. `feat`
+  and `fix` carry their tests; `test` is for genuinely test-only changes.
 
 ## Model selection
 
@@ -89,15 +120,24 @@ For most pieces of work the sequence is:
 1. **Branch.** `/start-branch` if not already on a non-main branch.
 2. **Propose.** `/propose-change` if the work is non-trivial. Wait for
    agreement.
-3. **Red.** Write the test. Run it. Confirm it fails for the expected reason.
+3. **Red.** Write the test (or property test, or both, as the feature
+   requires). Run it. Confirm it fails for the expected reason.
 4. **Green.** Propose the minimum implementation. With Chris's agreement,
    write it. Run the test. Confirm it passes.
 5. **Refactor.** With the test green, improve the design. Re-run after each
    change.
-6. **Commit.** `/commit-message` to draft a conventional-commits message.
+6. **Cover the rest.** Happy path is green; now write the failure-path and
+   edge-case tests. Each follows its own red/green if behaviour needs to be
+   added; each follows refactor if behaviour was already there.
+7. **Property check.** For lexer/parser/type-checker/VM work, run the
+   property test against the new behaviour. If it finds a failure, add the
+   shrunk input as a regression `[Theory]` row and run again.
+8. **Coverage check.** Run coverage on the affected project. Confirm at or
+   above 90%. If not, add tests or add justified `[ExcludeFromCodeCoverage]`.
+9. **Commit.** `/commit-message` to draft a conventional-commits message.
    Stage. Show the message. Wait for Chris to commit.
-7. **Next cycle or done.** Loop if there's more in this branch; stop if the
-   branch is complete and ready for Chris to merge.
+10. **Next cycle or done.** Loop if there's more in this branch; stop if the
+    branch is complete and ready for Chris to merge.
 
 For Sprint planning, use `/sprint-plan` to derive the cycle structure from
 the sprint definition before starting Cycle 1.
@@ -111,6 +151,13 @@ the sprint definition before starting Cycle 1.
 - **Proposal contradicts what you're finding in the code:** stop. The
   proposal is a contract. Either it needs updating with Chris's agreement,
   or your reading of the code is wrong. Don't quietly diverge.
+- **Property test finds a failure during step 7:** good. That's what it's
+  for. Add the shrunk input as a regression row, fix the bug, re-run both
+  the row and the property. The fix is part of this cycle, not a follow-up.
+- **Coverage drops below 90% at step 8:** stop. Either the new code has
+  paths the tests don't reach (add tests) or the new code contains genuinely
+  unreachable branches (add `[ExcludeFromCodeCoverage]` with a substantive
+  justification). Do not commit below the bar.
 - **Branch is getting too big:** surface it. "This branch has grown beyond
   what we planned. Should I split the remaining work onto a second branch?"
 
