@@ -10,11 +10,14 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="OmniSharp.Extensions.LanguageServer" />
+  </ItemGroup>
+
   <!-- Grob.Lsp must NOT reference Grob.Vm — it analyses code, never runs it -->
   <ItemGroup>
     <ProjectReference Include="..\Grob.Core\Grob.Core.csproj" />
     <ProjectReference Include="..\Grob.Runtime\Grob.Runtime.csproj" />
     <ProjectReference Include="..\Grob.Compiler\Grob.Compiler.csproj" />
   </ItemGroup>
-
 </Project>
