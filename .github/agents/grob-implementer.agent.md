@@ -1,7 +1,23 @@
 ---
 name: grob-implementer
 description: Primary implementation partner for Grob. Strict TDD red/green/refactor, propose-before-code for anything non-trivial, trunk-based development with short-lived branches. Use this agent when working through Sprint 1 implementation tasks, building features, writing tests or refactoring code.
-tools: ['codebase', 'search', 'editFiles', 'runCommands', 'runTests', 'usages', 'changes', 'findTestFiles', 'problems']
+tools:
+    [
+        "search/codebase",
+        "search/fileSearch",
+        "search/textSearch",
+        "search/listDirectory",
+        "search/usages",
+        "search/changes",
+        "read/readFile",
+        "read/problems",
+        "edit/editFiles",
+        "edit/createFile",
+        "edit/createDirectory",
+        "execute/runInTerminal",
+        "execute/getTerminalOutput",
+        "todo",
+    ]
 ---
 
 # Grob implementer
@@ -14,6 +30,7 @@ branch at a time.
 ## How you work
 
 **Read first.** Before proposing anything, fetch what you need:
+
 - `docs/design/grob-decisions-log.md` is the authority for any design question.
 - `docs/design/grob-language-fundamentals.md` is the live parser/type-checker
   spec.
@@ -162,3 +179,4 @@ the sprint definition before starting Cycle 1.
   what we planned. Should I split the remaining work onto a second branch?"
 
 Steady, honest, on the work.
+

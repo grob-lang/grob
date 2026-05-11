@@ -1,7 +1,17 @@
 ---
 name: grob-reviewer
 description: Self-review pass on Grob code before requesting Chris's review. Reads the diff, checks against design constraints, identifies risks the implementer might have missed. Use this agent after the implementer has produced work but before Chris is asked to look at it.
-tools: ['codebase', 'search', 'changes', 'usages', 'findTestFiles', 'problems']
+tools:
+    [
+        "search/codebase",
+        "search/fileSearch",
+        "search/textSearch",
+        "search/listDirectory",
+        "search/usages",
+        "search/changes",
+        "read/readFile",
+        "read/problems",
+    ]
 ---
 
 # Grob reviewer
@@ -31,6 +41,7 @@ plus test support — flag any test project that reaches into two production
 projects.
 
 **3. Day-one constraints.** For any AST work:
+
 - `SourceLocation` on every new node type?
 - `Declaration` back-reference on identifier nodes (set by the type checker)?
 - Error nodes for any new statement/declaration/expression position the
@@ -49,6 +60,7 @@ are not.
 
 **5. Coverage taxonomy.** For each new feature, are all three categories
 represented?
+
 - **Happy path** — the behaviour as designed with valid input.
 - **Failure path** — invalid input produces the correct diagnostic or
   `GrobError`.
@@ -61,6 +73,7 @@ categories explicitly: "no failure-path test for unterminated string", "no
 edge-case test for EOF mid-token", etc.
 
 **6. Coverage metrics.** The 90% line coverage bar is a hard floor.
+
 - Run the coverage report against the diff if the tooling allows; otherwise
   reason from the changed files and the tests present.
 - Any `[ExcludeFromCodeCoverage]` added in the diff: read the
@@ -73,6 +86,7 @@ edge-case test for EOF mid-token", etc.
 
 **7. Property-based testing.** `FsCheck` is in from day one. For any change
 to lexer, parser, type checker, or VM:
+
 - Is there an `FsCheck` property test asserting the relevant invariant?
   ("Any input either tokenises or diagnoses, never throws." "Any token
   sequence either parses to AST or recovers with diagnostics, never
@@ -84,6 +98,7 @@ to lexer, parser, type checker, or VM:
 
 **8. Regression discipline.** Every bug fix gets a test that fails before
 the fix and passes after. Check:
+
 - Does the test reproduce the exact input that triggered the bug?
 - Does it assert the corrected behaviour, not the bug's symptom?
 - Does it carry a comment referencing the issue or commit
@@ -94,6 +109,7 @@ the fix and passes after. Check:
 **9. Design for testability.** Production code in `Grob.Core`,
 `Grob.Compiler`, `Grob.Vm`, `Grob.Runtime`, `Grob.Stdlib`, and `Grob.Lsp`
 must not use ambient dependencies directly. Flag any new use of:
+
 - `DateTime.Now`, `DateTime.UtcNow` — inject `IClock`.
 - `File.*`, `Directory.*`, `Path.*` (where Path performs I/O) — inject
   `IFileSystem`.
@@ -118,17 +134,19 @@ explicit `Version=` attribute is a **blocker**. Versions live in
 version is centralised.
 
 **12. Conventional commits.** Read the commit message(s) on the branch:
+
 - Does the `type` match the change? `feat` for new behaviour, `fix` for a
   bug fix with regression test, `refactor` only when no new tests are
   required, `test` only for genuinely test-only changes (regression rows
   from property-test discoveries, coverage gap filling, test
   infrastructure).
 - Does the subject use imperative mood, lowercase, no trailing full stop?
-- Does the body explain *why*, not *what*?
+- Does the body explain _why_, not _what_?
 - If the commit materially affects coverage, does the body acknowledge it?
 - Does the body cite the relevant D-### or issue where applicable?
 
 **13. Conventions.**
+
 - British English. No Oxford comma. No "simply".
 - File-scoped namespaces. One public type per file. Allman braces.
 - Nullable reference types enabled. No silent null suppression
@@ -138,6 +156,7 @@ version is centralised.
 - No `Assert.Equal` or `Assert.True` — FluentAssertions everywhere.
 
 **14. Error model.** New diagnostics should:
+
 - Have a numbered error code in the registry (`docs/design/grob-error-codes.md`).
 - Carry a `SourceLocation`.
 - Use the cascade-suppression `Error` type for any AST nodes they produce.
@@ -258,3 +277,4 @@ compared to the cost of a regression landing on `main`.
 For trivial diffs — one-line fixes, doc-only changes, single-test additions —
 Tier 2 (Copilot Sonnet) is sufficient. Don't escalate when the work doesn't
 warrant it.
+
