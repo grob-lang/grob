@@ -9,12 +9,21 @@ The cycle is non-negotiable. Red, green, refactor, in that order, every
 time. The named exceptions are listed at the end of this skill — take them
 explicitly, not silently.
 
+A feature is not done after one green cycle. The cycle below covers a
+single behaviour; a feature is done when happy path, failure path, and
+edge cases are all green and the project is still at or above 90% line
+coverage. See `Step 5: Extend coverage` and `Step 6: Coverage check`
+below.
+
 ## The full procedure
 
 ### Step 1: Red
 
 Write a single test that exercises one specific behaviour. The behaviour
-should be observable through the public API of the type under test.
+should be observable through the public API of the type under test — or
+through the internal surface when `InternalsVisibleTo` makes the type
+reachable from the test assembly. Visibility itself follows the
+internal-by-default rule below.
 
 ```csharp
 public class LexerTests
@@ -55,13 +64,15 @@ Run it: `dotnet test --filter "FullyQualifiedName~LexerTests.Scan_EmptyInput_Ret
 
 ### Step 2: Green
 
-Write the *minimum* code that makes the test pass. Nothing more.
+Write the _minimum_ code that makes the test pass. Nothing more.
 
 If the test expects `EofTokenOnly` on empty input, the implementation might
 be as small as:
 
 ```csharp
-public sealed class Lexer
+// internal — only Grob.Compiler.Tests needs to construct one. Public
+// visibility is reserved for the project's contract; this is implementation.
+internal sealed class Lexer
 {
     private readonly string _source;
 
@@ -69,6 +80,8 @@ public sealed class Lexer
 
     public IReadOnlyList<Token> ScanAll()
     {
+        // file path empty in test fixture — production callers pass the
+        // real path through SourceLocation.
         return new[] { new Token(TokenKind.Eof, new SourceLocation(1, 1, "")) };
     }
 }
@@ -97,19 +110,157 @@ behaviour — revert and try a smaller step.
 The refactor step is **not optional**. Skipping it accumulates the design
 debt TDD is supposed to prevent.
 
-### Step 4: Commit
+### Step 4: Property test (lexer / parser / type checker / VM only)
 
-When the cycle is complete and the tests are green:
+For any work on the compilation or execution pipeline, write an FsCheck
+property test alongside the example-based test. The property asserts the
+invariant that no input — valid, invalid, or pathological — should ever
+crash the layer; it must always tokenise, parse, type-check, or execute to
+either a result or a diagnostic.
+
+```csharp
+[Property]
+public Property Scan_AnyInput_NeverThrows(string input)
+{
+    return ((Action)(() => new Lexer(input).ScanAll().ToList()))
+        .Should()
+        .NotThrow()
+        .ToProperty();
+}
+```
+
+If the property test finds a failing input, **don't fix the bug and move
+on.** Add the shrunk input as a regression `[Theory]` row alongside the
+property test in the same cycle. The property catches the class; the row
+pins the specific case.
+
+````csharp
+[Theory]
+[InlineData("```")]  // discovered by FsCheck — three backticks, no content
+public void Scan_TripleBacktickEmpty_DoesNotThrow(string input)
+{
+    Action act = () => new Lexer(input).ScanAll().ToList();
+    act.Should().NotThrow();
+}
+````
+
+Stdlib and other non-pipeline work doesn't need a property test by default,
+but reach for one whenever input space is large enough that examples can't
+cover it meaningfully (JSON, CSV, regex, path operations).
+
+### Step 5: Extend coverage
+
+Happy path is green. The feature is not done. Write the failure-path and
+edge-case tests now, each through its own red/green/refactor cycle.
+
+- **Happy path.** Behaviour as designed, valid input. Already covered by
+  Steps 1–3.
+- **Failure path.** Invalid input produces the correct diagnostic (with
+  the right error code, location, and message) or the correct `GrobError`
+  subtype at runtime.
+- **Edge cases.** Inputs at the boundaries of what's representable or
+  expected. The Grob-specific edge categories per layer (lexer, parser,
+  type checker, VM, stdlib) live in `tests.instructions.md` — read the
+  list for the layer you're working in. Don't guess at categories; the
+  list exists because they were chosen deliberately.
+
+Each new test follows the full red/green/refactor sequence. Each property
+test failure during Step 4 is paid down here.
+
+### Step 6: Coverage check
+
+Run coverage on the affected project. Confirm at or above 90% line
+coverage. If it dropped:
+
+- **Add the missing tests.** Coverage gaps usually point at a path the
+  feature exercises that none of the tests reach. Add a test.
+- **Exclude with substantive justification, when genuinely unreachable.**
+  For defensive guards against impossible states, platform-conditional
+  code, or generated code:
+
+    ```csharp
+    [ExcludeFromCodeCoverage(Justification =
+        "Defensive guard against null after compiler enforces non-nullable. " +
+        "Unreachable in normal execution; retained as belt-and-braces.")]
+    private static void ThrowUnreachable() => throw new InvalidOperationException();
+    ```
+
+    "Helper method" is not a justification. "Defensive branch unreachable
+    while X holds" is. If you can't write a substantive justification, the
+    exclusion is wrong and a test is needed instead.
+
+Do not commit below the bar.
+
+### Step 7: Commit
+
+When the cycle is complete, all categories are green, and coverage is
+at or above 90%:
 
 1. `git status` to see what changed.
-2. Decide if this is one commit or two:
-   - One: the test and implementation are tightly coupled, the change is
-     small, separating them adds no value.
-   - Two: the test is genuinely separate (e.g. covering existing behaviour
-     that wasn't tested, or testing a different unit). Commit the test first
-     as `test(scope):`, then the implementation as `feat(scope):`.
-3. Use the `/commit-message` prompt to draft the message.
-4. Stage and show the message to Chris. Don't auto-commit.
+2. The commit type:
+    - **`feat`** — new behaviour. Always includes the tests in the same
+      commit. `feat` without tests in the diff is not a `feat`.
+    - **`fix`** — bug fix. Always includes the regression test in the same
+      commit. `fix` without a regression test is not a `fix`.
+    - **`refactor`** — structural change with no new behaviour. No new
+      tests should be required; if new tests are needed, it isn't a
+      refactor.
+    - **`test`** — genuinely test-only work: regression rows from
+      property-test discoveries that aren't paired with a fix, coverage
+      gap filling on already-shipped code, test infrastructure changes.
+3. If coverage moved materially — `[ExcludeFromCodeCoverage]` added,
+   tested code removed, percentage dropped — note it in the commit body
+   with the justification.
+4. Use the `/commit-message` prompt to draft the message.
+5. Stage and show the message to Chris. Don't auto-commit.
+
+## Design for testability
+
+The example lexer above takes a string and returns tokens — no ambient
+dependencies. Most pipeline code is like that and presents no testability
+issues. When the code you're writing touches the clock, the filesystem,
+the console, the environment, or a process, **don't reach for the static
+API**. Inject an abstraction:
+
+- `DateTime.Now` / `DateTime.UtcNow` → inject `IClock`.
+- `File.*` / `Directory.*` → inject `IFileSystem`.
+- `Console.*` → inject `IConsole`.
+- `Environment.*` → inject the appropriate abstraction.
+- `Process.Start` → inject `IProcessRunner`.
+
+The interfaces live in `Grob.Core`; the concrete implementations live at
+the composition root (`Grob.Cli`). Tests substitute fakes. This is the
+single largest determinant of whether a project hits the 90% bar — see
+`csharp.instructions.md` for the full set of design-for-testability rules.
+
+## Regression cycles
+
+A bug fix is a TDD cycle with a different shape. The sequence:
+
+1. **Reproduce.** Write a test that triggers the exact failure the bug
+   report describes. Run it. Watch it fail — but verify the failure is
+   the bug, not a different bug or a setup problem.
+2. **Comment.** Add a comment to the test referencing the issue or
+   commit:
+
+    ```csharp
+    // Regression: see issue #142
+    [Fact]
+    public void Pop_EmptyStack_ThrowsInternalVmError()
+    ```
+
+3. **Co-locate.** Put the test alongside the related happy-path tests
+   for the same type — not in a separate `RegressionTests` file.
+   Co-location keeps context for the next person reading the file.
+4. **Fix.** Write the minimum code to make the test pass.
+5. **Refactor, extend coverage, coverage check, commit** as in the
+   standard cycle. The commit type is `fix`, not `feat`. The test is
+   in the same commit as the fix.
+
+The regression test asserts the **corrected** behaviour, not the bug's
+symptom. "Throws `InternalVmError` with the instruction offset" is the
+assertion. "Doesn't crash the host process" is the symptom that pointed
+at the bug.
 
 ## xUnit specifics
 
@@ -156,6 +307,26 @@ public void Scan_InvalidStringLiteral_ProducesExpectedDiagnostic(
     var diagnostics = new Lexer(source).ScanAll().Diagnostics;
     diagnostics.Should().ContainSingle()
         .Which.Code.Should().Be(expectedCode);
+}
+```
+
+### `[Property]` for invariants
+
+Property tests live alongside `[Fact]` and `[Theory]` tests in the same
+class. Use them for the cross-input invariants that example-based tests
+can't reach exhaustively.
+
+```csharp
+[Property]
+public Property Parse_AnyTokenSequence_NeverInfiniteLoops(string input)
+{
+    return ((Func<bool>)(() =>
+    {
+        var tokens = new Lexer(input).ScanAll();
+        var parser = new Parser(tokens);
+        parser.Parse();
+        return true;
+    })).Should().NotThrow().And.Subject().ToProperty();
 }
 ```
 
@@ -233,3 +404,12 @@ The exception is the scaffolding. Implementation hiding behind a
 - **Two tests fail when only one should:** the second test depends on the
   first or the implementation has unwanted side effects. Investigate before
   proceeding.
+- **Property test finds a failure:** good. That's what it's for. Add the
+  shrunk input as a regression row, fix the bug, re-run both the row and
+  the property. The fix is part of this cycle, not a follow-up.
+- **Coverage drops below 90% at Step 6:** stop. Add tests, or add
+  `[ExcludeFromCodeCoverage]` with a substantive justification — and note
+  it in the commit body. Do not commit below the bar.
+- **Production code reaches for `DateTime.Now`, `File.*`, `Console.*`:**
+  stop. Inject the abstraction (see Design for testability above). Direct
+  ambient access blocks the 90% bar and breaks parallel test execution.
