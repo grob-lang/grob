@@ -1,6 +1,11 @@
 # Grob
 
-*A statically typed scripting language that a hobbyist can learn and a developer can trust.*
+[![CI](https://github.com/grob-lang/grob/actions/workflows/ci.yml/badge.svg)](https://github.com/grob-lang/grob/actions/workflows/ci.yml)
+[![Release](https://github.com/grob-lang/grob/actions/workflows/release.yml/badge.svg)](https://github.com/grob-lang/grob/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
+
+_A statically typed scripting language that a hobbyist can learn and a developer can trust._
 
 ---
 
@@ -82,4 +87,4 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-*Grob is a hobby project but it is not a toy.*
+_Grob is a hobby project but it is not a toy._
