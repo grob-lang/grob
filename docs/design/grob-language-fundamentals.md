@@ -96,15 +96,32 @@ select (value) {
 - Multiple values per case arm: `case 1, 2 { }` — matches either value.
 - `default` arm is optional. If omitted and no case matches, execution continues
   past the `select` block with no error.
-- Exhaustiveness is **not** enforced on `select` statements. (The switch
-  *expression* enforces exhaustiveness because a missing case means a missing
-  value — `select` has no such constraint.)
+- Exhaustiveness is **not** enforced on `select` statements. See "Why `select`
+  is non-exhaustive" below.
 - Works on any comparable type: `int`, `string`, `bool`.
 - `break` does not apply inside `select` — no fall-through means it is never
   needed. To exit an enclosing loop from inside a `select`, restructure into a
   function and use `return`, or use a flag variable.
 - `select` is always a **statement**. The switch expression (`value switch { }`)
   is always an **expression**. The two forms are syntactically unambiguous.
+
+### Why `select` is non-exhaustive
+
+The switch *expression* (§3.1) enforces exhaustiveness because every input must
+produce a value — a missing case means a missing value, which is a bug. The
+`select` *statement* runs side-effecting blocks and produces no value. "No case
+matched, so do nothing" is a legitimate intent, not a bug. Forcing exhaustiveness
+on the statement form would push authors to write `default { }` solely to
+satisfy the checker, which adds noise without adding safety.
+
+This is the same split C# draws between its `switch` statement (non-exhaustive)
+and its switch expression (exhaustive), for the same reason. F#, Scala, Rust and
+Kotlin make a comparable distinction.
+
+The two forms cover different jobs. Reach for the expression when you are
+producing a value; reach for the statement when you are running side-effecting
+branches. Pick the form that matches the intent, not the form whose
+exhaustiveness rule is more convenient.
 
 -----
 
@@ -865,13 +882,13 @@ same type.
 
 ```grob
 // Implicit last expression
-.map(line => {
+.select(line => {
     parts := line.split("|")
     BranchInfo { branch: parts[0], date: parts[1], author: parts[2] }
 })
 
 // Implicit with early return
-.map(r => {
+.select(r => {
     if (r.status == "deleted") {
         return EmptyRecord { }
     }
@@ -1089,13 +1106,13 @@ Leading-dot style is the **recommended form** for multi-line method chains:
 // Recommended — leading dot
 result := files
     .filter(f => f.extension == ".log")
-    .map(f => f.name)
+    .select(f => f.name)
     .sort()
 
 // Also valid — trailing dot
 result := files.
     filter(f => f.extension == ".log").
-    map(f => f.name).
+    select(f => f.name).
     sort()
 
 // Multi-line expression — trailing operator
@@ -2011,7 +2028,167 @@ languages that prioritise script correctness over expression compactness.
 
 -----
 
-*Document updated April 2026 — Session B Part 4: three parked decisions*
+## 29. Parser Error Recovery
+
+The parser is error-recovering and stateless. When it encounters input it
+cannot parse, it emits a diagnostic, builds a placeholder node where a
+well-formed node was expected, advances to the next recovery anchor, and
+resumes parsing. A single malformed construct does not abort the parse.
+
+This is a day-one requirement, not a polish pass. Sprint 1 produces a
+parser that already implements this contract. Retrofitting error recovery
+later requires touching every parse method.
+
+### 29.1 Synchronisation set
+
+When the parser fails to parse a construct, it skips tokens until it sees
+a **recovery anchor**, then resumes at that anchor. The anchor set is
+fixed by the spec. The parser does not adapt the set based on context —
+the same anchors apply everywhere.
+
+**Anchors.** A token is an anchor if any of the following holds:
+
+- It is a **statement-boundary newline outside any open bracket**. The
+  lexer tracks bracket nesting depth (`(`, `[`, `{` increase; `)`, `]`,
+  `}` decrease); a newline at depth zero is a statement boundary.
+- It is the **closing brace `}`** of an enclosing block. Recovery does
+  not skip past the surrounding block — the `}` ends the recovery.
+- It is the **start keyword of a top-level declaration**: `fn`, `type`,
+  `param`, `import`, `const`, `readonly`.
+
+The parser skips tokens that are neither anchors nor part of any nested
+bracket structure. Brackets are tracked: a `(` inside the skipped region
+must be matched by a `)` before the parser will treat any subsequent
+newline as an anchor. This prevents recovery from terminating inside a
+parenthesised expression that began before the error.
+
+**End-of-file** terminates recovery unconditionally. The parser emits
+any pending diagnostics and returns whatever AST it has built.
+
+### 29.2 Error nodes in the AST
+
+Where the parser expected a well-formed node and could not produce one,
+it emits an **error node** of the appropriate kind:
+
+- `ErrorExpr` — produced where an expression was expected. Carries the
+  source range of the failed parse and the diagnostic message.
+- `ErrorStmt` — produced where a statement was expected. Same fields.
+- `ErrorDecl` — produced where a top-level declaration was expected.
+  Same fields.
+
+Error nodes are first-class AST citizens. Every visitor that traverses
+the AST handles them — the type checker, the compiler, the formatter,
+the LSP. This means the AST shape mirrors the source even when broken,
+which is essential for editor tooling: go-to-definition, hover, and
+completion all keep working on the surrounding well-formed code while a
+broken construct sits in the middle.
+
+The type checker assigns every error node the type `Error`. This type
+is **assignable to and from every other type** — it produces no further
+diagnostics on use. See §29.3.
+
+The error node's source range covers the failed parse from the first
+unexpected token to the recovery anchor (exclusive of the anchor). This
+range drives editor squiggle rendering and LSP diagnostic positioning.
+
+### 29.3 Cascade suppression
+
+A single parse error must not produce a cascade of downstream diagnostics.
+Cascade suppression is implemented via the `Error` type:
+
+- An expression of type `Error` produces no further type-mismatch
+  diagnostics regardless of context. `Error + int`, `Error.foo`,
+  `f(Error)` are all silent.
+- A statement that contains an error node still type-checks the parts
+  that did parse cleanly. Errors in those parts are reported normally.
+- A declaration that produced `ErrorDecl` is registered in the symbol
+  table with a synthetic name and the type `Error`. References to that
+  name resolve to the synthetic entry — they do not produce
+  "undefined identifier" diagnostics.
+
+The intent is one diagnostic per root cause. A parse error at line 12
+does not produce thirty type errors at lines 14, 17, 23, etc. The
+developer fixes the parse error, recompiles, and any genuine downstream
+errors then surface. This matches the developer-on-save workflow that
+the LSP integration depends on.
+
+### 29.4 Diagnostic cap
+
+There is **no per-file cap** on diagnostics. The parser reports every
+error it finds, the type checker reports every error it finds, and the
+build prints them all. This is consistent with the two-mode error
+collection rule (`grob-v1-requirements.md` §10): the compiler and type
+checker collect all errors before execution, and the developer should
+see the full set.
+
+A cap would interact poorly with the LSP integration — capping at, say,
+one hundred would mean a developer working on a file with many errors
+sees the same hundred until they fix the first ones, with no signal
+that more exist. Unbounded reporting is the simpler and more honest
+contract.
+
+In pathological cases the parser may produce a long error stream. This
+is acceptable — pathological cases are rare in practice, and an
+overlong stream is a clearer signal than truncation that the input is
+seriously malformed.
+
+### 29.5 Statelessness
+
+The parser carries **no state** across files or invocations beyond the
+token stream and the AST it is building for the current parse. There is
+no error-history-influenced recovery, no learned anchor weighting, no
+cross-file diagnostic deduplication. Each file is parsed independently
+from a clean slate.
+
+Statelessness is a property the LSP relies on — every keystroke triggers
+a re-parse of the affected file, and the parse must produce the same
+diagnostics for the same input regardless of what was parsed before.
+
+### 29.6 Worked example
+
+```grob
+fn add(a: int, b: int) {
+    return a +
+}                       // <- parser hits `}` while expecting RHS
+
+x := add(1, 2)          // <- this still parses cleanly
+y := nonexistent + 5    // <- this surfaces a separate "undefined identifier"
+```
+
+Parser behaviour on this input:
+
+1. Inside `return a +`, the parser expects an expression as the RHS of
+   `+` and finds the closing `}` instead. It emits `error: expected
+   expression after '+'` and produces an `ErrorExpr` whose range covers
+   from the `+` to the `}` (exclusive). The `}` is the recovery anchor.
+2. The `add` function declaration completes. The function body is well-
+   formed except for the `ErrorExpr` inside the `return`.
+3. The type checker assigns `ErrorExpr` the type `Error`. The `return`
+   statement's checked return type is `Error`, which is compatible with
+   the declared `int`. No further diagnostic is emitted from the return.
+4. The parse continues at the next top-level statement. `x := add(1, 2)`
+   parses and type-checks cleanly. `y := nonexistent + 5` produces a
+   separate `error: undefined identifier 'nonexistent'`.
+
+Final diagnostic count: two. One for the malformed `return`, one for the
+undefined identifier. The `return`'s type implications produce no
+further errors. The clean code between the two genuine errors compiles
+without noise.
+
+-----
+
+*Document updated May 2026 — Session 3 spec gap fill: new §29 (Parser*
+*Error Recovery) specifying the synchronisation set (statement-boundary*
+*newlines outside open brackets, closing `}` of enclosing blocks, top-*
+*level declaration keywords), error node shape (first-class `ErrorExpr`/*
+*`ErrorStmt`/`ErrorDecl` with the `Error` type), cascade suppression*
+*(the `Error` type is assignable to and from every other type),*
+*unbounded diagnostic reporting, statelessness, and a worked example*
+*(D-300). §3 `select` exhaustiveness rule expanded with a "Why `select`*
+*is non-exhaustive" rationale paragraph naming the statement-vs-*
+*expression intent split and the C#/F#/Scala/Rust/Kotlin precedent*
+*(D-301).*
+*Previous: April 2026 — Session B Part 4: three parked decisions*
 *finalised under the `const`/`readonly` keyword model. New §19.1 (D-294 —*
 *top-level initialisation order and circular-read detection via a*
 *three-state slot tag, startup-only cost); new §10 field-default*
