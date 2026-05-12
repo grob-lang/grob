@@ -1,9 +1,48 @@
+# Normalise all text files to LF on commit.
+# Git converts on the way in; editors see whatever the OS prefers on checkout.
+
 * text=auto eol=lf
-*.cs text eol=lf
-*.md text eol=lf
-*.json text eol=lf
-*.xml text eol=lf
-*.slnx text eol=lf
-*.csproj text eol=lf
-*.props text eol=lf
-*.targets text eol=lf
+
+# Source and project files
+*.cs        text eol=lf
+*.csproj    text eol=lf
+*.slnx      text eol=lf
+*.sln       text eol=lf
+*.props     text eol=lf
+*.targets   text eol=lf
+
+# Config and data files
+*.json      text eol=lf
+*.xml       text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.toml      text eol=lf
+*.editorconfig text eol=lf
+*.gitattributes text eol=lf
+*.gitignore text eol=lf
+
+# Documentation
+*.md        text eol=lf
+*.txt       text eol=lf
+
+# Shell and scripts
+*.sh        text eol=lf
+*.ps1       text eol=lf
+*.psm1      text eol=lf
+*.psd1      text eol=lf
+*.cmd       text eol=lf
+*.bat       text eol=lf
+
+# Binary files — never touch line endings
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+*.nupkg     binary
+*.snupkg    binary
+*.dll       binary
+*.exe       binary
+*.pdb       binary
