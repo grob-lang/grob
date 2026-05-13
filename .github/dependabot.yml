@@ -1,0 +1,67 @@
+# Dependabot configuration for the Grob repository.
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+
+updates:
+  # ── NuGet (.NET) ──────────────────────────────────────────────────────────
+  # Scans the solution root where Directory.Packages.props lives (Central
+  # Package Management).  Dependabot reads CPM props files automatically.
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/London"
+
+    # Keep the open-PR count manageable for a single-developer project.
+    open-pull-requests-limit: 10
+
+    # Labels applied to every NuGet dependency PR.
+    labels:
+      - "dependencies"
+      - "nuget"
+
+    # Conventional Commits prefix for NuGet dependency bumps.
+    commit-message:
+      prefix: "chore(deps)"
+
+    # Group all minor and patch bumps into a single weekly PR; majors get
+    # their own PR so breaking changes are reviewed individually.
+    groups:
+      nuget-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── GitHub Actions ────────────────────────────────────────────────────────
+  # Keeps action versions in .github/workflows/** up to date.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/London"
+
+    # Fewer Actions PRs expected week-to-week.
+    open-pull-requests-limit: 5
+
+    # Labels applied to every Actions dependency PR.
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+    # Conventional Commits prefix for CI workflow bumps.
+    commit-message:
+      prefix: "chore(ci)"
+
+    # Group all minor and patch bumps; majors remain individual PRs.
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
