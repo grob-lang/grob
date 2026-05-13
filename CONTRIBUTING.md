@@ -61,7 +61,7 @@ document — this confirmation is implicit in your PR submission.
 
 ## Code conventions
 
-The project targets C# 12 on .NET 10 LTS. `Nullable` and `TreatWarningsAsErrors`
+The project targets C# 14 on .NET 10 LTS. `Nullable` and `TreatWarningsAsErrors`
 are both enabled.
 
 ### Naming
