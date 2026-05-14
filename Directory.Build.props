@@ -10,9 +10,8 @@
   </PropertyGroup>
 
   <!-- Automatically add coverlet's data collector to every test project so
-       that 'dotnet test --collect:"XPlat Code Coverage"' works without any
-       per-project changes.  The version is managed centrally in
-       Directory.Packages.props. -->
+       that coverage collection works without any per-project changes.
+       The version is managed centrally in Directory.Packages.props. -->
   <ItemGroup Condition="'$(IsTestProject)' == 'true'">
     <PackageReference Include="coverlet.collector" />
   </ItemGroup>
