@@ -1,0 +1,40 @@
+name: "Security: TruffleHog"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  TruffleHog:
+    name: TruffleHog
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 retrieves the full git history so TruffleHog can scan
+          # every commit when running on a push to main.
+          fetch-depth: 0
+
+      # On push to main: scan the entire git history for verified secrets.
+      - name: TruffleHog scan (full history – push to main)
+        if: github.event_name == 'push'
+        uses: trufflesecurity/trufflehog@v3.95.3
+        with:
+          extra_args: --only-verified
+
+      # On pull requests: scope the scan to the diff between base and head
+      # commits only, keeping CI fast and avoiding re-flagging old history.
+      - name: TruffleHog scan (PR diff only)
+        if: github.event_name == 'pull_request'
+        uses: trufflesecurity/trufflehog@v3.95.3
+        with:
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+          extra_args: --only-verified
