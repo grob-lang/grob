@@ -1,0 +1,61 @@
+name: "Security: Trivy"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Minimum permissions: read source, write SARIF results to Code Scanning.
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  trivy-scan:
+    name: Trivy Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # First pass: emit SARIF covering all severity levels so that MEDIUM and
+      # lower findings still appear in the GitHub Security → Code scanning tab.
+      # exit-code is 0 here so the upload step is always reached regardless of
+      # what Trivy finds.
+      - name: Run Trivy filesystem scan (SARIF output)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: "0"
+          # Skip .NET build artifacts and VCS metadata to avoid false positives
+          # from binaries that are not part of the distributed package.
+          skip-dirs: .git,**/bin,**/obj
+
+      # Upload the SARIF file so findings appear in the Security tab alongside
+      # CodeQL results. `if: always()` ensures upload runs even if later steps
+      # fail.
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      # Second pass: re-run scoped to CRITICAL and HIGH only and fail the
+      # workflow if any are found. MEDIUM and lower are informational (uploaded
+      # above) but do not block merges.
+      # skip-setup-trivy avoids re-downloading the Trivy binary installed above.
+      - name: Fail on CRITICAL and HIGH vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+          skip-dirs: .git,**/bin,**/obj
+          skip-setup-trivy: true
