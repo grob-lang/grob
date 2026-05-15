@@ -5,7 +5,7 @@
 > This document is the implementation reference for the parser, type checker,
 > and compiler for all foundational language features.
 > When this document and the decisions log conflict, the decisions log wins.
-> 
+>
 > **Tooling note:** The keyword list and operator set in this document are the
 > authoritative source for the TextMate grammar (`grob.tmLanguage.json`).
 > When keywords are added or changed, the grammar must be updated.
@@ -267,13 +267,13 @@ is a compile error.
 3. **`map<K, V>`** — iterates keys in insertion order. The **two-identifier form
    is required** (`for k, v in myMap`). The single-identifier form on a map is a
    compile error:
-   
+
    ```
    error: `for k in myMap` is not valid for map<K, V>.
    Use `for k, v in myMap` to iterate key-value pairs,
    or `for k in myMap.keys` to iterate keys only.
    ```
-   
+
    Lowered to a `while` loop over an internal keys array.
 
 A formal iterable protocol is post-MVP. The compiler architecture accommodates

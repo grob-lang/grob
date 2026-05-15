@@ -3,19 +3,19 @@
 > **Purpose:** This document defines exactly what Grob v1 includes. It is the
 > build guide. Every feature listed here ships with the public release. Every
 > feature not listed here does not.
-> 
+>
 > **Authority:** This document draws from the decisions log (the authority on
 > all design decisions), the language fundamentals spec, the stdlib reference,
 > the type registry, the VM architecture notes, the install strategy and the
 > personality doc. Where those documents describe post-MVP features, this
 > document excludes them. Where they describe v1 features, this document
 > includes them and specifies acceptance criteria.
-> 
+>
 > **Methodology:** The build plan follows agile methodology. Each sprint
 > produces a working, testable, valuable increment. Opcodes, enums and
 > infrastructure are built out completely — never in an additive, drip-feed
 > manner. Error handling and line tracking are present from day one.
-> 
+>
 > **Last updated:** April 2026
 
 -----
@@ -395,7 +395,7 @@ public enum OpCode : byte
     TryBegin,           // mark start of try block (operand: handler table index)
     TryEnd,             // mark end of try block
     Throw,              // throw exception (top of stack)
-    
+
     // --- Module ---
     Import,             // load plugin module (operand: name index)
 }

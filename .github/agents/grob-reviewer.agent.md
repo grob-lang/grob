@@ -277,4 +277,3 @@ compared to the cost of a regression landing on `main`.
 For trivial diffs — one-line fixes, doc-only changes, single-test additions —
 Tier 2 (Copilot Sonnet) is sufficient. Don't escalate when the work doesn't
 warrant it.
-

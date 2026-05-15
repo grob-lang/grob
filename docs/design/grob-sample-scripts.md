@@ -4,15 +4,15 @@
 > Each entry shows a real script from PS, bash, or Go — then the Grob equivalent.
 > Grob scripts use the language and stdlib as currently designed.
 > Gaps, assumptions, and confidence ratings are explicit.
-> 
+>
 > **Confidence ratings:**
-> 
+>
 > - ⭐⭐⭐ Solid — language and stdlib fully designed, Grob script is authoritative
 > - ⭐⭐ Likely — design mostly locked, minor assumptions made
 > - ⭐ Gap — design decisions needed before this is implementable
-> 
+>
 > **Annotations:**
-> 
+>
 > - `[ASSUMPTION]` — reasonable guess at stdlib shape, not yet locked
 > - `[GAP]` — feature or module not yet designed
 > - `[NOISE]` — original script complexity that Grob sidesteps by design

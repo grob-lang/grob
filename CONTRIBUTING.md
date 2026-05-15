@@ -98,3 +98,15 @@ Use GitHub Issues. Include:
 - What happened.
 - A minimal Grob script that reproduces the problem.
 - Grob version (`grob --version`).
+
+## Pre-commit Hooks
+
+This repository uses the pre-commit framework. Install once after
+cloning:
+
+    pip install pre-commit
+    pre-commit install
+
+Hooks run automatically on every commit. To run manually:
+
+    pre-commit run --all-files

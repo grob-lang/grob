@@ -25,7 +25,7 @@ repos:
     hooks:
       - id: trufflehog
         name: TruffleHog — secret scan
-        args: [--only-verified, --fail]
+        args: [--only-verified] # --fail is already set in the hook's own entry
 
   # ---------------------------------------------------------------------------
   # General file hygiene — pre-commit/pre-commit-hooks

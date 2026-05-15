@@ -982,7 +982,7 @@ case OpCode.Call:
 ### Registering Native Functions
 
 ```csharp
-vm.RegisterNative("print", 
+vm.RegisterNative("print",
     signature: new FunctionSignature(
         parameters: [new Parameter("value", GrobType.Any)],
         returnType: GrobType.Nil
