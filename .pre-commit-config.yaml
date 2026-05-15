@@ -1,0 +1,89 @@
+# .pre-commit-config.yaml
+#
+# Activating hooks
+# ----------------
+#   Every clone must run `pre-commit install` once.
+#   To scan the whole tree immediately: `pre-commit run --all-files`
+#
+# Updating pinned versions
+# ------------------------
+#   Run `pre-commit autoupdate` to bump all repo revs to their latest tags.
+
+default_stages: [pre-commit]
+fail_fast: false # run every hook even when an earlier one fails — show the full picture
+
+repos:
+  # ---------------------------------------------------------------------------
+  # Secret scanning — TruffleHog
+  #
+  # Scans staged git content for verified credentials before they leave the
+  # developer's machine.  Uses the hook definition shipped in the TruffleHog
+  # repo itself (language: golang; no extra installation step needed).
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/trufflesecurity/trufflehog
+    rev: v3.88.3 # pin to a known-good release; run `pre-commit autoupdate` periodically
+    hooks:
+      - id: trufflehog
+        name: TruffleHog — secret scan
+        args: [--only-verified] # --fail is already set in the hook's own entry
+
+  # ---------------------------------------------------------------------------
+  # General file hygiene — pre-commit/pre-commit-hooks
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Remove trailing whitespace from every staged text file.
+      - id: trailing-whitespace
+
+      # Ensure every text file ends with exactly one newline character.
+      - id: end-of-file-fixer
+
+      # Validate YAML syntax (catches typos in config files early).
+      - id: check-yaml
+
+      # Validate JSON syntax.
+      - id: check-json
+
+      # Block commits that still contain unresolved merge-conflict markers
+      # (<<<<<<, =======, >>>>>>>).
+      - id: check-merge-conflict
+
+      # Reject files larger than 500 KB to prevent accidental binary blobs
+      # from ending up in history.
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
+      # Enforce LF line endings on all text files except .NET
+      # project/solution files (see CRLF hook below).
+      - id: mixed-line-ending
+        name: mixed-line-ending (enforce LF)
+        args: [--fix=lf]
+        exclude: \.(csproj|sln|slnx|props|targets)$
+
+      # .NET project and solution files are written by Visual Studio with CRLF.
+      # Keeping CRLF here avoids noise in diffs and tooling warnings.
+      - id: mixed-line-ending
+        name: mixed-line-ending (enforce CRLF for .NET project files)
+        args: [--fix=crlf]
+        files: \.(csproj|sln|slnx|props|targets)$
+
+  # ---------------------------------------------------------------------------
+  # C# formatting — dotnet format (local hook)
+  #
+  # Runs `dotnet format --verify-no-changes` against only the staged .cs files
+  # so the check is fast and surgical.  Requires the .NET SDK on PATH, which is
+  # already a build prerequisite for this repo.
+  #
+  # pre-commit appends the list of staged file paths as positional arguments
+  # after `--include`, so the final command is:
+  #   dotnet format Grob.slnx --verify-no-changes --include <file1> <file2> …
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: dotnet-format
+        name: dotnet format — verify no changes
+        language: system
+        entry: dotnet format Grob.slnx --verify-no-changes --include
+        files: \.cs$
+        pass_filenames: true

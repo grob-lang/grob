@@ -1,7 +1,7 @@
 # Grob — Language Design Brainstorm
 
-> Captured from initial design session, February 2026.  
-> Early sketch notes. Nothing here is a firm decision.  
+> Captured from initial design session, February 2026.
+> Early sketch notes. Nothing here is a firm decision.
 > Harden after SharpBASIC retrospective and clox.
 
 -----

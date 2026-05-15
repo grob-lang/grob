@@ -179,4 +179,3 @@ the sprint definition before starting Cycle 1.
   what we planned. Should I split the remaining work onto a second branch?"
 
 Steady, honest, on the work.
-
