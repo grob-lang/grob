@@ -28,6 +28,8 @@ Grob.sln
 │   ├── Grob.Vm.Tests/
 │   ├── Grob.Stdlib.Tests/
 │   └── Grob.Integration.Tests/
+├── bench/
+│   └── Grob.Benchmarks/        ← BenchmarkDotNet harness — D-302 — per-sprint regression gate
 └── tooling/
     └── Grob.VsCode/             ← VS Code extension (TypeScript) — Phase 1 + Phase 3
         ├── package.json
@@ -306,6 +308,20 @@ Each project is independently testable in isolation.
 
 Compiler output tests are the highest priority. Bugs live in the compiler.
 The VM loop can be trusted once verified on simple cases.
+
+### Benchmarking
+
+Performance is gated separately from correctness. The `bench/Grob.Benchmarks`
+project — sibling to `src/`, `tests/`, `plugins/` and `tooling/` — drives
+the BenchmarkDotNet harness defined by D-302. Three categories
+(compile-time, VM execution, end-to-end script) plus a separate
+stability test. Full benchmark run at sprint close; 5% end-to-end
+regression against the committed baseline is the gate. Stability test
+runs at a longer cadence (per release or on demand). Authoritative
+spec: `grob-benchmarking-strategy.md`.
+
+Tests run on every commit in CI. Benchmarks do not. They have different
+lifecycles and the directory structure reflects that.
 
 -----
 
