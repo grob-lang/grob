@@ -266,6 +266,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 |D-183|Apr 2026|No tuples                   |Not in v1; use structs; post-MVP if friction observed                                       |
 |D-184|Apr 2026|No out parameters           |Not in v1 and not planned; nullable returns cover the use case                              |
 |D-185|Apr 2026|Try-parse pattern           |Nullable return types; `toInt() → int?`; `??` for defaults                                  |
+|D-186|Apr 2026|v1 scope                    |v1 scope-cut list: validation decorators and regex literals; activation at Chris's discretion|
 |D-270|Apr 2026|Tokenisation — built-ins    |`print`, `exit`, `input` are built-in functions, not keywords                               |
 |D-271|Apr 2026|Operator precedence         |`??` binds tighter than ternary; corrects §7 ordering                                       |
 |D-272|Apr 2026|Operator precedence         |Assignment operators not in precedence table; new §28 Statement Forms                       |
@@ -282,7 +283,6 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 |D-283|Apr 2026|Compiler warnings           |Drop `snake_case` compiler warning; naming convention moves to formatter layer              |
 |D-284|Apr 2026|Exception hierarchy         |`RuntimeError` split: four new typed leaves + residual; hierarchy now ten leaves            |
 |D-285|Apr 2026|String literals             |Backtick raw strings canonical idiom for Windows paths and literal backslash content        |
-|D-186|Apr 2026|v1 scope                   |v1 scope-cut list: validation decorators and regex literals; activation at Chris's discretion|
 |D-286|Apr 2026|Forward references          |Cross-declaration reference rules; all top-level forward reference forms documented        |
 |D-287|Apr 2026|Type system                 |Non-nullable type cycles are a compile error; DFS detection with three visit states        |
 |D-288|Apr 2026|Variables                   |Split `const` into `const` (compile-time) and `readonly` (runtime-once)                    |
@@ -294,6 +294,12 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 |D-294|Apr 2026|Runtime                     |Top-level initialisation order: source order; three-state tag for circular detection        |
 |D-295|Apr 2026|User-defined types          |Type field default evaluation at construction time, construction-site scope                 |
 |D-296|Apr 2026|Closures                    |Four-category variable resolution in lambdas; `const` inlined, others via globals/upvalues |
+|D-297|Apr 2026|VM — value representation  |`GrobValue` provisional shape; nine-variant tagged-union struct under .NET 10 LTS           |
+|D-298|Apr 2026|VM — bytecode file format  |`.grobc` skeleton spec; 40-byte header; `.grob/cache/` side directory; mtime invalidation   |
+|D-299|Apr 2026|Sprint plan                 |Sprint 8/9 reordered by dependency weight; `fs → date` is the only hard cross-module link  |
+|D-300|May 2026|Compiler — error recovery   |Parser error recovery: synchronisation set, `Error*` nodes, cascade suppression, no cap     |
+|D-301|May 2026|Control flow                |`select` statement is non-exhaustive; switch expression is exhaustive — intentional split  |
+|D-302|May 2026|Tooling — benchmarking      |BenchmarkDotNet harness in `bench/Grob.Benchmarks`; three categories + stability; committed baselines; no CLI surface in v1|
 
 -----
 
@@ -1823,7 +1829,7 @@ Area: Grob.Zip — API shape
 Supersedes: none
 Superseded by: none
 
-First-party plugin (`import Grob.Zip`). Three `zip.create()` overloads: source is a directory path string, a `File` object (file or directory — `file.path` extracted internally), or a `string[]` of explicit file paths. All accept `overwrite: bool = false`; throws `IoError` if destination exists and `overwrite` is false. `zip.extract(archive: string, dest: string, overwrite: bool = false): void`. `zip.list(archive: string): ZipEntry[]` — reads central directory only, no extraction. `ZipEntry` type: `name: string`, `size: int`, `compressedSize: int`, `modified: date`. Password-protected zips are post-MVP. Large archives never loaded fully into memory. All failures throw `IoError`. No `File[]` overload — use `.map(f => f.path)` to convert `File[]` to `string[]`.
+First-party plugin (`import Grob.Zip`). Three `zip.create()` overloads: source is a directory path string, a `File` object (file or directory — `file.path` extracted internally), or a `string[]` of explicit file paths. All accept `overwrite: bool = false`; throws `IoError` if destination exists and `overwrite` is false. `zip.extract(archive: string, dest: string, overwrite: bool = false): void`. `zip.list(archive: string): ZipEntry[]` — reads central directory only, no extraction. `ZipEntry` type: `name: string`, `size: int`, `compressedSize: int`, `modified: date`. Password-protected zips are post-MVP. Large archives never loaded fully into memory. All failures throw `IoError`. No `File[]` overload — use `.select(f => f.path)` to convert `File[]` to `string[]`.
 
 -----
 
@@ -2464,7 +2470,7 @@ A type declaration cannot contain a cycle of required non-nullable fields that w
 
 **Detection:** standard DFS with `Unvisited` / `Visiting` / `Visited` states per type. A back-edge to a type currently on the stack is a cycle. The full path is reported in the diagnostic, naming both fix paths (nullable and collection). Example: `type Tree { children: Tree[] }` is legal; `type A { b: B }` / `type B { a: A }` is a compile error.
 
-Error code: **E0301** (type cycle with no terminating field). Trivial single-type self-reference cases use **E0302**. See `grob-error-codes.md` and ADR-0017.
+Error code: **E0301** (type cycle with no terminating field). Trivial single-type self-reference cases use **E0302**. See `grob-error-codes.md` and ADR-0014.
 
 -----
 
@@ -2588,7 +2594,7 @@ A circular read — a `readonly` or mutable top-level initialiser calling a func
 
 After the top-level code's final instruction, the VM sets `_startupComplete`. Subsequent `GetGlobal` reads skip the tag check — startup-only branch cost.
 
-The rule applies equally to `readonly` and mutable top-level bindings. The runtime error code is **E5902** (`RuntimeError`); see `grob-error-codes.md` and ADR-0017. Spec text lives at `grob-language-fundamentals.md` §19.1.
+The rule applies equally to `readonly` and mutable top-level bindings. The runtime error code is **E5902** (`RuntimeError`); see `grob-error-codes.md` and ADR-0014. Spec text lives at `grob-language-fundamentals.md` §19.1.
 
 -----
 
@@ -2622,6 +2628,114 @@ A lambda body may reference identifiers from any scope visible at its definition
 The term **capture** applies only to category 4. A lambda that references a top-level binding does not affect its lifetime — top-level bindings live for the entire script run. A single lambda body may reference bindings from all four categories.
 
 `return`, `break`, and `continue` inside a block-body lambda affect only the lambda regardless of where the lambda is defined. A top-level lambda has the same semantics as a lambda inside a function body. Spec text lives at `grob-language-fundamentals.md` §12.1.
+
+-----
+
+### D-297 — `GrobValue` provisional representation (Apr 2026)
+
+Area: VM — value representation
+Supersedes: D-142
+Superseded by: none
+
+`GrobValue` is a hand-rolled `readonly struct` under .NET 10 LTS. Three private fields: a `GrobValueKind` discriminator, a `long _scalar` slot for `int`/`bool`/`float` (floats stored via `BitConverter.DoubleToInt64Bits` to avoid boxing), and an `object? _reference` slot for reference types. Total 24 bytes on x64 with alignment.
+
+`GrobValueKind` has nine variants: `Nil`, `Bool`, `Int`, `Float`, `String`, `Array`, `Map`, `Struct`, `Function`. Plugin types (`date`, `guid`, `File`, `ProcessResult`, `json.Node`, `Regex`, `Match`, `csv.Table`, `CsvRow`, `Response`, `AuthHeader`, `ZipEntry`) and user-declared `type`s all share the `Struct` discriminator; runtime type discrimination happens at the type-registry level via the boxed reference. This keeps the discriminator small and stable as plugins register new types.
+
+Encapsulation contract: private fields, public factory statics (`FromBool`, `FromInt`, …, plus `Nil` singleton); inspection via `Kind` and `IsX` predicates; strict accessors (`AsX()`) that throw `GrobInternalException` on kind mismatch; try-accessors (`TryAsX(out)`) for plugin and runtime defensive code; full `Equals`/`GetHashCode`/`==`/`!=`. No callers outside `Grob.Core` access the fields directly.
+
+The shape is **provisional pending OQ-005**. The internal layout is the only thing OQ-005 may change; the public API surface is stable. The OQ-005 decision (tagged union vs NaN boxing) is deferred until clox is complete because that decision requires real bytecode-VM experience to make well. The provisional shape isolates the OQ-005 decision behind a clean boundary so the eventual retrofit, whatever shape it takes, is localised to `Grob.Core` and does not leak into `Grob.Compiler` or `Grob.Vm`.
+
+Hand-rolled rather than .NET 11 `union` because the compiler-generated `union` form boxes value-type cases on every assignment — wrong cost profile for a VM hot path — and the `[Union]` escape hatch produces the same hand-rolled struct anyway, only with an attribute attached. .NET 10 LTS rather than .NET 11 STS because LTS gives v1 room to ship and stabilise without a forced migration. The `[Union]` attribute migration path post-.NET-11-GA is signposted in `grob-vm-architecture.md` as a future one-commit upgrade — adding `[Union]` and `IUnion` to the existing struct gains compile-time exhaustiveness checking on every `switch` over `Kind` without disturbing layout, factories, or accessors. Full byte-level layout, encapsulation contract and rationale in `grob-vm-architecture.md`.
+
+-----
+
+### D-298 — `.grobc` binary format skeleton (Apr 2026)
+
+Area: VM — bytecode file format
+Supersedes: D-143
+Superseded by: none
+
+`.grobc` files use a skeleton binary format with a fixed-shape header followed by sectioned content for the constant pool, instruction stream, function table, source map, and symbol table. The header is 40 bytes, fixed in v1, beginning with the magic bytes `0x47 0x52 0x4F 0x42` (ASCII `"GROB"`) and a `uint16` format version field starting at `1`. Little-endian throughout. Every section is located by an explicit (offset, size) pair in the header, so a loader can read sections in any order and a future format version can append fields without breaking older readers up to the offset they understand.
+
+Cache files live in a `.grob/cache/` side directory next to the source `.grob` file, mtime-driven invalidation, `.gitignore`-friendly. The `.grob` source file is canonical; `.grobc` is optional cache. The side-directory convention matches Python's `__pycache__` and similar tools — generated artefacts stay separate from source and never clutter the working directory.
+
+Per-opcode operand encoding remains incremental, governed by ADR-0013 — opcodes land sprint-by-sprint and the operand layout is documented at the opcode's source of definition. The skeleton spec covers framing only; per-opcode detail follows.
+
+Explicit non-features for v1: cryptographic signing, compression, encryption, multi-chunk packaging, embedded resources, JIT-friendly precomputed metadata. Each is a deliberate omission, not an oversight; if a future need surfaces, it enters via a format version bump and the migration policy in ADR-0013.
+
+The format must be versionable from day one — retrofitting versioning is expensive. ADR-0013 already locked the stability rule (immutable opcode numbers once shipped, format version increment on breaking change). What was left open — magic bytes, header layout, constant-pool wire format, source-map shape — is now fixed at the level needed for Sprint 1 implementation. Full byte-level layout, implementation notes and rationale in `grob-grobc-format.md`.
+
+-----
+
+### D-299 — Sprint 8/9 reorder by dependency weight (Apr 2026)
+
+Area: Sprint plan — stdlib build order
+Supersedes: none
+Superseded by: none
+
+Sprint 8 and Sprint 9 group the thirteen core stdlib modules by dependency weight rather than alphabetically. The single hard cross-module dependency in v1 is `fs → date` — `fs.list()` returns `File` values whose `.modified` and `.created` properties are `date` values. Every other module is independent of every other module at the API surface level. Modules with no inbound dependencies build first.
+
+Sprint 8 delivers `print`, `exit`, `input`, `math`, `strings`, `path`, `env`, `log`, `formatAs`, `guid` — modules with no cross-module dependencies. Sprint 9 delivers `fs`, `date`, `json`, `csv`, `regex`, `process` — modules where `fs` consumes `date`, plus the heavier-API modules whose return types feed downstream code.
+
+The rationale is risk-front-loading. Sprint 8 modules are pure functions and constants — fail-fast, low integration risk. Sprint 9 modules carry the registered types (`File`, `date`, `json.Node`, `csv.Table`, `Regex`, `ProcessResult`) and thus any latent issues in the type-registry plumbing surface here, where the compiler's type-registry support has had Sprint 8 to settle. The `fs → date` link is satisfied because `date` ships in the same sprint as `fs`.
+
+Acceptance criteria for both sprints are unchanged from the per-module specifications in `grob-stdlib-reference.md`. Sprint scope and deliverables in `grob-v1-requirements.md` §4 reflect this ordering.
+
+-----
+
+### D-300 — Parser error recovery specification (May 2026)
+
+Area: Compiler — parser error recovery
+Supersedes: none
+Superseded by: none
+
+The parser is error-recovering and stateless. On a parse failure it emits a diagnostic, builds a placeholder error node, advances to the next recovery anchor, and resumes parsing. A single malformed construct never aborts the parse.
+
+**Synchronisation set.** Recovery anchors are: a statement-boundary newline outside any open bracket, the closing `}` of an enclosing block, and the start keyword of any top-level declaration (`fn`, `type`, `param`, `import`, `const`, `readonly`). The lexer tracks bracket nesting depth so a newline inside parenthesised text is not treated as a recovery anchor. End-of-file terminates recovery unconditionally.
+
+**Error nodes.** Three first-class AST node kinds: `ErrorExpr`, `ErrorStmt`, `ErrorDecl`. Each carries a source range and a diagnostic message and is handled by every AST visitor (type checker, compiler, formatter, LSP). The AST shape mirrors the source even when broken — go-to-definition, hover and completion keep working on surrounding well-formed code.
+
+**Cascade suppression.** Error nodes have type `Error`, which is assignable to and from every other type. Operations on `Error` produce no further diagnostics. An `ErrorDecl` registers a synthetic symbol-table entry so references to the broken declaration do not produce "undefined identifier" cascades. The intent is one diagnostic per root cause.
+
+**No diagnostic cap.** Parser and type checker both report every error they find. This matches the two-mode error collection rule in `grob-v1-requirements.md` §10 and the LSP-on-save workflow.
+
+**Statelessness.** No state across files or invocations beyond the token stream and the AST being built. Same input produces same diagnostics regardless of parse history.
+
+This is a day-one Sprint 1 requirement, not a polish pass — retrofitting error recovery later requires touching every parse method. Spec text and worked example live at `grob-language-fundamentals.md` §29.
+
+-----
+
+### D-301 — `select` statement is non-exhaustive (May 2026)
+
+Area: Control flow — `select`/`case` exhaustiveness
+Supersedes: none
+Superseded by: none
+
+The `select` statement does not enforce exhaustiveness. If no `case` matches the subject value and no `default` arm is present, execution continues past the `select` block with no error. The switch *expression* (§3.1) does enforce exhaustiveness — the asymmetry is intentional.
+
+The switch expression must produce a value, so a missing case means a missing value, which is a bug. The `select` statement runs side-effecting blocks and produces no value; "no case matched, do nothing" is a legitimate intent and forcing exhaustiveness here would push authors to write `default { }` solely to satisfy the checker, adding noise without adding safety.
+
+The split mirrors C# (`switch` statement non-exhaustive vs switch expression exhaustive) and is consistent with the same distinction in F#, Scala, Rust and Kotlin. Reach for the expression form when producing a value; reach for the statement form when running side-effecting branches. Spec text lives at `grob-language-fundamentals.md` §3.
+
+-----
+
+### D-302 — Benchmarking infrastructure (May 2026)
+
+Area: Tooling — benchmarking and regression detection
+Supersedes: none
+Superseded by: none
+
+Grob ships with a BenchmarkDotNet harness in a new `bench/Grob.Benchmarks` console project — sibling to `src/`, `tests/`, `plugins/` and `tooling/`. Three benchmark categories map to the three layers of the pipeline: compile-time (lex, parse, type check, emit), VM execution (hand-constructed `Chunk` instances), and end-to-end script (the thirteen validation suite scripts through the full pipeline). `[MemoryDiagnoser]` is applied to every benchmark, putting per-op allocations and Gen 0/1/2 collection counts into the baseline alongside timing.
+
+Test materials live under `bench/Grob.Benchmarks/Fixtures/`: VM benchmarks construct `Chunk` instances directly in C# (no separate file format); end-to-end benchmarks consume **frozen copies** of the thirteen validation scripts (decoupled from the live `tests/Grob.Integration.Tests` copies so script evolution does not silently invalidate baselines); the compile-time category uses a synthetic 1000+ line script produced by a committed deterministic generator (the generated file is gitignored, regenerated on first run). BenchmarkDotNet setup/teardown is specified per category — `[GlobalSetup]` reads source files into memory once, `[IterationSetup]` resets VM state where needed, the measured method runs the smallest meaningful operation. Full operational detail in `grob-benchmarking-strategy.md` §7.
+
+A separate stability test catches managed-side retention invisible in single-run timing. **Initial placeholder values (10,000 iterations, 100-iteration warmup, 10% tolerance) are calibrated empirically at Sprint 8 close** via a single-iteration characterisation pass against the stdlib-substantial build — iteration wall-clock, steady-state heap, iteration-to-iteration variance. Locked numbers ship in `bench/Grob.Benchmarks/baseline/stability.json` with the calibration date; calibration outcome recorded as an addendum to this decision in the decisions log. The stability test runs at a longer cadence than the per-sprint benchmark run (once per release, or on demand). Stability test failure is a release-gate fail.
+
+Grob-aware memory introspection (closure retention root tracing, reachable `GrobArray` counts, upvalue depth) is **explicitly deferred post-v1**. The v1 architecture preserves the option; the implementation does not.
+
+Baselines are committed JSON in `bench/Grob.Benchmarks/baseline/`. Per-sprint regression policy: full benchmark run at sprint close, 5% regression on end-to-end script benchmarks is the gate. Compile-time and VM execution numbers are informational, used to localise regressions surfaced end-to-end. Improvements update the baseline; trade-offs that regress performance for correctness or clarity update the baseline with a decisions-log entry capturing the rationale.
+
+No `grob bench` CLI surface in v1 — benchmarks are implementation infrastructure, not a feature shipped to Grob users. Entry point is `dotnet run -c Release --project bench/Grob.Benchmarks`. Implementation timing: skeleton at the close of Sprint 2 (first meaningful code to benchmark, explicitly added to Sprint 2 deliverables in `grob-v1-requirements.md` §4); stability test plus calibration at the close of Sprint 8 (first stdlib-substantial sprint, explicitly added to Sprint 8 deliverables in §4). Full spec at `grob-benchmarking-strategy.md`.
 
 -----
 
@@ -2756,7 +2870,7 @@ fn processRepo(repo: Repo): StaleResult {
 
 repos   := json.read("repos.json").mapAs<Repo>()   // file input — primary pattern
 // repos := json.stdin().mapAs<Repo>()             // stdin — pipeline variant
-results := repos.map(r => processRepo(r))
+results := repos.select(r => processRepo(r))
 json.stdout(results)
 ```
 
@@ -2846,7 +2960,42 @@ staleDays = 30
 -----
 
 *This document is the authoritative decisions record for Grob.*
-*Updated April 2026 — pre-implementation review: 21 new decision entries added.*
+*Updated May 2026 — Benchmarking session: D-302 (benchmarking*
+*infrastructure — BenchmarkDotNet harness in `bench/Grob.Benchmarks`,*
+*three categories — compile-time, VM execution, end-to-end script — plus*
+*a separate stability test, `[MemoryDiagnoser]` on every benchmark,*
+*committed JSON baselines, per-sprint regression run with 5% end-to-end*
+*gate, no `grob bench` CLI surface in v1, Grob-aware memory introspection*
+*deferred post-v1) added as a full entry with matching summary index row.*
+*D-302 covers test material storage (frozen end-to-end script copies under*
+*`Fixtures/EndToEnd/`, hand-constructed VM chunks in C#, deterministically*
+*generated synthetic large script for compile-time), BenchmarkDotNet*
+*setup/teardown per category, and a stability test calibration ritual at*
+*Sprint 8 close (initial 10,000/100/10% values are placeholders, locked*
+*numbers derived from a single-iteration characterisation pass). Sprint 2*
+*and Sprint 8 deliverables in `grob-v1-requirements.md` §4 explicitly*
+*name the benchmark skeleton and stability calibration. Full spec at*
+*`grob-benchmarking-strategy.md`.*
+*Previous: May 2026 — Session 3 spec gap fill: D-300 (parser error*
+*recovery — synchronisation set, error node shape, cascade suppression*
+*via the `Error` type, unbounded reporting, statelessness) and D-301*
+*(`select` statement is non-exhaustive — intentional split from the*
+*exhaustive switch expression) added as full entries with matching*
+*summary index rows. Full spec text for both decisions in*
+*`grob-language-fundamentals.md` §29 and §3 respectively.*
+*Previous: May 2026 — Session 2 decisions log reconciliation: D-297 (`GrobValue`*
+*provisional representation), D-298 (`.grobc` binary format skeleton) and*
+*D-299 (Sprint 8/9 reorder by dependency weight) added as full entries with*
+*matching summary index rows. D-186 row repositioned in the summary index*
+*from between D-285 and D-286 to its numerical position immediately after*
+*D-185. ADR cross-references corrected: D-287 and D-294 citing ADR-0017 in*
+*error-code-registration contexts changed to ADR-0014 (the error code*
+*numbering scheme is ADR-0014; ADR-0017 is the stability rule). Companion*
+*ADR-0008 → ADR-0013 corrections applied to `grob-grobc-format.md` (7 sites),*
+*`grob-open-questions.md` (2 sites) and `grob-vm-architecture.md` (1 site) —*
+*opcode stability and bytecode format versioning is ADR-0013, not ADR-0008*
+*(which is "No Var Keyword").*
+*Previous: April 2026 — pre-implementation review: 21 new decision entries added.*
 *Escape sequences updated (`\r` added, unknown escapes are compile errors).*
 *Numeric precision locked (int = 64-bit signed, float = 64-bit IEEE 754).*
 *Integer overflow: checked arithmetic, throws RuntimeError.*

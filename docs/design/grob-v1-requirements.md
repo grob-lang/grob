@@ -143,12 +143,14 @@ Grob.sln
 │   ├── Grob.Http/              ← First-party HTTP plugin — reference implementation
 │   ├── Grob.Crypto/            ← First-party checksums/hashing plugin
 │   └── Grob.Zip/               ← First-party archive plugin
-└── tests/
-    ├── Grob.Core.Tests/
-    ├── Grob.Compiler.Tests/    ← Highest priority — this is where bugs will live
-    ├── Grob.Vm.Tests/
-    ├── Grob.Stdlib.Tests/
-    └── Grob.Integration.Tests/ ← End-to-end: source file → stdout/stderr/exit code
+├── tests/
+│   ├── Grob.Core.Tests/
+│   ├── Grob.Compiler.Tests/    ← Highest priority — this is where bugs will live
+│   ├── Grob.Vm.Tests/
+│   ├── Grob.Stdlib.Tests/
+│   └── Grob.Integration.Tests/ ← End-to-end: source file → stdout/stderr/exit code
+└── bench/
+    └── Grob.Benchmarks/        ← BenchmarkDotNet harness — D-302 — per-sprint regression gate
 ```
 
 ### Dependency Graph (DAG — No Cycles)
@@ -557,10 +559,18 @@ arithmetic expressions and `print()`.
   - Runtime error with source line.
 - Compiler tests — given source, assert bytecode.
 - Integration tests — `print(2 + 3)` produces `5`.
+- `bench/Grob.Benchmarks/` skeleton — BenchmarkDotNet console project
+  created as sibling to `src/`, `tests/`, `plugins/`. Initial compile-time
+  benchmark category with at least one benchmark (lexer throughput on
+  a representative source). `Fixtures/` directory established. First
+  baseline JSON committed to `bench/Grob.Benchmarks/baseline/compile.json`.
+  Authority: D-302, `grob-benchmarking-strategy.md`.
 
 **Acceptance:** `print(2 + 3 * 4)` compiles, runs and prints `14`. Type
 errors (e.g. `"hello" + 42`) produce clear compile-time diagnostics with
-line numbers.
+line numbers. `bench/Grob.Benchmarks` builds, the seed compile-time
+benchmark runs end-to-end via `dotnet run -c Release --project bench/Grob.Benchmarks`,
+and the first baseline JSON is committed.
 
 ### Sprint 3 — Variables, Scope and REPL
 
@@ -807,6 +817,13 @@ validation.
 **Acceptance:** Each module’s full API works. `math.sqrt(9.0)` returns
 `3.0`. `env.require("MISSING")` throws `LookupError`. `log.error()`
 writes to stderr. `formatAs.table()` produces aligned column output.
+Stability test calibration ritual complete — single-iteration pass
+against the Sprint 8 build characterises iteration time, steady-state
+heap and iteration-to-iteration variance. Final iteration count, warmup
+window and tolerance committed to `bench/Grob.Benchmarks/baseline/stability.json`,
+calibration outcome recorded as an addendum to D-302. Stability test
+itself implemented and producing a first passing run. Authority: D-302,
+`grob-benchmarking-strategy.md` §6 and §11.
 
 ### Sprint 9 — Core Standard Library (Part 2)
 
@@ -1212,6 +1229,49 @@ Long-form documentation for each code (cause, example, fix) is read by
 - The VM loop can be trusted once verified on simple cases.
 - Edge cases and failure paths are tested as thoroughly as the happy path.
 - The thirteen sample scripts are integration tests in `Grob.Integration.Tests`.
+
+### Benchmarking — Per-Sprint Regression Gate
+
+> **Authority:** `grob-benchmarking-strategy.md` (D-302). This section
+> summarises; the full spec covers harness, three categories, memory
+> diagnostics, stability test, baseline storage and policy in detail.
+
+Grob ships with a benchmarking harness in `bench/Grob.Benchmarks`
+(sibling to `src/`, `tests/` and `plugins/`). BenchmarkDotNet drives
+three categories — compile-time, VM execution and end-to-end script —
+and `[MemoryDiagnoser]` on every benchmark puts allocations and GC
+counts into the committed baseline alongside timing.
+
+|Category                  |Project subdirectory                      |Question answered                                              |
+|--------------------------|------------------------------------------|---------------------------------------------------------------|
+|Compile-time              |`bench/Grob.Benchmarks/Compile/`          |How fast is the compiler? (startup cost for a script language) |
+|VM execution              |`bench/Grob.Benchmarks/Vm/`               |How fast is the dispatch loop? (hand-constructed chunks)       |
+|End-to-end script         |`bench/Grob.Benchmarks/EndToEnd/`         |Do the thirteen validation scripts run fast enough?            |
+|Stability (separate run)  |`bench/Grob.Benchmarks/Stability/`        |Are there managed-side leaks invisible in single-run timing?   |
+
+**Cadence:**
+
+- Full benchmark run at the close of every sprint.
+- Stability test runs at a longer cadence — once per release, or on
+  demand. 10,000-iteration runs of all thirteen scripts are too slow
+  for the per-sprint close.
+
+**Regression gate:** 5% regression on end-to-end script benchmarks
+against the committed baseline is the gate. Compile-time and VM
+execution numbers are informational, used to localise regressions
+surfaced end-to-end.
+
+**Memory diagnostics — scope:**
+
+- Managed-side retention and GC pressure are covered by `[MemoryDiagnoser]`
+  in every benchmark, with stability test as the long-run leak catch.
+- Grob-aware memory introspection (closure retention root tracing,
+  reachable `GrobArray` counts) is explicitly deferred post-v1. The v1
+  architecture preserves the option; the implementation does not.
+
+**No CLI surface:** `grob bench` is not a v1 command. Benchmarks are
+implementation infrastructure, not a user-facing feature. Entry point
+is `dotnet run -c Release --project bench/Grob.Benchmarks`.
 
 -----
 
