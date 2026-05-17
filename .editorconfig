@@ -14,10 +14,12 @@ trim_trailing_whitespace = false
 [*.{json,yml,yaml}]
 indent_size = 2
 
-[*.{csproj,sln}]
+[*.{csproj,sln,slnx}]
 indent_size = 2
 
 [*.cs]
+indent_size = 4
+
 # C# naming conventions
 dotnet_naming_rule.public_members_must_be_pascal_case.severity = warning
 dotnet_naming_rule.public_members_must_be_pascal_case.symbols = public_symbols
