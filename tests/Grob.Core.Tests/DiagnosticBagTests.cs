@@ -142,4 +142,15 @@ public sealed class DiagnosticBagTests {
 
         Assert.Equal(1000, bag.Count);
     }
+
+    [Fact]
+    public void DiagnosticBag_NonGenericEnumerator_Iterates() {
+        var bag = new DiagnosticBag();
+        bag.Add(MakeDiagnostic(Severity.Error));
+
+        System.Collections.IEnumerable nonGeneric = bag;
+        var enumerator = nonGeneric.GetEnumerator();
+
+        Assert.True(enumerator.MoveNext());
+    }
 }

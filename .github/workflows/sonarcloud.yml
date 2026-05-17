@@ -55,7 +55,8 @@ jobs:
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.cs.opencover.reportsPaths="**/TestResults/**/coverage.opencover.xml"
-
+            /d:sonar.coverage.exclusions="**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs" \
+            /d:sonar.test.exclusions="**/*.Tests/**"
       - name: Restore dependencies
         run: dotnet restore
 
