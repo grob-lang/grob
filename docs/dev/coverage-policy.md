@@ -2,9 +2,8 @@
 
 This document defines which files are excluded from code coverage measurement
 in the Grob codebase, and why. It is the single source of truth referenced by
-`[ExcludeFromCodeCoverage]` justification strings, by `sonar-project.properties`
-exclusion patterns, and by the SonarCloud configuration in
-`.github/workflows/ci.yml`.
+`[ExcludeFromCodeCoverage]` justification strings and by the SonarCloud
+configuration in `.github/workflows/sonarcloud.yml`.
 
 The policy is deliberately narrow. Exclusion is a tool for genuinely-untestable
 bootstrap code, not a place to hide untested logic.
@@ -71,14 +70,14 @@ The following are **in scope** for coverage and must meet the 90% target:
   not in `Program.cs`.
 
 Test projects (`*.Tests.csproj`) are excluded by convention — they do not need
-their own coverage measured. This is configured in `sonar-project.properties`
-and mirrored in the CI workflow.
+their own coverage measured. This is configured via `/d:sonar.test.exclusions`
+in the CI workflow.
 
 ---
 
 ## Implementation
 
-The exclusion is applied in three places (defence in depth — the partial-class
+The exclusion is applied in two places (defence in depth — the partial-class
 attribute is known to be unreliable in some sonar-dotnet versions with top-level
 statements):
 
@@ -97,17 +96,10 @@ using System.Diagnostics.CodeAnalysis;
 internal partial class Program { }
 ```
 
-### 2. `sonar-project.properties`
+### 2. `.github/workflows/sonarcloud.yml`
 
-```properties
-sonar.coverage.exclusions=**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs
-```
-
-### 3. `.github/workflows/ci.yml`
-
-The .NET scanner does not read `sonar-project.properties` automatically, so the
-same exclusion patterns must be passed as `/d:` arguments to
-`dotnet sonarscanner begin`:
+The SonarScanner for .NET does not use `sonar-project.properties`; exclusion
+patterns must be passed as `/d:` arguments to `dotnet sonarscanner begin`:
 
 ```yaml
 /d:sonar.coverage.exclusions="**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs"
@@ -115,10 +107,6 @@ same exclusion patterns must be passed as `/d:` arguments to
 
 `sonar.coverage.exclusions` removes the files from coverage measurement only —
 they remain in scope for issue detection, code smells, and duplication analysis.
-
-The exclusion patterns in `sonar-project.properties` and the `/d:` arguments in
-the CI workflow must be kept byte-identical. Any change to one requires the
-same change to the other in the same PR.
 
 ---
 
@@ -132,11 +120,11 @@ Adding a new exclusion requires:
 3. A size constraint or scope limit that prevents the exclusion from being used
    as a hiding place for untested logic.
 4. An entry in this document plus the corresponding `[ExcludeFromCodeCoverage]`
-   attribute, `sonar-project.properties` update, and CI workflow update.
+   attribute and CI workflow update.
 
 Removing an exclusion requires only that the corresponding code be brought under
-test and the entries deleted from this document, the source,
-`sonar-project.properties`, and the CI workflow.
+test and the entries deleted from this document, the source file, and the CI
+workflow.
 
 ---
 
