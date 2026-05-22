@@ -58,6 +58,9 @@ jobs:
     name: Create Release
     needs: build-release
     runs-on: ubuntu-latest
+    permissions:
+      # Requires contents: write to create GitHub releases and upload assets
+      contents: write
 
     steps:
       - name: Download all artifacts
