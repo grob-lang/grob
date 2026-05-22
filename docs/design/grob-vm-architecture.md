@@ -154,7 +154,7 @@ during execution — are `GrobValue` instances. The next section specifies the
 
 -----
 
-## GrobValue Provisional Representation
+## GrobValue Representation
 
 `GrobValue` is the runtime value type used everywhere the VM stores or
 moves a Grob value: the operand stack, local slots, the globals table,
@@ -162,10 +162,14 @@ the constant pool, plugin call boundaries. Every Grob value at runtime
 is a `GrobValue`.
 
 This section locks the v1 representation. The full value-representation
-decision (OQ-005 — tagged union versus NaN boxing) is deferred until clox
-is complete; this section is the **provisional** answer that lets `Grob.Core`
-ship before that decision lands. The encapsulation rules below ensure that
-when OQ-005 resolves, the change is confined to `Grob.Core/GrobValue.cs`.
+decision (OQ-005 — tagged union versus NaN boxing) is closed: tagged
+union is permanent (D-303). NaN boxing was rejected on managed-runtime
+grounds — the .NET GC cannot trace references packed into a `ulong`,
+pinning to keep packed addresses valid defeats the size win NaN boxing
+was meant to deliver, and Grob's I/O-bound workload does not need the
+cache-pressure win that justifies the technique in tight numeric loops.
+Full rationale in `grob-decisions-log.md` D-303 and
+`grob-open-questions.md` OQ-005.
 
 ### Target framework
 
@@ -216,10 +220,10 @@ public enum GrobValueKind : byte
 
 public readonly struct GrobValue : IEquatable<GrobValue>
 {
-    // Provisional representation — pending OQ-005.
+    // Representation locked May 2026 (D-303, OQ-005 closed).
+    // Tagged union: discriminator + scalar slot + reference slot.
     // Do NOT access these fields outside Grob.Core. The public API
-    // below is the encapsulation boundary; OQ-005 may rework the
-    // internal layout, but the boundary is stable.
+    // below is the encapsulation boundary.
     private readonly GrobValueKind _kind;
     private readonly long          _scalar;
     private readonly object?       _reference;
@@ -294,8 +298,10 @@ ten-leaf hierarchy in D-284) and require no special discriminator.
 ### The encapsulation boundary
 
 The public surface of `GrobValue` is the only contract callers depend on.
-The internal field layout is implementation detail and may change when
-OQ-005 resolves.
+The internal field layout is implementation detail. With OQ-005 closed
+(D-303), the layout is stable; the encapsulation boundary remains the only
+contract callers see, future-proofing the design against optimisation
+work confined to `Grob.Core`.
 
 ```csharp
 public readonly struct GrobValue : IEquatable<GrobValue>
@@ -424,7 +430,7 @@ user code observes.
 
 ### Test strategy
 
-`Grob.Core.Tests/GrobValueTests.cs` covers the provisional representation:
+`Grob.Core.Tests/GrobValueTests.cs` covers the representation:
 
 - **Construction round-trip.** For every kind, `FromX(value).AsX() == value`.
   Includes `NaN`, `±Infinity`, `long.MinValue`, `long.MaxValue`, empty
@@ -453,25 +459,21 @@ user code observes.
 A separate test asserts that `sizeof(GrobValue)` is 24 (x64) — a
 canary that catches accidental field churn that would change the layout.
 
-### Provisional contract — what this section locks, what it defers
+### Locked contract
 
-**Locked for v1:**
+With OQ-005 closed (D-303), every aspect of `GrobValue` is locked for v1:
 
 - The public API surface above. Plugins, the compiler and the VM use
   this surface.
 - `default(GrobValue)` is `Nil`.
 - The nine-variant `GrobValueKind` enum.
 - The equality and hashing rules.
+- The internal field layout: `_kind` + `_scalar` + `_reference`. NaN
+  boxing was explicitly rejected on managed-runtime grounds (D-303,
+  OQ-005). Future optimisation work on `GrobValue` stays within the
+  encapsulation boundary above — any layout change is a `Grob.Core`-local
+  concern and does not propagate to `Grob.Compiler` or `Grob.Vm`.
 - The .NET 10 LTS target.
-
-**Deferred to OQ-005 — confined to `Grob.Core`:**
-
-- The internal field layout. NaN boxing would replace the
-  `_scalar`/`_reference` pair with a single `ulong _bits` field and a
-  payload-aware decoder. The factories and accessors keep their
-  signatures; their bodies change.
-- Whether `GrobValueKind` continues to be stored explicitly or becomes
-  derived from the bit pattern.
 
 **Migration signpost — .NET 11 native unions.** When .NET 11 is GA and the
 `[Union]` attribute escape hatch leaves preview, adding it to `GrobValue`
@@ -486,8 +488,6 @@ is a one-commit change:
 
 The encapsulation boundary above is already the right shape for
 `[Union]` to slot in. This is a future-additive path, not a redesign.
-The two migrations (OQ-005 representation change; `[Union]` annotation)
-are independent — either can land first.
 
 -----
 
@@ -509,7 +509,7 @@ without breaking older readers up to the offset they understand.
 [header]              40 bytes — magic "GROB", format version, flags,
                                  six (offset, size) pairs
 [constant pool]       variable — each entry prefixed with a kind byte
-[instruction stream]  variable — flat opcode stream per ADR-0008
+[instruction stream]  variable — flat opcode stream per ADR-0013
 [source map]          variable, optional — PC → (line, column) table
 [symbol table]        variable, optional — function and parameter names
 ```
@@ -849,89 +849,91 @@ No runtime type checks needed — the type checker already verified correctness.
 
 -----
 
-## Garbage Collection
+## Memory Management
 
-### What Needs Collecting
+### Strategy — lean on .NET GC (D-304)
 
-**Value types** — live directly on the stack, no GC needed:
+Grob delegates heap memory management to the .NET garbage collector. No
+custom mark-and-sweep collector is shipped in v1. OQ-006 is closed; full
+rationale in `grob-decisions-log.md` D-304 and `grob-open-questions.md`
+OQ-006.
 
-- `int`, `float`, `bool` — fixed size, stack allocated, gone when frame pops
+The choice follows from the platform. Grob's VM runs on the CLR. CLR-
+allocated objects cannot be hidden from the .NET GC; any custom collector
+would compete with the runtime collector rather than replace it,
+introducing a parallel object lifecycle, an allocation hook on every
+heap-bound value construction, and a new class of latent bug
+(use-after-free in marked-then-collected-incorrectly cases) for no
+measured benefit. clox implements its own collector because C has no
+choice. Grob is in C#; the choice is whether to add a redundant layer to
+a runtime that already solves the problem. The answer is no.
 
-**Heap types** — variable size, can be referenced from multiple places:
+### What lives where
 
-- `string`, `array`, `function` — live on the heap, need GC tracking
+**Value types** — live directly in `GrobValue`'s `_scalar` field, zero
+GC pressure:
 
-### Mark and Sweep
+- `int`, `float`, `bool`, `nil` — fixed size, stored in the 64-bit scalar
+  slot, never allocated on the heap.
 
-The algorithm Grob will use. Two phases run periodically:
+**Heap types** — ordinary CLR objects, reclaimed by the .NET GC when no
+live `GrobValue` references them:
 
-**Mark phase** — starting from all roots, follow every reference and mark
-each reachable object:
+- `string`, `GrobArray`, `GrobMap`, `GrobStruct`, `GrobFunction`,
+  plugin-registered reference types — stored in `GrobValue`'s
+  `_reference` field, allocated via `new`, freed by the runtime.
 
-```csharp
-private void MarkRoots()
-{
-    for (int i = 0; i < _stackTop; i++)
-        MarkValue(_stack[i]);
+The `_reference` field is the single GC root the runtime sees per
+`GrobValue` slot. Stack slots, locals, the globals table and the
+constant pool participate in the normal GC root walk by virtue of being
+arrays of `GrobValue` reachable from VM state. No finaliser is required
+on `GrobValue` or any runtime-internal type.
 
-    foreach (var global in _globals.Values)
-        MarkValue(global);
+### What does not exist in v1
 
-    for (int i = 0; i < _frameCount; i++)
-        MarkObject(_frames[i].Function);
-}
-```
+- No mark phase, sweep phase, allocation-threshold trigger, or
+  `CollectGarbage()` entry point in `Grob.Vm`.
+- No custom heap data structure (no `_heapHead`/`_heapSize`/`Allocate()`
+  plumbing). Each runtime reference type is allocated by `new` and
+  managed by the CLR.
+- No GC tuning surface in `grob.json` or the CLI. The runtime exposes no
+  GC settings of its own; users may set CLR GC switches (server GC,
+  concurrent GC) via standard .NET configuration if they choose, but this
+  is not a Grob feature.
 
-**Sweep phase** — walk every heap object. Unmarked = unreachable = free it.
-Marked = clear the mark, keep for next cycle.
+### Pressure profile
 
-### Triggered Collection
+Grob's target workload is I/O-bound scripting — Azure CLI orchestration,
+DevOps REST tooling, JSON/CSV transformation, file-system walks. The hot
+path is stdlib calls, not allocation churn. Heap pressure is dominated
+by short-lived string objects from `json.parse()`, `fs.readText()` and
+string interpolation — exactly the pattern the .NET generational GC
+handles well in Gen 0.
 
-Run GC when heap grows past a threshold, then double the threshold:
+The design work that matters for GC pressure is at the value-
+representation level: primitives stay in the scalar slot, the
+`_reference` field is `null` for primitive `GrobValue` instances, and
+heap allocation only happens when a value genuinely needs to live on the
+heap. That work is already done — D-303 locks the shape.
 
-```csharp
-private GrobObject Allocate(GrobObject obj)
-{
-    _heapSize += obj.Size;
-    if (_heapSize > _heapThreshold)
-    {
-        CollectGarbage();
-        _heapThreshold = _heapSize * 2;
-    }
-    obj.Next = _heapHead;
-    _heapHead = obj;
-    return obj;
-}
-```
+### Revisit conditions
 
-### GC Pauses
+The benchmarking infrastructure (D-302) provides the empirical surface
+to revisit this decision. `[MemoryDiagnoser]` on every benchmark records
+allocations and Gen 0/1/2 collection counts in the baseline. If a real
+script later shows GC pressure that the .NET collector handles badly,
+the data to substantiate the case will exist.
 
-Mark and sweep stops the program during collection. For scripting use cases
-(file operations, automation) pauses are invisible. Document the limitation
-honestly. Not a problem for Grob’s target use case.
-
-### Grob’s GC Strategy — Lean on C#
-
-Since Grob’s VM is written in C#, C#’s GC handles heap memory automatically.
-The design work is in **value representation** — minimising heap allocations
-in the hot path so GC pressure is low.
-
-Use **structs** for value types (int, float, bool) — stack allocated, zero GC
-pressure. Use **classes** only for heap objects (string, array, function).
-
-```csharp
-// Good — int lives on stack, no allocation
-struct Value
-{
-    public ValueKind Kind;
-    public long Raw;      // int/float/bool stored directly
-    public object? Ref;   // string/array/function pointer — only when needed
-}
-```
-
-Nystrom covers NaN boxing in clox — an alternative representation that packs
-type information into unused bits of a 64-bit float. Worth understanding even
-if Grob uses a tagged union instead.
+If a revisit is forced, the migration path is additive rather than
+destructive: introduce a managed-side weak-reference tracking table
+inside `Grob.Vm`, register heap-bound `GrobValue` constructions through
+it, and run a periodic walk over reachable VM state to identify which
+entries are still live at the VM-semantic level. Even this path does
+not replace the .NET GC; it sits above it, identifying retention
+patterns that the platform's collector cannot see (e.g. closure-
+captured arrays retained beyond their useful lifetime). That is a
+Grob-aware memory-introspection feature — already noted as deferred
+post-v1 in D-302 — not a competitor to the platform collector.
 
 -----
 
@@ -1090,11 +1092,10 @@ Lexer → Parser → Type Checker → Compiler
 Bytecode Chunk
     ↓
 VM — fetch/decode/execute loop
-    ├── Value Stack      — ints/floats/bools live here directly (no GC)
+    ├── Value Stack      — ints/floats/bools live here directly (no heap allocation)
     ├── Call Frames      — one per active function call (max 256)
-    ├── Heap             — strings/arrays/functions, tracked by GC
+    ├── Heap             — strings/arrays/functions, managed by .NET GC
     ├── Globals          — built-ins + plugin functions
-    ├── GC               — mark and sweep, triggered by allocation threshold
     └── Plugin Loader    — loads IGrobPlugin assemblies at startup
 ```
 
@@ -1107,7 +1108,8 @@ VM — fetch/decode/execute loop
 - Call frames are a fixed array — no heap allocation per function call
 - VM loop is flat — no recursion, no tree traversal
 - Native functions call C# directly — no interpretation overhead
-- GC pressure minimised by using structs for value types
+- GC pressure minimised by storing primitives directly in `GrobValue`'s
+  scalar slot — `int`, `float`, `bool`, `nil` never allocate on the heap
 
 For scripting use cases (file operations, automation, sysadmin tasks)
 this architecture is comfortably fast. JIT compilation is explicitly
@@ -1133,22 +1135,29 @@ Each layer is independently testable. Each one builds on the previous.
 
 -----
 
-## Key Decisions Deferred
+## Key Decisions — Resolved Reference
 
 |Decision            |Notes                                                                          |
 |--------------------|-------------------------------------------------------------------------------|
-|Value representation|**Provisional — April 2026.** Tagged union struct, 24 bytes on x64. See "GrobValue provisional representation" above. Full decision (OQ-005) deferred until clox is complete.|
+|Value representation|**Resolved — May 2026 (D-303).** Tagged union struct, 24 bytes on x64. See "GrobValue Representation" above. NaN boxing rejected — managed-runtime mismatch, full rationale in D-303 and OQ-005.|
 |Error handling model|**Resolved — April 2026.** Exceptions with try/catch. See decisions log OQ-004.|
-|GC strategy         |Lean on C# GC vs custom mark/sweep — lean on C# is likely right                |
+|GC strategy         |**Resolved — May 2026 (D-304).** Lean on .NET GC; no custom mark-and-sweep in v1. Full rationale in D-304 and OQ-006.|
 |Concurrent GC       |Not needed for scripting use case — future consideration                       |
 |JIT compilation     |Explicitly out of scope                                                        |
 
 -----
 
-*Nothing in this document is final until SharpBASIC retrospective is written*
-*and clox is fully worked through. These are design intentions, not commitments.*
-*Update with dated entries as decisions are confirmed during formal design phase.*
-*Updated April 2026 — GrobValue provisional representation locked (OQ-009 resolved):*
+*Updated May 2026 — OQ-005 and OQ-006 closed (D-303, D-304). "GrobValue*
+*Provisional Representation" section renamed to "GrobValue Representation";*
+*provisional framing removed throughout; "Deferred to OQ-005" subsection*
+*replaced by definitive "Locked contract." The speculative "Garbage*
+*Collection" section (Mark and Sweep algorithm sketch, allocation threshold*
+*pseudocode, custom GC pauses note) replaced by "Memory Management" — lean*
+*on .NET GC, what lives where, what does not exist in v1, pressure profile,*
+*revisit conditions. Runtime architecture diagram no longer lists a custom*
+*GC component. Deferred-decisions table converted to a resolved-decisions*
+*reference.*
+*Previous: April 2026 — GrobValue provisional representation locked (OQ-009 resolved):*
 *hand-rolled tagged-union struct under .NET 10 LTS, nine-variant kind enum, 24 bytes on x64,*
 *encapsulation boundary specified, .NET 11 [Union] migration signposted; bytecode file*
 *format now points to grob-grobc-format.md as authoritative (OQ-010 resolved).*

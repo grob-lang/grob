@@ -300,6 +300,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 |D-300|May 2026|Compiler — error recovery   |Parser error recovery: synchronisation set, `Error*` nodes, cascade suppression, no cap     |
 |D-301|May 2026|Control flow                |`select` statement is non-exhaustive; switch expression is exhaustive — intentional split  |
 |D-302|May 2026|Tooling — benchmarking      |BenchmarkDotNet harness in `bench/Grob.Benchmarks`; three categories + stability; committed baselines; no CLI surface in v1|
+|D-303|May 2026|VM — value representation  |OQ-005 closed. `GrobValue` is a tagged union — permanent. NaN boxing rejected (moving-GC mismatch, I/O-bound workload, debuggability)|
+|D-304|May 2026|VM — memory management      |OQ-006 closed. Lean on .NET GC; no custom mark-and-sweep in v1; benchmarking provides the surface to revisit|
 
 -----
 
@@ -2635,7 +2637,7 @@ The term **capture** applies only to category 4. A lambda that references a top-
 
 Area: VM — value representation
 Supersedes: D-142
-Superseded by: none
+Superseded by: D-303
 
 `GrobValue` is a hand-rolled `readonly struct` under .NET 10 LTS. Three private fields: a `GrobValueKind` discriminator, a `long _scalar` slot for `int`/`bool`/`float` (floats stored via `BitConverter.DoubleToInt64Bits` to avoid boxing), and an `object? _reference` slot for reference types. Total 24 bytes on x64 with alignment.
 
@@ -2736,6 +2738,69 @@ Grob-aware memory introspection (closure retention root tracing, reachable `Grob
 Baselines are committed JSON in `bench/Grob.Benchmarks/baseline/`. Per-sprint regression policy: full benchmark run at sprint close, 5% regression on end-to-end script benchmarks is the gate. Compile-time and VM execution numbers are informational, used to localise regressions surfaced end-to-end. Improvements update the baseline; trade-offs that regress performance for correctness or clarity update the baseline with a decisions-log entry capturing the rationale.
 
 No `grob bench` CLI surface in v1 — benchmarks are implementation infrastructure, not a feature shipped to Grob users. Entry point is `dotnet run -c Release --project bench/Grob.Benchmarks`. Implementation timing: skeleton at the close of Sprint 2 (first meaningful code to benchmark, explicitly added to Sprint 2 deliverables in `grob-v1-requirements.md` §4); stability test plus calibration at the close of Sprint 8 (first stdlib-substantial sprint, explicitly added to Sprint 8 deliverables in §4). Full spec at `grob-benchmarking-strategy.md`.
+
+-----
+
+### D-303 — `GrobValue` is a tagged union — OQ-005 resolved (May 2026)
+
+Area: VM — value representation
+Supersedes: D-297
+Superseded by: none
+
+OQ-005 closed. `GrobValue` is permanently a hand-rolled tagged-union `readonly struct` on the shape locked in D-297. NaN boxing is rejected for Grob.
+
+The struct shape, the nine-variant `GrobValueKind`, the encapsulation contract, the factory and accessor surface and the `.NET 10` LTS target are unchanged from D-297. The change is one of status only: "provisional pending OQ-005" becomes "locked." Documentation across the corpus is updated to drop the provisional framing.
+
+**Rationale.** NaN boxing is elegant in C — clox uses it as a measurable size win over its initial tagged union by packing a 48-bit pointer into the unused payload bits of an IEEE 754 NaN. In a managed runtime that pattern is a hard mismatch with the platform.
+
+The .NET GC is a moving collector. It finds live references by walking GC metadata (root-set stack frames, static fields, and reference-typed fields inside reachable objects) emitted by the JIT. A `ulong` field is, to the GC, an integer — it is never scanned for references and never updated when a compacting collection moves the underlying object. Packing a managed reference into a `ulong` therefore breaks GC tracing in a way the runtime cannot detect: collections can free objects the VM still holds, compaction can leave the packed address pointing at moved memory, and there is no exception or warning when it goes wrong.
+
+The escape hatches do not rescue the design. `GCHandle.Alloc(Pinned)` keeps an object at a fixed address but pins it for the lifetime of the handle, fragmenting the heap and degrading collection performance — the opposite of what NaN boxing was meant to buy. A hybrid shape (NaN-boxed primitives plus a separate `object?` reference slot) gives up the single-word size that was NaN boxing's only meaningful win while keeping all the bit-manipulation cost, so pays for the technique without receiving its benefit. Either path replaces a clean managed design with `unsafe` code threaded through the VM's hot path and manual handle bookkeeping.
+
+The benefit is also small in context. Grob's hot path is I/O — REST calls, JSON parsing, process spawning, file reads. The cache-pressure argument that justifies NaN boxing for a tight-loop numeric interpreter (clox's Pratt-parsed expressions, fib benchmarks) does not transfer to a script hitting an Azure DevOps API. An 8-byte vs 24-byte value struct does not move the wall-clock needle on workloads dominated by network latency and stdlib allocation.
+
+Two further factors. First, debuggability. A tagged union is legible in a watch window — `Kind = Int, _scalar = 42` reads as the value it represents. A NaN-boxed `ulong` reads as an opaque 16-hex-digit number unless you have a decode helper installed in the debugger. For a language whose v1 audience is the author plus early adopters, legibility under a debugger is a real cost saving. Second, extensibility. Adding a tenth variant to a tagged union is an enum case and a field accessor. NaN boxing's bit budget is finite — every new kind contends with the float-NaN payload space, and every existing kind's bit pattern is part of the wire contract.
+
+The clox detour was the right preparation for this decision. NaN boxing is worth seeing in its native habitat to know why it does not transplant. In C, it is the optimisation the language gives you. In C#, it is a technique fighting the platform for a benefit the workload does not need.
+
+D-297's encapsulation boundary was always the right shape regardless of which way OQ-005 resolved. With OQ-005 closed, the "internal layout may change" caveat in `grob-vm-architecture.md` and the on-struct XML doc is removed; everything else stands.
+
+Full byte-level layout, encapsulation contract, equality and hashing rules, and the .NET 11 `[Union]` migration signpost remain in `grob-vm-architecture.md`. That document's "GrobValue Provisional Representation" section is renamed to "GrobValue Representation."
+
+-----
+
+### D-304 — Lean on .NET GC — OQ-006 resolved (May 2026)
+
+Area: VM — memory management
+Supersedes: none
+Superseded by: none
+
+OQ-006 closed. Grob delegates heap memory management to the .NET garbage collector. No custom mark-and-sweep collector is shipped in v1. The step in the implementation order historically allocated to "GC" is a no-op.
+
+**Scope of the decision.**
+
+- Heap objects (`string`, `GrobArray`, `GrobMap`, `GrobStruct`, `GrobFunction`, plugin-registered reference types) are ordinary CLR objects, allocated normally and reclaimed by the .NET GC when no live `GrobValue` references them.
+- Primitive Grob values (`int`, `float`, `bool`, `nil`) live in the `_scalar` field of `GrobValue` and never reach the heap. They generate zero GC pressure.
+- The `_reference` field of `GrobValue` is the single root the GC sees per slot. Stack slots, locals, the globals table and the constant pool participate in the normal GC root walk by virtue of being arrays of `GrobValue` reachable from VM state.
+- No finaliser is required on `GrobValue` or any runtime-internal type.
+
+**What does not exist in v1.**
+
+- No mark phase, sweep phase, allocation-threshold trigger, or `CollectGarbage()` entry point in `Grob.Vm`.
+- No custom heap data structure (no `_heapHead`/`_heapSize`/`Allocate()` plumbing). Each runtime reference type is allocated by `new` and managed by the CLR.
+- No GC tuning surface in `grob.json` or the CLI. The runtime exposes no GC settings of its own; users may set CLR GC switches (server GC, concurrent GC) via standard .NET configuration if they choose, but this is not a Grob feature.
+
+**Rationale.** Grob's target workload is I/O-bound scripting — Azure CLI orchestration, DevOps REST tooling, JSON/CSV transformation, file-system walks. The hot path is stdlib calls, not allocation churn. Heap pressure in this workload is dominated by short-lived string objects from `json.parse()`, `fs.readText()` and string interpolation — exactly the pattern the .NET generational GC handles well in Gen 0.
+
+A custom mark-and-sweep collector would compete with the runtime's collector rather than replace it (CLR-allocated objects cannot be hidden from the .NET GC). The cost is significant: a parallel object lifecycle, a marking algorithm correctly synchronised with the VM's frame walk, an allocation hook on every heap-bound value construction, and a new class of latent bug (use-after-free in marked-then-collected-incorrectly cases). The benefit is theoretical until profiling shows a real workload where .NET's collector is the bottleneck.
+
+clox implements its own collector because C has no choice. Grob is in C#; the choice is whether to add a redundant layer to a managed runtime that already solves the problem. The answer is no.
+
+The benchmarking infrastructure (D-302) provides the empirical surface to revisit this. `[MemoryDiagnoser]` on every benchmark records allocations and Gen 0/1/2 collection counts in the baseline. If a real script later shows GC pressure that the .NET collector handles badly, the data to substantiate the case will exist. v1 is not the right time to act on a problem that has not been measured.
+
+**v1 out-of-scope entry.** "Custom garbage collector" is added to the explicitly-out-of-scope list in `grob-v1-requirements.md` §13 alongside the existing permanent exclusions (concurrent GC, JIT compilation). This is a permanent architectural exclusion, not a defer-under-pressure candidate, so it belongs in §13 rather than the §16 risk-insurance scope-cut list.
+
+**Migration path if v1 evidence forces a revisit.** The path is additive, not destructive: introduce a managed-side weak-reference tracking table inside `Grob.Vm`, register heap-bound `GrobValue` constructions through that table, and run a periodic walk over reachable VM state to identify which entries are still live at the VM-semantic level. Even this path does not replace the .NET GC; it sits above it, identifying retention patterns that the platform's collector cannot see (e.g. closure-captured arrays retained beyond their useful lifetime). That is a Grob-aware memory-introspection feature — already noted as deferred post-v1 in D-302 — not a competitor to the platform collector.
 
 -----
 
@@ -2960,6 +3025,24 @@ staleDays = 30
 -----
 
 *This document is the authoritative decisions record for Grob.*
+*Updated May 2026 — OQ-005 and OQ-006 closed. D-303 (`GrobValue` is a*
+*tagged union — permanent; NaN boxing rejected on managed-runtime*
+*grounds: moving GC cannot trace packed references in a `ulong`, pinning*
+*defeats the size win, hybrid shapes pay the bit-manipulation cost*
+*without the benefit, and Grob's I/O-bound workload does not need the*
+*cache pressure win that justifies NaN boxing for tight numeric loops).*
+*D-304 (lean on .NET GC; no custom mark-and-sweep in v1; "custom*
+*garbage collector" added to the §13 explicitly-out-of-scope list;*
+*benchmarking infrastructure*
+*from D-302 provides the empirical surface to revisit if a real workload*
+*shows GC pressure the .NET collector handles badly). D-297 marked*
+*superseded by D-303; "provisional" framing removed from*
+*`grob-vm-architecture.md` (GrobValue section renamed; speculative*
+*"Mark and Sweep" subsection replaced by definitive "Lean on .NET GC"*
+*content; deferred-decisions table tightened). OQ-005 and OQ-006*
+*relocated from "Open Questions" to "Resolved Questions" in*
+*`grob-open-questions.md` with full rationale preserved. `grob-v1-requirements.md`*
+*§2 "tentative, OQ-005" parenthetical removed; GC bullet tightened.*
 *Updated May 2026 — Benchmarking session: D-302 (benchmarking*
 *infrastructure — BenchmarkDotNet harness in `bench/Grob.Benchmarks`,*
 *three categories — compile-time, VM execution, end-to-end script — plus*

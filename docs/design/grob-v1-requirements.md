@@ -195,12 +195,17 @@ unambiguously.
   by concern (expressions, statements, declarations, control flow).
 - **Stack-based VM** — confirmed, not register-based. The .NET JIT compiles
   the VM loop to efficient native code.
-- **Lean on C#’s GC** — structs for value types (int, float, bool), classes
-  for heap objects (string, array, function) only. No custom mark-sweep
-  unless profiling proves it necessary.
-- **Tagged union for values** (tentative, OQ-005) — `GrobValue` struct with
-  `ValueKind` enum, `long Raw` for primitives, `object? Ref` for heap
-  types.
+- **Lean on .NET GC** (D-304) — primitives (`int`, `float`, `bool`, `nil`)
+  stored directly in `GrobValue`'s scalar slot generate zero GC pressure;
+  heap types (`string`, `GrobArray`, `GrobMap`, `GrobStruct`,
+  `GrobFunction`, plugin-registered reference types) are ordinary CLR
+  objects, reclaimed by the runtime. No custom mark-and-sweep in v1;
+  benchmarking infrastructure (D-302) provides the empirical surface to
+  revisit.
+- **Tagged union for values** (D-303) — `GrobValue` is a hand-rolled
+  `readonly struct` with `GrobValueKind` discriminator, `long _scalar` for
+  primitives, `object? _reference` for heap types. NaN boxing rejected on
+  managed-runtime grounds (full rationale in D-303 and OQ-005).
 - **FOR loops lowered to WHILE** by the compiler — the VM never sees FOR
   opcodes.
 - **Backpatching** for forward jumps. Backward jumps (loops) use known
@@ -1285,6 +1290,7 @@ decisions log.
 |Compile to executable  |Transpile to C# via Roslyn — post-MVP                                                                                                    |
 |VS Code extension      |TextMate grammar, LSP — post-MVP                                                                                                         |
 |JIT compilation        |Explicitly out of scope, permanently                                                                                                     |
+|Custom garbage collector|Lean on .NET GC (D-304); no custom mark-and-sweep in v1. Benchmarking (D-302) provides the surface to revisit if a real workload shows GC pressure the .NET collector handles badly|
 |Concurrent GC          |Not needed for scripting                                                                                                                 |
 |Content mutability     |Mutable binding vs mutable value distinction — `append`/`insert`/`remove`/`clear` ship in v1; full semantic distinction deferred post-MVP|
 |AI tutor               |Guided learning companion — post-MVP                                                                                                     |
@@ -1421,6 +1427,16 @@ Candidates considered and rejected during Session C Part 2:
 
 -----
 
+*This document was updated May 2026 — OQ-005 and OQ-006 closure:*
+*§2 architecture bullets rewritten — "Lean on C#'s GC … unless profiling*
+*proves it necessary" replaced with the locked "Lean on .NET GC" form*
+*(D-304) naming the scalar-slot/heap-object split and the D-302 revisit*
+*surface; "Tagged union for values (tentative, OQ-005)" replaced with the*
+*locked form (D-303) naming the field shape and the NaN-boxing rejection.*
+*§13 Explicitly Out of Scope gains a "Custom garbage collector" row*
+*(D-304) beside the existing Concurrent GC and JIT exclusions — a*
+*permanent architectural exclusion, not a §16 defer-under-pressure*
+*candidate.*
 *This document was updated May 2026 — Session 4 side-finding remediation:*
 *Sprint 1 scope expanded to make the error-recovering parser an explicit*
 *day-one deliverable per D-300 — synchronisation set, error node kinds*
