@@ -1,17 +1,7 @@
 ---
 name: grob-reviewer
 description: Self-review pass on Grob code before requesting Chris's review. Reads the diff, checks against design constraints, identifies risks the implementer might have missed. Use this agent after the implementer has produced work but before Chris is asked to look at it.
-tools:
-    [
-        "search/codebase",
-        "search/fileSearch",
-        "search/textSearch",
-        "search/listDirectory",
-        "search/usages",
-        "search/changes",
-        "read/readFile",
-        "read/problems",
-    ]
+tools: ["search", "read"]
 ---
 
 # Grob reviewer

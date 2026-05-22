@@ -13,7 +13,7 @@
 |--------------------------------|-----------------------------------------|
 |SharpBASIC complete             |✅ Done                                   |
 |SharpBASIC retrospective written|✅ Done — April 2026                      |
-|clox worked through (Ch 14–30)  |🔄 In progress                            |
+|clox worked through (Ch 14–30)  |✅ Done — May 2026, NaN boxing included    |
 |Grob formal design phase begun  |✅ Done — this document                   |
 |Grob Claude Project created     |✅ Done — April 2026                      |
 |Mascot designed (Sparky)        |✅ Done — character sheet v1 complete     |
@@ -25,7 +25,7 @@
 |v1 requirements specified       |✅ Done — April 2026                      |
 |Tooling strategy defined        |✅ Done — April 2026                      |
 |MVP defined and scoped          |✅ Done — see grob-v1-requirements.md     |
-|Implementation started          |⬜ Pending                                |
+|Implementation started          |🔄 In progress — Sprint 1, cleared by D-305|
 
 -----
 
@@ -302,6 +302,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 |D-302|May 2026|Tooling — benchmarking      |BenchmarkDotNet harness in `bench/Grob.Benchmarks`; three categories + stability; committed baselines; no CLI surface in v1|
 |D-303|May 2026|VM — value representation  |OQ-005 closed. `GrobValue` is a tagged union — permanent. NaN boxing rejected (moving-GC mismatch, I/O-bound workload, debuggability)|
 |D-304|May 2026|VM — memory management      |OQ-006 closed. Lean on .NET GC; no custom mark-and-sweep in v1; benchmarking provides the surface to revisit|
+|D-305|May 2026|Process — implementation gate|clox gate satisfied; Sprint 1 cleared to begin. Core chapters worked through incl. NaN boxing; OQ-005/006 experience banked|
 
 -----
 
@@ -2804,6 +2805,24 @@ The benchmarking infrastructure (D-302) provides the empirical surface to revisi
 
 -----
 
+### D-305 — clox gate satisfied; Sprint 1 cleared to begin (May 2026)
+
+Area: Process — implementation gate
+Supersedes: none
+Superseded by: none
+
+The clox preparation gate is satisfied. Sprint 1 implementation is cleared to begin. The project-status table is updated accordingly: "clox worked through" moves to done, "Implementation started" moves to in progress.
+
+**What the gate was.** Sprint 1 was sequenced to begin after clox not as a box-tick but because the bytecode-VM decisions made on paper wanted hands-on experience to be trusted in implementation. The core chapters of *Crafting Interpreters* Part III have now been worked through, including NaN boxing, the upvalue/closure mechanism (D-115), call frames, and the value-representation material. The experience underpinning OQ-005 (D-303) and OQ-006 (D-304) is banked: NaN boxing has been seen in its native habitat, which is precisely what D-303 says the detour was for — knowing why it is the right optimisation in C and the wrong one in a managed runtime. The remaining unread chapters do not bear on the decisions Grob has already locked.
+
+**Why Sprint 1 specifically is safe to start.** Sprint 1's scope is front-end — solution scaffold, the complete `TokenKind` enum, the lexer, diagnostic infrastructure, and the error-recovering parser (D-300). None of it exercises the VM knowledge clox provided; that knowledge pays off from Sprint 2 (the execution loop) onward and lands hardest at Sprint 6 (call frames) and wherever `GrobValue` meets the hot path. Even on the most cautious reading of the gate, nothing in Sprint 1 depends on anything not yet done. The lexer and parser are ground already covered by SharpBASIC.
+
+**`GrobValue` is no longer a pre-Sprint-1 blocker.** The note at D-297 that `Grob.Core` needs a `GrobValue` definition before Sprint 1, with the shape provisional pending OQ-005, is overtaken: D-303 locked the tagged-union shape permanently. `Grob.Core` can define it on the locked shape from the first commit.
+
+No design decision changes here. This entry records that the precondition for implementation is met and the status table now reflects reality, so the log does not read "implementation pending" while code is being written.
+
+-----
+
 ## Post-MVP Decisions
 
 -----
@@ -3025,6 +3044,15 @@ staleDays = 30
 -----
 
 *This document is the authoritative decisions record for Grob.*
+*Updated May 2026 — D-305: clox preparation gate satisfied (core*
+*chapters worked through including NaN boxing, upvalue/closure*
+*mechanism, call frames and value representation); Sprint 1 cleared to*
+*begin. Project-status table updated — "clox worked through" → done,*
+*"Implementation started" → in progress. No design decision changed;*
+*the entry records that the implementation precondition is met and*
+*aligns the status table with reality. `GrobValue` noted as no longer a*
+*pre-Sprint-1 blocker (shape locked by D-303, overtaking the provisional*
+*framing at D-297).*
 *Updated May 2026 — OQ-005 and OQ-006 closed. D-303 (`GrobValue` is a*
 *tagged union — permanent; NaN boxing rejected on managed-runtime*
 *grounds: moving GC cannot trace packed references in a `ulong`, pinning*
