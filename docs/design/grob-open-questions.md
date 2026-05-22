@@ -6,14 +6,14 @@
 > This document preserves the reasoning behind each question and resolution.
 > When this document and the decisions log conflict, the decisions log wins.
 
------
+---
 
 ## Open Questions
 
 These are unresolved. They require a decision before implementation reaches them.
 Listed in rough priority order — earlier questions affect more downstream design.
 
------
+---
 
 ### OQ-013 — `Grob.Llm` Plugin
 
@@ -32,7 +32,7 @@ configured via `env`. Credential handling follows the established pattern
 
 Tentative surface, subject to design:
 
-```
+```grob
 import Grob.Llm
 
 reply := llm.complete(
@@ -78,7 +78,7 @@ substitution. Coupling the plugin to a single provider would be a versioning tra
 **Defer until:** post-v1, after `Grob.Http` ships (the plugin is an HTTP client
 wrapper at heart). No commitment until Sprint 12 retrospective.
 
------
+---
 
 ### OQ-014 — `Grob.Mcp` Plugin
 
@@ -98,7 +98,7 @@ declarations and their decorators (`@allowed`, `@minLength`, `@maxLength`,
 input descriptors. No new decorators, no schema DSL, no boilerplate — the
 language feature already specified does the work.
 
-```
+```grob
 import Grob.Mcp
 
 @minLength(3)
@@ -119,7 +119,7 @@ other reasons.
 **Client side:** a Grob script can connect to an MCP server and invoke tools.
 Tentative surface:
 
-```
+```grob
 client := mcp.connect("https://jira-mcp.example.com")
 ticket := client.callTool("get_issue", #{ id: "PROJ-123" })
 ```
@@ -127,7 +127,7 @@ ticket := client.callTool("get_issue", #{ id: "PROJ-123" })
 **Composition pattern.** Neither plugin knows about the other. The script author
 wires them together — exactly as `fs` and `json` are composed today:
 
-```
+```grob
 import Grob.Llm
 import Grob.Mcp
 
@@ -161,7 +161,7 @@ and that is exactly the shape of script Grob is designed for.
 production-recommended MCP transport; stdio is local-only). No commitment
 until Sprint 12 retrospective. Likely a v1.1 or v1.2 plugin.
 
------
+---
 
 ### OQ-015 — `Grob.Sql` Plugin
 
@@ -178,7 +178,7 @@ ecosystem already has battle-tested drivers for every target backend.
 
 Tentative surface, subject to design:
 
-```
+```grob
 import Grob.Sql
 
 type Customer {
@@ -205,7 +205,7 @@ conn.close()
    row-to-record mapping concept already exist for JSON. SQL row mapping is
    the same problem with a different source.
 2. **Parameterised queries are not optional.** The `query()` and `queryAs<T>()`
-   signatures take a parameters argument as their *required* second positional
+   signatures take a parameters argument as their _required_ second positional
    parameter — analogous to `process.run(cmd, args[])` requiring an array even
    when empty. There is no string-only overload. Empty parameters are passed as
    `#{}`. The PowerShell `Invoke-Sqlcmd` willingness to accept string-built SQL
@@ -252,7 +252,7 @@ realistic enterprise scripts (OQ-016 array aggregation, OQ-017 triple-backtick
 interpolation) should resolve first or in parallel — the SQL API design is
 where the parameterisation precedent is set.
 
------
+---
 
 ### OQ-016 — Array Aggregation Methods
 
@@ -271,7 +271,7 @@ recurring pattern across scripts.
 
 **Tentative direction:** add the LINQ-shaped aggregation set to `T[]`:
 
-```
+```grob
 arr.sum<U: Numeric>(fn: T → U): U
 arr.average<U: Numeric>(fn: T → U): float
 arr.max<U: Comparable>(fn: T → U): U?
@@ -289,7 +289,7 @@ no-predicate counting.
 
 Tentative surface:
 
-```
+```grob
 total    := debts.sum(d => d.amount)               // float
 oldest   := debts.max(d => d.daysOverdue)          // int?
 critical := debts.count(d => d.severity == "high") // int
@@ -299,7 +299,7 @@ critical := debts.count(d => d.severity == "high") // int
 canonical surface and the LINQ-for-scripting identity (D-280) commits Grob to
 that vocabulary. The constrained-generics machinery is in place. The
 implementation is small — each method is a fold over the array. The cost of
-*not* having them is paid every time someone writes a script that does
+_not_ having them is paid every time someone writes a script that does
 arithmetic across a collection.
 
 **Rationale for deferral despite small implementation cost:** the v1 sample
@@ -314,7 +314,7 @@ real-world Grob scripts that needed aggregation and worked around it. If
 that pattern shows up consistently in early adopter feedback, the case for
 v1.1 inclusion is overwhelming.
 
------
+---
 
 ### OQ-017 — Triple-Backtick Interpolation
 
@@ -323,7 +323,7 @@ interpolation form — for example `$```...``` ` — alongside the existing
 verbatim form?
 
 **Background:** D-127 specifies three string forms. Triple backtick
-(````...````) is multiline verbatim, no interpolation. The rule is
+(`...`) is multiline verbatim, no interpolation. The rule is
 principled: multiline implies raw, interpolation implies single-line. The
 two forms do not overlap, which keeps the lexer simple and the developer
 intent visible.
@@ -342,11 +342,11 @@ unaffected.
 
 Tentative surface:
 
-```
+````grob
 // Verbatim — no interpolation, unchanged from v1
 sql := ```
 SELECT * FROM users WHERE active = 1
-```
+````
 
 // Interpolating — explicit opt-in via $ prefix
 html := $```
@@ -366,13 +366,13 @@ honest answer is **no — the v1 rule does not prevent SQL injection and this
 question is independent of the string form**. A script can already build an
 injectable SQL string today using `+`-concatenation:
 
-```
+```grob
 query := "SELECT * FROM users WHERE name = '" + userInput + "'"
 conn.queryAs<User>(query)   // injected
 ```
 
-The dangerous path is the *use site* — passing a string-built query to
-`queryAs<T>` instead of using parameters — not the *string syntax*.
+The dangerous path is the _use site_ — passing a string-built query to
+`queryAs<T>` instead of using parameters — not the _string syntax_.
 The v1 triple-backtick rule is therefore security theatre on this dimension:
 it makes the safe path (multiline HTML, JSON templates) verbose without
 making the dangerous path (string-built SQL) any harder.
@@ -386,7 +386,7 @@ language side:
    interpolated strings flowing into known-dangerous sinks
    (`process.runShell`, `Grob.Sql` raw query methods if any are ever
    added, regex compilation from untrusted input). The lint is on the use
-   site and applies to *any* interpolated string, including the existing
+   site and applies to _any_ interpolated string, including the existing
    `"..."` form.
 
 Both controls are independent of OQ-017 and apply whether the answer is
@@ -397,7 +397,7 @@ scope, principled in syntax (`$` prefix is the established C# idiom),
 zero-impact on existing scripts, and removes recurring real-world friction.
 The injection concern that might motivate keeping the v1 rule is illusory —
 the rule does not prevent injection and the proper controls live elsewhere.
-Keeping v1 simple by deferring is fine; keeping v1 simple *and* claiming
+Keeping v1 simple by deferring is fine; keeping v1 simple _and_ claiming
 the simplicity is for security reasons is not.
 
 **Rationale for deferring despite the case for inclusion:** v1 scope is
@@ -410,7 +410,7 @@ script-design exercises suggest.
 sets the parameterisation precedent, and the lint architecture (`W1601`)
 touches both. Likely v1.1.
 
------
+---
 
 ## Resolved Questions
 
@@ -418,7 +418,7 @@ These questions have been decided. Full rationale is preserved here for referenc
 One-line resolutions are recorded in the confirmed decisions table of
 `grob-decisions-log.md`.
 
------
+---
 
 ### OQ-005 — Value Representation
 
@@ -493,7 +493,7 @@ and the .NET 11 `[Union]` migration signpost remain in
 `grob-vm-architecture.md` under the renamed "GrobValue Representation"
 section. Supersession chain: D-142 → D-297 → D-303.
 
------
+---
 
 ### OQ-006 — GC Strategy
 
@@ -568,7 +568,7 @@ cannot see (e.g. closure-captured arrays retained beyond their useful
 lifetime). That is a Grob-aware memory-introspection feature — already noted
 as deferred post-v1 in D-302 — not a competitor to the platform collector.
 
------
+---
 
 ### OQ-009 — `GrobValue` Provisional Representation
 
@@ -619,7 +619,7 @@ v1 room to ship and stabilise without a forced migration.
 Full byte-level layout, encapsulation contract and rationale in
 `grob-vm-architecture.md`.
 
-**Follow-on:** OQ-009 resolved the *provisional* shape so `Grob.Core` could
+**Follow-on:** OQ-009 resolved the _provisional_ shape so `Grob.Core` could
 ship before OQ-005 landed. OQ-005 (above) has since closed (D-303): the
 tagged union is permanent, NaN boxing rejected. The provisional framing is
 removed from the corpus; the shape OQ-009 locked is now the final shape.
@@ -655,7 +655,7 @@ and multi-chunk packaging are explicit non-features for v1.
 Full byte-level layout, implementation notes and rationale in
 `grob-grobc-format.md`. Supersession chain: D-143 → D-298.
 
------
+---
 
 ### OQ-007 — `for...in` Loop and Iterable Protocol
 
@@ -685,7 +685,7 @@ special-cased because `for k, v in myMap` is immediately natural and the
 alternative (`for k in myMap.keys { v := myMap[k] }`) is visibly clunky for a
 type that is now first-class.
 
------
+---
 
 ### OQ-001 — Generics Scope
 
@@ -706,7 +706,7 @@ to Go pre-1.18.
 **Plugin constraint:** Plugins that expose generic functions must express type
 parameters via `FunctionSignature` in `Grob.Runtime`. Designed in from the start.
 
------
+---
 
 ### OQ-002 — Struct / Record Types
 
@@ -715,7 +715,7 @@ parameters via `FunctionSignature` in `Grob.Runtime`. Designed in from the start
 **Decision:** Grob needs user-defined struct/record types.
 
 **Evidence:** The Sunken Crown required parallel arrays as a substitute for records.
-The retrospective verdict: *“Messy, wasteful, and slow.”* The absence of a `type`
+The retrospective verdict: _“Messy, wasteful, and slow.”_ The absence of a `type`
 keyword was the single biggest language limitation revealed by writing a real program.
 
 **Confirmed direction:** `type` keyword, structural types, fields declared inside
@@ -730,7 +730,7 @@ type Repo {
 }
 ```
 
------
+---
 
 ### OQ-003 — JSON and the Type System Boundary
 
@@ -742,7 +742,7 @@ JSON nodes are accessed via `json.Node` with typed accessors (`asString()`, `asA
 etc.) and mapped to user-defined types via `mapAs<T>()`. Full json module API specified
 in `grob-stdlib-reference.md`.
 
------
+---
 
 ### OQ-004 — Error Handling Model
 
@@ -750,7 +750,7 @@ in `grob-stdlib-reference.md`.
 
 **Decision:** Exceptions as the runtime error model. See confirmed decisions for detail.
 
------
+---
 
 ### OQ-008 — `date` as a Built-in or Stdlib Type
 
@@ -759,7 +759,7 @@ in `grob-stdlib-reference.md`.
 **Decision:** `date` is a core stdlib type — auto-available, no import required.
 Single type holds both date and time. Full API locked — see confirmed decisions.
 
------
+---
 
 ### OQ-011 — `Grob.Crypto` API Shape
 
@@ -778,7 +778,7 @@ All hex output is lowercase. File functions stream internally — never load ful
 into memory. Verify functions use constant-time comparison for security. SHA-1,
 SHA-512, HMAC, byte array output — all post-MVP.
 
------
+---
 
 ### OQ-012 — `process.run()` Timeout Behaviour
 
@@ -791,7 +791,7 @@ expiry, throws `ProcessError("Process timed out after {n} seconds: {cmd}")`.
 
 Full signatures:
 
-```
+```grob
 process.run(cmd: string, args: string[], timeout: int = 0): ProcessResult
 process.runShell(cmd: string, timeout: int = 0): ProcessResult
 process.runOrFail(cmd: string, args: string[], timeout: int = 0): ProcessResult
@@ -803,43 +803,43 @@ surprising behaviour for long-running legitimate processes. `timeout: int` is
 available when the caller needs it. `ProcessError` on timeout with a clear message.
 `ProcessResult` does not need `timedOut` — the throw communicates the condition.
 
------
+---
 
-*Resolved questions are summarised as one-line entries in the confirmed decisions*
-*table of `grob-decisions-log.md`. The full rationale is preserved here.*
+_Resolved questions are summarised as one-line entries in the confirmed decisions_
+_table of `grob-decisions-log.md`. The full rationale is preserved here._
 
------
+---
 
-*Document updated May 2026 — OQ-015 (`Grob.Sql` plugin shape), OQ-016 (array*
-*aggregation methods on `T[]`), and OQ-017 (triple-backtick interpolation via*
-*`$```...``` ` prefix) added as open questions, all deferred until post-v1.*
-*Surfaced by realistic enterprise script design exercises against the v1*
-*language and stdlib surface; tentative directions captured so the eventual*
-*design conversations start from a known position. OQ-013 and OQ-014 import*
-*examples updated from `import "..."` to `import Grob.Llm`/`import Grob.Mcp`*
-*to match the documented plugin import convention; param block example in*
-*OQ-014 corrected from `param { ... }` block syntax to the bare-line form*
-*per `grob-language-fundamentals.md`.*
-*Updated May 2026 — OQ-005 resolved (`GrobValue` is a tagged union —*
-*permanent, NaN boxing rejected on managed-runtime grounds, see D-303);*
-*OQ-006 resolved (lean on .NET GC, no custom mark-and-sweep in v1, see*
-*D-304). Both relocated from "Open Questions" to "Resolved Questions"*
-*with full rationale preserved. With these closures every Sprint-1-blocking*
-*open question is resolved.*
-*Previous: April 2026 — OQ-013 (`Grob.Llm` plugin shape) and OQ-014*
-*(`Grob.Mcp` plugin shape) added as open questions, both deferred until*
-*post-v1 with `Grob.Http` as a prerequisite. Tentative directions captured*
-*so the eventual design conversation starts from a known position.*
-*Previous: April 2026 — post-Session-G cleanup: OQ-009 and OQ-010*
-*body sections relocated from “Open Questions” to “Resolved Questions”*
-*to match their resolved status. No content change to the resolutions*
-*themselves — full rationale preserved.*
-*Previous: April 2026 — OQ-009 resolved (`GrobValue` provisional representation,*
-*hand-rolled tagged-union struct under .NET 10 LTS, see D-297);*
-*OQ-010 resolved (`.grobc` binary format skeleton spec, see D-298 and `grob-grobc-format.md`).*
-*Previous: OQ-011 resolved (`Grob.Crypto` API shape);*
-*OQ-012 resolved (`process.run()` timeout behaviour).*
-*Previous: OQ-007 resolved (`for...in` iterable types).*
-*Document created April 2026 — extracted from grob-decisions-log.md.*
-*Authorised decisions recorded in grob-decisions-log.md.*
-*This document is the implementation reference — the decisions log is the authority.*
+_Document updated May 2026 — OQ-015 (`Grob.Sql` plugin shape), OQ-016 (array_
+_aggregation methods on `T[]`), and OQ-017 (triple-backtick interpolation via_
+_`$```...``` ` prefix) added as open questions, all deferred until post-v1._
+_Surfaced by realistic enterprise script design exercises against the v1_
+_language and stdlib surface; tentative directions captured so the eventual_
+_design conversations start from a known position. OQ-013 and OQ-014 import_
+_examples updated from `import "..."` to `import Grob.Llm`/`import Grob.Mcp`_
+_to match the documented plugin import convention; param block example in_
+_OQ-014 corrected from `param { ... }` block syntax to the bare-line form_
+_per `grob-language-fundamentals.md`._
+_Updated May 2026 — OQ-005 resolved (`GrobValue` is a tagged union —_
+_permanent, NaN boxing rejected on managed-runtime grounds, see D-303);_
+_OQ-006 resolved (lean on .NET GC, no custom mark-and-sweep in v1, see_
+_D-304). Both relocated from "Open Questions" to "Resolved Questions"_
+_with full rationale preserved. With these closures every Sprint-1-blocking_
+_open question is resolved._
+_Previous: April 2026 — OQ-013 (`Grob.Llm` plugin shape) and OQ-014_
+_(`Grob.Mcp` plugin shape) added as open questions, both deferred until_
+_post-v1 with `Grob.Http` as a prerequisite. Tentative directions captured_
+_so the eventual design conversation starts from a known position._
+_Previous: April 2026 — post-Session-G cleanup: OQ-009 and OQ-010_
+_body sections relocated from “Open Questions” to “Resolved Questions”_
+_to match their resolved status. No content change to the resolutions_
+_themselves — full rationale preserved._
+_Previous: April 2026 — OQ-009 resolved (`GrobValue` provisional representation,_
+_hand-rolled tagged-union struct under .NET 10 LTS, see D-297);_
+_OQ-010 resolved (`.grobc` binary format skeleton spec, see D-298 and `grob-grobc-format.md`)._
+_Previous: OQ-011 resolved (`Grob.Crypto` API shape);_
+_OQ-012 resolved (`process.run()` timeout behaviour)._
+_Previous: OQ-007 resolved (`for...in` iterable types)._
+_Document created April 2026 — extracted from grob-decisions-log.md._
+_Authorised decisions recorded in grob-decisions-log.md._
+_This document is the implementation reference — the decisions log is the authority._
