@@ -1,130 +1,176 @@
-# Grob — Copilot instructions
+# Grob — Copilot Repository Instructions
 
-You are working on **Grob**, a statically typed scripting language with a bytecode
-VM, written in C# .NET 10. The design is complete. Implementation is what you do.
+You are a contributor to **Grob**, a statically typed scripting language with a
+bytecode VM, written in C# on .NET 10. These instructions are always active. They
+are the foundation; path-scoped rules in `.github/instructions/` add detail for
+specific file types, and the custom agents in `.github/agents/` carry deeper
+context for particular jobs.
 
-The decisions log (`docs/design/grob-decisions-log.md`) is the authority. When this
-file or any other says one thing and the decisions log says another, the decisions
-log wins. Fetch it when precision matters.
+Read this whole file before writing code. It is short on purpose.
 
-## Hard rules
-
-1. **Never start work on `main`.** Always create a short-lived branch first. See
-   `.github/skills/trunk-flow/SKILL.md`. If you find yourself on `main`, stop and
-   say so before doing anything else.
-2. **No code lands without Chris's approval.** Propose first for anything
-   multi-file, anything introducing abstractions, anything affecting public API.
-   For obvious mechanical work — a single-method body, an obvious wiring — ask
-   "this looks mechanical, should I implement it directly?" rather than walking
-   through a full proposal.
-3. **TDD: red, green, refactor — always.** Test first, watch it fail, implement
-   the minimum to pass, refactor. The only exceptions are TDD-awkward structural
-   work (solution skeleton, csproj generation, directory scaffolding) — name the
-   exception when you take it. See `.github/skills/tdd-cycle/SKILL.md`.
-4. **Full files, never patches.** When proposing a change, show the complete
-   updated file, not a diff.
-5. **British English. No Oxford comma. Never "simply".** This applies to code
-   comments, doc comments, error messages, commit messages, everything.
+-----
 
 ## What Grob is
 
-A statically typed scripting language with C-style syntax, type inference,
-nullable types and first-class file system and process operations. C# / Go
-developers should read it without prior knowledge. Designed to fill the gap
-between Go (too ceremonious for scripts), PowerShell (syntactically hostile),
-and Python (dynamically typed).
+A statically typed scripting language that a hobbyist can learn and a developer can
+trust. C-style syntax, type inference, explicit nullability, opt-in immutability.
+The design target is to stand next to Go, PowerShell and Python as a credible answer
+to "what should I use for this scripting task?" — Go is too ceremonious, PowerShell's
+syntax is hostile, Python is dynamically typed and clunky at scale. Grob fills that
+gap. Primary users are Windows developers and sysadmins.
 
-The solution graph is a strict DAG. Seven projects: `Grob.Core`, `Grob.Runtime`,
-`Grob.Compiler`, `Grob.Vm`, `Grob.Stdlib`, `Grob.Cli`, `Grob.Lsp`. **`Grob.Compiler`
-and `Grob.Vm` never reference each other.** `Grob.Core` is the only shared
-ground. When in doubt about what may reference what, fetch
-`docs/design/grob-solution-architecture.md`.
+Grob is a serious project, not a toy and not a learning exercise. When a choice
+exists between the approach that is easier to build and the approach that produces a
+better language, choose the better language. Design decisions are made as if they
+will ship, because they will.
 
-## Day-one constraints (Sprint 1 acceptance gates)
+This is AI-augmented development, not vibe coding. The maintainer understands and
+owns every line. Your job is to suggest, implement and review against a stated
+rationale — never to produce code that gets accepted without being understood.
+Explain your reasoning. Surface trade-offs. If a direction is weak, say so.
 
-These are non-deferrable and shape every file you write:
+-----
 
-- **Error-recovering parser.** Always produces a full AST. Error nodes
-  (`ErrorExpr`, `ErrorStmt`, `ErrorDecl`) are first-class. Cascade suppression
-  via the compiler-internal `Error` type. No diagnostic cap. Stateless. See
-  `docs/design/grob-language-fundamentals.md` §29.
-- **`SourceLocation` on every AST node.** Line, column, file. Day-one, not
-  retrofit-able.
-- **`Declaration` back-reference on every identifier node**, set by the type
-  checker. Drives go-to-definition and hover in the LSP.
-- **Two-pass type checker.** Pass 1 registers all top-level declarations;
-  pass 2 validates bodies.
-- **`///` doc comments attached to declaration nodes** (recognised and discarded
-  in v1, but the attachment must happen day-one).
+## The authority chain
 
-## Code conventions
+When documents conflict, resolve in this order:
 
-- C# 13 / .NET 10 LTS. File-scoped namespaces. Nullable reference types enabled.
-- Target framework `net10.0`. `LangVersion` 13.
-- xUnit for tests. One test class per type under test. Test method naming:
-  `MethodUnderTest_Scenario_ExpectedBehaviour`.
-- Solution format is `.slnx` (XML, not legacy `.sln`).
-- Windows-native. No Unix paths or commands in any code, comment or doc.
-  Backtick raw strings are the canonical idiom for Windows paths in Grob source.
-- See `.github/instructions/csharp.instructions.md` for the full coding rules.
+1. **`docs/design/grob-decisions-log.md`** — the authority. Numbered `D-###`
+   ADR-style entries. If a decision is recorded here, it is settled.
+2. **`docs/design/grob-v1-requirements.md`** — the build guide. Sprint scope,
+   acceptance criteria, Definition of Done, what is explicitly out of scope.
+3. **`docs/design/grob-solution-architecture.md`** — the project graph and
+   assembly responsibilities.
+4. The remaining design docs under `docs/design/` for their specific areas.
 
-## Where to find things
+Never invent a resolution to a contradiction. If the code and a design doc disagree,
+or two docs disagree, **stop and flag it** with the specific files and lines. Verify
+file state before claiming drift — a session summary saying an edit landed is not
+proof the edit landed.
 
-The design corpus lives in `docs/design/`. When you need an authoritative
-answer to a question, fetch the relevant file:
+When you implement something that a decision authorised, reference the `D-###` in
+the commit message and in a code comment where it clarifies intent. When you find
+yourself wanting a behaviour the docs do not cover, that is a design question — raise
+it, do not silently decide it.
 
-| Question                              | File                                        |
-| ------------------------------------- | ------------------------------------------- |
-| Is decision X settled? What does it say? | `grob-decisions-log.md`                  |
-| Parser, type checker, compiler spec   | `grob-language-fundamentals.md`             |
-| Built-in type methods                 | `grob-type-registry.md`                     |
-| VM and runtime architecture           | `grob-vm-architecture.md`                   |
-| `.grobc` binary format                | `grob-grobc-format.md`                      |
-| Stdlib modules                        | `grob-stdlib-reference.md`                  |
-| Error codes                           | `grob-error-codes.md`                       |
-| Sprint scope and Definition of Done   | `grob-v1-requirements.md`                   |
-| Solution structure, project graph     | `grob-solution-architecture.md`             |
-| Validation suite (release-gate scripts) | `grob-sample-scripts.md`                  |
-| Formatter rules                       | `grob-formatter-specification.md`           |
+-----
 
-The `grob-spec-lookup` skill (`.github/skills/grob-spec-lookup/SKILL.md`) walks
-through how to find the right file for a given question.
+## The two languages in this repository
 
-## Model selection
+This repo contains **C# host code** (the compiler, VM and stdlib that *implement*
+Grob) and **`.grob` scripts** (programs *written in* Grob — samples, tests,
+fixtures). They have different rules. Copilot's path-scoped instructions handle the
+split automatically, but be aware which one you are touching:
 
-Three tiers are available. Pick the cheapest that will do the job well:
+- `**/*.cs` — C# host code. Follow `.github/instructions/csharp-host.instructions.md`.
+- `**/*.grob` — Grob language source. Follow `.github/instructions/grob-lang.instructions.md`.
 
-- **Local Qwen2.5-Coder via Ollama** — mechanical work. Commit message
-  generation, doc comment first drafts, test stub scaffolding from a signature,
-  obvious DTO wiring. Free, runs on Chris's GTX 1060.
-- **Copilot native Sonnet 4.6** (uses the $39/month AI Credit allowance) —
-  routine reasoning. Standard TDD red/green cycles, explaining errors, writing
-  tests for a clear spec, refactoring within a file.
-- **Anthropic API via BYOK — Opus 4.7** (billed direct, not Copilot credits) —
-  design work. Multi-file proposals, architecture decisions, debugging cascading
-  failures, anything where the answer matters more than the throughput.
+Do not let Grob language conventions leak into C#, or vice versa. A `.grob` file uses
+`:=`, backtick raw strings for Windows paths and `select`/`case`; a `.cs` file is
+ordinary modern C#.
 
-When in doubt, ask Chris which tier to use. Don't escalate silently.
+-----
 
-## What you do not do
+## Solution shape (do not violate the DAG)
 
-- You do not invent design decisions. If the spec is silent on something,
-  surface the gap and ask.
-- You do not paraphrase the decisions log into local opinions. The log is
-  authoritative; quote it or point to it.
-- You do not suggest features outside Sprint 1 scope unless Chris asks. Stay
-  on the work.
-- You do not write personality content, mascot references or first-run
-  acknowledgements. That's a separate concern handled elsewhere.
-- You do not commit directly to `main`. Ever.
+```
+src/
+  Grob.Core/        Chunk, OpCode, GrobType, GrobValue, ConstantPool, SourceLocation
+  Grob.Runtime/     IGrobPlugin, GrobVM registration surface, FunctionSignature, GrobError hierarchy
+  Grob.Compiler/    Lexer, Parser, AST, TypeChecker, Compiler (partial classes by concern)
+  Grob.Vm/          VirtualMachine, ValueStack, CallFrame[256], Globals, PluginLoader, Upvalue
+  Grob.Stdlib/      13 core modules, one IGrobPlugin per module
+  Grob.Cli/         grob.exe — composition root, CLI commands, REPL, error formatting
+  Grob.Lsp/         Language server (post-MVP) — consumes Grob.Compiler, never runs scripts
+plugins/            Grob.Http (reference impl), Grob.Crypto, Grob.Zip — reference Grob.Runtime only
+tests/              Grob.Core.Tests, Grob.Compiler.Tests, Grob.Vm.Tests, Grob.Stdlib.Tests, Grob.Integration.Tests
+bench/Grob.Benchmarks/   BenchmarkDotNet harness (D-302)
+tooling/Grob.VsCode/     VS Code extension (TypeScript)
+```
 
-## Approval signals
+**The critical rule: `Grob.Compiler` and `Grob.Vm` never reference each other.**
+`Grob.Core` is the only shared ground between them. `Chunk` is the boundary — the
+compiler produces it, the VM consumes it, neither knows about the other. If you find
+yourself adding a project reference that would couple Compiler and Vm, you have made
+a mistake; the type you want belongs in `Grob.Core`.
 
-Chris uses terse approval. Treat these as standing:
+The graph is a DAG with no cycles. `Grob.Cli` is the only composition point and the
+only project that references everything. Nothing references `Grob.Cli`.
 
-- **"Agree"** or **"Agree and move on"** — proceed with the proposal as stated.
-- **"Continue"** — execute the next step in the pre-agreed plan, no need to
-  re-propose.
-- **"Stop"** — halt immediately, don't try to finish the in-flight step.
+-----
 
-If Chris hasn't agreed and the work isn't pre-agreed, ask before doing.
+## Non-negotiables (these hold across every sprint)
+
+- **Source location everywhere, day one.** Every `Token` carries `(file, line,
+  column)`. Every AST node carries a `SourceLocation`. Every bytecode instruction
+  carries a line number in the chunk's parallel line array. This is not retrofittable
+  — adding it later means touching every node constructor.
+- **LSP-enabling fields, day one.** The type checker sets `ResolvedType` and a
+  `Declaration` back-reference on every identifier node. `Grob.Compiler.Tests`
+  asserts these are non-null after type checking. They cost one field and one
+  assignment; they are not used by the v1 runtime but exist so the LSP never needs a
+  type-checker audit to retrofit.
+- **Two-mode error handling.** The lexer, parser and type checker collect **all**
+  errors before execution — never stop at the first. There is no diagnostic cap. The
+  VM stops on the **first** runtime error. (D-039)
+- **Error-recovering, stateless parser.** On a parse failure the parser emits a
+  diagnostic, builds an `ErrorExpr` / `ErrorStmt` / `ErrorDecl` placeholder, advances
+  to the next synchronisation anchor, and resumes. A single malformed construct never
+  aborts the parse. Error nodes have type `Error`, assignable to and from every type,
+  so one parse error does not cascade into a wall of type diagnostics. (D-300, spec
+  in `grob-language-fundamentals.md` §29)
+- **Complete enums, defined once.** `OpCode` and `TokenKind` are written out in full
+  when first introduced — never grown incrementally. The full sets live in
+  `grob-v1-requirements.md` §3.3 and §3.4. Adding a case later is a deliberate,
+  decision-logged act, not casual drift.
+- **Typed opcodes, no runtime type checks.** The compiler emits `AddInt` vs
+  `AddFloat` vs `Concat` using type-checker annotations. The VM trusts them. The type
+  checker already proved correctness.
+- **Structs for value types, classes for heap objects only.** `GrobValue` is a
+  hand-rolled `readonly struct` tagged union (D-303). NaN boxing is rejected — do not
+  propose it. Lean on the .NET GC; there is no custom collector (D-304).
+- **Visitor pattern + partial classes in the compiler.** Three passes walk the same
+  AST. `Grob.Compiler` splits by concern across `partial class` files.
+
+-----
+
+## Output and tone conventions (these are the product's personality)
+
+These apply to anything the CLI, compiler or REPL prints, and to docs and comments:
+
+- **British English throughout.** Colour, behaviour, initialise, recognise.
+- **Never the Oxford comma.**
+- **Never the word "simply"** (or "just", "obviously", "of course") in user-facing
+  text or docs.
+- **Errors to stderr, results to stdout.** Always pipeline-friendly.
+- **Quiet on success, clear on failure.** The compiler is strict where it matters and
+  quiet where it does not.
+- **No emoji in compiler errors or CLI output.** The REPL may, sparingly. Source
+  comments and docs: none.
+- **Error messages never show variable values** — only names and types — unless
+  `--verbose` is set. This is a security decision.
+- Every error message includes file, line, column, what went wrong, and a suggested
+  fix when the fix is obvious.
+
+-----
+
+## How to work in this repo
+
+- **Build:** `dotnet build` from the solution root. **Test:** `dotnet test`. Both
+  must pass before any change is considered done.
+- **Tests are not optional and not retroactive.** Every change ships with tests for
+  the behaviour it adds. Compiler output tests (source → assert bytecode) are the
+  highest-priority bug surface — that is where bugs live.
+- **Windows-native.** This is a Windows-first project. Use Windows path conventions
+  and Windows idioms in examples, fixtures and docs. No Unix paths in any Grob-facing
+  context.
+- **Match the existing code.** Read the surrounding file before writing. Follow its
+  naming, its structure, its partial-class organisation.
+- **The `Grob` prefix is always spelled in full** — `GrobType`, `GrobValue`,
+  `GrobError`. `Gro` is not a convention in this codebase.
+- When a task is large, propose the smallest working increment first. "Working" means
+  the test suite passes and the increment runs something meaningful.
+
+When you are unsure which sprint a piece of work belongs to, or whether a feature is
+in v1 scope, check `grob-v1-requirements.md` §4 (sprint breakdown) and §13 (out of
+scope) before writing anything.
