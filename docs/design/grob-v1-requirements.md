@@ -537,7 +537,9 @@ arithmetic expressions and `print()`.
 **Scope:**
 
 - `OpCode` enum — complete (see §3.3).
-- `Value` struct — tagged union: `ValueKind` enum, `long Raw`, `object? Ref`.
+- `GrobValue` struct (D-303) — hand-rolled `readonly struct` tagged union:
+  `GrobValueKind` discriminator, `long _scalar` for primitives, `object?
+  _reference` for heap types.
 - `Chunk` — bytecode array, constant pool, line number array.
 - Type checker (first AST visitor pass):
   - Type inference on `:=` declarations.
