@@ -27,6 +27,18 @@ public sealed class TokenTests {
         Assert.Equal(2, token.BracketDepth);
     }
 
+    [Fact]
+    public void Constructor_NullLexeme_ThrowsArgumentNullException() {
+        Assert.Throws<ArgumentNullException>(() =>
+            new Token(TokenKind.Identifier, null!, _testLocation, 0));
+    }
+
+    [Fact]
+    public void Constructor_NegativeBracketDepth_ThrowsArgumentOutOfRangeException() {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new Token(TokenKind.Identifier, "foo", _testLocation, -1));
+    }
+
     // -------------------------------------------------------------------------
     // Equality (record semantics)
     // -------------------------------------------------------------------------

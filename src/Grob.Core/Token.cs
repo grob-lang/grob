@@ -19,12 +19,13 @@ public sealed record Token {
     /// <exception cref="ArgumentNullException"><paramref name="lexeme"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="bracketDepth"/> is negative.</exception>
     public Token(TokenKind kind, string lexeme, SourceLocation location, int bracketDepth) {
+        if (bracketDepth < 0)
+            throw new ArgumentOutOfRangeException(nameof(bracketDepth), "Bracket depth must be non-negative.");
+
         Kind = kind;
         Lexeme = lexeme ?? throw new ArgumentNullException(nameof(lexeme));
         Location = location;
-        BracketDepth = bracketDepth >= 0
-            ? bracketDepth
-            : throw new ArgumentOutOfRangeException(nameof(bracketDepth), "Bracket depth must be non-negative.");
+        BracketDepth = bracketDepth;
     }
 
     /// <summary>The syntactic category of this token.</summary>
