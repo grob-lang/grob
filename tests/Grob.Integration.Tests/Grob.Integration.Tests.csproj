@@ -21,4 +21,7 @@
     <ProjectReference Include="..\..\src\Grob.Cli\Grob.Cli.csproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
 </Project>

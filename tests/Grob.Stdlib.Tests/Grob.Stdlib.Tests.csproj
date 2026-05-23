@@ -20,4 +20,7 @@
     <ProjectReference Include="..\..\src\Grob.Stdlib\Grob.Stdlib.csproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
 </Project>
