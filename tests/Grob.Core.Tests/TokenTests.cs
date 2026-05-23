@@ -80,11 +80,13 @@ public sealed class TokenTests {
 
     [Fact]
     public void ToString_NonEmptyLexeme_ContainsKindLexemeLocationAndDepth() {
-        var token = new Token(TokenKind.Identifier, "myVar", new SourceLocation("src/foo.grob", 5, 3), 0);
+        var location = new SourceLocation("src/foo.grob", 5, 3);
+        var token = new Token(TokenKind.Identifier, "myVar", location, 0);
         var str = token.ToString();
 
         Assert.Contains("Identifier", str);
         Assert.Contains("myVar", str);
+        Assert.Contains(location.ToString(), str);
         Assert.Contains("depth=0", str);
     }
 

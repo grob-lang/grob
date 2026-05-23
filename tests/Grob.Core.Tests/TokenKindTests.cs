@@ -1,7 +1,7 @@
+namespace Grob.Core.Tests;
+
 using Grob.Core;
 using Xunit;
-
-namespace Grob.Core.Tests;
 
 /// <summary>
 /// Verifies that every token kind required by grob-v1-requirements.md §3.4 is present
@@ -154,5 +154,10 @@ public sealed class TokenKindTests {
         Assert.DoesNotContain("Print", names, StringComparer.Ordinal);
         Assert.DoesNotContain("Exit", names, StringComparer.Ordinal);
         Assert.DoesNotContain("Input", names, StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public void EnumSurface_HasExpectedCardinality() {
+        Assert.Equal(81, Enum.GetValues<TokenKind>().Length);
     }
 }
