@@ -17,6 +17,14 @@ public sealed record Token {
     /// Must be non-negative.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="lexeme"/> is <see langword="null"/>.</exception>
+    /// <summary>
+    /// Initializes a new <see cref="Token"/> with the specified kind, lexeme, source location, and bracket nesting depth.
+    /// </summary>
+    /// <param name="kind">Syntactic category of the token.</param>
+    /// <param name="lexeme">Exact source text that produced the token (use the empty string for structural tokens such as Newline or Eof).</param>
+    /// <param name="location">Source position of the first character of <paramref name="lexeme"/>.</param>
+    /// <param name="bracketDepth">Lexer open-bracket nesting depth at token production time; must be greater than or equal to zero.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="lexeme"/> is <c>null</c>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="bracketDepth"/> is negative.</exception>
     public Token(TokenKind kind, string lexeme, SourceLocation location, int bracketDepth) {
         if (bracketDepth < 0)
@@ -52,7 +60,10 @@ public sealed record Token {
     /// <summary>
     /// Returns a human-readable representation of this token, including its kind, lexeme,
     /// source location, and bracket depth.
-    /// </summary>
+    /// <summary>
+            /// Produces a human-readable representation of the token including its kind, lexeme (or &quot;&lt;empty&gt;&quot; when empty), source location, and bracket depth.
+            /// </summary>
+            /// <returns>A string in the form: Token(&lt;Kind&gt;, &lt;lexeme or "&lt;empty&gt;"&gt;, &lt;Location&gt;, depth=&lt;BracketDepth&gt;).</returns>
     public override string ToString() =>
             $"Token({Kind}, {(Lexeme.Length == 0 ? "<empty>" : Lexeme)}, {Location}, depth={BracketDepth})";
 }
