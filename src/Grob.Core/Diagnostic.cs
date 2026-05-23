@@ -10,6 +10,12 @@ public sealed record class Diagnostic(string Code, string Message, SourceRange R
     /// <summary>The human-readable message.</summary>
     public string Message { get; init; } = ValidateMessage(Message);
 
+    /// <summary>The source range the diagnostic points to.</summary>
+    public SourceRange Range { get; init; } = Range;
+
+    /// <summary>The severity of the diagnostic.</summary>
+    public Severity Severity { get; init; } = Severity;
+
     /// <inheritdoc/>
     public override string ToString() =>
         $"{Severity.ToString().ToLowerInvariant()}[{Code}]: {Message}\n  --> {Range}";
