@@ -40,13 +40,11 @@ readable scripting cleanly. Grob is designed to fill that gap.
 
 ## Status
 
-Grob is being built in the open. The language design is complete — implementation
-has not yet begun. Sprint 1 begins after the solution skeleton is finalised.
+Grob is being built in the open. The language design is complete and implementation has begun — Sprint 1 is underway, starting with the solution skeleton and the lexer.
 
 What exists today:
 
-- Full language specification covering syntax, types, control flow, operators,
-  functions, error handling, script parameters and modules
+- Full language specification covering syntax, types, control flow, operators, functions, error handling, script parameters and modules
 - Thirteen core standard library modules, fully specified
 - Built-in type method registry — compiler and type checker reference
 - VM architecture design — stack-based bytecode VM in C# .NET
@@ -55,8 +53,7 @@ What exists today:
 - CLI personality and error message design
 - Mascot (Sparky) — character sheet v1 complete
 
-What comes next: implementation, in the order laid out in the
-[VM Architecture](docs/wiki/VM-Architecture/Overview.md) documentation.
+What comes next: building out the VM in the order laid out in the [VM Architecture](https://github.com/grob-lang/grob/blob/main/docs/wiki/VM-Architecture/Overview.md) documentation.
 
 **This is a real project with serious design behind it. It is not ready yet.**
 Watch the repo if you want to follow along.
