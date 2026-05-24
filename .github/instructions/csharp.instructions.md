@@ -33,9 +33,10 @@ These rules apply to every `.cs` file in the solution.
   `Subject_BehaviourClause` — two PascalCase segments joined by a **single**
   underscore. Examples: `Constructor_SetsAllProperties`,
   `Equality_DifferentKind_AreNotEqual`, `PlainString_SegmentsIntoStartPartEnd`.
-  No all-lowercase words, no multiple underscores, no spaces. Underscores are
-  acceptable in test method names because they substantially improve readability;
-  this is the only place underscores appear in identifiers.
+  No all-lowercase words, no multiple underscores, no spaces. In non-test,
+  non-private code, identifiers have no underscores. The two exceptions are
+  `_camelCase` private fields (leading underscore) and `Subject_BehaviourClause`
+  test method names (single mid-identifier underscore).
 
 ## Style
 
