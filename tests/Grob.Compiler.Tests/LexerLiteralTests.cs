@@ -15,6 +15,8 @@ public class LexerLiteralTests {
         Token tok = SingleToken(source);
         Assert.Equal(TokenKind.IntLiteral, tok.Kind);
         Assert.Equal(source, tok.Lexeme);
+        Assert.False(tok.Lexeme.StartsWith('0') && tok.Lexeme.Length > 1 &&
+            (tok.Lexeme[1] is 'x' or 'X' or 'b' or 'B'));
     }
 
     [Theory]
@@ -26,6 +28,7 @@ public class LexerLiteralTests {
         Token tok = SingleToken(source);
         Assert.Equal(TokenKind.IntLiteral, tok.Kind);
         Assert.Equal(source, tok.Lexeme);
+        Assert.StartsWith("0x", tok.Lexeme, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -35,6 +38,7 @@ public class LexerLiteralTests {
         Token tok = SingleToken(source);
         Assert.Equal(TokenKind.IntLiteral, tok.Kind);
         Assert.Equal(source, tok.Lexeme);
+        Assert.StartsWith("0b", tok.Lexeme, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

@@ -549,37 +549,16 @@ public sealed class Lexer {
                 return;
             }
             if (c == '\n') {
-                FlushStringPart(sb, partStart);
-                AddError("E1020", "unterminated string literal — strings cannot span lines", partStart);
-                // Synthesise a closing StringEnd at the newline so the segmentation
-                // remains well-formed for the parser. The newline itself is
-                // emitted on the next outer iteration.
-                Emit(TokenKind.StringEnd, string.Empty, Here());
+                CloseUnterminatedStringAtNewline(sb, partStart);
                 return;
             }
             if (c == '\\') {
-                // Validate the escape — but keep the raw two-character source in
-                // the StringPart lexeme. The compiler decodes escapes later.
-                char esc = PeekAt(1);
-                if (!IsValidEscape(esc)) {
-                    AddError("E1021", $"invalid escape sequence '\\{Describe(esc)}'", Here());
-                }
-                sb.Append(c);
-                Advance();
-                if (!IsAtEnd && Peek() != '\n') {
-                    sb.Append(Peek());
-                    Advance();
-                }
+                ConsumeStringEscape(sb);
                 continue;
             }
             if (c == '$' && PeekAt(1) == '{') {
-                FlushStringPart(sb, partStart);
-                SourceLocation interpStart = Here();
-                Emit(TokenKind.InterpStart, "${", interpStart);
-                _interpStack.Push(new InterpFrame(_depth));
-                _depth++;
-                Advance(2);
-                return;  // back to the outer loop — it scans the interp expression
+                OpenInterpolation(sb, partStart);
+                return;
             }
             sb.Append(c);
             Advance();
@@ -587,6 +566,39 @@ public sealed class Lexer {
         FlushStringPart(sb, partStart);
         AddError("E1022", "unterminated string literal", partStart);
         Emit(TokenKind.StringEnd, string.Empty, Here());
+    }
+
+    private void CloseUnterminatedStringAtNewline(StringBuilder sb, SourceLocation partStart) {
+        FlushStringPart(sb, partStart);
+        AddError("E1020", "unterminated string literal — strings cannot span lines", partStart);
+        // Synthesise a closing StringEnd at the newline so the segmentation
+        // remains well-formed for the parser. The newline itself is
+        // emitted on the next outer iteration.
+        Emit(TokenKind.StringEnd, string.Empty, Here());
+    }
+
+    private void ConsumeStringEscape(StringBuilder sb) {
+        // Validate the escape — but keep the raw two-character source in
+        // the StringPart lexeme. The compiler decodes escapes later.
+        char esc = PeekAt(1);
+        if (!IsValidEscape(esc)) {
+            AddError("E1021", $"invalid escape sequence '\\{Describe(esc)}'", Here());
+        }
+        sb.Append('\\');
+        Advance();
+        if (!IsAtEnd && Peek() != '\n') {
+            sb.Append(Peek());
+            Advance();
+        }
+    }
+
+    private void OpenInterpolation(StringBuilder sb, SourceLocation partStart) {
+        FlushStringPart(sb, partStart);
+        SourceLocation interpStart = Here();
+        Emit(TokenKind.InterpStart, "${", interpStart);
+        _interpStack.Push(new InterpFrame(_depth));
+        _depth++;
+        Advance(2);
     }
 
     private void FlushStringPart(StringBuilder sb, SourceLocation start) {
@@ -725,7 +737,7 @@ public sealed class Lexer {
     // Line continuation — post-pass over raw tokens
     // ---------------------------------------------------------------------
 
-    private static IReadOnlyList<Token> ApplyLineContinuation(List<Token> raw) {
+    private static List<Token> ApplyLineContinuation(List<Token> raw) {
         var result = new List<Token>(raw.Count);
         for (int i = 0; i < raw.Count; i++) {
             Token t = raw[i];
