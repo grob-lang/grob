@@ -68,14 +68,20 @@ public class LexerLiteralTests {
     [Fact]
     public void HexLiteral_WithNoDigits_ReportsDiagnostic() {
         var (tokens, diagnostics) = LexWithDiagnostics("0x");
-        Assert.Single(diagnostics.Errors);
+        Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2006", diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
         Assert.Equal(TokenKind.IntLiteral, tokens[0].Kind);
     }
 
     [Fact]
     public void BinaryLiteral_WithNoDigits_ReportsDiagnostic() {
         var (tokens, diagnostics) = LexWithDiagnostics("0b");
-        Assert.Single(diagnostics.Errors);
+        Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2006", diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
         Assert.Equal(TokenKind.IntLiteral, tokens[0].Kind);
     }
 

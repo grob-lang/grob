@@ -118,8 +118,8 @@ public class LexerStringTests {
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2009", diag.Code);
         Assert.Equal(1, diag.Range.Start.Line);
-        // Diagnostic points at EOF position, after the last consumed char.
-        Assert.True(diag.Range.Start.Column > 1, $"expected column > 1, got {diag.Range.Start.Column}");
+        // Diagnostic points at EOF position: "hi ${x" → col 8.
+        Assert.Equal(8, diag.Range.Start.Column);
         // Stream is well-formed: ends with synthesised InterpEnd, StringEnd, Eof.
         Assert.Equal(TokenKind.Eof, tokens[^1].Kind);
         Assert.Equal(TokenKind.StringEnd, tokens[^2].Kind);
@@ -156,7 +156,7 @@ public class LexerStringTests {
         Diagnostic first = diagnostics.Errors.First();
         Assert.Equal("E2004", first.Code);
         Assert.Equal(1, first.Range.Start.Line);
-        Assert.True(first.Range.Start.Column >= 1);
+        Assert.Equal(1, first.Range.Start.Column);
     }
 
     [Fact]
