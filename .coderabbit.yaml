@@ -1,8 +1,13 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
 # CodeRabbit configuration — https://docs.coderabbit.ai/reference/configuration
 # Pre-merge checks: keep title check, relax docstring threshold for repos
 # with xUnit test projects (public test methods do not carry XML docs by
 # repo convention; see CONTRIBUTING.md).
 language: en-GB
+tone_instructions: ""
+early_access: false
+enable_free_tier: true
+inheritance: false
 reviews:
   profile: chill
   pre_merge_checks:
@@ -27,3 +32,6 @@ code_generation:
           Test methods do not require XML doc comments. Skip docstring
           generation for `[Fact]`/`[Theory]` test methods and helper
           fixtures in test projects.
+chat: {}
+knowledge_base: {}
+issue_enrichment: {}
