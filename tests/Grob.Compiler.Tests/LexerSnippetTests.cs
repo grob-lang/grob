@@ -8,7 +8,7 @@ namespace Grob.Compiler.Tests;
 
 public class LexerSnippetTests {
     [Fact]
-    public void Variable_declaration_with_int_literal() {
+    public void VariableDeclarationWithIntLiteral_Lexes() {
         IReadOnlyList<Token> tokens = Lex("x := 42");
         AssertKinds(tokens,
             TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.IntLiteral, TokenKind.Eof);
@@ -17,7 +17,7 @@ public class LexerSnippetTests {
     }
 
     [Fact]
-    public void Function_declaration_returning_int() {
+    public void FunctionDeclarationReturningInt_Lexes() {
         IReadOnlyList<Token> tokens = Lex(
             "fn add(a: int, b: int): int {\n    return a + b\n}\n");
         AssertKinds(tokens,
@@ -32,7 +32,7 @@ public class LexerSnippetTests {
     }
 
     [Fact]
-    public void Print_with_interpolation() {
+    public void PrintWithInterpolation_Lexes() {
         IReadOnlyList<Token> tokens = Lex("print(\"hi ${name}\")");
         AssertKinds(tokens,
             TokenKind.Identifier, TokenKind.LeftParen,
@@ -45,7 +45,7 @@ public class LexerSnippetTests {
     }
 
     [Fact]
-    public void Method_chain_with_leading_dot() {
+    public void MethodChainWithLeadingDot_Lexes() {
         IReadOnlyList<Token> tokens = Lex(
             "result := files\n    .filter(f => f.ext == `.log`)\n    .sort()");
         // No Newline should survive between the chain segments — leading dots

@@ -8,7 +8,7 @@ namespace Grob.Compiler.Tests;
 
 public class LexerErrorRecoveryTests {
     [Fact]
-    public void Stray_character_emits_diagnostic_and_continues() {
+    public void StrayCharacter_EmitsDiagnosticAndContinues() {
         var (tokens, diagnostics) = LexWithDiagnostics("a $ b");
         Assert.Single(diagnostics.Errors);
         // Lexer continued: it produced the trailing identifier 'b'.
@@ -16,7 +16,7 @@ public class LexerErrorRecoveryTests {
     }
 
     [Fact]
-    public void Multiple_errors_all_reported() {
+    public void MultipleErrors_AllReported() {
         var (_, diagnostics) = LexWithDiagnostics("a $ b @ c & d");
         // $ is a stray; & alone is invalid. Two errors at minimum.
         Assert.True(diagnostics.Errors.Count() >= 2,
@@ -24,7 +24,7 @@ public class LexerErrorRecoveryTests {
     }
 
     [Fact]
-    public void Lexer_never_throws_on_chaos_input() {
+    public void Lexer_NeverThrowsOnChaosInput() {
         // Pile of malformed inputs. The lexer must produce tokens and diagnostics
         // without throwing.
         const string Chaos = "fn $ { } @ \"unterminated\nx := 0xZZ\n`raw\n";
@@ -33,7 +33,7 @@ public class LexerErrorRecoveryTests {
     }
 
     [Fact]
-    public void Source_locations_track_line_and_column() {
+    public void SourceLocations_TrackLineAndColumn() {
         IReadOnlyList<Token> tokens = Lex("a\n  b");
         Token a = tokens[0];
         Token b = tokens.First(t => t.Lexeme == "b");

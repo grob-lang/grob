@@ -8,7 +8,7 @@ namespace Grob.Compiler.Tests;
 
 public class LexerStringTests {
     [Fact]
-    public void Plain_string_segments_into_start_part_end() {
+    public void PlainString_SegmentsIntoStartPartEnd() {
         IReadOnlyList<Token> tokens = Lex("\"hello\"");
         AssertKinds(tokens, TokenKind.StringStart, TokenKind.StringPart, TokenKind.StringEnd, TokenKind.Eof);
         Assert.Equal("\"", tokens[0].Lexeme);
@@ -17,13 +17,13 @@ public class LexerStringTests {
     }
 
     [Fact]
-    public void Empty_string_has_no_part() {
+    public void EmptyString_HasNoPart() {
         IReadOnlyList<Token> tokens = Lex("\"\"");
         AssertKinds(tokens, TokenKind.StringStart, TokenKind.StringEnd, TokenKind.Eof);
     }
 
     [Fact]
-    public void String_with_interpolation_segments_correctly() {
+    public void StringWithInterpolation_SegmentsCorrectly() {
         IReadOnlyList<Token> tokens = Lex("\"hi ${name}!\"");
         AssertKinds(tokens,
             TokenKind.StringStart,
@@ -42,7 +42,7 @@ public class LexerStringTests {
     }
 
     [Fact]
-    public void String_starting_with_interpolation_has_no_leading_part() {
+    public void StringStartingWithInterpolation_HasNoLeadingPart() {
         IReadOnlyList<Token> tokens = Lex("\"${name}\"");
         AssertKinds(tokens,
             TokenKind.StringStart,
@@ -54,7 +54,7 @@ public class LexerStringTests {
     }
 
     [Fact]
-    public void Adjacent_interpolations_emit_no_intervening_part() {
+    public void AdjacentInterpolations_EmitNoInterveningPart() {
         IReadOnlyList<Token> tokens = Lex("\"${a}${b}\"");
         AssertKinds(tokens,
             TokenKind.StringStart,
@@ -65,7 +65,7 @@ public class LexerStringTests {
     }
 
     [Fact]
-    public void Interpolation_expression_can_contain_arbitrary_tokens() {
+    public void InterpolationExpression_CanContainArbitraryTokens() {
         IReadOnlyList<Token> tokens = Lex("\"v=${a + 1}\"");
         AssertKinds(tokens,
             TokenKind.StringStart,
@@ -78,21 +78,21 @@ public class LexerStringTests {
     }
 
     [Fact]
-    public void String_part_keeps_raw_escape_sequences_in_lexeme() {
+    public void StringPart_KeepsRawEscapeSequencesInLexeme() {
         IReadOnlyList<Token> tokens = Lex("\"a\\nb\"");
         AssertKinds(tokens, TokenKind.StringStart, TokenKind.StringPart, TokenKind.StringEnd, TokenKind.Eof);
         Assert.Equal("a\\nb", tokens[1].Lexeme);
     }
 
     [Fact]
-    public void Escaped_dollar_does_not_open_interpolation() {
+    public void EscapedDollar_DoesNotOpenInterpolation() {
         IReadOnlyList<Token> tokens = Lex("\"price \\$5\"");
         AssertKinds(tokens, TokenKind.StringStart, TokenKind.StringPart, TokenKind.StringEnd, TokenKind.Eof);
         Assert.Equal("price \\$5", tokens[1].Lexeme);
     }
 
     [Fact]
-    public void Newline_inside_string_is_an_unterminated_string_error() {
+    public void NewlineInsideString_IsAnUnterminatedStringError() {
         var (tokens, diagnostics) = LexWithDiagnostics("\"oops\n");
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2002", diag.Code);
@@ -103,7 +103,7 @@ public class LexerStringTests {
     }
 
     [Fact]
-    public void Eof_inside_string_is_an_unterminated_string_error() {
+    public void EofInsideString_IsAnUnterminatedStringError() {
         var (tokens, diagnostics) = LexWithDiagnostics("\"oops");
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2002", diag.Code);
@@ -113,7 +113,7 @@ public class LexerStringTests {
     }
 
     [Fact]
-    public void Unterminated_interpolation_at_eof_is_diagnosed() {
+    public void UnterminatedInterpolationAtEof_IsDiagnosed() {
         var (tokens, diagnostics) = LexWithDiagnostics("\"hi ${x");
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2009", diag.Code);
@@ -127,7 +127,7 @@ public class LexerStringTests {
     }
 
     [Fact]
-    public void Unknown_escape_reports_diagnostic_but_token_stream_remains_well_formed() {
+    public void UnknownEscape_ReportsDiagnosticButTokenStreamRemainsWellFormed() {
         var (tokens, diagnostics) = LexWithDiagnostics("\"\\q\"");
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2005", diag.Code);
@@ -137,20 +137,20 @@ public class LexerStringTests {
     }
 
     [Fact]
-    public void Single_backtick_string_is_one_raw_string_literal() {
+    public void SingleBacktickString_IsOneRawStringLiteral() {
         Token tok = SingleToken("`C:\\Users\\chris`");
         Assert.Equal(TokenKind.RawStringLiteral, tok.Kind);
         Assert.Equal("`C:\\Users\\chris`", tok.Lexeme);
     }
 
     [Fact]
-    public void Single_backtick_string_does_not_process_dollar_braces() {
+    public void SingleBacktickString_DoesNotProcessDollarBraces() {
         Token tok = SingleToken("`${not interp}`");
         Assert.Equal(TokenKind.RawStringLiteral, tok.Kind);
     }
 
     [Fact]
-    public void Newline_inside_single_backtick_is_an_error() {
+    public void NewlineInsideSingleBacktick_IsAnError() {
         var (_, diagnostics) = LexWithDiagnostics("`bad\nthing`");
         Assert.NotEmpty(diagnostics.Errors);
         Diagnostic first = diagnostics.Errors.First();
@@ -160,7 +160,7 @@ public class LexerStringTests {
     }
 
     [Fact]
-    public void Triple_backtick_block_preserves_newlines() {
+    public void TripleBacktickBlock_PreservesNewlines() {
         const string Source = "```\nSELECT *\nFROM users\n```";
         Token tok = SingleToken(Source);
         Assert.Equal(TokenKind.RawStringBlockLiteral, tok.Kind);
@@ -168,7 +168,7 @@ public class LexerStringTests {
     }
 
     [Fact]
-    public void Unterminated_triple_backtick_block_reports_diagnostic() {
+    public void UnterminatedTripleBacktickBlock_ReportsDiagnostic() {
         var (_, diagnostics) = LexWithDiagnostics("```\nstill open");
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2004", diag.Code);

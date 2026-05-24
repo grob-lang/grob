@@ -11,7 +11,7 @@ public class LexerLiteralTests {
     [InlineData("42")]
     [InlineData("0")]
     [InlineData("1_000_000")]
-    public void Decimal_int_literal(string source) {
+    public void DecimalIntLiteral_Lexes(string source) {
         Token tok = SingleToken(source);
         Assert.Equal(TokenKind.IntLiteral, tok.Kind);
         Assert.Equal(source, tok.Lexeme);
@@ -24,7 +24,7 @@ public class LexerLiteralTests {
     [InlineData("0xff")]
     [InlineData("0xFF_FF")]
     [InlineData("0X10")]
-    public void Hex_int_literal(string source) {
+    public void HexIntLiteral_Lexes(string source) {
         Token tok = SingleToken(source);
         Assert.Equal(TokenKind.IntLiteral, tok.Kind);
         Assert.Equal(source, tok.Lexeme);
@@ -34,7 +34,7 @@ public class LexerLiteralTests {
     [Theory]
     [InlineData("0b1010")]
     [InlineData("0B1010_0101")]
-    public void Binary_int_literal(string source) {
+    public void BinaryIntLiteral_Lexes(string source) {
         Token tok = SingleToken(source);
         Assert.Equal(TokenKind.IntLiteral, tok.Kind);
         Assert.Equal(source, tok.Lexeme);
@@ -45,42 +45,42 @@ public class LexerLiteralTests {
     [InlineData("3.14")]
     [InlineData("0.5")]
     [InlineData("1_000.50")]
-    public void Float_literal(string source) {
+    public void FloatLiteral_Lexes(string source) {
         Token tok = SingleToken(source);
         Assert.Equal(TokenKind.FloatLiteral, tok.Kind);
         Assert.Equal(source, tok.Lexeme);
     }
 
     [Fact]
-    public void Leading_dot_is_not_a_float() {
+    public void LeadingDot_IsNotAFloat() {
         // ".5" must lex as Dot then IntLiteral(5), not as a float — the spec
         // requires a leading digit on float literals.
         AssertKinds(Lex(".5"), TokenKind.Dot, TokenKind.IntLiteral, TokenKind.Eof);
     }
 
     [Fact]
-    public void Int_followed_by_range_is_two_tokens() {
+    public void IntFollowedByRange_IsTwoTokens() {
         // 1..10 — IntLiteral(1) DotDot IntLiteral(10), not a float.
         AssertKinds(Lex("1..10"),
             TokenKind.IntLiteral, TokenKind.DotDot, TokenKind.IntLiteral, TokenKind.Eof);
     }
 
     [Fact]
-    public void Hex_literal_with_no_digits_reports_diagnostic() {
+    public void HexLiteral_WithNoDigits_ReportsDiagnostic() {
         var (tokens, diagnostics) = LexWithDiagnostics("0x");
         Assert.Single(diagnostics.Errors);
         Assert.Equal(TokenKind.IntLiteral, tokens[0].Kind);
     }
 
     [Fact]
-    public void Binary_literal_with_no_digits_reports_diagnostic() {
+    public void BinaryLiteral_WithNoDigits_ReportsDiagnostic() {
         var (tokens, diagnostics) = LexWithDiagnostics("0b");
         Assert.Single(diagnostics.Errors);
         Assert.Equal(TokenKind.IntLiteral, tokens[0].Kind);
     }
 
     [Fact]
-    public void Member_access_on_int_is_not_a_float() {
+    public void MemberAccessOnInt_IsNotAFloat() {
         // "x.length" — Identifier Dot Identifier. Not relevant here, but the
         // analogue "5.foo" must also lex as IntLiteral Dot Identifier.
         AssertKinds(Lex("5.foo"),
@@ -93,7 +93,7 @@ public class LexerLiteralTests {
     [InlineData("_under")]
     [InlineData("user1")]
     [InlineData("camelCase")]
-    public void Identifier_lexes(string source) {
+    public void Identifier_Lexes(string source) {
         Token tok = SingleToken(source);
         Assert.Equal(TokenKind.Identifier, tok.Kind);
         Assert.Equal(source, tok.Lexeme);

@@ -39,7 +39,7 @@ public class LexerKeywordTests {
 
     [Theory]
     [MemberData(nameof(Keywords))]
-    public void Keyword_lexes_to_its_kind(string lexeme, TokenKind expected) {
+    public void Keyword_LexesToItsKind(string lexeme, TokenKind expected) {
         Token tok = SingleToken(lexeme);
         Assert.Equal(expected, tok.Kind);
         Assert.Equal(lexeme, tok.Lexeme);
@@ -49,19 +49,19 @@ public class LexerKeywordTests {
     [InlineData("print")]
     [InlineData("exit")]
     [InlineData("input")]
-    public void Built_in_name_is_an_identifier(string name) {
+    public void BuiltInName_IsAnIdentifier(string name) {
         Token tok = SingleToken(name);
         Assert.Equal(TokenKind.Identifier, tok.Kind);
     }
 
     [Fact]
-    public void Keywords_are_case_sensitive() {
+    public void Keywords_AreCaseSensitive() {
         Token tok = SingleToken("If");
         Assert.Equal(TokenKind.Identifier, tok.Kind);
     }
 
     [Fact]
-    public void Identifier_with_keyword_prefix_is_not_a_keyword() {
+    public void IdentifierWithKeywordPrefix_IsNotAKeyword() {
         Token tok = SingleToken("ifx");
         Assert.Equal(TokenKind.Identifier, tok.Kind);
         Assert.Equal("ifx", tok.Lexeme);

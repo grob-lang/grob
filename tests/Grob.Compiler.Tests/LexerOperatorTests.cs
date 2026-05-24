@@ -47,7 +47,7 @@ public class LexerOperatorTests {
 
     [Theory]
     [MemberData(nameof(Operators))]
-    public void Operator_lexes_to_its_kind(string lexeme, TokenKind expected) {
+    public void Operator_LexesToItsKind(string lexeme, TokenKind expected) {
         var (tokens, diagnostics) = LexWithDiagnostics(lexeme);
         Assert.Empty(diagnostics.Diagnostics);
         Assert.Equal(2, tokens.Count);
@@ -58,59 +58,59 @@ public class LexerOperatorTests {
     }
 
     [Fact]
-    public void Plus_plus_is_one_token_not_two() {
+    public void PlusPlus_IsOneTokenNotTwo() {
         AssertKinds(Lex("++"), TokenKind.PlusPlus, TokenKind.Eof);
     }
 
     [Fact]
-    public void Plus_space_plus_is_two_tokens() {
+    public void PlusSpacePlus_IsTwoTokens() {
         AssertKinds(Lex("+ +"), TokenKind.Plus, TokenKind.Plus, TokenKind.Eof);
     }
 
     [Fact]
-    public void Maximal_munch_prefers_PlusAssign_over_Plus_then_Assign() {
+    public void MaximalMunch_PrefersPlusAssignOverPlusThenAssign() {
         AssertKinds(Lex("+="), TokenKind.PlusAssign, TokenKind.Eof);
     }
 
     [Fact]
-    public void Arrow_distinguished_from_Assign_then_Greater() {
+    public void Arrow_DistinguishedFromAssignThenGreater() {
         AssertKinds(Lex("=>"), TokenKind.Arrow, TokenKind.Eof);
         AssertKinds(Lex("= >"), TokenKind.Assign, TokenKind.Greater, TokenKind.Eof);
     }
 
     [Fact]
-    public void Single_ampersand_is_diagnosed() {
+    public void SingleAmpersand_IsDiagnosed() {
         var (tokens, diagnostics) = LexWithDiagnostics("&");
         Assert.NotEmpty(diagnostics.Errors);
         Assert.Equal(TokenKind.Error, tokens[0].Kind);
     }
 
     [Fact]
-    public void Single_pipe_is_diagnosed() {
+    public void SinglePipe_IsDiagnosed() {
         var (tokens, diagnostics) = LexWithDiagnostics("|");
         Assert.NotEmpty(diagnostics.Errors);
         Assert.Equal(TokenKind.Error, tokens[0].Kind);
     }
 
     [Fact]
-    public void Stray_hash_without_brace_is_diagnosed() {
+    public void StrayHashWithoutBrace_IsDiagnosed() {
         var (tokens, diagnostics) = LexWithDiagnostics("#x");
         Assert.NotEmpty(diagnostics.Errors);
         Assert.Equal(TokenKind.Error, tokens[0].Kind);
     }
 
     [Fact]
-    public void Matched_parens_emit_open_and_close() {
+    public void MatchedParens_EmitOpenAndClose() {
         AssertKinds(Lex("()"), TokenKind.LeftParen, TokenKind.RightParen, TokenKind.Eof);
     }
 
     [Fact]
-    public void Matched_brackets_emit_open_and_close() {
+    public void MatchedBrackets_EmitOpenAndClose() {
         AssertKinds(Lex("[]"), TokenKind.LeftBracket, TokenKind.RightBracket, TokenKind.Eof);
     }
 
     [Fact]
-    public void Matched_braces_emit_open_and_close() {
+    public void MatchedBraces_EmitOpenAndClose() {
         AssertKinds(Lex("{}"), TokenKind.LeftBrace, TokenKind.RightBrace, TokenKind.Eof);
     }
 
@@ -118,7 +118,7 @@ public class LexerOperatorTests {
     [InlineData(")")]
     [InlineData("]")]
     [InlineData("}")]
-    public void Stray_closer_is_diagnosed(string lexeme) {
+    public void StrayCloser_IsDiagnosed(string lexeme) {
         var (tokens, diagnostics) = LexWithDiagnostics(lexeme);
         Assert.NotEmpty(diagnostics.Errors);
         Assert.Equal(TokenKind.Error, tokens[0].Kind);

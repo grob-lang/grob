@@ -8,20 +8,20 @@ namespace Grob.Compiler.Tests;
 
 public class LexerNewlineAndDepthTests {
     [Fact]
-    public void Newline_is_emitted_at_top_level() {
+    public void Newline_IsEmittedAtTopLevel() {
         AssertKinds(Lex("a\nb"),
             TokenKind.Identifier, TokenKind.Newline, TokenKind.Identifier, TokenKind.Eof);
     }
 
     [Fact]
-    public void Trailing_operator_suppresses_newline() {
+    public void TrailingOperator_SuppressesNewline() {
         // "a +\nb" — the trailing + means the line continues.
         AssertKinds(Lex("a +\nb"),
             TokenKind.Identifier, TokenKind.Plus, TokenKind.Identifier, TokenKind.Eof);
     }
 
     [Fact]
-    public void Trailing_comma_suppresses_newline() {
+    public void TrailingComma_SuppressesNewline() {
         AssertKinds(Lex("f(\na,\nb\n)"),
             TokenKind.Identifier, TokenKind.LeftParen,
             TokenKind.Identifier, TokenKind.Comma,
@@ -31,7 +31,7 @@ public class LexerNewlineAndDepthTests {
     }
 
     [Fact]
-    public void Leading_dot_on_next_line_suppresses_newline() {
+    public void LeadingDotOnNextLine_SuppressesNewline() {
         // result := xs\n  .filter() — the newline must be suppressed by the
         // leading-dot rule.
         IReadOnlyList<Token> tokens = Lex("xs\n  .filter()");
@@ -42,7 +42,7 @@ public class LexerNewlineAndDepthTests {
     }
 
     [Fact]
-    public void Trailing_arrow_suppresses_newline() {
+    public void TrailingArrow_SuppressesNewline() {
         AssertKinds(Lex("xs.map(x =>\n  x + 1)"),
             TokenKind.Identifier, TokenKind.Dot, TokenKind.Identifier, TokenKind.LeftParen,
             TokenKind.Identifier, TokenKind.Arrow,
@@ -52,7 +52,7 @@ public class LexerNewlineAndDepthTests {
     }
 
     [Fact]
-    public void Otherwise_newline_is_kept() {
+    public void Otherwise_NewlineIsKept() {
         AssertKinds(Lex("a\nb\n"),
             TokenKind.Identifier, TokenKind.Newline,
             TokenKind.Identifier, TokenKind.Newline,
@@ -60,13 +60,13 @@ public class LexerNewlineAndDepthTests {
     }
 
     [Fact]
-    public void Crlf_produces_single_newline_token() {
+    public void Crlf_ProducesSingleNewlineToken() {
         AssertKinds(Lex("a\r\nb"),
             TokenKind.Identifier, TokenKind.Newline, TokenKind.Identifier, TokenKind.Eof);
     }
 
     [Fact]
-    public void Bracket_depth_increments_inside_pairs() {
+    public void BracketDepth_IncrementsInsidePairs() {
         IReadOnlyList<Token> tokens = Lex("f(a, b)");
         Token leftParen = tokens[1];
         Token argA = tokens[2];
@@ -80,7 +80,7 @@ public class LexerNewlineAndDepthTests {
     }
 
     [Fact]
-    public void Bracket_depth_nests() {
+    public void BracketDepth_Nests() {
         IReadOnlyList<Token> tokens = Lex("[(x)]");
         Assert.Equal(TokenKind.LeftBracket, tokens[0].Kind);
         Assert.Equal(0, tokens[0].BracketDepth);
@@ -95,7 +95,7 @@ public class LexerNewlineAndDepthTests {
     }
 
     [Fact]
-    public void Eof_is_always_emitted_at_depth_zero() {
+    public void Eof_IsAlwaysEmittedAtDepthZero() {
         // Mismatched ( leaves _depth > 0; EOF should still report 0.
         var (tokens, _) = LexWithDiagnostics("(a");
         Token eof = tokens[^1];
@@ -104,7 +104,7 @@ public class LexerNewlineAndDepthTests {
     }
 
     [Fact]
-    public void Interp_increments_depth_for_inner_expression() {
+    public void Interp_IncrementsDepthForInnerExpression() {
         IReadOnlyList<Token> tokens = Lex("\"${a}\"");
         Token ident = tokens.Single(t => t.Kind == TokenKind.Identifier);
         Assert.True(ident.BracketDepth > 0);

@@ -8,13 +8,13 @@ namespace Grob.Compiler.Tests;
 
 public class LexerRegexTests {
     [Fact]
-    public void Slash_after_identifier_is_division() {
+    public void SlashAfterIdentifier_IsDivision() {
         AssertKinds(Lex("a / b"),
             TokenKind.Identifier, TokenKind.Slash, TokenKind.Identifier, TokenKind.Eof);
     }
 
     [Fact]
-    public void Slash_at_expression_start_is_regex() {
+    public void SlashAtExpressionStart_IsRegex() {
         IReadOnlyList<Token> tokens = Lex("x := /^\\d+$/");
         AssertKinds(tokens,
             TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
@@ -22,20 +22,20 @@ public class LexerRegexTests {
     }
 
     [Fact]
-    public void Slash_after_open_paren_is_regex() {
+    public void SlashAfterOpenParen_IsRegex() {
         IReadOnlyList<Token> tokens = Lex("match(/foo/)");
         AssertKinds(tokens,
             TokenKind.Identifier, TokenKind.LeftParen, TokenKind.RegexLiteral, TokenKind.RightParen, TokenKind.Eof);
     }
 
     [Fact]
-    public void Slash_after_int_literal_is_division() {
+    public void SlashAfterIntLiteral_IsDivision() {
         AssertKinds(Lex("4 / 2"),
             TokenKind.IntLiteral, TokenKind.Slash, TokenKind.IntLiteral, TokenKind.Eof);
     }
 
     [Fact]
-    public void Regex_with_trailing_flags() {
+    public void Regex_WithTrailingFlags() {
         IReadOnlyList<Token> tokens = Lex("x := /abc/i");
         AssertKinds(tokens,
             TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
@@ -43,7 +43,7 @@ public class LexerRegexTests {
     }
 
     [Fact]
-    public void Regex_with_invalid_flag_reports_diagnostic() {
+    public void RegexWithInvalidFlag_ReportsDiagnostic() {
         var (tokens, diagnostics) = LexWithDiagnostics("x := /abc/z");
         AssertKinds(tokens,
             TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
@@ -53,7 +53,7 @@ public class LexerRegexTests {
     }
 
     [Fact]
-    public void Escaped_slash_inside_regex_does_not_close_it() {
+    public void EscapedSlashInsideRegex_DoesNotCloseIt() {
         IReadOnlyList<Token> tokens = Lex("x := /a\\/b/");
         AssertKinds(tokens,
             TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
@@ -61,7 +61,7 @@ public class LexerRegexTests {
     }
 
     [Fact]
-    public void Unterminated_regex_reports_diagnostic() {
+    public void UnterminatedRegex_ReportsDiagnostic() {
         var (tokens, diagnostics) = LexWithDiagnostics("x := /unterminated\n");
         Assert.Contains(tokens, t => t.Kind == TokenKind.Error);
         Diagnostic diag = Assert.Single(diagnostics.Errors);
