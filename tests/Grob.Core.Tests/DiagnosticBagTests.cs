@@ -98,7 +98,7 @@ public sealed class DiagnosticBagTests {
         bag.Add(second);
         bag.Add(third);
 
-        Assert.Equal(new[] { first, second, third }, bag.Diagnostics);
+        Assert.Equal([first, second, third], bag.Diagnostics);
     }
 
     // Insertion order — direct enumeration
@@ -145,8 +145,9 @@ public sealed class DiagnosticBagTests {
 
     [Fact]
     public void DiagnosticBag_NonGenericEnumerator_Iterates() {
-        var bag = new DiagnosticBag();
-        bag.Add(MakeDiagnostic(Severity.Error));
+        var bag = new DiagnosticBag {
+            MakeDiagnostic(Severity.Error)
+        };
 
         System.Collections.IEnumerable nonGeneric = bag;
         var enumerator = nonGeneric.GetEnumerator();

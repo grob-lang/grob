@@ -37,20 +37,34 @@ public class LexerRegexTests {
     [Fact]
     public void Regex_with_trailing_flags() {
         IReadOnlyList<Token> tokens = Lex("x := /abc/i");
-        Assert.Equal(TokenKind.RegexLiteral, tokens[2].Kind);
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
         Assert.Equal("/abc/i", tokens[2].Lexeme);
+    }
+
+    [Fact]
+    public void Regex_with_invalid_flag_reports_diagnostic() {
+        var (tokens, diagnostics) = LexWithDiagnostics("x := /abc/z");
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
+        Assert.Equal("/abc/z", tokens[2].Lexeme);
+        Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2007", diag.Code);
     }
 
     [Fact]
     public void Escaped_slash_inside_regex_does_not_close_it() {
         IReadOnlyList<Token> tokens = Lex("x := /a\\/b/");
-        Assert.Equal(TokenKind.RegexLiteral, tokens[2].Kind);
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
         Assert.Equal("/a\\/b/", tokens[2].Lexeme);
     }
 
     [Fact]
     public void Unterminated_regex_reports_diagnostic() {
-        var (_, diagnostics) = LexWithDiagnostics("x := /unterminated\n");
-        Assert.NotEmpty(diagnostics.Errors);
+        var (tokens, diagnostics) = LexWithDiagnostics("x := /unterminated\n");
+        Assert.Contains(tokens, t => t.Kind == TokenKind.Error);
+        Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2008", diag.Code);
     }
 }

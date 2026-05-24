@@ -94,7 +94,9 @@ public class LexerStringTests {
     [Fact]
     public void Newline_inside_string_is_an_unterminated_string_error() {
         var (tokens, diagnostics) = LexWithDiagnostics("\"oops\n");
-        Assert.Single(diagnostics.Errors);
+        Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2002", diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
         // The lexer recovers — synthesises StringEnd, then re-emits the newline.
         Assert.Contains(tokens, t => t.Kind == TokenKind.StringEnd);
     }
@@ -102,14 +104,27 @@ public class LexerStringTests {
     [Fact]
     public void Eof_inside_string_is_an_unterminated_string_error() {
         var (tokens, diagnostics) = LexWithDiagnostics("\"oops");
-        Assert.Single(diagnostics.Errors);
+        Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2002", diag.Code);
         Assert.Equal(TokenKind.Eof, tokens[^1].Kind);
+    }
+
+    [Fact]
+    public void Unterminated_interpolation_at_eof_is_diagnosed() {
+        var (tokens, diagnostics) = LexWithDiagnostics("\"hi ${x");
+        Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2009", diag.Code);
+        // Stream is well-formed: ends with synthesised InterpEnd, StringEnd, Eof.
+        Assert.Equal(TokenKind.Eof, tokens[^1].Kind);
+        Assert.Equal(TokenKind.StringEnd, tokens[^2].Kind);
+        Assert.Equal(TokenKind.InterpEnd, tokens[^3].Kind);
     }
 
     [Fact]
     public void Unknown_escape_reports_diagnostic_but_token_stream_remains_well_formed() {
         var (tokens, diagnostics) = LexWithDiagnostics("\"\\q\"");
-        Assert.Single(diagnostics.Errors);
+        Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2005", diag.Code);
         AssertKinds(tokens, TokenKind.StringStart, TokenKind.StringPart, TokenKind.StringEnd, TokenKind.Eof);
     }
 
@@ -130,6 +145,9 @@ public class LexerStringTests {
     public void Newline_inside_single_backtick_is_an_error() {
         var (_, diagnostics) = LexWithDiagnostics("`bad\nthing`");
         Assert.NotEmpty(diagnostics.Errors);
+        Diagnostic first = diagnostics.Errors.First();
+        Assert.Equal("E2004", first.Code);
+        Assert.Equal(1, first.Range.Start.Line);
     }
 
     [Fact]
@@ -143,6 +161,7 @@ public class LexerStringTests {
     [Fact]
     public void Unterminated_triple_backtick_block_reports_diagnostic() {
         var (_, diagnostics) = LexWithDiagnostics("```\nstill open");
-        Assert.NotEmpty(diagnostics.Errors);
+        Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2004", diag.Code);
     }
 }

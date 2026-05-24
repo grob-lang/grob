@@ -61,6 +61,15 @@ public sealed class Lexer {
         while (!IsAtEnd) {
             ScanToken();
         }
+        // If EOF arrives while one or more interpolations are still open,
+        // synthesise their closers so the token stream stays well-formed
+        // for downstream consumers and surface a diagnostic per frame.
+        while (_interpStack.Count > 0) {
+            _interpStack.Pop();
+            AddError("E2009", "unterminated string interpolation", Here());
+            Emit(TokenKind.InterpEnd, string.Empty, Here());
+            Emit(TokenKind.StringEnd, string.Empty, Here());
+        }
         Emit(TokenKind.Eof, string.Empty, Here(), depthOverride: 0);
         return ApplyLineContinuation(_rawTokens);
     }
@@ -92,7 +101,7 @@ public sealed class Lexer {
             case '.': ScanDot(); return;
             case ':': ScanColon(); return;
             case ';':
-                ErrorChar(c, "E1004", "semicolons are not used in Grob — newlines terminate statements");
+                ErrorChar(c, "E2011", "semicolons are not used in Grob — newlines terminate statements");
                 return;
             case '#': ScanHash(); return;
             case '"': ScanInterpolatedString(); return;
@@ -112,7 +121,7 @@ public sealed class Lexer {
             default:
                 if (IsDigit(c)) { ScanNumber(); return; }
                 if (IsIdentStart(c)) { ScanIdentifier(); return; }
-                ErrorChar(c, "E1001", $"unexpected character '{Describe(c)}'");
+                ErrorChar(c, "E2010", $"unexpected character '{Describe(c)}'");
                 return;
         }
     }
@@ -148,7 +157,7 @@ public sealed class Lexer {
             Advance(2);
             return;
         }
-        ErrorChar('#', "E1002", "'#' must be followed by '{' to open an anonymous-struct literal");
+        ErrorChar('#', "E2012", "'#' must be followed by '{' to open an anonymous-struct literal");
     }
 
     private void ScanEquals() {
@@ -245,7 +254,7 @@ public sealed class Lexer {
             Advance(2);
             return;
         }
-        ErrorChar(self, "E1003", $"single '{self}' is not a Grob operator (did you mean '{self}{self}'?)");
+        ErrorChar(self, "E2013", $"single '{self}' is not a Grob operator (did you mean '{self}{self}'?)");
     }
 
     private void ScanCloseBrace() {
@@ -265,7 +274,7 @@ public sealed class Lexer {
     private void ScanCloser(TokenKind kind, string lexeme) {
         if (_depth == 0) {
             SourceLocation loc = Here();
-            AddError("E1005", $"unbalanced '{lexeme}'", loc);
+            AddError("E2014", $"unbalanced '{lexeme}'", loc);
             Emit(TokenKind.Error, lexeme, loc, depthOverride: 0);
             Advance();
             return;
@@ -330,7 +339,7 @@ public sealed class Lexer {
                 Advance();
             }
         }
-        AddError("E1005", "unterminated block comment", start);
+        AddError("E2003", "unterminated block comment", start);
     }
 
     private bool CanStartRegex() {
@@ -374,7 +383,7 @@ public sealed class Lexer {
         while (!IsAtEnd) {
             char c = Peek();
             if (c == '\n') {
-                AddError("E1006", "unterminated regex literal", start);
+                AddError("E2008", "unterminated regex literal", start);
                 Emit(TokenKind.Error, sb.ToString(), start);
                 return;
             }
@@ -390,19 +399,29 @@ public sealed class Lexer {
             if (c == '/') {
                 sb.Append(c);
                 Advance();
-                // Optional flags — letters following the closing slash.
-                while (!IsAtEnd && IsIdentContinue(Peek()) && char.IsLetter(Peek())) {
-                    sb.Append(Peek());
-                    Advance();
-                }
+                ConsumeRegexFlags(sb);
                 Emit(TokenKind.RegexLiteral, sb.ToString(), start);
                 return;
             }
             sb.Append(c);
             Advance();
         }
-        AddError("E1006", "unterminated regex literal", start);
+        AddError("E2008", "unterminated regex literal", start);
         Emit(TokenKind.Error, sb.ToString(), start);
+    }
+
+    private void ConsumeRegexFlags(StringBuilder sb) {
+        // Per D-089, only 'i' (case-insensitive) and 'm' (multiline) are valid.
+        // Other letters are diagnosed but still appended so the lexeme reflects
+        // exactly what the user wrote.
+        while (!IsAtEnd && IsIdentContinue(Peek()) && char.IsLetter(Peek())) {
+            char flag = Peek();
+            if (flag is not ('i' or 'm')) {
+                AddError("E2007", $"invalid regex flag '{flag}' (only 'i' and 'm' are supported)", Here());
+            }
+            sb.Append(flag);
+            Advance();
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -419,7 +438,7 @@ public sealed class Lexer {
             sb.Append(Peek()); Advance();
             int digits = ConsumeDigitsInto(sb, IsHexDigit);
             if (digits == 0) {
-                AddError("E1010", "hexadecimal literal has no digits", start);
+                AddError("E2006", "hexadecimal literal has no digits", start);
             }
             Emit(TokenKind.IntLiteral, sb.ToString(), start);
             return;
@@ -430,7 +449,7 @@ public sealed class Lexer {
             sb.Append(Peek()); Advance();
             int digits = ConsumeDigitsInto(sb, IsBinaryDigit);
             if (digits == 0) {
-                AddError("E1011", "binary literal has no digits", start);
+                AddError("E2006", "binary literal has no digits", start);
             }
             Emit(TokenKind.IntLiteral, sb.ToString(), start);
             return;
@@ -485,7 +504,7 @@ public sealed class Lexer {
         while (!IsAtEnd && IsIdentContinue(Peek())) {
             Advance();
         }
-        string text = _source.Substring(begin, _pos - begin);
+        string text = _source[begin.._pos];
         TokenKind kind = LookupKeyword(text);
         Emit(kind, text, start);
     }
@@ -564,13 +583,13 @@ public sealed class Lexer {
             Advance();
         }
         FlushStringPart(sb, partStart);
-        AddError("E1022", "unterminated string literal", partStart);
+        AddError("E2002", "unterminated string literal", partStart);
         Emit(TokenKind.StringEnd, string.Empty, Here());
     }
 
     private void CloseUnterminatedStringAtNewline(StringBuilder sb, SourceLocation partStart) {
         FlushStringPart(sb, partStart);
-        AddError("E1020", "unterminated string literal — strings cannot span lines", partStart);
+        AddError("E2002", "unterminated string literal — strings cannot span lines", partStart);
         // Synthesise a closing StringEnd at the newline so the segmentation
         // remains well-formed for the parser. The newline itself is
         // emitted on the next outer iteration.
@@ -582,7 +601,7 @@ public sealed class Lexer {
         // the StringPart lexeme. The compiler decodes escapes later.
         char esc = PeekAt(1);
         if (!IsValidEscape(esc)) {
-            AddError("E1021", $"invalid escape sequence '\\{Describe(esc)}'", Here());
+            AddError("E2005", $"invalid escape sequence '\\{Describe(esc)}'", Here());
         }
         sb.Append('\\');
         Advance();
@@ -630,7 +649,7 @@ public sealed class Lexer {
         while (!IsAtEnd) {
             char c = Peek();
             if (c == '\n') {
-                AddError("E1030", "unterminated raw string — single-backtick strings cannot span lines", start);
+                AddError("E2004", "unterminated raw string — single-backtick strings cannot span lines", start);
                 Emit(TokenKind.Error, sb.ToString(), start);
                 return;
             }
@@ -643,7 +662,7 @@ public sealed class Lexer {
             sb.Append(c);
             Advance();
         }
-        AddError("E1030", "unterminated raw string", start);
+        AddError("E2004", "unterminated raw string", start);
         Emit(TokenKind.Error, sb.ToString(), start);
     }
 
@@ -666,7 +685,7 @@ public sealed class Lexer {
             sb.Append(Peek());
             Advance();
         }
-        AddError("E1031", "unterminated triple-backtick raw block string", start);
+        AddError("E2004", "unterminated triple-backtick raw block string", start);
         Emit(TokenKind.Error, sb.ToString(), start);
     }
 
@@ -800,10 +819,9 @@ public sealed class Lexer {
                 or TokenKind.PercentAssign => true,
             // Comma — list/argument continuation.
             TokenKind.Comma => true,
-            // Opening brackets — content continues on the next line.
-            // NOTE: LeftBrace is NOT included — `{` opens a block where the
-            // next newline is the statement separator.
-            TokenKind.LeftParen or TokenKind.LeftBracket
+            // Opening brackets and braces — content continues on the next line
+            // (per requirements.md §line-continuation).
+            TokenKind.LeftParen or TokenKind.LeftBracket or TokenKind.LeftBrace
                 or TokenKind.HashBrace => true,
             // Member access / null-conditional access — trailing form.
             TokenKind.Dot or TokenKind.QuestionDot => true,

@@ -7,52 +7,54 @@ using static Grob.Compiler.Tests.LexerTestHelpers;
 namespace Grob.Compiler.Tests;
 
 public class LexerOperatorTests {
-    public static IEnumerable<object[]> Operators => new[] {
-        new object[] { "+", TokenKind.Plus },
-        new object[] { "-", TokenKind.Minus },
-        new object[] { "*", TokenKind.Star },
-        new object[] { "%", TokenKind.Percent },
-        new object[] { "=", TokenKind.Assign },
-        new object[] { ":=", TokenKind.ColonAssign },
-        new object[] { "==", TokenKind.EqualEqual },
-        new object[] { "!=", TokenKind.BangEqual },
-        new object[] { "<", TokenKind.Less },
-        new object[] { ">", TokenKind.Greater },
-        new object[] { "<=", TokenKind.LessEqual },
-        new object[] { ">=", TokenKind.GreaterEqual },
-        new object[] { "!", TokenKind.Bang },
-        new object[] { "&&", TokenKind.AmpAmp },
-        new object[] { "||", TokenKind.PipePipe },
-        new object[] { "?", TokenKind.Question },
-        new object[] { ":", TokenKind.Colon },
-        new object[] { "??", TokenKind.QuestionQuestion },
-        new object[] { "?.", TokenKind.QuestionDot },
-        new object[] { "+=", TokenKind.PlusAssign },
-        new object[] { "-=", TokenKind.MinusAssign },
-        new object[] { "*=", TokenKind.StarAssign },
-        new object[] { "/=", TokenKind.SlashAssign },
-        new object[] { "%=", TokenKind.PercentAssign },
-        new object[] { "++", TokenKind.PlusPlus },
-        new object[] { "--", TokenKind.MinusMinus },
-        new object[] { "..", TokenKind.DotDot },
-        new object[] { "=>", TokenKind.Arrow },
-        new object[] { "(", TokenKind.LeftParen },
-        new object[] { "{", TokenKind.LeftBrace },
-        new object[] { "[", TokenKind.LeftBracket },
-        new object[] { ",", TokenKind.Comma },
-        new object[] { ".", TokenKind.Dot },
-        new object[] { "#{", TokenKind.HashBrace },
-        new object[] { "@", TokenKind.At },
-    };
+    public static IEnumerable<object[]> Operators => [
+          new object[] { "+", TokenKind.Plus },
+        ["-", TokenKind.Minus],
+        ["*", TokenKind.Star],
+        ["%", TokenKind.Percent],
+        ["=", TokenKind.Assign],
+        [":=", TokenKind.ColonAssign],
+        ["==", TokenKind.EqualEqual],
+        ["!=", TokenKind.BangEqual],
+        ["<", TokenKind.Less],
+        [">", TokenKind.Greater],
+        ["<=", TokenKind.LessEqual],
+        [">=", TokenKind.GreaterEqual],
+        ["!", TokenKind.Bang],
+        ["&&", TokenKind.AmpAmp],
+        ["||", TokenKind.PipePipe],
+        ["?", TokenKind.Question],
+        [":", TokenKind.Colon],
+        ["??", TokenKind.QuestionQuestion],
+        ["?.", TokenKind.QuestionDot],
+        ["+=", TokenKind.PlusAssign],
+        ["-=", TokenKind.MinusAssign],
+        ["*=", TokenKind.StarAssign],
+        ["/=", TokenKind.SlashAssign],
+        ["%=", TokenKind.PercentAssign],
+        ["++", TokenKind.PlusPlus],
+        ["--", TokenKind.MinusMinus],
+        ["..", TokenKind.DotDot],
+        ["=>", TokenKind.Arrow],
+        ["(", TokenKind.LeftParen],
+        ["{", TokenKind.LeftBrace],
+        ["[", TokenKind.LeftBracket],
+        [",", TokenKind.Comma],
+        [".", TokenKind.Dot],
+        ["#{", TokenKind.HashBrace],
+        ["@", TokenKind.At],
+    ];
 
     [Theory]
     [MemberData(nameof(Operators))]
     public void Operator_lexes_to_its_kind(string lexeme, TokenKind expected) {
         var (tokens, diagnostics) = LexWithDiagnostics(lexeme);
         Assert.Empty(diagnostics.Diagnostics);
+        Assert.Equal(2, tokens.Count);
         Token tok = tokens[0];
         Assert.Equal(expected, tok.Kind);
         Assert.Equal(lexeme, tok.Lexeme);
+        Assert.Equal(TokenKind.Eof, tokens[1].Kind);
     }
 
     [Fact]

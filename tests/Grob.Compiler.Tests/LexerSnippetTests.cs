@@ -25,7 +25,7 @@ public class LexerSnippetTests {
             TokenKind.Identifier, TokenKind.Colon, TokenKind.Identifier, TokenKind.Comma,
             TokenKind.Identifier, TokenKind.Colon, TokenKind.Identifier,
             TokenKind.RightParen, TokenKind.Colon, TokenKind.Identifier,
-            TokenKind.LeftBrace, TokenKind.Newline,
+            TokenKind.LeftBrace,
             TokenKind.Return, TokenKind.Identifier, TokenKind.Plus, TokenKind.Identifier, TokenKind.Newline,
             TokenKind.RightBrace, TokenKind.Newline,
             TokenKind.Eof);
@@ -51,5 +51,14 @@ public class LexerSnippetTests {
         // No Newline should survive between the chain segments — leading dots
         // suppress them.
         Assert.DoesNotContain(tokens, t => t.Kind == TokenKind.Newline);
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.Identifier,
+            TokenKind.Dot, TokenKind.Identifier, TokenKind.LeftParen,
+            TokenKind.Identifier, TokenKind.Arrow,
+            TokenKind.Identifier, TokenKind.Dot, TokenKind.Identifier,
+            TokenKind.EqualEqual, TokenKind.RawStringLiteral,
+            TokenKind.RightParen,
+            TokenKind.Dot, TokenKind.Identifier, TokenKind.LeftParen, TokenKind.RightParen,
+            TokenKind.Eof);
     }
 }
