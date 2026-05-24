@@ -57,7 +57,7 @@ public sealed class Lexer {
         return new Lexer(source, file, diagnostics).ScanAll();
     }
 
-    private IReadOnlyList<Token> ScanAll() {
+    private List<Token> ScanAll() {
         while (!IsAtEnd) {
             ScanToken();
         }
