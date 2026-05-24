@@ -20,6 +20,8 @@ These rules apply to every `.cs` file in the solution.
   declaration (`namespace Grob.Compiler.Lexing;`), then the type.
 - `using` directives sit before — and therefore outside — the namespace, sorted
   `System.*` first, then other external packages, then `Grob.*`.
+- Line endings are **LF** for all `.cs` files (`.gitattributes` enforces this).
+  Do not convert to CRLF.
 
 ## Naming
 
@@ -27,15 +29,20 @@ These rules apply to every `.cs` file in the solution.
 - `camelCase` for locals and parameters.
 - `_camelCase` for private fields. No `m_` prefix. No Hungarian.
 - Interface names start with `I`. Generic type parameters start with `T`.
-- Test class names end with `Tests`. Test methods are
-  `MethodUnderTest_Scenario_ExpectedBehaviour`. No spaces. Underscores are
+- Test class names end with `Tests`. Test method names use the shape
+  `Subject_BehaviourClause` — two PascalCase segments joined by a **single**
+  underscore. Examples: `Constructor_SetsAllProperties`,
+  `Equality_DifferentKind_AreNotEqual`, `PlainString_SegmentsIntoStartPartEnd`.
+  No all-lowercase words, no multiple underscores, no spaces. Underscores are
   acceptable in test method names because they substantially improve readability;
   this is the only place underscores appear in identifiers.
 
 ## Style
 
-- Allman braces (opening brace on its own line) — the .NET convention, not the
-  C-style same-line braces used in Grob source itself.
+- **Same-line braces (K&R).** `dotnet format` is the source of truth and enforces
+  opening braces on the same line for types, methods, and control-flow blocks.
+  Do not raise review comments about brace placement — the formatter will override
+  any manual deviation.
 - Spaces inside string interpolation braces: `$"{name}"` not `$"{ name }"`.
 - Explicit access modifiers always. No reliance on default `private`.
 - `var` only when the right-hand side makes the type obvious (`new Foo()`,
