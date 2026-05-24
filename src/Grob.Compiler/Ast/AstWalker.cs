@@ -227,11 +227,13 @@ public abstract class AstWalker : AstVisitor<Unit> {
 
     /// <inheritdoc/>
     public override Unit VisitTypeDecl(TypeDecl node) {
+#pragma warning disable S3267 // hot path: avoid per-visit Where iterator allocation
         foreach (TypeField field in node.Fields) {
             if (field.DefaultValue is not null) {
                 Visit(field.DefaultValue);
             }
         }
+#pragma warning restore S3267
         return default;
     }
 
@@ -254,10 +256,12 @@ public abstract class AstWalker : AstVisitor<Unit> {
     }
 
     private void VisitParameterDefaults(IReadOnlyList<Parameter> parameters) {
+#pragma warning disable S3267 // hot path: avoid per-visit Where iterator allocation
         foreach (Parameter p in parameters) {
             if (p.DefaultValue is not null) {
                 Visit(p.DefaultValue);
             }
         }
+#pragma warning restore S3267
     }
 }
