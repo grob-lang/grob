@@ -16,10 +16,10 @@ These rules apply to every `.cs` file in the solution.
 ## File layout
 
 - One public type per file. File name matches the type name exactly.
-- File-scoped namespaces. `namespace Grob.Compiler.Lexing;` followed by a blank
-  line, then `using` directives, then the type.
-- `using` directives outside the namespace, sorted: `System.*` first, then other
-  `System.*`, then external packages, then `Grob.*`.
+- `using` directives first, then a blank line, then the file-scoped namespace
+  declaration (`namespace Grob.Compiler.Lexing;`), then the type.
+- `using` directives sit before — and therefore outside — the namespace, sorted
+  `System.*` first, then other external packages, then `Grob.*`.
 
 ## Naming
 
@@ -178,5 +178,5 @@ attribute and write the test.
 
 The full TDD discipline — red/green/refactor, coverage taxonomy, release-gate
 rules, regression policy — lives in `tests.instructions.md`. The rules in
-this file cover *how C# is written*; the test instructions cover *how tests
-are written and what coverage is expected*.
+this file cover _how C# is written_; the test instructions cover _how tests
+are written and what coverage is expected_.

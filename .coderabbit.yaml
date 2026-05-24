@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+# CodeRabbit configuration — https://docs.coderabbit.ai/reference/configuration
+# Pre-merge checks: keep title check, relax docstring threshold for repos
+# with xUnit test projects (public test methods do not carry XML docs by
+# repo convention; see CONTRIBUTING.md).
+language: en-GB
+tone_instructions: ""
+early_access: false
+enable_free_tier: true
+inheritance: false
+reviews:
+  profile: chill
+  pre_merge_checks:
+    docstrings:
+      mode: warning
+      threshold: 40
+    title:
+      mode: warning
+      requirements: |
+        Use a Conventional Commits prefix (feat, fix, docs, refactor, test,
+        chore, build, ci, perf, style) followed by an optional scope and a
+        short imperative summary. Example: 'feat(compiler): add lexer'.
+    description:
+      mode: warning
+    issue_assessment:
+      mode: warning
+code_generation:
+  docstrings:
+    path_instructions:
+      - path: "tests/**/*.cs"
+        instructions: |
+          Test methods do not require XML doc comments. Skip docstring
+          generation for `[Fact]`/`[Theory]` test methods and helper
+          fixtures in test projects.
+chat: {}
+knowledge_base: {}
+issue_enrichment: {}

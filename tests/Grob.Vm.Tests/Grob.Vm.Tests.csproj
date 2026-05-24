@@ -20,4 +20,7 @@
     <ProjectReference Include="..\..\src\Grob.Vm\Grob.Vm.csproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
 </Project>
