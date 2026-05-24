@@ -8,7 +8,7 @@ namespace Grob.Compiler.Tests;
 
 public class LexerKeywordTests {
     public static IEnumerable<object[]> Keywords => [
-        new object[] { "fn", TokenKind.Fn },
+        ["fn", TokenKind.Fn],
         ["if", TokenKind.If],
         ["else", TokenKind.Else],
         ["while", TokenKind.While],

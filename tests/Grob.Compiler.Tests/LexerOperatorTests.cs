@@ -8,7 +8,7 @@ namespace Grob.Compiler.Tests;
 
 public class LexerOperatorTests {
     public static IEnumerable<object[]> Operators => [
-          new object[] { "+", TokenKind.Plus },
+        ["+", TokenKind.Plus],
         ["-", TokenKind.Minus],
         ["*", TokenKind.Star],
         ["%", TokenKind.Percent],

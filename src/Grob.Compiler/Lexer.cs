@@ -64,11 +64,15 @@ public sealed class Lexer {
         // If EOF arrives while one or more interpolations are still open,
         // synthesise their closers so the token stream stays well-formed
         // for downstream consumers and surface a diagnostic per frame.
+        // Use the frame's outer depth to preserve the closing-token depth
+        // invariant (closers carry the depth of the brace they pair with).
         while (_interpStack.Count > 0) {
-            _interpStack.Pop();
-            AddError("E2009", "unterminated string interpolation", Here());
-            Emit(TokenKind.InterpEnd, string.Empty, Here());
-            Emit(TokenKind.StringEnd, string.Empty, Here());
+            InterpFrame frame = _interpStack.Pop();
+            SourceLocation eof = Here();
+            AddError("E2009", "unterminated string interpolation", eof);
+            Emit(TokenKind.InterpEnd, string.Empty, eof, depthOverride: frame.OuterDepth);
+            Emit(TokenKind.StringEnd, string.Empty, eof, depthOverride: frame.OuterDepth);
+            _depth = frame.OuterDepth;
         }
         Emit(TokenKind.Eof, string.Empty, Here(), depthOverride: 0);
         return ApplyLineContinuation(_rawTokens);
@@ -567,7 +571,7 @@ public sealed class Lexer {
                 Advance();
                 return;
             }
-            if (c == '\n') {
+            if (c is '\n' or '\r') {
                 CloseUnterminatedStringAtNewline(sb, partStart);
                 return;
             }
@@ -605,7 +609,7 @@ public sealed class Lexer {
         }
         sb.Append('\\');
         Advance();
-        if (!IsAtEnd && Peek() != '\n') {
+        if (!IsAtEnd && Peek() is not ('\n' or '\r')) {
             sb.Append(Peek());
             Advance();
         }

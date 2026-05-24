@@ -97,6 +97,7 @@ public class LexerStringTests {
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2002", diag.Code);
         Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(2, diag.Range.Start.Column);
         // The lexer recovers — synthesises StringEnd, then re-emits the newline.
         Assert.Contains(tokens, t => t.Kind == TokenKind.StringEnd);
     }
@@ -106,6 +107,8 @@ public class LexerStringTests {
         var (tokens, diagnostics) = LexWithDiagnostics("\"oops");
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2002", diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(2, diag.Range.Start.Column);
         Assert.Equal(TokenKind.Eof, tokens[^1].Kind);
     }
 
@@ -114,6 +117,9 @@ public class LexerStringTests {
         var (tokens, diagnostics) = LexWithDiagnostics("\"hi ${x");
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2009", diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        // Diagnostic points at EOF position, after the last consumed char.
+        Assert.True(diag.Range.Start.Column > 1, $"expected column > 1, got {diag.Range.Start.Column}");
         // Stream is well-formed: ends with synthesised InterpEnd, StringEnd, Eof.
         Assert.Equal(TokenKind.Eof, tokens[^1].Kind);
         Assert.Equal(TokenKind.StringEnd, tokens[^2].Kind);
@@ -125,6 +131,8 @@ public class LexerStringTests {
         var (tokens, diagnostics) = LexWithDiagnostics("\"\\q\"");
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2005", diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(2, diag.Range.Start.Column);
         AssertKinds(tokens, TokenKind.StringStart, TokenKind.StringPart, TokenKind.StringEnd, TokenKind.Eof);
     }
 
@@ -148,6 +156,7 @@ public class LexerStringTests {
         Diagnostic first = diagnostics.Errors.First();
         Assert.Equal("E2004", first.Code);
         Assert.Equal(1, first.Range.Start.Line);
+        Assert.True(first.Range.Start.Column >= 1);
     }
 
     [Fact]
@@ -163,5 +172,7 @@ public class LexerStringTests {
         var (_, diagnostics) = LexWithDiagnostics("```\nstill open");
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2004", diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 }
