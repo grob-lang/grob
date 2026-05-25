@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace Grob.Core;
@@ -209,6 +210,8 @@ public readonly struct GrobValue : IEquatable<GrobValue> {
     /// IEEE 754 equality for <see cref="GrobValueKind.Float"/> (<c>NaN != NaN</c>,
     /// <c>+0.0 == -0.0</c>). All other kinds delegate to <see cref="Equals(GrobValue)"/>.
     /// </summary>
+    [SuppressMessage("Major Bug", "S1244:Floating point numbers should not be tested for equality",
+        Justification = "Intentional IEEE 754 semantics for the language-level == operator: NaN != NaN, +0.0 == -0.0. Equals(GrobValue) provides collection-friendly comparison.")]
     public static bool operator ==(GrobValue left, GrobValue right) {
         if (left._kind == GrobValueKind.Float && right._kind == GrobValueKind.Float)
             return BitConverter.Int64BitsToDouble(left._scalar) == BitConverter.Int64BitsToDouble(right._scalar);

@@ -333,4 +333,65 @@ public sealed class GrobValueTests {
         // Layout: 1-byte discriminator + 7-byte padding + 8-byte scalar + 8-byte reference = 24 bytes.
         Assert.Equal(24, Unsafe.SizeOf<GrobValue>());
     }
+
+    // ----- Equals(object?) overload -----
+
+    [Fact]
+    public void EqualsObject_SameValueBoxed_ReturnsTrue() {
+        object boxed = GrobValue.FromInt(7);
+
+        Assert.True(GrobValue.FromInt(7).Equals(boxed));
+    }
+
+    [Fact]
+    public void EqualsObject_Null_ReturnsFalse() {
+        Assert.False(GrobValue.FromInt(7).Equals((object?)null));
+    }
+
+    [Fact]
+    public void EqualsObject_DifferentType_ReturnsFalse() {
+        Assert.False(GrobValue.FromInt(7).Equals("not a value"));
+    }
+
+    // ----- ToString matrix -----
+
+    [Fact]
+    public void ToString_Nil_ReturnsNil() => Assert.Equal("nil", GrobValue.Nil.ToString());
+
+    [Fact]
+    public void ToString_BoolTrue_ReturnsTrue() => Assert.Equal("true", GrobValue.FromBool(true).ToString());
+
+    [Fact]
+    public void ToString_BoolFalse_ReturnsFalse() => Assert.Equal("false", GrobValue.FromBool(false).ToString());
+
+    [Fact]
+    public void ToString_Int_ReturnsDecimal() => Assert.Equal("42", GrobValue.FromInt(42).ToString());
+
+    [Fact]
+    public void ToString_Float_ReturnsGFormat() => Assert.Equal("3.14", GrobValue.FromFloat(3.14).ToString());
+
+    [Fact]
+    public void ToString_String_ReturnsRawString() => Assert.Equal("hello", GrobValue.FromString("hello").ToString());
+
+    [Fact]
+    public void ToString_Array_IncludesCount() {
+        var arr = new GrobArray(new[] { GrobValue.FromInt(1), GrobValue.FromInt(2) });
+
+        Assert.Equal("[array(2)]", GrobValue.FromArray(arr).ToString());
+    }
+
+    [Fact]
+    public void ToString_Map_ReturnsMapMarker() {
+        Assert.Equal("[map]", GrobValue.FromMap(new GrobMap()).ToString());
+    }
+
+    [Fact]
+    public void ToString_Struct_IncludesTypeName() {
+        Assert.Equal("[Point]", GrobValue.FromStruct(new GrobStruct("Point")).ToString());
+    }
+
+    [Fact]
+    public void ToString_Function_IncludesName() {
+        Assert.Equal("<fn add>", GrobValue.FromFunction(new GrobFunction("add", 2)).ToString());
+    }
 }

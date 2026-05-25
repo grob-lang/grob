@@ -248,4 +248,55 @@ public sealed class DisassemblerTests {
         var ex = Record.Exception(() => Disassembler.DisassembleInstruction(chunk, 0, writer));
         Assert.Null(ex);
     }
+
+    [Fact]
+    public void TruncatedConstantLongOperand_DoesNotThrow_AndEmitsTruncated() {
+        var chunk = new Chunk();
+        chunk.WriteOpCode(OpCode.ConstantLong, 1);
+        chunk.WriteByte(0x00, 1);   // only one of the two needed bytes
+
+        using var writer = new StringWriter();
+        int next = Disassembler.DisassembleInstruction(chunk, 0, writer);
+
+        Assert.Equal(1, next);
+        Assert.Contains("truncated", writer.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TruncatedByteOperand_DoesNotThrow_AndEmitsTruncated() {
+        var chunk = new Chunk();
+        chunk.WriteOpCode(OpCode.GetLocal, 1);   // expects a 1-byte operand
+
+        using var writer = new StringWriter();
+        int next = Disassembler.DisassembleInstruction(chunk, 0, writer);
+
+        Assert.Equal(1, next);
+        Assert.Contains("truncated", writer.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TruncatedJumpOperand_DoesNotThrow_AndEmitsTruncated() {
+        var chunk = new Chunk();
+        chunk.WriteOpCode(OpCode.Jump, 1);
+        chunk.WriteByte(0x00, 1);   // only one of the two needed bytes
+
+        using var writer = new StringWriter();
+        int next = Disassembler.DisassembleInstruction(chunk, 0, writer);
+
+        Assert.Equal(1, next);
+        Assert.Contains("truncated", writer.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ConstantInstruction_InvalidPoolIndex_RendersInvalidPlaceholder() {
+        // Constant opcode that refers to an index past the (empty) constant pool.
+        var chunk = new Chunk();
+        chunk.WriteOpCode(OpCode.Constant, 1);
+        chunk.WriteByte(0x00, 1);
+
+        using var writer = new StringWriter();
+        Disassembler.DisassembleInstruction(chunk, 0, writer);
+
+        Assert.Contains("invalid index", writer.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
 }
