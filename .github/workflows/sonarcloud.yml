@@ -27,7 +27,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: "10.0.x"
+          global-json-file: global.json
 
       # dotnet-sonarscanner is a Java process; JRE 17+ must be on PATH
       # before the tool is installed or invoked.
