@@ -55,8 +55,10 @@ public class PipelineSmokeTests {
 
         Assert.Equal(1, bag.Count);
         Assert.Equal("E2001", bag.Diagnostics[0].Code);
-        Assert.Equal(11, bag.Diagnostics[0].Range.Start.Line);
-        Assert.Equal(1, bag.Diagnostics[0].Range.Start.Column);
+        // §29 fix: diagnostic points at the dangling '+' operator (line 10, col 14),
+        // not at the '}' anchor (line 11, col 1) where the cursor lands after recovery.
+        Assert.Equal(10, bag.Diagnostics[0].Range.Start.Line);
+        Assert.Equal(14, bag.Diagnostics[0].Range.Start.Column);
         Assert.Equal(3, unit.TopLevel.Count);
     }
 }
