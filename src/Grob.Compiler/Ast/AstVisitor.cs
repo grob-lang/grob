@@ -171,6 +171,13 @@ public abstract class AstVisitor<T> {
     public abstract T VisitErrorDecl(ErrorDecl node);
 
     // -----------------------------------------------------------------------
+    // Root
+    // -----------------------------------------------------------------------
+
+    /// <summary>Hook for <see cref="CompilationUnit"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
+    public virtual T VisitCompilationUnit(CompilationUnit node) => DefaultVisit(node);
+
+    // -----------------------------------------------------------------------
     // Fallback
     // -----------------------------------------------------------------------
 
