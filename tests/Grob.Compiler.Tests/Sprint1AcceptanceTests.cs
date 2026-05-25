@@ -23,8 +23,11 @@ namespace Grob.Compiler.Tests;
 /// describe the parser contract, the fixtures describe the failure shape.
 /// </summary>
 public class Sprint1AcceptanceTests {
-    private static string FixturePath(string name) =>
-        Path.Combine(AppContext.BaseDirectory, "fixtures", "sprint-1", name);
+    private static string FixturePath(string name) {
+        if (Path.IsPathRooted(name))
+            throw new ArgumentException($"Fixture name must be a relative path, got: {name}", nameof(name));
+        return Path.Combine(AppContext.BaseDirectory, "fixtures", "sprint-1", name);
+    }
 
     private static string ReadFixture(string name) =>
         File.ReadAllText(FixturePath(name));

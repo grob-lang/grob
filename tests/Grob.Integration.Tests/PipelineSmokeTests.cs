@@ -21,8 +21,11 @@ namespace Grob.Integration.Tests;
 /// public API surface usable from outside the compiler test project).
 /// </summary>
 public class PipelineSmokeTests {
-    private static string FixturePath(string name) =>
-        Path.Combine(AppContext.BaseDirectory, "fixtures", "sprint-1", name);
+    private static string FixturePath(string name) {
+        if (Path.IsPathRooted(name))
+            throw new ArgumentException($"Fixture name must be a relative path, got: {name}", nameof(name));
+        return Path.Combine(AppContext.BaseDirectory, "fixtures", "sprint-1", name);
+    }
 
     private static (CompilationUnit Unit, DiagnosticBag Diagnostics) LexAndParse(string source) {
         DiagnosticBag bag = new();
