@@ -16,7 +16,7 @@ inheritance: false
 tone_instructions: >-
   This is a performance-critical bytecode VM and compiler in C#. In hot paths,
   hand-rolled code, struct-based values and manual dispatch are deliberate.
-  Do not suggest allocating or abstracting rewrites there. Flag real bugs.
+  Do not suggest rewrites that allocate or introduce abstraction there. Flag real bugs.
 early_access: false
 enable_free_tier: true
 reviews:
