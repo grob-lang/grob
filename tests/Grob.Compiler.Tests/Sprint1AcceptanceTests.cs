@@ -51,8 +51,10 @@ public class Sprint1AcceptanceTests {
         Diagnostic d = bag.Diagnostics[0];
         Assert.Equal("E2001", d.Code);
         Assert.Equal(Severity.Error, d.Severity);
-        Assert.Equal(13, d.Range.Start.Line);
-        Assert.Equal(1, d.Range.Start.Column);
+        // §29 fix: diagnostic points at the dangling '+' operator (line 12, col 14),
+        // not at the '}' anchor (line 13, col 1) where the cursor lands after recovery.
+        Assert.Equal(12, d.Range.Start.Line);
+        Assert.Equal(14, d.Range.Start.Column);
 
         // Three top-level fn declarations, none of them ErrorDecls.
         Assert.Equal(3, unit.TopLevel.Count);
@@ -146,7 +148,8 @@ public class Sprint1AcceptanceTests {
         Assert.IsType<ErrorExpr>(ret.Value);
 
         // Diagnostics in source order: broken expression, const without name, garbage tokens.
-        Assert.Equal((11, 1), (bag.Diagnostics[0].Range.Start.Line, bag.Diagnostics[0].Range.Start.Column));
+        // §29 fix: first diagnostic points at the dangling '+' (line 10, col 14), not the '}' anchor.
+        Assert.Equal((10, 14), (bag.Diagnostics[0].Range.Start.Line, bag.Diagnostics[0].Range.Start.Column));
         Assert.Equal((15, 7), (bag.Diagnostics[1].Range.Start.Line, bag.Diagnostics[1].Range.Start.Column));
         Assert.Equal((19, 1), (bag.Diagnostics[2].Range.Start.Line, bag.Diagnostics[2].Range.Start.Column));
     }
@@ -171,8 +174,10 @@ public class Sprint1AcceptanceTests {
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", d.Code);
         Assert.Equal(Severity.Error, d.Severity);
-        Assert.Equal(11, d.Range.Start.Line);
-        Assert.Equal(1, d.Range.Start.Column);
+        // §29 fix: diagnostic points at the dangling '+' operator (line 10, col 14),
+        // not at the '}' anchor (line 11, col 1) where the cursor lands after recovery.
+        Assert.Equal(10, d.Range.Start.Line);
+        Assert.Equal(14, d.Range.Start.Column);
 
         // Three top-level items: the fn, the x := ..., the y := ... .
         Assert.Equal(3, unit.TopLevel.Count);

@@ -93,6 +93,20 @@ public sealed class Parser {
         return new ParseFailedException(d);
     }
 
+    /// <summary>
+    /// Like <see cref="Fail"/> but pins the diagnostic at an explicit
+    /// <paramref name="loc"/> rather than at <see cref="Current"/>.
+    /// Used when the real failure site (e.g. a dangling binary operator) is
+    /// already behind the cursor because line-continuation suppressed the
+    /// newline that would have separated it from the next token.
+    /// </summary>
+    private ParseFailedException FailAt(SourceLocation loc, string code, string message) {
+        SourceRange range = new(loc, loc);
+        Diagnostic d = new(code, message, range, Severity.Error);
+        _diagnostics.Add(d);
+        return new ParseFailedException(d);
+    }
+
     private static SourceRange RangeBetween(SourceLocation start, SourceLocation end) {
         bool endBeforeStart =
             end.File != start.File ||
@@ -136,6 +150,20 @@ public sealed class Parser {
         k is TokenKind.Fn or TokenKind.Type or TokenKind.Param
           or TokenKind.Import or TokenKind.Const or TokenKind.Readonly;
 
+    /// <summary>
+    /// Returns <see langword="true"/> for binary-operator token kinds that require
+    /// a right-hand operand. Used by <see cref="ParsePrimary"/> to detect the case
+    /// where line-continuation suppressed the newline after a dangling operator,
+    /// so the diagnostic can point at the operator rather than at the next token.
+    /// </summary>
+    private static bool IsBinaryOperatorForContext(TokenKind k) =>
+        k is TokenKind.Plus or TokenKind.Minus or TokenKind.Star or TokenKind.Slash
+          or TokenKind.Percent
+          or TokenKind.EqualEqual or TokenKind.BangEqual
+          or TokenKind.Less or TokenKind.Greater
+          or TokenKind.LessEqual or TokenKind.GreaterEqual
+          or TokenKind.AmpAmp or TokenKind.PipePipe or TokenKind.QuestionQuestion;
+
     // -----------------------------------------------------------------------
     // Recovery wrappers — one per AST sort. Every entry point that risks
     // failure passes through these. Synchronise is called only here.
@@ -151,7 +179,10 @@ public sealed class Parser {
                 Advance();
             }
             Synchronise();
-            return new ErrorDecl(RangeFrom(start), ex.Diagnostic);
+            // §29.2: error-node range is exclusive of the anchor token — use the
+            // last consumed token's location as End, not Current (the anchor).
+            SourceLocation end = _pos > 0 ? _tokens[_pos - 1].Location : start;
+            return new ErrorDecl(RangeBetween(start, end), ex.Diagnostic);
         }
     }
 
@@ -165,7 +196,9 @@ public sealed class Parser {
                 Advance();
             }
             Synchronise();
-            return new ErrorStmt(RangeFrom(start), ex.Diagnostic);
+            // §29.2: error-node range is exclusive of the anchor token.
+            SourceLocation end = _pos > 0 ? _tokens[_pos - 1].Location : start;
+            return new ErrorStmt(RangeBetween(start, end), ex.Diagnostic);
         }
     }
 
@@ -179,7 +212,9 @@ public sealed class Parser {
                 Advance();
             }
             Synchronise();
-            return new ErrorExpr(RangeFrom(start), ex.Diagnostic);
+            // §29.2: error-node range is exclusive of the anchor token.
+            SourceLocation end = _pos > 0 ? _tokens[_pos - 1].Location : start;
+            return new ErrorExpr(RangeBetween(start, end), ex.Diagnostic);
         }
     }
 
@@ -900,6 +935,14 @@ public sealed class Parser {
                 }
             case TokenKind.LeftBracket: return ParseArrayLiteral();
             default:
+                // When line-continuation suppresses the newline after a binary
+                // operator (e.g. `a +\n}`), the cursor lands on the anchor while
+                // the last consumed token was the dangling operator. Report the
+                // error at the operator so the user sees the real failure site.
+                if (_pos > 0 && IsBinaryOperatorForContext(_tokens[_pos - 1].Kind)) {
+                    Token prev = _tokens[_pos - 1];
+                    throw FailAt(prev.Location, E2001, $"expected expression after '{DescribeToken(prev)}'");
+                }
                 throw Fail(E2001, $"unexpected token '{DescribeToken(t)}' — expected expression");
         }
     }
