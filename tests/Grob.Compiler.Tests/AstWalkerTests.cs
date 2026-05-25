@@ -293,4 +293,17 @@ public class AstWalkerTests {
         col.Visit(i);
         Assert.Equal(["c", "t"], col.Names);
     }
+
+    [Fact]
+    public void Walker_CompilationUnit_RecursesIntoTopLevelItemsInOrder() {
+        CompilationUnit unit = new(R, [
+            new FnDecl(R, "f", [], new TypeRef(R, "Int", [], false),
+                new BlockStmt(R, [new ExpressionStmt(R, Id("body"))])),
+            new VarDeclStmt(R, "x", null, Id("init")),
+            new ImportDecl(R, "m", null),
+        ]);
+        IdentifierCollector c = new();
+        c.Visit(unit);
+        Assert.Equal(["body", "init"], c.Names);
+    }
 }

@@ -255,6 +255,18 @@ public abstract class AstWalker : AstVisitor<Unit> {
         return default;
     }
 
+    // -----------------------------------------------------------------------
+    // Root
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public override Unit VisitCompilationUnit(CompilationUnit node) {
+        foreach (AstNode item in node.TopLevel) {
+            Visit(item);
+        }
+        return default;
+    }
+
     private void VisitParameterDefaults(IReadOnlyList<Parameter> parameters) {
 #pragma warning disable S3267 // hot path: avoid per-visit Where iterator allocation
         foreach (Parameter p in parameters) {

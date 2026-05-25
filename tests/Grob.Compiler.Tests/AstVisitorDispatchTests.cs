@@ -58,6 +58,8 @@ public class AstVisitorDispatchTests {
         public override string VisitConstDecl(ConstDecl node) => nameof(VisitConstDecl);
         public override string VisitReadonlyDecl(ReadonlyDecl node) => nameof(VisitReadonlyDecl);
         public override string VisitErrorDecl(ErrorDecl node) => nameof(VisitErrorDecl);
+
+        public override string VisitCompilationUnit(CompilationUnit node) => nameof(VisitCompilationUnit);
     }
 
     private static readonly BlockStmt _emptyBlock = new(R, []);
@@ -115,10 +117,15 @@ public class AstVisitorDispatchTests {
         [new ErrorDecl(R, ErrDiag()), nameof(HookNameVisitor.VisitErrorDecl)],
     ];
 
+    public static IEnumerable<object[]> RootCases => [
+        [new CompilationUnit(R, []), nameof(HookNameVisitor.VisitCompilationUnit)],
+    ];
+
     [Theory]
     [MemberData(nameof(ExpressionCases))]
     [MemberData(nameof(StatementCases))]
     [MemberData(nameof(DeclarationCases))]
+    [MemberData(nameof(RootCases))]
     public void Accept_RoutesNodeToMatchingVisitHook(AstNode node, string expectedHook) {
         string actual = node.Accept(_visitor);
         Assert.Equal(expectedHook, actual);
