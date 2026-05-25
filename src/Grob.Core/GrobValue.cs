@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace Grob.Core;
@@ -50,19 +51,34 @@ public readonly struct GrobValue : IEquatable<GrobValue> {
     public static GrobValue FromFloat(double value) => new(GrobValueKind.Float, BitConverter.DoubleToInt64Bits(value), null);
 
     /// <summary>Creates a <see cref="GrobValueKind.String"/> value. The string is stored as a managed reference.</summary>
-    public static GrobValue FromString(string value) => new(GrobValueKind.String, 0L, value);
+    public static GrobValue FromString(string value) {
+        ArgumentNullException.ThrowIfNull(value);
+        return new(GrobValueKind.String, 0L, value);
+    }
 
     /// <summary>Creates a <see cref="GrobValueKind.Array"/> value wrapping <paramref name="value"/>.</summary>
-    public static GrobValue FromArray(GrobArray value) => new(GrobValueKind.Array, 0L, value);
+    public static GrobValue FromArray(GrobArray value) {
+        ArgumentNullException.ThrowIfNull(value);
+        return new(GrobValueKind.Array, 0L, value);
+    }
 
     /// <summary>Creates a <see cref="GrobValueKind.Map"/> value wrapping <paramref name="value"/>.</summary>
-    public static GrobValue FromMap(GrobMap value) => new(GrobValueKind.Map, 0L, value);
+    public static GrobValue FromMap(GrobMap value) {
+        ArgumentNullException.ThrowIfNull(value);
+        return new(GrobValueKind.Map, 0L, value);
+    }
 
     /// <summary>Creates a <see cref="GrobValueKind.Struct"/> value wrapping <paramref name="value"/>.</summary>
-    public static GrobValue FromStruct(GrobStruct value) => new(GrobValueKind.Struct, 0L, value);
+    public static GrobValue FromStruct(GrobStruct value) {
+        ArgumentNullException.ThrowIfNull(value);
+        return new(GrobValueKind.Struct, 0L, value);
+    }
 
     /// <summary>Creates a <see cref="GrobValueKind.Function"/> value wrapping <paramref name="value"/>.</summary>
-    public static GrobValue FromFunction(GrobFunction value) => new(GrobValueKind.Function, 0L, value);
+    public static GrobValue FromFunction(GrobFunction value) {
+        ArgumentNullException.ThrowIfNull(value);
+        return new(GrobValueKind.Function, 0L, value);
+    }
 
     // ----- Inspection -----
 
@@ -214,6 +230,7 @@ public readonly struct GrobValue : IEquatable<GrobValue> {
         Justification = "Intentional IEEE 754 semantics for the language-level == operator: NaN != NaN, +0.0 == -0.0. Equals(GrobValue) provides collection-friendly comparison.")]
     public static bool operator ==(GrobValue left, GrobValue right) {
         if (left._kind == GrobValueKind.Float && right._kind == GrobValueKind.Float)
+            // CodeQL cs/equality-on-floats — intentional. See [SuppressMessage] above.
             return BitConverter.Int64BitsToDouble(left._scalar) == BitConverter.Int64BitsToDouble(right._scalar);
         return left.Equals(right);
     }
@@ -229,8 +246,8 @@ public readonly struct GrobValue : IEquatable<GrobValue> {
     public override string ToString() => _kind switch {
         GrobValueKind.Nil => "nil",
         GrobValueKind.Bool => _scalar != 0 ? "true" : "false",
-        GrobValueKind.Int => _scalar.ToString(),
-        GrobValueKind.Float => BitConverter.Int64BitsToDouble(_scalar).ToString("G"),
+        GrobValueKind.Int => _scalar.ToString(CultureInfo.InvariantCulture),
+        GrobValueKind.Float => BitConverter.Int64BitsToDouble(_scalar).ToString("G", CultureInfo.InvariantCulture),
         GrobValueKind.String => (string?)_reference ?? string.Empty,
         GrobValueKind.Array => $"[array({((GrobArray?)_reference)?.Count ?? 0})]",
         GrobValueKind.Map => "[map]",

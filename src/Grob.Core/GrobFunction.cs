@@ -16,6 +16,8 @@ public sealed class GrobFunction {
     /// <paramref name="name"/> and <paramref name="arity"/>.
     /// </summary>
     public GrobFunction(string name, int arity) {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentOutOfRangeException.ThrowIfNegative(arity);
         Name = name;
         Arity = arity;
     }

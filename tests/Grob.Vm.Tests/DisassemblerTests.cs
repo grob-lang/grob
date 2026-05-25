@@ -250,7 +250,7 @@ public sealed class DisassemblerTests {
     }
 
     [Fact]
-    public void TruncatedConstantLongOperand_DoesNotThrow_AndEmitsTruncated() {
+    public void TruncatedConstantLongOperand_EmitsTruncated() {
         var chunk = new Chunk();
         chunk.WriteOpCode(OpCode.ConstantLong, 1);
         chunk.WriteByte(0x00, 1);   // only one of the two needed bytes
@@ -263,7 +263,7 @@ public sealed class DisassemblerTests {
     }
 
     [Fact]
-    public void TruncatedByteOperand_DoesNotThrow_AndEmitsTruncated() {
+    public void TruncatedByteOperand_EmitsTruncated() {
         var chunk = new Chunk();
         chunk.WriteOpCode(OpCode.GetLocal, 1);   // expects a 1-byte operand
 
@@ -275,7 +275,7 @@ public sealed class DisassemblerTests {
     }
 
     [Fact]
-    public void TruncatedJumpOperand_DoesNotThrow_AndEmitsTruncated() {
+    public void TruncatedJumpOperand_EmitsTruncated() {
         var chunk = new Chunk();
         chunk.WriteOpCode(OpCode.Jump, 1);
         chunk.WriteByte(0x00, 1);   // only one of the two needed bytes
@@ -288,7 +288,7 @@ public sealed class DisassemblerTests {
     }
 
     [Fact]
-    public void ConstantInstruction_InvalidPoolIndex_RendersInvalidPlaceholder() {
+    public void InvalidPoolIndex_RendersInvalidPlaceholder() {
         // Constant opcode that refers to an index past the (empty) constant pool.
         var chunk = new Chunk();
         chunk.WriteOpCode(OpCode.Constant, 1);

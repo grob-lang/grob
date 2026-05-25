@@ -162,8 +162,9 @@ public sealed class RuntimeTypesTests {
     [Fact]
     public void GrobStruct_Equals_NonGrobStructObject_ReturnsFalse() {
         var s = new GrobStruct("T");
+        object other = "not a struct";
 
-        Assert.False(s.Equals("not a struct"));
+        Assert.False(s.Equals(other));
     }
 
     [Fact]

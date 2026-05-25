@@ -16,6 +16,9 @@ public sealed class GrobStruct : IEquatable<GrobStruct> {
     /// <paramref name="typeName"/> and optional initial <paramref name="fields"/>.
     /// </summary>
     public GrobStruct(string typeName, IEnumerable<KeyValuePair<string, GrobValue>>? fields = null) {
+        ArgumentNullException.ThrowIfNull(typeName);
+        if (typeName.Length == 0)
+            throw new ArgumentException("Type name must not be empty.", nameof(typeName));
         TypeName = typeName;
         _fields = fields is null
             ? []
@@ -26,18 +29,26 @@ public sealed class GrobStruct : IEquatable<GrobStruct> {
     /// Returns the value of the field named <paramref name="name"/>.
     /// Throws <see cref="KeyNotFoundException"/> if the field does not exist.
     /// </summary>
-    public GrobValue GetField(string name) => _fields[name];
+    public GrobValue GetField(string name) {
+        ArgumentNullException.ThrowIfNull(name);
+        return _fields[name];
+    }
 
     /// <summary>Sets (or adds) the field named <paramref name="name"/> to <paramref name="value"/>.</summary>
-    public void SetField(string name, GrobValue value) => _fields[name] = value;
+    public void SetField(string name, GrobValue value) {
+        ArgumentNullException.ThrowIfNull(name);
+        _fields[name] = value;
+    }
 
     /// <summary>
     /// Attempts to retrieve the value of <paramref name="name"/>.
     /// Returns <c>true</c> and sets <paramref name="value"/> on success;
     /// <c>false</c> on miss.
     /// </summary>
-    public bool TryGetField(string name, out GrobValue value) =>
-        _fields.TryGetValue(name, out value);
+    public bool TryGetField(string name, out GrobValue value) {
+        ArgumentNullException.ThrowIfNull(name);
+        return _fields.TryGetValue(name, out value);
+    }
 
     /// <summary>
     /// Field-by-field value equality: same <see cref="TypeName"/>, same field

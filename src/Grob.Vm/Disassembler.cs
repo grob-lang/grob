@@ -100,10 +100,6 @@ public static class Disassembler {
             OpCode.IsNil => SimpleInstruction(opCode, offset, writer),
             OpCode.TryEnd => SimpleInstruction(opCode, offset, writer),
             OpCode.Throw => SimpleInstruction(opCode, offset, writer),
-            OpCode.IncrementInt => SimpleInstruction(opCode, offset, writer),
-            OpCode.DecrementInt => SimpleInstruction(opCode, offset, writer),
-            OpCode.IncrementFloat => SimpleInstruction(opCode, offset, writer),
-            OpCode.DecrementFloat => SimpleInstruction(opCode, offset, writer),
 
             // 1-byte operand: constant pool index
             OpCode.Constant => ConstantInstruction(opCode, chunk, offset, writer),
@@ -132,6 +128,10 @@ public static class Disassembler {
             OpCode.SetProperty => ByteOperandInstruction(opCode, chunk, offset, writer),
             OpCode.Import => ByteOperandInstruction(opCode, chunk, offset, writer),
             OpCode.TryBegin => ByteOperandInstruction(opCode, chunk, offset, writer),
+            OpCode.IncrementInt => ByteOperandInstruction(opCode, chunk, offset, writer),
+            OpCode.DecrementInt => ByteOperandInstruction(opCode, chunk, offset, writer),
+            OpCode.IncrementFloat => ByteOperandInstruction(opCode, chunk, offset, writer),
+            OpCode.DecrementFloat => ByteOperandInstruction(opCode, chunk, offset, writer),
 
             // 2-byte operand: jump offset
             OpCode.Jump => JumpInstruction(opCode, chunk, offset, writer),
