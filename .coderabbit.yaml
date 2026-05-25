@@ -1,15 +1,82 @@
 # yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
 # CodeRabbit configuration — https://docs.coderabbit.ai/reference/configuration
+# Schema verified against the reference dated 2026-05-13.
+#
 # Pre-merge checks: keep title check, relax docstring threshold for repos
 # with xUnit test projects (public test methods do not carry XML docs by
 # repo convention; see CONTRIBUTING.md).
+#
+# Performance stance: Grob is a bytecode VM and compiler. Hot paths in
+# Grob.Vm and Grob.Core are hand-rolled by design. Reviews must not flag
+# idiomatic-C# rewrites that cost allocations or indirection on those paths.
+# See CLAUDE.md (picked up via knowledge_base.code_guidelines) for the full
+# rationale; path_instructions below carry the enforced, per-path rules.
 language: en-GB
-tone_instructions: ""
+inheritance: false
+tone_instructions: >-
+  This is a performance-critical bytecode VM and compiler in C#. In hot paths,
+  hand-rolled code, struct-based values and manual dispatch are deliberate.
+  Do not suggest allocating or abstracting rewrites there. Flag real bugs.
 early_access: false
 enable_free_tier: true
-inheritance: false
 reviews:
   profile: chill
+  path_instructions:
+    - path: "src/Grob.Vm/**/*.cs"
+      instructions: |
+        This is the bytecode VM dispatch and execution core. It is on the
+        hot path and is performance-critical.
+
+        Do not suggest:
+        - LINQ in the dispatch loop or any per-instruction code
+        - foreach over hot collections where manual indexing is in use
+        - extracting interfaces, virtual dispatch or polymorphism in place
+          of the hand-rolled switch dispatch
+        - allocating wrappers, tuples or closures in per-instruction paths
+
+        The hand-rolled switch dispatch, manual indexing and struct-based
+        stack operations are deliberate, not oversights. Opcode handling is
+        governed by ADR-0013.
+
+        Do flag: genuine correctness bugs, opcode-handling errors, stack
+        balance mistakes, and off-by-one indexing into the value stack.
+    - path: "src/Grob.Core/**/*.cs"
+      instructions: |
+        Contains GrobValue: a hand-rolled readonly struct used as a
+        nine-variant tagged union, passed by value across the VM.
+
+        Do not suggest:
+        - replacing the struct with a class or an interface hierarchy
+        - boxing GrobValue or converting it to a reference type
+        - introducing defensive copies or conversions in accessors
+        - "simplifying" the encapsulated factory/accessor surface
+
+        The internal layout is provisional pending OQ-005 (tagged union vs
+        NaN boxing) but the public factory and accessor surface is
+        deliberate and must stay stable. A future layout change sits behind
+        that boundary by design.
+
+        Do flag: real bugs in variant discrimination, accessor type
+        mismatches, and incorrect tag handling.
+    - path: "src/Grob.Compiler/**/*.cs"
+      instructions: |
+        Lexer, parser and type checker.
+
+        The parser is error-recovering by design (D-300, fundamentals §29):
+        - ErrorExpr, ErrorStmt and ErrorDecl are first-class AST nodes, not
+          dead code or swallowed errors
+        - cascade suppression via the Error type's universal assignability is
+          intentional
+        - SourceLocation on every AST node is required (D-137); do not
+          suggest removing or making it optional
+        - the Declaration back-reference on identifier nodes is required for
+          the LSP; do not suggest removing it
+        - the type checker is two-pass by design (D-166): pass 1 registers
+          top-level declarations, pass 2 validates bodies
+
+        Do not suggest removing the error-node machinery or collapsing the
+        two passes. Do flag: real bugs in token handling, incorrect
+        synchronisation-set membership, and type-rule errors.
   pre_merge_checks:
     docstrings:
       mode: warning
@@ -24,6 +91,16 @@ reviews:
       mode: warning
     issue_assessment:
       mode: warning
+knowledge_base:
+  # CLAUDE.md and AGENTS.md are in the default filePatterns set, so a repo-root
+  # CLAUDE.md describing the performance stance is read as review criteria with
+  # no extra config. One source of truth shared with the AI-augmented workflow.
+  code_guidelines:
+    enabled: true
+  # grob-lang is public, so 'auto' already resolves to 'local'. Set explicitly
+  # so per-comment corrections persist on this repo regardless of visibility.
+  learnings:
+    scope: local
 code_generation:
   docstrings:
     path_instructions:
@@ -33,5 +110,4 @@ code_generation:
           generation for `[Fact]`/`[Theory]` test methods and helper
           fixtures in test projects.
 chat: {}
-knowledge_base: {}
 issue_enrichment: {}
