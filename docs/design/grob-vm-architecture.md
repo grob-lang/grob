@@ -4,7 +4,7 @@
 > Deep dive into bytecode VM concepts, type checking, GC, and plugins.
 > Informs Grob’s implementation after SharpBASIC and clox are complete.
 
------
+---
 
 ## Bytecode VM — Core Concepts
 
@@ -19,14 +19,14 @@ The compiler is the intelligent part. The VM is deliberately dumb — it just ex
 
 ### Comparison to SharpBASIC’s Evaluator
 
-|SharpBASIC Evaluator        |Grob Bytecode VM           |
-|----------------------------|---------------------------|
-|AST node                    |Opcode + operands          |
-|`EvaluateExpression`        |Fetch-decode-execute loop  |
-|Pattern match on node type  |Switch on opcode byte      |
-|Recursive tree walk         |Linear instruction sequence|
-|SymbolTable dictionary      |Stack slots + globals array|
-|Call stack via C# call stack|Explicit call frames array |
+| SharpBASIC Evaluator         | Grob Bytecode VM            |
+| ---------------------------- | --------------------------- |
+| AST node                     | Opcode + operands           |
+| `EvaluateExpression`         | Fetch-decode-execute loop   |
+| Pattern match on node type   | Switch on opcode byte       |
+| Recursive tree walk          | Linear instruction sequence |
+| SymbolTable dictionary       | Stack slots + globals array |
+| Call stack via C# call stack | Explicit call frames array  |
 
 The evaluator is recursive — C#’s own call stack tracks where you are.
 The VM is iterative — recursion was flattened by the compiler at compile time.
@@ -70,7 +70,7 @@ while (true)
 
 That loop is the entire VM. More instructions = more cases. Nothing more.
 
------
+---
 
 ## The Instruction Set
 
@@ -152,7 +152,7 @@ The values stored in the constant pool — and pushed onto the operand stack
 during execution — are `GrobValue` instances. The next section specifies the
 `GrobValue` representation.
 
------
+---
 
 ## GrobValue Representation
 
@@ -249,17 +249,17 @@ populating an `int`, `bool` or `float` value never touches the heap.
 
 **Encoding per kind:**
 
-|Kind     |`_scalar`                              |`_reference`               |
-|---------|---------------------------------------|---------------------------|
-|`Nil`    |`0`                                    |`null`                     |
-|`Bool`   |`0` for false, `1` for true            |`null`                     |
-|`Int`    |the `long` value directly              |`null`                     |
-|`Float`  |`BitConverter.DoubleToInt64Bits(value)`|`null`                     |
-|`String` |`0`                                    |the `string`               |
-|`Array`  |`0`                                    |`GrobArray` instance       |
-|`Map`    |`0`                                    |`GrobMap` instance         |
-|`Struct` |`0`                                    |`GrobStruct` instance      |
-|`Function`|`0`                                   |`GrobFunction` instance    |
+| Kind       | `_scalar`                               | `_reference`            |
+| ---------- | --------------------------------------- | ----------------------- |
+| `Nil`      | `0`                                     | `null`                  |
+| `Bool`     | `0` for false, `1` for true             | `null`                  |
+| `Int`      | the `long` value directly               | `null`                  |
+| `Float`    | `BitConverter.DoubleToInt64Bits(value)` | `null`                  |
+| `String`   | `0`                                     | the `string`            |
+| `Array`    | `0`                                     | `GrobArray` instance    |
+| `Map`      | `0`                                     | `GrobMap` instance      |
+| `Struct`   | `0`                                     | `GrobStruct` instance   |
+| `Function` | `0`                                     | `GrobFunction` instance |
 
 Reading a `float` back: `BitConverter.Int64BitsToDouble(_scalar)` — bit-exact
 round-trip including the full `NaN` payload, which matters for the IEEE 754
@@ -391,18 +391,18 @@ Equality at the runtime level is value equality for primitives and
 strings; reference equality for arrays, maps and functions; and
 delegated to the contained `GrobStruct` for struct values.
 
-|Same kind                |`Equals` semantics                                   |
-|-------------------------|-----------------------------------------------------|
-|`Nil` == `Nil`           |always true                                          |
-|`Bool` == `Bool`          |scalar equality                                      |
-|`Int` == `Int`            |scalar equality                                      |
-|`Float` == `Float`        |IEEE 754: `NaN != NaN`, `+0.0 == -0.0` (C# default) |
-|`String` == `String`      |ordinal value equality (`string.Equals(a, b, Ordinal)`)|
-|`Array` == `Array`        |reference equality                                   |
-|`Map` == `Map`            |reference equality                                   |
-|`Struct` == `Struct`      |delegate to `GrobStruct.Equals` (field-by-field)     |
-|`Function` == `Function`  |reference equality                                   |
-|*different kinds*        |always false                                         |
+| Same kind                | `Equals` semantics                                      |
+| ------------------------ | ------------------------------------------------------- |
+| `Nil` == `Nil`           | always true                                             |
+| `Bool` == `Bool`         | scalar equality                                         |
+| `Int` == `Int`           | scalar equality                                         |
+| `Float` == `Float`       | IEEE 754: `NaN != NaN`, `+0.0 == -0.0` (C# default)     |
+| `String` == `String`     | ordinal value equality (`string.Equals(a, b, Ordinal)`) |
+| `Array` == `Array`       | reference equality                                      |
+| `Map` == `Map`           | reference equality                                      |
+| `Struct` == `Struct`     | delegate to `GrobStruct.Equals` (field-by-field)        |
+| `Function` == `Function` | reference equality                                      |
+| _different kinds_        | always false                                            |
 
 `==` between Grob values of incompatible kinds is a compile error at the
 language level (D-169). The runtime cross-kind rule above is defensive —
@@ -489,7 +489,7 @@ is a one-commit change:
 The encapsulation boundary above is already the right shape for
 `[Union]` to slot in. This is a future-additive path, not a redesign.
 
------
+---
 
 ## The Bytecode File Format
 
@@ -532,7 +532,7 @@ since last run, load the cached `.grobc` instead of recompiling. The cache
 lives in a `.grob/cache/` side directory next to the source file; mtime-driven
 invalidation; see `grob-grobc-format.md` for the integration with `grob run`.
 
------
+---
 
 ## Control Flow in Bytecode
 
@@ -628,7 +628,7 @@ while i <= 10 {
 This technique — reducing a higher level construct to a simpler one before
 emitting code — is called **lowering**.
 
------
+---
 
 ## Call Frames and the Call Stack
 
@@ -724,6 +724,87 @@ The debugger’s locals pane is `_stack[frame.StackBase + slot]` for each slot.
 Debug builds include a name table mapping slot numbers to variable names.
 Release builds strip it — the bytecode is identical, only metadata differs.
 
+### Developer Diagnostics — Disassembler and Execution Tracing
+
+Two diagnostic tools sit alongside the VM. Both exist to make bytecode
+visible during development. They are developer affordances, not language
+or — with one deferred exception — user-facing features. Authority: D-306.
+
+#### The disassembler
+
+`Disassembler` lives in `Grob.Vm` and is **always compiled** — present in
+Release builds as much as Debug. It walks a `Chunk` and prints it
+human-readably:
+
+```csharp
+disassembleChunk(Chunk chunk)              // whole chunk, instruction by instruction
+disassembleInstruction(Chunk chunk, int offset)  // one instruction, returns next offset
+```
+
+Each line shows the byte offset, the opcode name, any operands, and — for
+`Constant` and friends — the constant-pool index alongside the resolved
+value it points at. Source line numbers are printed from the chunk's line
+array, with a marker when an instruction shares a line with the one before
+it. The shape mirrors clox's `debug.c`: a `switch` over the same `OpCode`
+enum the VM dispatches on, printing instead of executing.
+
+This is the single most valuable tool for debugging the compiler. When the
+VM produces a wrong answer there are three suspects — the type checker
+annotated wrong, the compiler emitted wrong bytecode, or the VM executed
+correct bytecode incorrectly. The disassembler bisects them: compile, dump,
+read the bytecode by eye. If the bytecode is wrong the bug is in the
+compiler; if it is right the bug is in the VM. It is built in Sprint 2
+against hand-constructed chunks — before the compiler emits anything — so
+that the first bytecode the compiler ever produces is readable immediately.
+
+It is reached three ways: directly from tests (the Sprint 2 compiler tests
+call `disassembleChunk` to assert emitted bytecode), from a scratch entry
+point during development, and — from Sprint 12 — through the `grob dump
+<file>` command, which compiles a script and prints its chunk without
+executing. `grob dump` is a thin wrapper; the engine is the Sprint 2
+deliverable.
+
+#### Execution tracing
+
+Execution tracing is the per-instruction firehose: the value stack and the
+about-to-execute instruction, printed every iteration of the dispatch loop.
+It is the fastest way to find a stack-discipline bug — a value left on the
+stack, a pop that underflows — because you watch the stack depth evolve one
+opcode at a time.
+
+It is gated behind `#if DEBUG` in the `Grob.Vm` C# source, not behind a
+runtime flag:
+
+```csharp
+while (true)
+{
+#if DEBUG
+    TraceInstruction(chunk, ip);
+#endif
+    var instruction = ReadByte();
+    switch (instruction)
+    {
+        // ...
+    }
+}
+```
+
+In a Debug build the call compiles in and fires every iteration. In a
+Release build the C# compiler removes it entirely — it is not in the binary,
+not even as a disabled branch. The reason is the benchmarks: the D-302 VM
+micro-benchmarks run in Release and exist to catch regressions in the
+dispatch loop, the hottest path in the runtime. A runtime `if (_trace)`
+check would put a branch on every instruction in the measured Release
+binary even when tracing is off, polluting exactly the numbers the
+benchmarks protect. `#if DEBUG` makes the cost genuinely zero where it is
+measured.
+
+The consequence for the developer: tracing is reached by **compiling a
+Debug build and running**, never by a CLI flag. This is distinct from the
+disassembler, which is always present, and from `--verbose`, which surfaces
+`log.debug()` output and is a user-facing feature. Tracing surfaces none of
+those — it is raw VM internals for whoever is debugging the VM itself.
+
 ### Top-Level Initialisation and Global Slots
 
 Top-level `readonly` and mutable bindings are compiled as globals, not as
@@ -757,7 +838,7 @@ single branch per global read during startup and zero afterwards.
 each `const` in pass 2 and the compiler inlines every reference as a
 direct `Constant` opcode against the constant pool.
 
------
+---
 
 ## Type Checking
 
@@ -847,7 +928,7 @@ Mixed int/float   → PROMOTE_TO_FLOAT then ADD_FLOAT
 
 No runtime type checks needed — the type checker already verified correctness.
 
------
+---
 
 ## Memory Management
 
@@ -935,7 +1016,7 @@ captured arrays retained beyond their useful lifetime). That is a
 Grob-aware memory-introspection feature — already noted as deferred
 post-v1 in D-302 — not a competitor to the platform collector.
 
------
+---
 
 ## Plugins and Native Functions
 
@@ -1080,7 +1161,7 @@ This is why the module system is a late-phase feature — it builds on
 plugin architecture which builds on native function registration which
 builds on VM function dispatch. Each layer depends on the one below.
 
------
+---
 
 ## Complete Runtime Architecture
 
@@ -1099,7 +1180,7 @@ VM — fetch/decode/execute loop
     └── Plugin Loader    — loads IGrobPlugin assemblies at startup
 ```
 
------
+---
 
 ## Performance Notes
 
@@ -1118,7 +1199,7 @@ out of scope — a well-written bytecode VM is sufficient.
 C# as the implementation language is the right call. The .NET JIT will
 compile Grob’s VM loop to efficient native code. Don’t fight the platform.
 
------
+---
 
 ## Implementation Order
 
@@ -1133,35 +1214,35 @@ compile Grob’s VM loop to efficient native code. Don’t fight the platform.
 
 Each layer is independently testable. Each one builds on the previous.
 
------
+---
 
 ## Key Decisions — Resolved Reference
 
-|Decision            |Notes                                                                          |
-|--------------------|-------------------------------------------------------------------------------|
-|Value representation|**Resolved — May 2026 (D-303).** Tagged union struct, 24 bytes on x64. See "GrobValue Representation" above. NaN boxing rejected — managed-runtime mismatch, full rationale in D-303 and OQ-005.|
-|Error handling model|**Resolved — April 2026.** Exceptions with try/catch. See decisions log OQ-004.|
-|GC strategy         |**Resolved — May 2026 (D-304).** Lean on .NET GC; no custom mark-and-sweep in v1. Full rationale in D-304 and OQ-006.|
-|Concurrent GC       |Not needed for scripting use case — future consideration                       |
-|JIT compilation     |Explicitly out of scope                                                        |
+| Decision             | Notes                                                                                                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Value representation | **Resolved — May 2026 (D-303).** Tagged union struct, 24 bytes on x64. See "GrobValue Representation" above. NaN boxing rejected — managed-runtime mismatch, full rationale in D-303 and OQ-005. |
+| Error handling model | **Resolved — April 2026.** Exceptions with try/catch. See decisions log OQ-004.                                                                                                                  |
+| GC strategy          | **Resolved — May 2026 (D-304).** Lean on .NET GC; no custom mark-and-sweep in v1. Full rationale in D-304 and OQ-006.                                                                            |
+| Concurrent GC        | Not needed for scripting use case — future consideration                                                                                                                                         |
+| JIT compilation      | Explicitly out of scope                                                                                                                                                                          |
 
------
+---
 
-*Updated May 2026 — OQ-005 and OQ-006 closed (D-303, D-304). "GrobValue*
-*Provisional Representation" section renamed to "GrobValue Representation";*
-*provisional framing removed throughout; "Deferred to OQ-005" subsection*
-*replaced by definitive "Locked contract." The speculative "Garbage*
-*Collection" section (Mark and Sweep algorithm sketch, allocation threshold*
-*pseudocode, custom GC pauses note) replaced by "Memory Management" — lean*
-*on .NET GC, what lives where, what does not exist in v1, pressure profile,*
-*revisit conditions. Runtime architecture diagram no longer lists a custom*
-*GC component. Deferred-decisions table converted to a resolved-decisions*
-*reference.*
-*Previous: April 2026 — GrobValue provisional representation locked (OQ-009 resolved):*
-*hand-rolled tagged-union struct under .NET 10 LTS, nine-variant kind enum, 24 bytes on x64,*
-*encapsulation boundary specified, .NET 11 [Union] migration signposted; bytecode file*
-*format now points to grob-grobc-format.md as authoritative (OQ-010 resolved).*
-*Previous: implementation order clarified: step 7 split into 7a (plugin*
-*infrastructure) and 7b (stdlib modules); step 9 explicitly scoped to third-party plugin*
-*loading only; compiler involvement from step 3 onwards made explicit; GC step 8 no-op*
-*note added; `guid` confirmed as 13th core module in step 7b.*
+_Updated May 2026 — OQ-005 and OQ-006 closed (D-303, D-304). "GrobValue_
+_Provisional Representation" section renamed to "GrobValue Representation";_
+_provisional framing removed throughout; "Deferred to OQ-005" subsection_
+_replaced by definitive "Locked contract." The speculative "Garbage_
+_Collection" section (Mark and Sweep algorithm sketch, allocation threshold_
+_pseudocode, custom GC pauses note) replaced by "Memory Management" — lean_
+_on .NET GC, what lives where, what does not exist in v1, pressure profile,_
+_revisit conditions. Runtime architecture diagram no longer lists a custom_
+_GC component. Deferred-decisions table converted to a resolved-decisions_
+_reference._
+_Previous: April 2026 — GrobValue provisional representation locked (OQ-009 resolved):_
+_hand-rolled tagged-union struct under .NET 10 LTS, nine-variant kind enum, 24 bytes on x64,_
+_encapsulation boundary specified, .NET 11 [Union] migration signposted; bytecode file_
+_format now points to grob-grobc-format.md as authoritative (OQ-010 resolved)._
+_Previous: implementation order clarified: step 7 split into 7a (plugin_
+_infrastructure) and 7b (stdlib modules); step 9 explicitly scoped to third-party plugin_
+_loading only; compiler involvement from step 3 onwards made explicit; GC step 8 no-op_
+_note added; `guid` confirmed as 13th core module in step 7b._

@@ -303,6 +303,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 |D-303|May 2026|VM — value representation  |OQ-005 closed. `GrobValue` is a tagged union — permanent. NaN boxing rejected (moving-GC mismatch, I/O-bound workload, debuggability)|
 |D-304|May 2026|VM — memory management      |OQ-006 closed. Lean on .NET GC; no custom mark-and-sweep in v1; benchmarking provides the surface to revisit|
 |D-305|May 2026|Process — implementation gate|clox gate satisfied; Sprint 1 cleared to begin. Core chapters worked through incl. NaN boxing; OQ-005/006 experience banked|
+|D-306|May 2026|VM — developer diagnostics  |Disassembler (always compiled, Sprint 2) + `#if DEBUG` execution tracing. `grob dump` CLI wrapper deferred to Sprint 12. Release dispatch loop stays branch-free|
 
 -----
 
@@ -2823,6 +2824,24 @@ No design decision changes here. This entry records that the precondition for im
 
 -----
 
+### D-306 — Bytecode disassembler and execution tracing as developer diagnostics (May 2026)
+
+Area: VM — developer diagnostics
+Supersedes: none
+Superseded by: none
+
+Grob gains two bytecode-visibility tools, both modelled on clox's `debug.c`. They are development affordances, not language features; neither has any presence in Grob source.
+
+**The disassembler.** A `Disassembler` class in `Grob.Vm`, always compiled (Release included). `disassembleChunk(Chunk)` and `disassembleInstruction(Chunk, offset)` print a chunk's opcodes, operands, constant-pool indices with resolved values, and source line numbers, human-readably. It is the layer-boundary bisection tool: when the VM produces a wrong answer, the disassembler tells you whether the compiler emitted wrong bytecode or the VM executed correct bytecode wrongly. Built in **Sprint 2**, against hand-constructed chunks, before the compiler emits its first bytecode — so compiler output is readable from the first emission. Reached from tests, from a scratch entry point, and from Sprint 12 via `grob dump <file>`.
+
+**Execution tracing.** A `TraceInstruction(chunk, ip)` call at the top of the VM dispatch loop, guarded by `#if DEBUG` in the `Grob.Vm` C# source — not a runtime flag. Prints the value stack and the next instruction every iteration; the firehose for stack-discipline bugs. Compiled into Debug builds, removed entirely from Release. The gating is deliberate and load-bearing: the D-302 VM micro-benchmarks run in Release and exist to catch dispatch-loop regressions, and a runtime `if (_trace)` check would put a branch on the hottest path in the measured binary even when off. `#if DEBUG` makes the cost zero where it is measured. Tracing is therefore reached by compiling a Debug build, never by a CLI flag, and is distinct from `--verbose` (which surfaces `log.debug()` output and is user-facing).
+
+**Sprint placement.** The disassembler lands in Sprint 2, not Sprint 1. Sprint 1 is front-end only (D-305) — there is no `OpCode`, `Chunk` or compiler to disassemble until Sprint 2, which is where those primitives and the dispatch loop already arrive. This keeps Sprint 1's front-end boundary intact. The `grob dump` CLI command is a thin wrapper over the engine and is deferred to Sprint 12 with the rest of the CLI; it is added to the §8 command table and Sprint 12 scope in `grob-v1-requirements.md`.
+
+Detail in `grob-vm-architecture.md` "Developer Diagnostics". Sprint 2 scope and acceptance, the §8 `grob dump` row, and Sprint 12 scope in `grob-v1-requirements.md`.
+
+-----
+
 ## Post-MVP Decisions
 
 -----
@@ -3044,6 +3063,14 @@ staleDays = 30
 -----
 
 *This document is the authoritative decisions record for Grob.*
+*Updated May 2026 — D-306: bytecode disassembler and execution tracing*
+*added as developer diagnostics. Disassembler always compiled, lands in*
+*Sprint 2 against hand-constructed chunks; execution tracing gated behind*
+*`#if DEBUG` to keep the Release dispatch loop branch-free for the D-302*
+*benchmarks; `grob dump` CLI wrapper deferred to Sprint 12. Companion*
+*edits: `grob-vm-architecture.md` gains a "Developer Diagnostics" section;*
+*`grob-v1-requirements.md` gains Sprint 2 scope/acceptance, the §8*
+*`grob dump` row, and Sprint 12 scope.*
 *Updated May 2026 — D-305: clox preparation gate satisfied (core*
 *chapters worked through including NaN boxing, upvalue/closure*
 *mechanism, call frames and value representation); Sprint 1 cleared to*
