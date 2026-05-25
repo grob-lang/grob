@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>A raw backtick string literal — no escape processing, no interpolation.</summary>
 /// <param name="Range">Source range covered by the literal, including the backticks.</param>

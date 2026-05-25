@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>Boolean literal — <c>true</c> or <c>false</c>.</summary>
 /// <param name="Range">Source range covered by the literal.</param>

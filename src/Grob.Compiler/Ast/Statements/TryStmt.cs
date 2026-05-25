@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Statements;
 
 /// <summary>A <c>try</c>/<c>catch</c>/<c>finally</c> statement.</summary>
 /// <param name="Range">Source range covered by the whole statement.</param>

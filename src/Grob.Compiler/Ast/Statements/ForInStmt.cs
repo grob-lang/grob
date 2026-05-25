@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Statements;
 
 /// <summary>
 /// A <c>for ... in ...</c> loop. Supports the one-variable form

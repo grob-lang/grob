@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Statements;
 
 /// <summary>An <c>x++</c> or <c>x--</c> statement.</summary>
 /// <param name="Range">Source range covered by the statement.</param>

@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>Floating-point literal — e.g. <c>1.5</c>, <c>2.0e10</c>.</summary>
 /// <param name="Range">Source range covered by the literal.</param>

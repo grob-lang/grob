@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Declarations;
 
 /// <summary>A top-level <c>param</c> block declaring script-level parameters.</summary>
 /// <param name="Range">Source range covered by the whole block.</param>

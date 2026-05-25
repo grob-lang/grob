@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Declarations;
 
 /// <summary>
 /// A placeholder produced where a top-level declaration was expected but the

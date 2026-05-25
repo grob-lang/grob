@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>A member-access expression — <c>target.member</c>.</summary>
 /// <param name="Range">Source range covered by the whole expression.</param>

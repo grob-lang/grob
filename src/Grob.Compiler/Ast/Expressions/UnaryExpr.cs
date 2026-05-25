@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>A prefix unary expression — <c>-x</c> or <c>!x</c>.</summary>
 /// <param name="Range">Source range covered by the operator and operand together.</param>

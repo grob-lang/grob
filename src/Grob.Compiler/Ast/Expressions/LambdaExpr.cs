@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>
 /// A lambda expression — <c>x =&gt; expr</c>, <c>x =&gt; { ... }</c>,

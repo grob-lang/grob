@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>Integer literal — e.g. <c>42</c>, <c>0xff</c>, <c>1_000</c>.</summary>
 /// <param name="Range">Source range covered by the literal.</param>

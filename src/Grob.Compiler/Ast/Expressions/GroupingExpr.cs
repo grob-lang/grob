@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>A parenthesised expression — preserved in the AST for pretty-printing fidelity.</summary>
 /// <param name="Range">Source range covered by the parentheses and the inner expression.</param>

@@ -7,6 +7,26 @@ applyTo: "**"
 When you generate a commit message — for staged changes, for a proposal,
 for a branch — follow conventional commits.
 
+## Pre-stage checklist (MANDATORY before `git add`)
+
+The pre-commit hooks `trailing-whitespace`, `end-of-file-fixer`, and
+`dotnet format — verify no changes` mutate the working tree on failure
+but do **not** restage. Skipping the checklist below means at least one
+aborted commit cycle every time.
+
+1. **Run `dotnet format whitespace Grob.slnx`** on the working tree.
+   This rewrites indentation, trailing whitespace, and final newlines
+   for every `.cs` file across the solution. It is fast and idempotent.
+2. **Verify namespaces match folder paths.** For every new or moved
+   `.cs` file, the namespace on line 1 must equal the folder path under
+   `src/` or `tests/` (see `project-layout.instructions.md`).
+3. **Build and test:** `dotnet build Grob.slnx` then
+   `dotnet test Grob.slnx --nologo`. Zero warnings, zero failures.
+4. **Then** `git add -A` and commit.
+
+Do not rely on the pre-commit hook to surface these issues. Hooks are
+the safety net, not the workflow.
+
 ## Format
 
 ```
@@ -76,7 +96,7 @@ and should be split.
 ## Body
 
 - Wrap at 72 characters.
-- Explain *why*, not *what* — the diff already shows what.
+- Explain _why_, not _what_ — the diff already shows what.
 - One blank line between paragraphs.
 - Reference the decision log entry if the change implements a settled
   decision: `Implements D-300 (error-recovering parser).`
@@ -154,7 +174,7 @@ two commits to me — one `feat(compiler)` for the lexer change, one
 `test(compiler)` for the regression rows from the property-test
 discovery. Should I propose them separately?"
 
-If staged changes contain a feature *without* tests, do not commit them
+If staged changes contain a feature _without_ tests, do not commit them
 as `feat`. Surface the gap: "These changes add behaviour but I don't
 see tests covering it. TDD discipline expects tests with the feature.
 Shall we add them before committing?"

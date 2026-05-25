@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Declarations;
 
 /// <summary>A top-level <c>import</c> declaration with optional <c>as</c> alias.</summary>
 /// <param name="Range">Source range covered by the declaration.</param>

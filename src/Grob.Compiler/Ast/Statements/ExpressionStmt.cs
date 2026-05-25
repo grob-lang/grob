@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Statements;
 
 /// <summary>
 /// An expression used in statement position — typically a call to a built-in

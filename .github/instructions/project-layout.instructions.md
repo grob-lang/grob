@@ -91,20 +91,20 @@ without per-project boilerplate.
 
 ## What goes where
 
-| Concern                                       | Project          |
-| --------------------------------------------- | ---------------- |
-| `SourceLocation`, `Diagnostic`, `GrobError` hierarchy | `Grob.Core`      |
-| AST node types                                | `Grob.Core`      |
-| `GrobValue` and its variants                  | `Grob.Core`      |
-| `GrobType` (the runtime type-tag enum and metadata) | `Grob.Core`      |
-| Lexer, parser, type checker, emitter          | `Grob.Compiler`  |
-| Bytecode interpreter, call stack, value stack | `Grob.Vm`        |
-| `.grobc` binary format reader and writer      | Split: writer in `Grob.Compiler`, reader in `Grob.Vm`, format types in `Grob.Core` |
-| `IGrobPlugin` interface and plugin host       | `Grob.Runtime`   |
-| `fs`, `strings`, `json`, `process`, etc.      | `Grob.Stdlib`    |
-| `grob` command-line entry, argument parsing   | `Grob.Cli`       |
-| LSP protocol handling                         | `Grob.Lsp`       |
-| Ambient dependency abstractions (`IClock`, `IFileSystem`, `IConsole`, `IProcessRunner`) | `Grob.Core` (interface) + `Grob.Cli` (concrete) |
+| Concern                                                                                 | Project                                                                            |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `SourceLocation`, `Diagnostic`, `GrobError` hierarchy                                   | `Grob.Core`                                                                        |
+| AST node types                                                                          | `Grob.Core`                                                                        |
+| `GrobValue` and its variants                                                            | `Grob.Core`                                                                        |
+| `GrobType` (the runtime type-tag enum and metadata)                                     | `Grob.Core`                                                                        |
+| Lexer, parser, type checker, emitter                                                    | `Grob.Compiler`                                                                    |
+| Bytecode interpreter, call stack, value stack                                           | `Grob.Vm`                                                                          |
+| `.grobc` binary format reader and writer                                                | Split: writer in `Grob.Compiler`, reader in `Grob.Vm`, format types in `Grob.Core` |
+| `IGrobPlugin` interface and plugin host                                                 | `Grob.Runtime`                                                                     |
+| `fs`, `strings`, `json`, `process`, etc.                                                | `Grob.Stdlib`                                                                      |
+| `grob` command-line entry, argument parsing                                             | `Grob.Cli`                                                                         |
+| LSP protocol handling                                                                   | `Grob.Lsp`                                                                         |
+| Ambient dependency abstractions (`IClock`, `IFileSystem`, `IConsole`, `IProcessRunner`) | `Grob.Core` (interface) + `Grob.Cli` (concrete)                                    |
 
 ## When you create a new file
 
@@ -123,6 +123,18 @@ propose the design first.
 `Grob.Core/Diagnostics/Diagnostic.cs` declares
 `namespace Grob.Core.Diagnostics;`. The namespace matches the project name
 and folder path exactly. No exceptions.
+
+This rule includes **every** subfolder, not just the project root. A file at
+`Grob.Compiler/Ast/Expressions/BinaryExpr.cs` declares
+`namespace Grob.Compiler.Ast.Expressions;` — not `Grob.Compiler.Ast;`.
+When you create a new file or move a file into a subfolder, the namespace
+on line 1 must mirror the full folder path under `src/` or `tests/`. If
+sibling files in the same folder disagree, fix them; never copy the wrong
+namespace from a neighbour.
+
+If callers in the parent namespace would otherwise need a `using` for every
+new subfolder, add a single `GlobalUsings.cs` at the project root rather
+than weakening the per-file rule.
 
 ## `using Grob.Vm` in compiler code
 

@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Statements;
 
 /// <summary>
 /// A <c>select</c> statement — first-match dispatch with no fall-through.

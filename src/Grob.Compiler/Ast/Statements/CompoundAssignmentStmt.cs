@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Statements;
 
 /// <summary>A compound assignment statement — <c>target += value</c> and friends.</summary>
 /// <param name="Range">Source range covered by the statement.</param>

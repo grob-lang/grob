@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Statements;
 
 /// <summary>A <c>break</c> statement — exits the innermost enclosing loop.</summary>
 /// <param name="Range">Source range covered by the keyword.</param>

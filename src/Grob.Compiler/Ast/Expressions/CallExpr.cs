@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>A function-call expression — <c>callee(arg, arg, ...)</c>.</summary>
 /// <param name="Range">Source range covered by the whole call.</param>

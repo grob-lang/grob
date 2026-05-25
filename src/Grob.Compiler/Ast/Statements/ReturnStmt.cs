@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Statements;
 
 /// <summary>A <c>return</c> statement, with optional return value.</summary>
 /// <param name="Range">Source range covered by the statement.</param>

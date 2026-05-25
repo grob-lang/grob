@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>The <c>nil</c> literal.</summary>
 /// <param name="Range">Source range covered by the literal.</param>

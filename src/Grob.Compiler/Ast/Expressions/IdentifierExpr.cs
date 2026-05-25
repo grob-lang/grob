@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>A bare identifier reference — name resolution happens in Sprint 2+.</summary>
 /// <param name="Range">Source range covered by the identifier.</param>

@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>A ternary conditional expression — <c>condition ? then : else</c>.</summary>
 /// <param name="Range">Source range covered by the whole expression.</param>

@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Statements;
 
 /// <summary>A plain assignment statement — <c>target = value</c>.</summary>
 /// <param name="Range">Source range covered by the assignment.</param>

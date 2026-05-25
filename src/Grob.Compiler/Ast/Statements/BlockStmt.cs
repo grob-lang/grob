@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Statements;
 
 /// <summary>A brace-delimited block of statements introducing a new lexical scope.</summary>
 /// <param name="Range">Source range covered by the block, including the braces.</param>

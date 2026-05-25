@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Statements;
 
 /// <summary>A <c>while</c> loop.</summary>
 /// <param name="Range">Source range covered by the whole loop.</param>

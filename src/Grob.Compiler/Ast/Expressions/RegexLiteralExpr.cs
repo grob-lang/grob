@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Expressions;
 
 /// <summary>A regex literal — e.g. <c>/foo.*bar/gi</c>.</summary>
 /// <param name="Range">Source range covered by the literal, including the delimiters.</param>

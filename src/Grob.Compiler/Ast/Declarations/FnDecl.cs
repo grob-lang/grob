@@ -1,6 +1,6 @@
 using Grob.Core;
 
-namespace Grob.Compiler.Ast;
+namespace Grob.Compiler.Ast.Declarations;
 
 /// <summary>A top-level <c>fn</c> declaration.</summary>
 /// <param name="Range">Source range covered by the whole declaration.</param>
