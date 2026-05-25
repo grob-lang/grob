@@ -142,10 +142,34 @@ public class AstVisitorDispatchTests {
         Assert.Throws<NotSupportedException>(() => Int(1).Accept(v));
     }
 
+    /// <summary>
+    /// Every non-error <c>VisitXxx</c> hook ships a default body that delegates to
+    /// <c>DefaultVisit</c>. Running every concrete node through a visitor that only
+    /// overrides the three abstract error hooks exercises all of those default
+    /// delegators (closes the coverage gap on <c>AstVisitor.cs</c>).
+    /// </summary>
+    public static IEnumerable<object[]> NonErrorNodeCases =>
+        ExpressionCases.Concat(StatementCases).Concat(DeclarationCases).Concat(RootCases)
+            .Where(row => row[0] is not (ErrorExpr or ErrorStmt or ErrorDecl));
+
+    [Theory]
+    [MemberData(nameof(NonErrorNodeCases))]
+    public void DefaultDelegatingHook_FallsThroughToDefaultVisit(AstNode node, string _) {
+        FallthroughVisitor v = new();
+        Assert.Throws<NotSupportedException>(() => node.Accept(v));
+    }
+
     /// <summary>A visitor that handles only the abstract error hooks; everything else falls through to the default.</summary>
     private sealed class ThrowingVisitor : AstVisitor<int> {
         public override int VisitErrorExpr(ErrorExpr node) => 0;
         public override int VisitErrorStmt(ErrorStmt node) => 0;
         public override int VisitErrorDecl(ErrorDecl node) => 0;
+    }
+
+    /// <summary>Same shape as <see cref="ThrowingVisitor"/> but returns <see cref="string"/> to match the data shape.</summary>
+    private sealed class FallthroughVisitor : AstVisitor<string> {
+        public override string VisitErrorExpr(ErrorExpr node) => "";
+        public override string VisitErrorStmt(ErrorStmt node) => "";
+        public override string VisitErrorDecl(ErrorDecl node) => "";
     }
 }
