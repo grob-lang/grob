@@ -147,7 +147,13 @@ public class ParserRecoveryTests {
             "    return a +\n" +
             "}\n";
 
-        (CompilationUnit unit, _) = Parse(src);
+        (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
+
+        // Full diagnostic contract: code, position at the dangling '+'.
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(14, d.Range.Start.Column);
 
         FnDecl fn = Assert.IsType<FnDecl>(unit.TopLevel[0]);
         ReturnStmt ret = Assert.IsType<ReturnStmt>(fn.Body.Statements[0]);
@@ -175,7 +181,12 @@ public class ParserRecoveryTests {
 
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
 
-        Assert.Equal(1, bag.Count);
+        // Full diagnostic contract: code and position at the first '@'.
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
+
         AstNode first = unit.TopLevel[0];
         ErrorDecl err = Assert.IsType<ErrorDecl>(first);
         // The error range starts at '@' and must not extend to the newline anchor.

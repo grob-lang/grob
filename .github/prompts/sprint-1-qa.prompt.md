@@ -5,14 +5,14 @@
 > **From:** Chris — Lead Developer, sole author of Grob
 > **Purpose:** A second pair of eyes that has never seen the design corpus. You are
 > here to find divergence between what the code does and what the spec says it must do.
-> You are *not* here to redesign the language.
+> You are _not_ here to redesign the language.
 
------
+---
 
 ## 0. Read the spec from the repository — do not trust this brief for spec detail
 
-This brief is a navigation aid, not a source of truth. It tells you *where to look*
-and *what to test*, but it deliberately does not reproduce the specification text,
+This brief is a navigation aid, not a source of truth. It tells you _where to look_
+and _what to test_, but it deliberately does not reproduce the specification text,
 because a paraphrase drifts from the real document and you would then test against the
 drift. **The authority is the repository.** Where this brief and a repo document
 disagree, the repo document wins; flag the disagreement so it can be fixed.
@@ -51,7 +51,7 @@ or testing against assumptions. A missing spec file is itself a finding.
 
 Once you have read those, the rest of this brief tells you how to attack the code.
 
------
+---
 
 ## 1. What Grob is, in one paragraph
 
@@ -61,7 +61,7 @@ error-recovering parser, and diagnostic infrastructure. No type checker, no comp
 no VM in this sprint — those start at Sprint 2. Do not test for them. Everything else
 about the language you should learn from the repo docs in §0, not from me.
 
------
+---
 
 ## 2. The single most important instruction: report, do not patch
 
@@ -76,15 +76,15 @@ Two buckets, and every finding goes in exactly one:
   source positions, a missing field the spec mandates, a null dereference, an
   off-by-one in a column number, a parser that aborts where the spec says it must
   recover. You may propose a patch, clearly labelled as a proposal.
-- **SEMANTIC / DESIGN** — anything where you are questioning *what the language does*
-  rather than *whether the code matches spec*. **Report only. Never patch. One line
+- **SEMANTIC / DESIGN** — anything where you are questioning _what the language does_
+  rather than _whether the code matches spec_. **Report only. Never patch. One line
   each.** Assume it is deliberate and that a decision-log entry exists. If you can cite
   the `D-###` that settles it, even better — note it and move on; that is not a
   finding at all.
 
 If you are unsure which bucket a finding belongs in, it goes in SEMANTIC / DESIGN.
 
------
+---
 
 ## 3. Scope — what is in Sprint 1 and what is not
 
@@ -105,7 +105,7 @@ The summary below orients you; the document governs.
 ### Explicitly OUT of scope (do not test, do not flag as missing)
 
 - Type checker, type inference, resolved types, and any back-reference the spec says
-  the *type checker* populates on identifier nodes — **all Sprint 2**. If a
+  the _type checker_ populates on identifier nodes — **all Sprint 2**. If a
   type-checker-populated field is null after parsing, that is correct for Sprint 1.
   Confirm which fields the type checker owns by reading the Sprint 2 section of
   `grob-v1-requirements.md`; do not assume.
@@ -115,14 +115,14 @@ The summary below orients you; the document governs.
 
 A finding of the form "there is no type checker" is noise. Discard it.
 
------
+---
 
 ## 4. The day-one invariants — highest-value targets
 
 These are the non-deferrable Sprint 1 acceptance criteria — confirm their exact
 wording in `grob-v1-requirements.md` and `grob-language-fundamentals.md` §29. They are
 the most expensive things to retrofit and therefore the most worth verifying
-*empirically*. Prefer a written assertion or a test over an eyeball read for every one.
+_empirically_. Prefer a written assertion or a test over an eyeball read for every one.
 
 ### 4.1 Source location on every node
 
@@ -144,8 +144,8 @@ verify the implemented parser matches that contract, in particular:
   that every AST visitor handles them.
 - The unbounded-diagnostics rule (§29.4) and the statelessness rule (§29.5).
 
-Note that cascade suppression (§29.3) is implemented by the *type checker* via a
-special type — that machinery is Sprint 2. In Sprint 1 you verify the *parser* half:
+Note that cascade suppression (§29.3) is implemented by the _type checker_ via a
+special type — that machinery is Sprint 2. In Sprint 1 you verify the _parser_ half:
 that it produces the right error nodes, in the right places, with the right source
 ranges, and recovers to the right anchors. Do not test cascade suppression itself yet.
 
@@ -155,7 +155,7 @@ and run it through the real parser. Things worth trying:
 - Malformed expression mid-function, well-formed code after it — the code after must
   still produce a complete AST.
 - Malformed top-level declaration — subsequent declarations must still parse.
-- An error *inside* a parenthesised or bracketed region — confirm recovery does not
+- An error _inside_ a parenthesised or bracketed region — confirm recovery does not
   terminate on a newline that sits inside open brackets (§29.1 is explicit on bracket
   depth tracking).
 - Unclosed brackets running to EOF — confirm clean termination, no infinite loop, no
@@ -172,9 +172,9 @@ well-formed code past the anchor, or error-node source ranges that are wrong.
 
 §29.6 of `grob-language-fundamentals.md` is a worked example with a stated expected
 outcome. Reproduce its input against the real parser. **Important caveat:** the spec's
-stated final diagnostic count includes a diagnostic produced by the *type checker*
+stated final diagnostic count includes a diagnostic produced by the _type checker_
 (an undefined-identifier error), which does not exist in Sprint 1. For a Sprint 1 QA
-pass, verify only the *parser-produced* diagnostics and error nodes from that input —
+pass, verify only the _parser-produced_ diagnostics and error nodes from that input —
 expect the parser's contribution, not the type checker's. Read §29.6 carefully and
 separate the parser's output from the type checker's before asserting a count. If the
 parser emits more diagnostics than its share of that example, that is a CORRECTNESS
@@ -188,7 +188,7 @@ has a case for them — even if that case is a no-op or a guard in Sprint 1. A v
 that crashes on encountering an error node is a CORRECTNESS finding; surviving a broken
 AST is the entire point.
 
------
+---
 
 ## 5. The dependency-graph invariant
 
@@ -199,9 +199,9 @@ each other, then prove from the project files that neither references the other.
 `ProjectReference` that violates the documented DAG is a CORRECTNESS finding. Also
 confirm the `src/` projects exist with the exact names the architecture doc lists.
 Project shells for later-sprint components may be absent — absence of a later-sprint
-project is not a finding; a *misnamed* or *miswired* one is.
+project is not a finding; a _misnamed_ or _miswired_ one is.
 
------
+---
 
 ## 6. Lexer-specific checks
 
@@ -217,7 +217,7 @@ that reward attention:
   nothing outside that set is accepted.
 - The three comment forms, and that doc comments are recognised and **discarded** in
   v1 rather than retained as tokens — confirm against the spec.
-- Which identifiers are *not* keywords. The spec deliberately keeps certain built-in
+- Which identifiers are _not_ keywords. The spec deliberately keeps certain built-in
   names out of the keyword set and resolves them later. Check the decisions log for
   the relevant `D-###` and confirm the `TokenKind` enum matches — a built-in that the
   spec says is an identifier appearing as a keyword token is a CORRECTNESS finding.
@@ -228,13 +228,13 @@ Do not hard-code the expected keyword set from this brief — derive it from the
 and the decisions log, because I may have it slightly wrong and you should not inherit
 my error.
 
------
+---
 
 ## 7. Things that may look wrong but are likely deliberate
 
 Before filing any of the following as CORRECTNESS, find the governing `D-###` in
 `grob-decisions-log.md`. If the log confirms the behaviour, it is not a finding; if the
-code contradicts the log, *that* is the finding. This is a non-exhaustive list of
+code contradicts the log, _that_ is the finding. This is a non-exhaustive list of
 areas where a cold reader's instinct misfires:
 
 - Control-flow constructs that do not enforce exhaustiveness, or that lack
@@ -253,7 +253,7 @@ The rule is the same throughout: the decisions log is the authority. If your ins
 says "this language should do X differently", that is a SEMANTIC / DESIGN observation
 at most — one line, no patch — and if the log already settles it, it is nothing.
 
------
+---
 
 ## 8. How to run the work
 
@@ -267,14 +267,14 @@ at most — one line, no patch — and if the log already settles it, it is noth
    harnesses, so assertions are reproducible.
 5. Verify the invariants in §4 and §5 with assertions, not inspection, wherever practical.
 
------
+---
 
 ## 9. Output format
 
 Produce a single findings document. No prose preamble and no summary of how Grob works
 — that is all in the repo. For each finding:
 
-```
+```text
 [CORRECTNESS | SEMANTIC] — one-line title
   File:     path:line
   Spec:     document and section, or "none / unsure"

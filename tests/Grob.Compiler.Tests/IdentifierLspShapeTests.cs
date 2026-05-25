@@ -67,11 +67,7 @@ public class IdentifierLspShapeTests {
         Assert.Null(ident.Declaration);
     }
 
-    // Sprint 2: once the type checker is present, add a test here that runs a
-    // full type-check pass over a snippet and asserts every IdentifierExpr in
-    // the resulting AST has a non-null ResolvedType and a non-null Declaration.
-    // Example skeleton (do not unskip until the type checker exists):
-    //
-    // [Fact(Skip = "Sprint 2: requires type checker")]
-    // public void AfterTypeCheck_AllIdentifiersHaveResolvedTypeAndDeclaration() { ... }
+    // TODO(Sprint 2): after the type checker lands, add an invariant test that
+    // runs a full type-check pass and asserts every IdentifierExpr in the AST
+    // has non-null ResolvedType and non-null Declaration.
 }
