@@ -51,6 +51,8 @@ public class Sprint1AcceptanceTests {
         Diagnostic d = bag.Diagnostics[0];
         Assert.Equal("E2001", d.Code);
         Assert.Equal(Severity.Error, d.Severity);
+        Assert.Equal(13, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
 
         // Three top-level fn declarations, none of them ErrorDecls.
         Assert.Equal(3, unit.TopLevel.Count);
@@ -92,6 +94,8 @@ public class Sprint1AcceptanceTests {
         Diagnostic d = bag.Diagnostics[0];
         Assert.Equal("E2001", d.Code);
         Assert.Equal(Severity.Error, d.Severity);
+        Assert.Equal(9, d.Range.Start.Line);
+        Assert.Equal(3, d.Range.Start.Column);
 
         Assert.Equal(3, unit.TopLevel.Count);
         FnDecl firstFn = Assert.IsType<FnDecl>(unit.TopLevel[0]);
@@ -141,9 +145,10 @@ public class Sprint1AcceptanceTests {
         ReturnStmt ret = Assert.IsType<ReturnStmt>(Assert.Single(brokenExpr.Body.Statements));
         Assert.IsType<ErrorExpr>(ret.Value);
 
-        // Diagnostics are reported in source order — sanity-check monotonic line numbers.
-        int[] lines = bag.Diagnostics.Select(diag => diag.Range.Start.Line).ToArray();
-        Assert.Equal(lines.OrderBy(l => l).ToArray(), lines);
+        // Diagnostics in source order: broken expression, const without name, garbage tokens.
+        Assert.Equal((11, 1), (bag.Diagnostics[0].Range.Start.Line, bag.Diagnostics[0].Range.Start.Column));
+        Assert.Equal((15, 7), (bag.Diagnostics[1].Range.Start.Line, bag.Diagnostics[1].Range.Start.Column));
+        Assert.Equal((19, 1), (bag.Diagnostics[2].Range.Start.Line, bag.Diagnostics[2].Range.Start.Column));
     }
 
     /// <summary>
@@ -166,6 +171,8 @@ public class Sprint1AcceptanceTests {
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", d.Code);
         Assert.Equal(Severity.Error, d.Severity);
+        Assert.Equal(11, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
 
         // Three top-level items: the fn, the x := ..., the y := ... .
         Assert.Equal(3, unit.TopLevel.Count);

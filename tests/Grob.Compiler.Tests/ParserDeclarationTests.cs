@@ -91,6 +91,7 @@ public class ParserDeclarationTests {
         TypeRef t = fn.Parameters[0].Type!;
         Assert.Equal("Array", t.Name);
         Assert.Single(t.TypeArguments);
+        Assert.Equal("int", t.TypeArguments[0].Name);
         Assert.True(t.IsNullable);
     }
 }

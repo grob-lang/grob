@@ -55,6 +55,8 @@ public class PipelineSmokeTests {
 
         Assert.Equal(1, bag.Count);
         Assert.Equal("E2001", bag.Diagnostics[0].Code);
+        Assert.Equal(11, bag.Diagnostics[0].Range.Start.Line);
+        Assert.Equal(1, bag.Diagnostics[0].Range.Start.Column);
         Assert.Equal(3, unit.TopLevel.Count);
     }
 }
