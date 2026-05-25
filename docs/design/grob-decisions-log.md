@@ -304,6 +304,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 |D-304|May 2026|VM — memory management      |OQ-006 closed. Lean on .NET GC; no custom mark-and-sweep in v1; benchmarking provides the surface to revisit|
 |D-305|May 2026|Process — implementation gate|clox gate satisfied; Sprint 1 cleared to begin. Core chapters worked through incl. NaN boxing; OQ-005/006 experience banked|
 |D-306|May 2026|VM — developer diagnostics  |Disassembler (always compiled, Sprint 2) + `#if DEBUG` execution tracing. `grob dump` CLI wrapper deferred to Sprint 12. Release dispatch loop stays branch-free|
+|D-307|May 2026|Type system — naming        |Built-in scalars are lowercase (`int`/`string`/`bool`/`float`) — canonical, not new. Sprint 1 impl drift to `Int`/`String` corrected in code and tests|
 
 -----
 
@@ -2842,6 +2843,24 @@ Detail in `grob-vm-architecture.md` "Developer Diagnostics". Sprint 2 scope and 
 
 -----
 
+### D-307 — Built-in type names are lowercase; Sprint 1 implementation drift corrected (May 2026)
+
+Area: Type system — built-in type naming
+Supersedes: none
+Superseded by: none
+
+Sprint 1 acceptance testing surfaced a divergence between the spec and the Increment A implementation: the spec writes built-in scalar types in lowercase (`int`, `string`, `bool`, `float`), while the implementation and its tests had adopted capitalised forms (`Int`, `String`). This entry records that lowercase is canonical and the implementation is the side that corrects.
+
+**Lowercase is settled, not a new decision.** The casing was never an open question. The entire corpus is consistent on it — every signature in the built-in type method registry, every stdlib function signature, every worked example in the fundamentals spec, and the language-fundamentals §8 type rules use lowercase for the built-in scalars. This entry exists to close the loop on a drift, not to choose between two live options.
+
+**Why the casing split is load-bearing.** Built-in scalars are lowercase; user-defined struct types, error types and runtime types are PascalCase (`GrobError`, `IoError`, `SourceLocation`, `Response`, `AuthHeader`). The casing is how a reader distinguishes a built-in scalar from a user or runtime type at a glance. It also matches the Go/Rust/Swift convention the language leans on for free onboarding of C#/Go developers, and it keeps the built-in scalar names out of visual collision with the PascalCase user-type namespace. Capitalising the scalars would erase that signal.
+
+**Correction direction.** The fix lands in production code and its tests: the keyword/type-name table emits `int`/`string`/`bool`/`float`, and existing tests are updated from the capitalised forms to lowercase. No spec edit is required for casing — the spec was already correct. Two related Sprint 1 acceptance findings are handled alongside: the §29.6 worked example gained its mandatory return-type annotation (recorded in `grob-language-fundamentals.md`; the example also carried the same casing typo in its fixture, corrected to lowercase), and the §29.6 fixture's diagnostic-count assertion stays at one for the parser-only Sprint 1 stage and tightens to two when the Sprint 2 type checker lands — the spec's narrated count of two describes the full pipeline and is correct as written.
+
+This is a day-one correction. Every test authored against the capitalised forms before the fix is rework, so the correction is applied in Sprint 1 rather than deferred.
+
+-----
+
 ## Post-MVP Decisions
 
 -----
@@ -3063,6 +3082,11 @@ staleDays = 30
 -----
 
 *This document is the authoritative decisions record for Grob.*
+*Updated May 2026 — D-307: built-in scalar type names confirmed lowercase*
+*(`int`/`string`/`bool`/`float`) as canonical; Sprint 1 implementation*
+*drift to capitalised `Int`/`String` flagged for correction in code and*
+*tests. §29.6 worked example in `grob-language-fundamentals.md` corrected*
+*to carry its mandatory return-type annotation (same finding cluster).*
 *Updated May 2026 — D-306: bytecode disassembler and execution tracing*
 *added as developer diagnostics. Disassembler always compiled, lands in*
 *Sprint 2 against hand-constructed chunks; execution tracing gated behind*
