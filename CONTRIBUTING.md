@@ -29,18 +29,44 @@ are not permitted; branch protection enforces this.
 
 ### Branch naming
 
-| Prefix          | Use                             |
-| --------------- | ------------------------------- |
-| `feat/<topic>`  | New language or tooling feature |
-| `fix/<topic>`   | Bug fix                         |
-| `chore/<topic>` | Maintenance, dependency updates |
-| `docs/<topic>`  | Documentation only              |
-| `ci/<topic>`    | CI/CD pipeline changes          |
+Branches use the form `<type>/<topic>`. The type matches the Conventional
+Commits set, and `<topic>` is short, lowercase and hyphen-separated.
+
+| Prefix             | Use                                         |
+| ------------------ | ------------------------------------------- |
+| `feat/<topic>`     | New language or tooling feature             |
+| `fix/<topic>`      | Bug fix                                     |
+| `chore/<topic>`    | Maintenance, dependency updates             |
+| `docs/<topic>`     | Documentation only                          |
+| `refactor/<topic>` | Internal restructuring, no behaviour change |
+| `test/<topic>`     | Test-only changes                           |
+| `perf/<topic>`     | Performance change                          |
+| `ci/<topic>`       | CI/CD pipeline changes                      |
+| `build/<topic>`    | Build system or external dependencies       |
+
+Examples: `feat/compiler-error-recovering-parser`, `fix/lexer-newline-handling`,
+`docs/grammar-§29`.
 
 ### Commit messages
 
-Follow Conventional Commits format (`feat:`, `fix:`, `chore:` etc.). This is a
-convention, not yet enforced by tooling.
+Follow [Conventional Commits](https://www.conventionalcommits.org/): a type, an
+optional scope in parentheses, then a short imperative summary. Allowed types
+match the branch-prefix table above. Common scopes: `compiler`, `vm`, `core`,
+`tooling`, `docs`, `repo`.
+
+Examples: `feat(compiler): add error-recovering parser`,
+`fix(vm): correct stack balance in ret opcode`,
+`docs: clarify §29 synchronisation set`.
+
+### Pull request titles
+
+PR titles follow the same Conventional Commits format as commit messages. This
+is enforced by the CodeRabbit pre-merge title check.
+
+Do not let GitHub auto-derive the PR title from the branch name; rewrite it
+manually so the type, scope and summary are correct. Example: branch
+`feat/compiler-error-recovering-parser` → PR title
+`feat(compiler): add error-recovering parser`.
 
 ### Pull requests
 

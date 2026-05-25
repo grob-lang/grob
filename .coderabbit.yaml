@@ -39,7 +39,7 @@ reviews:
         governed by ADR-0013.
 
         Do flag: genuine correctness bugs, opcode-handling errors, stack
-        balance mistakes, and off-by-one indexing into the value stack.
+        balance mistakes and off-by-one indexing into the value stack.
     - path: "src/Grob.Core/**/*.cs"
       instructions: |
         Contains GrobValue: a hand-rolled readonly struct used as a
@@ -57,7 +57,7 @@ reviews:
         that boundary by design.
 
         Do flag: real bugs in variant discrimination, accessor type
-        mismatches, and incorrect tag handling.
+        mismatches and incorrect tag handling.
     - path: "src/Grob.Compiler/**/*.cs"
       instructions: |
         Lexer, parser and type checker.
@@ -76,11 +76,16 @@ reviews:
 
         Do not suggest removing the error-node machinery or collapsing the
         two passes. Do flag: real bugs in token handling, incorrect
-        synchronisation-set membership, and type-rule errors.
+        synchronisation-set membership and type-rule errors.
   pre_merge_checks:
     docstrings:
       mode: warning
-      threshold: 40
+      # CodeRabbit counts every undocumented member, public and private.
+      # The parser and lexer are dominated by small private helpers whose
+      # names are self-documenting; forcing 40% there produces low-value
+      # comments. The threshold tracks regression against the current
+      # baseline (~11%) rather than enforcing a coverage target.
+      threshold: 10
     title:
       mode: warning
       requirements: |

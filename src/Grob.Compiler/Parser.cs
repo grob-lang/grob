@@ -858,7 +858,9 @@ public sealed class Parser {
                 }
             case TokenKind.FloatLiteral: {
                     Advance();
-                    double v = double.Parse(t.Lexeme, System.Globalization.CultureInfo.InvariantCulture);
+                    if (!double.TryParse(t.Lexeme, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v)) {
+                        throw Fail(E2001, $"invalid float literal '{t.Lexeme}'");
+                    }
                     return new FloatLiteralExpr(new SourceRange(t.Location, t.Location), v);
                 }
             case TokenKind.True: {
@@ -1025,15 +1027,19 @@ public sealed class Parser {
     // Lexeme helpers
     // -----------------------------------------------------------------------
 
-    private static long ParseIntegerLexeme(string lexeme) {
+    private long ParseIntegerLexeme(string lexeme) {
         string s = lexeme.Replace("_", "");
-        if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) {
-            return Convert.ToInt64(s[2..], 16);
+        try {
+            if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) {
+                return Convert.ToInt64(s[2..], 16);
+            }
+            if (s.StartsWith("0b", StringComparison.OrdinalIgnoreCase)) {
+                return Convert.ToInt64(s[2..], 2);
+            }
+            return long.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
+        } catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentException) {
+            throw Fail(E2001, $"invalid integer literal '{lexeme}'");
         }
-        if (s.StartsWith("0b", StringComparison.OrdinalIgnoreCase)) {
-            return Convert.ToInt64(s[2..], 2);
-        }
-        return long.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static string StripRawStringDelimiters(string lexeme) {

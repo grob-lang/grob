@@ -28,7 +28,11 @@ public class ParserRecoveryTests {
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
 
         Assert.Equal(1, bag.Count);
-        Assert.Equal(Severity.Error, bag.Diagnostics[0].Severity);
+        Diagnostic d = bag.Diagnostics[0];
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(Severity.Error, d.Severity);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
 
         Assert.Equal(3, unit.TopLevel.Count);
 
@@ -56,7 +60,13 @@ public class ParserRecoveryTests {
 
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
 
-        Assert.True(bag.Count >= 1);
+        Assert.Equal(2, bag.Count);
+        Assert.All(bag.Diagnostics, d => {
+            Assert.Equal("E2001", d.Code);
+            Assert.Equal(Severity.Error, d.Severity);
+        });
+        Assert.Equal((4, 5), (bag.Diagnostics[0].Range.Start.Line, bag.Diagnostics[0].Range.Start.Column));
+        Assert.Equal((5, 1), (bag.Diagnostics[1].Range.Start.Line, bag.Diagnostics[1].Range.Start.Column));
         Assert.Contains(unit.TopLevel, n => n is FnDecl f && f.Name == "good");
     }
 
@@ -73,8 +83,13 @@ public class ParserRecoveryTests {
 
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
 
-        Assert.True(bag.Count >= 3,
-            $"expected ≥3 diagnostics, got {bag.Count}:\n{FormatDiagnostics(bag)}");
+        Assert.Equal(3, bag.Count);
+        Assert.All(bag.Diagnostics, d => {
+            Assert.Equal("E2001", d.Code);
+            Assert.Equal(Severity.Error, d.Severity);
+            Assert.Equal(3, d.Range.Start.Column);
+        });
+        Assert.Equal(new[] { 1, 2, 3 }, bag.Diagnostics.Select(d => d.Range.Start.Line).ToArray());
         Assert.Contains(unit.TopLevel, n => n is FnDecl f && f.Name == "good");
     }
 
@@ -86,7 +101,12 @@ public class ParserRecoveryTests {
 
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
 
-        Assert.True(bag.Count >= 1);
+        Assert.Equal(1, bag.Count);
+        Diagnostic d = bag.Diagnostics[0];
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(Severity.Error, d.Severity);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
         Assert.Contains(unit.TopLevel, n => n is VarDeclStmt v && v.Name == "x");
     }
 
@@ -98,7 +118,12 @@ public class ParserRecoveryTests {
 
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
 
-        Assert.True(bag.Count >= 1);
+        Assert.Equal(1, bag.Count);
+        Diagnostic d = bag.Diagnostics[0];
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(Severity.Error, d.Severity);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
         Assert.NotNull(unit);
     }
 }
