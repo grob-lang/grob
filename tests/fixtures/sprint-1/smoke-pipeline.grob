@@ -1,0 +1,27 @@
+// Sprint 1 smoke fixture: small but representative valid Grob program.
+// Exercises const declarations, fn declarations with parameters and
+// return types, string interpolation, arithmetic, conditional, numeric-
+// range for loops, function calls and return. The integration smoke
+// test must lex and parse this file with zero diagnostics.
+const greeting: String := "Hello"
+
+fn add(a: Int, b: Int): Int {
+    return a + b
+}
+
+fn greet(name: String): String {
+    return "${greeting}, ${name}"
+}
+
+fn main(): Int {
+    sum := add(2, 3)
+    if sum > 4 {
+        print(greet("Grob"))
+    } else {
+        print("nope")
+    }
+    for i in 0..sum {
+        print(i)
+    }
+    return 0
+}

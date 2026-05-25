@@ -1,0 +1,21 @@
+// Sprint 1 acceptance fixture: multi-error file with no parser cascade.
+// Four independent failures separated by well-formed declarations. The
+// parser must emit exactly one diagnostic per root cause (four total),
+// with no extra diagnostics attributable to cascade. The well-formed
+// declarations between the errors must appear in the AST as ordinary
+// FnDecl nodes — proof the parser resumed cleanly each time.
+fn first(): Int { return 1 }
+
+fn broken_expr(): Int {
+    return 2 +
+}
+
+fn second(): Int { return 2 }
+
+const := 5
+
+fn third(): Int { return 3 }
+
+@@@
+
+fn fourth(): Int { return 4 }

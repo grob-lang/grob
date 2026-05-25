@@ -1,0 +1,14 @@
+// §29.6 worked example from grob-language-fundamentals.md, used as the
+// Sprint 1 acceptance fixture for the spec's canonical error-recovery
+// scenario. The spec example has been adjusted in one place: the
+// function declaration includes the explicit return-type annotation
+// `: Int` required by the v1 grammar (the spec's bare
+// `fn add(a: int, b: int) {` would fail the parser at the missing
+// return-type colon, not at the `}` the §29.6 narration describes).
+// This is the closest faithful rendering possible under Sprint 1.
+fn add(a: Int, b: Int): Int {
+    return a +
+}
+
+x := add(1, 2)
+y := nonexistent + 5

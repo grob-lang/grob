@@ -21,6 +21,14 @@
     <ProjectReference Include="..\..\src\Grob.Cli\Grob.Cli.csproj" />
   </ItemGroup>
 
+  <!-- Sprint 1 acceptance fixtures: copy alongside the test binary so tests
+       can resolve them from AppContext.BaseDirectory. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-1\*.grob"
+             Link="fixtures\sprint-1\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
