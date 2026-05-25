@@ -47,7 +47,7 @@ it, then the compiler that feeds it:
   BenchmarkDotNet skeleton with the first `compile.json` baseline (D-302).
   Closes the sprint. Branch `feat/compiler-and-end-to-end`.
 
-Each increment has its own prompt (`sprint-2-{a,b,c,d}-*_prompt.md`). Run them
+Each increment has its own prompt (`sprint-2-{a,b,c,d}-*.prompt.md`). Run them
 in order, each building and testing green before the next, a fresh chat per
 increment.
 
@@ -55,7 +55,7 @@ increment.
 
 The natural instinct is to build the compiler straight after the type checker,
 so the VM has something to run. Resist it. The dispatch loop (B) is built
-*before* the compiler (D), executing hand-constructed chunks that the
+_before_ the compiler (D), executing hand-constructed chunks that the
 disassembler (A) already prints and that you have verified by eye.
 
 The reason is bisection. When the compiler arrives and an end-to-end

@@ -19,8 +19,8 @@ and load-bearing. When the compiler arrives in Increment D, a wrong
 `print(...)` result must have exactly one suspect. Building the loop now,
 against bytecode you wrote by hand and verified by eye through the
 disassembler, means the VM is independently proven to execute correct
-bytecode correctly. The disassembler shows what the bytecode *is*; this
-increment proves what the VM *does* with it. Build the compiler first instead
+bytecode correctly. The disassembler shows what the bytecode _is_; this
+increment proves what the VM _does_ with it. Build the compiler first instead
 and every end-to-end bug has two suspects at once — which is the bisection
 problem D-306 exists to prevent.
 
@@ -85,7 +85,7 @@ Increments C and D.
    error, not an unguarded array write. Pushing a primitive `GrobValue` is a
    struct copy with no allocation (D-303, D-304) — do not box.
 2. **The dispatch loop.** A fetch-decode-execute `switch` over the full
-   `OpCode` set *that this increment implements* — see the scope boundary
+   `OpCode` set _that this increment implements_ — see the scope boundary
    below. Reads the bytecode byte array from the `Chunk`, advances the
    instruction pointer, dispatches. The full `OpCode` enum already exists
    from A; this increment wires up the subset needed to execute the
@@ -109,7 +109,7 @@ Increments C and D.
    (the two-mode model: compiler/checker collect all, VM stops on first —
    the runtime half is what this increment implements).
 6. **`#if DEBUG` `TraceInstruction` hook (D-306).** A `TraceInstruction(chunk,
-   ip)` call at the top of the dispatch loop, guarded by `#if DEBUG` in the
+ip)` call at the top of the dispatch loop, guarded by `#if DEBUG` in the
    `Grob.Vm` C# source. Prints the value stack and the about-to-execute
    instruction every iteration, reusing the `Disassembler`'s
    `disassembleInstruction` for the instruction half. **Not** a runtime flag,
@@ -162,8 +162,9 @@ Sonnet for the stack and the mechanical opcode arms. Reach for Opus if the
 dispatch-loop structure, the trace-hook integration, or the
 checked-arithmetic / source-line plumbing needs a judgement call — the loop
 shape is the one place in this increment where a design decision (e.g.
-computed-goto-style dispatch vs a plain `switch`, and how the ip is threaded)
-has downstream consequences worth thinking through deliberately.
+whether to use a `switch` the JIT can lower to a jump table vs a plain
+sequential `switch`, and how the ip is threaded) has downstream consequences
+worth thinking through deliberately.
 
 ## Hand-off
 
