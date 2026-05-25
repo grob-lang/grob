@@ -299,4 +299,51 @@ public sealed class DisassemblerTests {
 
         Assert.Contains("invalid index", writer.ToString(), StringComparison.OrdinalIgnoreCase);
     }
+
+    // ----- Per-opcode dispatch coverage -----
+
+    // Width of each opcode in bytes (opcode byte + operand bytes). Mirrors the
+    // dispatch table in Disassembler.cs so we can drive every switch arm.
+    private static int OpCodeWidth(OpCode op) => op switch {
+        OpCode.Constant => 2,
+        OpCode.ConstantLong => 3,
+        OpCode.PopN or OpCode.NewArray or OpCode.BuildString or OpCode.Call
+            or OpCode.NewStruct or OpCode.NewAnonStruct
+            or OpCode.GetLocal or OpCode.SetLocal
+            or OpCode.GetGlobal or OpCode.SetGlobal or OpCode.DefineGlobal
+            or OpCode.GetUpvalue or OpCode.SetUpvalue or OpCode.Closure
+            or OpCode.GetProperty or OpCode.SetProperty
+            or OpCode.Import or OpCode.TryBegin
+            or OpCode.IncrementInt or OpCode.DecrementInt
+            or OpCode.IncrementFloat or OpCode.DecrementFloat => 2,
+        OpCode.Jump or OpCode.JumpIfFalse or OpCode.JumpIfTrue or OpCode.Loop => 3,
+        _ => 1,
+    };
+
+    public static IEnumerable<object[]> AllOpCodes() =>
+        Enum.GetValues<OpCode>().Select(op => new object[] { op });
+
+    /// <summary>
+    /// Drives every <see cref="OpCode"/> through <see cref="Disassembler.DisassembleInstruction"/>,
+    /// asserting that the dispatch returns the documented instruction width and emits the
+    /// opcode name in the output. Covers every arm of the giant switch.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AllOpCodes))]
+    public void DisassembleInstruction_EveryOpCode_AdvancesByDocumentedWidth(OpCode op) {
+        var chunk = new Chunk();
+        // Seed a constant pool so Constant/ConstantLong have something to resolve.
+        chunk.AddConstant(GrobValue.FromInt(7));
+
+        chunk.WriteOpCode(op, 1);
+        int width = OpCodeWidth(op);
+        for (int i = 1; i < width; i++)
+            chunk.WriteByte(0x00, 1);
+
+        using var writer = new StringWriter();
+        int next = Disassembler.DisassembleInstruction(chunk, 0, writer);
+
+        Assert.Equal(width, next);
+        Assert.Contains(op.ToString(), writer.ToString(), StringComparison.Ordinal);
+    }
 }

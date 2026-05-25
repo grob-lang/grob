@@ -394,4 +394,119 @@ public sealed class GrobValueTests {
     public void ToString_Function_IncludesName() {
         Assert.Equal("<fn add>", GrobValue.FromFunction(new GrobFunction("add", 2)).ToString());
     }
+
+    // ----- Per-kind GetHashCode and Equals branches -----
+
+    [Fact]
+    public void Map_EqualsAndHash_ByReference() {
+        var m = new GrobMap();
+        var v1 = GrobValue.FromMap(m);
+        var v2 = GrobValue.FromMap(m);
+        var v3 = GrobValue.FromMap(new GrobMap());
+
+        Assert.Equal(v1, v2);
+        Assert.Equal(v1.GetHashCode(), v2.GetHashCode());
+        Assert.NotEqual(v1, v3);
+    }
+
+    [Fact]
+    public void Function_EqualsAndHash_ByReference() {
+        var fn = new GrobFunction("f", 0);
+        var v1 = GrobValue.FromFunction(fn);
+        var v2 = GrobValue.FromFunction(fn);
+        var v3 = GrobValue.FromFunction(new GrobFunction("f", 0));
+
+        Assert.Equal(v1, v2);
+        Assert.Equal(v1.GetHashCode(), v2.GetHashCode());
+        Assert.NotEqual(v1, v3);
+    }
+
+    [Fact]
+    public void Array_GetHashCode_StableAcrossCalls() {
+        var arr = new GrobArray();
+        var v = GrobValue.FromArray(arr);
+
+        Assert.Equal(v.GetHashCode(), v.GetHashCode());
+    }
+
+    [Fact]
+    public void Bool_GetHashCode_TrueAndFalseDiffer() {
+        Assert.NotEqual(
+            GrobValue.FromBool(true).GetHashCode(),
+            GrobValue.FromBool(false).GetHashCode());
+    }
+
+    [Fact]
+    public void Float_GetHashCode_PositiveZeroEqualsNegativeZero() {
+        // BitConverter.Int64BitsToDouble(0) and (-0.0) hash differently at the bit level,
+        // but double.GetHashCode normalises +0/-0. The struct uses .GetHashCode() so they must match.
+        Assert.Equal(
+            GrobValue.FromFloat(0.0).GetHashCode(),
+            GrobValue.FromFloat(-0.0).GetHashCode());
+    }
+
+    [Fact]
+    public void Float_OperatorEquality_IntKindFallsBackToEquals() {
+        // Mixed-kind via the operator hits the non-Float fast path.
+        Assert.True(GrobValue.FromInt(1) == GrobValue.FromInt(1));
+        Assert.False(GrobValue.FromInt(1) == GrobValue.FromInt(2));
+    }
+
+    // ----- Strict accessor full matrix -----
+
+    [Fact]
+    public void StrictAccessor_AllKinds_ReturnInnerValue() {
+        Assert.True(GrobValue.FromBool(true).AsBool());
+        Assert.Equal(7L, GrobValue.FromInt(7).AsInt());
+        Assert.Equal(1.5, GrobValue.FromFloat(1.5).AsFloat());
+        Assert.Equal("s", GrobValue.FromString("s").AsString());
+
+        var arr = new GrobArray();
+        Assert.Same(arr, GrobValue.FromArray(arr).AsArray());
+        var map = new GrobMap();
+        Assert.Same(map, GrobValue.FromMap(map).AsMap());
+        var st = new GrobStruct("T");
+        Assert.Same(st, GrobValue.FromStruct(st).AsStruct());
+        var fn = new GrobFunction("f", 0);
+        Assert.Same(fn, GrobValue.FromFunction(fn).AsFunction());
+    }
+
+    [Fact]
+    public void TryAccessor_AllKinds_ReturnInnerValue() {
+        Assert.True(GrobValue.FromBool(true).TryAsBool(out var b)); Assert.True(b);
+        Assert.True(GrobValue.FromInt(3).TryAsInt(out var i)); Assert.Equal(3L, i);
+        Assert.True(GrobValue.FromFloat(2.0).TryAsFloat(out var f)); Assert.Equal(2.0, f);
+        Assert.True(GrobValue.FromString("x").TryAsString(out var s)); Assert.Equal("x", s);
+
+        var arr = new GrobArray();
+        Assert.True(GrobValue.FromArray(arr).TryAsArray(out var a)); Assert.Same(arr, a);
+        var map = new GrobMap();
+        Assert.True(GrobValue.FromMap(map).TryAsMap(out var m)); Assert.Same(map, m);
+        var st = new GrobStruct("T");
+        Assert.True(GrobValue.FromStruct(st).TryAsStruct(out var t)); Assert.Same(st, t);
+        var fn = new GrobFunction("f", 0);
+        Assert.True(GrobValue.FromFunction(fn).TryAsFunction(out var k)); Assert.Same(fn, k);
+    }
+
+    // ----- Factory null guards -----
+
+    [Fact]
+    public void FromString_Null_Throws() =>
+        Assert.Throws<ArgumentNullException>(() => GrobValue.FromString(null!));
+
+    [Fact]
+    public void FromArray_Null_Throws() =>
+        Assert.Throws<ArgumentNullException>(() => GrobValue.FromArray(null!));
+
+    [Fact]
+    public void FromMap_Null_Throws() =>
+        Assert.Throws<ArgumentNullException>(() => GrobValue.FromMap(null!));
+
+    [Fact]
+    public void FromStruct_Null_Throws() =>
+        Assert.Throws<ArgumentNullException>(() => GrobValue.FromStruct(null!));
+
+    [Fact]
+    public void FromFunction_Null_Throws() =>
+        Assert.Throws<ArgumentNullException>(() => GrobValue.FromFunction(null!));
 }

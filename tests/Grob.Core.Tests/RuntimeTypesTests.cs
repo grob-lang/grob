@@ -200,4 +200,88 @@ public sealed class RuntimeTypesTests {
         Assert.Equal("add", fn.Name);
         Assert.Equal(2, fn.Arity);
     }
+
+    [Fact]
+    public void GrobFunction_NullName_Throws() =>
+        Assert.Throws<ArgumentNullException>(() => new GrobFunction(null!, 0));
+
+    [Fact]
+    public void GrobFunction_NegativeArity_Throws() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => new GrobFunction("f", -1));
+
+    [Fact]
+    public void GrobFunction_EmptyName_IsAllowed_ForAnonymousLambdas() {
+        var fn = new GrobFunction("", 0);
+        Assert.Equal("", fn.Name);
+    }
+
+    // ----- GrobStruct boundary guards -----
+
+    [Fact]
+    public void GrobStruct_NullTypeName_Throws() =>
+        Assert.Throws<ArgumentNullException>(() => new GrobStruct(null!));
+
+    [Fact]
+    public void GrobStruct_EmptyTypeName_Throws() =>
+        Assert.Throws<ArgumentException>(() => new GrobStruct(""));
+
+    [Fact]
+    public void GrobStruct_GetField_NullName_Throws() {
+        var s = new GrobStruct("T");
+        Assert.Throws<ArgumentNullException>(() => s.GetField(null!));
+    }
+
+    [Fact]
+    public void GrobStruct_SetField_NullName_Throws() {
+        var s = new GrobStruct("T");
+        Assert.Throws<ArgumentNullException>(() => s.SetField(null!, GrobValue.Nil));
+    }
+
+    [Fact]
+    public void GrobStruct_TryGetField_NullName_Throws() {
+        var s = new GrobStruct("T");
+        Assert.Throws<ArgumentNullException>(() => s.TryGetField(null!, out _));
+    }
+
+    [Fact]
+    public void GrobStruct_GetField_MissingKey_Throws() {
+        var s = new GrobStruct("T");
+        Assert.Throws<KeyNotFoundException>(() => s.GetField("nope"));
+    }
+
+    [Fact]
+    public void GrobStruct_TryGetField_Miss_ReturnsFalse() {
+        var s = new GrobStruct("T");
+        Assert.False(s.TryGetField("nope", out _));
+    }
+
+    [Fact]
+    public void GrobStruct_Equals_SameInstance_ReturnsTrue() {
+        var s = new GrobStruct("T");
+        s.SetField("x", GrobValue.FromInt(1));
+        Assert.True(s.Equals(s));
+    }
+
+    [Fact]
+    public void GrobStruct_Equals_SameTypeAndFields_ReturnsTrue() {
+        var a = new GrobStruct("T");
+        a.SetField("x", GrobValue.FromInt(1));
+        a.SetField("y", GrobValue.FromInt(2));
+        var b = new GrobStruct("T");
+        b.SetField("x", GrobValue.FromInt(1));
+        b.SetField("y", GrobValue.FromInt(2));
+
+        Assert.True(a.Equals(b));
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
+    }
+
+    [Fact]
+    public void GrobStruct_Equals_DifferentFieldValue_ReturnsFalse() {
+        var a = new GrobStruct("T");
+        a.SetField("x", GrobValue.FromInt(1));
+        var b = new GrobStruct("T");
+        b.SetField("x", GrobValue.FromInt(2));
+
+        Assert.False(a.Equals(b));
+    }
 }
