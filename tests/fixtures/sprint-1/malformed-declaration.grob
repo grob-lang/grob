@@ -4,7 +4,7 @@
 // an ErrorDecl at that position, synchronise on the next top-level
 // keyword (the following `fn`), and parse the declarations on either
 // side cleanly. Exactly one diagnostic is emitted.
-fn first(): Int { return 1 }
+fn first(): int { return 1 }
 
 fn
-fn last(): Int { return 99 }
+fn last(): int { return 99 }

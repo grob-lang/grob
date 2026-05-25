@@ -4,14 +4,14 @@
 // function with the rest of the AST intact, and continue parsing the
 // surrounding top-level declarations cleanly. Exactly one diagnostic
 // should be emitted for this file.
-fn first(): Int {
+fn first(): int {
     return 1
 }
 
-fn broken(a: Int): Int {
+fn broken(a: int): int {
     return a +
 }
 
-fn last(): Int {
+fn last(): int {
     return 42
 }

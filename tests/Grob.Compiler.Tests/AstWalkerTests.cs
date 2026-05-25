@@ -48,12 +48,12 @@ public class AstWalkerTests {
 
     [Fact]
     public void Walker_RecursesIntoFnDeclBodyAndParameterDefaults() {
-        Parameter pa = new(R, "x", new TypeRef(R, "Int", [], false), Id("dflt"));
+        Parameter pa = new(R, "x", new TypeRef(R, "int", [], false), Id("dflt"));
         FnDecl fn = new(
             R,
             "f",
             [pa],
-            new TypeRef(R, "Int", [], false),
+            new TypeRef(R, "int", [], false),
             new BlockStmt(R, [new ReturnStmt(R, Id("body"))]));
 
         IdentifierCollector c = new();
@@ -114,7 +114,7 @@ public class AstWalkerTests {
 
     [Fact]
     public void Walker_RecursesIntoEveryCompositeNodeKind() {
-        TypeRef intType = new(R, "Int", [], false);
+        TypeRef intType = new(R, "int", [], false);
 
         // Expression composites: Unary, Grouping, Ternary, ArrayLiteral, Index, MemberAccess,
         // NumericRange (with step), Lambda (block body + parameter default).
@@ -297,7 +297,7 @@ public class AstWalkerTests {
     [Fact]
     public void Walker_CompilationUnit_RecursesIntoTopLevelItemsInOrder() {
         CompilationUnit unit = new(R, [
-            new FnDecl(R, "f", [], new TypeRef(R, "Int", [], false),
+            new FnDecl(R, "f", [], new TypeRef(R, "int", [], false),
                 new BlockStmt(R, [new ExpressionStmt(R, Id("body"))])),
             new VarDeclStmt(R, "x", null, Id("init")),
             new ImportDecl(R, "m", null),

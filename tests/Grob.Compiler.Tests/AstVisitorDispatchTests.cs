@@ -63,7 +63,7 @@ public class AstVisitorDispatchTests {
     }
 
     private static readonly BlockStmt _emptyBlock = new(R, []);
-    private static readonly TypeRef _intType = new(R, "Int", [], false);
+    private static readonly TypeRef _intType = new(R, "int", [], false);
     private static readonly HookNameVisitor _visitor = new();
 
     public static IEnumerable<object[]> ExpressionCases => [

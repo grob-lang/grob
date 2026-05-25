@@ -4,18 +4,18 @@
 // with no extra diagnostics attributable to cascade. The well-formed
 // declarations between the errors must appear in the AST as ordinary
 // FnDecl nodes — proof the parser resumed cleanly each time.
-fn first(): Int { return 1 }
+fn first(): int { return 1 }
 
-fn broken_expr(): Int {
+fn broken_expr(): int {
     return 2 +
 }
 
-fn second(): Int { return 2 }
+fn second(): int { return 2 }
 
 const := 5
 
-fn third(): Int { return 3 }
+fn third(): int { return 3 }
 
 @@@
 
-fn fourth(): Int { return 4 }
+fn fourth(): int { return 4 }

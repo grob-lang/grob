@@ -17,10 +17,10 @@ public class ParserStatementTests {
 
     [Fact]
     public void VarDecl_WithAnnotation() {
-        CompilationUnit unit = ParseOk("x: Int := 1\n");
+        CompilationUnit unit = ParseOk("x: int := 1\n");
         VarDeclStmt v = Single<VarDeclStmt>(unit);
         Assert.NotNull(v.AnnotatedType);
-        Assert.Equal("Int", v.AnnotatedType!.Name);
+        Assert.Equal("int", v.AnnotatedType!.Name);
     }
 
     [Fact]
