@@ -541,6 +541,23 @@ arithmetic expressions and `print()`.
   `GrobValueKind` discriminator, `long _scalar` for primitives, `object?
   _reference` for heap types.
 - `Chunk` — bytecode array, constant pool, line number array.
+- **Bytecode disassembler (D-306)** — `Disassembler` in `Grob.Vm`,
+  always compiled (not Debug-gated). `disassembleChunk(Chunk)` and
+  `disassembleInstruction(Chunk, offset)` walk a chunk and print each
+  opcode, its operands, constant-pool indices with their resolved values,
+  and source line numbers, human-readably. Built against hand-constructed
+  chunks before the compiler emits its first bytecode, so compiler output
+  is readable by eye from the first emission — the layer-boundary
+  bisection tool (is the bytecode wrong, or is the VM executing correct
+  bytecode wrongly?). Authority: `grob-vm-architecture.md` "Developer
+  Diagnostics". The `grob dump` CLI wrapper is deferred to Sprint 12.
+- **Execution tracing (D-306)** — a `TraceInstruction(chunk, ip)` call at
+  the top of the VM dispatch loop, guarded by `#if DEBUG` in the
+  `Grob.Vm` C# source. Prints the value stack and the about-to-execute
+  instruction every iteration. Absent from Release builds entirely — no
+  runtime flag, no dispatch-loop branch — so the Release dispatch loop the
+  D-302 benchmarks measure stays branch-free. Reached by compiling a Debug
+  build, never by a CLI flag.
 - Type checker (first AST visitor pass):
   - Type inference on `:=` declarations.
   - Explicit type annotation validation.
@@ -577,7 +594,10 @@ arithmetic expressions and `print()`.
 errors (e.g. `"hello" + 42`) produce clear compile-time diagnostics with
 line numbers. `bench/Grob.Benchmarks` builds, the seed compile-time
 benchmark runs end-to-end via `dotnet run -c Release --project bench/Grob.Benchmarks`,
-and the first baseline JSON is committed.
+and the first baseline JSON is committed. `disassembleChunk` produces a
+correct, readable listing for a hand-constructed chunk and for the chunk
+the compiler emits for `print(2 + 3 * 4)`; a Debug build emits per-
+instruction trace output, a Release build does not.
 
 ### Sprint 3 — Variables, Scope and REPL
 
@@ -940,9 +960,9 @@ type-checked at compile time. `grob install` downloads from NuGet.
 
 ### Sprint 12 — CLI, Formatting, Polish
 
-**Delivers:** `grob fmt`, `grob check`, `grob new`, `grob version`,
-`--help`, Windows Terminal profile, first-run acknowledgement,
-`.grobc` caching, final polish.
+**Delivers:** `grob fmt`, `grob check`, `grob dump`, `grob new`,
+`grob version`, `--help`, Windows Terminal profile, first-run
+acknowledgement, `.grobc` caching, final polish.
 
 **Scope:**
 
@@ -950,6 +970,10 @@ type-checked at compile time. `grob install` downloads from NuGet.
   Same-line braces, consistent indentation, `snake_case` warnings.
 - `grob check <file>` — run lexer, parser and type checker only. Report
   all diagnostics. Do not execute.
+- `grob dump <file>` — compile and disassemble. Runs the full front end
+  plus the compiler, then prints the resulting `Chunk` via the Sprint 2
+  `Disassembler` (D-306). Does not execute. The CLI front door to the
+  disassembler engine built in Sprint 2; this is the wrapper only.
 - `grob new <name>` — scaffold a new script or project.
 - `grob version` / `grob --version` — version string.
 - `grob --help` — full command listing.
@@ -1096,6 +1120,7 @@ and the confirmed decisions in `grob-decisions-log.md`.
 |`grob run <file> --verbose`      |Execute with debug output                 |
 |`grob repl`                      |Interactive REPL (`G>` prompt)            |
 |`grob check <file>`              |Lex, parse, type-check only — no execution|
+|`grob dump <file>`               |Compile and disassemble — print bytecode, no execution|
 |`grob fmt <file>`                |Format source code (never automatic)      |
 |`grob new <name>`                |Scaffold new script or project            |
 |`grob install <package>`         |Install plugin from NuGet                 |
