@@ -7,7 +7,19 @@
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile Condition="'$(IsTestProject)' != 'true'">true</GenerateDocumentationFile>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Security: enforce .NET 10.0.8 runtime floor (CVE-2026-32175/32177/35433/42899).
+         Requires SDK 10.0.300+, which bundles runtime 10.0.8. -->
+    <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+    <RuntimeFrameworkVersion Condition="'$(RuntimeFrameworkVersion)' == ''">10.0.8</RuntimeFrameworkVersion>
   </PropertyGroup>
+
+  <!-- Belt-and-braces guard alongside global.json: fail the build if anyone
+       restores/builds with an SDK below the patched minimum. -->
+  <Target Name="EnforceMinimumDotnetSdk" BeforeTargets="BeforeBuild;CoreCompile">
+    <Error Condition="$([MSBuild]::VersionLessThan('$(NETCoreSdkVersion)', '10.0.300'))"
+           Code="GROB-SEC-001"
+           Text="Security policy violation: .NET SDK $(NETCoreSdkVersion) is below the required minimum 10.0.300 (bundles runtime 10.0.8 fixing CVE-2026-32175/32177/35433/42899). Install SDK 10.0.300 or later from https://dotnet.microsoft.com/download/dotnet/10.0 ." />
+  </Target>
 
   <!-- Automatically add coverlet's data collector to every test project so
        that coverage collection works without any per-project changes.
