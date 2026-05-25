@@ -1,0 +1,17 @@
+// Sprint 1 acceptance fixture: malformed expression mid-function.
+// One function body contains a broken expression (RHS missing after `+`).
+// The parser must place an ErrorExpr at the failure site, finish the
+// function with the rest of the AST intact, and continue parsing the
+// surrounding top-level declarations cleanly. Exactly one diagnostic
+// should be emitted for this file.
+fn first(): int {
+    return 1
+}
+
+fn broken(a: int): int {
+    return a +
+}
+
+fn last(): int {
+    return 42
+}

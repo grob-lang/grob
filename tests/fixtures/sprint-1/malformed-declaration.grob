@@ -1,0 +1,10 @@
+// Sprint 1 acceptance fixture: malformed top-level declaration.
+// The middle `fn` is followed immediately by a newline rather than a
+// function name — the parser cannot build an FnDecl. It must produce
+// an ErrorDecl at that position, synchronise on the next top-level
+// keyword (the following `fn`), and parse the declarations on either
+// side cleanly. Exactly one diagnostic is emitted.
+fn first(): int { return 1 }
+
+fn
+fn last(): int { return 99 }

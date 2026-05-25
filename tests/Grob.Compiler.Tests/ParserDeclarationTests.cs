@@ -9,25 +9,25 @@ namespace Grob.Compiler.Tests;
 public class ParserDeclarationTests {
     [Fact]
     public void Fn_NoParams_ReturnsInt() {
-        CompilationUnit unit = ParseOk("fn f(): Int { return 1 }\n");
+        CompilationUnit unit = ParseOk("fn f(): int { return 1 }\n");
         FnDecl fn = Single<FnDecl>(unit);
         Assert.Equal("f", fn.Name);
         Assert.Empty(fn.Parameters);
-        Assert.Equal("Int", fn.ReturnType.Name);
+        Assert.Equal("int", fn.ReturnType.Name);
     }
 
     [Fact]
     public void Fn_TwoParams_AnnotatedReturn() {
-        CompilationUnit unit = ParseOk("fn add(a: Int, b: Int): Int { return a + b }\n");
+        CompilationUnit unit = ParseOk("fn add(a: int, b: int): int { return a + b }\n");
         FnDecl fn = Single<FnDecl>(unit);
         Assert.Equal(2, fn.Parameters.Count);
         Assert.Equal("a", fn.Parameters[0].Name);
-        Assert.Equal("Int", fn.Parameters[0].Type!.Name);
+        Assert.Equal("int", fn.Parameters[0].Type!.Name);
     }
 
     [Fact]
     public void Fn_DefaultParameter() {
-        CompilationUnit unit = ParseOk("fn f(n: Int = 5): Int { return n }\n");
+        CompilationUnit unit = ParseOk("fn f(n: int = 5): int { return n }\n");
         FnDecl fn = Single<FnDecl>(unit);
         Assert.NotNull(fn.Parameters[0].DefaultValue);
     }
@@ -35,7 +35,7 @@ public class ParserDeclarationTests {
     [Fact]
     public void Type_WithFields() {
         CompilationUnit unit = ParseOk(
-            "type Point {\nx: Int\ny: Int = 0\n}\n");
+            "type Point {\nx: int\ny: int = 0\n}\n");
         TypeDecl t = Single<TypeDecl>(unit);
         Assert.Equal("Point", t.Name);
         Assert.Equal(2, t.Fields.Count);
@@ -68,29 +68,30 @@ public class ParserDeclarationTests {
 
     [Fact]
     public void Readonly_TopLevel_WithAnnotation() {
-        CompilationUnit unit = ParseOk("readonly NAME: String := \"sam\"\n");
+        CompilationUnit unit = ParseOk("readonly NAME: string := \"sam\"\n");
         ReadonlyDecl r = Single<ReadonlyDecl>(unit);
-        Assert.Equal("String", r.AnnotatedType!.Name);
+        Assert.Equal("string", r.AnnotatedType!.Name);
     }
 
     [Fact]
     public void ParamBlock_WithDecorators() {
         CompilationUnit unit = ParseOk(
-            "param {\n@allowed(\"a\", \"b\")\nmode: String\nlen: Int = 0\n}\n");
+            "param {\n@allowed(\"a\", \"b\")\nmode: string\nlen: int = 0\n}\n");
         ParamBlockDecl p = Single<ParamBlockDecl>(unit);
         Assert.Equal(2, p.Parameters.Count);
         Assert.Equal("mode", p.Parameters[0].Name);
-        Assert.Equal("String", p.Parameters[0].Type!.Name);
+        Assert.Equal("string", p.Parameters[0].Type!.Name);
         Assert.NotNull(p.Parameters[1].DefaultValue);
     }
 
     [Fact]
     public void TypeRef_Generic_Nullable() {
-        CompilationUnit unit = ParseOk("fn f(xs: Array<Int>?): Int { return 0 }\n");
+        CompilationUnit unit = ParseOk("fn f(xs: Array<int>?): int { return 0 }\n");
         FnDecl fn = Single<FnDecl>(unit);
         TypeRef t = fn.Parameters[0].Type!;
         Assert.Equal("Array", t.Name);
         Assert.Single(t.TypeArguments);
+        Assert.Equal("int", t.TypeArguments[0].Name);
         Assert.True(t.IsNullable);
     }
 }

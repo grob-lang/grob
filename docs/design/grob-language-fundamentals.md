@@ -2147,7 +2147,7 @@ diagnostics for the same input regardless of what was parsed before.
 ### 29.6 Worked example
 
 ```grob
-fn add(a: int, b: int) {
+fn add(a: int, b: int): int {
     return a +
 }                       // <- parser hits `}` while expecting RHS
 
@@ -2177,7 +2177,11 @@ without noise.
 
 -----
 
-*Document updated May 2026 — Session 3 spec gap fill: new §29 (Parser*
+*Document updated May 2026 — Sprint 1 acceptance follow-up: §29.6 worked*
+*example corrected to `fn add(a: int, b: int): int {` — the original*
+*omitted the return-type annotation that v1 grammar mandates, making the*
+*example unparseable against the grammar it illustrates (D-307).*
+*Previous: May 2026 — Session 3 spec gap fill: new §29 (Parser*
 *Error Recovery) specifying the synchronisation set (statement-boundary*
 *newlines outside open brackets, closing `}` of enclosing blocks, top-*
 *level declaration keywords), error node shape (first-class `ErrorExpr`/*

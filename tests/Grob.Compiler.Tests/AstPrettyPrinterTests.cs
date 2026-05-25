@@ -27,17 +27,17 @@ public class AstPrettyPrinterTests {
             R,
             "add",
             [
-                new Parameter(R, "a", new TypeRef(R, "Int", [], false), null),
-                new Parameter(R, "b", new TypeRef(R, "Int", [], false), null),
+                new Parameter(R, "a", new TypeRef(R, "int", [], false), null),
+                new Parameter(R, "b", new TypeRef(R, "int", [], false), null),
             ],
-            new TypeRef(R, "Int", [], false),
+            new TypeRef(R, "int", [], false),
             new BlockStmt(R, [
                 new ReturnStmt(R, new BinaryExpr(R, BinaryOperator.Add, Id("a"), Id("b"))),
             ]));
 
         string output = new PrettyPrinter().Print(fn);
 
-        Assert.Contains("fn add(a: Int, b: Int): Int", output);
+        Assert.Contains("fn add(a: int, b: int): int", output);
         Assert.Contains("return (a + b)", output);
     }
 
