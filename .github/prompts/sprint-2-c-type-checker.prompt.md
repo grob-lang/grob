@@ -38,6 +38,32 @@ Read, in order:
 5. Decisions **D-166** (two-pass type checker), **D-307** (built-in type
    names lowercase) in `docs/design/grob-decisions-log.md`.
 
+> **Verify before relying on cited decisions.** This prompt cites D-166 and
+> D-307. Grep the decisions log to confirm both say what this prompt assumes
+> (D-166 = two-pass registration enabling forward references; D-307 =
+> built-in scalar type names are lowercase) before building on them. If
+> either has been superseded or renumbered, surface it rather than proceeding.
+
+> **Type rules — inline reference (authoritative source is the fundamentals
+> spec; reproduced here so the implementation does not depend on a fetch
+> landing well).** These are the rules the checker resolves and Increment D's
+> compiler turns into opcode choice:
+>
+> - `int op int → int`
+> - `float op float → float`
+> - `int op float → float` (implicit `int → float` promotion — the *only*
+>   implicit conversion in Grob)
+> - `int / int → int` (truncating)
+> - `string + string → string`
+> - `int + string`, and every other mixed combination not listed above, is a
+>   compile error with a clear diagnostic and a source location
+> - comparisons resolve to `bool`; validate operand compatibility per the
+>   fundamentals spec
+>
+> Resolve the operation type *precisely* (not merely "numeric") — `AddInt`
+> vs `AddFloat` vs `Concat` in Increment D is selected directly off this
+> resolved type.
+
 > **Sequencing note.** This is Increment C of the agreed Sprint 2 breakdown:
 > A → B → **C (type checker)** → D (compiler + end-to-end + benchmark
 > skeleton). The type checker annotates; it does not emit. Do not pull any
@@ -166,11 +192,19 @@ two-pass registration scaffold that later sprints extend. Do not touch
 
 ## Model
 
-Sonnet for the visitor scaffolding and the mechanical type-rule arms. Reach
-for Opus on the two-pass registration design and the cascade-suppression
-behaviour — getting the `Error`-type propagation right (so one mistake
-suppresses derived diagnostics without swallowing genuine independent errors)
-is the judgement call in this increment.
+Sonnet 4.6 (High effort) throughout — including the visitor scaffolding, the
+type-rule arms, and the two-pass registration. The trigger for reaching for
+Opus is not "this part is hard"; it is "this is a structural decision later
+sprints build on, and an awkward shape here is expensive to unwind." On that
+test the one candidate in this increment is the `Error`-type
+cascade-suppression contract: every later sprint's type-checking extends it,
+so the propagation rule (one mistake suppresses derived diagnostics without
+swallowing genuine independent errors) wants to be right once. Even there,
+paste the `Error`-type universal-assignability section from
+`grob-type-registry.md` into the prompt first — with the contract in front of
+it, Sonnet likely does not need the upgrade. The arithmetic and comparison
+arms are settled by the rules inlined above, so they are transcription, not
+judgement, and stay on Sonnet.
 
 ## Hand-off
 
