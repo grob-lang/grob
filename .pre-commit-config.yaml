@@ -10,6 +10,7 @@
 #   Run `pre-commit autoupdate` to bump all repo revs to their latest tags.
 
 default_stages: [pre-commit]
+default_install_hook_types: [pre-commit, pre-push]
 fail_fast: false # run every hook even when an earlier one fails — show the full picture
 
 repos:
@@ -87,3 +88,25 @@ repos:
         entry: dotnet format Grob.slnx --verify-no-changes --include
         files: \.cs$
         pass_filenames: true
+
+  # ---------------------------------------------------------------------------
+  # Pre-push: local coverage gate.
+  #
+  # Runs the full test suite with coverlet's OpenCover collector and fails
+  # the push if overall line coverage drops below the SonarCloud new-code
+  # threshold (80%). New-code coverage itself can only be computed by
+  # SonarCloud server-side, so this is a cheaper-but-coarser local proxy:
+  # it catches large regressions before they hit CI without requiring a
+  # round-trip to SonarCloud.
+  #
+  # Slow (~30s) — intentionally pre-push, never pre-commit.
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: coverage-gate
+        name: dotnet test — coverage gate (>= 80% line)
+        language: system
+        entry: pwsh -NoProfile -File tooling/coverage-gate.ps1
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
