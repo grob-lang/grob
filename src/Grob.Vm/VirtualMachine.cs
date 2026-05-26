@@ -17,6 +17,10 @@ namespace Grob.Vm;
 public sealed class VirtualMachine {
     private readonly ValueStack _stack = new();
     private readonly TextWriter _out;
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Major Code Smell",
+        "S4487:Unread \"private\" fields should be removed",
+        Justification = "Read only inside #if DEBUG by the per-instruction trace hook; appears unread to Release-mode static analysis. Field is required so a single VM instance can be configured with a trace writer regardless of build configuration.")]
     private readonly TextWriter _trace;
 
     /// <summary>
