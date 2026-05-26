@@ -54,7 +54,13 @@ public sealed class Chunk {
     /// Append a raw byte attributed to <paramref name="line"/> and
     /// <paramref name="column"/> (1-based; <c>0</c> means "unknown").
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="column"/> is negative. Columns are
+    /// 1-based when present, or <c>0</c> for "unknown"; negative values
+    /// are never valid source metadata.
+    /// </exception>
     public void WriteByte(byte value, int line, int column) {
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
         _code.Add(value);
         _lines.Add(line);
         _columns.Add(column);

@@ -64,13 +64,12 @@ public sealed class ValueStack {
     }
 
     /// <summary>
-    /// Logically empty the stack. Sets the top pointer to zero without
-    /// clearing slots — the next <see cref="Push"/> will overwrite, and
-    /// any reference values left over are released by the per-<see cref="Pop"/>
-    /// slot clear once <see cref="Pop"/> is invoked. Used by
-    /// <c>VirtualMachine.Run</c> to start each invocation from a clean
-    /// operand stack regardless of any leftovers from a prior
-    /// exception-terminated run.
+    /// Logically empty the stack. Clears the live region (slots <c>0..Count</c>)
+    /// via <see cref="Array.Clear(Array, int, int)"/> so any reference values
+    /// left over from a prior run are released to the GC (D-304), then resets
+    /// the top pointer to zero. Used by <c>VirtualMachine.Run</c> to start each
+    /// invocation from a clean operand stack regardless of any leftovers from
+    /// a prior exception-terminated run.
     /// </summary>
     internal void Reset() {
         if (_top > 0)

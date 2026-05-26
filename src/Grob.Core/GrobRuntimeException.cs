@@ -38,8 +38,20 @@ public class GrobRuntimeException : Exception {
     /// 1-based <paramref name="column"/>, and human-readable
     /// <paramref name="message"/>.
     /// </summary>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <paramref name="code"/> is <see langword="null"/> or empty,
+    /// or when <paramref name="message"/> is <see langword="null"/> or empty.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="line"/> is less than <c>1</c> or
+    /// <paramref name="column"/> is negative.
+    /// </exception>
     public GrobRuntimeException(string code, int line, int column, string message)
         : base(message) {
+        ArgumentException.ThrowIfNullOrEmpty(code);
+        ArgumentOutOfRangeException.ThrowIfLessThan(line, 1);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        ArgumentException.ThrowIfNullOrEmpty(message);
         Code = code;
         Line = line;
         Column = column;
