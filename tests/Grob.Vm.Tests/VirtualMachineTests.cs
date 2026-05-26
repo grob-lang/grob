@@ -49,7 +49,7 @@ public sealed class VirtualMachineTests {
     }
 
     [Fact]
-    public void TwoPlusThreeTimesFour_LeavesFourteenOnStack_WhenNoPrint() {
+    public void TwoPlusThreeTimesFour_LeavesFourteenOnStackWhenNoPrint() {
         var chunk = new Chunk();
         byte i2 = ConstByte(chunk, GrobValue.FromInt(2));
         byte i3 = ConstByte(chunk, GrobValue.FromInt(3));
@@ -80,7 +80,7 @@ public sealed class VirtualMachineTests {
     [InlineData(OpCode.DivideInt, -7L, 2L, -3L)]     // truncating, signed
     [InlineData(OpCode.ModuloInt, 7L, 3L, 1L)]
     [InlineData(OpCode.ModuloInt, -7L, 3L, -1L)]     // sign of dividend
-    public void IntArithmetic_BinaryOps_ProduceExpectedResult(OpCode op, long a, long b, long expected) {
+    public void IntArithmetic_BinaryOpsProduceExpectedResult(OpCode op, long a, long b, long expected) {
         var chunk = new Chunk();
         byte ia = ConstByte(chunk, GrobValue.FromInt(a));
         byte ib = ConstByte(chunk, GrobValue.FromInt(b));
@@ -119,7 +119,7 @@ public sealed class VirtualMachineTests {
     [InlineData(OpCode.MultiplyFloat, 2.0, 2.5, 5.0)]
     [InlineData(OpCode.DivideFloat, 7.0, 2.0, 3.5)]
     [InlineData(OpCode.ModuloFloat, 7.5, 2.0, 1.5)]
-    public void FloatArithmetic_BinaryOps_ProduceExpectedResult(OpCode op, double a, double b, double expected) {
+    public void FloatArithmetic_BinaryOpsProduceExpectedResult(OpCode op, double a, double b, double expected) {
         var chunk = new Chunk();
         byte ia = ConstByte(chunk, GrobValue.FromFloat(a));
         byte ib = ConstByte(chunk, GrobValue.FromFloat(b));
@@ -188,7 +188,7 @@ public sealed class VirtualMachineTests {
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void IntOverflow_OnAdd_ThrowsArithmeticError_WithLine() {
+    public void IntOverflowOnAdd_ThrowsArithmeticErrorWithLine() {
         const int line = 7;
         var chunk = new Chunk();
         byte ia = ConstByte(chunk, GrobValue.FromInt(long.MaxValue));
@@ -205,7 +205,7 @@ public sealed class VirtualMachineTests {
     }
 
     [Fact]
-    public void IntOverflow_OnNegateMinValue_ThrowsArithmeticError() {
+    public void IntOverflowOnNegateMinValue_ThrowsArithmeticError() {
         const int line = 3;
         var chunk = new Chunk();
         byte i = ConstByte(chunk, GrobValue.FromInt(long.MinValue));
@@ -220,7 +220,7 @@ public sealed class VirtualMachineTests {
     }
 
     [Fact]
-    public void IntDivideByZero_ThrowsE5002_WithLine() {
+    public void IntDivideByZero_ThrowsE5002WithLine() {
         const int line = 11;
         var chunk = new Chunk();
         byte ia = ConstByte(chunk, GrobValue.FromInt(10));
@@ -238,47 +238,53 @@ public sealed class VirtualMachineTests {
 
     [Fact]
     public void IntModuloByZero_ThrowsE5003() {
+        const int line = 1;
         var chunk = new Chunk();
         byte ia = ConstByte(chunk, GrobValue.FromInt(10));
         byte ib = ConstByte(chunk, GrobValue.FromInt(0));
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(ia, 1);
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(ib, 1);
-        chunk.WriteOpCode(OpCode.ModuloInt, 1);
-        chunk.WriteOpCode(OpCode.Return, 1);
+        chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ia, line);
+        chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ib, line);
+        chunk.WriteOpCode(OpCode.ModuloInt, line);
+        chunk.WriteOpCode(OpCode.Return, line);
 
         var (vm, _) = NewVm();
         var ex = Assert.Throws<GrobArithmeticException>(() => vm.Run(chunk));
         Assert.Equal("E5003", ex.Code);
+        Assert.Equal(line, ex.Line);
     }
 
     [Fact]
     public void FloatDivideByZero_ThrowsE5004() {
+        const int line = 1;
         var chunk = new Chunk();
         byte ia = ConstByte(chunk, GrobValue.FromFloat(1.0));
         byte ib = ConstByte(chunk, GrobValue.FromFloat(0.0));
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(ia, 1);
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(ib, 1);
-        chunk.WriteOpCode(OpCode.DivideFloat, 1);
-        chunk.WriteOpCode(OpCode.Return, 1);
+        chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ia, line);
+        chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ib, line);
+        chunk.WriteOpCode(OpCode.DivideFloat, line);
+        chunk.WriteOpCode(OpCode.Return, line);
 
         var (vm, _) = NewVm();
         var ex = Assert.Throws<GrobArithmeticException>(() => vm.Run(chunk));
         Assert.Equal("E5004", ex.Code);
+        Assert.Equal(line, ex.Line);
     }
 
     [Fact]
     public void FloatModuloByZero_ThrowsE5005() {
+        const int line = 1;
         var chunk = new Chunk();
         byte ia = ConstByte(chunk, GrobValue.FromFloat(1.0));
         byte ib = ConstByte(chunk, GrobValue.FromFloat(0.0));
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(ia, 1);
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(ib, 1);
-        chunk.WriteOpCode(OpCode.ModuloFloat, 1);
-        chunk.WriteOpCode(OpCode.Return, 1);
+        chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ia, line);
+        chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ib, line);
+        chunk.WriteOpCode(OpCode.ModuloFloat, line);
+        chunk.WriteOpCode(OpCode.Return, line);
 
         var (vm, _) = NewVm();
         var ex = Assert.Throws<GrobArithmeticException>(() => vm.Run(chunk));
         Assert.Equal("E5005", ex.Code);
+        Assert.Equal(line, ex.Line);
     }
 
     [Fact]
@@ -340,7 +346,7 @@ public sealed class VirtualMachineTests {
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void ValueStackOverflow_SurfacesAsRuntimeError_NotUnguardedWrite() {
+    public void ValueStackOverflow_SurfacesAsRuntimeErrorNotUnguardedWrite() {
         var stack = new ValueStack();
         for (int i = 0; i < ValueStack.Capacity; i++)
             stack.Push(GrobValue.FromInt(i), line: 1);
@@ -464,7 +470,7 @@ public sealed class VirtualMachineTests {
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void TraceInstruction_InDebug_WritesStackAndDisassemblyEveryIteration() {
+    public void TraceInstructionInDebug_WritesStackAndDisassemblyEveryIteration() {
         var chunk = new Chunk();
         byte i2 = ConstByte(chunk, GrobValue.FromInt(2));
         byte i3 = ConstByte(chunk, GrobValue.FromInt(3));

@@ -46,6 +46,11 @@ public sealed class VirtualMachine {
     public void Run(Chunk chunk) {
         ArgumentNullException.ThrowIfNull(chunk);
 
+        // Defensive: a prior Run that terminated by exception may have left
+        // values on the operand stack. Start every invocation clean so the
+        // VM behaves the same on the Nth chunk as on the first.
+        _stack.Reset();
+
         int ip = 0;
         int line = 0;
 
