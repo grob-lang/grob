@@ -239,52 +239,58 @@ public sealed class VirtualMachineTests {
     [Fact]
     public void IntModuloByZero_ThrowsE5003() {
         const int line = 1;
+        const int column = 9;
         var chunk = new Chunk();
         byte ia = ConstByte(chunk, GrobValue.FromInt(10));
         byte ib = ConstByte(chunk, GrobValue.FromInt(0));
         chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ia, line);
         chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ib, line);
-        chunk.WriteOpCode(OpCode.ModuloInt, line);
+        chunk.WriteOpCode(OpCode.ModuloInt, line, column);
         chunk.WriteOpCode(OpCode.Return, line);
 
         var (vm, _) = NewVm();
         var ex = Assert.Throws<GrobArithmeticException>(() => vm.Run(chunk));
         Assert.Equal("E5003", ex.Code);
         Assert.Equal(line, ex.Line);
+        Assert.Equal(column, ex.Column);
     }
 
     [Fact]
     public void FloatDivideByZero_ThrowsE5004() {
         const int line = 1;
+        const int column = 11;
         var chunk = new Chunk();
         byte ia = ConstByte(chunk, GrobValue.FromFloat(1.0));
         byte ib = ConstByte(chunk, GrobValue.FromFloat(0.0));
         chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ia, line);
         chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ib, line);
-        chunk.WriteOpCode(OpCode.DivideFloat, line);
+        chunk.WriteOpCode(OpCode.DivideFloat, line, column);
         chunk.WriteOpCode(OpCode.Return, line);
 
         var (vm, _) = NewVm();
         var ex = Assert.Throws<GrobArithmeticException>(() => vm.Run(chunk));
         Assert.Equal("E5004", ex.Code);
         Assert.Equal(line, ex.Line);
+        Assert.Equal(column, ex.Column);
     }
 
     [Fact]
     public void FloatModuloByZero_ThrowsE5005() {
         const int line = 1;
+        const int column = 13;
         var chunk = new Chunk();
         byte ia = ConstByte(chunk, GrobValue.FromFloat(1.0));
         byte ib = ConstByte(chunk, GrobValue.FromFloat(0.0));
         chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ia, line);
         chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte(ib, line);
-        chunk.WriteOpCode(OpCode.ModuloFloat, line);
+        chunk.WriteOpCode(OpCode.ModuloFloat, line, column);
         chunk.WriteOpCode(OpCode.Return, line);
 
         var (vm, _) = NewVm();
         var ex = Assert.Throws<GrobArithmeticException>(() => vm.Run(chunk));
         Assert.Equal("E5005", ex.Code);
         Assert.Equal(line, ex.Line);
+        Assert.Equal(column, ex.Column);
     }
 
     [Fact]

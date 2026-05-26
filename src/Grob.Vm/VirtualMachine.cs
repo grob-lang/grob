@@ -53,6 +53,7 @@ public sealed class VirtualMachine {
 
         int ip = 0;
         int line = 0;
+        int column = 0;
 
         try {
             while (true) {
@@ -61,6 +62,7 @@ public sealed class VirtualMachine {
                         "execution ran past end of chunk without Return");
 
                 line = chunk.GetLine(ip);
+                column = chunk.GetColumn(ip);
 
 #if DEBUG
                 TraceInstruction(chunk, ip);
@@ -116,7 +118,7 @@ public sealed class VirtualMachine {
                             long b = _stack.Pop().AsInt();
                             long a = _stack.Pop().AsInt();
                             if (b == 0L)
-                                throw new GrobArithmeticException("E5002", line, "integer division by zero");
+                                throw new GrobArithmeticException("E5002", line, column, "integer division by zero");
                             // long.MinValue / -1 overflows: caught below as E5001.
                             _stack.Push(GrobValue.FromInt(checked(a / b)), line);
                             break;
@@ -125,7 +127,7 @@ public sealed class VirtualMachine {
                             long b = _stack.Pop().AsInt();
                             long a = _stack.Pop().AsInt();
                             if (b == 0L)
-                                throw new GrobArithmeticException("E5003", line, "integer modulo by zero");
+                                throw new GrobArithmeticException("E5003", line, column, "integer modulo by zero");
                             _stack.Push(GrobValue.FromInt(checked(a % b)), line);
                             break;
                         }
@@ -158,7 +160,7 @@ public sealed class VirtualMachine {
                             double b = _stack.Pop().AsFloat();
                             double a = _stack.Pop().AsFloat();
                             if (b == 0.0)
-                                throw new GrobArithmeticException("E5004", line, "float division by zero");
+                                throw new GrobArithmeticException("E5004", line, column, "float division by zero");
                             _stack.Push(GrobValue.FromFloat(a / b), line);
                             break;
                         }
@@ -166,7 +168,7 @@ public sealed class VirtualMachine {
                             double b = _stack.Pop().AsFloat();
                             double a = _stack.Pop().AsFloat();
                             if (b == 0.0)
-                                throw new GrobArithmeticException("E5005", line, "float modulo by zero");
+                                throw new GrobArithmeticException("E5005", line, column, "float modulo by zero");
                             _stack.Push(GrobValue.FromFloat(a % b), line);
                             break;
                         }
@@ -208,7 +210,7 @@ public sealed class VirtualMachine {
         } catch (OverflowException) {
             // Centralised handler for `checked(...)` arithmetic: any int op
             // that overflows surfaces as E5001 carrying the failing line.
-            throw new GrobArithmeticException("E5001", line, "integer overflow");
+            throw new GrobArithmeticException("E5001", line, column, "integer overflow");
         }
     }
 
