@@ -9,17 +9,21 @@
     so a developer notices a large regression before pushing. Designed for
     use as a pre-push hook (slow) — never as pre-commit (which must stay fast).
 
-    Threshold defaults to 80 to match the SonarCloud new-code gate. Pass
-    -Threshold 0 to skip the gate and just emit the report.
+    Threshold defaults to 50 — a regression floor for *overall* line coverage,
+    deliberately lower than the SonarCloud quality gate (which measures
+    *new-code* coverage at 80% and can only be computed server-side). Bump
+    the default once the overall baseline rises. Pass -Threshold 0 to emit
+    the coverage report but skip enforcement.
 
     Output:
-      * Per-project coverage files under <project>/TestResults/<guid>/coverage.opencover.xml
+      * Per-project coverage files under
+        .artifacts/coverage-gate/TestResults/<guid>/coverage.opencover.xml
       * Aggregated console summary printed to stdout
 #>
 
 [CmdletBinding()]
 param(
-    [int] $Threshold = 80
+    [int] $Threshold = 50
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,26 +33,36 @@ Push-Location $repoRoot
 try {
     Write-Host "==> dotnet test with coverlet (threshold=$Threshold)" -ForegroundColor Cyan
 
-    $args = @(
+    # Run-scoped results directory so we never aggregate stale reports from
+    # earlier runs of `dotnet test` (which would skew the gate percentage).
+    $resultsDir = Join-Path $repoRoot ".artifacts/coverage-gate/TestResults"
+    if (Test-Path $resultsDir) {
+        Remove-Item $resultsDir -Recurse -Force
+    }
+
+    # ExcludeByFile mirrors sonar.coverage.exclusions in
+    # .github/workflows/sonarcloud.yml so the local percentage tracks what
+    # SonarCloud actually measures (scaffolding entry points are excluded).
+    $excludeByFile = "**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs"
+
+    $testArgs = @(
         "test", "Grob.slnx",
         "--nologo",
         "--configuration", "Release",
+        "--results-directory", $resultsDir,
         "--collect:XPlat Code Coverage",
-        "--", "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover"
+        "--",
+        "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover",
+        "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile=$excludeByFile"
     )
 
-    dotnet @args
+    dotnet @testArgs
     if ($LASTEXITCODE -ne 0) { throw "dotnet test failed ($LASTEXITCODE)" }
 
-    if ($Threshold -le 0) {
-        Write-Host "Threshold gate skipped (Threshold <= 0)." -ForegroundColor Yellow
-        return
-    }
-
-    # Aggregate line-coverage across all OpenCover reports.
-    $reports = Get-ChildItem -Path "**/TestResults/**/coverage.opencover.xml" -Recurse -ErrorAction SilentlyContinue
+    # Aggregate line-coverage across all OpenCover reports for *this* run.
+    $reports = Get-ChildItem -Path $resultsDir -Filter "coverage.opencover.xml" -Recurse -ErrorAction SilentlyContinue
     if (-not $reports) {
-        throw "No coverage reports found under TestResults/. Did 'dotnet test' actually run?"
+        throw "No coverage reports found under $resultsDir. Did 'dotnet test' actually run?"
     }
 
     $totalVisited = 0
@@ -57,8 +71,8 @@ try {
         [xml]$xml = Get-Content $r.FullName
         $summary = $xml.CoverageSession.Summary
         if ($summary) {
-            $totalVisited         += [int]$summary.visitedSequencePoints
-            $totalSequencePoints  += [int]$summary.numSequencePoints
+            $totalVisited        += [int]$summary.visitedSequencePoints
+            $totalSequencePoints += [int]$summary.numSequencePoints
         }
     }
 
@@ -69,6 +83,11 @@ try {
     $pct = [math]::Round(100.0 * $totalVisited / $totalSequencePoints, 2)
     Write-Host ""
     Write-Host "Line coverage: $pct% ($totalVisited / $totalSequencePoints sequence points)" -ForegroundColor Cyan
+
+    if ($Threshold -le 0) {
+        Write-Host "Threshold gate skipped (Threshold <= 0)." -ForegroundColor Yellow
+        return
+    }
 
     if ($pct -lt $Threshold) {
         Write-Host "FAIL — coverage $pct% is below threshold $Threshold%." -ForegroundColor Red

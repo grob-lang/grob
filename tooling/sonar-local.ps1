@@ -37,13 +37,20 @@ if (-not $env:SONAR_TOKEN) {
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Push-Location $repoRoot
 try {
+    # Run-scoped results directory so the scanner only imports coverage from
+    # *this* invocation, never stale reports left under per-project TestResults.
+    $resultsDir = Join-Path $repoRoot ".artifacts/sonar-local/TestResults"
+    if (Test-Path $resultsDir) {
+        Remove-Item $resultsDir -Recurse -Force
+    }
+
     $beginArgs = @(
         "sonarscanner", "begin",
         "/k:$ProjectKey",
         "/o:$Organization",
         "/d:sonar.host.url=https://sonarcloud.io",
         "/d:sonar.token=$env:SONAR_TOKEN",
-        "/d:sonar.cs.opencover.reportsPaths=**/TestResults/**/coverage.opencover.xml",
+        "/d:sonar.cs.opencover.reportsPaths=.artifacts/sonar-local/TestResults/**/coverage.opencover.xml",
         "/d:sonar.coverage.exclusions=**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs",
         "/d:sonar.test.exclusions=**/*.Tests/**"
     )
@@ -67,6 +74,7 @@ try {
 
     Write-Host "==> dotnet test with OpenCover coverage" -ForegroundColor Cyan
     dotnet test --no-build --configuration Release `
+        --results-directory $resultsDir `
         --collect:"XPlat Code Coverage" `
         -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
     if ($LASTEXITCODE -ne 0) { throw "dotnet test failed ($LASTEXITCODE)" }

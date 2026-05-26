@@ -17,9 +17,13 @@ namespace Grob.Vm;
 public sealed class VirtualMachine {
     private readonly ValueStack _stack = new();
     private readonly TextWriter _out;
-    // _trace is only read inside `#if DEBUG` by the per-instruction trace hook;
-    // appears unread to Release-mode static analysis. SonarCloud suppresses
-    // S4487 for this file in .github/workflows/sonarcloud.yml.
+
+    /// <summary>
+    /// Writer for the per-instruction trace hook. Only read inside
+    /// <c>#if DEBUG</c>, so it appears unread to Release-mode static analysis;
+    /// SonarCloud waives S4487 for this file in
+    /// <c>.github/workflows/sonarcloud.yml</c>.
+    /// </summary>
     private readonly TextWriter _trace;
 
     /// <summary>
