@@ -17,10 +17,13 @@ namespace Grob.Vm;
 public sealed class VirtualMachine {
     private readonly ValueStack _stack = new();
     private readonly TextWriter _out;
-    [System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Major Code Smell",
-        "S4487:Unread \"private\" fields should be removed",
-        Justification = "Read only inside #if DEBUG by the per-instruction trace hook; appears unread to Release-mode static analysis. Field is required so a single VM instance can be configured with a trace writer regardless of build configuration.")]
+
+    /// <summary>
+    /// Writer for the per-instruction trace hook. Only read inside
+    /// <c>#if DEBUG</c>, so it appears unread to Release-mode static analysis;
+    /// SonarCloud waives S4487 for this file in
+    /// <c>.github/workflows/sonarcloud.yml</c>.
+    /// </summary>
     private readonly TextWriter _trace;
 
     /// <summary>
@@ -47,10 +50,11 @@ public sealed class VirtualMachine {
     /// a terminating <c>Return</c> and hand-constructed test chunks must do
     /// the same.
     /// </summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Major Code Smell",
-        "S3776:Cognitive Complexity of methods should not be too high",
-        Justification = "Bytecode dispatch loop. Per D-302 each opcode is handled inline in a single switch to keep dispatch branch-free; extracting per-opcode handlers would add a call frame per instruction and is explicitly rejected.")]
+    // Bytecode dispatch loop. Per D-302 each opcode is handled inline in a
+    // single switch to keep dispatch branch-free; extracting per-opcode
+    // handlers would add a call frame per instruction and is explicitly
+    // rejected. SonarCloud suppresses S3776 (cognitive complexity) for this
+    // file in .github/workflows/sonarcloud.yml.
     public void Run(Chunk chunk) {
         ArgumentNullException.ThrowIfNull(chunk);
 
@@ -167,9 +171,10 @@ public sealed class VirtualMachine {
                     case OpCode.DivideFloat: {
                             double b = _stack.Pop().AsFloat();
                             double a = _stack.Pop().AsFloat();
-#pragma warning disable S1244 // Exact-zero check is intentional per D-273: +0.0/-0.0 both caught, NaN propagates as NaN.
+                            // Exact-zero check is intentional per D-273: +0.0/-0.0 both caught,
+                            // NaN propagates as NaN. SonarCloud suppresses S1244 for this file
+                            // in .github/workflows/sonarcloud.yml.
                             if (b == 0.0)
-#pragma warning restore S1244
                                 throw new GrobArithmeticException("E5004", line, column, "float division by zero");
                             _stack.Push(GrobValue.FromFloat(a / b), line);
                             break;
@@ -177,9 +182,8 @@ public sealed class VirtualMachine {
                     case OpCode.ModuloFloat: {
                             double b = _stack.Pop().AsFloat();
                             double a = _stack.Pop().AsFloat();
-#pragma warning disable S1244 // Exact-zero check is intentional per D-273: +0.0/-0.0 both caught, NaN propagates as NaN.
+                            // See S1244 note above on DivideFloat — intentional exact-zero check (D-273).
                             if (b == 0.0)
-#pragma warning restore S1244
                                 throw new GrobArithmeticException("E5005", line, column, "float modulo by zero");
                             _stack.Push(GrobValue.FromFloat(a % b), line);
                             break;

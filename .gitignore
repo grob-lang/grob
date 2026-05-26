@@ -11,6 +11,7 @@ out/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+.artifacts/
 
 # NuGet
 *.nupkg
