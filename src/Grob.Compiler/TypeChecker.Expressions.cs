@@ -209,5 +209,9 @@ partial class TypeChecker {
     }
 
     /// <inheritdoc/>
-    public override GrobType VisitLambda(LambdaExpr node) => GrobType.Unknown; // Sprint 5+
+    // Deferred to Sprint 5 (grob-lang/grob#44): lambda scoping, parameter type
+    // inference, and closure capture are designed together. Partial traversal
+    // now would register inferred-type parameters as Unknown — non-null but
+    // semantically incorrect. Nothing downstream observes this gap today.
+    public override GrobType VisitLambda(LambdaExpr node) => GrobType.Unknown;
 }
