@@ -48,7 +48,7 @@ Read, in order:
 > `GrobValue` shape the chunk and VM use; D-307 = lowercase built-in scalar
 > type names) before building on them. If any has been superseded or
 > renumbered, surface it rather than proceeding.
-
+>
 > **Typed-opcode selection — inline reference (authoritative source is §3.3;
 > reproduced here so emission does not depend on a fetch landing well).** The
 > compiler does not re-derive types — it reads the `ResolvedType` Increment C
@@ -66,7 +66,7 @@ Read, in order:
 > correctness. Emitting a typed opcode off an annotation is the whole point
 > of the design — the compiler is where type information *becomes* opcode
 > choice.
-
+>
 > **Sequencing note.** This is Increment D — the close of the agreed Sprint 2
 > breakdown: A → B → C → **D (compiler + end-to-end + benchmark skeleton)**.
 > After this increment, Sprint 2's §4 acceptance criteria are met in full and

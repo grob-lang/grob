@@ -97,14 +97,13 @@ public sealed class TypeCheckerTests {
     /// <summary><c>int + string</c> is a compile error with a source location.</summary>
     [Fact]
     public void ArithmeticRule_IntPlusString_IsCompileError() {
-        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+        (_, DiagnosticBag bag) = TypeCheckSource("""
             x := 1 + "hello"
             """);
         Assert.True(bag.HasErrors, "Expected a type error for int + string");
         Diagnostic error = Assert.Single(bag.Errors);
         Assert.Equal("E0002", error.Code);
-        // Source location must be populated — not Unknown.
-        Assert.NotEqual(SourceRange.Unknown, error.Range);
+        Assert.Equal((1, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     /// <summary><c>int / int</c> resolves to int (truncating per spec).</summary>
@@ -145,6 +144,7 @@ public sealed class TypeCheckerTests {
         Assert.True(bag.HasErrors);
         Diagnostic error = Assert.Single(bag.Errors);
         Assert.Equal("E0001", error.Code);
+        Assert.Equal((1, 11), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     // -----------------------------------------------------------------------
@@ -170,6 +170,7 @@ public sealed class TypeCheckerTests {
         Assert.True(bag.HasErrors);
         Diagnostic error = Assert.Single(bag.Errors);
         Assert.Equal("E0002", error.Code);
+        Assert.Equal((1, 7), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     // -----------------------------------------------------------------------
@@ -305,6 +306,6 @@ public sealed class TypeCheckerTests {
         Assert.True(bag.HasErrors);
         Diagnostic error = Assert.Single(bag.Errors);
         Assert.Equal("E1001", error.Code);
-        Assert.NotEqual(SourceRange.Unknown, error.Range);
+        Assert.Equal((1, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 }

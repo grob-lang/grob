@@ -5,7 +5,7 @@ namespace Grob.Compiler;
 
 /// <summary>
 /// An entry in the type checker's symbol table. Records the declared name,
-/// resolved type, declaration site, and the AST node that introduced the binding.
+/// resolved type, declaration site and the AST node that introduced the binding.
 /// Set by the type checker; read by the compiler and (later) the LSP.
 /// </summary>
 public sealed class Symbol {

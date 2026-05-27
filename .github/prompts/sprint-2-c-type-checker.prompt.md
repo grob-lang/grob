@@ -43,7 +43,7 @@ Read, in order:
 > (D-166 = two-pass registration enabling forward references; D-307 =
 > built-in scalar type names are lowercase) before building on them. If
 > either has been superseded or renumbered, surface it rather than proceeding.
-
+>
 > **Type rules — inline reference (authoritative source is the fundamentals
 > spec; reproduced here so the implementation does not depend on a fetch
 > landing well).** These are the rules the checker resolves and Increment D's
@@ -63,7 +63,7 @@ Read, in order:
 > Resolve the operation type *precisely* (not merely "numeric") — `AddInt`
 > vs `AddFloat` vs `Concat` in Increment D is selected directly off this
 > resolved type.
-
+>
 > **Sequencing note.** This is Increment C of the agreed Sprint 2 breakdown:
 > A → B → **C (type checker)** → D (compiler + end-to-end + benchmark
 > skeleton). The type checker annotates; it does not emit. Do not pull any
