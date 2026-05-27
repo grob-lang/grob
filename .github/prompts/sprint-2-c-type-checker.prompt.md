@@ -51,7 +51,7 @@ Read, in order:
 >
 > - `int op int → int`
 > - `float op float → float`
-> - `int op float → float` (implicit `int → float` promotion — the *only*
+> - `int op float → float` (implicit `int → float` promotion — the _only_
 >   implicit conversion in Grob)
 > - `int / int → int` (truncating)
 > - `string + string → string`
@@ -60,7 +60,7 @@ Read, in order:
 > - comparisons resolve to `bool`; validate operand compatibility per the
 >   fundamentals spec
 >
-> Resolve the operation type *precisely* (not merely "numeric") — `AddInt`
+> Resolve the operation type _precisely_ (not merely "numeric") — `AddInt`
 > vs `AddFloat` vs `Concat` in Increment D is selected directly off this
 > resolved type.
 >
@@ -129,7 +129,7 @@ collecting all diagnostics into the bag. **No bytecode emission.**
 5. **Comparison type rules.** Per the fundamentals spec — resolve the result
    type (`bool`) and validate operand compatibility.
 6. **`ResolvedType` on every identifier node (§3.1.1).** Set `GrobType
-   ResolvedType` on each identifier node during the pass. Non-null after
+ResolvedType` on each identifier node during the pass. Non-null after
    type-checking is the invariant.
 7. **`Declaration` back-reference on every identifier node (§3.1.1).** Set
    `AstNode? Declaration` pointing to the node where the name was declared.

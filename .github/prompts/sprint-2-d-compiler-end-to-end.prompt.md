@@ -64,7 +64,7 @@ Read, in order:
 >
 > No runtime type checks are emitted: the type checker already proved
 > correctness. Emitting a typed opcode off an annotation is the whole point
-> of the design — the compiler is where type information *becomes* opcode
+> of the design — the compiler is where type information _becomes_ opcode
 > choice.
 >
 > **Sequencing note.** This is Increment D — the close of the agreed Sprint 2
@@ -195,7 +195,7 @@ Per §3.5, tests land in the project that matches their kind:
 
 Sonnet 4.6 (High effort) throughout — the emission arms, the benchmark
 scaffolding, and the typed-opcode selection. The mixed-type promotion chains
-are *not* an Opus case despite looking like one: they are settled by the
+are _not_ an Opus case despite looking like one: they are settled by the
 `ResolvedType` annotations Increment C already proved, so the compiler is
 reading a resolved type and choosing an opcode — transcription, not
 judgement. The one defensible Opus moment is the visitor / partial-class
