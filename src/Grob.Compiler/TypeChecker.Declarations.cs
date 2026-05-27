@@ -3,7 +3,7 @@ using Grob.Core;
 
 namespace Grob.Compiler;
 
-partial class TypeChecker {
+public sealed partial class TypeChecker {
     // -----------------------------------------------------------------------
     // Declarations — Pass 2 validation.
     // -----------------------------------------------------------------------

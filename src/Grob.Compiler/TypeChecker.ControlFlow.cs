@@ -3,7 +3,7 @@ using Grob.Core;
 
 namespace Grob.Compiler;
 
-partial class TypeChecker {
+public sealed partial class TypeChecker {
     // -----------------------------------------------------------------------
     // Control flow — visit children; return Unknown (control flow has no type).
     // -----------------------------------------------------------------------

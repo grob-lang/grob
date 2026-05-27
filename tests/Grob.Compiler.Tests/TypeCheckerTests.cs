@@ -507,7 +507,9 @@ public sealed class TypeCheckerTests {
     public void Unary_NegateString_IsCompileError() {
         (_, DiagnosticBag bag) = TypeCheckSource("x := -\"oops\"\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((1, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     /// <summary>Logical-not on an int is a compile error (E0002).</summary>
@@ -515,7 +517,9 @@ public sealed class TypeCheckerTests {
     public void Unary_NotInt_IsCompileError() {
         (_, DiagnosticBag bag) = TypeCheckSource("x := !5\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((1, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     // -----------------------------------------------------------------------
@@ -537,7 +541,9 @@ public sealed class TypeCheckerTests {
     public void Comparison_IntEqualsString_IsCompileError() {
         (_, DiagnosticBag bag) = TypeCheckSource("b := 5 == \"hello\"\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((1, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     /// <summary>Comparing incompatible types with <c>!=</c> is a compile error.</summary>
@@ -545,7 +551,9 @@ public sealed class TypeCheckerTests {
     public void Comparison_IntNotEqualsString_IsCompileError() {
         (_, DiagnosticBag bag) = TypeCheckSource("b := 5 != \"hello\"\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((1, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     // -----------------------------------------------------------------------
@@ -567,7 +575,9 @@ public sealed class TypeCheckerTests {
     public void Logical_OrNonBoolLeft_IsCompileError() {
         (_, DiagnosticBag bag) = TypeCheckSource("b := 1 || false\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((1, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     /// <summary>A non-bool right operand for <c>&&</c> is a compile error.</summary>
@@ -575,7 +585,9 @@ public sealed class TypeCheckerTests {
     public void Logical_AndNonBoolRight_IsCompileError() {
         (_, DiagnosticBag bag) = TypeCheckSource("b := true && 2\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((1, 14), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     // -----------------------------------------------------------------------
@@ -658,6 +670,8 @@ public sealed class TypeCheckerTests {
     public void ArithmeticRule_NilPlusInt_IsCompileError() {
         (_, DiagnosticBag bag) = TypeCheckSource("n := nil\nx := n + 5\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 }

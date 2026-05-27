@@ -3,7 +3,7 @@ using Grob.Core;
 
 namespace Grob.Compiler;
 
-partial class TypeChecker {
+public sealed partial class TypeChecker {
     // -----------------------------------------------------------------------
     // Literals — return the exact scalar type so Increment D can choose opcodes.
     // -----------------------------------------------------------------------
