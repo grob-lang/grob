@@ -308,4 +308,356 @@ public sealed class TypeCheckerTests {
         Assert.Equal("E1001", error.Code);
         Assert.Equal((1, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
+
+    // -----------------------------------------------------------------------
+    // Control flow — visits all branches (VisitIf, VisitWhile, VisitForIn,
+    // VisitSelect, VisitTry).
+    // -----------------------------------------------------------------------
+
+    /// <summary>An <c>if/else</c> tree type-checks without error.</summary>
+    [Fact]
+    public void ControlFlow_If_WithElse_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := 5\nif x < 10 { y := 1 } else { z := 2 }\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>A <c>while</c> loop type-checks without error.</summary>
+    [Fact]
+    public void ControlFlow_While_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := 0\nwhile x < 5 { }\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>A <c>for x in xs</c> loop type-checks without error.</summary>
+    [Fact]
+    public void ControlFlow_ForIn_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("xs := nil\nfor v in xs { }\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>A <c>select</c> statement with cases and a default type-checks without error.</summary>
+    [Fact]
+    public void ControlFlow_Select_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            x := 1
+            select x {
+            case 1 { y := 1 }
+            default { z := 2 }
+            }
+            """);
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>A <c>try/catch</c> block type-checks without error.</summary>
+    [Fact]
+    public void ControlFlow_TryCatch_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("try { x := 1 } catch { y := 2 }\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    // -----------------------------------------------------------------------
+    // Statements — assignment, compound assignment, increment, expression stmt.
+    // -----------------------------------------------------------------------
+
+    /// <summary><c>x = 10</c> after a declaration type-checks without error.</summary>
+    [Fact]
+    public void Statement_Assignment_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := 5\nx = 10\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary><c>x += 3</c> after a declaration type-checks without error.</summary>
+    [Fact]
+    public void Statement_CompoundAssignment_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := 5\nx += 3\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary><c>x++</c> after a declaration type-checks without error.</summary>
+    [Fact]
+    public void Statement_Increment_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := 5\nx++\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>A standalone expression inside a function body is a valid expression statement.</summary>
+    [Fact]
+    public void Statement_ExpressionStmt_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("fn f(): Void {\n1 + 2\n}\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    // -----------------------------------------------------------------------
+    // Declarations — fn with parameters, type, const, readonly, import.
+    // -----------------------------------------------------------------------
+
+    /// <summary>A fn with typed parameters infers parameter types and type-checks without error.</summary>
+    [Fact]
+    public void Declaration_FnWithTypedParams_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("fn add(a: int, b: int): int { return a + b }\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>A <c>type</c> declaration type-checks without error.</summary>
+    [Fact]
+    public void Declaration_TypeDecl_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("type Point {\nx: int\ny: int\n}\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>A <c>const</c> declaration type-checks without error.</summary>
+    [Fact]
+    public void Declaration_ConstDecl_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("const PI := 3.14\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>A <c>readonly</c> declaration with an explicit annotation type-checks without error.</summary>
+    [Fact]
+    public void Declaration_ReadonlyDecl_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("readonly NAME: string := \"grob\"\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>An <c>import</c> declaration type-checks without error.</summary>
+    [Fact]
+    public void Declaration_Import_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("import io\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    // -----------------------------------------------------------------------
+    // Literals — nil, raw string, regex.
+    // -----------------------------------------------------------------------
+
+    /// <summary><c>nil</c> literal resolves to <see cref="GrobType.Nil"/>.</summary>
+    [Fact]
+    public void Inference_NilLiteral_ResolvesToNil() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("x := nil\nref := x\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+        VarDeclStmt refDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[1]);
+        IdentifierExpr xRef = Assert.IsType<IdentifierExpr>(refDecl.Initializer);
+        Assert.Equal(GrobType.Nil, xRef.ResolvedType);
+    }
+
+    /// <summary>A raw-string literal resolves to <see cref="GrobType.String"/>.</summary>
+    [Fact]
+    public void Inference_RawStringLiteral_ResolvesToString() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("x := `hello`\nref := x\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+        VarDeclStmt refDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[1]);
+        IdentifierExpr xRef = Assert.IsType<IdentifierExpr>(refDecl.Initializer);
+        Assert.Equal(GrobType.String, xRef.ResolvedType);
+    }
+
+    /// <summary>A regex literal type-checks without error.</summary>
+    [Fact]
+    public void Inference_RegexLiteral_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := /test/\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    // -----------------------------------------------------------------------
+    // Interpolated string with an expression part.
+    // -----------------------------------------------------------------------
+
+    /// <summary>An interpolated string containing an expression (<c>"${n}"</c>) type-checks without error.</summary>
+    [Fact]
+    public void InterpolatedString_WithExpressionPart_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("n := 42\ns := \"count: ${n}\"\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    // -----------------------------------------------------------------------
+    // Unary operators.
+    // -----------------------------------------------------------------------
+
+    /// <summary><c>-int</c> resolves to int.</summary>
+    [Fact]
+    public void Unary_NegateInt_ResolvesToInt() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("x := -5\nref := x\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+        VarDeclStmt refDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[1]);
+        IdentifierExpr xRef = Assert.IsType<IdentifierExpr>(refDecl.Initializer);
+        Assert.Equal(GrobType.Int, xRef.ResolvedType);
+    }
+
+    /// <summary><c>-float</c> resolves to float.</summary>
+    [Fact]
+    public void Unary_NegateFloat_ResolvesToFloat() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("x := -1.5\nref := x\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+        VarDeclStmt refDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[1]);
+        IdentifierExpr xRef = Assert.IsType<IdentifierExpr>(refDecl.Initializer);
+        Assert.Equal(GrobType.Float, xRef.ResolvedType);
+    }
+
+    /// <summary><c>!bool</c> resolves to bool.</summary>
+    [Fact]
+    public void Unary_NotBool_ResolvesToBool() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("b := !true\nref := b\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+        VarDeclStmt refDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[1]);
+        IdentifierExpr bRef = Assert.IsType<IdentifierExpr>(refDecl.Initializer);
+        Assert.Equal(GrobType.Bool, bRef.ResolvedType);
+    }
+
+    /// <summary>Negating a string is a compile error (E0002).</summary>
+    [Fact]
+    public void Unary_NegateString_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := -\"oops\"\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    /// <summary>Logical-not on an int is a compile error (E0002).</summary>
+    [Fact]
+    public void Unary_NotInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := !5\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    // -----------------------------------------------------------------------
+    // Equality and inequality comparisons.
+    // -----------------------------------------------------------------------
+
+    /// <summary><c>int == int</c> resolves to bool.</summary>
+    [Fact]
+    public void Comparison_IntEqualsInt_ResolvesBool() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("b := 5 == 5\nref := b\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+        VarDeclStmt refDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[1]);
+        IdentifierExpr bRef = Assert.IsType<IdentifierExpr>(refDecl.Initializer);
+        Assert.Equal(GrobType.Bool, bRef.ResolvedType);
+    }
+
+    /// <summary>Comparing incompatible types with <c>==</c> is a compile error.</summary>
+    [Fact]
+    public void Comparison_IntEqualsString_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("b := 5 == \"hello\"\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    /// <summary>Comparing incompatible types with <c>!=</c> is a compile error.</summary>
+    [Fact]
+    public void Comparison_IntNotEqualsString_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("b := 5 != \"hello\"\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    // -----------------------------------------------------------------------
+    // Logical operators (&&, ||).
+    // -----------------------------------------------------------------------
+
+    /// <summary><c>bool && bool</c> resolves to bool.</summary>
+    [Fact]
+    public void Logical_AndBothBool_ResolvesBool() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("b := true && false\nref := b\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+        VarDeclStmt refDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[1]);
+        IdentifierExpr bRef = Assert.IsType<IdentifierExpr>(refDecl.Initializer);
+        Assert.Equal(GrobType.Bool, bRef.ResolvedType);
+    }
+
+    /// <summary>A non-bool left operand for <c>||</c> is a compile error.</summary>
+    [Fact]
+    public void Logical_OrNonBoolLeft_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("b := 1 || false\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    /// <summary>A non-bool right operand for <c>&&</c> is a compile error.</summary>
+    [Fact]
+    public void Logical_AndNonBoolRight_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("b := true && 2\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    // -----------------------------------------------------------------------
+    // Grouping, call expression, array literal, ternary, numeric range.
+    // -----------------------------------------------------------------------
+
+    /// <summary>Grouping passes through the inner expression's type.</summary>
+    [Fact]
+    public void Expression_Grouping_InnerTypePassesThrough() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("x := (5 + 3)\nref := x\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+        VarDeclStmt refDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[1]);
+        IdentifierExpr xRef = Assert.IsType<IdentifierExpr>(refDecl.Initializer);
+        Assert.Equal(GrobType.Int, xRef.ResolvedType);
+    }
+
+    /// <summary>A function call expression type-checks without error.</summary>
+    [Fact]
+    public void Expression_Call_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("fn f(): int { return 1 }\nx := f()\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>An array literal type-checks without error.</summary>
+    [Fact]
+    public void Expression_ArrayLiteral_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := [1, 2, 3]\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>A ternary expression type-checks without error.</summary>
+    [Fact]
+    public void Expression_Ternary_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("b := true\nx := b ? 1 : 2\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>A numeric range as a <c>for..in</c> iterable type-checks without error.</summary>
+    [Fact]
+    public void Expression_NumericRange_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("for i in 1..10 step 2 { }\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>A member-access expression type-checks without error.</summary>
+    [Fact]
+    public void Expression_MemberAccess_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("xs := nil\nn := xs.length\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>An index expression type-checks without error.</summary>
+    [Fact]
+    public void Expression_Index_NoError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("xs := nil\ny := xs[0]\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    // -----------------------------------------------------------------------
+    // Annotation with an unknown type (exercises the _ => Unknown branch of
+    // ResolveTypeRef) and the nil arithmetic error path (TypeName(Nil)).
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// An annotation with an unrecognised type name is tolerated: the inferred
+    /// type is used instead. This exercises the <c>_ =&gt; Unknown</c> branch of
+    /// <see cref="TypeChecker"/>'s <c>ResolveTypeRef</c>.
+    /// </summary>
+    [Fact]
+    public void Annotation_UnknownTypeName_FallsBackToInferredType() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x: MyType := 5\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
+
+    /// <summary>
+    /// Arithmetic on a <c>nil</c> operand produces E0002 and exercises
+    /// <c>TypeName(GrobType.Nil)</c>.
+    /// </summary>
+    [Fact]
+    public void ArithmeticRule_NilPlusInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource("n := nil\nx := n + 5\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
 }
