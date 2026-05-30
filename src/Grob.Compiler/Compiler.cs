@@ -18,11 +18,8 @@ namespace Grob.Compiler;
 /// </remarks>
 public sealed partial class Compiler : AstVisitor<object?> {
     private readonly Chunk _chunk = new();
-    private readonly DiagnosticBag _diagnostics;
 
-    private Compiler(DiagnosticBag diagnostics) {
-        _diagnostics = diagnostics;
-    }
+    private Compiler() { }
 
     /// <summary>
     /// Compiles a type-checked <paramref name="unit"/> into a <see cref="Chunk"/>
@@ -36,7 +33,7 @@ public sealed partial class Compiler : AstVisitor<object?> {
     public static Chunk Compile(CompilationUnit unit, DiagnosticBag diagnostics) {
         ArgumentNullException.ThrowIfNull(unit);
         ArgumentNullException.ThrowIfNull(diagnostics);
-        var compiler = new Compiler(diagnostics);
+        var compiler = new Compiler();
         compiler.Visit(unit);
         return compiler._chunk;
     }

@@ -18,21 +18,21 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           # Full git history is required for SonarCloud blame annotations and
           # accurate "new code" detection on pull requests.
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5
         with:
           global-json-file: global.json
 
       # dotnet-sonarscanner is a Java process; JRE 17+ must be on PATH
       # before the tool is installed or invoked.
       - name: Setup Java 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
         with:
           distribution: temurin
           java-version: "17"
