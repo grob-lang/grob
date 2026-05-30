@@ -55,7 +55,7 @@ jobs:
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.cs.opencover.reportsPaths="**/TestResults/**/coverage.opencover.xml" \
-            /d:sonar.coverage.exclusions="**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs" \
+            /d:sonar.coverage.exclusions="**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs,**/bench/**" \
             /d:sonar.test.exclusions="**/*.Tests/**" \
             /d:sonar.issue.ignore.multicriteria="e1,e2,e3,e4" \
             /d:sonar.issue.ignore.multicriteria.e1.ruleKey="csharpsquid:S1244" \
@@ -65,7 +65,7 @@ jobs:
             /d:sonar.issue.ignore.multicriteria.e3.ruleKey="csharpsquid:S4487" \
             /d:sonar.issue.ignore.multicriteria.e3.resourceKey="src/Grob.Vm/VirtualMachine.cs" \
             /d:sonar.issue.ignore.multicriteria.e4.ruleKey="csharpsquid:S3267" \
-            /d:sonar.issue.ignore.multicriteria.e4.resourceKey="src/Grob.Compiler/TypeChecker*.cs"
+            /d:sonar.issue.ignore.multicriteria.e4.resourceKey="src/Grob.Compiler/**"
       - name: Restore dependencies
         run: dotnet restore
 

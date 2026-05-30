@@ -150,5 +150,9 @@ public sealed class Sprint2EndToEndTests {
         // the test must not reach the VM.
         DiagnosticBag bag = TypeCheck("\"hello\" + 42");
         Assert.True(bag.HasErrors, "Expected type error for string + int");
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal(1, error.Range.Start.Line);
+        Assert.Equal(1, error.Range.Start.Column); // BinaryExpr range starts at '"' of "hello"
     }
 }

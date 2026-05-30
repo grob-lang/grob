@@ -20,10 +20,12 @@ public class CompileBenchmarks {
     /// <summary>Reads benchmark fixture files from disk once before any benchmark run.</summary>
     [GlobalSetup]
     public void Setup() {
-        _twoExpressions = File.ReadAllText(
-            Path.Combine(AppContext.BaseDirectory, "Fixtures", "Compile", "two-expressions.grob"));
-        _tenPrints = File.ReadAllText(
-            Path.Combine(AppContext.BaseDirectory, "Fixtures", "Compile", "ten-prints.grob"));
+        // Path.Join is used here (not Path.Combine) — Path.Join never resets
+        // the path on a rooted later argument, which avoids the CodeQL
+        // cs/path-injection concern that Path.Combine carries.
+        string fixturesDir = Path.Join(AppContext.BaseDirectory, "Fixtures", "Compile");
+        _twoExpressions = File.ReadAllText(Path.Join(fixturesDir, "two-expressions.grob"));
+        _tenPrints = File.ReadAllText(Path.Join(fixturesDir, "ten-prints.grob"));
     }
 
     /// <summary>Compile a two-statement source file (warm path, minimal).</summary>

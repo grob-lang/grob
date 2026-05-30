@@ -41,11 +41,11 @@ public sealed partial class Compiler {
         // Concatenate all text parts into one value. For Sprint 2 programs the
         // parser may still produce an InterpolatedStringExpr even for plain
         // double-quoted strings with no ${ } interpolations.
+        // OfType<StringTextPart> filters-and-casts in one step; avoids the
+        // S3267 LINQ-vs-foreach finding while keeping the code readable.
         var sb = new System.Text.StringBuilder();
-        foreach (StringInterpolationPart part in node.Parts) {
-            if (part is StringTextPart text) {
-                sb.Append(text.Text);
-            }
+        foreach (StringTextPart text in node.Parts.OfType<StringTextPart>()) {
+            sb.Append(text.Text);
             // StringExpressionPart (interpolation) — deferred to Sprint 4.
         }
         EmitConstant(GrobValue.FromString(sb.ToString()), node.Range.Start.Line);
