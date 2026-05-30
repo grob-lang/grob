@@ -11,7 +11,7 @@
 > When keywords are added or changed, the grammar must be updated.
 > See `grob-tooling-strategy.md`.
 
------
+---
 
 ## 1. Control Flow — `if/else`
 
@@ -46,7 +46,7 @@ if (condition) {
   position. Expression-position conditionals use ternary `? :` (two-way) or switch
   expression (multi-branch).
 
------
+---
 
 ## 2. Control Flow — `while`
 
@@ -65,7 +65,7 @@ while (condition) {
   iteration. `while` exists for condition-driven loops where no collection
   is being iterated.
 
------
+---
 
 ## 3. Control Flow — `select/case`
 
@@ -107,9 +107,9 @@ select (value) {
 
 ### Why `select` is non-exhaustive
 
-The switch *expression* (§3.1) enforces exhaustiveness because every input must
+The switch _expression_ (§3.1) enforces exhaustiveness because every input must
 produce a value — a missing case means a missing value, which is a bug. The
-`select` *statement* runs side-effecting blocks and produces no value. "No case
+`select` _statement_ runs side-effecting blocks and produces no value. "No case
 matched, so do nothing" is a legitimate intent, not a bug. Forcing exhaustiveness
 on the statement form would push authors to write `default { }` solely to
 satisfy the checker, which adds noise without adding safety.
@@ -123,7 +123,7 @@ producing a value; reach for the statement when you are running side-effecting
 branches. Pick the form that matches the intent, not the form whose
 exhaustiveness rule is more convenient.
 
------
+---
 
 ## 3.1 Conditional Expression — Switch Expression
 
@@ -194,7 +194,7 @@ produce the same type; mismatched arm types are compile errors.
 additive grammar extension — adding them later requires no rework of the v1
 pattern forms.
 
------
+---
 
 ## 4. Control Flow — `break` and `continue`
 
@@ -221,7 +221,7 @@ for file in files {
   deferred post-MVP. The v1 alternative is to extract the inner loop into a
   function and use `return`.
 
------
+---
 
 ## 5. Loops — `for...in`
 
@@ -268,13 +268,13 @@ is a compile error.
    is required** (`for k, v in myMap`). The single-identifier form on a map is a
    compile error:
 
-   ```
-   error: `for k in myMap` is not valid for map<K, V>.
-   Use `for k, v in myMap` to iterate key-value pairs,
-   or `for k in myMap.keys` to iterate keys only.
-   ```
+    ```
+    error: `for k in myMap` is not valid for map<K, V>.
+    Use `for k, v in myMap` to iterate key-value pairs,
+    or `for k in myMap.keys` to iterate keys only.
+    ```
 
-   Lowered to a `while` loop over an internal keys array.
+    Lowered to a `while` loop over an internal keys array.
 
 A formal iterable protocol is post-MVP. The compiler architecture accommodates
 it without rework — the three special cases become the first implementors of the
@@ -307,19 +307,19 @@ for i in 10..0 step -1 { }  // 10, 9, 8 ... 0
 - `..` is a range-specific operator in v1 — it does not appear in other expression
   contexts.
 
------
+---
 
 ## 6. Operators
 
 ### Arithmetic
 
-|Operator|Operation                      |Notes                       |
-|--------|-------------------------------|----------------------------|
-|`+`     |Addition / string concatenation|                            |
-|`-`     |Subtraction                    |                            |
-|`*`     |Multiplication                 |                            |
-|`/`     |Division                       |See division rules below    |
-|`%`     |Modulo                         |See modulo rules below      |
+| Operator | Operation                       | Notes                    |
+| -------- | ------------------------------- | ------------------------ |
+| `+`      | Addition / string concatenation |                          |
+| `-`      | Subtraction                     |                          |
+| `*`      | Multiplication                  |                          |
+| `/`      | Division                        | See division rules below |
+| `%`      | Modulo                          | See modulo rules below   |
 
 **Integer division:** `int / int → int` (truncating toward zero). `-7 / 2` is
 `-3`, not `-4`. No separate floor-division operator — the operand types
@@ -355,37 +355,37 @@ error — no implicit conversion. Use `.toString()` or string interpolation.
 
 ### Comparison
 
-|Operator|Operation            |
-|--------|---------------------|
-|`==`    |Equal                |
-|`!=`    |Not equal            |
-|`<`     |Less than            |
-|`>`     |Greater than         |
-|`<=`    |Less than or equal   |
-|`>=`    |Greater than or equal|
+| Operator | Operation             |
+| -------- | --------------------- |
+| `==`     | Equal                 |
+| `!=`     | Not equal             |
+| `<`      | Less than             |
+| `>`      | Greater than          |
+| `<=`     | Less than or equal    |
+| `>=`     | Greater than or equal |
 
 ### Logical
 
-|Operator    |Operation  |Notes                                                          |
-|------------|-----------|---------------------------------------------------------------|
-|`&&`        |Logical AND|Short-circuit — right operand not evaluated if left is `false` |
-|`\|\|`    |Logical OR |Short-circuit — right operand not evaluated if left is `true`  |
-|`!`         |Logical NOT|                                                               |
+| Operator | Operation   | Notes                                                          |
+| -------- | ----------- | -------------------------------------------------------------- |
+| `&&`     | Logical AND | Short-circuit — right operand not evaluated if left is `false` |
+| `\|\|`   | Logical OR  | Short-circuit — right operand not evaluated if left is `true`  |
+| `!`      | Logical NOT |                                                                |
 
 ### Unary
 
-|Operator|Operation          |
-|--------|-------------------|
-|`-`     |Arithmetic negation|
-|`!`     |Logical NOT        |
+| Operator | Operation           |
+| -------- | ------------------- |
+| `-`      | Arithmetic negation |
+| `!`      | Logical NOT         |
 
 ### Other
 
-|Operator|Operation                                                      |
-|--------|---------------------------------------------------------------|
-|`??`    |Nil coalescing — `a ?? b` returns `a` if non-nil, otherwise `b`|
-|`?.`    |Optional chaining — `a?.foo` returns nil if `a` is nil         |
-|`..`    |Range (numeric for loops only in v1)                           |
+| Operator | Operation                                                       |
+| -------- | --------------------------------------------------------------- |
+| `??`     | Nil coalescing — `a ?? b` returns `a` if non-nil, otherwise `b` |
+| `?.`     | Optional chaining — `a?.foo` returns nil if `a` is nil          |
+| `..`     | Range (numeric for loops only in v1)                            |
 
 Bitwise operators are not in scope for v1.
 
@@ -393,7 +393,7 @@ Declaration (`:=`), assignment (`=`, `+=`, `-=`, `*=`, `/=`, `%=`), and
 increment/decrement (`++`, `--`) are **statement forms**, not expressions.
 They are specified in §28.
 
------
+---
 
 ## 7. Operator Precedence
 
@@ -402,20 +402,20 @@ describes **expression-level operators only**. Statement forms (declaration,
 assignment, increment, decrement, `throw`) are not expressions and appear
 in §28.
 
-|Level       |Operators            |Notes                                               |
-|------------|---------------------|----------------------------------------------------|
-|1 (highest) |`()`, `[]`, `.`, `?.`|Postfix — call, index, member access, optional chain|
-|2           |`-` (unary), `!`     |Prefix                                              |
-|3           |`*`, `/`, `%`        |Multiplicative                                      |
-|4           |`+`, `-`             |Additive                                            |
-|5           |`..`                 |Range (numeric `for` loops only in v1)              |
-|6           |`<`, `>`, `<=`, `>=` |Comparison                                          |
-|7           |`==`, `!=`           |Equality                                            |
-|8           |`&&`                 |Logical AND — short-circuit                         |
-|9           |`\|\|`               |Logical OR — short-circuit                          |
-|10          |`??`                 |Nil coalescing                                      |
-|11          |`? :` (ternary)      |Conditional expression                              |
-|12 (lowest) |`=>`                 |Lambda arrow — body expression binds loosely        |
+| Level       | Operators             | Notes                                                |
+| ----------- | --------------------- | ---------------------------------------------------- |
+| 1 (highest) | `()`, `[]`, `.`, `?.` | Postfix — call, index, member access, optional chain |
+| 2           | `-` (unary), `!`      | Prefix                                               |
+| 3           | `*`, `/`, `%`         | Multiplicative                                       |
+| 4           | `+`, `-`              | Additive                                             |
+| 5           | `..`                  | Range (numeric `for` loops only in v1)               |
+| 6           | `<`, `>`, `<=`, `>=`  | Comparison                                           |
+| 7           | `==`, `!=`            | Equality                                             |
+| 8           | `&&`                  | Logical AND — short-circuit                          |
+| 9           | `\|\|`                | Logical OR — short-circuit                           |
+| 10          | `??`                  | Nil coalescing                                       |
+| 11          | `? :` (ternary)       | Conditional expression                               |
+| 12 (lowest) | `=>`                  | Lambda arrow — body expression binds loosely         |
 
 This matches C-family precedence with the addition of `??` and `..`. `??` binds
 tighter than ternary, consistent with C#, Kotlin, Swift, and TypeScript — the
@@ -423,7 +423,7 @@ reference languages for Grob's nullable operator family. The Pratt parser
 implements this table as binding powers; this table is the canonical reference
 for the implementation.
 
------
+---
 
 ## 8. Literals
 
@@ -463,13 +463,13 @@ Three string forms. Each maps to a distinct developer intent.
 `/^\d+$/`                   // single backtick — regex patterns
 ```
 
-```grob
+````grob
 query := ```
 SELECT *
 FROM users
 WHERE active = 1
 ```                         // triple backtick — multiline verbatim block
-```
+````
 
 **Double-quoted strings**
 
@@ -542,12 +542,12 @@ constructs a string where silent nil coercion would produce output like
 
 **Choosing between forms:**
 
-|Intent                                        |Form             |
-|----------------------------------------------|-----------------|
-|Normal string value                           |`"double-quoted"`|
-|String with interpolation                     |`"Hello ${name}"`|
-|Windows path, regex pattern, short verbatim   |`single backtick`|
-|SQL, multiline template, structured text block|`triple backtick`|
+| Intent                                         | Form              |
+| ---------------------------------------------- | ----------------- |
+| Normal string value                            | `"double-quoted"` |
+| String with interpolation                      | `"Hello ${name}"` |
+| Windows path, regex pattern, short verbatim    | `single backtick` |
+| SQL, multiline template, structured text block | `triple backtick` |
 
 Single-quoted strings (`'value'`) are not valid in Grob.
 
@@ -616,7 +616,7 @@ fn foo(): string[] {
 items := []             // compile error — element type cannot be inferred
 ```
 
------
+---
 
 ## 9. Type Annotations
 
@@ -639,8 +639,8 @@ items: int[] := []       // annotation required — [] provides no element type
 - Explicit type annotation syntax: `name: Type := value`.
 - Annotation is **optional** on local variables where inference can resolve the type.
 - Annotation is **required** where inference cannot:
-  - Declaration initialised with `nil` — `name: string? := nil`.
-  - Declaration initialised with `[]` — `items: int[] := []`.
+    - Declaration initialised with `nil` — `name: string? := nil`.
+    - Declaration initialised with `[]` — `items: int[] := []`.
 - Function parameters are **always explicitly typed** — no inference on parameters.
 - Return type annotation on functions: `fn foo(): int { }` — colon before the
   return type, consistent with parameter syntax.
@@ -648,7 +648,7 @@ items: int[] := []       // annotation required — [] provides no element type
   return types is post-MVP. This eliminates a class of inference ambiguity and
   keeps the type checker simple.
 
------
+---
 
 ## 10. Type Declarations and Construction
 
@@ -792,15 +792,15 @@ error: '{' begins a block, not a struct literal.
        Use '#{ field: value }' for an anonymous struct, or declare a named type.
 ```
 
-|Syntax                     |Meaning                 |
-|---------------------------|------------------------|
-|`{ }`                      |Block — always          |
-|`#{ field: value }`        |Anonymous struct literal|
-|`TypeName { field: value }`|Named type construction |
+| Syntax                      | Meaning                  |
+| --------------------------- | ------------------------ |
+| `{ }`                       | Block — always           |
+| `#{ field: value }`         | Anonymous struct literal |
+| `TypeName { field: value }` | Named type construction  |
 
 Partial construction and `with`-style record mutation are deferred post-MVP.
 
------
+---
 
 ## 11. Comments
 
@@ -819,7 +819,7 @@ Partial construction and `with`-style record mutation are deferred post-MVP.
   in v1. Reserved so that `///` usage in scripts does not break when `grob doc`
   tooling arrives post-MVP.
 
------
+---
 
 ## 12. Expressions vs Statements
 
@@ -906,7 +906,7 @@ lambda cannot be used in a position that requires a value.
 Lambda return types are always inferred from the body. There is no syntax to
 declare a lambda's return type in v1.
 
------
+---
 
 ## 12.1 Closure Semantics and Variable Resolution
 
@@ -1048,7 +1048,7 @@ lambda is called from a top-level initialiser and its body reads a
 not-yet-initialised top-level binding, the circular-initialisation
 diagnostic (§19.1) fires at that read.
 
------
+---
 
 ## 13. `print()` Built-in
 
@@ -1079,7 +1079,7 @@ slot. `print()` is a diagnostic output sink; interpolation is string
 construction. The two sites have different rules because the intent behind
 them differs.
 
------
+---
 
 ## 14. Line Continuation
 
@@ -1088,16 +1088,16 @@ Newlines are significant in Grob — they end statements. A newline is **suppres
 
 **Case 1 — Trailing token:** The current line ends with any of:
 
-|Token type                 |Examples                                                          |
-|---------------------------|------------------------------------------------------------------|
-|Binary operators           |`+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `|
-|Assignment operators       |`=`, `:=`, `+=`, `-=`, `*=`, `/=`, `%=`                           |
-|Comma                      |`,`                                                               |
-|Open bracket or parenthesis|`(`, `[`, `{`                                                     |
-|Member access dot          |`.`                                                               |
-|Lambda arrow               |`=>`                                                              |
+| Token type                  | Examples                                                           |
+| --------------------------- | ------------------------------------------------------------------ |
+| Binary operators            | `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, ` |
+| Assignment operators        | `=`, `:=`, `+=`, `-=`, `*=`, `/=`, `%=`                            |
+| Comma                       | `,`                                                                |
+| Open bracket or parenthesis | `(`, `[`, `{`                                                      |
+| Member access dot           | `.`                                                                |
+| Lambda arrow                | `=>`                                                               |
 
-**Case 2 — Leading dot:** The *next* line begins with `.`. The lexer peeks one
+**Case 2 — Leading dot:** The _next_ line begins with `.`. The lexer peeks one
 token across the newline to detect this.
 
 Leading-dot style is the **recommended form** for multi-line method chains:
@@ -1138,14 +1138,14 @@ Both cases are implemented entirely in the lexer. The parser receives a clean
 token stream with newlines already resolved. No explicit continuation character.
 No semicolons.
 
------
+---
 
 ## 15. Numeric Types
 
-|Type   |Representation        |Range                                      |
-|-------|----------------------|-------------------------------------------|
-|`int`  |64-bit signed integer |−9,223,372,036,854,775,808 to 9,223,372,036,854,775,807|
-|`float`|64-bit IEEE 754 double|±5.0 × 10⁻³²⁴ to ±1.7 × 10³⁰⁸             |
+| Type    | Representation         | Range                                                   |
+| ------- | ---------------------- | ------------------------------------------------------- |
+| `int`   | 64-bit signed integer  | −9,223,372,036,854,775,808 to 9,223,372,036,854,775,807 |
+| `float` | 64-bit IEEE 754 double | ±5.0 × 10⁻³²⁴ to ±1.7 × 10³⁰⁸                           |
 
 **Integer overflow:** Arithmetic that exceeds the `int` range throws `ArithmeticError`
 at runtime. The VM uses checked arithmetic — overflow never silently wraps. This
@@ -1169,7 +1169,7 @@ supported — use `.toString()` or string interpolation. `string` → `int` is n
 supported — use `.toInt()`. The only implicit conversion in the language is
 `int` → `float` in mixed arithmetic.
 
------
+---
 
 ## 16. Trailing Commas
 
@@ -1189,7 +1189,7 @@ Trailing commas are optional — never required. They are permitted to simplify
 code generation, reduce diff noise on version control, and align with modern
 language conventions. `grob fmt` normalises trailing comma usage.
 
------
+---
 
 ## 17. Forward References
 
@@ -1222,7 +1222,7 @@ Inside function bodies, the standard rule applies: `:=`, `const` and `readonly`
 declare in the current scope, and the name must be declared before use within
 that scope. Forward references within a single function body are not supported.
 
------
+---
 
 ## 17.1 Type Cycles
 
@@ -1285,7 +1285,7 @@ type Node {
 }
 ```
 
------
+---
 
 ## 18. Shadowing
 
@@ -1307,7 +1307,7 @@ variable names (`i`, `name`, `result`) are naturally reused. Allowing it silentl
 is a bug factory. A warning is the right balance — it signals the intent without
 blocking valid code.
 
------
+---
 
 ## 19. Script Structure and Declaration Order
 
@@ -1348,7 +1348,7 @@ print(repos.length)
 An `import` after a `param` or `type` is a compile error. A `param` after a
 `fn` or top-level statement is a compile error.
 
------
+---
 
 ## 19.1 Top-Level Initialisation Order
 
@@ -1448,7 +1448,7 @@ and adding it for this one case would be disproportionate. The runtime check
 is cheap, produces a precise diagnostic, and preserves the simpler type
 checker design.
 
------
+---
 
 ## 20. Equality Semantics
 
@@ -1477,7 +1477,7 @@ affect equality.
 **Type mismatch:** `==` between incompatible types (e.g. `int == string`) is a
 compile error, not a runtime `false`.
 
------
+---
 
 ## 21. Optional Chaining and Nil Propagation
 
@@ -1494,7 +1494,7 @@ The result type of the chain is always nullable (`T?`).
 `?.` may appear multiple times in a single chain. Each `?.` is an independent
 nil check. The chain short-circuits at the first `nil` encountered.
 
------
+---
 
 ## 22. Script-Level `return`
 
@@ -1506,7 +1506,7 @@ error: 'return' is not valid at script level.
        Use 'exit()' to terminate a script early.
 ```
 
------
+---
 
 ## 23. Explicit Non-Features
 
@@ -1526,7 +1526,7 @@ The following are explicitly not part of the Grob language:
   `string` → `int`. The only implicit conversion is `int` → `float` in mixed
   arithmetic (§15).
 
------
+---
 
 ## 24. `const` and `readonly` Semantics
 
@@ -1579,11 +1579,11 @@ Not allowed on the right-hand side of a `const` declaration:
 
 **Stdlib constant whitelist (v1):**
 
-|Namespace|Constants|
-|---------|---------|
-|`math`   |`math.pi`, `math.e`, `math.tau`|
-|`path`   |`path.separator`, `path.altSeparator`, `path.pathSeparator`, `path.lineEnding`|
-|`guid`   |`guid.empty`, `guid.namespaces.dns`, `guid.namespaces.url`, `guid.namespaces.oid`, `guid.namespaces.x500`|
+| Namespace | Constants                                                                                                 |
+| --------- | --------------------------------------------------------------------------------------------------------- |
+| `math`    | `math.pi`, `math.e`, `math.tau`                                                                           |
+| `path`    | `path.separator`, `path.altSeparator`, `path.pathSeparator`, `path.lineEnding`                            |
+| `guid`    | `guid.empty`, `guid.namespaces.dns`, `guid.namespaces.url`, `guid.namespaces.oid`, `guid.namespaces.x500` |
 
 A stdlib symbol qualifies for this list if and only if it is a named primitive
 value with no runtime cost to resolve. Functions never qualify.
@@ -1686,13 +1686,13 @@ The deeper question of mutable-binding-with-immutable-content (e.g. a
 non-`const`, non-`readonly` binding to a frozen array) is deferred post-MVP. In
 v1 the three-way distinction is sufficient:
 
-|Form              |Compile-time?|Rebind?|Mutate?|
-|------------------|-------------|-------|-------|
-|`const X := ...`  |yes          |no     |no     |
-|`readonly X := ...`|no          |no     |no     |
-|`X := ...`        |no           |yes    |yes    |
+| Form                | Compile-time? | Rebind? | Mutate? |
+| ------------------- | ------------- | ------- | ------- |
+| `const X := ...`    | yes           | no      | no      |
+| `readonly X := ...` | no            | no      | no      |
+| `X := ...`          | no            | yes     | yes     |
 
------
+---
 
 ## 25. Try-Parse Pattern
 
@@ -1716,22 +1716,22 @@ if (id != nil) {
 
 The pattern is consistent across all fallible conversions:
 
-|Method                     |Returns   |On failure|
-|---------------------------|----------|----------|
-|`string.toInt()`           |`int?`    |`nil`     |
-|`string.toFloat()`         |`float?`  |`nil`     |
-|`guid.tryParse(value)`     |`guid?`   |`nil`     |
+| Method                 | Returns  | On failure |
+| ---------------------- | -------- | ---------- |
+| `string.toInt()`       | `int?`   | `nil`      |
+| `string.toFloat()`     | `float?` | `nil`      |
+| `guid.tryParse(value)` | `guid?`  | `nil`      |
 
 The strict variants throw instead of returning nil:
 
-|Method                     |Returns   |On failure    |
-|---------------------------|----------|--------------|
-|`guid.parse(value)`        |`guid`    |`ParseError`  |
+| Method              | Returns | On failure   |
+| ------------------- | ------- | ------------ |
+| `guid.parse(value)` | `guid`  | `ParseError` |
 
 This two-tier pattern (nil-returning `try` variant + throwing strict variant)
 is the convention for all type-boundary operations.
 
------
+---
 
 ## 26. Nested Arrays
 
@@ -1754,7 +1754,7 @@ There is no dimension enforcement — `matrix[0].length` need not equal
 `matrix[1].length`. This is arrays-of-arrays, not a matrix type. Sufficient
 for JSON deserialisation of nested arrays and simple grid patterns.
 
------
+---
 
 ## 27. Exception Handling
 
@@ -1795,18 +1795,18 @@ VM-level resource failures that do not fit any of the named domains.
 
 **Canonical throw sites in v1:**
 
-|Leaf              |Throw sites                                                              |
-|------------------|-------------------------------------------------------------------------|
-|`IoError`         |`fs.*` I/O failure, permissions, `fs.createDir` on existing path         |
-|`NetworkError`    |`http.*` transport failure, DNS, connection reset, `http.download` non-2xx|
-|`JsonError`       |`json.parse` on malformed input, accessor type mismatch, `mapAs<T>` shape|
-|`ProcessError`    |`process.run` timeout, `*OrFail` on non-zero exit                        |
-|`NilError`        |Dereference of `nil` without `?.` or `??`                                |
-|`ArithmeticError` |Integer overflow (§15), int div/0, int mod/0, float div/0, float mod/0, `math.sqrt(negative)`, `math.log(0)`, `math.log(negative)`|
-|`IndexError`      |Array index out of range; substring / slice bounds out of range          |
-|`ParseError`      |`guid.parse` on malformed input; future explicit parse operations        |
-|`LookupError`     |`env.require` on a missing or empty variable                             |
-|`RuntimeError`    |Call-stack depth exceeded (stack overflow); residual                     |
+| Leaf              | Throw sites                                                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `IoError`         | `fs.*` I/O failure, permissions, `fs.createDir` on existing path                                                                   |
+| `NetworkError`    | `http.*` transport failure, DNS, connection reset, `http.download` non-2xx                                                         |
+| `JsonError`       | `json.parse` on malformed input, accessor type mismatch, `mapAs<T>` shape                                                          |
+| `ProcessError`    | `process.run` timeout, `*OrFail` on non-zero exit                                                                                  |
+| `NilError`        | Dereference of `nil` without `?.` or `??`                                                                                          |
+| `ArithmeticError` | Integer overflow (§15), int div/0, int mod/0, float div/0, float mod/0, `math.sqrt(negative)`, `math.log(0)`, `math.log(negative)` |
+| `IndexError`      | Array index out of range; substring / slice bounds out of range                                                                    |
+| `ParseError`      | `guid.parse` on malformed input; future explicit parse operations                                                                  |
+| `LookupError`     | `env.require` on a missing or empty variable                                                                                       |
+| `RuntimeError`    | Call-stack depth exceeded (stack overflow); residual                                                                               |
 
 `map<K, V>` key-not-found is **not** an `IndexError` — map lookup returns
 `V?` per the nullable design, not a throw. `int.parse()`, `float.parse()`,
@@ -1958,7 +1958,7 @@ flushes output buffers, and terminates the process with the specified code.
 There is no way to suppress or recover from `exit()`. `finally` blocks do
 not run on the `exit()` path.
 
------
+---
 
 ## 28. Statement Forms
 
@@ -1980,14 +1980,14 @@ instead.
 
 ### Assignment — `=` and compound
 
-|Operator|Operation          |
-|--------|-------------------|
-|`=`     |Reassign           |
-|`+=`    |Add and assign     |
-|`-=`    |Subtract and assign|
-|`*=`    |Multiply and assign|
-|`/=`    |Divide and assign  |
-|`%=`    |Modulo and assign  |
+| Operator | Operation           |
+| -------- | ------------------- |
+| `=`      | Reassign            |
+| `+=`     | Add and assign      |
+| `-=`     | Subtract and assign |
+| `*=`     | Multiply and assign |
+| `/=`     | Divide and assign   |
+| `%=`     | Modulo and assign   |
 
 The left-hand side must be an assignable target — a local or global name,
 a struct field access (`obj.field`), or an array index (`arr[i]`). Other
@@ -2002,10 +2002,10 @@ The type rules of the underlying binary operator apply.
 
 ### Increment and decrement — `++`, `--`
 
-|Operator|Operation         |
-|--------|------------------|
-|`i++`   |Increment `i` by 1|
-|`i--`   |Decrement `i` by 1|
+| Operator | Operation          |
+| -------- | ------------------ |
+| `i++`    | Increment `i` by 1 |
+| `i--`    | Decrement `i` by 1 |
 
 - Postfix form only — prefix (`++i`, `--i`) is not valid.
 - Applies to `int` only. `float++` and `float--` are compile errors.
@@ -2026,7 +2026,7 @@ is a parse error, not a subtle bug. Comparison uses `==`; assignment uses
 position. This is a divergence from C and a deliberate alignment with
 languages that prioritise script correctness over expression compactness.
 
------
+---
 
 ## 29. Parser Error Recovery
 
@@ -2185,7 +2185,7 @@ Parser behaviour on this input:
 
 1. Inside `return a +`, the parser expects an expression as the RHS of
    `+` and finds the closing `}` instead. It emits `error: expected
-   expression after '+'` and produces an `ErrorExpr` whose range covers
+expression after '+'` and produces an `ErrorExpr` whose range covers
    from the `+` to the `}` (exclusive). The `}` is the recovery anchor.
 2. The `add` function declaration completes. The function body is well-
    formed except for the `ErrorExpr` inside the `return`.
@@ -2201,81 +2201,81 @@ undefined identifier. The `return`'s type implications produce no
 further errors. The clean code between the two genuine errors compiles
 without noise.
 
------
+---
 
-*Document updated May 2026 — §29.3 gains an "Confinement" paragraph*
-*specifying that the `Error` type's universal assignability is local to*
-*error nodes and subtrees that transitively contain one; it is never*
-*inferred for, propagated into, or assigned to a cleanly parsed node, and*
-*does not survive a declaration boundary as a binding's published type.*
-*This closes the backdoor-`any` failure mode where a genuine type error*
-*adjacent to a parse error could be silently absorbed. No decision*
-*changed — this makes the existing cascade-suppression design (D-300)*
-*precise on the boundary it was always intended to have.*
-*Document updated May 2026 — Sprint 1 acceptance follow-up: §29.6 worked*
-*example corrected to `fn add(a: int, b: int): int {` — the original*
-*omitted the return-type annotation that v1 grammar mandates, making the*
-*example unparseable against the grammar it illustrates (D-307).*
-*Previous: May 2026 — Session 3 spec gap fill: new §29 (Parser*
-*Error Recovery) specifying the synchronisation set (statement-boundary*
-*newlines outside open brackets, closing `}` of enclosing blocks, top-*
-*level declaration keywords), error node shape (first-class `ErrorExpr`/*
-*`ErrorStmt`/`ErrorDecl` with the `Error` type), cascade suppression*
-*(the `Error` type is assignable to and from every other type),*
-*unbounded diagnostic reporting, statelessness, and a worked example*
-*(D-300). §3 `select` exhaustiveness rule expanded with a "Why `select`*
-*is non-exhaustive" rationale paragraph naming the statement-vs-*
-*expression intent split and the C#/F#/Scala/Rust/Kotlin precedent*
-*(D-301).*
-*Previous: April 2026 — Session B Part 4: three parked decisions*
-*finalised under the `const`/`readonly` keyword model. New §19.1 (D-294 —*
-*top-level initialisation order and circular-read detection via a*
-*three-state slot tag, startup-only cost); new §10 field-default*
-*evaluation subsection (D-295 — construction-time evaluation in*
-*construction-site scope, any expression permitted, no cross-field*
-*references); new §12.1 (D-296 — four-category closure variable*
-*resolution: `const` inlined, `readonly` / mutable global reads,*
-*enclosing locals captured as upvalues; "capture" reserved for the*
-*upvalue case). Pre-session reconciliation folded in Session B Part 3*
-*edits (§17 forward-reference list, new §17.1 Type Cycles) and Session B*
-*Interlude edits (§9 `readonly` example, §24 rewrite as two subsections)*
-*that had not previously landed in this document.*
-*Previous: Session C Part 2 pre-implementation review:*
-*exception hierarchy expanded from six leaves to ten (§27 — `ArithmeticError`,*
-*`IndexError`, `ParseError`, `LookupError` added as direct children of*
-*`GrobError`; `RuntimeError` narrowed to residual VM-level resource failures);*
-*§6, §15 updated to reference `ArithmeticError` on div/mod by zero and integer*
-*overflow; §25 `guid.parse()` now throws `ParseError`; §8 Windows path callout*
-*added (backtick raw strings as canonical idiom for literal-backslash content).*
-*Previous: Session B Part 2 pre-implementation review:*
-*block-body lambda semantics specified (§12 — implicit last expression with*
-*`return` for early exit, no explicit return-type annotation in v1); switch*
-*expression pattern grammar specified (§3.1 — value, relational, and catch-all*
-*patterns; `nil` as value pattern on nullable scrutinees; exhaustiveness rules;*
-*multi-value, range, and type patterns deferred post-MVP); integer division by*
-*zero clarified (§6, §15 — throws `ArithmeticError`, matches integer modulo, float*
-*division, and float modulo); nullable interpolation is a compile error (§8,*
-*§13 — `?? <fallback>` or narrowing `if` required; `print()` asymmetry*
-*preserved and made explicit); §27 clarification that `return` inside a*
-*block-body lambda nested in `finally` is permitted (exits lambda, not*
-*enclosing function).*
-*Previous: Session B Part 1 — `print`, `exit`, `input` confirmed as built-in*
-*functions (not keywords); operator precedence table reduced to 12 levels*
-*(assignment moved to §28 Statement Forms, `??` moved tighter than ternary to*
-*match C# / Kotlin / Swift / TypeScript); `float % float` specified with fmod*
-*semantics, modulo-by-zero throws; `try`/`catch`/`throw`/`finally` grammar*
-*specified (§27); Statement Forms consolidated (§28).*
-*Previous: operator precedence table*
-*expanded to 13 levels (aligned with v1 spec); scientific notation deferred to post-MVP;*
-*numeric types (int/float precision, overflow, promotion) specified; trailing commas*
-*permitted; forward references specified (two-pass type checker); shadowing allowed*
-*with warning; script structure and declaration order specified; equality semantics*
-*defined for all types; optional chaining nil propagation specified; script-level*
-*return is a compile error; explicit non-features stated (tuples, out parameters added);*
-*`const` semantics specified (binding AND content immutable); try-parse pattern*
-*documented; nested arrays (`T[][]`) specified.*
-*Previous: OQ-007 resolved: `for...in` iterable types*
-*special-cased as array, map<K, V>, and numeric range. Formal iterable protocol post-MVP.*
-*Document created April 2026 — language fundamentals design session.*
-*Authorised decisions recorded in grob-decisions-log.md.*
-*This document is the implementation reference — the decisions log is the authority.*
+_Document updated May 2026 — §29.3 gains a "Confinement" paragraph_
+_specifying that the `Error` type's universal assignability is local to_
+_error nodes and subtrees that transitively contain one; it is never_
+_inferred for, propagated into, or assigned to a cleanly parsed node, and_
+_does not survive a declaration boundary as a binding's published type._
+_This closes the backdoor-`any` failure mode where a genuine type error_
+_adjacent to a parse error could be silently absorbed. No decision_
+_changed — this makes the existing cascade-suppression design (D-300)_
+_precise on the boundary it was always intended to have._
+_Document updated May 2026 — Sprint 1 acceptance follow-up: §29.6 worked_
+_example corrected to `fn add(a: int, b: int): int {` — the original_
+_omitted the return-type annotation that v1 grammar mandates, making the_
+_example unparseable against the grammar it illustrates (D-307)._
+_Previous: May 2026 — Session 3 spec gap fill: new §29 (Parser_
+_Error Recovery) specifying the synchronisation set (statement-boundary_
+_newlines outside open brackets, closing `}` of enclosing blocks, top-_
+_level declaration keywords), error node shape (first-class `ErrorExpr`/_
+_`ErrorStmt`/`ErrorDecl` with the `Error` type), cascade suppression_
+_(the `Error` type is assignable to and from every other type),_
+_unbounded diagnostic reporting, statelessness, and a worked example_
+_(D-300). §3 `select` exhaustiveness rule expanded with a "Why `select`_
+_is non-exhaustive" rationale paragraph naming the statement-vs-_
+_expression intent split and the C#/F#/Scala/Rust/Kotlin precedent_
+_(D-301)._
+_Previous: April 2026 — Session B Part 4: three parked decisions_
+_finalised under the `const`/`readonly` keyword model. New §19.1 (D-294 —_
+_top-level initialisation order and circular-read detection via a_
+_three-state slot tag, startup-only cost); new §10 field-default_
+_evaluation subsection (D-295 — construction-time evaluation in_
+_construction-site scope, any expression permitted, no cross-field_
+_references); new §12.1 (D-296 — four-category closure variable_
+_resolution: `const` inlined, `readonly` / mutable global reads,_
+_enclosing locals captured as upvalues; "capture" reserved for the_
+_upvalue case). Pre-session reconciliation folded in Session B Part 3_
+_edits (§17 forward-reference list, new §17.1 Type Cycles) and Session B_
+_Interlude edits (§9 `readonly` example, §24 rewrite as two subsections)_
+_that had not previously landed in this document._
+_Previous: Session C Part 2 pre-implementation review:_
+_exception hierarchy expanded from six leaves to ten (§27 — `ArithmeticError`,_
+_`IndexError`, `ParseError`, `LookupError` added as direct children of_
+_`GrobError`; `RuntimeError` narrowed to residual VM-level resource failures);_
+_§6, §15 updated to reference `ArithmeticError` on div/mod by zero and integer_
+_overflow; §25 `guid.parse()` now throws `ParseError`; §8 Windows path callout_
+_added (backtick raw strings as canonical idiom for literal-backslash content)._
+_Previous: Session B Part 2 pre-implementation review:_
+_block-body lambda semantics specified (§12 — implicit last expression with_
+_`return` for early exit, no explicit return-type annotation in v1); switch_
+_expression pattern grammar specified (§3.1 — value, relational, and catch-all_
+_patterns; `nil` as value pattern on nullable scrutinees; exhaustiveness rules;_
+_multi-value, range, and type patterns deferred post-MVP); integer division by_
+_zero clarified (§6, §15 — throws `ArithmeticError`, matches integer modulo, float_
+_division, and float modulo); nullable interpolation is a compile error (§8,_
+_§13 — `?? <fallback>` or narrowing `if` required; `print()` asymmetry_
+_preserved and made explicit); §27 clarification that `return` inside a_
+_block-body lambda nested in `finally` is permitted (exits lambda, not_
+_enclosing function)._
+_Previous: Session B Part 1 — `print`, `exit`, `input` confirmed as built-in_
+_functions (not keywords); operator precedence table reduced to 12 levels_
+_(assignment moved to §28 Statement Forms, `??` moved tighter than ternary to_
+_match C# / Kotlin / Swift / TypeScript); `float % float` specified with fmod_
+_semantics, modulo-by-zero throws; `try`/`catch`/`throw`/`finally` grammar_
+_specified (§27); Statement Forms consolidated (§28)._
+_Previous: operator precedence table_
+_expanded to 13 levels (aligned with v1 spec); scientific notation deferred to post-MVP;_
+_numeric types (int/float precision, overflow, promotion) specified; trailing commas_
+_permitted; forward references specified (two-pass type checker); shadowing allowed_
+_with warning; script structure and declaration order specified; equality semantics_
+_defined for all types; optional chaining nil propagation specified; script-level_
+_return is a compile error; explicit non-features stated (tuples, out parameters added);_
+_`const` semantics specified (binding AND content immutable); try-parse pattern_
+_documented; nested arrays (`T[][]`) specified._
+_Previous: OQ-007 resolved: `for...in` iterable types_
+_special-cased as array, map<K, V>, and numeric range. Formal iterable protocol post-MVP._
+_Document created April 2026 — language fundamentals design session._
+_Authorised decisions recorded in grob-decisions-log.md._
+_This document is the implementation reference — the decisions log is the authority._
