@@ -48,7 +48,7 @@ public sealed partial class TypeChecker {
     public override GrobType VisitIdentifier(IdentifierExpr node) {
         Symbol? symbol = LookupSymbol(node.Name);
         if (symbol is null) {
-            EmitError("E1001", $"Undefined identifier '{node.Name}'.", node.Range);
+            EmitError(ErrorCatalog.E1001, $"Undefined identifier '{node.Name}'.", node.Range);
             node.ResolvedType = GrobType.Error;
             // node.Declaration remains null — no declaring node exists.
             return GrobType.Error;
@@ -71,9 +71,9 @@ public sealed partial class TypeChecker {
             UnaryOperator.Negate when operand == GrobType.Int => GrobType.Int,
             UnaryOperator.Negate when operand == GrobType.Float => GrobType.Float,
             UnaryOperator.Not when operand == GrobType.Bool => GrobType.Bool,
-            UnaryOperator.Negate => EmitErrorAndReturn("E0002",
+            UnaryOperator.Negate => EmitErrorAndReturn(ErrorCatalog.E0002,
                 $"Operator '-' cannot be applied to type '{TypeName(operand)}'.", node.Range),
-            UnaryOperator.Not => EmitErrorAndReturn("E0002",
+            UnaryOperator.Not => EmitErrorAndReturn(ErrorCatalog.E0002,
                 $"Operator '!' cannot be applied to type '{TypeName(operand)}'.", node.Range),
             _ => GrobType.Unknown,
         };
@@ -119,7 +119,7 @@ public sealed partial class TypeChecker {
         }
 
         // All other combinations are type errors — e.g. int + string.
-        return EmitErrorAndReturn("E0002",
+        return EmitErrorAndReturn(ErrorCatalog.E0002,
             $"Operator '{OperatorSymbol(node.Operator)}' cannot be applied to types '{TypeName(left)}' and '{TypeName(right)}'.",
             node.Range);
     }
@@ -128,7 +128,7 @@ public sealed partial class TypeChecker {
         // == and != accept same-type operands or mixed numeric operands.
         if (node.Operator == BinaryOperator.Equal || node.Operator == BinaryOperator.NotEqual) {
             if (left == right || BothNumeric(left, right)) return GrobType.Bool;
-            return EmitErrorAndReturn("E0002",
+            return EmitErrorAndReturn(ErrorCatalog.E0002,
                 $"Operator '{OperatorSymbol(node.Operator)}' cannot be applied to types '{TypeName(left)}' and '{TypeName(right)}'.",
                 node.Range);
         }
@@ -138,7 +138,7 @@ public sealed partial class TypeChecker {
             return GrobType.Bool;
         }
 
-        return EmitErrorAndReturn("E0002",
+        return EmitErrorAndReturn(ErrorCatalog.E0002,
             $"Operator '{OperatorSymbol(node.Operator)}' cannot be applied to types '{TypeName(left)}' and '{TypeName(right)}'.",
             node.Range);
     }
@@ -147,10 +147,10 @@ public sealed partial class TypeChecker {
         if (left == GrobType.Bool && right == GrobType.Bool) return GrobType.Bool;
         string sym = node.Operator == BinaryOperator.And ? "&&" : "||";
         if (left != GrobType.Bool) {
-            return EmitErrorAndReturn("E0002",
+            return EmitErrorAndReturn(ErrorCatalog.E0002,
                 $"Operator '{sym}' cannot be applied to type '{TypeName(left)}'.", node.Left.Range);
         }
-        return EmitErrorAndReturn("E0002",
+        return EmitErrorAndReturn(ErrorCatalog.E0002,
             $"Operator '{sym}' cannot be applied to type '{TypeName(right)}'.", node.Right.Range);
     }
 

@@ -31,7 +31,7 @@ public sealed class ValueStack {
     /// </summary>
     public void Push(GrobValue value, int line) {
         if (_top == _values.Length)
-            throw new GrobRuntimeException("E5903", line, "value stack overflow");
+            throw new GrobRuntimeException(ErrorCatalog.E5903.Code, line, "value stack overflow");
         _values[_top++] = value;
     }
 
