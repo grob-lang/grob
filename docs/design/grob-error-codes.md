@@ -1095,4 +1095,6 @@ None as of v1.
 
 ---
 
-_Initial allocation: 86 codes across 7 categories. All `pre-release` until v1.0 ships. Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule)._
+_Initial allocation: 94 codes across 7 categories. All `pre-release` until v1.0 ships. Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule)._
+
+_Updated May 2026 — count corrected from a stale "86 codes" to the actual 94 codes present in the summary index and full entries. No codes were added in this edit; the footer total had not been updated as codes accrued. The 7-category structure (E0xxx–E9xxx) is unchanged._
