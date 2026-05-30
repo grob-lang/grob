@@ -12,7 +12,6 @@ namespace Grob.Benchmarks.Compile;
 /// explicit decision record.
 /// </summary>
 [MemoryDiagnoser]
-[DisassemblyDiagnoser]
 public class CompileBenchmarks {
     private string _twoExpressions = null!;
     private string _tenPrints = null!;
