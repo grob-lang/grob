@@ -1,0 +1,9 @@
+{
+  "_comment": "Sprint 2 Increment D first-run placeholder. Replace with actual BenchmarkDotNet output after running: dotnet run -c Release --project bench/Grob.Benchmarks",
+  "Title": "Grob Sprint 2 Compile Benchmarks — Baseline",
+  "HostEnvironmentInfo": {
+    "BenchmarkDotNetVersion": "0.14.*",
+    "Runtime": ".NET 10"
+  },
+  "Benchmarks": []
+}
