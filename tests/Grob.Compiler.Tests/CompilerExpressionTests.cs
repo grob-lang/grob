@@ -262,6 +262,76 @@ public sealed class CompilerExpressionTests {
     // Line-number metadata
     // -----------------------------------------------------------------------
 
+    // -----------------------------------------------------------------------
+    // Bool and nil literals
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void BoolLiteral_True_EmitsTrueOpcode() {
+        Chunk chunk = CompileSource("true");
+        Assert.Equal([OpCode.True, OpCode.Return], ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void BoolLiteral_False_EmitsFalseOpcode() {
+        Chunk chunk = CompileSource("false");
+        Assert.Equal([OpCode.False, OpCode.Return], ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void NilLiteral_EmitsNilOpcode() {
+        Chunk chunk = CompileSource("nil");
+        Assert.Equal([OpCode.Nil, OpCode.Return], ReadOpcodes(chunk));
+    }
+
+    // -----------------------------------------------------------------------
+    // Raw string literal
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void RawStringLiteral_EmitsConstantWithValue() {
+        Chunk chunk = CompileSource("`hello`");
+        Assert.Equal([OpCode.Constant, OpCode.Return], ReadOpcodes(chunk));
+        Assert.Equal("hello", chunk.ReadConstant(0).AsString());
+    }
+
+    // -----------------------------------------------------------------------
+    // Grouping
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Grouping_EmitsSameOpcodeAsInner() {
+        Chunk chunk = CompileSource("(42)");
+        Assert.Equal([OpCode.Constant, OpCode.Return], ReadOpcodes(chunk));
+        Assert.Equal(42L, chunk.ReadConstant(0).AsInt());
+    }
+
+    // -----------------------------------------------------------------------
+    // Remaining float arithmetic (Multiply, Divide, Modulo)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void BinaryMultiplyFloat_EmitsMultiplyFloat() {
+        Chunk chunk = CompileSource("2.0 * 3.0");
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.MultiplyFloat, OpCode.Return], ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void BinaryDivideFloat_EmitsDivideFloat() {
+        Chunk chunk = CompileSource("4.0 / 2.0");
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.DivideFloat, OpCode.Return], ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void BinaryModuloFloat_EmitsModuloFloat() {
+        Chunk chunk = CompileSource("5.0 % 2.0");
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.ModuloFloat, OpCode.Return], ReadOpcodes(chunk));
+    }
+
+    // -----------------------------------------------------------------------
+    // Line-number metadata
+    // -----------------------------------------------------------------------
+
     [Fact]
     public void LineNumbers_MatchSourceLine() {
         // Source has two print statements: line 1 and line 2.

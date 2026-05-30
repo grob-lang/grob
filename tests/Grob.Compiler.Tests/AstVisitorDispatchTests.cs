@@ -1,4 +1,5 @@
 using Grob.Compiler.Ast;
+using Grob.Compiler.Ast.Declarations;
 using Grob.Core;
 
 using Xunit;
@@ -57,6 +58,7 @@ public class AstVisitorDispatchTests {
         public override string VisitImportDecl(ImportDecl node) => nameof(VisitImportDecl);
         public override string VisitConstDecl(ConstDecl node) => nameof(VisitConstDecl);
         public override string VisitReadonlyDecl(ReadonlyDecl node) => nameof(VisitReadonlyDecl);
+        public override string VisitBuiltinDecl(BuiltinDecl node) => nameof(VisitBuiltinDecl);
         public override string VisitErrorDecl(ErrorDecl node) => nameof(VisitErrorDecl);
 
         public override string VisitCompilationUnit(CompilationUnit node) => nameof(VisitCompilationUnit);
@@ -114,6 +116,7 @@ public class AstVisitorDispatchTests {
         [new ImportDecl(R, "m", null), nameof(HookNameVisitor.VisitImportDecl)],
         [new ConstDecl(R, "K", null, Int(1)), nameof(HookNameVisitor.VisitConstDecl)],
         [new ReadonlyDecl(R, "K", null, Int(1)), nameof(HookNameVisitor.VisitReadonlyDecl)],
+        [new BuiltinDecl("print"), nameof(HookNameVisitor.VisitBuiltinDecl)],
         [new ErrorDecl(R, ErrDiag()), nameof(HookNameVisitor.VisitErrorDecl)],
     ];
 
