@@ -180,6 +180,15 @@ knows about the other.
 |`Grob.Stdlib`  |13 core modules as `IGrobPlugin` implementations                                        |References Core + Runtime only. Auto-registered by Cli at startup             |
 |`Grob.Cli`     |Composition root, CLI commands, REPL, error formatting                                  |References all `src/` assemblies. Nothing references Cli                      |
 
+The v1 build comprises these six `src/` assemblies. `Grob.Lsp` is a
+solution member (D-134) but is **not a v1 build target** — the LSP is
+post-MVP (§13), so the assembly is absent from the v1 dependency graph
+and from this table by design, not omission. When it is built, D-134
+places it depending on `Grob.Compiler`, `Grob.Core` and `Grob.Runtime`,
+never on `Grob.Vm`. The day-one `SourceLocation` and `Declaration`
+back-reference requirements (§3.1.1) exist precisely so that `Grob.Lsp`
+can be added later without retrofitting the compiler.
+
 ### Naming Convention
 
 The prefix for all Grob runtime types is `Grob` in full. `Gro` as an
@@ -1453,6 +1462,15 @@ Candidates considered and rejected during Session C Part 2:
   slip the sprint, not to cut the feature.
 
 -----
+
+*This document was updated May 2026 — §2 Assembly Responsibilities gains*
+*a clarifying note that the v1 build is six `src/` assemblies and that*
+*`Grob.Lsp` is a solution member (D-134) deliberately absent from the v1*
+*dependency graph and table because the LSP is post-MVP (§13), not an*
+*omission. The note records D-134's dependency direction (Compiler, Core,*
+*Runtime; never Vm) and ties the absence back to the day-one*
+*`SourceLocation` / `Declaration` requirements (§3.1.1) that make the*
+*later addition retrofit-free. No decision changed.*
 
 *This document was updated May 2026 — OQ-005 and OQ-006 closure:*
 *§2 architecture bullets rewritten — "Lean on C#'s GC … unless profiling*

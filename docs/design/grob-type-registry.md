@@ -34,13 +34,13 @@ time — no boxing, no vtable, no heap allocation.
 |`replace(from: string, to: string)`               |method  |`→ string`  |Replaces all occurrences                                 |
 |`indexOf(s: string)`                              |method  |`→ int`     |First occurrence; -1 if not found                        |
 |`lastIndexOf(s: string)`                          |method  |`→ int`     |Last occurrence; -1 if not found                         |
-|`substring(start: int, length: int)`              |method  |`→ string`  |Zero-based start; throws `RuntimeError` if out of range  |
+|`substring(start: int, length: int)`              |method  |`→ string`  |Zero-based start; throws `IndexError` if out of range    |
 |`padLeft(width: int, char: string = " ")`         |method  |`→ string`  |Pads to total width on the left                          |
 |`padRight(width: int, char: string = " ")`        |method  |`→ string`  |Pads to total width on the right                         |
 |`repeat(count: int)`                              |method  |`→ string`  |Repeats the string n times                               |
 |`truncate(maxLength: int, suffix: string = "...")`|method  |`→ string`  |Truncates to max length; appends suffix if truncated     |
-|`left(n: int)`                                    |method  |`→ string`  |First `n` characters. Throws `RuntimeError` if n > length|
-|`right(n: int)`                                   |method  |`→ string`  |Last `n` characters. Throws `RuntimeError` if n > length |
+|`left(n: int)`                                    |method  |`→ string`  |First `n` characters. Throws `IndexError` if n > length  |
+|`right(n: int)`                                   |method  |`→ string`  |Last `n` characters. Throws `IndexError` if n > length   |
 |`toString()`                                      |method  |`→ string`  |Returns the string unchanged — identity for type uniformity|
 
 -----
@@ -99,8 +99,8 @@ time — no boxing, no vtable, no heap allocation.
 |`each(fn: T → void)`                          |method  |`→ void` |                                                                                           |
 |`sort<U: Comparable>(fn: T → U, descending: bool = false)`|method|`→ T[]`|Returns new sorted array. **Stable.** U must be `int`, `float`, `string`, `date`, `guid`, or `bool`.|
 |`append(value: T)`                            |method  |`→ void` |Appends one element. Mutates in place. Binding must not be `const` or `readonly`.          |
-|`insert(index: int, value: T)`                |method  |`→ void` |Inserts before index. Throws `RuntimeError` if out of range. Mutates in place.             |
-|`remove(index: int)`                          |method  |`→ void` |Removes element at index. Throws `RuntimeError` if out of range. Mutates in place.         |
+|`insert(index: int, value: T)`                |method  |`→ void` |Inserts before index. Throws `IndexError` if out of range. Mutates in place.               |
+|`remove(index: int)`                          |method  |`→ void` |Removes element at index. Throws `IndexError` if out of range. Mutates in place.           |
 |`clear()`                                     |method  |`→ void` |Removes all elements. Mutates in place. Binding must not be `const` or `readonly`.         |
 
 **Mutation rules:**
@@ -235,8 +235,8 @@ and timezone members are specified in the confirmed decisions table (Apr 2026,
 
 |Member             |Kind   |Signature |Notes                                                                |
 |-------------------|-------|----------|---------------------------------------------------------------------|
-|`get(name: string)`|method |`→ string`|By header name. Throws `RuntimeError` if no headers or name not found|
-|`get(index: int)`  |method |`→ string`|By zero-based index. Throws `RuntimeError` if out of range           |
+|`get(name: string)`|method |`→ string`|By header name. Throws `LookupError` if no headers or name not found|
+|`get(index: int)`  |method |`→ string`|By zero-based index. Throws `IndexError` if out of range            |
 |`[name: string]`   |indexer|`→ string`|Sugar for `get(name)`                                                |
 |`[index: int]`     |indexer|`→ string`|Sugar for `get(index)`                                               |
 
@@ -301,7 +301,7 @@ guid.namespaces.oid   // 6ba7b812-9dad-11d1-80b4-00c04fd430c8
 |`guid.newV4()`                      |static|`→ guid`  |Random                                                                                              |
 |`guid.newV7()`                      |static|`→ guid`  |Time-ordered random (RFC 9562)                                                                      |
 |`guid.newV5(namespace, name...)`    |static|`→ guid`  |Deterministic. Variadic `name: string...` segments.                                                 |
-|`guid.parse(value: string)`         |static|`→ guid`  |Throws `RuntimeError` if invalid. Compile-time validation on string literal arguments.              |
+|`guid.parse(value: string)`         |static|`→ guid`  |Throws `ParseError` if invalid. Compile-time validation on string literal arguments.                |
 |`guid.tryParse(value: string)`      |static|`→ guid?` |Returns nil if invalid                                                                              |
 |`guid.empty`                        |static|`→ guid`  |`00000000-0000-0000-0000-000000000000`                                                              |
 |`guid.namespaces.dns`               |static|`→ guid`  |RFC 4122 DNS namespace                                                                              |
@@ -457,6 +457,20 @@ the decisions log.
 
 -----
 
+*Document updated May 2026 — D-284 throw-site reconciliation: eight*
+*registry throw sites updated from the residual `RuntimeError` to the*
+*typed leaf the ten-leaf exception hierarchy (D-284,*
+*`grob-language-fundamentals.md` §27) assigns them. `string.substring`,*
+*`string.left`, `string.right`, `T[].insert`, `T[].remove` and*
+*`CsvRow.get(index)` now throw `IndexError` (bounds violations);*
+*`guid.parse` now throws `ParseError` (matching §27 and the corrected*
+*`grob-stdlib-reference.md`); `CsvRow.get(name)` now throws `LookupError`*
+*(a header-name miss is a name-lookup failure, not a bounds violation —*
+*the natural domain a script author catches). This document is named the*
+*authoritative throw-site reference by `grob-v1-requirements.md` §6; the*
+*split had previously landed in fundamentals, requirements and the stdlib*
+*reference but not here. No decision changed — this aligns the registry*
+*with D-284 as already recorded.*
 *Document updated May 2026 — Session 4: `Error` (compiler-internal) type*
 *entry added (S-3.2). Compiler-internal type produced by error-recovering*
 *parser per D-300 and `grob-language-fundamentals.md` §29; assignable to*

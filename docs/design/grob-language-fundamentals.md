@@ -2112,6 +2112,32 @@ developer fixes the parse error, recompiles, and any genuine downstream
 errors then surface. This matches the developer-on-save workflow that
 the LSP integration depends on.
 
+**Confinement.** The `Error` type's universal assignability exists solely
+to suppress cascades from a parse failure — it is not a general escape
+hatch. `Error` arises only on an error node or on a node that
+transitively contains one. It is never inferred for, propagated into, or
+assigned to a node whose subtree parsed cleanly. Concretely:
+
+- A function whose body parsed cleanly has its declared return type, never
+  `Error`, regardless of errors elsewhere in the file. A clean call site
+  to it is checked normally.
+- A clean expression assigned into a binding whose declared or inferred
+  type is well-formed is checked against that type, not silently widened
+  because some other statement produced an `Error`.
+- `Error` does not survive across a declaration boundary as a binding's
+  published type. A binding whose initialiser was an `ErrorExpr` is
+  registered with the synthetic `Error` entry (so references stay quiet),
+  but this entry is confined to that binding — it does not make unrelated
+  expressions assignable to one another.
+
+The rule prevents `Error` from behaving as a backdoor `any` that masks
+genuine type bugs sitting structurally adjacent to a parse error. This
+matches the way production compilers (for example Roslyn's error type)
+keep their error sentinel local to the malformed region rather than
+letting it leak into well-formed code. A genuine type error next to a
+parse error is still reported, because the well-formed side of that
+adjacency never acquires the `Error` type.
+
 ### 29.4 Diagnostic cap
 
 There is **no per-file cap** on diagnostics. The parser reports every
@@ -2177,6 +2203,15 @@ without noise.
 
 -----
 
+*Document updated May 2026 — §29.3 gains an "Confinement" paragraph*
+*specifying that the `Error` type's universal assignability is local to*
+*error nodes and subtrees that transitively contain one; it is never*
+*inferred for, propagated into, or assigned to a cleanly parsed node, and*
+*does not survive a declaration boundary as a binding's published type.*
+*This closes the backdoor-`any` failure mode where a genuine type error*
+*adjacent to a parse error could be silently absorbed. No decision*
+*changed — this makes the existing cascade-suppression design (D-300)*
+*precise on the boundary it was always intended to have.*
 *Document updated May 2026 — Sprint 1 acceptance follow-up: §29.6 worked*
 *example corrected to `fn add(a: int, b: int): int {` — the original*
 *omitted the return-type annotation that v1 grammar mandates, making the*
