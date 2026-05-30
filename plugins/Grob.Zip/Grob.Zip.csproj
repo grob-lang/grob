@@ -5,7 +5,6 @@
     <RootNamespace>Grob.Zip</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
     <PackageTags>grob-plugin</PackageTags>
   </PropertyGroup>
 

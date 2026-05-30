@@ -6,8 +6,6 @@
     <RootNamespace>Grob.Benchmarks</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>13</LangVersion>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- Benchmarks are not packaged or tested via the standard test runner. -->
     <IsPackable>false</IsPackable>
   </PropertyGroup>

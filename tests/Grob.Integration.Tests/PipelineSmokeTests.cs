@@ -24,7 +24,7 @@ public class PipelineSmokeTests {
     private static string FixturePath(string name) {
         if (Path.IsPathRooted(name))
             throw new ArgumentException($"Fixture name must be a relative path, got: {name}", nameof(name));
-        return Path.Combine(AppContext.BaseDirectory, "fixtures", "sprint-1", name);
+        return Path.Join(AppContext.BaseDirectory, "fixtures", "sprint-1", name);
     }
 
     private static (CompilationUnit Unit, DiagnosticBag Diagnostics) LexAndParse(string source) {
