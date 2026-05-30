@@ -42,6 +42,31 @@ Read, in order:
 5. Decisions **D-302** (benchmarking), **D-303** (GrobValue), **D-307**
    (lowercase built-in type names) in `docs/design/grob-decisions-log.md`.
 
+> **Verify before relying on cited decisions.** This prompt cites D-302,
+> D-303 and D-307. Grep the decisions log to confirm each says what this
+> prompt assumes (D-302 = benchmarking strategy / skeleton; D-303 = the
+> `GrobValue` shape the chunk and VM use; D-307 = lowercase built-in scalar
+> type names) before building on them. If any has been superseded or
+> renumbered, surface it rather than proceeding.
+>
+> **Typed-opcode selection — inline reference (authoritative source is §3.3;
+> reproduced here so emission does not depend on a fetch landing well).** The
+> compiler does not re-derive types — it reads the `ResolvedType` Increment C
+> set and maps it to the specialised opcode:
+>
+> - resolved `int` arithmetic → `AddInt` (and the rest of the int arithmetic
+>   family)
+> - resolved `float` arithmetic → `AddFloat` (and the float family); a
+>   mixed `int op float` resolves to `float` at type-check time, so the
+>   promotion is already baked into the annotation — emit the float opcode,
+>   do not emit a runtime promotion check
+> - resolved `string + string` → `Concat`
+>
+> No runtime type checks are emitted: the type checker already proved
+> correctness. Emitting a typed opcode off an annotation is the whole point
+> of the design — the compiler is where type information _becomes_ opcode
+> choice.
+>
 > **Sequencing note.** This is Increment D — the close of the agreed Sprint 2
 > breakdown: A → B → C → **D (compiler + end-to-end + benchmark skeleton)**.
 > After this increment, Sprint 2's §4 acceptance criteria are met in full and
@@ -168,13 +193,18 @@ Per §3.5, tests land in the project that matches their kind:
 
 ## Model
 
-Sonnet for the emission arms and the benchmark scaffolding (both largely
-mechanical). Reach for Opus on the typed-opcode selection logic if the
-mapping from `ResolvedType` to opcode gets subtle (mixed-type promotion
-chains), and on the visitor / partial-class structure if the shape needs a
-decision that later sprints will build on — the compiler skeleton you lay
-down here is extended by every subsequent sprint, so the structure is worth
-getting right once.
+Sonnet 4.6 (High effort) throughout — the emission arms, the benchmark
+scaffolding, and the typed-opcode selection. The mixed-type promotion chains
+are _not_ an Opus case despite looking like one: they are settled by the
+`ResolvedType` annotations Increment C already proved, so the compiler is
+reading a resolved type and choosing an opcode — transcription, not
+judgement. The one defensible Opus moment is the visitor / partial-class
+compiler skeleton, because every subsequent sprint extends it and the shape
+is worth getting right once. Even there, paste the partial-class compiler
+section from `grob-solution-architecture.md` into the prompt first; with the
+intended structure in front of it, Sonnet should lay it down correctly. The
+trigger for Opus is "load-bearing structural decision later sprints build
+on," never "this part is hard."
 
 ## Hand-off
 
