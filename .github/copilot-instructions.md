@@ -166,10 +166,58 @@ These apply to anything the CLI, compiler or REPL prints, and to docs and commen
   context.
 - **Match the existing code.** Read the surrounding file before writing. Follow its
   naming, its structure, its partial-class organisation.
+- **XML doc comments on every public API.** Every public type, method and property
+  in C# host code carries an XML doc comment (`/// <summary>...`). Internal members
+  are documented when their purpose is not obvious from the name. This applies to
+  every new file and every new public member added to an existing file — it is not
+  a "later" item.
 - **The `Grob` prefix is always spelled in full** — `GrobType`, `GrobValue`,
   `GrobError`. `Gro` is not a convention in this codebase.
 - When a task is large, propose the smallest working increment first. "Working" means
   the test suite passes and the increment runs something meaningful.
+
+-----
+
+## Codebase orientation before writing
+
+The solution shape above tells you *what* lives where. The existing files tell you
+*how* the patterns are applied. Before writing in a project, open the existing files
+in that project and read them — naming, partial-class layout, test structure, error
+patterns. Match what is there.
+
+If the increment's prompt names specific files to read first, those are mandatory,
+not suggestions. They are listed because the prompt author already knows which
+existing patterns matter for the increment in hand.
+
+The cost of skipping this step is rework. It is almost always cheaper to spend ten
+minutes reading three existing files than to write something that does not match and
+get it corrected later.
+
+-----
+
+## When stuck, exhaust these before asking
+
+Most stalls resolve on this list. Work through it before raising a clarifying
+question to the maintainer.
+
+- Run `dotnet build`. Read the actual error and what it points at.
+- Run `dotnet test`. Read the actual failure, not your model of it.
+- Run the pre-commit hooks (whitespace, formatting, linters). If the maintainer
+  asks for a "format fix" or "whitespace fix", running the hooks *is* the first
+  move — not a question about what they mean.
+- Run `git diff` to see what actually changed in the working tree versus what you
+  intended to change.
+- Open the existing nearest similar code and copy the pattern. New compiler test?
+  Open the existing VM tests in `Grob.Vm.Tests`. New partial class? Open the
+  existing partial classes in the same project.
+- Re-read the relevant `D-###` decision in the decisions log rather than guessing
+  what it says.
+
+After all of that, if you are still stuck, ask **one specific question**: name the
+file, the line, and the choice you cannot resolve. Do not loop on context-gathering
+when the answer is a single command away.
+
+-----
 
 When you are unsure which sprint a piece of work belongs to, or whether a feature is
 in v1 scope, check `grob-v1-requirements.md` §4 (sprint breakdown) and §13 (out of

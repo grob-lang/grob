@@ -48,7 +48,62 @@ Read, in order:
 > `GrobValue` shape the chunk and VM use; D-307 = lowercase built-in scalar
 > type names) before building on them. If any has been superseded or
 > renumbered, surface it rather than proceeding.
->
+
+## Files to read before writing any code
+
+These are mandatory codebase-orientation reads, not suggestions. The spec docs
+above tell you what to build; these files show you the patterns already in
+place in this repo, which you must match. Open and read each one before you
+write your plan (see the next section). The cost is ten minutes; the cost of
+skipping it is rework.
+
+- `src/Grob.Core/Chunk.cs` — the write surface (`writeByte`, `addConstant`,
+  the parallel line array) you will emit through. Read carefully; do not
+  reinvent its API.
+- `src/Grob.Core/OpCode.cs` — the full enum from Increment A. Do not extend
+  it casually; if you need an opcode that is not there, stop and surface it.
+- `src/Grob.Core/GrobValue.cs` — the tagged-union shape (D-303) constants
+  must conform to before they go into the pool.
+- `src/Grob.Vm/VirtualMachine.cs` — the consumer of the chunks you emit.
+  Knowing what the VM expects per opcode prevents emit/decode mismatches.
+- `src/Grob.Vm/Disassembler.cs` — the tool you will use to verify emission
+  output. The acceptance criteria require disassembling your output, not
+  only running it.
+- `src/Grob.Compiler/TypeChecker/*.cs` (Increment C) — the source of the
+  `ResolvedType` annotations you read. Do not modify these from Increment D;
+  if the annotation you need is missing, surface it.
+- `tests/Grob.Vm.Tests/` — the pattern for VM-side tests. New compiler tests
+  in `Grob.Compiler.Tests` should match the structure, naming and assertion
+  style already established here.
+- `Directory.Build.props` and the existing `.csproj` files — for the
+  benchmark project's framework, language version, nullable settings, and
+  the conventions every new `.csproj` must inherit.
+
+If any of these files are missing or noticeably different from what this
+prompt describes, stop and surface it before proceeding. Do not guess at the
+shape of something this prompt assumes exists.
+
+## Plan before code
+
+After the branch is created (see "Branching and commits" below — that step
+comes first), and before writing any code, post back a numbered plan and
+**wait for the maintainer to approve it**. The plan covers:
+
+1. The files you will create, with their full paths.
+2. The files you will modify, with a one-line summary of the change to each.
+3. The tests you will add, with their target project and what each asserts.
+4. The order you will work in (e.g. "compiler tests for `2 + 3 * 4` first,
+   then minimum compiler to make them pass, then end-to-end, then benchmark
+   skeleton").
+5. Any assumptions you are making that this prompt does not cover, and any
+   questions you would otherwise have asked mid-implementation — answer them
+   here before code, not after.
+
+The plan exists because most rework on this project comes from misalignment
+that was visible *before* code was written. Five minutes of plan review at
+the start saves hours of correction at the end. Do not skip this step, and
+do not start coding before the maintainer says "agreed" or "go ahead".
+
 > **Typed-opcode selection — inline reference (authoritative source is §3.3;
 > reproduced here so emission does not depend on a fetch landing well).** The
 > compiler does not re-derive types — it reads the `ResolvedType` Increment C
@@ -157,6 +212,26 @@ stability test and its calibration are **Sprint 8**, not now — this increment
 ships only the skeleton plus the first compile-time baseline. Do not touch
 `Grob.Vm` (it is complete for Sprint 2's surface from Increment B) except
 through its public surface in the integration test's composition.
+
+### Do not modify
+
+These are explicitly off-limits in this increment. If you find yourself
+wanting to change them, that is a signal to stop and surface the question,
+not to proceed.
+
+- **`src/Grob.Vm/*`** — complete for Sprint 2's surface from Increment B. Do
+  not edit. Consume its public surface only, and only via the integration
+  test's composition.
+- **`src/Grob.Compiler/TypeChecker/*.cs`** — the type checker's rules and
+  annotation behaviour are authoritative as Increment C delivered them. If
+  emission needs an annotation that is missing, surface it; do not add the
+  annotation from D.
+- **`src/Grob.Core/OpCode.cs`** — the full enum was defined in Increment A
+  and is closed. If you believe you need an opcode that is not there, stop
+  and surface it before extending the enum.
+- **Sprint 1 components** — the lexer, parser and AST are stable. Sprint 2
+  D does not require touching them; if you think it does, stop and surface
+  why.
 
 ## Tests
 
