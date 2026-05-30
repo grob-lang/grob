@@ -106,7 +106,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         if (initType == GrobType.Error) return GrobType.Error; // cascade suppression
 
         if (!TypesAreAssignable(initType, annotated)) {
-            EmitError("E0001",
+            EmitError(ErrorCatalog.E0001,
                 $"Cannot assign value of type '{TypeName(initType)}' to binding of type '{TypeName(annotated)}'.",
                 initRange);
             return GrobType.Error;
@@ -171,13 +171,13 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     }
 
     /// <summary>Emits an error diagnostic and returns <see cref="GrobType.Error"/>.</summary>
-    private GrobType EmitErrorAndReturn(string code, string message, SourceRange range) {
-        _diagnostics.Add(new Diagnostic(code, message, range, Severity.Error));
+    private GrobType EmitErrorAndReturn(ErrorDescriptor descriptor, string message, SourceRange range) {
+        _diagnostics.Add(Diagnostic.Of(descriptor, range, message));
         return GrobType.Error;
     }
 
-    private void EmitError(string code, string message, SourceRange range) {
-        _diagnostics.Add(new Diagnostic(code, message, range, Severity.Error));
+    private void EmitError(ErrorDescriptor descriptor, string message, SourceRange range) {
+        _diagnostics.Add(Diagnostic.Of(descriptor, range, message));
     }
 
     private static string TypeName(GrobType type) => type switch {

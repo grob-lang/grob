@@ -12,7 +12,7 @@ namespace Grob.Compiler;
 /// <see cref="ErrorDecl"/> placeholders, no diagnostic cap).
 /// </summary>
 public sealed class Parser {
-    private const string E2001 = "E2001";
+    private static readonly ErrorDescriptor _e2001 = ErrorCatalog.E2001;
 
     private readonly IReadOnlyList<Token> _tokens;
     private readonly DiagnosticBag _diagnostics;
@@ -75,20 +75,20 @@ public sealed class Parser {
         }
     }
 
-    private Token Expect(TokenKind k, string code, string message) {
+    private Token Expect(TokenKind k, ErrorDescriptor descriptor, string message) {
         if (Check(k)) {
             return Advance();
         }
-        throw Fail(code, message);
+        throw Fail(descriptor, message);
     }
 
     // -----------------------------------------------------------------------
     // Failure / diagnostics
     // -----------------------------------------------------------------------
 
-    private ParseFailedException Fail(string code, string message) {
+    private ParseFailedException Fail(ErrorDescriptor descriptor, string message) {
         SourceRange range = new(Current.Location, Current.Location);
-        Diagnostic d = new(code, message, range, Severity.Error);
+        Diagnostic d = Diagnostic.Of(descriptor, range, message);
         _diagnostics.Add(d);
         return new ParseFailedException(d);
     }
@@ -100,9 +100,9 @@ public sealed class Parser {
     /// already behind the cursor because line-continuation suppressed the
     /// newline that would have separated it from the next token.
     /// </summary>
-    private ParseFailedException FailAt(SourceLocation loc, string code, string message) {
+    private ParseFailedException FailAt(SourceLocation loc, ErrorDescriptor descriptor, string message) {
         SourceRange range = new(loc, loc);
-        Diagnostic d = new(code, message, range, Severity.Error);
+        Diagnostic d = Diagnostic.Of(descriptor, range, message);
         _diagnostics.Add(d);
         return new ParseFailedException(d);
     }
@@ -250,17 +250,17 @@ public sealed class Parser {
 
     private ImportDecl ParseImportDecl() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.Import, E2001, "expected 'import'");
-        Token name = Expect(TokenKind.Identifier, E2001, "expected module name after 'import'");
+        Expect(TokenKind.Import, _e2001, "expected 'import'");
+        Token name = Expect(TokenKind.Identifier, _e2001, "expected module name after 'import'");
         string modulePath = name.Lexeme;
         // Dotted path: foo.bar.baz
         while (Match(TokenKind.Dot)) {
-            Token seg = Expect(TokenKind.Identifier, E2001, "expected identifier after '.' in module path");
+            Token seg = Expect(TokenKind.Identifier, _e2001, "expected identifier after '.' in module path");
             modulePath = modulePath + "." + seg.Lexeme;
         }
         string? alias = null;
         if (Match(TokenKind.As)) {
-            Token a = Expect(TokenKind.Identifier, E2001, "expected alias name after 'as'");
+            Token a = Expect(TokenKind.Identifier, _e2001, "expected alias name after 'as'");
             alias = a.Lexeme;
         }
         return new ImportDecl(RangeFrom(start), modulePath, alias);
@@ -269,39 +269,39 @@ public sealed class Parser {
     private ConstDecl ParseConstDecl(bool alreadyConsumedKeyword) {
         SourceLocation start = alreadyConsumedKeyword ? PeekAt(-1).Location : Current.Location;
         if (!alreadyConsumedKeyword) {
-            Expect(TokenKind.Const, E2001, "expected 'const'");
+            Expect(TokenKind.Const, _e2001, "expected 'const'");
         }
-        Token name = Expect(TokenKind.Identifier, E2001, "expected name after 'const'");
+        Token name = Expect(TokenKind.Identifier, _e2001, "expected name after 'const'");
         TypeRef? annotatedType = null;
         if (Match(TokenKind.Colon)) {
             annotatedType = ParseTypeRef();
         }
-        Expect(TokenKind.ColonAssign, E2001, "expected ':=' in const declaration");
+        Expect(TokenKind.ColonAssign, _e2001, "expected ':=' in const declaration");
         Expression value = ParseExpression();
         return new ConstDecl(RangeFrom(start), name.Lexeme, annotatedType, value);
     }
 
     private ReadonlyDecl ParseReadonlyDecl() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.Readonly, E2001, "expected 'readonly'");
-        Token name = Expect(TokenKind.Identifier, E2001, "expected name after 'readonly'");
+        Expect(TokenKind.Readonly, _e2001, "expected 'readonly'");
+        Token name = Expect(TokenKind.Identifier, _e2001, "expected name after 'readonly'");
         TypeRef? annotatedType = null;
         if (Match(TokenKind.Colon)) {
             annotatedType = ParseTypeRef();
         }
-        Expect(TokenKind.ColonAssign, E2001, "expected ':=' in readonly declaration");
+        Expect(TokenKind.ColonAssign, _e2001, "expected ':=' in readonly declaration");
         Expression value = ParseExpression();
         return new ReadonlyDecl(RangeFrom(start), name.Lexeme, annotatedType, value);
     }
 
     private FnDecl ParseFnDecl() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.Fn, E2001, "expected 'fn'");
-        Token name = Expect(TokenKind.Identifier, E2001, "expected function name after 'fn'");
-        Expect(TokenKind.LeftParen, E2001, "expected '(' in function declaration");
+        Expect(TokenKind.Fn, _e2001, "expected 'fn'");
+        Token name = Expect(TokenKind.Identifier, _e2001, "expected function name after 'fn'");
+        Expect(TokenKind.LeftParen, _e2001, "expected '(' in function declaration");
         List<Parameter> parameters = ParseParameterList(TokenKind.RightParen);
-        Expect(TokenKind.RightParen, E2001, "expected ')' to close parameter list");
-        Expect(TokenKind.Colon, E2001, "expected ':' followed by return type");
+        Expect(TokenKind.RightParen, _e2001, "expected ')' to close parameter list");
+        Expect(TokenKind.Colon, _e2001, "expected ':' followed by return type");
         TypeRef returnType = ParseTypeRef();
         BlockStmt body = ParseBlock();
         return new FnDecl(RangeFrom(start), name.Lexeme, parameters, returnType, body);
@@ -309,23 +309,23 @@ public sealed class Parser {
 
     private TypeDecl ParseTypeDecl() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.Type, E2001, "expected 'type'");
-        Token name = Expect(TokenKind.Identifier, E2001, "expected type name after 'type'");
-        Expect(TokenKind.LeftBrace, E2001, "expected '{' to open type body");
+        Expect(TokenKind.Type, _e2001, "expected 'type'");
+        Token name = Expect(TokenKind.Identifier, _e2001, "expected type name after 'type'");
+        Expect(TokenKind.LeftBrace, _e2001, "expected '{' to open type body");
         SkipNewlines();
         List<TypeField> fields = [];
         while (!Check(TokenKind.RightBrace) && !IsAtEnd) {
             fields.Add(ParseTypeField());
             SkipNewlines();
         }
-        Expect(TokenKind.RightBrace, E2001, "expected '}' to close type body");
+        Expect(TokenKind.RightBrace, _e2001, "expected '}' to close type body");
         return new TypeDecl(RangeFrom(start), name.Lexeme, fields);
     }
 
     private TypeField ParseTypeField() {
         SourceLocation start = Current.Location;
-        Token name = Expect(TokenKind.Identifier, E2001, "expected field name");
-        Expect(TokenKind.Colon, E2001, "expected ':' after field name");
+        Token name = Expect(TokenKind.Identifier, _e2001, "expected field name");
+        Expect(TokenKind.Colon, _e2001, "expected ':' after field name");
         TypeRef type = ParseTypeRef();
         Expression? defaultValue = null;
         if (Match(TokenKind.Assign)) {
@@ -336,15 +336,15 @@ public sealed class Parser {
 
     private ParamBlockDecl ParseParamBlockDecl() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.Param, E2001, "expected 'param'");
-        Expect(TokenKind.LeftBrace, E2001, "expected '{' to open param block");
+        Expect(TokenKind.Param, _e2001, "expected 'param'");
+        Expect(TokenKind.LeftBrace, _e2001, "expected '{' to open param block");
         SkipNewlines();
         List<Parameter> parameters = [];
         while (!Check(TokenKind.RightBrace) && !IsAtEnd) {
             parameters.Add(ParseDeclaredParameter());
             SkipNewlines();
         }
-        Expect(TokenKind.RightBrace, E2001, "expected '}' to close param block");
+        Expect(TokenKind.RightBrace, _e2001, "expected '}' to close param block");
         return new ParamBlockDecl(RangeFrom(start), parameters);
     }
 
@@ -354,8 +354,8 @@ public sealed class Parser {
         // their semantic content later.
         SourceLocation start = Current.Location;
         SkipParameterDecorators();
-        Token name = Expect(TokenKind.Identifier, E2001, "expected parameter name");
-        Expect(TokenKind.Colon, E2001, "expected ':' after parameter name");
+        Token name = Expect(TokenKind.Identifier, _e2001, "expected parameter name");
+        Expect(TokenKind.Colon, _e2001, "expected ':' after parameter name");
         TypeRef type = ParseTypeRef();
         Expression? defaultValue = null;
         if (Match(TokenKind.Assign)) {
@@ -366,7 +366,7 @@ public sealed class Parser {
 
     private void SkipParameterDecorators() {
         while (Match(TokenKind.At)) {
-            Expect(TokenKind.Identifier, E2001, "expected decorator name after '@'");
+            Expect(TokenKind.Identifier, _e2001, "expected decorator name after '@'");
             if (Match(TokenKind.LeftParen)) {
                 SkipBalancedDecoratorArgs();
             }
@@ -382,7 +382,7 @@ public sealed class Parser {
             else if (k == TokenKind.RightParen) depth--;
             if (depth > 0) Advance();
         }
-        Expect(TokenKind.RightParen, E2001, "expected ')' to close decorator arguments");
+        Expect(TokenKind.RightParen, _e2001, "expected ')' to close decorator arguments");
     }
 
     private List<Parameter> ParseParameterList(TokenKind terminator) {
@@ -404,14 +404,14 @@ public sealed class Parser {
 
     private TypeRef ParseTypeRef() {
         SourceLocation start = Current.Location;
-        Token name = Expect(TokenKind.Identifier, E2001, "expected type name");
+        Token name = Expect(TokenKind.Identifier, _e2001, "expected type name");
         List<TypeRef> args = [];
         if (Match(TokenKind.Less)) {
             args.Add(ParseTypeRef());
             while (Match(TokenKind.Comma)) {
                 args.Add(ParseTypeRef());
             }
-            Expect(TokenKind.Greater, E2001, "expected '>' to close generic arguments");
+            Expect(TokenKind.Greater, _e2001, "expected '>' to close generic arguments");
         }
         bool nullable = Match(TokenKind.Question);
         return new TypeRef(RangeFrom(start), name.Lexeme, args, nullable);
@@ -423,7 +423,7 @@ public sealed class Parser {
 
     private BlockStmt ParseBlock() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.LeftBrace, E2001, "expected '{'");
+        Expect(TokenKind.LeftBrace, _e2001, "expected '{'");
         SkipNewlines();
         List<Statement> stmts = [];
         while (!Check(TokenKind.RightBrace) && !IsAtEnd) {
@@ -434,7 +434,7 @@ public sealed class Parser {
             stmts.Add(ParseStatementOrError());
             SkipNewlines();
         }
-        Expect(TokenKind.RightBrace, E2001, "expected '}'");
+        Expect(TokenKind.RightBrace, _e2001, "expected '}'");
         return new BlockStmt(RangeFrom(start), stmts);
     }
 
@@ -467,12 +467,12 @@ public sealed class Parser {
         // Sprint 2 (\u00a724); for now we consume the declaration so recovery picks
         // up past it, then report it as a parse error.
         _ = ParseConstDecl(false);
-        throw Fail(E2001, "'const' is only allowed at the top level in Sprint 1");
+        throw Fail(_e2001, "'const' is only allowed at the top level in Sprint 1");
     }
 
     private IfStmt ParseIf() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.If, E2001, "expected 'if'");
+        Expect(TokenKind.If, _e2001, "expected 'if'");
         Expression cond = ParseExpression();
         BlockStmt then = ParseBlock();
         Statement? elseBranch = null;
@@ -490,7 +490,7 @@ public sealed class Parser {
 
     private WhileStmt ParseWhile() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.While, E2001, "expected 'while'");
+        Expect(TokenKind.While, _e2001, "expected 'while'");
         Expression cond = ParseExpression();
         BlockStmt body = ParseBlock();
         return new WhileStmt(RangeFrom(start), cond, body);
@@ -498,14 +498,14 @@ public sealed class Parser {
 
     private ForInStmt ParseForIn() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.For, E2001, "expected 'for'");
-        Token first = Expect(TokenKind.Identifier, E2001, "expected loop variable after 'for'");
+        Expect(TokenKind.For, _e2001, "expected 'for'");
+        Token first = Expect(TokenKind.Identifier, _e2001, "expected loop variable after 'for'");
         List<string> vars = [first.Lexeme];
         if (Match(TokenKind.Comma)) {
-            Token second = Expect(TokenKind.Identifier, E2001, "expected second loop variable after ','");
+            Token second = Expect(TokenKind.Identifier, _e2001, "expected second loop variable after ','");
             vars.Add(second.Lexeme);
         }
-        Expect(TokenKind.In, E2001, "expected 'in' in for-loop header");
+        Expect(TokenKind.In, _e2001, "expected 'in' in for-loop header");
         Expression iterable = ParseIterable();
         BlockStmt body = ParseBlock();
         return new ForInStmt(RangeFrom(start), vars, iterable, body);
@@ -527,7 +527,7 @@ public sealed class Parser {
 
     private ReturnStmt ParseReturn() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.Return, E2001, "expected 'return'");
+        Expect(TokenKind.Return, _e2001, "expected 'return'");
         Expression? value = null;
         if (!Check(TokenKind.Newline) && !Check(TokenKind.RightBrace) && !IsAtEnd) {
             value = ExpressionOrError();
@@ -537,7 +537,7 @@ public sealed class Parser {
 
     private TryStmt ParseTry() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.Try, E2001, "expected 'try'");
+        Expect(TokenKind.Try, _e2001, "expected 'try'");
         BlockStmt body = ParseBlock();
         List<CatchClause> catches = [];
         BlockStmt? @finally = null;
@@ -572,7 +572,7 @@ public sealed class Parser {
                 // (Type) — type-only catch
                 exceptionType = ParseTypeRef();
             }
-            Expect(TokenKind.RightParen, E2001, "expected ')' to close catch clause header");
+            Expect(TokenKind.RightParen, _e2001, "expected ')' to close catch clause header");
         }
         BlockStmt body = ParseBlock();
         return new CatchClause(RangeFrom(start), exceptionType, exceptionVar, body);
@@ -580,9 +580,9 @@ public sealed class Parser {
 
     private SelectStmt ParseSelect() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.Select, E2001, "expected 'select'");
+        Expect(TokenKind.Select, _e2001, "expected 'select'");
         Expression subject = ParseExpression();
-        Expect(TokenKind.LeftBrace, E2001, "expected '{' to open select body");
+        Expect(TokenKind.LeftBrace, _e2001, "expected '{' to open select body");
         SkipNewlines();
         List<CaseClause> cases = [];
         BlockStmt? defaultBlock = null;
@@ -593,7 +593,7 @@ public sealed class Parser {
                 continue;
             }
             SourceLocation cs = Current.Location;
-            Expect(TokenKind.Case, E2001, "expected 'case' or 'default'");
+            Expect(TokenKind.Case, _e2001, "expected 'case' or 'default'");
             List<Expression> patterns = [ParseExpression()];
             while (Match(TokenKind.Comma)) {
                 patterns.Add(ParseExpression());
@@ -602,7 +602,7 @@ public sealed class Parser {
             cases.Add(new CaseClause(RangeFrom(cs), patterns, body));
             SkipNewlines();
         }
-        Expect(TokenKind.RightBrace, E2001, "expected '}' to close select body");
+        Expect(TokenKind.RightBrace, _e2001, "expected '}' to close select body");
         return new SelectStmt(RangeFrom(start), subject, cases, defaultBlock);
     }
 
@@ -624,7 +624,7 @@ public sealed class Parser {
                 Token name = Advance();
                 Advance(); // :
                 TypeRef type = ParseTypeRef();
-                Expect(TokenKind.ColonAssign, E2001, "expected ':=' after declared type");
+                Expect(TokenKind.ColonAssign, _e2001, "expected ':=' after declared type");
                 Expression init = ParseExpression();
                 return new VarDeclStmt(RangeFrom(start), name.Lexeme, type, init);
             }
@@ -706,7 +706,7 @@ public sealed class Parser {
         Expression cond = ParseNilCoalesce();
         if (Match(TokenKind.Question)) {
             Expression thenE = ParseExpression();
-            Expect(TokenKind.Colon, E2001, "expected ':' in ternary expression");
+            Expect(TokenKind.Colon, _e2001, "expected ':' in ternary expression");
             Expression elseE = ParseExpression();
             return new TernaryExpr(RangeBetween(cond.Range.Start, elseE.Range.End), cond, thenE, elseE);
         }
@@ -824,13 +824,13 @@ public sealed class Parser {
             switch (Current.Kind) {
                 case TokenKind.Dot: {
                         Advance();
-                        Token name = Expect(TokenKind.Identifier, E2001, "expected member name after '.'");
+                        Token name = Expect(TokenKind.Identifier, _e2001, "expected member name after '.'");
                         e = new MemberAccessExpr(RangeBetween(e.Range.Start, name.Location), e, name.Lexeme);
                         break;
                     }
                 case TokenKind.QuestionDot: {
                         Advance();
-                        Token name = Expect(TokenKind.Identifier, E2001, "expected member name after '?.'");
+                        Token name = Expect(TokenKind.Identifier, _e2001, "expected member name after '?.'");
                         // ?. is represented as MemberAccess in Sprint 1; the lowering
                         // to a nil-guard expression lands with the type checker.
                         e = new MemberAccessExpr(RangeBetween(e.Range.Start, name.Location), e, name.Lexeme);
@@ -839,7 +839,7 @@ public sealed class Parser {
                 case TokenKind.LeftParen: {
                         Advance();
                         List<CallArgument> args = ParseCallArguments();
-                        Token rp = Expect(TokenKind.RightParen, E2001, "expected ')' to close call");
+                        Token rp = Expect(TokenKind.RightParen, _e2001, "expected ')' to close call");
                         e = new CallExpr(RangeBetween(e.Range.Start, rp.Location), e, args);
                         break;
                     }
@@ -848,7 +848,7 @@ public sealed class Parser {
                         SkipNewlines();
                         Expression idx = ParseExpression();
                         SkipNewlines();
-                        Token rb = Expect(TokenKind.RightBracket, E2001, "expected ']' to close index");
+                        Token rb = Expect(TokenKind.RightBracket, _e2001, "expected ']' to close index");
                         e = new IndexExpr(RangeBetween(e.Range.Start, rb.Location), e, idx);
                         break;
                     }
@@ -894,7 +894,7 @@ public sealed class Parser {
             case TokenKind.FloatLiteral: {
                     Advance();
                     if (!double.TryParse(t.Lexeme, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v)) {
-                        throw Fail(E2001, $"invalid float literal '{t.Lexeme}'");
+                        throw Fail(_e2001, $"invalid float literal '{t.Lexeme}'");
                     }
                     return new FloatLiteralExpr(new SourceRange(t.Location, t.Location), v);
                 }
@@ -930,7 +930,7 @@ public sealed class Parser {
                     SkipNewlines();
                     Expression inner = ParseExpression();
                     SkipNewlines();
-                    Token rp = Expect(TokenKind.RightParen, E2001, "expected ')'");
+                    Token rp = Expect(TokenKind.RightParen, _e2001, "expected ')'");
                     return new GroupingExpr(new SourceRange(t.Location, rp.Location), inner);
                 }
             case TokenKind.LeftBracket: return ParseArrayLiteral();
@@ -941,15 +941,15 @@ public sealed class Parser {
                 // error at the operator so the user sees the real failure site.
                 if (_pos > 0 && IsBinaryOperatorForContext(_tokens[_pos - 1].Kind)) {
                     Token prev = _tokens[_pos - 1];
-                    throw FailAt(prev.Location, E2001, $"expected expression after '{DescribeToken(prev)}'");
+                    throw FailAt(prev.Location, _e2001, $"expected expression after '{DescribeToken(prev)}'");
                 }
-                throw Fail(E2001, $"unexpected token '{DescribeToken(t)}' — expected expression");
+                throw Fail(_e2001, $"unexpected token '{DescribeToken(t)}' — expected expression");
         }
     }
 
     private ArrayLiteralExpr ParseArrayLiteral() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.LeftBracket, E2001, "expected '['");
+        Expect(TokenKind.LeftBracket, _e2001, "expected '['");
         SkipNewlines();
         List<Expression> elements = [];
         if (!Check(TokenKind.RightBracket)) {
@@ -961,13 +961,13 @@ public sealed class Parser {
             }
             SkipNewlines();
         }
-        Token rb = Expect(TokenKind.RightBracket, E2001, "expected ']' to close array literal");
+        Token rb = Expect(TokenKind.RightBracket, _e2001, "expected ']' to close array literal");
         return new ArrayLiteralExpr(new SourceRange(start, rb.Location), elements);
     }
 
     private InterpolatedStringExpr ParseInterpolatedString() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.StringStart, E2001, "expected start of string literal");
+        Expect(TokenKind.StringStart, _e2001, "expected start of string literal");
         List<StringInterpolationPart> parts = [];
         while (!Check(TokenKind.StringEnd) && !IsAtEnd) {
             Token here = Current;
@@ -977,13 +977,13 @@ public sealed class Parser {
             }
             if (Match(TokenKind.InterpStart)) {
                 Expression inner = ParseExpression();
-                Token end = Expect(TokenKind.InterpEnd, E2001, "expected '}' to close interpolation");
+                Token end = Expect(TokenKind.InterpEnd, _e2001, "expected '}' to close interpolation");
                 parts.Add(new StringExpressionPart(new SourceRange(here.Location, end.Location), inner));
                 continue;
             }
-            throw Fail(E2001, "unexpected token inside string literal");
+            throw Fail(_e2001, "unexpected token inside string literal");
         }
-        Token close = Expect(TokenKind.StringEnd, E2001, "expected closing '\"' of string literal");
+        Token close = Expect(TokenKind.StringEnd, _e2001, "expected closing '\"' of string literal");
         return new InterpolatedStringExpr(new SourceRange(start, close.Location), parts);
     }
 
@@ -1041,12 +1041,12 @@ public sealed class Parser {
                 }
                 SkipNewlines();
             }
-            Expect(TokenKind.RightParen, E2001, "expected ')' in lambda parameter list");
+            Expect(TokenKind.RightParen, _e2001, "expected ')' in lambda parameter list");
         } else {
-            Token name = Expect(TokenKind.Identifier, E2001, "expected lambda parameter name");
+            Token name = Expect(TokenKind.Identifier, _e2001, "expected lambda parameter name");
             parameters.Add(new Parameter(new SourceRange(name.Location, name.Location), name.Lexeme, null, null));
         }
-        Expect(TokenKind.Arrow, E2001, "expected '=>' in lambda");
+        Expect(TokenKind.Arrow, _e2001, "expected '=>' in lambda");
         // Block-body lambda: x => { ... }
         if (Check(TokenKind.LeftBrace)) {
             BlockStmt body = ParseBlock();
@@ -1058,7 +1058,7 @@ public sealed class Parser {
 
     private Parameter ParseLambdaParameter() {
         SourceLocation start = Current.Location;
-        Token name = Expect(TokenKind.Identifier, E2001, "expected lambda parameter name");
+        Token name = Expect(TokenKind.Identifier, _e2001, "expected lambda parameter name");
         TypeRef? type = null;
         if (Match(TokenKind.Colon)) {
             type = ParseTypeRef();
@@ -1081,7 +1081,7 @@ public sealed class Parser {
             }
             return long.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
         } catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentException) {
-            throw Fail(E2001, $"invalid integer literal '{lexeme}'");
+            throw Fail(_e2001, $"invalid integer literal '{lexeme}'");
         }
     }
 

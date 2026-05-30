@@ -69,7 +69,7 @@ public sealed class Lexer {
         while (_interpStack.Count > 0) {
             InterpFrame frame = _interpStack.Pop();
             SourceLocation eof = Here();
-            AddError("E2009", "unterminated string interpolation", eof);
+            AddError(ErrorCatalog.E2009, "unterminated string interpolation", eof);
             Emit(TokenKind.InterpEnd, string.Empty, eof, depthOverride: frame.OuterDepth);
             Emit(TokenKind.StringEnd, string.Empty, eof, depthOverride: frame.OuterDepth);
             _depth = frame.OuterDepth;
@@ -105,7 +105,7 @@ public sealed class Lexer {
             case '.': ScanDot(); return;
             case ':': ScanColon(); return;
             case ';':
-                ErrorChar(c, "E2011", "semicolons are not used in Grob — newlines terminate statements");
+                ErrorChar(c, ErrorCatalog.E2011, "semicolons are not used in Grob — newlines terminate statements");
                 return;
             case '#': ScanHash(); return;
             case '"': ScanInterpolatedString(); return;
@@ -125,7 +125,7 @@ public sealed class Lexer {
             default:
                 if (IsDigit(c)) { ScanNumber(); return; }
                 if (IsIdentStart(c)) { ScanIdentifier(); return; }
-                ErrorChar(c, "E2010", $"unexpected character '{Describe(c)}'");
+                ErrorChar(c, ErrorCatalog.E2010, $"unexpected character '{Describe(c)}'");
                 return;
         }
     }
@@ -161,7 +161,7 @@ public sealed class Lexer {
             Advance(2);
             return;
         }
-        ErrorChar('#', "E2012", "'#' must be followed by '{' to open an anonymous-struct literal");
+        ErrorChar('#', ErrorCatalog.E2012, "'#' must be followed by '{' to open an anonymous-struct literal");
     }
 
     private void ScanEquals() {
@@ -258,7 +258,7 @@ public sealed class Lexer {
             Advance(2);
             return;
         }
-        ErrorChar(self, "E2013", $"single '{self}' is not a Grob operator (did you mean '{self}{self}'?)");
+        ErrorChar(self, ErrorCatalog.E2013, $"single '{self}' is not a Grob operator (did you mean '{self}{self}'?)");
     }
 
     private void ScanCloseBrace() {
@@ -278,7 +278,7 @@ public sealed class Lexer {
     private void ScanCloser(TokenKind kind, string lexeme) {
         if (_depth == 0) {
             SourceLocation loc = Here();
-            AddError("E2014", $"unbalanced '{lexeme}'", loc);
+            AddError(ErrorCatalog.E2014, $"unbalanced '{lexeme}'", loc);
             Emit(TokenKind.Error, lexeme, loc, depthOverride: 0);
             Advance();
             return;
@@ -343,7 +343,7 @@ public sealed class Lexer {
                 Advance();
             }
         }
-        AddError("E2003", "unterminated block comment", start);
+        AddError(ErrorCatalog.E2003, "unterminated block comment", start);
     }
 
     private bool CanStartRegex() {
@@ -387,7 +387,7 @@ public sealed class Lexer {
         while (!IsAtEnd) {
             char c = Peek();
             if (c == '\n') {
-                AddError("E2008", "unterminated regex literal", start);
+                AddError(ErrorCatalog.E2008, "unterminated regex literal", start);
                 Emit(TokenKind.Error, sb.ToString(), start);
                 return;
             }
@@ -410,7 +410,7 @@ public sealed class Lexer {
             sb.Append(c);
             Advance();
         }
-        AddError("E2008", "unterminated regex literal", start);
+        AddError(ErrorCatalog.E2008, "unterminated regex literal", start);
         Emit(TokenKind.Error, sb.ToString(), start);
     }
 
@@ -421,7 +421,7 @@ public sealed class Lexer {
         while (!IsAtEnd && IsIdentContinue(Peek()) && char.IsLetter(Peek())) {
             char flag = Peek();
             if (flag is not ('i' or 'm')) {
-                AddError("E2007", $"invalid regex flag '{flag}' (only 'i' and 'm' are supported)", Here());
+                AddError(ErrorCatalog.E2007, $"invalid regex flag '{flag}' (only 'i' and 'm' are supported)", Here());
             }
             sb.Append(flag);
             Advance();
@@ -442,7 +442,7 @@ public sealed class Lexer {
             sb.Append(Peek()); Advance();
             int digits = ConsumeDigitsInto(sb, IsHexDigit);
             if (digits == 0) {
-                AddError("E2006", "hexadecimal literal has no digits", start);
+                AddError(ErrorCatalog.E2006, "hexadecimal literal has no digits", start);
             }
             Emit(TokenKind.IntLiteral, sb.ToString(), start);
             return;
@@ -453,7 +453,7 @@ public sealed class Lexer {
             sb.Append(Peek()); Advance();
             int digits = ConsumeDigitsInto(sb, IsBinaryDigit);
             if (digits == 0) {
-                AddError("E2006", "binary literal has no digits", start);
+                AddError(ErrorCatalog.E2006, "binary literal has no digits", start);
             }
             Emit(TokenKind.IntLiteral, sb.ToString(), start);
             return;
@@ -587,13 +587,13 @@ public sealed class Lexer {
             Advance();
         }
         FlushStringPart(sb, partStart);
-        AddError("E2002", "unterminated string literal", partStart);
+        AddError(ErrorCatalog.E2002, "unterminated string literal", partStart);
         Emit(TokenKind.StringEnd, string.Empty, Here());
     }
 
     private void CloseUnterminatedStringAtNewline(StringBuilder sb, SourceLocation partStart) {
         FlushStringPart(sb, partStart);
-        AddError("E2002", "unterminated string literal — strings cannot span lines", partStart);
+        AddError(ErrorCatalog.E2002, "unterminated string literal — strings cannot span lines", partStart);
         // Synthesise a closing StringEnd at the newline so the segmentation
         // remains well-formed for the parser. The newline itself is
         // emitted on the next outer iteration.
@@ -605,7 +605,7 @@ public sealed class Lexer {
         // the StringPart lexeme. The compiler decodes escapes later.
         char esc = PeekAt(1);
         if (!IsValidEscape(esc)) {
-            AddError("E2005", $"invalid escape sequence '\\{Describe(esc)}'", Here());
+            AddError(ErrorCatalog.E2005, $"invalid escape sequence '\\{Describe(esc)}'", Here());
         }
         sb.Append('\\');
         Advance();
@@ -653,7 +653,7 @@ public sealed class Lexer {
         while (!IsAtEnd) {
             char c = Peek();
             if (c == '\n') {
-                AddError("E2004", "unterminated raw string — single-backtick strings cannot span lines", start);
+                AddError(ErrorCatalog.E2004, "unterminated raw string — single-backtick strings cannot span lines", start);
                 Emit(TokenKind.Error, sb.ToString(), start);
                 return;
             }
@@ -666,7 +666,7 @@ public sealed class Lexer {
             sb.Append(c);
             Advance();
         }
-        AddError("E2004", "unterminated raw string", start);
+        AddError(ErrorCatalog.E2004, "unterminated raw string", start);
         Emit(TokenKind.Error, sb.ToString(), start);
     }
 
@@ -689,7 +689,7 @@ public sealed class Lexer {
             sb.Append(Peek());
             Advance();
         }
-        AddError("E2004", "unterminated triple-backtick raw block string", start);
+        AddError(ErrorCatalog.E2004, "unterminated triple-backtick raw block string", start);
         Emit(TokenKind.Error, sb.ToString(), start);
     }
 
@@ -704,15 +704,15 @@ public sealed class Lexer {
         _rawTokens.Add(new Token(kind, lexeme, location, depth));
     }
 
-    private void ErrorChar(char c, string code, string message) {
+    private void ErrorChar(char c, ErrorDescriptor descriptor, string message) {
         SourceLocation loc = Here();
-        AddError(code, message, loc);
+        AddError(descriptor, message, loc);
         Emit(TokenKind.Error, c.ToString(CultureInfo.InvariantCulture), loc);
         Advance();
     }
 
-    private void AddError(string code, string message, SourceLocation at) =>
-        _diagnostics.Add(new Diagnostic(code, message, new SourceRange(at), Severity.Error));
+    private void AddError(ErrorDescriptor descriptor, string message, SourceLocation at) =>
+        _diagnostics.Add(Diagnostic.Of(descriptor, at, message));
 
     private SourceLocation Here() => new(_file, _line, _col);
 
