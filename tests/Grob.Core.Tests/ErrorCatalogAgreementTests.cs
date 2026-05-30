@@ -13,7 +13,8 @@ namespace Grob.Core.Tests;
 /// </summary>
 public sealed class ErrorCatalogAgreementTests {
     // Resolved relative to the repo so the test reads the canonical registry.
-    // Adjust the walk-up if the test project sits at a different depth.
+    // LocateRegistry walks up to the filesystem root, so it is robust to
+    // however deep the test output directory sits — no adjustment needed.
     private static readonly string _registryPath =
         LocateRegistry("grob-error-codes.md");
 
@@ -25,8 +26,7 @@ public sealed class ErrorCatalogAgreementTests {
         var rowPattern = new Regex(
             @"^\|\s*(E\d{4})\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$");
 
-        foreach (var line in File.ReadLines(_registryPath)) {
-            var m = rowPattern.Match(line);
+        foreach (var m in File.ReadLines(_registryPath).Select(line => rowPattern.Match(line))) {
             if (!m.Success) continue;
             var code = m.Groups[1].Value;
             if (!seen.Add(code)) continue; // first occurrence (summary index) wins
@@ -63,13 +63,11 @@ public sealed class ErrorCatalogAgreementTests {
     [Fact]
     public void Titles_MatchTheRegistry() {
         var registry = ParseSummaryIndex().ToDictionary(r => r.Code, r => r.Title);
-        var mismatches = new List<string>();
 
-        foreach (var d in ErrorCatalog.All) {
-            if (registry.TryGetValue(d.Code, out var title) && title != d.Title) {
-                mismatches.Add($"{d.Code}: catalog \"{d.Title}\" != registry \"{title}\"");
-            }
-        }
+        var mismatches = ErrorCatalog.All
+            .Where(d => registry.TryGetValue(d.Code, out var title) && title != d.Title)
+            .Select(d => $"{d.Code}: catalog \"{d.Title}\" != registry \"{registry[d.Code]}\"")
+            .ToList();
 
         Assert.True(mismatches.Count == 0,
             $"Title drift between ErrorCatalog and the registry:{Environment.NewLine}" +
@@ -108,6 +106,12 @@ public sealed class ErrorCatalogAgreementTests {
     }
 
     private static string LocateRegistry(string fileName) {
+        if (Path.IsPathRooted(fileName)) {
+            throw new ArgumentException(
+                "File name must be relative so it can be combined with each directory in the walk-up.",
+                nameof(fileName));
+        }
+
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null) {
             var candidate = Path.Combine(dir.FullName, "docs", "design", fileName);
