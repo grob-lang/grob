@@ -6,7 +6,7 @@ on:
       runner:
         description: "Runner to benchmark on"
         required: false
-        default: "ubuntu-latest"
+        default: "windows-latest"
         type: choice
         options:
           - ubuntu-latest
