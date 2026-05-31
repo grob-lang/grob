@@ -356,7 +356,7 @@ in `bench/Grob.Benchmarks/baseline/` is tracked.
    a project-level one — the artifacts land at the repo root, so the
    ignore rule belongs there). Add a single line:
 
-    ```
+    ```gitignore
     BenchmarkDotNet.Artifacts/
     ```
 
