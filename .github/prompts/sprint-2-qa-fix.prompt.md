@@ -55,7 +55,7 @@ The workflow as written:
 - Triggers on `workflow_dispatch` only (manual, no schedule, no PR trigger).
 - Lets the operator pick Ubuntu or Windows runner via a dropdown.
 - Restores, then runs `dotnet run -c Release --project bench/Grob.Benchmarks
-  -- --filter '*' --exporters json markdown`.
+-- --filter '*' --exporters json markdown`.
 - Publishes the markdown reports to the job summary for inline viewing.
 - Uploads the `BenchmarkDotNet.Artifacts/results/` directory as a workflow
   artifact, 90-day retention.
@@ -70,10 +70,10 @@ does.
 
 ## 2. Triage summary — what is real and what is not
 
-| Finding | Codex bucket | Verdict | Action |
-|---|---|---|---|
-| Undefined identifier leaves `Declaration` null after type-check | CORRECTNESS | **Valid** | Fix — §3.A |
-| Compile baseline JSON is still a placeholder | CORRECTNESS | **Valid** | Fix — §3.B |
+| Finding                                                         | Codex bucket | Verdict   | Action     |
+| --------------------------------------------------------------- | ------------ | --------- | ---------- |
+| Undefined identifier leaves `Declaration` null after type-check | CORRECTNESS  | **Valid** | Fix — §3.A |
+| Compile baseline JSON is still a placeholder                    | CORRECTNESS  | **Valid** | Fix — §3.B |
 
 Plus three follow-ups that came out of this triage or the QA run itself,
 none a Codex finding but all worth doing in this session:
@@ -162,7 +162,7 @@ Implementation:
    source for `Declaration = null`, `Declaration =`, and any constructor
    call to `IdentifierExpr` (or whatever the repo calls it) — there is
    likely more than one site. Set `Declaration = UnresolvedDeclaration.
-   Instance` at each error path. Confirm the full set before editing.
+Instance` at each error path. Confirm the full set before editing.
 3. **Update the §3.1.1 invariant test** to cover the unresolved-identifier
    case explicitly: a tree containing one unresolved identifier still
    satisfies "every identifier node carries non-null `Declaration`" after
@@ -239,7 +239,7 @@ is the whole point of moving to CI for consistency. Procedure:
    below; do not pick unilaterally.
 2. **Download the artifact.** The workflow uploads
    `BenchmarkDotNet.Artifacts/results/` as `benchmark-results-<runner>-
-   <run-id>`, 90-day retention. Download and extract.
+<run-id>`, 90-day retention. Download and extract.
 3. **Identify the right JSON file.** BenchmarkDotNet produces two JSONs
    per benchmark class — `<class>-report-brief.json` (trimmed summary)
    and `<class>-report-full.json` (statistical detail plus
@@ -356,13 +356,13 @@ in `bench/Grob.Benchmarks/baseline/` is tracked.
    a project-level one — the artifacts land at the repo root, so the
    ignore rule belongs there). Add a single line:
 
-   ```
-   BenchmarkDotNet.Artifacts/
-   ```
+    ```
+    BenchmarkDotNet.Artifacts/
+    ```
 
-   No `!baseline/` exception is needed — `bench/Grob.Benchmarks/baseline/`
-   lives at a different path and the two never overlap. Adding the
-   exception would be cargo-culted and slightly confusing.
+    No `!baseline/` exception is needed — `bench/Grob.Benchmarks/baseline/`
+    lives at a different path and the two never overlap. Adding the
+    exception would be cargo-culted and slightly confusing.
 
 2. **Delete the existing folder.** `rm -rf BenchmarkDotNet.Artifacts/` at
    the repo root. (Order matters: gitignore first, delete second. If you
