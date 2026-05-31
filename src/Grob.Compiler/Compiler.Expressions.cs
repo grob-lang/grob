@@ -75,6 +75,16 @@ public sealed partial class Compiler {
     }
 
     // -----------------------------------------------------------------------
+    // Identifier (variable read)
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public override object? VisitIdentifier(IdentifierExpr node) {
+        EmitLoad(node.Name, node.Range.Start.Line);
+        return null;
+    }
+
+    // -----------------------------------------------------------------------
     // Unary
     // -----------------------------------------------------------------------
 

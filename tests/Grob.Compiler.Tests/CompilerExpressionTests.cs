@@ -66,7 +66,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("42");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.Pop, OpCode.Return], ops);
         Assert.Equal(1, chunk.ConstantCount);
         Assert.Equal(42L, chunk.ReadConstant(0).AsInt());
     }
@@ -76,7 +76,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("3.14");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.Pop, OpCode.Return], ops);
         Assert.Equal(3.14, chunk.ReadConstant(0).AsFloat());
     }
 
@@ -85,7 +85,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("\"hello\"");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.Pop, OpCode.Return], ops);
         Assert.Equal("hello", chunk.ReadConstant(0).AsString());
     }
 
@@ -98,7 +98,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("2 + 3");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.AddInt, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.AddInt, OpCode.Pop, OpCode.Return], ops);
         Assert.Equal(2L, chunk.ReadConstant(0).AsInt());
         Assert.Equal(3L, chunk.ReadConstant(1).AsInt());
     }
@@ -108,7 +108,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("10 - 4");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.SubtractInt, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.SubtractInt, OpCode.Pop, OpCode.Return], ops);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("6 * 7");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.MultiplyInt, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.MultiplyInt, OpCode.Pop, OpCode.Return], ops);
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("10 / 2");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.DivideInt, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.DivideInt, OpCode.Pop, OpCode.Return], ops);
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("7 % 3");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.ModuloInt, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.ModuloInt, OpCode.Pop, OpCode.Return], ops);
     }
 
     // -----------------------------------------------------------------------
@@ -146,7 +146,7 @@ public sealed class CompilerExpressionTests {
 
         List<OpCode> ops = ReadOpcodes(chunk);
         Assert.Equal(
-            [OpCode.Constant, OpCode.Constant, OpCode.Constant, OpCode.MultiplyInt, OpCode.AddInt, OpCode.Return],
+            [OpCode.Constant, OpCode.Constant, OpCode.Constant, OpCode.MultiplyInt, OpCode.AddInt, OpCode.Pop, OpCode.Return],
             ops);
         Assert.Equal(2L, chunk.ReadConstant(0).AsInt());
         Assert.Equal(3L, chunk.ReadConstant(1).AsInt());
@@ -162,7 +162,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("2.0 + 3.0");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.AddFloat, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.AddFloat, OpCode.Pop, OpCode.Return], ops);
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("5.5 - 1.5");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.SubtractFloat, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.SubtractFloat, OpCode.Pop, OpCode.Return], ops);
     }
 
     // -----------------------------------------------------------------------
@@ -184,7 +184,7 @@ public sealed class CompilerExpressionTests {
 
         List<OpCode> ops = ReadOpcodes(chunk);
         Assert.Equal(
-            [OpCode.Constant, OpCode.IntToFloat, OpCode.Constant, OpCode.AddFloat, OpCode.Return],
+            [OpCode.Constant, OpCode.IntToFloat, OpCode.Constant, OpCode.AddFloat, OpCode.Pop, OpCode.Return],
             ops);
     }
 
@@ -195,7 +195,7 @@ public sealed class CompilerExpressionTests {
 
         List<OpCode> ops = ReadOpcodes(chunk);
         Assert.Equal(
-            [OpCode.Constant, OpCode.Constant, OpCode.IntToFloat, OpCode.AddFloat, OpCode.Return],
+            [OpCode.Constant, OpCode.Constant, OpCode.IntToFloat, OpCode.AddFloat, OpCode.Pop, OpCode.Return],
             ops);
     }
 
@@ -208,7 +208,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("-5");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.NegateInt, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.NegateInt, OpCode.Pop, OpCode.Return], ops);
         Assert.Equal(5L, chunk.ReadConstant(0).AsInt());
     }
 
@@ -217,7 +217,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("-1.5");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.NegateFloat, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.NegateFloat, OpCode.Pop, OpCode.Return], ops);
     }
 
     // -----------------------------------------------------------------------
@@ -229,7 +229,7 @@ public sealed class CompilerExpressionTests {
         Chunk chunk = CompileSource("\"hello\" + \" world\"");
 
         List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.Concat, OpCode.Return], ops);
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.Concat, OpCode.Pop, OpCode.Return], ops);
         Assert.Equal("hello", chunk.ReadConstant(0).AsString());
         Assert.Equal(" world", chunk.ReadConstant(1).AsString());
     }
@@ -269,19 +269,19 @@ public sealed class CompilerExpressionTests {
     [Fact]
     public void BoolLiteral_True_EmitsTrueOpcode() {
         Chunk chunk = CompileSource("true");
-        Assert.Equal([OpCode.True, OpCode.Return], ReadOpcodes(chunk));
+        Assert.Equal([OpCode.True, OpCode.Pop, OpCode.Return], ReadOpcodes(chunk));
     }
 
     [Fact]
     public void BoolLiteral_False_EmitsFalseOpcode() {
         Chunk chunk = CompileSource("false");
-        Assert.Equal([OpCode.False, OpCode.Return], ReadOpcodes(chunk));
+        Assert.Equal([OpCode.False, OpCode.Pop, OpCode.Return], ReadOpcodes(chunk));
     }
 
     [Fact]
     public void NilLiteral_EmitsNilOpcode() {
         Chunk chunk = CompileSource("nil");
-        Assert.Equal([OpCode.Nil, OpCode.Return], ReadOpcodes(chunk));
+        Assert.Equal([OpCode.Nil, OpCode.Pop, OpCode.Return], ReadOpcodes(chunk));
     }
 
     // -----------------------------------------------------------------------
@@ -291,7 +291,7 @@ public sealed class CompilerExpressionTests {
     [Fact]
     public void RawStringLiteral_EmitsConstantWithValue() {
         Chunk chunk = CompileSource("`hello`");
-        Assert.Equal([OpCode.Constant, OpCode.Return], ReadOpcodes(chunk));
+        Assert.Equal([OpCode.Constant, OpCode.Pop, OpCode.Return], ReadOpcodes(chunk));
         Assert.Equal("hello", chunk.ReadConstant(0).AsString());
     }
 
@@ -302,7 +302,7 @@ public sealed class CompilerExpressionTests {
     [Fact]
     public void Grouping_EmitsSameOpcodeAsInner() {
         Chunk chunk = CompileSource("(42)");
-        Assert.Equal([OpCode.Constant, OpCode.Return], ReadOpcodes(chunk));
+        Assert.Equal([OpCode.Constant, OpCode.Pop, OpCode.Return], ReadOpcodes(chunk));
         Assert.Equal(42L, chunk.ReadConstant(0).AsInt());
     }
 
@@ -313,19 +313,19 @@ public sealed class CompilerExpressionTests {
     [Fact]
     public void BinaryMultiplyFloat_EmitsMultiplyFloat() {
         Chunk chunk = CompileSource("2.0 * 3.0");
-        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.MultiplyFloat, OpCode.Return], ReadOpcodes(chunk));
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.MultiplyFloat, OpCode.Pop, OpCode.Return], ReadOpcodes(chunk));
     }
 
     [Fact]
     public void BinaryDivideFloat_EmitsDivideFloat() {
         Chunk chunk = CompileSource("4.0 / 2.0");
-        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.DivideFloat, OpCode.Return], ReadOpcodes(chunk));
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.DivideFloat, OpCode.Pop, OpCode.Return], ReadOpcodes(chunk));
     }
 
     [Fact]
     public void BinaryModuloFloat_EmitsModuloFloat() {
         Chunk chunk = CompileSource("5.0 % 2.0");
-        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.ModuloFloat, OpCode.Return], ReadOpcodes(chunk));
+        Assert.Equal([OpCode.Constant, OpCode.Constant, OpCode.ModuloFloat, OpCode.Pop, OpCode.Return], ReadOpcodes(chunk));
     }
 
     // -----------------------------------------------------------------------

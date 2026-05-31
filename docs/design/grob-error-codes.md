@@ -75,6 +75,7 @@ read by `grob --explain Exxxx`.
 | E1002 | undefined member                                 | Name resolution   | pre-release           |
 | E1003 | undefined module                                 | Name resolution   | pre-release           |
 | E1101 | shadowed declaration                             | Name resolution   | pre-release (warning) |
+| E1102 | variable already declared in this scope          | Name resolution   | pre-release           |
 | E1201 | forward reference inside function body           | Name resolution   | pre-release           |
 | E1202 | use before declaration in block scope            | Name resolution   | pre-release           |
 | E2001 | unexpected token                                 | Syntax            | pre-release           |
@@ -371,6 +372,16 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release (severity: warning)
 - **Description:** A local declaration shadows a name from an enclosing scope. Emitted as a warning per D-024; reserved as `Exxxx` because the diagnostic-emission machinery is shared with errors and a future `--strict` mode may promote it.
 - **Source decision:** D-024. Flagged for the warnings allocation pass.
+
+---
+
+### E1102 — variable already declared in this scope
+
+- **Category:** Name resolution
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A `:=` declaration was applied to a name that already exists in the current scope. Use `=` to reassign an existing binding.
+- **Source decision:** Sprint 3 Increment A.
 
 ---
 

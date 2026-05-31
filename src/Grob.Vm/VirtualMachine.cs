@@ -7,8 +7,8 @@ namespace Grob.Vm;
 /// fetch-decode-execute dispatch loop. Sprint 2 Increment B implements the
 /// subset of <see cref="OpCode"/> needed to execute hand-constructed chunks
 /// up to <c>print(2 + 3 * 4)</c> — see <see cref="Run"/> for the supported
-/// set; out-of-scope opcodes (control flow, calls, globals, structs, arrays,
-/// closures, exceptions, increments, properties, build-string, etc.) raise
+/// set; out-of-scope opcodes (control flow, calls, structs, arrays,
+/// closures, exceptions, properties, build-string, etc.) raise
 /// <see cref="GrobInternalException"/> until their owning increment lands.
 ///
 /// Authority: grob-vm-architecture.md (dispatch loop, value stack, developer
@@ -17,6 +17,7 @@ namespace Grob.Vm;
 public sealed class VirtualMachine {
     private readonly ValueStack _stack = new();
     private readonly TextWriter _out;
+    private readonly Dictionary<string, GrobValue> _globals = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Writer for the per-instruction trace hook. Only read inside
@@ -41,6 +42,9 @@ public sealed class VirtualMachine {
 
     /// <summary>The operand stack, exposed for tests to inspect post-run state.</summary>
     public ValueStack Stack => _stack;
+
+    /// <summary>The global variables table, exposed for tests to inspect post-run state.</summary>
+    public IReadOnlyDictionary<string, GrobValue> Globals => _globals;
 
     /// <summary>
     /// Execute <paramref name="chunk"/> until <see cref="OpCode.Return"/>.
@@ -104,6 +108,58 @@ public sealed class VirtualMachine {
                     case OpCode.PopN: {
                             byte count = chunk.ReadByte(ip++);
                             for (int i = 0; i < count; i++) _stack.Pop();
+                            break;
+                        }
+
+                    // --- Globals ---
+                    case OpCode.DefineGlobal: {
+                            byte nameIdx = chunk.ReadByte(ip++);
+                            string name = chunk.ReadConstant(nameIdx).AsString();
+                            _globals[name] = _stack.Pop();
+                            break;
+                        }
+                    case OpCode.GetGlobal: {
+                            byte nameIdx = chunk.ReadByte(ip++);
+                            string name = chunk.ReadConstant(nameIdx).AsString();
+                            if (!_globals.TryGetValue(name, out GrobValue val))
+                                throw new GrobRuntimeException(ErrorCatalog.E1001.Code, line, column,
+                                    $"Undefined global '{name}'.");
+                            _stack.Push(val, line);
+                            break;
+                        }
+                    case OpCode.SetGlobal: {
+                            byte nameIdx = chunk.ReadByte(ip++);
+                            string name = chunk.ReadConstant(nameIdx).AsString();
+                            if (!_globals.ContainsKey(name))
+                                throw new GrobRuntimeException(ErrorCatalog.E1001.Code, line, column,
+                                    $"Undefined global '{name}'.");
+                            _globals[name] = _stack.Pop();
+                            break;
+                        }
+
+                    // --- Locals ---
+                    case OpCode.GetLocal: {
+                            byte slot = chunk.ReadByte(ip++);
+                            _stack.Push(_stack.GetSlot(slot), line);
+                            break;
+                        }
+                    case OpCode.SetLocal: {
+                            byte slot = chunk.ReadByte(ip++);
+                            _stack.SetSlot(slot, _stack.Pop());
+                            break;
+                        }
+
+                    // --- Increment / decrement (int locals only; float arms are compile errors) ---
+                    case OpCode.IncrementInt: {
+                            byte slot = chunk.ReadByte(ip++);
+                            long cur = _stack.GetSlot(slot).AsInt();
+                            _stack.SetSlot(slot, GrobValue.FromInt(checked(cur + 1L)));
+                            break;
+                        }
+                    case OpCode.DecrementInt: {
+                            byte slot = chunk.ReadByte(ip++);
+                            long cur = _stack.GetSlot(slot).AsInt();
+                            _stack.SetSlot(slot, GrobValue.FromInt(checked(cur - 1L)));
                             break;
                         }
 
@@ -220,7 +276,7 @@ public sealed class VirtualMachine {
 
                     default:
                         throw new GrobInternalException(
-                            $"opcode {(OpCode)instruction} not implemented in Sprint 2 Increment B dispatch loop");
+                            $"opcode {(OpCode)instruction} not yet implemented (Sprint 3+)");
                 }
             }
         } catch (OverflowException) {

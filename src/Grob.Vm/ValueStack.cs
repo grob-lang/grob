@@ -78,6 +78,30 @@ public sealed class ValueStack {
     }
 
     /// <summary>
+    /// Read the value at absolute stack slot <paramref name="slot"/> (zero-based).
+    /// Used by <see cref="OpCode.GetLocal"/> to load a local variable onto
+    /// the top of the operand stack. Out-of-range access is a compiler bug
+    /// and surfaces as <see cref="GrobInternalException"/>.
+    /// </summary>
+    public GrobValue GetSlot(int slot) {
+        if ((uint)slot >= (uint)_top)
+            throw new GrobInternalException($"GetSlot: slot {slot} out of range (stack top {_top})");
+        return _values[slot];
+    }
+
+    /// <summary>
+    /// Overwrite the value at absolute stack slot <paramref name="slot"/> (zero-based)
+    /// with <paramref name="value"/>. Used by <see cref="OpCode.SetLocal"/> to
+    /// store a value into a local variable slot. Out-of-range access is a
+    /// compiler bug and surfaces as <see cref="GrobInternalException"/>.
+    /// </summary>
+    public void SetSlot(int slot, GrobValue value) {
+        if ((uint)slot >= (uint)_top)
+            throw new GrobInternalException($"SetSlot: slot {slot} out of range (stack top {_top})");
+        _values[slot] = value;
+    }
+
+    /// <summary>
     /// Snapshot the live region of the stack — used by the
     /// <c>#if DEBUG</c> trace hook to render the stack each iteration.
     /// </summary>
