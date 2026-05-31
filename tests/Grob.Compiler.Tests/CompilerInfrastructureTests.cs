@@ -94,6 +94,7 @@ public sealed class CompilerInfrastructureTests {
         var block = new BlockStmt(R, [inner]);
         var unit = new CompilationUnit(R, [block]);
         Chunk chunk = GrobCompiler.Compile(unit, new DiagnosticBag());
+        Assert.Equal(OpCode.Constant, (OpCode)chunk.ReadByte(0));
         Assert.Equal(99L, chunk.ReadConstant(0).AsInt());
     }
 
