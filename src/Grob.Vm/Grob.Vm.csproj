@@ -5,7 +5,6 @@
     <RootNamespace>Grob.Vm</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <!-- Grob.Vm must NOT reference Grob.Compiler — DAG rule -->

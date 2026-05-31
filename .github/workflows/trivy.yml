@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       # First pass: emit SARIF covering all severity levels so that MEDIUM and
       # lower findings still appear in the GitHub Security → Code scanning tab.
@@ -40,7 +40,7 @@ jobs:
       # CodeQL results. `if: always()` ensures upload runs even if later steps
       # fail.
       - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
         if: always()
         with:
           sarif_file: trivy-results.sarif

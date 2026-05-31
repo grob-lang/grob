@@ -5,7 +5,6 @@
     <RootNamespace>Grob.Http</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
     <!-- Plugin packages are tagged grob-plugin for NuGet discovery -->
     <PackageTags>grob-plugin</PackageTags>
   </PropertyGroup>

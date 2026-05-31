@@ -7,7 +7,6 @@
     <AssemblyName>grob</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <!-- Grob.Cli is the only project that references all source assemblies -->

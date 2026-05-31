@@ -1,0 +1,60 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner to benchmark on"
+        required: false
+        default: "ubuntu-latest"
+        type: choice
+        options:
+          - ubuntu-latest
+          - windows-latest
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Compile Benchmarks (${{ inputs.runner }})
+    runs-on: ${{ inputs.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Benchmark job only reads the repo; no credentials needed downstream.
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore bench/Grob.Benchmarks/Grob.Benchmarks.csproj
+
+      - name: Run benchmarks
+        run: >
+          dotnet run --configuration Release
+          --project bench/Grob.Benchmarks
+          -- --filter '*' --exporters json markdown
+
+      - name: Publish results to job summary
+        if: always()
+        shell: bash
+        run: |
+          for f in BenchmarkDotNet.Artifacts/results/*.md; do
+            [ -f "$f" ] || continue
+            echo "## $(basename "$f")" >> "$GITHUB_STEP_SUMMARY"
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: benchmark-results-${{ inputs.runner }}-${{ github.run_id }}
+          path: BenchmarkDotNet.Artifacts/results/
+          retention-days: 90

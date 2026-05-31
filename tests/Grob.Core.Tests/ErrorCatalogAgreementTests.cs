@@ -114,10 +114,10 @@ public sealed class ErrorCatalogAgreementTests {
 
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null) {
-            var candidate = Path.Combine(dir.FullName, "docs", "design", fileName);
+            var candidate = Path.Join(dir.FullName, "docs", "design", fileName);
             if (File.Exists(candidate)) return candidate;
 
-            var atRoot = Path.Combine(dir.FullName, fileName);
+            var atRoot = Path.Join(dir.FullName, fileName);
             if (File.Exists(atRoot)) return atRoot;
 
             dir = dir.Parent;

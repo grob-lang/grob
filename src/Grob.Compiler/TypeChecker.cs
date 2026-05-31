@@ -43,6 +43,11 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // Global scope lives for the whole compilation unit.
         _scopes.Push(new Dictionary<string, Symbol>());
 
+        // Seed the global scope with built-in functions (D-270). Must run
+        // before Pass 1 so that user-defined names cannot shadow built-ins
+        // at the top-level scope, and so that call sites do not get E1001.
+        RegisterBuiltins();
+
         // Pass 1 — register top-level fn and type declarations so that function
         // bodies can reference declarations appearing later in the same file (D-166).
         foreach (AstNode item in unit.TopLevel) {
@@ -88,6 +93,21 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // -----------------------------------------------------------------------
     // Private helpers.
     // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Seeds the innermost scope with sentinel symbols for every Grob built-in
+    /// function so that call sites resolve without emitting E1001.
+    /// </summary>
+    private void RegisterBuiltins() {
+        RegisterBuiltinFn("print");
+        RegisterBuiltinFn("exit");
+        RegisterBuiltinFn("input");
+    }
+
+    private void RegisterBuiltinFn(string name) {
+        BuiltinDecl decl = new(name);
+        RegisterSymbol(name, GrobType.Unknown, SourceLocation.Unknown, decl);
+    }
 
     /// <summary>
     /// Resolves a binding's final type from its optional annotation and its
