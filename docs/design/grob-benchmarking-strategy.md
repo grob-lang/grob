@@ -13,7 +13,7 @@
 > built and maintained by the engineer working on Grob; it is not a
 > feature shipped to Grob users.
 
------
+---
 
 ## 1. Why Benchmarking Lands Before Optimisation
 
@@ -37,7 +37,7 @@ The benchmarking infrastructure therefore lands before any optimisation
 work. It is built early, exercised continuously, and used as a quality
 gate at the end of every sprint.
 
------
+---
 
 ## 2. Harness
 
@@ -51,7 +51,7 @@ Run mode is Release configuration only. Debug builds produce numbers
 that are not comparable to Release numbers and are not useful as a
 baseline.
 
------
+---
 
 ## 3. Project Structure
 
@@ -81,7 +81,7 @@ Grob.sln
 in CI; benchmarks do not. They have different lifecycles and different
 audiences. The directory structure reflects that.
 
------
+---
 
 ## 4. Three Benchmark Categories
 
@@ -143,7 +143,7 @@ wrong even if the micro-benchmarks all look fine.
 This category is the primary gate. The other two exist to help diagnose
 regressions surfaced here.
 
------
+---
 
 ## 5. Memory Diagnostics
 
@@ -191,7 +191,7 @@ does not preclude it — the `GrobValue` boundary is clean and VM
 allocation paths are centralised, both of which keep the door open.
 Actual implementation is post-v1, informed by real script behaviour.
 
------
+---
 
 ## 6. Stability Test
 
@@ -241,7 +241,7 @@ something specific is suspected.
 a release-gate fail. The release does not ship until the leak is
 diagnosed and the test passes again.
 
------
+---
 
 ## 7. Test Materials — Setup, Teardown, Storage and Lifecycle
 
@@ -410,12 +410,12 @@ bench/Grob.Benchmarks/baseline/
 
 ```json
 {
-  "calibrated": "2026-MM-DD",
-  "iterations": 10000,
-  "warmup": 100,
-  "tolerancePercent": 10,
-  "lastPassingHeapBytes": 0,
-  "lastRun": "2026-MM-DD"
+    "calibrated": "2026-MM-DD",
+    "iterations": 10000,
+    "warmup": 100,
+    "tolerancePercent": 10,
+    "lastPassingHeapBytes": 0,
+    "lastRun": "2026-MM-DD"
 }
 ```
 
@@ -425,7 +425,7 @@ tolerance of this value, not just within tolerance of its own warmup
 window — that way, slow growth across releases (sub-threshold each
 time but accumulating) shows up against the historical baseline.
 
------
+---
 
 ## 8. Baseline Storage
 
@@ -454,7 +454,58 @@ intentionally trades some performance for correctness, clarity or
 safety updates the baseline as part of the same commit, with the
 rationale in the commit message.
 
------
+### 8.1 Canonical Production Path — GitHub Actions Workflow
+
+The `benchmark.yml` GitHub Actions workflow (`.github/workflows/benchmark.yml`)
+is the canonical entry point for producing committed baselines and for
+sprint-close regression comparisons. Trigger: manual (`workflow_dispatch`).
+No benchmark run intended to update a committed baseline should come from a
+local machine.
+
+**Procedure:**
+
+1. Trigger the workflow on GitHub (Actions tab → Benchmarks → Run workflow).
+2. Download the `benchmark-results-windows-latest-<run-id>` artifact when
+   the run completes (90-day retention).
+3. Extract. Locate the `-report-full.json` for the relevant benchmark class
+   — not `-report-brief.json`. The full report includes `HostEnvironmentInfo`
+   (CPU model, OS, runtime version, GC mode), which makes the baseline
+   traceable and comparable.
+4. Copy the `-report-full.json` to the appropriate path under
+   `bench/Grob.Benchmarks/baseline/` and commit.
+
+**Commit message convention.** Record the workflow run ID, the runner used
+(`windows-latest`), and the sprint context. Example:
+`bench: first compile-time baseline (windows-latest, run #42) per D-302 / D-309`.
+This anchors the file to a specific, reproducible origin.
+
+**Runner consistency.** The canonical runner is `windows-latest` (D-309).
+All future baseline production and regression-check runs must use the same
+runner type. Cross-runner comparisons are not valid — the absolute numbers
+are not comparable across runner types.
+
+### 8.2 Local Invocation — Debugging and One-Off Exploration
+
+```bash
+dotnet run -c Release --project bench/Grob.Benchmarks
+```
+
+Local invocation remains supported and is the right tool when:
+
+- A benchmark crashes and you need to reproduce it quickly.
+- You want to explore the effect of a JIT or configuration change before
+  triggering a workflow run.
+- You are developing a new benchmark class and need a fast feedback loop.
+
+Local results are **not** committed as baselines. Hardware, background load,
+GC state and runtime configuration vary too much across machines to anchor
+a 5% regression gate. Use the workflow (§8.1) for anything intended to become
+the committed baseline.
+
+Local runs write to `BenchmarkDotNet.Artifacts/` relative to the working
+directory. This path is in `.gitignore` and must never be committed.
+
+---
 
 ## 9. Per-Sprint Regression Policy
 
@@ -463,6 +514,9 @@ end-to-end benchmark suite. The stability test runs separately at a
 longer cadence (per release).
 
 **Comparison:** new results compared against the committed baseline.
+Comparisons are only valid between runs on the same runner type (`windows-latest`
+per D-309 / §8.1). Cross-runner comparisons are not valid; mixing runner types
+across runs of the same baseline category voids the comparison.
 
 **Threshold:** **5% regression on the end-to-end script benchmarks**
 is the gate. Compile-time and VM execution benchmarks are informational
@@ -485,7 +539,7 @@ An hour of automated benchmarking at the close of a two-week sprint
 is rounding-error overhead against the cost of catching regressions
 late.
 
------
+---
 
 ## 10. No CLI Surface
 
@@ -499,8 +553,10 @@ lifecycles, different concerns. Conflating them at the CLI would
 suggest Grob users are expected to think about VM internals — they
 are not.
 
-Entry point is `dotnet run -c Release --project bench/Grob.Benchmarks`.
-The README documents this. The CLI stays focused on running Grob
+The canonical production path for committed baselines is the `benchmark.yml`
+GitHub Actions workflow (§8.1). One-off debugging and exploration runs use
+`dotnet run -c Release --project bench/Grob.Benchmarks` locally (§8.2).
+The README documents both paths. The CLI stays focused on running Grob
 scripts.
 
 This may change post-v1 if there is a genuine reason for users to
@@ -508,7 +564,7 @@ benchmark Grob scripts themselves (a `grob bench myscript.grob` for
 profiling user code is a plausible later feature). It is out of scope
 for v1.
 
------
+---
 
 ## 11. Implementation Timing
 
@@ -519,7 +575,8 @@ exists earliest. VM execution and end-to-end categories grow alongside
 the features they exercise, sprint by sprint.
 
 The baseline JSON files are committed for the first time at the close
-of Sprint 2. Each subsequent sprint updates them.
+of Sprint 2. Each subsequent sprint updates them. Baselines are produced
+via the `benchmark.yml` Actions workflow (§8.1 / D-309).
 
 The stability test lands at the close of **Sprint 8** — the first
 sprint with a stdlib substantial enough that meaningful long-run leak
@@ -534,7 +591,7 @@ that ship in `stability.json` are derived from this characterisation,
 not from the §6 placeholders. The calibration result is recorded as
 an addendum to D-302 in the decisions log.
 
------
+---
 
 ## 12. What This Document Does Not Cover
 
@@ -548,12 +605,17 @@ an addendum to D-302 in the decisions log.
   Tempting but a separate exercise — different runtimes, different
   fairness questions, different audiences. Post-v1.
 - **CI integration of benchmarks.** Benchmarks do not run in CI on
-  every commit. They run at sprint close (full suite) and per-release
-  (stability test). CI runs unit tests and integration tests; that
-  separation is deliberate.
+  every commit. Committed baselines and sprint-close regression
+  comparisons are produced via the `benchmark.yml` manual-dispatch
+  workflow (§8.1, D-309). The benchmark project also supports local
+  invocation for one-off debugging and exploration (§8.2). Per-commit
+  automated benchmarking is out of scope for v1.
 
------
+---
 
-*This document is the authoritative reference for Grob's benchmarking*
-*strategy. D-302 records the decision. `grob-v1-requirements.md` §12*
-*and `grob-solution-architecture.md` cite this document for detail.*
+_This document is the authoritative reference for Grob's benchmarking_
+_strategy. D-302 records the original decision. D-309 (May 2026) refines_
+_the baseline production mechanism: baselines are produced via the_
+_`benchmark.yml` GitHub Actions workflow with `windows-latest` as the_
+_canonical runner. `grob-v1-requirements.md` §12 and_
+_`grob-solution-architecture.md` cite this document for detail._

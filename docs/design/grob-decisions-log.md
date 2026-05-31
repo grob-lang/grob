@@ -306,6 +306,9 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-306 | May 2026                                                          | VM — developer diagnostics    | Disassembler (always compiled, Sprint 2) + `#if DEBUG` execution tracing. `grob dump` CLI wrapper deferred to Sprint 12. Release dispatch loop stays branch-free |
 | D-307 | May 2026                                                          | Type system — naming          | Built-in scalars are lowercase (`int`/`string`/`bool`/`float`) — canonical, not new. Sprint 1 impl drift to `Int`/`String` corrected in code and tests           |
 | D-308 | Diagnostics raised against catalog descriptors, not code literals | Tooling / error model         | —                                                                                                                                                                | —                                                    |
+| D-309 | May 2026                                                          | Tooling — benchmarking        | Benchmark execution production mechanism moved to GitHub Actions `benchmark.yml`; D-302 deliverable unchanged, production path refined                           |
+| D-310 | May 2026                                                          | Tooling — build               | C# 14 / .NET 10 SDK pinning corrected; `LangVersion 14` canonical; Sprint 2-end QA verified clean Debug and Release builds under corrected pinning               |
+| D-311 | May 2026                                                          | Compiler — type checker       | Unresolved-identifier `Declaration` sentinel: `UnresolvedDecl.Instance` satisfies the §3.1.1 non-null invariant at every error path; addendum to D-137           |
 
 ---
 
@@ -2885,6 +2888,68 @@ Detail and the descriptor/catalog/test shapes ship in the session zip under `src
 
 ---
 
+### D-309 — Benchmark execution production mechanism: local → GitHub Actions (May 2026)
+
+Area: Tooling — benchmarking workflow
+Supersedes: none
+Superseded by: none
+Refines: D-302
+
+**Context.** D-302 authorises the benchmarking harness and establishes `bench/Grob.Benchmarks/baseline/` as the committed location for baseline JSON. D-302 was silent on _how_ those JSON files are produced — local developer invocation was the implied path.
+
+**The gap.** At Sprint 2 close, external QA ran the benchmark locally and produced a `BenchmarkDotNet.Artifacts/` directory at the repo root, demonstrating that the local-run path works but also demonstrating its hazard: local results are not reproducible across machines, OSes, or hardware generations. A baseline produced on a developer laptop under load is not a credible anchor for a 5% regression gate.
+
+**The decision.** Baselines are produced via the `benchmark.yml` GitHub Actions workflow, not via local invocation. The workflow trigger is manual (`workflow_dispatch`). The workflow uploads the full BenchmarkDotNet artifact to GitHub Actions as `benchmark-results-<runner>-<run-id>` (90-day retention). The engineer downloads, extracts, and commits the `-report-full.json` as the category baseline file.
+
+The `-report-full.json` (not `-report-brief.json`) is the committed baseline — it contains `HostEnvironmentInfo`, which records the CPU, OS, runtime version and GC mode the measurement was taken on. Without it the baseline is numbers without provenance.
+
+**The runner choice — Windows.** The canonical runner for all baseline and regression runs is `windows-latest`. Grob's user base is Windows developers and sysadmins (per the project's design corpus); Windows runner is the closer match to user-facing performance reality. Ubuntu runners produce slightly lower measurement noise on GitHub-hosted infrastructure, but the representativeness trade-off favours Windows for this project. **All future baseline runs must use the same runner type.** Cross-runner comparisons are noise; mixing runner types across baselines of the same category voids the comparison.
+
+**D-302 deliverable unchanged.** The Sprint 2 acceptance text in `grob-v1-requirements.md` §4 ("the first baseline JSON is committed") and the baseline shape in `grob-benchmarking-strategy.md` §7.6 / §11 (BenchmarkDotNet JSON, one per category) are unchanged. Only the production mechanism changes. The benchmarking strategy doc is updated in the same session (Sprint 2 QA fix) to reflect the workflow as the canonical path; local invocation is reframed as a debugging tool.
+
+**Local invocation — retained as secondary path.** `dotnet run -c Release --project bench/Grob.Benchmarks` continues to work and is documented in the strategy doc and README. It is the right tool for investigating a benchmark crash, a JIT anomaly, or a one-off exploratory measurement. It is not the right tool for producing committed baselines.
+
+---
+
+### D-310 — C# 14 / .NET 10 SDK pinning correction (May 2026)
+
+Area: Tooling — build configuration
+Supersedes: none
+Superseded by: none
+
+**What happened.** `Directory.Build.props` pinned `LangVersion` to `13` for part of Sprint 2, while the project targets .NET 10 (SDK 10.0.x). .NET 10 ships with C# 14; building with `LangVersion 13` wastes language features and creates a silent divergence between the SDK version the build actually uses and the version the project explicitly targets.
+
+**Correction.** `LangVersion` was updated to `14` in `Directory.Build.props` to match the .NET 10 SDK. The correction is canonical: all future sprints write against C# 14. `global.json` already pinned the SDK channel to `10.0`; no change to `global.json` was needed.
+
+**QA verification.** The Sprint 2-end QA pass (external reviewer) confirmed Debug and Release builds both green with zero warnings under the corrected pinning. The citation points are `Directory.Build.props:7` (the `<LangVersion>14</LangVersion>` line) and `global.json:3` (the channel lock).
+
+**No design change.** This is a build-configuration correction, not a language-design decision. No spec documents change; the canonical language version is implicitly `current SDK` as recorded in `global.json`.
+
+---
+
+### D-311 — Unresolved-identifier `Declaration` sentinel (May 2026)
+
+Area: Compiler — type checker — §3.1.1 invariant
+Supersedes: none
+Superseded by: none
+Refines: D-137
+
+**The invariant.** D-137 requires every identifier node in a type-checked AST to carry a non-null `Declaration` pointing to its declaring AST node. The shape declared in §3.1.1 has `public AstNode? Declaration { get; set; }` — nullable in the property type so Sprint 1 could compile without a type checker existing yet, not nullable as a permitted post-type-check state.
+
+**The gap before this fix.** `TypeChecker.Expressions.cs` assigned `Declaration` for resolved identifiers but left it null for unresolved ones (those that produce E1001). The comment read: "node.Declaration remains null — no declaring node exists." This violated the invariant.
+
+**The fix — singleton sentinel.** The type checker now assigns `UnresolvedDecl.Instance` to every identifier it cannot resolve. `UnresolvedDecl` is a sealed record in `Grob.Compiler.Ast.Declarations`, deriving from `Declaration`, with `SourceRange.Unknown` and a single static `Instance` field. It is symmetric with the `GrobType.Error` sentinel on the type side (§29.3): one shared instance, allocation-free at the failure path, no per-error synthetic node.
+
+**Why a singleton, not per-error synthetic nodes.** Per-error synthetic nodes would allow the LSP's go-to-definition to navigate from an unresolved identifier to a "here is where resolution failed" node. However, the LSP does not navigate unresolved identifiers — it returns an "unresolved" response. A singleton suffices: `ReferenceEquals(node.Declaration, UnresolvedDecl.Instance)` is the go-to-definition guard. Creating a fresh node per error site would add allocation and complexity that solves no real problem. The symmetry with the §29.3 `Error` type also aids readability — both failure paths follow the same pattern.
+
+**Tests.** Three regression tests land with this fix in `TypeCheckerTests.cs`:
+
+- `UndefinedIdentifier_Declaration_IsUnresolvedDeclSentinel` — the Codex repro (`x := missing + 1`); asserts `Assert.Same(UnresolvedDecl.Instance, missing.Declaration)`.
+- `UndefinedIdentifier_MultipleSites_AllShareSentinelInstance` — three occurrences of an undefined name; asserts three E1001 diagnostics and `Assert.Same` on each identifier's `Declaration`.
+- `Declaration_Invariant_HoldsForBothResolvedAndUnresolvedIdentifiers` — mixed tree; asserts non-null `Declaration` on all identifiers.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3106,6 +3171,18 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated May 2026 — D-311: unresolved-identifier `Declaration` sentinel_
+_(`UnresolvedDecl.Instance`) satisfies the §3.1.1 non-null invariant at_
+_every error path in the type checker. Addendum to D-137. Three regression_
+_tests added to `TypeCheckerTests.cs`._
+_Updated May 2026 — D-310: `LangVersion` corrected to `14` in_
+_`Directory.Build.props` to match the .NET 10 SDK. C# 14 is the canonical_
+_language version going forward. Sprint 2-end QA verified Debug and Release_
+_builds clean under the corrected pinning._
+_Updated May 2026 — D-309: benchmark baseline production mechanism moved_
+_to the `benchmark.yml` GitHub Actions workflow; `windows-latest` is the_
+_canonical runner. Refines D-302. Benchmarking strategy doc updated_
+_accordingly (§8.1 / §8.2 / §9 / §10 / §11 / §12)._
 _Updated May 2026 — D-308: diagnostics are raised against `ErrorCatalog`_
 _descriptors, never code literals. `ErrorDescriptor`/`ErrorCatalog`/`Diagnostic`_
 _added to `Grob.Core`; agreement test added to `Grob.Core.Tests`; solution-wide_

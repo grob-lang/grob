@@ -309,6 +309,54 @@ public sealed class TypeCheckerTests {
         Assert.Equal((1, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
+    /// <summary>
+    /// The Codex repro: <c>x := missing + 1</c> — the unresolved identifier carries
+    /// the <see cref="UnresolvedDecl.Instance"/> sentinel, not null (D-311 / §3.1.1).
+    /// </summary>
+    [Fact]
+    public void UndefinedIdentifier_Declaration_IsUnresolvedDeclSentinel() {
+        (CompilationUnit unit, _) = TypeCheckSource("x := missing + 1\n");
+        IReadOnlyList<IdentifierExpr> identifiers = CollectIdentifiers(unit);
+        IdentifierExpr missing = Assert.Single(identifiers, id => id.Name == "missing");
+        Assert.Same(UnresolvedDecl.Instance, missing.Declaration);
+    }
+
+    /// <summary>
+    /// Three occurrences of the same undefined name each carry the
+    /// <see cref="UnresolvedDecl.Instance"/> sentinel — same reference, not just
+    /// equal shape — and each independently emit E1001 (cascade suppression applies
+    /// to derived type errors, not to the E1001 per reference).
+    /// </summary>
+    [Fact]
+    public void UndefinedIdentifier_MultipleSites_AllShareSentinelInstance() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("x := missing + missing + missing\n");
+        Diagnostic[] errors = bag.Errors.ToArray();
+        Assert.Equal(3, errors.Length);
+        Assert.Collection(errors,
+            e => { Assert.Equal("E1001", e.Code); Assert.Equal((1, 6), (e.Range.Start.Line, e.Range.Start.Column)); },
+            e => { Assert.Equal("E1001", e.Code); Assert.Equal((1, 16), (e.Range.Start.Line, e.Range.Start.Column)); },
+            e => { Assert.Equal("E1001", e.Code); Assert.Equal((1, 26), (e.Range.Start.Line, e.Range.Start.Column)); });
+        IReadOnlyList<IdentifierExpr> unresolved = CollectIdentifiers(unit)
+            .Where(id => id.Name == "missing")
+            .ToList()
+            .AsReadOnly();
+        Assert.Equal(3, unresolved.Count);
+        Assert.All(unresolved, id => Assert.Same(UnresolvedDecl.Instance, id.Declaration));
+    }
+
+    /// <summary>
+    /// The §3.1.1 invariant holds across a mixed tree — identifiers that resolve
+    /// successfully and identifiers that fail resolution both carry non-null
+    /// <see cref="IdentifierExpr.Declaration"/> after type-check.
+    /// </summary>
+    [Fact]
+    public void Declaration_Invariant_HoldsForBothResolvedAndUnresolvedIdentifiers() {
+        (CompilationUnit unit, _) = TypeCheckSource("a := 10\nb := a + missing\n");
+        IReadOnlyList<IdentifierExpr> identifiers = CollectIdentifiers(unit);
+        Assert.NotEmpty(identifiers);
+        Assert.All(identifiers, id => Assert.NotNull(id.Declaration));
+    }
+
     // -----------------------------------------------------------------------
     // Control flow — visits all branches (VisitIf, VisitWhile, VisitForIn,
     // VisitSelect, VisitTry).

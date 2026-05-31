@@ -50,7 +50,7 @@ public sealed partial class TypeChecker {
         if (symbol is null) {
             EmitError(ErrorCatalog.E1001, $"Undefined identifier '{node.Name}'.", node.Range);
             node.ResolvedType = GrobType.Error;
-            // node.Declaration remains null — no declaring node exists.
+            node.Declaration = UnresolvedDecl.Instance; // §3.1.1 invariant: Declaration is never null after type-check (D-311).
             return GrobType.Error;
         }
         node.ResolvedType = symbol.Type;
