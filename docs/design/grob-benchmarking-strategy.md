@@ -486,7 +486,7 @@ are not comparable across runner types.
 
 ### 8.2 Local Invocation — Debugging and One-Off Exploration
 
-```
+```bash
 dotnet run -c Release --project bench/Grob.Benchmarks
 ```
 

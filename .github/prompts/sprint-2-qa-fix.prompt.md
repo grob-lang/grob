@@ -178,11 +178,13 @@ Implementation:
   `UnresolvedDeclaration.Instance`. The diagnostic count for that input is
   exactly 1 (`E1001` at the `missing` site); no additional diagnostics,
   including not a derived one from `x`'s RHS being `Error`-typed.
-- Cascade suppression is preserved — a tree with `missing + missing +
-  missing` produces one `E1001`, not three. (This protects the §4.5
-  verification from regressing under the new `Declaration` assignment.)
-  All three `missing` identifier nodes point to the same sentinel
-  instance (reference equality, not just shape equality).
+- Cascade suppression applies to _derived_ type errors, not to E1001
+  itself — a tree with `missing + missing + missing` produces three
+  `E1001` diagnostics (one per unresolved reference), but no additional
+  derived errors from the `Error`-typed sub-expressions. (This protects
+  the §4.5 verification from regressing under the new `Declaration`
+  assignment.) All three `missing` identifier nodes point to the same
+  sentinel instance (reference equality, not just shape equality).
 - The §3.1.1 verification test from Sprint 2 still passes — every
   identifier in a fully-resolved tree carries the _real_ declaration node,
   not the unresolved sentinel. The fix must not regress the success path

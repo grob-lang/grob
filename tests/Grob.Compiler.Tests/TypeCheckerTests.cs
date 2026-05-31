@@ -330,8 +330,12 @@ public sealed class TypeCheckerTests {
     [Fact]
     public void UndefinedIdentifier_MultipleSites_AllShareSentinelInstance() {
         (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("x := missing + missing + missing\n");
-        Assert.Equal(3, bag.Errors.Count());
-        Assert.All(bag.Errors, e => Assert.Equal("E1001", e.Code));
+        Diagnostic[] errors = bag.Errors.ToArray();
+        Assert.Equal(3, errors.Length);
+        Assert.Collection(errors,
+            e => { Assert.Equal("E1001", e.Code); Assert.Equal((1, 6), (e.Range.Start.Line, e.Range.Start.Column)); },
+            e => { Assert.Equal("E1001", e.Code); Assert.Equal((1, 16), (e.Range.Start.Line, e.Range.Start.Column)); },
+            e => { Assert.Equal("E1001", e.Code); Assert.Equal((1, 26), (e.Range.Start.Line, e.Range.Start.Column)); });
         IReadOnlyList<IdentifierExpr> unresolved = CollectIdentifiers(unit)
             .Where(id => id.Name == "missing")
             .ToList()

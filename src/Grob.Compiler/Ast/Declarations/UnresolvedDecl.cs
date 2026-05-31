@@ -16,7 +16,9 @@ namespace Grob.Compiler.Ast.Declarations;
 /// code that only needs to confirm the §3.1.1 non-null invariant holds works
 /// unchanged — <see cref="Instance"/> satisfies a null-check.
 /// </remarks>
-public sealed record UnresolvedDecl() : Declaration(SourceRange.Unknown) {
+public sealed record UnresolvedDecl : Declaration {
+    private UnresolvedDecl() : base(SourceRange.Unknown) { }
+
     /// <summary>The one shared instance. All unresolved identifiers share this reference.</summary>
     public static readonly UnresolvedDecl Instance = new();
 
