@@ -56,27 +56,11 @@ public sealed partial class TypeChecker {
             return GrobType.Unknown;
         }
 
-        Symbol? symbol = LookupSymbol(target.Name);
+        Symbol? symbol = TryResolveAndBindMutableTarget(target);
         if (symbol is null) {
-            EmitError(ErrorCatalog.E1001,
-                $"Undefined identifier '{target.Name}'. Use ':=' to declare a new variable.",
-                target.Range);
-            target.ResolvedType = GrobType.Error;
-            target.Declaration = UnresolvedDecl.Instance;
             Visit(node.Value);
             return GrobType.Unknown;
         }
-
-        // Reject reassignment of immutable bindings.
-        if (symbol.DeclarationNode is ConstDecl)
-            EmitError(ErrorCatalog.E0201,
-                $"Cannot reassign 'const' binding '{target.Name}'.", target.Range);
-        else if (symbol.DeclarationNode is ReadonlyDecl)
-            EmitError(ErrorCatalog.E0202,
-                $"Cannot reassign 'readonly' binding '{target.Name}'.", target.Range);
-
-        target.ResolvedType = symbol.Type;
-        target.Declaration = symbol.DeclarationNode;
 
         GrobType valueType = Visit(node.Value);
 
@@ -99,26 +83,11 @@ public sealed partial class TypeChecker {
             return GrobType.Unknown;
         }
 
-        Symbol? symbol = LookupSymbol(target.Name);
+        Symbol? symbol = TryResolveAndBindMutableTarget(target);
         if (symbol is null) {
-            EmitError(ErrorCatalog.E1001,
-                $"Undefined identifier '{target.Name}'. Use ':=' to declare a new variable.",
-                target.Range);
-            target.ResolvedType = GrobType.Error;
-            target.Declaration = UnresolvedDecl.Instance;
             Visit(node.Value);
             return GrobType.Unknown;
         }
-
-        if (symbol.DeclarationNode is ConstDecl)
-            EmitError(ErrorCatalog.E0201,
-                $"Cannot reassign 'const' binding '{target.Name}'.", target.Range);
-        else if (symbol.DeclarationNode is ReadonlyDecl)
-            EmitError(ErrorCatalog.E0202,
-                $"Cannot reassign 'readonly' binding '{target.Name}'.", target.Range);
-
-        target.ResolvedType = symbol.Type;
-        target.Declaration = symbol.DeclarationNode;
 
         GrobType valueType = Visit(node.Value);
 
@@ -186,6 +155,35 @@ public sealed partial class TypeChecker {
     // -----------------------------------------------------------------------
     // Private helpers
     // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Looks up <paramref name="target"/> as a mutable binding. On success emits any
+    /// immutability diagnostics (E0201/E0202) and sets
+    /// <see cref="IdentifierExpr.ResolvedType"/>/<see cref="IdentifierExpr.Declaration"/>.
+    /// Returns <c>null</c> (with E1001 already emitted) when the symbol is undefined.
+    /// </summary>
+    private Symbol? TryResolveAndBindMutableTarget(IdentifierExpr target) {
+        Symbol? symbol = LookupSymbol(target.Name);
+        if (symbol is null) {
+            EmitError(ErrorCatalog.E1001,
+                $"Undefined identifier '{target.Name}'. Use ':=' to declare a new variable.",
+                target.Range);
+            target.ResolvedType = GrobType.Error;
+            target.Declaration = UnresolvedDecl.Instance;
+            return null;
+        }
+
+        if (symbol.DeclarationNode is ConstDecl)
+            EmitError(ErrorCatalog.E0201,
+                $"Cannot reassign 'const' binding '{target.Name}'.", target.Range);
+        else if (symbol.DeclarationNode is ReadonlyDecl)
+            EmitError(ErrorCatalog.E0202,
+                $"Cannot reassign 'readonly' binding '{target.Name}'.", target.Range);
+
+        target.ResolvedType = symbol.Type;
+        target.Declaration = symbol.DeclarationNode;
+        return symbol;
+    }
 
     private static BinaryOperator CompoundOpToBinary(CompoundAssignmentOperator op) => op switch {
         CompoundAssignmentOperator.PlusAssign => BinaryOperator.Add,
