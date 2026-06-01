@@ -36,6 +36,14 @@ public sealed partial class Compiler : AstVisitor<object?> {
     private readonly Stack<List<LocalVar>> _localScopes = new();
     private int _nextSlot;   // next available stack slot for a new local
 
+    // -----------------------------------------------------------------------
+    // Const value table (Sprint 3C).
+    // Maps each ConstDecl node to its compile-time-evaluated GrobValue.
+    // Every reference to a const identifier is inlined as a direct Constant
+    // load rather than going through the global/local slot machinery (D-293).
+    // -----------------------------------------------------------------------
+    private readonly Dictionary<ConstDecl, GrobValue> _constValues = [];
+
     private bool IsGlobalScope => _localScopes.Count == 0;
 
     private Compiler() { }
@@ -188,4 +196,35 @@ public sealed partial class Compiler : AstVisitor<object?> {
             _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
         }
     }
+
+    /// <summary>
+    /// Evaluates a compile-time constant <paramref name="expr"/> to its
+    /// <see cref="GrobValue"/>.  Called by <c>VisitConstDecl</c> to fold the
+    /// RHS before any bytecode is emitted (D-289, D-293).
+    /// </summary>
+    /// <exception cref="GrobInternalException">
+    /// Thrown when <paramref name="expr"/> is not a recognised compile-time
+    /// constant form — indicating the type checker failed to reject a
+    /// non-constant RHS.
+    /// </exception>
+    private GrobValue EvalConstantExpr(Expression expr) => expr switch {
+        IntLiteralExpr e => GrobValue.FromInt(e.Value),
+        FloatLiteralExpr e => GrobValue.FromFloat(e.Value),
+        StringLiteralExpr e => GrobValue.FromString(e.Value),
+        RawStringLiteralExpr e => GrobValue.FromString(e.Value),
+        // Double-quoted strings without ${} interpolations are parsed as
+        // InterpolatedStringExpr with all-text parts — fold them here.
+        InterpolatedStringExpr istr when istr.Parts.All(p => p is StringTextPart)
+                             => GrobValue.FromString(
+                                    string.Concat(istr.Parts.OfType<StringTextPart>()
+                                                         .Select(p => p.Text))),
+        BoolLiteralExpr e => GrobValue.FromBool(e.Value),
+        NilLiteralExpr => GrobValue.Nil,
+        GroupingExpr g => EvalConstantExpr(g.Inner),
+        IdentifierExpr id when id.Declaration is ConstDecl cd
+                             => _constValues[cd],
+        _ => throw new GrobInternalException(
+            $"Non-constant expression '{expr.GetType().Name}' in const declaration. "
+          + "The type checker should have rejected this source."),
+    };
 }

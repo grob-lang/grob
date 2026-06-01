@@ -49,6 +49,36 @@ public sealed partial class Compiler {
         return null;
     }
 
+    /// <inheritdoc/>
+    public override object? VisitReadonlyDecl(ReadonlyDecl node) {
+        // Immutability is enforced at compile time by the type checker (E0202).
+        // The runtime representation is identical to a mutable :=  binding.
+        int line = node.Range.Start.Line;
+        Visit(node.Value);
+
+        if (IsGlobalScope) {
+            int nameIdx = GetOrCreateGlobalNameIndex(node.Name);
+            _chunk.WriteOpCode(OpCode.DefineGlobal, line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
+        } else {
+            if ((uint)_nextSlot > byte.MaxValue)
+                throw new GrobInternalException(
+                    $"Local variable count overflow: slot {_nextSlot} for '{node.Name}' "
+                  + $"exceeds the 1-byte limit of {byte.MaxValue}.");
+            _localScopes.Peek().Add(new LocalVar(node.Name, _nextSlot++));
+        }
+        return null;
+    }
+
+    /// <inheritdoc/>
+    public override object? VisitConstDecl(ConstDecl node) {
+        // Evaluate the RHS to a compile-time constant and cache it (D-289, D-293).
+        // No bytecode is emitted for the declaration itself; every reference site
+        // inlines the value via EmitConstant instead of GetGlobal/GetLocal.
+        _constValues[node] = EvalConstantExpr(node.Value);
+        return null;
+    }
+
     // -----------------------------------------------------------------------
     // Expression statements (print, exit, and other calls)
     // -----------------------------------------------------------------------
