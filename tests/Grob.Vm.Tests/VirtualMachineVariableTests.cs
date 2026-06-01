@@ -208,4 +208,79 @@ public sealed class VirtualMachineVariableTests {
 
         Assert.Equal(0, vm.Stack.Count);
     }
+
+    // -------------------------------------------------------------------------
+    // SetGlobal — undefined-name guard
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void SetGlobal_UndefinedName_ThrowsGrobRuntimeException() {
+        // Emit SetGlobal for a name that was never DefineGlobal'd.
+        var chunk = new Chunk();
+        byte xName = NameByte(chunk, "ghost");
+        byte i1 = IntByte(chunk, 1L);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(i1, 1);
+        chunk.WriteOpCode(OpCode.SetGlobal, 1); chunk.WriteByte(xName, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(chunk));
+        Assert.Equal("E1001", ex.Code);
+    }
+
+    // -------------------------------------------------------------------------
+    // VirtualMachine.Reset() — dirty-stack path
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Run_AfterExceptionWithDirtyStack_SubsequentRunSucceeds() {
+        // First run: push a value then hit an undefined global → exception leaves
+        // one value on the operand stack.
+        var chunk1 = new Chunk();
+        byte i99 = IntByte(chunk1, 99L);
+        byte missingName = NameByte(chunk1, "missing");
+        chunk1.WriteOpCode(OpCode.Constant, 1); chunk1.WriteByte(i99, 1);
+        chunk1.WriteOpCode(OpCode.GetGlobal, 1); chunk1.WriteByte(missingName, 1);
+        chunk1.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        Assert.Throws<GrobRuntimeException>(() => vm.Run(chunk1));
+        Assert.Equal(1, vm.Stack.Count); // stack is dirty
+
+        // Second run: Reset() must clear the dirty stack before executing.
+        var chunk2 = new Chunk();
+        chunk2.WriteOpCode(OpCode.Return, 1);
+        vm.Run(chunk2);  // must not throw
+
+        Assert.Equal(0, vm.Stack.Count);
+    }
+
+    // -------------------------------------------------------------------------
+    // VirtualMachine — unknown opcode (default: in dispatch switch)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Run_UnknownOpcode_ThrowsGrobInternalException() {
+        var chunk = new Chunk();
+        chunk.WriteByte(0xFF, 1); // no OpCode has value 255
+        // No Return is needed: the exception fires before we'd need it.
+
+        var (vm, _) = NewVm();
+        Assert.Throws<GrobInternalException>(() => vm.Run(chunk));
+    }
+
+    // -------------------------------------------------------------------------
+    // VirtualMachine constructor — explicit trace writer
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Constructor_WithExplicitTrace_DoesNotThrow() {
+        using var trace = new StringWriter();
+        using var output = new StringWriter();
+        var vm = new VirtualMachine(output, trace); // _trace = trace (non-null branch)
+
+        var chunk = new Chunk();
+        chunk.WriteOpCode(OpCode.Return, 1);
+        vm.Run(chunk); // exercises the trace path in Debug builds
+    }
 }

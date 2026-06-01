@@ -336,4 +336,96 @@ public sealed class TypeCheckerVariableTests {
             """);
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
     }
+
+    // -----------------------------------------------------------------------
+    // Compound /= and %= — coverage of CompoundOpToBinary arms
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CompoundAssignment_IntDivideInt_NoErrors() {
+        DiagnosticBag bag = Check("""
+            x := 10
+            x /= 2
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void CompoundAssignment_IntModuloInt_NoErrors() {
+        DiagnosticBag bag = Check("""
+            x := 10
+            x %= 3
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void CompoundAssignment_FloatDivideFloat_NoErrors() {
+        DiagnosticBag bag = Check("""
+            f := 4.0
+            f /= 2.0
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void CompoundAssignment_FloatModuloFloat_NoErrors() {
+        DiagnosticBag bag = Check("""
+            f := 4.0
+            f %= 3.0
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    // -----------------------------------------------------------------------
+    // Increment on non-int, non-float types — E0002 via else-if branch
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Increment_OnString_EmitsE0002() {
+        DiagnosticBag bag = Check("""
+            s := "hello"
+            s++
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    // -----------------------------------------------------------------------
+    // Readonly bindings — E0202
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Assignment_ToReadonly_EmitsE0202() {
+        DiagnosticBag bag = Check("""
+            readonly x := 5
+            x = 10
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0202", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void CompoundAssignment_ToReadonly_EmitsE0202() {
+        DiagnosticBag bag = Check("""
+            readonly x := 5
+            x += 1
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0202", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void Increment_OnReadonly_EmitsE0202() {
+        DiagnosticBag bag = Check("""
+            readonly x := 5
+            x++
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0202", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
 }

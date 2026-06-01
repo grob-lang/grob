@@ -281,4 +281,75 @@ public sealed class Sprint3IncrementATests {
         Assert.Equal("E0002", diag.Code);
         Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
+
+    // -----------------------------------------------------------------------
+    // Local decrement (DecrementInt opcode)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void BlockLocal_Decrement_UpdatesLocal() {
+        string stdout = Run("""
+            {
+              k := 5
+              k--
+              print(k)
+            }
+            """);
+        Assert.Equal($"4{NL}", stdout);
+    }
+
+    // -----------------------------------------------------------------------
+    // Compound /= and %= (SlashAssign, PercentAssign compiler arms)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CompoundDivide_GlobalInt_YieldsResult() {
+        string stdout = Run("""
+            x := 10
+            x /= 2
+            print(x)
+            """);
+        Assert.Equal($"5{NL}", stdout);
+    }
+
+    [Fact]
+    public void CompoundModulo_GlobalInt_YieldsResult() {
+        string stdout = Run("""
+            x := 10
+            x %= 3
+            print(x)
+            """);
+        Assert.Equal($"1{NL}", stdout);
+    }
+
+    [Fact]
+    public void CompoundDivide_GlobalFloat_YieldsResult() {
+        string stdout = Run("""
+            f := 10.0
+            f /= 4.0
+            print(f)
+            """);
+        Assert.Equal($"2.5{NL}", stdout);
+    }
+
+    [Fact]
+    public void CompoundModulo_GlobalFloat_YieldsResult() {
+        string stdout = Run("""
+            f := 10.0
+            f %= 3.0
+            print(f)
+            """);
+        Assert.Equal($"1{NL}", stdout);
+    }
+
+    [Fact]
+    public void CompoundAdd_FloatTarget_IntRhs_YieldsResult() {
+        // float += int: the compiler coerces the int RHS to float via IntToFloat.
+        string stdout = Run("""
+            f := 1.0
+            f += 2
+            print(f)
+            """);
+        Assert.Equal($"3{NL}", stdout);
+    }
 }
