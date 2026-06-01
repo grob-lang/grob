@@ -226,6 +226,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Warning,
         Throws: null);
 
+    /// <summary>variable already declared in this scope</summary>
+    public static readonly ErrorDescriptor E1102 = new(
+        Code: "E1102",
+        Title: "variable already declared in this scope",
+        Category: ErrorCategory.NameResolution,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>forward reference inside function body</summary>
     public static readonly ErrorDescriptor E1201 = new(
         Code: "E1201",
@@ -900,6 +909,7 @@ public static class ErrorCatalog {
         E1002,
         E1003,
         E1101,
+        E1102,
         E1201,
         E1202,
         E2001,
