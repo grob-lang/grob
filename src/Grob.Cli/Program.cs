@@ -1,7 +1,20 @@
 using System.Diagnostics.CodeAnalysis;
 
-Console.WriteLine("Grob");
-return 0;
+using Grob.Cli;
+
+// grob run <file>
+if (args.Length >= 1 && args[0] == "run") {
+    if (args.Length < 2) {
+        await Console.Error.WriteLineAsync("error: missing file path");
+        await Console.Error.WriteLineAsync("usage: grob run <file>");
+        return 1;
+    }
+    return new RunCommand(Console.Out, Console.Error).Run(args[1]);
+}
+
+await Console.Error.WriteLineAsync("error: unknown command");
+await Console.Error.WriteLineAsync("usage: grob run <file>");
+return 1;
 
 
 // Program.cs entry point — argv parsing and pipeline wiring.

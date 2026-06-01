@@ -1,0 +1,6 @@
+// Sprint 3B fixture: compile-time type error.
+// Expected: diagnostic on stderr, no stdout, non-zero exit.
+x := 42
+y := "hello"
+z := x + y
+print(z)
