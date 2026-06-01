@@ -9,7 +9,7 @@
       "program": "${workspaceFolder}/src/Grob.Cli/bin/Debug/net10.0/grob.dll",
       "args": ["run", "hello-run.grob"],
       "cwd": "${workspaceFolder}/tests/fixtures/sprint-3b",
-      "console": "externalTerminal",
+      "console": "integratedTerminal",
       "stopAtEntry": false
     },
     {
@@ -20,7 +20,7 @@
       "program": "${workspaceFolder}/src/Grob.Cli/bin/Debug/net10.0/grob.dll",
       "args": ["run", "${input:grobFile}"],
       "cwd": "${workspaceFolder}/tests/fixtures/sprint-3b",
-      "console": "externalTerminal",
+      "console": "integratedTerminal",
       "stopAtEntry": false
     }
   ],
