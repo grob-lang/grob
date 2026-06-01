@@ -1,8 +1,6 @@
 using System.Text;
-
-using Grob.Cli;
-
 using Xunit;
+using Grob.Cli;
 
 namespace Grob.Integration.Tests;
 
@@ -55,6 +53,7 @@ public sealed class Sprint3IncrementBTests {
         Assert.NotEqual(0, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E0002", stderr);
+        Assert.Contains("type-error.grob:5:6", stderr);
     }
 
     // -----------------------------------------------------------------------
@@ -68,10 +67,11 @@ public sealed class Sprint3IncrementBTests {
         Assert.NotEqual(0, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E5002", stderr);
+        Assert.Contains("runtime-error.grob:5", stderr); // E5002 does not report a column
     }
 
     // -----------------------------------------------------------------------
-    // Missing file
+    // Missing file / unreadable path
     // -----------------------------------------------------------------------
 
     [Fact]
@@ -83,6 +83,19 @@ public sealed class Sprint3IncrementBTests {
         Assert.NotEqual(0, exitCode);
         Assert.Equal(string.Empty, stdout.ToString());
         Assert.Contains("does-not-exist.grob", stderr.ToString());
+    }
+
+    [Fact]
+    public void DirectoryNotFound_WritesStderrAndExitsNonZero() {
+        var stdout = new StringWriter(new StringBuilder());
+        var stderr = new StringWriter(new StringBuilder());
+        // Path inside a non-existent directory triggers DirectoryNotFoundException.
+        int exitCode = new RunCommand(stdout, stderr).Run(
+            Path.Join("no-such-dir", "no-such-file.grob"));
+
+        Assert.NotEqual(0, exitCode);
+        Assert.Equal(string.Empty, stdout.ToString());
+        Assert.Contains("no-such-file.grob", stderr.ToString());
     }
 
     // -----------------------------------------------------------------------
