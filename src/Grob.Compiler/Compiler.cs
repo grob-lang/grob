@@ -98,6 +98,20 @@ public sealed partial class Compiler : AstVisitor<object?> {
     // -----------------------------------------------------------------------
 
     /// <summary>
+    /// Guards a bytecode operand that must fit in a single byte.
+    /// Throws <see cref="GrobInternalException"/> on overflow; the current ISA
+    /// uses 1-byte operands for all local/global indices (max 256).  Wide-operand
+    /// variants are planned for a future sprint.
+    /// </summary>
+    private static byte ToByteOperand(int value, string context) {
+        if ((uint)value > byte.MaxValue)
+            throw new GrobInternalException(
+                $"Bytecode operand overflow: {context} index {value} exceeds the " +
+                $"1-byte limit of {byte.MaxValue}. Wide-operand opcodes are planned for a future sprint.");
+        return (byte)value;
+    }
+
+    /// <summary>
     /// Adds <paramref name="value"/> to the constant pool and emits a
     /// <see cref="OpCode.Constant"/> (1-byte index) or
     /// <see cref="OpCode.ConstantLong"/> (2-byte big-endian index) instruction.
@@ -121,6 +135,7 @@ public sealed partial class Compiler : AstVisitor<object?> {
     private int GetOrCreateGlobalNameIndex(string name) {
         if (_globalNameIndices.TryGetValue(name, out int existing)) return existing;
         int idx = _chunk.AddConstant(GrobValue.FromString(name));
+        ToByteOperand(idx, $"global name '{name}'"); // validate before caching
         _globalNameIndices[name] = idx;
         return idx;
     }
@@ -148,11 +163,11 @@ public sealed partial class Compiler : AstVisitor<object?> {
         int slot = FindLocalSlot(name);
         if (slot >= 0) {
             _chunk.WriteOpCode(OpCode.GetLocal, line);
-            _chunk.WriteByte((byte)slot, line);
+            _chunk.WriteByte(ToByteOperand(slot, "local slot"), line);
         } else {
             int nameIdx = GetOrCreateGlobalNameIndex(name);
             _chunk.WriteOpCode(OpCode.GetGlobal, line);
-            _chunk.WriteByte((byte)nameIdx, line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
         }
     }
 
@@ -166,11 +181,11 @@ public sealed partial class Compiler : AstVisitor<object?> {
         int slot = FindLocalSlot(name);
         if (slot >= 0) {
             _chunk.WriteOpCode(OpCode.SetLocal, line);
-            _chunk.WriteByte((byte)slot, line);
+            _chunk.WriteByte(ToByteOperand(slot, "local slot"), line);
         } else {
             int nameIdx = GetOrCreateGlobalNameIndex(name);
             _chunk.WriteOpCode(OpCode.SetGlobal, line);
-            _chunk.WriteByte((byte)nameIdx, line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
         }
     }
 }

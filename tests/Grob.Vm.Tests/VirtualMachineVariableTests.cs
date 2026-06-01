@@ -62,8 +62,8 @@ public sealed class VirtualMachineVariableTests {
         var (vm, _) = NewVm();
         vm.Run(chunk);
 
-        Assert.True(vm.Globals.ContainsKey("answer"));
-        Assert.Equal(99L, vm.Globals["answer"].AsInt());
+        Assert.True(vm.Globals.TryGetValue("answer", out GrobValue answerValue));
+        Assert.Equal(99L, answerValue.AsInt());
     }
 
     // -------------------------------------------------------------------------

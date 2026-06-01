@@ -75,8 +75,9 @@ public sealed class TypeCheckerVariableTests {
     [Fact]
     public void VarDecl_TypeAnnotation_MismatchedType_EmitsE0001() {
         DiagnosticBag bag = Check("""x: int := "hello" """);
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E0001");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", diag.Code);
+        Assert.Equal((1, 11), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     // -----------------------------------------------------------------------
@@ -119,8 +120,9 @@ public sealed class TypeCheckerVariableTests {
     [Fact]
     public void Assignment_UndeclaredVariable_EmitsE1001() {
         DiagnosticBag bag = Check("x = 5");
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E1001");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", diag.Code);
+        Assert.Equal((1, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     [Fact]
@@ -129,8 +131,9 @@ public sealed class TypeCheckerVariableTests {
             x := 5
             x = "hello"
             """);
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E0001");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", diag.Code);
+        Assert.Equal((2, 5), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     [Fact]
@@ -152,8 +155,9 @@ public sealed class TypeCheckerVariableTests {
             x := 5
             x := 10
             """);
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E1102");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     [Fact]
@@ -203,15 +207,29 @@ public sealed class TypeCheckerVariableTests {
             x := 5
             x += "bad"
             """);
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E0002");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void CompoundAssignment_IntPlusFloat_EmitsE0002() {
+        // int target with float RHS is a precision-loss error (CRabbit #51).
+        DiagnosticBag bag = Check("""
+            x := 5
+            x += 1.0
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     [Fact]
     public void CompoundAssignment_UndeclaredVariable_EmitsE1001() {
         DiagnosticBag bag = Check("x += 1");
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E1001");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", diag.Code);
+        Assert.Equal((1, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     // -----------------------------------------------------------------------
@@ -224,8 +242,9 @@ public sealed class TypeCheckerVariableTests {
             const MAX := 100
             MAX = 200
             """);
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E0201");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0201", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     [Fact]
@@ -234,8 +253,9 @@ public sealed class TypeCheckerVariableTests {
             const MAX := 100
             MAX += 1
             """);
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E0201");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0201", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     [Fact]
@@ -244,8 +264,9 @@ public sealed class TypeCheckerVariableTests {
             const n := 0
             n++
             """);
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E0201");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0201", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     // -----------------------------------------------------------------------
@@ -276,15 +297,17 @@ public sealed class TypeCheckerVariableTests {
             f := 3.14
             f++
             """);
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E0002");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     [Fact]
     public void Increment_Undeclared_EmitsE1001() {
         DiagnosticBag bag = Check("x++");
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E1001");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", diag.Code);
+        Assert.Equal((1, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     // -----------------------------------------------------------------------
@@ -298,8 +321,9 @@ public sealed class TypeCheckerVariableTests {
             { inner := 5 }
             print(inner)
             """);
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E1001");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", diag.Code);
+        Assert.Equal((2, 7), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     [Fact]

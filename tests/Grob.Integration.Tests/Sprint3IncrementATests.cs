@@ -255,8 +255,9 @@ public sealed class Sprint3IncrementATests {
     [Fact]
     public void TypeError_UndeclaredVariable_EmitsE1001() {
         DiagnosticBag bag = TypeCheck("print(notDeclared)");
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E1001");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", diag.Code);
+        Assert.Equal((1, 7), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     [Fact]
@@ -265,8 +266,9 @@ public sealed class Sprint3IncrementATests {
             x := 1
             x := 2
             """);
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E1102");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     [Fact]
@@ -275,7 +277,8 @@ public sealed class Sprint3IncrementATests {
             f := 1.0
             f++
             """);
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == "E0002");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 }

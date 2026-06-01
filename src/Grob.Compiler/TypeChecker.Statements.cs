@@ -99,7 +99,6 @@ public sealed partial class TypeChecker {
             bool valid = (symbol.Type == GrobType.Int && valueType == GrobType.Int) ||
                          (symbol.Type == GrobType.Float && valueType == GrobType.Float) ||
                          (symbol.Type == GrobType.Float && valueType == GrobType.Int) ||
-                         (symbol.Type == GrobType.Int && valueType == GrobType.Float) ||
                          (op == BinaryOperator.Add && symbol.Type == GrobType.String && valueType == GrobType.String);
             if (!valid)
                 EmitError(ErrorCatalog.E0002,

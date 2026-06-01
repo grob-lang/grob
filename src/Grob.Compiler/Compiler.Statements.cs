@@ -19,7 +19,7 @@ public sealed partial class Compiler {
         List<LocalVar> scope = _localScopes.Pop();
         if (scope.Count > 0) {
             _chunk.WriteOpCode(OpCode.PopN, node.Range.End.Line);
-            _chunk.WriteByte((byte)scope.Count, node.Range.End.Line);
+            _chunk.WriteByte(ToByteOperand(scope.Count, "PopN count"), node.Range.End.Line);
             _nextSlot -= scope.Count;
         }
         return null;
@@ -37,9 +37,13 @@ public sealed partial class Compiler {
         if (IsGlobalScope) {
             int nameIdx = GetOrCreateGlobalNameIndex(node.Name);
             _chunk.WriteOpCode(OpCode.DefineGlobal, line);
-            _chunk.WriteByte((byte)nameIdx, line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
         } else {
             // Local: the value on the stack IS the local — record the slot.
+            if ((uint)_nextSlot > byte.MaxValue)
+                throw new GrobInternalException(
+                    $"Local variable count overflow: slot {_nextSlot} for '{node.Name}' " +
+                    $"exceeds the 1-byte limit of {byte.MaxValue}.");
             _localScopes.Peek().Add(new LocalVar(node.Name, _nextSlot++));
         }
         return null;
@@ -151,12 +155,12 @@ public sealed partial class Compiler {
             _chunk.WriteOpCode(
                 node.Kind == IncrementKind.Increment ? OpCode.IncrementInt : OpCode.DecrementInt,
                 line);
-            _chunk.WriteByte((byte)slot, line);
+            _chunk.WriteByte(ToByteOperand(slot, "local slot"), line);
         } else {
             // Global: load-operate-store sequence.
             int nameIdx = GetOrCreateGlobalNameIndex(target.Name);
             _chunk.WriteOpCode(OpCode.GetGlobal, line);
-            _chunk.WriteByte((byte)nameIdx, line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
 
             EmitConstant(GrobValue.FromInt(1L), line);
 
@@ -165,7 +169,7 @@ public sealed partial class Compiler {
                 line);
 
             _chunk.WriteOpCode(OpCode.SetGlobal, line);
-            _chunk.WriteByte((byte)nameIdx, line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
         }
         return null;
     }
