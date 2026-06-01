@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Grob: run hello-run.grob",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "grob: build",
+      "program": "${workspaceFolder}/src/Grob.Cli/bin/Debug/net10.0/grob.dll",
+      "args": ["run", "hello-run.grob"],
+      "cwd": "${workspaceFolder}/tests/fixtures/sprint-3b",
+      "console": "externalTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Grob: run file...",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "grob: build",
+      "program": "${workspaceFolder}/src/Grob.Cli/bin/Debug/net10.0/grob.dll",
+      "args": ["run", "${input:grobFile}"],
+      "cwd": "${workspaceFolder}/tests/fixtures/sprint-3b",
+      "console": "externalTerminal",
+      "stopAtEntry": false
+    }
+  ],
+  "inputs": [
+    {
+      "id": "grobFile",
+      "type": "promptString",
+      "description": "Path to .grob file (relative to tests/fixtures/sprint-3b or absolute)",
+      "default": "hello-run.grob"
+    }
+  ]
+}
