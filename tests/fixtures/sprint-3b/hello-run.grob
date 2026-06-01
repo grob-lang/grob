@@ -1,0 +1,15 @@
+// Sprint 3B fixture: declares, reassigns and prints values.
+// Expected stdout:
+//   10
+//   hello world
+//   3.14
+x := 5
+x = 10
+print(x)
+
+greeting := "hello"
+greeting = "hello world"
+print(greeting)
+
+pi := 3.14
+print(pi)

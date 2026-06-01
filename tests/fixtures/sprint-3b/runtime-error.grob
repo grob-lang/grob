@@ -1,0 +1,5 @@
+// Sprint 3B fixture: runtime error — integer division by zero (E5002).
+// Expected: error on stderr, non-zero exit.
+a := 10
+b := 0
+print(a / b)
