@@ -33,4 +33,18 @@ public enum GrobType {
     /// derived diagnostics. Never visible outside the type checker.
     /// </summary>
     Error,
+
+    // ---- Nullable variants — Sprint 3 Increment D (T? rules, D-014) ----
+
+    /// <summary>Nullable 64-bit signed integer — the Grob <c>int?</c> type.</summary>
+    NullableInt,
+
+    /// <summary>Nullable 64-bit IEEE 754 double — the Grob <c>float?</c> type.</summary>
+    NullableFloat,
+
+    /// <summary>Nullable immutable UTF-8 string — the Grob <c>string?</c> type.</summary>
+    NullableString,
+
+    /// <summary>Nullable boolean — the Grob <c>bool?</c> type.</summary>
+    NullableBool,
 }

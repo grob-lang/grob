@@ -270,6 +270,67 @@ public sealed class VirtualMachine {
                         _out.WriteLine(_stack.Pop().ToString());
                         break;
 
+                    // --- Nil handling (Sprint 3 Increment D) ---
+
+                    case OpCode.IsNil: {
+                            // Peeks the top of the stack without popping; pushes a bool.
+                            GrobValue top = _stack.Peek();
+                            _stack.Push(GrobValue.FromBool(top.IsNil), line);
+                            break;
+                        }
+                    case OpCode.NilCoalesce: {
+                            // Eager: both operands already on the stack. Pop right then left;
+                            // push left when left is non-nil, right otherwise.
+                            GrobValue right = _stack.Pop();
+                            GrobValue left = _stack.Pop();
+                            _stack.Push(left.IsNil ? right : left, line);
+                            break;
+                        }
+
+                    // --- Control flow (Sprint 3 Increment D — forward-jump backpatch) ---
+
+                    case OpCode.Jump: {
+                            // Unconditional forward jump. The 2-byte big-endian offset counts
+                            // bytes from the instruction immediately after the two operand bytes.
+                            int hi = chunk.ReadByte(ip++);
+                            int lo = chunk.ReadByte(ip++);
+                            ip += (hi << 8) | lo;
+                            break;
+                        }
+                    case OpCode.JumpIfFalse: {
+                            // Conditional forward jump; pops the bool condition.
+                            int hi = chunk.ReadByte(ip++);
+                            int lo = chunk.ReadByte(ip++);
+                            GrobValue cond = _stack.Pop();
+                            if (!cond.AsBool())
+                                ip += (hi << 8) | lo;
+                            break;
+                        }
+                    case OpCode.JumpIfTrue: {
+                            // Conditional forward jump for OR short-circuit; peeks (does not pop)
+                            // so the condition value remains on the stack as the result.
+                            int hi = chunk.ReadByte(ip++);
+                            int lo = chunk.ReadByte(ip++);
+                            if (_stack.Peek().AsBool())
+                                ip += (hi << 8) | lo;
+                            break;
+                        }
+
+                    // --- Properties (Sprint 3 Increment D — partial; struct fields Sprint 5) ---
+
+                    case OpCode.GetProperty: {
+                            // 1-byte name-index operand.
+                            byte nameIdx = chunk.ReadByte(ip++);
+                            GrobValue receiver = _stack.Pop();
+                            // Nil receiver raises E5201 (nil dereference at runtime).
+                            // Struct field resolution is deferred to Sprint 5.
+                            if (receiver.IsNil)
+                                throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column,
+                                    "nil dereference: cannot access member on nil value");
+                            throw new GrobInternalException(
+                                $"opcode {OpCode.GetProperty} on non-nil receiver not yet implemented (Sprint 5)");
+                        }
+
                     // --- Top-level return ends this chunk's execution ---
                     case OpCode.Return:
                         return;

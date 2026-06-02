@@ -135,14 +135,24 @@ public sealed partial class Compiler {
 
     /// <inheritdoc/>
     public override object? VisitBinary(BinaryExpr node) {
+        int line = node.Range.Start.Line;
         GrobType lt = GetExprType(node.Left);
         GrobType rt = GetExprType(node.Right);
+
+        // Nil coalescing — eager: compile both operands then NilCoalesce opcode (D-271).
+        // No short-circuit jumps — the '??' operator always evaluates both sides.
+        if (node.Operator == BinaryOperator.NilCoalesce) {
+            Visit(node.Left);
+            Visit(node.Right);
+            _chunk.WriteOpCode(OpCode.NilCoalesce, line);
+            return null;
+        }
 
         // String concatenation via Add.
         if (node.Operator == BinaryOperator.Add && lt == GrobType.String && rt == GrobType.String) {
             Visit(node.Left);
             Visit(node.Right);
-            _chunk.WriteOpCode(OpCode.Concat, node.Range.Start.Line);
+            _chunk.WriteOpCode(OpCode.Concat, line);
             return null;
         }
 
@@ -163,7 +173,62 @@ public sealed partial class Compiler {
             _chunk.WriteOpCode(OpCode.IntToFloat, node.Right.Range.Start.Line);
         }
 
-        _chunk.WriteOpCode(GetArithmeticOpCode(node.Operator, resultType), node.Range.Start.Line);
+        _chunk.WriteOpCode(GetArithmeticOpCode(node.Operator, resultType), line);
+        return null;
+    }
+
+    // -----------------------------------------------------------------------
+    // Member access (optional chaining)
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// For <c>?.</c> access: compiles the receiver, emits <see cref="OpCode.IsNil"/>,
+    /// then a forward <see cref="OpCode.JumpIfTrue"/> (short-circuit path — leaves
+    /// the nil receiver on the stack and skips the field-access body). When the receiver
+    /// is not nil, execution falls through to a <see cref="OpCode.GetProperty"/>
+    /// which resolves the named member at runtime.
+    /// <para>
+    /// <see cref="OpCode.IsNil"/> peeks the top of stack (does not pop), so the
+    /// resulting bool sits above the receiver. <see cref="OpCode.JumpIfTrue"/> also
+    /// peeks. Two <see cref="OpCode.Pop"/>s are emitted (one on each path) to
+    /// discard the bool before the paths converge.
+    /// </para>
+    /// <para>For plain <c>.</c> access the same <see cref="OpCode.GetProperty"/> is
+    /// emitted directly; the type checker has already verified the receiver is
+    /// non-nullable.</para>
+    /// <para>Struct member types are deferred to Sprint 5; for now
+    /// <see cref="OpCode.GetProperty"/> throws at runtime on non-struct receivers.</para>
+    /// </remarks>
+    public override object? VisitMemberAccess(MemberAccessExpr node) {
+        int line = node.Range.Start.Line;
+        Visit(node.Target);
+
+        int nameIdx = _chunk.AddConstant(GrobValue.FromString(node.Member));
+
+        if (node.IsOptional) {
+            // Stack after Visit(Target):       [... receiver]
+            // IsNil peeks — pushes bool:       [... receiver, isNil]
+            // JumpIfTrue peeks: if nil, jump to nil_label (bool and receiver remain).
+            _chunk.WriteOpCode(OpCode.IsNil, line);
+            int nilSite = EmitJump(OpCode.JumpIfTrue, line);
+
+            // Non-nil path: pop the false bool, then access the property.
+            _chunk.WriteOpCode(OpCode.Pop, line);           // pop false
+            _chunk.WriteOpCode(OpCode.GetProperty, line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, "property name"), line);
+            int skipSite = EmitJump(OpCode.Jump, line);     // skip nil cleanup
+
+            // nil_label: pop the true bool; receiver (nil) stays as result.
+            PatchJump(nilSite);
+            _chunk.WriteOpCode(OpCode.Pop, line);           // pop true
+
+            // end: both paths converge here.
+            PatchJump(skipSite);
+        } else {
+            _chunk.WriteOpCode(OpCode.GetProperty, line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, "property name"), line);
+        }
         return null;
     }
 

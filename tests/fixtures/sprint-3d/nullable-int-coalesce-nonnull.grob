@@ -1,0 +1,5 @@
+// Sprint 3D fixture: nullable int variable, non-nil case
+// Expected stdout:
+//   42
+x: int? := 42
+print(x ?? 0)

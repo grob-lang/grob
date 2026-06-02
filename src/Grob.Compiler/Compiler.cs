@@ -235,4 +235,55 @@ public sealed partial class Compiler : AstVisitor<object?> {
         throw new GrobInternalException(
             $"Non-constant expression '{expr.GetType().Name}' in const declaration. "
           + "The type checker should have rejected this source.");
+
+    // -----------------------------------------------------------------------
+    // Forward-jump backpatch helpers (Sprint 3 Increment D — D-271).
+    // Used by '?.' optional-chaining and reused by Sprint 4 (if/while/&&/||).
+    //
+    // Pattern:
+    //   int site = EmitJump(OpCode.JumpIfTrue, line);   // writes opcode + 0xFFFF
+    //   … emit skipped region …
+    //   PatchJump(site);                                 // back-fills offset
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Emits <paramref name="opcode"/> followed by two placeholder bytes
+    /// (<c>0xFF 0xFF</c>) and returns the chunk offset of the first placeholder
+    /// byte. Call <see cref="PatchJump"/> once the jump target is known.
+    /// </summary>
+    /// <param name="opcode">A jump opcode — <see cref="OpCode.Jump"/>,
+    /// <see cref="OpCode.JumpIfTrue"/>, or <see cref="OpCode.JumpIfFalse"/>.</param>
+    /// <param name="line">Source line attributed to the opcode byte.</param>
+    /// <returns>The chunk offset of the first placeholder byte.</returns>
+    internal int EmitJump(OpCode opcode, int line) {
+        _chunk.WriteOpCode(opcode, line);
+        int patchSite = _chunk.Count;
+        _chunk.WriteByte(0xFF, line); // high byte placeholder
+        _chunk.WriteByte(0xFF, line); // low byte placeholder
+        return patchSite;
+    }
+
+    /// <summary>
+    /// Fills in the two placeholder bytes written by <see cref="EmitJump"/>
+    /// so that the jump skips forward to the current end of the chunk.
+    /// </summary>
+    /// <param name="patchSite">
+    /// The value returned by the matching <see cref="EmitJump"/> call.
+    /// </param>
+    /// <exception cref="GrobInternalException">
+    /// Thrown when the distance from <paramref name="patchSite"/> to the current
+    /// end of the chunk overflows a 16-bit unsigned offset. This can only happen
+    /// when a single expression emits more than 65 535 bytes, which is not
+    /// reachable by any valid Grob expression in practice.
+    /// </exception>
+    internal void PatchJump(int patchSite) {
+        // The offset counts bytes from the first instruction AFTER the two
+        // placeholder bytes (i.e. from patchSite + 2) to the current end.
+        int offset = _chunk.Count - (patchSite + 2);
+        if ((uint)offset > ushort.MaxValue)
+            throw new GrobInternalException(
+                $"Jump offset {offset} overflows the 16-bit limit. The expression is too large.");
+        _chunk.PatchByte(patchSite, (byte)(offset >> 8));
+        _chunk.PatchByte(patchSite + 1, (byte)(offset & 0xFF));
+    }
 }

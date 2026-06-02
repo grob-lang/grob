@@ -831,9 +831,7 @@ public sealed class Parser {
                 case TokenKind.QuestionDot: {
                         Advance();
                         Token name = Expect(TokenKind.Identifier, _e2001, "expected member name after '?.'");
-                        // ?. is represented as MemberAccess in Sprint 1; the lowering
-                        // to a nil-guard expression lands with the type checker.
-                        e = new MemberAccessExpr(RangeBetween(e.Range.Start, name.Location), e, name.Lexeme);
+                        e = new MemberAccessExpr(RangeBetween(e.Range.Start, name.Location), e, name.Lexeme, IsOptional: true);
                         break;
                     }
                 case TokenKind.LeftParen: {
