@@ -308,6 +308,9 @@ public sealed class TypeCheckerTests {
         (_, DiagnosticBag bag) = TypeCheckSource("-undefined_var\n");
         Diagnostic error = Assert.Single(bag.Errors);
         Assert.Equal("E1001", error.Code);
+        // identifier starts at column 2, immediately after the '-' operator
+        Assert.Equal(1, error.Range.Start.Line);
+        Assert.Equal(2, error.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------

@@ -324,5 +324,11 @@ public sealed class CompilerInterpolationTests {
         Chunk chunk = GrobCompiler.Compile(unit, bag);
         // The '\' and 'q' are passed through unchanged.
         Assert.Equal("\\q", chunk.ReadConstant(0).AsString());
+        // The lexer must have emitted exactly one E2005 at the '\' character
+        // (line 1, column 2 — immediately after the opening double-quote).
+        Diagnostic e2005 = Assert.Single(bag.Errors);
+        Assert.Equal("E2005", e2005.Code);
+        Assert.Equal(1, e2005.Range.Start.Line);
+        Assert.Equal(2, e2005.Range.Start.Column);
     }
 }
