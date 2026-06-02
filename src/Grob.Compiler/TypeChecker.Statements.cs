@@ -67,7 +67,7 @@ public sealed partial class TypeChecker {
         // Type-check: value must be assignable to the binding's declared type.
         if (symbol.Type != GrobType.Error && valueType != GrobType.Error &&
             !TypesAreAssignable(valueType, symbol.Type)) {
-            EmitError(ErrorCatalog.E0001,
+            EmitError(PickAssignabilityError(valueType, symbol.Type),
                 $"Cannot assign value of type '{TypeName(valueType)}' to binding '{target.Name}' of type '{TypeName(symbol.Type)}'.",
                 node.Value.Range);
         }

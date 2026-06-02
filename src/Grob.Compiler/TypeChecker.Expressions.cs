@@ -95,7 +95,7 @@ public sealed partial class TypeChecker {
 
         if (IsComparisonOperator(node.Operator)) return ResolveComparison(node, left, right);
         if (node.Operator == BinaryOperator.And || node.Operator == BinaryOperator.Or) return ResolveLogical(node, left, right);
-        if (node.Operator == BinaryOperator.NilCoalesce) return GrobType.Unknown; // Sprint 5+
+        if (node.Operator == BinaryOperator.NilCoalesce) return ResolveNilCoalesce(node, left, right);
 
         return ResolveArithmetic(node, left, right);
     }
@@ -154,6 +154,50 @@ public sealed partial class TypeChecker {
             $"Operator '{sym}' cannot be applied to type '{TypeName(right)}'.", node.Right.Range);
     }
 
+    /// <summary>
+    /// Resolves the type of a nil-coalescing expression <c>a ?? b</c>.
+    /// <para>
+    /// The <c>??</c> operator is eager (D-271): both operands are evaluated
+    /// before the opcode runs — there is no short-circuit branching.
+    /// </para>
+    /// <para>Rules (Sprint 3 Increment D):</para>
+    /// <list type="bullet">
+    /// <item><description><c>T? ?? T  → T</c>  — left nullable, right non-nullable: result is the non-nullable element type.</description></item>
+    /// <item><description><c>T? ?? T? → T?</c> — left nullable, right nullable: result stays nullable.</description></item>
+    /// <item><description><c>T  ?? T  → T</c>  — left non-nullable (the ?? is a no-op at runtime): result is T.</description></item>
+    /// </list>
+    /// </summary>
+    private GrobType ResolveNilCoalesce(BinaryExpr node, GrobType left, GrobType right) {
+        // A nil literal on the left always yields the right operand's type —
+        // the fallback always wins because nil ?? T ≡ T.
+        if (left == GrobType.Nil) return right;
+
+        // If the left side is nullable, the fallback (right) determines whether the
+        // result is fully unwrapped or stays nullable.
+        GrobType leftElem = GrobTypeHelpers.IsNullable(left)
+            ? GrobTypeHelpers.ElementType(left)
+            : left;
+
+        // Right side must be the same base type or a nullable version of it.
+        GrobType rightElem = GrobTypeHelpers.IsNullable(right)
+            ? GrobTypeHelpers.ElementType(right)
+            : right;
+
+        if (leftElem != GrobType.Error && rightElem != GrobType.Error &&
+            leftElem != GrobType.Unknown && rightElem != GrobType.Unknown &&
+            leftElem != rightElem) {
+            return EmitErrorAndReturn(ErrorCatalog.E0002,
+                $"Operator '??' cannot be applied to types '{TypeName(left)}' and '{TypeName(right)}': element types '{TypeName(leftElem)}' and '{TypeName(rightElem)}' do not match.",
+                node.Range);
+        }
+
+        // When both sides are Unknown (e.g. deferred member types), be permissive.
+        if (leftElem == GrobType.Unknown || rightElem == GrobType.Unknown) return GrobType.Unknown;
+
+        // If the right side is nullable the result stays nullable; otherwise it is non-nullable.
+        return GrobTypeHelpers.IsNullable(right) ? left : leftElem;
+    }
+
     // -----------------------------------------------------------------------
     // Grouping — transparent wrapper; result type is the inner expression's type.
     // -----------------------------------------------------------------------
@@ -175,7 +219,21 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitMemberAccess(MemberAccessExpr node) {
-        Visit(node.Target);
+        GrobType targetType = Visit(node.Target);
+
+        // Cascade suppression: if the target already errored, don't pile on.
+        if (targetType == GrobType.Error) return GrobType.Error;
+
+        // Using '.' (non-optional) on a nullable receiver is a compile-time error (E0101).
+        if (!node.IsOptional && GrobTypeHelpers.IsNullable(targetType)) {
+            return EmitErrorAndReturn(ErrorCatalog.E0101,
+                $"Member access via '.' on nullable type '{TypeName(targetType)}' may dereference nil. Use '?.' to chain or '??' to unwrap first.",
+                node.Range);
+        }
+
+        // Member-type resolution for struct fields is deferred to Sprint 5.
+        // For '?.' chains the result type is Unknown (nullable), so downstream '??'
+        // operators treat it as a permissive Unknown and do not emit false positives.
         return GrobType.Unknown;
     }
 

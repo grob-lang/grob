@@ -35,6 +35,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 3D nullable runtime fixtures. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-3d\*.grob"
+             Link="fixtures\sprint-3d\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>

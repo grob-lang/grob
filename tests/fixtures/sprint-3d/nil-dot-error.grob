@@ -1,0 +1,4 @@
+// Sprint 3D fixture: E0101 — plain '.' on nullable raises compile error
+// Expected: compile-time error E0101, no stdout
+x: int? := nil
+print(x.something)

@@ -111,7 +111,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
     /// <summary>
     /// Resolves a binding's final type from its optional annotation and its
-    /// initializer's inferred type. Emits E0001 when annotation and initializer
+    /// initializer's inferred type. Emits E0104 when a nullable value targets a
+    /// non-nullable annotation, otherwise E0001 when annotation and initializer
     /// are incompatible.
     /// </summary>
     private GrobType ResolveBinding(TypeRef? annotation, GrobType initType, SourceRange initRange) {
@@ -126,7 +127,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         if (initType == GrobType.Error) return GrobType.Error; // cascade suppression
 
         if (!TypesAreAssignable(initType, annotated)) {
-            EmitError(ErrorCatalog.E0001,
+            EmitError(PickAssignabilityError(initType, annotated),
                 $"Cannot assign value of type '{TypeName(initType)}' to binding of type '{TypeName(annotated)}'.",
                 initRange);
             return GrobType.Error;
@@ -136,27 +137,53 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         return annotated;
     }
 
-    /// <summary>Maps a syntactic <see cref="TypeRef"/> to a <see cref="GrobType"/>.</summary>
-    private static GrobType ResolveTypeRef(TypeRef typeRef) => typeRef.Name switch {
-        "int" => GrobType.Int,
-        "float" => GrobType.Float,
-        "string" => GrobType.String,
-        "bool" => GrobType.Bool,
-        "nil" => GrobType.Nil,
-        _ => GrobType.Unknown, // void, user-defined types, generics — deferred Sprint 5+
-    };
+    /// <summary>
+    /// Maps a syntactic <see cref="TypeRef"/> to a <see cref="GrobType"/>,
+    /// applying the nullable modifier when <see cref="TypeRef.IsNullable"/> is
+    /// <c>true</c> (Sprint 3 Increment D — D-014).
+    /// </summary>
+    private static GrobType ResolveTypeRef(TypeRef typeRef) {
+        GrobType baseType = typeRef.Name switch {
+            "int" => GrobType.Int,
+            "float" => GrobType.Float,
+            "string" => GrobType.String,
+            "bool" => GrobType.Bool,
+            "nil" => GrobType.Nil,
+            _ => GrobType.Unknown, // void, user-defined types, generics — deferred Sprint 5+
+        };
+        return typeRef.IsNullable ? GrobTypeHelpers.ToNullable(baseType) : baseType;
+    }
 
     /// <summary>
     /// Returns <see langword="true"/> when a value of <paramref name="from"/> can
-    /// be used where <paramref name="to"/> is expected. The only implicit
-    /// conversion in Grob is <c>int → float</c> (D-178).
+    /// be used where <paramref name="to"/> is expected.
+    /// Rules (D-178, D-014):
+    /// <list type="bullet">
+    /// <item><description><c>int → float</c> is the only implicit widening conversion.</description></item>
+    /// <item><description><c>nil</c> is assignable to any nullable type (<c>T?</c>).</description></item>
+    /// <item><description>A non-nullable <c>T</c> is assignable to its nullable counterpart <c>T?</c>.</description></item>
+    /// <item><description>A nullable <c>T?</c> is NOT assignable to non-nullable <c>T</c> (requires explicit unwrap via <c>??</c>).</description></item>
+    /// </list>
     /// </summary>
     private static bool TypesAreAssignable(GrobType from, GrobType to) {
         if (from == GrobType.Error || to == GrobType.Error) return true; // Error is universal
         if (from == to) return true;
-        if (from == GrobType.Int && to == GrobType.Float) return true; // only implicit conversion
+        if (from == GrobType.Int && to == GrobType.Float) return true; // only implicit widening
+        // nil is assignable to any nullable type.
+        if (from == GrobType.Nil && GrobTypeHelpers.IsNullable(to)) return true;
+        // T is assignable to T? (non-null value into nullable slot).
+        if (GrobTypeHelpers.ToNullable(from) == to) return true;
         return false;
     }
+
+    /// <summary>
+    /// Returns <see cref="ErrorCatalog.E0104"/> when a nullable value is assigned
+    /// to a non-nullable target, otherwise <see cref="ErrorCatalog.E0001"/>.
+    /// </summary>
+    private static ErrorDescriptor PickAssignabilityError(GrobType from, GrobType to) =>
+        GrobTypeHelpers.IsNullable(from) && !GrobTypeHelpers.IsNullable(to)
+            ? ErrorCatalog.E0104
+            : ErrorCatalog.E0001;
 
     /// <summary>
     /// Returns <see langword="true"/> when both operand types are numeric
@@ -207,6 +234,10 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         GrobType.Bool => "bool",
         GrobType.Nil => "nil",
         GrobType.Error => "<error>",
+        GrobType.NullableInt => "int?",
+        GrobType.NullableFloat => "float?",
+        GrobType.NullableString => "string?",
+        GrobType.NullableBool => "bool?",
         _ => "unknown",
     };
 

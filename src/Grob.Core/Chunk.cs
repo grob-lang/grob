@@ -88,4 +88,19 @@ public sealed class Chunk {
         _constants.Add(value);
         return _constants.Count - 1;
     }
+
+    /// <summary>
+    /// Overwrite the byte at <paramref name="offset"/> with <paramref name="value"/>.
+    /// Used by the compiler's backpatch helper (<c>PatchJump</c>) to fill in the
+    /// placeholder bytes written by <c>EmitJump</c> once the jump target is known.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="offset"/> is outside the range
+    /// <c>[0, Count)</c>.
+    /// </exception>
+    public void PatchByte(int offset, byte value) {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(offset, _code.Count);
+        _code[offset] = value;
+    }
 }
