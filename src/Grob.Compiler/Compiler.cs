@@ -252,7 +252,7 @@ public sealed partial class Compiler : AstVisitor<object?> {
     /// byte. Call <see cref="PatchJump"/> once the jump target is known.
     /// </summary>
     /// <param name="opcode">A jump opcode — <see cref="OpCode.Jump"/>,
-    /// <see cref="OpCode.JumpIfTrue"/>, or <see cref="OpCode.JumpIfFalse"/>.</param>
+    /// <see cref="OpCode.JumpIfTrue"/> or <see cref="OpCode.JumpIfFalse"/>.</param>
     /// <param name="line">Source line attributed to the opcode byte.</param>
     /// <returns>The chunk offset of the first placeholder byte.</returns>
     internal int EmitJump(OpCode opcode, int line) {

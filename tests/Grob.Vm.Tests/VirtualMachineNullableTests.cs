@@ -189,12 +189,12 @@ public sealed class VirtualMachineNullableTests {
     public void JumpIfFalse_CondFalse_JumpsAndConditionPopped() {
         // Stack before: [false]; after jump: [99]
         var chunk = new Chunk();
-        byte ciTrue = ConstByte(chunk, GrobValue.FromBool(false));
+        byte ciFalse = ConstByte(chunk, GrobValue.FromBool(false));
         byte ciSkip = ConstByte(chunk, GrobValue.FromInt(0));     // skipped
         byte ciAfter = ConstByte(chunk, GrobValue.FromInt(99));
 
         // Push false
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(ciTrue, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(ciFalse, 1);
         // JumpIfFalse over the "0" constant load (Constant + 1-byte operand = 2 bytes)
         chunk.WriteOpCode(OpCode.JumpIfFalse, 1);
         WriteJumpOffset(chunk, 2, 1);

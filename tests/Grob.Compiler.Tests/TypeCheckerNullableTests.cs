@@ -71,7 +71,9 @@ public sealed class TypeCheckerNullableTests {
             x: int? := nil
             y: int := x
             """);
-        Assert.Contains(diag.Errors, d => d.Code == "E0104");
+        Diagnostic err = Assert.Single(diag.Errors);
+        Assert.Equal("E0104", err.Code);
+        Assert.Equal((2, 11), (err.Range.Start.Line, err.Range.Start.Column));
     }
 
     [Fact]
@@ -81,7 +83,9 @@ public sealed class TypeCheckerNullableTests {
             y: int := 0
             y = x
             """);
-        Assert.Contains(diag.Errors, d => d.Code == "E0104");
+        Diagnostic err = Assert.Single(diag.Errors);
+        Assert.Equal("E0104", err.Code);
+        Assert.Equal((3, 5), (err.Range.Start.Line, err.Range.Start.Column));
     }
 
     [Fact]
@@ -102,7 +106,9 @@ public sealed class TypeCheckerNullableTests {
     public void NilToNonNullable_EmitsError() {
         // Assigning nil to a non-nullable binding is an error.
         var diag = Check("x: int := nil");
-        Assert.True(diag.HasErrors);
+        Diagnostic err = Assert.Single(diag.Errors);
+        Assert.Equal("E0001", err.Code);
+        Assert.Equal((1, 11), (err.Range.Start.Line, err.Range.Start.Column));
     }
 
     [Fact]
@@ -121,12 +127,20 @@ public sealed class TypeCheckerNullableTests {
     // E0101 — nil dereference without ?. or ??
     // -----------------------------------------------------------------------
 
-    [Theory]
-    [InlineData("x: int? := nil\nprint(x.something)")]
-    [InlineData("x: string? := \"hi\"\nprint(x.length)")]
-    public void DotMemberAccess_OnNullable_EmitsE0101(string source) {
-        var diag = Check(source);
-        Assert.Contains(diag.Errors, d => d.Code == "E0101");
+    [Fact]
+    public void DotMemberAccess_OnNullableInt_EmitsE0101() {
+        var diag = Check("x: int? := nil\nprint(x.something)");
+        Diagnostic err = Assert.Single(diag.Errors);
+        Assert.Equal("E0101", err.Code);
+        Assert.Equal((2, 7), (err.Range.Start.Line, err.Range.Start.Column));
+    }
+
+    [Fact]
+    public void DotMemberAccess_OnNullableString_EmitsE0101() {
+        var diag = Check("x: string? := \"hi\"\nprint(x.length)");
+        Diagnostic err = Assert.Single(diag.Errors);
+        Assert.Equal("E0101", err.Code);
+        Assert.Equal((2, 7), (err.Range.Start.Line, err.Range.Start.Column));
     }
 
     [Fact]
@@ -173,7 +187,9 @@ public sealed class TypeCheckerNullableTests {
             x: int? := nil
             y := x ?? "not-an-int"
             """);
-        Assert.True(diag.HasErrors);
+        Diagnostic err = Assert.Single(diag.Errors);
+        Assert.Equal("E0002", err.Code);
+        Assert.Equal((2, 6), (err.Range.Start.Line, err.Range.Start.Column));
     }
 
     [Fact]
