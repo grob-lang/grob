@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Grob.Compiler.Ast;
 using Grob.Core;
 
@@ -15,6 +16,12 @@ public sealed partial class TypeChecker {
     public override GrobType VisitFloatLiteral(FloatLiteralExpr node) => GrobType.Float;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// <see cref="StringLiteralExpr"/> is never produced by the parser — all
+    /// <c>"..."</c> strings are represented as <see cref="InterpolatedStringExpr"/>.
+    /// Kept as a defensive override; excluded from coverage because it is unreachable.
+    /// </remarks>
+    [ExcludeFromCodeCoverage(Justification = "StringLiteralExpr is never created by the parser; all double-quoted strings are InterpolatedStringExpr.")]
     public override GrobType VisitStringLiteral(StringLiteralExpr node) => GrobType.String;
 
     /// <inheritdoc/>
@@ -31,9 +38,18 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitInterpolatedString(InterpolatedStringExpr node) {
+        // D-279, E0102: interpolating a nullable expression is a compile error.
+        // Each ${expr} slot is type-checked; if its resolved type is nullable the
+        // slot is an error unless the expression itself has already resolved the
+        // nullability (e.g. x ?? fallback → non-nullable).
         foreach (StringInterpolationPart part in node.Parts) {
-            if (part is StringExpressionPart expr) {
-                Visit(expr.Expression);
+            if (part is StringExpressionPart exprPart) {
+                GrobType slotType = Visit(exprPart.Expression);
+                if (GrobTypeHelpers.IsNullable(slotType)) {
+                    EmitError(ErrorCatalog.E0102,
+                        $"Interpolated expression has nullable type '{TypeName(slotType)}'; resolve with '??' before interpolating.",
+                        exprPart.Range);
+                }
             }
         }
         return GrobType.String;
@@ -75,7 +91,7 @@ public sealed partial class TypeChecker {
                 $"Operator '-' cannot be applied to type '{TypeName(operand)}'.", node.Range),
             UnaryOperator.Not => EmitErrorAndReturn(ErrorCatalog.E0002,
                 $"Operator '!' cannot be applied to type '{TypeName(operand)}'.", node.Range),
-            _ => GrobType.Unknown,
+            _ => ThrowUnknownUnaryOperator(node),
         };
     }
 
@@ -271,5 +287,20 @@ public sealed partial class TypeChecker {
     // inference, and closure capture are designed together. Partial traversal
     // now would register inferred-type parameters as Unknown — non-null but
     // semantically incorrect. Nothing downstream observes this gap today.
+    [ExcludeFromCodeCoverage(Justification = "Lambda type-checking is deferred to Sprint 5 (grob-lang/grob#44).")]
     public override GrobType VisitLambda(LambdaExpr node) => GrobType.Unknown;
+
+    // -----------------------------------------------------------------------
+    // Internal guards
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Unreachable: all <see cref="UnaryOperator"/> values are handled by the
+    /// switch arms above. Throws an <see cref="InvalidOperationException"/> if
+    /// a future sprint adds a new operator without updating <see cref="VisitUnary"/>.
+    /// </summary>
+    [ExcludeFromCodeCoverage(Justification = "Defensive guard: all UnaryOperator values are enumerated in the VisitUnary switch.")]
+    private static GrobType ThrowUnknownUnaryOperator(UnaryExpr node) =>
+        throw new InvalidOperationException(
+            $"Unhandled unary operator '{node.Operator}' in TypeChecker.VisitUnary.");
 }

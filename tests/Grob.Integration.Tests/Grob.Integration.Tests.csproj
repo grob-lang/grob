@@ -42,6 +42,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 3E string interpolation fixtures. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-3e\*.grob"
+             Link="fixtures\sprint-3e\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>

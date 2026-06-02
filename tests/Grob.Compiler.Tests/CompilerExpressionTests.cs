@@ -355,4 +355,44 @@ public sealed class CompilerExpressionTests {
         Assert.Equal(1, chunk.GetLine(printOffsets[0]));
         Assert.Equal(2, chunk.GetLine(printOffsets[1]));
     }
+
+    // -----------------------------------------------------------------------
+    // Binary operand type helpers (GetExprType / GetUnaryResultType coverage)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void UnaryAsLeftOperand_IntNegate_EmitsNegateIntThenAdd() {
+        // -1 + 2 → GetExprType sees a UnaryExpr on the left, calling
+        // GetUnaryResultType which returns GrobType.Int for Negate(int).
+        Chunk chunk = CompileSource("-1 + 2");
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.Contains(OpCode.NegateInt, ops);
+        Assert.Contains(OpCode.AddInt, ops);
+    }
+
+    [Fact]
+    public void UnaryAsLeftOperand_FloatNegate_EmitsNegateFloatThenAdd() {
+        // -1.0 + 2.0 → GetUnaryResultType returns GrobType.Float for Negate(float).
+        Chunk chunk = CompileSource("-1.0 + 2.0");
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.Contains(OpCode.NegateFloat, ops);
+        Assert.Contains(OpCode.AddFloat, ops);
+    }
+
+    [Fact]
+    public void GroupingAsLeftOperand_EmitsInnerThenOuter() {
+        // (1 + 2) * 3 → GetExprType encounters a GroupingExpr as left of *.
+        Chunk chunk = CompileSource("(1 + 2) * 3");
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.Contains(OpCode.AddInt, ops);
+        Assert.Contains(OpCode.MultiplyInt, ops);
+    }
+
+    [Fact]
+    public void RawStringAsLeftOperand_EmitsConcat() {
+        // `a` + `b` → GetExprType encounters RawStringLiteralExpr as both operands.
+        Chunk chunk = CompileSource("`a` + `b`");
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.Contains(OpCode.Concat, ops);
+    }
 }

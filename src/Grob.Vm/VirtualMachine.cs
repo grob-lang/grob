@@ -257,6 +257,20 @@ public sealed class VirtualMachine {
                             _stack.Push(GrobValue.FromString(string.Concat(a, b)), line);
                             break;
                         }
+                    case OpCode.BuildString: {
+                            // Sprint 3E: concatenate N string fragments from the stack.
+                            // The 1-byte operand is the fragment count. Fragments are popped
+                            // LIFO so we reverse-fill the parts array to restore source order.
+                            // Each fragment is converted to string via ToString() — this is the
+                            // display/toString rule for interpolation slots (D-279).
+                            byte count = chunk.ReadByte(ip++);
+                            var parts = new string[count];
+                            for (int i = count - 1; i >= 0; i--) {
+                                parts[i] = _stack.Pop().ToString();
+                            }
+                            _stack.Push(GrobValue.FromString(string.Concat(parts)), line);
+                            break;
+                        }
 
                     // --- Promotion ---
                     case OpCode.IntToFloat: {
