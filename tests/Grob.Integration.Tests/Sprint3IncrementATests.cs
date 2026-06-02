@@ -352,4 +352,114 @@ public sealed class Sprint3IncrementATests {
             """);
         Assert.Equal($"3{NL}", stdout);
     }
+
+    // -----------------------------------------------------------------------
+    // readonly bindings — immutable at compile time, same runtime path as :=
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ReadonlyDecl_GlobalInt_PrintsValue() {
+        string stdout = Run("""
+            readonly x := 42
+            print(x)
+            """);
+        Assert.Equal($"42{NL}", stdout);
+    }
+
+    [Fact]
+    public void ReadonlyDecl_GlobalString_PrintsValue() {
+        string stdout = Run("""
+            readonly greeting := "hello"
+            print(greeting)
+            """);
+        Assert.Equal($"hello{NL}", stdout);
+    }
+
+    // -----------------------------------------------------------------------
+    // const bindings — inlined as constants at every reference site
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ConstDecl_GlobalInt_PrintsValue() {
+        string stdout = Run("""
+            const MAX := 100
+            print(MAX)
+            """);
+        Assert.Equal($"100{NL}", stdout);
+    }
+
+    [Fact]
+    public void ConstDecl_GlobalString_PrintsValue() {
+        string stdout = Run("""
+            const LABEL := "grob"
+            print(LABEL)
+            """);
+        Assert.Equal($"grob{NL}", stdout);
+    }
+
+    [Fact]
+    public void ConstDecl_GlobalFloat_PrintsValue() {
+        string stdout = Run("""
+            const PI := 3.14
+            print(PI)
+            """);
+        Assert.Equal($"3.14{NL}", stdout);
+    }
+
+    [Fact]
+    public void ConstDecl_UsedMultipleTimes_PrintsSameValueEachTime() {
+        string stdout = Run("""
+            const N := 7
+            print(N)
+            print(N)
+            """);
+        Assert.Equal($"7{NL}7{NL}", stdout);
+    }
+
+    [Fact]
+    public void ConstDecl_UsedInArithmetic_ProducesCorrectResult() {
+        string stdout = Run("""
+            const BASE := 10
+            x := BASE + 5
+            print(x)
+            """);
+        Assert.Equal($"15{NL}", stdout);
+    }
+
+    [Fact]
+    public void ConstDecl_BoolTrue_PrintsValue() {
+        string stdout = Run("""
+            const FLAG := true
+            print(FLAG)
+            """);
+        Assert.Equal($"true{NL}", stdout);
+    }
+
+    [Fact]
+    public void ConstDecl_GroupedInt_PrintsValue() {
+        string stdout = Run("""
+            const X := (42)
+            print(X)
+            """);
+        Assert.Equal($"42{NL}", stdout);
+    }
+
+    [Fact]
+    public void ConstDecl_ChainedConst_PrintsInlinedValue() {
+        string stdout = Run("""
+            const A := 10
+            const B := A
+            print(B)
+            """);
+        Assert.Equal($"10{NL}", stdout);
+    }
+
+    [Fact]
+    public void ConstDecl_RawString_PrintsValue() {
+        string stdout = Run("""
+            const S := `hello`
+            print(S)
+            """);
+        Assert.Equal($"hello{NL}", stdout);
+    }
 }
