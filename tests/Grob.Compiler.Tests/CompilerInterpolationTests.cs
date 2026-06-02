@@ -197,8 +197,10 @@ public sealed class CompilerInterpolationTests {
             "${x}"
             """);
 
-        Assert.True(diag.HasErrors, "Expected E0102 but no errors were raised.");
-        Assert.Contains(diag.Errors, e => e.Code == "E0102");
+        Diagnostic error = Assert.Single(diag.Errors);
+        Assert.Equal("E0102", error.Code);
+        Assert.Equal(2, error.Range.Start.Line);
+        Assert.Equal(2, error.Range.Start.Column);
     }
 
     [Fact]
@@ -231,9 +233,10 @@ public sealed class CompilerInterpolationTests {
         var unit = Parser.Parse(tokens, bag);
         new TypeChecker(bag).Check(unit);
 
-        var e0102 = bag.Errors.FirstOrDefault(e => e.Code == "E0102");
-        Assert.NotNull(e0102);
-        Assert.Equal(2, e0102.Range.Start.Line); // on line 2
+        Diagnostic e0102 = Assert.Single(bag.Errors);
+        Assert.Equal("E0102", e0102.Code);
+        Assert.Equal(2, e0102.Range.Start.Line);
+        Assert.Equal(2, e0102.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
