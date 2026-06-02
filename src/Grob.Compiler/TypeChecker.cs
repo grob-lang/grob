@@ -111,7 +111,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
     /// <summary>
     /// Resolves a binding's final type from its optional annotation and its
-    /// initializer's inferred type. Emits E0001 when annotation and initializer
+    /// initializer's inferred type. Emits E0104 when a nullable value targets a
+    /// non-nullable annotation, otherwise E0001 when annotation and initializer
     /// are incompatible.
     /// </summary>
     private GrobType ResolveBinding(TypeRef? annotation, GrobType initType, SourceRange initRange) {
@@ -126,11 +127,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         if (initType == GrobType.Error) return GrobType.Error; // cascade suppression
 
         if (!TypesAreAssignable(initType, annotated)) {
-            ErrorDescriptor descriptor =
-                GrobTypeHelpers.IsNullable(initType) && !GrobTypeHelpers.IsNullable(annotated)
-                    ? ErrorCatalog.E0104
-                    : ErrorCatalog.E0001;
-            EmitError(descriptor,
+            EmitError(PickAssignabilityError(initType, annotated),
                 $"Cannot assign value of type '{TypeName(initType)}' to binding of type '{TypeName(annotated)}'.",
                 initRange);
             return GrobType.Error;
@@ -178,6 +175,15 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         if (GrobTypeHelpers.ToNullable(from) == to) return true;
         return false;
     }
+
+    /// <summary>
+    /// Returns <see cref="ErrorCatalog.E0104"/> when a nullable value is assigned
+    /// to a non-nullable target, otherwise <see cref="ErrorCatalog.E0001"/>.
+    /// </summary>
+    private static ErrorDescriptor PickAssignabilityError(GrobType from, GrobType to) =>
+        GrobTypeHelpers.IsNullable(from) && !GrobTypeHelpers.IsNullable(to)
+            ? ErrorCatalog.E0104
+            : ErrorCatalog.E0001;
 
     /// <summary>
     /// Returns <see langword="true"/> when both operand types are numeric

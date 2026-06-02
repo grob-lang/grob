@@ -35,22 +35,7 @@ public sealed class CompilerNullableTests {
         while (offset < chunk.Count) {
             var op = (OpCode)chunk.ReadByte(offset);
             result.Add(op);
-            offset++;
-            offset += op switch {
-                OpCode.Constant => 1,      // 1-byte pool index
-                OpCode.ConstantLong => 2,      // 2-byte pool index
-                OpCode.GetGlobal
-                    or OpCode.SetGlobal
-                    or OpCode.DefineGlobal
-                    or OpCode.GetLocal
-                    or OpCode.SetLocal => 1,
-                OpCode.GetProperty
-                    or OpCode.SetProperty => 1,
-                OpCode.Jump
-                    or OpCode.JumpIfFalse
-                    or OpCode.JumpIfTrue => 2,  // 2-byte big-endian offset
-                _ => 0,
-            };
+            offset += InstructionSize(chunk, offset);
             if (op == OpCode.Return) break;
         }
         return result;
