@@ -319,8 +319,8 @@ public sealed class VirtualMachine {
                     // --- Properties (Sprint 3 Increment D — partial; struct fields Sprint 5) ---
 
                     case OpCode.GetProperty: {
-                            // 1-byte name-index operand.
-                            byte nameIdx = chunk.ReadByte(ip++);
+                            // 1-byte name-index operand; consumed here, used in Sprint 5.
+                            ip++;
                             GrobValue receiver = _stack.Pop();
                             // Nil receiver raises E5201 (nil dereference at runtime).
                             // Struct field resolution is deferred to Sprint 5.
