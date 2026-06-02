@@ -261,4 +261,65 @@ public sealed class CompilerInterpolationTests {
         Assert.True(hasPrefix, "Expected constant \"prefix-\" in pool");
         Assert.True(hasSuffix, "Expected constant \"-suffix\" in pool");
     }
+
+    // -----------------------------------------------------------------------
+    // DecodeStringEscapes — recognised sequences are decoded in text parts.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void TextPart_NewlineEscape_IsDecoded() {
+        // "a\nb" — the \n escape sequence is decoded to a real newline character.
+        Chunk chunk = CompileSource("""
+            "a\nb"
+            """);
+        Assert.Equal("a\nb", chunk.ReadConstant(0).AsString());
+    }
+
+    [Fact]
+    public void TextPart_CarriageReturnEscape_IsDecoded() {
+        Chunk chunk = CompileSource("""
+            "a\rb"
+            """);
+        Assert.Equal("a\rb", chunk.ReadConstant(0).AsString());
+    }
+
+    [Fact]
+    public void TextPart_TabEscape_IsDecoded() {
+        Chunk chunk = CompileSource("""
+            "a\tb"
+            """);
+        Assert.Equal("a\tb", chunk.ReadConstant(0).AsString());
+    }
+
+    [Fact]
+    public void TextPart_BackslashEscape_IsDecoded() {
+        // "a\\b" — \\ decodes to a single backslash.
+        Chunk chunk = CompileSource("""
+            "a\\b"
+            """);
+        Assert.Equal("a\\b", chunk.ReadConstant(0).AsString());
+    }
+
+    [Fact]
+    public void TextPart_QuoteEscape_IsDecoded() {
+        // "a\"b" — \" decodes to a double-quote character inside the string.
+        Chunk chunk = CompileSource("""
+            "a\"b"
+            """);
+        Assert.Equal("a\"b", chunk.ReadConstant(0).AsString());
+    }
+
+    [Fact]
+    public void TextPart_UnknownEscape_IsPassedThrough() {
+        // "\q" contains an unrecognised escape (E2005); the compiler's
+        // DecodeStringEscapes default arm passes the backslash through unchanged.
+        // The bag is NOT asserted error-free — E2005 is expected from the lexer.
+        var bag = new DiagnosticBag();
+        var tokens = Lexer.Scan("\"\\q\"", bag);
+        var unit = Parser.Parse(tokens, bag);
+        new TypeChecker(bag).Check(unit);
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        // The '\' and 'q' are passed through unchanged.
+        Assert.Equal("\\q", chunk.ReadConstant(0).AsString());
+    }
 }

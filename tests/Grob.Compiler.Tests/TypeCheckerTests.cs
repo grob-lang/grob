@@ -295,6 +295,21 @@ public sealed class TypeCheckerTests {
         Assert.Single(bag.Errors);
     }
 
+    /// <summary>
+    /// A unary expression whose operand resolves to <see cref="GrobType.Error"/>
+    /// returns <see cref="GrobType.Error"/> immediately (cascade suppression), and
+    /// does not emit a second diagnostic for the operator mismatch.
+    /// </summary>
+    [Fact]
+    public void CascadeSuppression_UnaryOnErrorOperand_NoSecondDiagnostic() {
+        // "-undefined_var" — VisitIdentifier emits E1001 and returns GrobType.Error.
+        // VisitUnary detects operand == GrobType.Error and returns early without a
+        // second diagnostic.
+        (_, DiagnosticBag bag) = TypeCheckSource("-undefined_var\n");
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", error.Code);
+    }
+
     // -----------------------------------------------------------------------
     // Undefined identifier
     // -----------------------------------------------------------------------
