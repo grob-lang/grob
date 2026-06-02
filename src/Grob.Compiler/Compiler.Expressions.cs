@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Grob.Compiler.Ast;
 using Grob.Core;
 
@@ -21,6 +22,12 @@ public sealed partial class Compiler {
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The parser never produces <see cref="StringLiteralExpr"/> nodes — all double-quoted
+    /// strings are emitted as <see cref="InterpolatedStringExpr"/>. This visitor is kept
+    /// for forward-compatibility but is currently unreachable.
+    /// </remarks>
+    [ExcludeFromCodeCoverage(Justification = "Parser never produces StringLiteralExpr; all double-quoted strings become InterpolatedStringExpr.")]
     public override object? VisitStringLiteral(StringLiteralExpr node) {
         EmitConstant(GrobValue.FromString(node.Value), node.Range.Start.Line);
         return null;
@@ -82,15 +89,24 @@ public sealed partial class Compiler {
     public override object? VisitIdentifier(IdentifierExpr node) {
         // const references are inlined as direct constant pool loads (D-293).
         if (node.Declaration is ConstDecl cd) {
-            if (!_constValues.TryGetValue(cd, out GrobValue cv))
-                throw new GrobInternalException(
-                    $"Const '{node.Name}' was not cached before emission.");
-            EmitConstant(cv, node.Range.Start.Line);
+            EmitConstant(FetchCachedConst(cd, node.Name), node.Range.Start.Line);
             return null;
         }
         EmitLoad(node.Name, node.Range.Start.Line);
         return null;
     }
+
+    /// <summary>
+    /// Returns the cached <see cref="GrobValue"/> for a <see cref="ConstDecl"/>.
+    /// <see cref="VisitConstDecl"/> always caches the value before any reference site is
+    /// emitted, so a cache miss indicates a compiler invariant violation.
+    /// </summary>
+    [ExcludeFromCodeCoverage(Justification = "Cache miss is unreachable: VisitConstDecl always runs before any reference to the same const.")]
+    private GrobValue FetchCachedConst(ConstDecl decl, string name) =>
+        _constValues.TryGetValue(decl, out GrobValue cv)
+            ? cv
+            : throw new GrobInternalException(
+                $"Const '{name}' was not cached before emission.");
 
     // -----------------------------------------------------------------------
     // Unary
@@ -166,9 +182,17 @@ public sealed partial class Compiler {
         (BinaryOperator.Divide, GrobType.Float) => OpCode.DivideFloat,
         (BinaryOperator.Modulo, GrobType.Int) => OpCode.ModuloInt,
         (BinaryOperator.Modulo, GrobType.Float) => OpCode.ModuloFloat,
-        _ => throw new InvalidOperationException(
-            $"Operator {op} with result type {type} is not supported in Sprint 2.")
+        _ => ThrowUnsupportedBinaryOp(op, type)
     };
+
+    /// <summary>
+    /// Throws for operator/type combinations that the type checker prevents in valid
+    /// programs. Reached only if a future sprint adds operators before updating this switch.
+    /// </summary>
+    [ExcludeFromCodeCoverage(Justification = "The type checker rejects unsupported operator/type combos before emission.")]
+    private static OpCode ThrowUnsupportedBinaryOp(BinaryOperator op, GrobType type) =>
+        throw new InvalidOperationException(
+            $"Operator {op} with result type {type} is not supported in Sprint 2.");
 
     /// <summary>
     /// Statically determines the <see cref="GrobType"/> that <paramref name="node"/>

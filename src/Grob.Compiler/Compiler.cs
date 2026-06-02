@@ -210,7 +210,6 @@ public sealed partial class Compiler : AstVisitor<object?> {
     private GrobValue EvalConstantExpr(Expression expr) => expr switch {
         IntLiteralExpr e => GrobValue.FromInt(e.Value),
         FloatLiteralExpr e => GrobValue.FromFloat(e.Value),
-        StringLiteralExpr e => GrobValue.FromString(e.Value),
         RawStringLiteralExpr e => GrobValue.FromString(e.Value),
         // Double-quoted strings without ${} interpolations are parsed as
         // InterpolatedStringExpr with all-text parts — fold them here.
@@ -222,12 +221,18 @@ public sealed partial class Compiler : AstVisitor<object?> {
         NilLiteralExpr => GrobValue.Nil,
         GroupingExpr g => EvalConstantExpr(g.Inner),
         IdentifierExpr id when id.Declaration is ConstDecl cd
-                             => _constValues.TryGetValue(cd, out GrobValue cachedValue)
-                                    ? cachedValue
-                                    : throw new GrobInternalException(
-                                        $"Const '{id.Name}' was referenced before its compile-time value was cached."),
-        _ => throw new GrobInternalException(
-            $"Non-constant expression '{expr.GetType().Name}' in const declaration. "
-          + "The type checker should have rejected this source."),
+                             => FetchCachedConst(cd, id.Name),
+        _ => ThrowNonConstantExpression(expr),
     };
+
+    /// <summary>
+    /// Throws because a non-constant expression reached the constant folder; this
+    /// indicates that the type checker failed to reject a non-constant RHS.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(
+        Justification = "Non-constant expressions are rejected by the type checker before emission.")]
+    private static GrobValue ThrowNonConstantExpression(Expression expr) =>
+        throw new GrobInternalException(
+            $"Non-constant expression '{expr.GetType().Name}' in const declaration. "
+          + "The type checker should have rejected this source.");
 }

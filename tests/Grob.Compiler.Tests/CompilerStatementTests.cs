@@ -200,4 +200,13 @@ public sealed class CompilerStatementTests {
         List<OpCode> ops = ReadOpcodes(chunk);
         Assert.DoesNotContain(OpCode.GetGlobal, ops);
     }
+
+    [Fact]
+    public void ConstDecl_NilLiteral_EmitsNoGetGlobal() {
+        // NilLiteralExpr arm of EvalConstantExpr.
+        Chunk chunk = CompileSource("const N := nil");
+
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.DoesNotContain(OpCode.DefineGlobal, ops);
+    }
 }
