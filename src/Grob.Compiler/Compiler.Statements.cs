@@ -4,6 +4,9 @@ using Grob.Core;
 namespace Grob.Compiler;
 
 public sealed partial class Compiler {
+    // Label used as the operand-name argument to ToByteOperand for global-name indices.
+    private const string GlobalNameLabel = "global name";
+
     // -----------------------------------------------------------------------
     // Block — open scope, emit body, emit PopN on exit.
     // -----------------------------------------------------------------------
@@ -37,7 +40,7 @@ public sealed partial class Compiler {
         if (IsGlobalScope) {
             int nameIdx = GetOrCreateGlobalNameIndex(node.Name);
             _chunk.WriteOpCode(OpCode.DefineGlobal, line);
-            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, GlobalNameLabel), line);
         } else {
             // Local: the value on the stack IS the local — record the slot.
             if ((uint)_nextSlot > byte.MaxValue)
@@ -52,21 +55,14 @@ public sealed partial class Compiler {
     /// <inheritdoc/>
     public override object? VisitReadonlyDecl(ReadonlyDecl node) {
         // Immutability is enforced at compile time by the type checker (E0202).
-        // The runtime representation is identical to a mutable :=  binding.
+        // The runtime path is identical to a mutable := global binding.
+        // Block-level readonly is deferred: Declaration does not extend Statement,
+        // so ReadonlyDecl cannot appear inside a BlockStmt in the current design.
         int line = node.Range.Start.Line;
         Visit(node.Value);
-
-        if (IsGlobalScope) {
-            int nameIdx = GetOrCreateGlobalNameIndex(node.Name);
-            _chunk.WriteOpCode(OpCode.DefineGlobal, line);
-            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
-        } else {
-            if ((uint)_nextSlot > byte.MaxValue)
-                throw new GrobInternalException(
-                    $"Local variable count overflow: slot {_nextSlot} for '{node.Name}' "
-                  + $"exceeds the 1-byte limit of {byte.MaxValue}.");
-            _localScopes.Peek().Add(new LocalVar(node.Name, _nextSlot++));
-        }
+        int nameIdx = GetOrCreateGlobalNameIndex(node.Name);
+        _chunk.WriteOpCode(OpCode.DefineGlobal, line);
+        _chunk.WriteByte(ToByteOperand(nameIdx, GlobalNameLabel), line);
         return null;
     }
 
@@ -190,7 +186,7 @@ public sealed partial class Compiler {
             // Global: load-operate-store sequence.
             int nameIdx = GetOrCreateGlobalNameIndex(target.Name);
             _chunk.WriteOpCode(OpCode.GetGlobal, line);
-            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, GlobalNameLabel), line);
 
             EmitConstant(GrobValue.FromInt(1L), line);
 
@@ -199,7 +195,7 @@ public sealed partial class Compiler {
                 line);
 
             _chunk.WriteOpCode(OpCode.SetGlobal, line);
-            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, GlobalNameLabel), line);
         }
         return null;
     }

@@ -425,4 +425,41 @@ public sealed class Sprint3IncrementATests {
             """);
         Assert.Equal($"15{NL}", stdout);
     }
+
+    [Fact]
+    public void ConstDecl_BoolTrue_PrintsValue() {
+        string stdout = Run("""
+            const FLAG := true
+            print(FLAG)
+            """);
+        Assert.Equal($"true{NL}", stdout);
+    }
+
+    [Fact]
+    public void ConstDecl_GroupedInt_PrintsValue() {
+        string stdout = Run("""
+            const X := (42)
+            print(X)
+            """);
+        Assert.Equal($"42{NL}", stdout);
+    }
+
+    [Fact]
+    public void ConstDecl_ChainedConst_PrintsInlinedValue() {
+        string stdout = Run("""
+            const A := 10
+            const B := A
+            print(B)
+            """);
+        Assert.Equal($"10{NL}", stdout);
+    }
+
+    [Fact]
+    public void ConstDecl_RawString_PrintsValue() {
+        string stdout = Run("""
+            const S := `hello`
+            print(S)
+            """);
+        Assert.Equal($"hello{NL}", stdout);
+    }
 }

@@ -81,7 +81,10 @@ public sealed partial class Compiler {
     /// <inheritdoc/>
     public override object? VisitIdentifier(IdentifierExpr node) {
         // const references are inlined as direct constant pool loads (D-293).
-        if (node.Declaration is ConstDecl cd && _constValues.TryGetValue(cd, out GrobValue cv)) {
+        if (node.Declaration is ConstDecl cd) {
+            if (!_constValues.TryGetValue(cd, out GrobValue cv))
+                throw new GrobInternalException(
+                    $"Const '{node.Name}' was not cached before emission.");
             EmitConstant(cv, node.Range.Start.Line);
             return null;
         }

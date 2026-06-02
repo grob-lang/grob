@@ -222,7 +222,10 @@ public sealed partial class Compiler : AstVisitor<object?> {
         NilLiteralExpr => GrobValue.Nil,
         GroupingExpr g => EvalConstantExpr(g.Inner),
         IdentifierExpr id when id.Declaration is ConstDecl cd
-                             => _constValues[cd],
+                             => _constValues.TryGetValue(cd, out GrobValue cachedValue)
+                                    ? cachedValue
+                                    : throw new GrobInternalException(
+                                        $"Const '{id.Name}' was referenced before its compile-time value was cached."),
         _ => throw new GrobInternalException(
             $"Non-constant expression '{expr.GetType().Name}' in const declaration. "
           + "The type checker should have rejected this source."),

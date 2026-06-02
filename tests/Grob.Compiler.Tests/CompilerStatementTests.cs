@@ -127,4 +127,77 @@ public sealed class CompilerStatementTests {
         List<OpCode> ops = ReadOpcodes(chunk);
         Assert.DoesNotContain(OpCode.GetGlobal, ops);
     }
+
+    [Fact]
+    public void ConstDecl_BoolTrue_InlinesConstantNotGetGlobal() {
+        // BoolLiteralExpr arm of EvalConstantExpr.
+        Chunk chunk = CompileSource("""
+            const FLAG := true
+            print(FLAG)
+            """);
+
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.DoesNotContain(OpCode.GetGlobal, ops);
+        bool found = false;
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            if (chunk.ReadConstant(i).IsBool && chunk.ReadConstant(i).AsBool()) {
+                found = true;
+                break;
+            }
+        }
+        Assert.True(found, "Expected bool constant true in the constant pool.");
+    }
+
+    [Fact]
+    public void ConstDecl_GroupedInt_InlinesValue() {
+        // GroupingExpr arm of EvalConstantExpr — wrapping parens are transparent.
+        Chunk chunk = CompileSource("""
+            const X := (42)
+            print(X)
+            """);
+
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.DoesNotContain(OpCode.GetGlobal, ops);
+        bool found = false;
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            if (chunk.ReadConstant(i).IsInt && chunk.ReadConstant(i).AsInt() == 42L) {
+                found = true;
+                break;
+            }
+        }
+        Assert.True(found, "Expected constant value 42 in the constant pool.");
+    }
+
+    [Fact]
+    public void ConstDecl_ChainedConst_InlinesFromCache() {
+        // IdentifierExpr -> ConstDecl arm: const B := A where A is already cached.
+        Chunk chunk = CompileSource("""
+            const A := 10
+            const B := A
+            print(B)
+            """);
+
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.DoesNotContain(OpCode.GetGlobal, ops);
+        bool found = false;
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            if (chunk.ReadConstant(i).IsInt && chunk.ReadConstant(i).AsInt() == 10L) {
+                found = true;
+                break;
+            }
+        }
+        Assert.True(found, "Expected constant value 10 in the constant pool.");
+    }
+
+    [Fact]
+    public void ConstDecl_RawString_EmitsNoGetGlobal() {
+        // RawStringLiteralExpr arm of EvalConstantExpr.
+        Chunk chunk = CompileSource("""
+            const S := `hello`
+            print(S)
+            """);
+
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.DoesNotContain(OpCode.GetGlobal, ops);
+    }
 }
