@@ -1,0 +1,4 @@
+// Sprint 3E fixture: nullable slot without ?? — must emit E0102
+// Expected: compile error E0102, non-zero exit
+x: int? := nil
+print("${x}")

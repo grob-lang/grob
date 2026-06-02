@@ -31,9 +31,18 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitInterpolatedString(InterpolatedStringExpr node) {
+        // D-279, E0102: interpolating a nullable expression is a compile error.
+        // Each ${expr} slot is type-checked; if its resolved type is nullable the
+        // slot is an error unless the expression itself has already resolved the
+        // nullability (e.g. x ?? fallback → non-nullable).
         foreach (StringInterpolationPart part in node.Parts) {
-            if (part is StringExpressionPart expr) {
-                Visit(expr.Expression);
+            if (part is StringExpressionPart exprPart) {
+                GrobType slotType = Visit(exprPart.Expression);
+                if (GrobTypeHelpers.IsNullable(slotType)) {
+                    EmitError(ErrorCatalog.E0102,
+                        $"Interpolated expression has nullable type '{TypeName(slotType)}'; resolve with '??' before interpolating.",
+                        exprPart.Range);
+                }
             }
         }
         return GrobType.String;

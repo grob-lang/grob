@@ -1,0 +1,6 @@
+// Sprint 3E fixture: interpolated string from declared variables
+// Expected stdout (one line per print):
+//   Hello, Alice! You are 30 years old.
+name: string := "Alice"
+age: int := 30
+print("Hello, ${name}! You are ${age} years old.")

@@ -1,0 +1,5 @@
+// Sprint 3E fixture: nullable slot resolved with ??
+// Expected stdout:
+//   Hello, guest!
+user: string? := nil
+print("Hello, ${user ?? "guest"}!")

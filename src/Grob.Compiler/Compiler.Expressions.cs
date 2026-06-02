@@ -41,22 +41,94 @@ public sealed partial class Compiler {
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Sprint 2: only handles plain strings (all-text parts, no <c>${ }</c>).
-    /// Interpolated strings with embedded expressions are deferred to Sprint 4.
+    /// Sprint 3E: String interpolation.
+    /// <para>
+    /// No-slot optimisation: when the string contains only literal text parts
+    /// (no <c>${}</c> expression slots), all parts are decoded and concatenated
+    /// into a single constant — no <see cref="OpCode.BuildString"/> is emitted.
+    /// </para>
+    /// <para>
+    /// General case: each part is emitted in source order — text parts as string
+    /// constants, expression slots as their compiled values — then a single
+    /// <see cref="OpCode.BuildString"/> with the fragment count (1-byte operand)
+    /// concatenates them at runtime. The VM calls <c>ToString()</c> on each
+    /// fragment so non-string values are automatically converted. (D-279)
+    /// </para>
+    /// <para>
+    /// Escape sequences in text parts are decoded here:
+    /// <c>\n \r \t \\ \" \$</c>. The lexer preserves the raw escape sequences
+    /// in the lexeme; the compiler resolves them to their character values when
+    /// creating string constants.
+    /// </para>
     /// </remarks>
     public override object? VisitInterpolatedString(InterpolatedStringExpr node) {
-        // Concatenate all text parts into one value. For Sprint 2 programs the
-        // parser may still produce an InterpolatedStringExpr even for plain
-        // double-quoted strings with no ${ } interpolations.
-        // OfType<StringTextPart> filters-and-casts in one step; avoids the
-        // S3267 LINQ-vs-foreach finding while keeping the code readable.
-        var sb = new System.Text.StringBuilder();
-        foreach (StringTextPart text in node.Parts.OfType<StringTextPart>()) {
-            sb.Append(text.Text);
-            // StringExpressionPart (interpolation) — deferred to Sprint 4.
+        bool hasSlots = node.Parts.Any(p => p is StringExpressionPart);
+
+        if (!hasSlots) {
+            // Optimisation: all parts are literal text — decode and concatenate into
+            // a single constant. The type checker already confirmed there are no slots.
+            var sb = new System.Text.StringBuilder();
+            foreach (StringTextPart text in node.Parts.OfType<StringTextPart>()) {
+                sb.Append(DecodeStringEscapes(text.Text));
+            }
+            EmitConstant(GrobValue.FromString(sb.ToString()), node.Range.Start.Line);
+            return null;
         }
-        EmitConstant(GrobValue.FromString(sb.ToString()), node.Range.Start.Line);
+
+        // General case: emit each fragment in source order, then BuildString N.
+        int fragmentCount = 0;
+        int line = node.Range.Start.Line;
+        foreach (StringInterpolationPart part in node.Parts) {
+            switch (part) {
+                case StringTextPart text:
+                    EmitConstant(GrobValue.FromString(DecodeStringEscapes(text.Text)), line);
+                    fragmentCount++;
+                    break;
+                case StringExpressionPart exprPart:
+                    Visit(exprPart.Expression);
+                    fragmentCount++;
+                    break;
+            }
+        }
+
+        _chunk.WriteOpCode(OpCode.BuildString, line);
+        _chunk.WriteByte(ToByteOperand(fragmentCount, "BuildString fragment count"), line);
         return null;
+    }
+
+    /// <summary>
+    /// Decodes the Grob string escape sequences stored raw in a <see cref="StringTextPart"/> lexeme.
+    /// Recognised sequences: <c>\n \r \t \\ \" \$</c>.
+    /// Any other <c>\x</c> is passed through unchanged (the lexer already emitted E2006 for those).
+    /// </summary>
+    private static string DecodeStringEscapes(string raw) {
+        if (!raw.Contains('\\')) return raw;
+
+        var sb = new System.Text.StringBuilder(raw.Length);
+        int i = 0;
+        while (i < raw.Length) {
+            if (raw[i] == '\\' && i + 1 < raw.Length) {
+                char next = raw[i + 1];
+                switch (next) {
+                    case 'n': sb.Append('\n'); i += 2; break;
+                    case 'r': sb.Append('\r'); i += 2; break;
+                    case 't': sb.Append('\t'); i += 2; break;
+                    case '\\': sb.Append('\\'); i += 2; break;
+                    case '"': sb.Append('"'); i += 2; break;
+                    case '$': sb.Append('$'); i += 2; break;
+                    default:
+                        // Unknown escape: pass both chars through; lexer already
+                        // emitted a diagnostic, so this path is error-recovery only.
+                        sb.Append(raw[i]);
+                        i++;
+                        break;
+                }
+            } else {
+                sb.Append(raw[i]);
+                i++;
+            }
+        }
+        return sb.ToString();
     }
 
     /// <inheritdoc/>
