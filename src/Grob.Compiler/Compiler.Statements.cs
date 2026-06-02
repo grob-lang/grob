@@ -4,6 +4,9 @@ using Grob.Core;
 namespace Grob.Compiler;
 
 public sealed partial class Compiler {
+    // Label used as the operand-name argument to ToByteOperand for global-name indices.
+    private const string GlobalNameLabel = "global name";
+
     // -----------------------------------------------------------------------
     // Block — open scope, emit body, emit PopN on exit.
     // -----------------------------------------------------------------------
@@ -37,7 +40,7 @@ public sealed partial class Compiler {
         if (IsGlobalScope) {
             int nameIdx = GetOrCreateGlobalNameIndex(node.Name);
             _chunk.WriteOpCode(OpCode.DefineGlobal, line);
-            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, GlobalNameLabel), line);
         } else {
             // Local: the value on the stack IS the local — record the slot.
             if ((uint)_nextSlot > byte.MaxValue)
@@ -46,6 +49,29 @@ public sealed partial class Compiler {
                     $"exceeds the 1-byte limit of {byte.MaxValue}.");
             _localScopes.Peek().Add(new LocalVar(node.Name, _nextSlot++));
         }
+        return null;
+    }
+
+    /// <inheritdoc/>
+    public override object? VisitReadonlyDecl(ReadonlyDecl node) {
+        // Immutability is enforced at compile time by the type checker (E0202).
+        // The runtime path is identical to a mutable := global binding.
+        // Block-level readonly is deferred: Declaration does not extend Statement,
+        // so ReadonlyDecl cannot appear inside a BlockStmt in the current design.
+        int line = node.Range.Start.Line;
+        Visit(node.Value);
+        int nameIdx = GetOrCreateGlobalNameIndex(node.Name);
+        _chunk.WriteOpCode(OpCode.DefineGlobal, line);
+        _chunk.WriteByte(ToByteOperand(nameIdx, GlobalNameLabel), line);
+        return null;
+    }
+
+    /// <inheritdoc/>
+    public override object? VisitConstDecl(ConstDecl node) {
+        // Evaluate the RHS to a compile-time constant and cache it (D-289, D-293).
+        // No bytecode is emitted for the declaration itself; every reference site
+        // inlines the value via EmitConstant instead of GetGlobal/GetLocal.
+        _constValues[node] = EvalConstantExpr(node.Value);
         return null;
     }
 
@@ -160,7 +186,7 @@ public sealed partial class Compiler {
             // Global: load-operate-store sequence.
             int nameIdx = GetOrCreateGlobalNameIndex(target.Name);
             _chunk.WriteOpCode(OpCode.GetGlobal, line);
-            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, GlobalNameLabel), line);
 
             EmitConstant(GrobValue.FromInt(1L), line);
 
@@ -169,7 +195,7 @@ public sealed partial class Compiler {
                 line);
 
             _chunk.WriteOpCode(OpCode.SetGlobal, line);
-            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, GlobalNameLabel), line);
         }
         return null;
     }
