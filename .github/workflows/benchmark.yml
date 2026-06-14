@@ -33,7 +33,9 @@ jobs:
           global-json-file: global.json
 
       - name: Restore
-        run: dotnet restore bench/Grob.Benchmarks/Grob.Benchmarks.csproj
+        run: |
+          dotnet restore bench/Grob.Benchmarks/Grob.Benchmarks.csproj
+          dotnet restore tooling/Grob.BenchCheck/Grob.BenchCheck.csproj
 
       - name: Run benchmarks
         run: >
@@ -50,6 +52,18 @@ jobs:
             echo "## $(basename "$f")" >> "$GITHUB_STEP_SUMMARY"
             cat "$f" >> "$GITHUB_STEP_SUMMARY"
           done
+
+      # The regression gate (D-313). Compares the fresh run against the committed
+      # rolling and frozen-origin baselines and fails the job on a breach, so the
+      # workflow run itself goes red. Reads only — it never commits a baseline.
+      # A run on a non-canonical runner fails the runner guard by design.
+      - name: Check regression gate
+        run: >
+          dotnet run --configuration Release --no-restore
+          --project tooling/Grob.BenchCheck
+          --
+          --results BenchmarkDotNet.Artifacts/results
+          --baseline bench/Grob.Benchmarks/baseline
 
       - name: Upload benchmark artifacts
         if: always()
