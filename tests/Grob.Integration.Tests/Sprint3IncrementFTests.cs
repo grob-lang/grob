@@ -294,12 +294,13 @@ public sealed class Sprint3IncrementFTests {
     [Fact]
     public void Repl_WholeNumberFloat_PreambleRoundTrip() {
         // FormatFloat must append ".0" for whole-number floats so the preamble
-        // produces a float literal rather than an int literal.
-        const string input = "f := 5.0\nprint(f)\nexit";
+        // synthesises "f := 5.0" (a float literal) rather than "f := 5" (an int
+        // literal). If the preamble emits an int, f + 0.5 would be a type error.
+        const string input = "f := 5.0\nprint(f + 0.5)\nexit";
         (string stdout, string stderr, int exitCode) = RunRepl(input);
 
         Assert.Equal(0, exitCode);
-        Assert.Contains("5", stdout);
+        Assert.Contains("5.5", stdout);
         Assert.Equal(string.Empty, stderr);
     }
 
