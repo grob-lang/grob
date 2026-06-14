@@ -309,6 +309,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-309 | May 2026                                                          | Tooling — benchmarking        | Benchmark execution production mechanism moved to GitHub Actions `benchmark.yml`; D-302 deliverable unchanged, production path refined                           |
 | D-310 | May 2026                                                          | Tooling — build               | C# 14 / .NET 10 SDK pinning corrected; `LangVersion 14` canonical; Sprint 2-end QA verified clean Debug and Release builds under corrected pinning               |
 | D-311 | May 2026                                                          | Compiler — type checker       | Unresolved-identifier `Declaration` sentinel: `UnresolvedDecl.Instance` satisfies the §3.1.1 non-null invariant at every error path; addendum to D-137           |
+| D-312 | June 2026                                                         | CLI — bare invocation         | Bare `grob` (no subcommand) ≡ `grob --help` — prints command listing to stdout, exit 0. Does not launch the REPL; `grob repl` is the sole REPL entrance          |
 
 ---
 
@@ -2950,6 +2951,24 @@ Refines: D-137
 
 ---
 
+### D-312 — Bare `grob` invocation prints help (June 2026)
+
+Area: CLI — bare invocation
+Supersedes: none
+Superseded by: none
+
+**The gap.** The v1 CLI surface defined `grob run`, `grob repl`, `grob check`, `grob fmt` and the rest, but never defined what `grob` does with no subcommand and no arguments — the single most common thing a new user does after `winget install Grob.Grob`.
+
+**The decision.** Bare `grob` is equivalent to `grob --help`: it prints the command listing to stdout and exits 0. It does **not** launch the REPL. `grob repl` is the sole REPL entrance.
+
+**Why not the REPL.** Language runtimes (`python`, `node`, `deno`, `pwsh`) drop into a REPL on bare invocation, but that convention only holds when bare invocation is the *only* REPL door. Grob already gives the REPL a named command, so making bare `grob` also launch it creates two doors to one room — and worse, drops a first-contact user into a modal session they must then work out how to leave. Multi-command CLI tools the audience already lives in (git, go, cargo, dotnet, winget) all print usage on bare invocation. Matching that is the principle of least surprise for an audience of Windows developers and sysadmins. Typing the name should teach the tool, not trap the user.
+
+**Why exit 0, not git/go's non-zero usage error.** git and go treat "no command" as a usage error and exit non-zero (1 and 2) to catch CI scripts that invoke the binary with an empty argument. Grob's exit table already reserves `1` (runtime error) and `2` (compile error); a bare invocation is neither, and adopting the BSD `EX_USAGE` (64) convention would expand the table for marginal benefit on a platform where 64 is uncommon. An accidentally-empty invocation is better caught by the caller's `set -u` / `$ErrorActionPreference` than by Grob inventing a code. Showing help when given nothing is not a failure — exit 0 is consistent with "quiet on success, clear on failure."
+
+Character rationale and the help text itself live in `grob-personality-identity.md` (`--help` output section). The §8 CLI command table in `grob-v1-requirements.md` gains a bare-`grob` row — flagged as a follow-up edit; that document was not in this session's upload.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3171,6 +3190,16 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 — D-312: bare `grob` (no subcommand, no args) is_
+_equivalent to `grob --help` — prints the command listing to stdout and_
+_exits 0. Does not launch the REPL; `grob repl` is the sole REPL entrance._
+_Rationale matches the git/go/dotnet/winget mental model the audience_
+_already holds; exit 0 chosen over git/go's non-zero usage-error stance_
+_because Grob's exit table reserves 1 (runtime) and 2 (compile) and a bare_
+_invocation is neither. Character rationale added to_
+_`grob-personality-identity.md` (`--help` output section). §8 CLI table_
+_row in `grob-v1-requirements.md` flagged as a follow-up — that doc was_
+_not in this session's upload._
 _Updated May 2026 — D-311: unresolved-identifier `Declaration` sentinel_
 _(`UnresolvedDecl.Instance`) satisfies the §3.1.1 non-null invariant at_
 _every error path in the type checker. Addendum to D-137. Three regression_
