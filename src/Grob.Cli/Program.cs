@@ -12,6 +12,11 @@ if (args.Length >= 1 && args[0] == "run") {
     return new RunCommand(Console.Out, Console.Error).Run(args[1]);
 }
 
+// grob repl
+if (args.Length >= 1 && args[0] == "repl") {
+    return new ReplCommand(Console.In, Console.Out, Console.Error).Run();
+}
+
 await Console.Error.WriteLineAsync("error: unknown command");
 await Console.Error.WriteLineAsync("usage: grob run <file>");
 return 1;

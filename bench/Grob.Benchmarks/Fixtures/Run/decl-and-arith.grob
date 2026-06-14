@@ -1,0 +1,8 @@
+// VM-execution benchmark fixture: declarations + arithmetic + scope.
+// Representative of the Sprint 3 execution surface.
+x := 42
+y := 58
+z := x + y * 2
+a := z - 10
+b := a + 1
+print(b)
