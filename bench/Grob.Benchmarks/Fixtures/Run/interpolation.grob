@@ -1,0 +1,8 @@
+// VM-execution benchmark fixture: string interpolation.
+// Exercises BuildString opcode and nullable nil-coalesce.
+greeting := "World"
+count := 7
+tag: string? := nil
+label := tag ?? "default"
+msg := "Hello, ${greeting}! Count: ${count}. Label: ${label}."
+print(msg)

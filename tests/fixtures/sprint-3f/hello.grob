@@ -1,0 +1,29 @@
+// Sprint 3 close-gate: exercises the full Sprint 3 language surface —
+// declarations, const, readonly, scope chain, nil safety (??) and
+// string interpolation.  No control flow, no functions (Sprint 4/5).
+// Expected stdout (3 lines):
+//   Hello, World! Score: 53, version 1.0.
+//   User: anonymous
+//   200
+
+const GREETING := "Hello"
+readonly VERSION := "1.0"
+
+name := "World"
+score := 42
+
+score += 10
+score++
+
+message := "${GREETING}, ${name}! Score: ${score}, version ${VERSION}."
+print(message)
+
+safe: string? := nil
+display := safe ?? "anonymous"
+print("User: ${display}")
+
+counter := 100
+{
+    counter = 200
+}
+print(counter)

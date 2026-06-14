@@ -25,6 +25,9 @@
     <Content Include="Fixtures\Compile\*.grob"
              Link="Fixtures\Compile\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Fixtures\Run\*.grob"
+             Link="Fixtures\Run\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

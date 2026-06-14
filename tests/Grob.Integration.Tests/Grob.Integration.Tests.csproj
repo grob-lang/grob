@@ -49,6 +49,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 3F close-gate and REPL fixtures. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-3f\*.grob"
+             Link="fixtures\sprint-3f\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>

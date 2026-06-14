@@ -208,6 +208,12 @@ G> help anytime.
 The last line is a small touch. It’s Sparky. It’s consistent with the character.
 It doesn’t overstay its welcome.
 
+**Bare `grob`.** Running `grob` with no command prints this same listing and exits 0.
+Typing the name should teach you the tool, not trap you — so it never drops into the
+REPL. `grob repl` is the only way into an interactive session, on purpose. This matches
+what the audience already expects from git, go, dotnet and winget: type the tool’s name,
+see what it can do (D-312).
+
 -----
 
 ## Opinionated Defaults
@@ -295,7 +301,10 @@ in Sparky’s world.
 
 -----
 
-*Last updated: April 2026 — Session E: stale diagnostic example in Error messages*
+*Last updated: June 2026 — D-312: bare `grob` (no command) prints the `--help`*
+*listing to stdout and exits 0; it never launches the REPL — `grob repl` is the*
+*sole REPL entrance. Statement added to the `--help` output section.*
+*Previous: April 2026 — Session E: stale diagnostic example in Error messages*
 *section replaced with canonical rustc-style `error[Exxxx]:` format per*
 *`grob-v1-requirements.md` §10. (Earlier revision of this changelog also*
 *cited ADR-0017; the format itself is specified in §10. ADR-0014 governs*
