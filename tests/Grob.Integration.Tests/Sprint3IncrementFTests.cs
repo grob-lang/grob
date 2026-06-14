@@ -213,4 +213,147 @@ public sealed class Sprint3IncrementFTests {
         // The REPL continued: the subsequent print(42) executed.
         Assert.Contains("42", stdout);
     }
+
+    // -----------------------------------------------------------------------
+    // REPL — runtime error reports to stderr and session continues
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Repl_RuntimeError_WritesStderrAndContinues() {
+        // Integer division by zero raises E5002 at runtime (not compile time).
+        // The REPL must catch it, report to stderr, and continue to the next
+        // entry rather than terminating the session.
+        const string input = "x := 0\n10 / x\nprint(99)\nexit";
+        (string stdout, string stderr, int exitCode) = RunRepl(input);
+
+        Assert.Equal(0, exitCode);
+        // Runtime error reported to stderr — contains the error code.
+        Assert.Contains("E5002", stderr);
+        // Session continued: subsequent print(99) executed.
+        Assert.Contains("99", stdout);
+    }
+
+    // -----------------------------------------------------------------------
+    // REPL — bare float expression auto-print
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Repl_BareFloatExpression_PrintsResult() {
+        (string stdout, string stderr, int exitCode) = RunRepl("1.5 + 2.0\nexit");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("3.5", stdout);
+        Assert.Equal(string.Empty, stderr);
+    }
+
+    [Fact]
+    public void Repl_BareBoolExpression_PrintsResult() {
+        // Use a bool literal — comparison operators are Sprint 4.
+        // GrobValue.ToString() outputs lowercase "true"/"false".
+        (string stdout, string stderr, int exitCode) = RunRepl("true\nexit");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("true", stdout);
+        Assert.Equal(string.Empty, stderr);
+    }
+
+    // -----------------------------------------------------------------------
+    // REPL — readonly declaration does not auto-print
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Repl_ReadonlyDeclaration_DoesNotPrintValue() {
+        // ReadonlyDecl is a Declaration node, not an ExpressionStmt.
+        // IsBareExpression must return false for it.
+        (string stdout, string stderr, int exitCode) = RunRepl("readonly MAX := 255\nexit");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        // Value must not appear as an auto-printed result line.
+        string[] lines = stdout.Split(NL, StringSplitOptions.RemoveEmptyEntries);
+        Assert.False(lines.Any(l => l.Trim() == "255"),
+            $"readonly declaration should not auto-print. Stdout:\n{stdout}");
+    }
+
+    // -----------------------------------------------------------------------
+    // REPL — preamble round-trip for float and bool globals
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Repl_FloatGlobal_PersistsThroughPreamble() {
+        // FormatFloat must emit a float literal (not an int literal) so the
+        // type checker accepts its use as a float in the next entry.
+        const string input = "pi := 3.14\nprint(pi)\nexit";
+        (string stdout, string stderr, int exitCode) = RunRepl(input);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("3.14", stdout);
+        Assert.Equal(string.Empty, stderr);
+    }
+
+    [Fact]
+    public void Repl_WholeNumberFloat_PreambleRoundTrip() {
+        // FormatFloat must append ".0" for whole-number floats so the preamble
+        // produces a float literal rather than an int literal.
+        const string input = "f := 5.0\nprint(f)\nexit";
+        (string stdout, string stderr, int exitCode) = RunRepl(input);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("5", stdout);
+        Assert.Equal(string.Empty, stderr);
+    }
+
+    [Fact]
+    public void Repl_BoolGlobal_PersistsThroughPreamble() {
+        // GrobValue.ToString() outputs lowercase "true"/"false".
+        const string input = "flag := true\nprint(flag)\nexit";
+        (string stdout, string stderr, int exitCode) = RunRepl(input);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("true", stdout);
+        Assert.Equal(string.Empty, stderr);
+    }
+
+    // -----------------------------------------------------------------------
+    // REPL — string with special characters survives preamble round-trip
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Repl_StringWithQuote_PersistsThroughPreamble() {
+        // EscapeStringLiteral must escape the embedded double-quote so the
+        // synthesised preamble is valid Grob source.
+        const string input = "s := \"say \\\"hello\\\"\"\nprint(s)\nexit";
+        (string stdout, string stderr, int exitCode) = RunRepl(input);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("say \"hello\"", stdout);
+        Assert.Equal(string.Empty, stderr);
+    }
+
+    // -----------------------------------------------------------------------
+    // REPL — continuation prompt is shown for multi-line input
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Repl_MultilineBlock_ShowsContinuationPrompt() {
+        // When the user opens a '{' the REPL should emit '..>' while waiting
+        // for the closing brace.
+        const string input = "val := 5\n{\n    val = 10\n}\nprint(val)\nexit";
+        (string stdout, string _, int _) = RunRepl(input);
+
+        Assert.Contains("..>", stdout);
+    }
+
+    // -----------------------------------------------------------------------
+    // REPL — help command
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Repl_HelpCommand_PrintsGuidance() {
+        (string stdout, string stderr, int exitCode) = RunRepl("help\nexit");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Contains("exit", stdout);
+    }
 }
