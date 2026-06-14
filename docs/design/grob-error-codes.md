@@ -50,103 +50,104 @@ read by `grob --explain Exxxx`.
 
 ## Summary Index
 
-| Code  | Title                                            | Category          | Status                |
-| ----- | ------------------------------------------------ | ----------------- | --------------------- |
-| E0001 | type mismatch                                    | Type              | pre-release           |
-| E0002 | incompatible operands                            | Type              | pre-release           |
-| E0003 | wrong number of arguments                        | Type              | pre-release           |
-| E0004 | argument type mismatch                           | Type              | pre-release           |
-| E0005 | return type mismatch                             | Type              | pre-release           |
-| E0006 | undefined method on type                         | Type              | pre-release           |
-| E0007 | invalid implicit conversion                      | Type              | pre-release           |
-| E0101 | nil dereference without `?.` or `??`             | Type              | pre-release           |
-| E0102 | nullable interpolation                           | Type              | pre-release           |
-| E0103 | non-nullable field requires initialiser          | Type              | pre-release           |
-| E0104 | nullable type used where non-nullable required   | Type              | pre-release           |
-| E0201 | reassignment of `const` binding                  | Type              | pre-release           |
-| E0202 | reassignment of `readonly` binding               | Type              | pre-release           |
-| E0203 | reassignment of `param` binding                  | Type              | pre-release           |
-| E0204 | mutation of `readonly` value                     | Type              | pre-release           |
-| E0301 | type cycle with no terminating field             | Type              | pre-release           |
-| E0302 | recursive type without indirection               | Type              | pre-release           |
-| E0401 | generic type argument count mismatch             | Type              | pre-release           |
-| E0402 | generic constraint violation                     | Type              | pre-release           |
-| E1001 | undefined identifier                             | Name resolution   | pre-release           |
-| E1002 | undefined member                                 | Name resolution   | pre-release           |
-| E1003 | undefined module                                 | Name resolution   | pre-release           |
-| E1101 | shadowed declaration                             | Name resolution   | pre-release (warning) |
-| E1102 | variable already declared in this scope          | Name resolution   | pre-release           |
-| E1201 | forward reference inside function body           | Name resolution   | pre-release           |
-| E1202 | use before declaration in block scope            | Name resolution   | pre-release           |
-| E2001 | unexpected token                                 | Syntax            | pre-release           |
-| E2002 | unterminated string literal                      | Syntax            | pre-release           |
-| E2003 | unterminated block comment                       | Syntax            | pre-release           |
-| E2004 | unterminated raw string                          | Syntax            | pre-release           |
-| E2005 | invalid escape sequence                          | Syntax            | pre-release           |
-| E2006 | invalid numeric literal                          | Syntax            | pre-release           |
-| E2007 | invalid regex flag                               | Syntax            | pre-release           |
-| E2008 | unterminated regex literal                       | Syntax            | pre-release           |
-| E2009 | unterminated string interpolation                | Syntax            | pre-release           |
-| E2010 | unexpected character                             | Syntax            | pre-release           |
-| E2011 | stray semicolon                                  | Syntax            | pre-release           |
-| E2012 | `#` not followed by `{`                          | Syntax            | pre-release           |
-| E2013 | single-character operator requires doubling      | Syntax            | pre-release           |
-| E2014 | unbalanced closing bracket                       | Syntax            | pre-release           |
-| E2101 | bare `{` cannot begin an expression              | Syntax            | pre-release           |
-| E2102 | empty type construction missing `{ }`            | Syntax            | pre-release           |
-| E2201 | `import` after declaration                       | Syntax            | pre-release           |
-| E2202 | `param` after `fn` or top-level statement        | Syntax            | pre-release           |
-| E2203 | top-level `return`                               | Syntax            | pre-release           |
-| E2204 | `try` without `catch` or `finally`               | Syntax            | pre-release           |
-| E2205 | `catch` after catch-all                          | Syntax            | pre-release           |
-| E2206 | `finally` not last in `try`                      | Syntax            | pre-release           |
-| E2207 | `return` / `break` / `continue` inside `finally` | Syntax            | pre-release           |
-| E2208 | duplicate field name in type declaration         | Syntax            | pre-release           |
-| E2209 | trailing comma not permitted here                | Syntax            | pre-release           |
-| E2210 | line continuation rule violation                 | Syntax            | pre-release           |
-| E3001 | unknown plugin                                   | Module            | pre-release           |
-| E3002 | plugin not installed                             | Module            | pre-release           |
-| E3003 | circular import                                  | Module            | pre-release           |
-| E3004 | invalid module alias                             | Module            | pre-release           |
-| E3101 | ambiguous unqualified type reference             | Module            | pre-release           |
-| E3102 | plugin type collides with stdlib type            | Module            | pre-release           |
-| E3201 | manifest version mismatch                        | Module            | pre-release           |
-| E4001 | unknown decorator                                | Param / decorator | pre-release           |
-| E4002 | decorator not permitted here                     | Param / decorator | pre-release           |
-| E4101 | invalid `@allowed` argument                      | Param / decorator | pre-release           |
-| E4102 | invalid `@minLength` / `@maxLength` argument     | Param / decorator | pre-release           |
-| E4201 | `param` block syntax error                       | Param / decorator | pre-release           |
-| E4202 | `param` after `param` block ends                 | Param / decorator | pre-release           |
-| E5001 | integer overflow                                 | Runtime           | pre-release           |
-| E5002 | integer division by zero                         | Runtime           | pre-release           |
-| E5003 | integer modulo by zero                           | Runtime           | pre-release           |
-| E5004 | float division by zero                           | Runtime           | pre-release           |
-| E5005 | float modulo by zero                             | Runtime           | pre-release           |
-| E5006 | math domain violation                            | Runtime           | pre-release           |
-| E5101 | array index out of range                         | Runtime           | pre-release           |
-| E5102 | substring bounds out of range                    | Runtime           | pre-release           |
-| E5201 | nil dereference at runtime                       | Runtime           | pre-release           |
-| E5301 | file not found                                   | Runtime           | pre-release           |
-| E5302 | permission denied                                | Runtime           | pre-release           |
-| E5303 | path is a directory, file expected               | Runtime           | pre-release           |
-| E5304 | path is a file, directory expected               | Runtime           | pre-release           |
-| E5305 | I/O failure (residual)                           | Runtime           | pre-release           |
-| E5401 | network connection failed                        | Runtime           | pre-release           |
-| E5402 | HTTP error response                              | Runtime           | pre-release           |
-| E5403 | DNS resolution failed                            | Runtime           | pre-release           |
-| E5404 | network timeout                                  | Runtime           | pre-release           |
-| E5501 | JSON parse error                                 | Runtime           | pre-release           |
-| E5502 | JSON type coercion failure                       | Runtime           | pre-release           |
-| E5601 | process timeout                                  | Runtime           | pre-release           |
-| E5602 | process exit non-zero (under `OrFail`)           | Runtime           | pre-release           |
-| E5603 | process spawn failed                             | Runtime           | pre-release           |
-| E5701 | guid parse error                                 | Runtime           | pre-release           |
-| E5702 | parse error (residual)                           | Runtime           | pre-release           |
-| E5801 | required environment variable not set            | Runtime           | pre-release           |
-| E5901 | call stack overflow                              | Runtime           | pre-release           |
-| E5902 | circular initialisation                          | Runtime           | pre-release           |
-| E5903 | runtime failure (residual catch-all)             | Runtime           | pre-release           |
-| E9001 | internal compiler error — please report          | Internal          | pre-release           |
+| Code  | Title                                              | Category          | Status                |
+| ----- | -------------------------------------------------- | ----------------- | --------------------- |
+| E0001 | type mismatch                                      | Type              | pre-release           |
+| E0002 | incompatible operands                              | Type              | pre-release           |
+| E0003 | wrong number of arguments                          | Type              | pre-release           |
+| E0004 | argument type mismatch                             | Type              | pre-release           |
+| E0005 | return type mismatch                               | Type              | pre-release           |
+| E0006 | undefined method on type                           | Type              | pre-release           |
+| E0007 | invalid implicit conversion                        | Type              | pre-release           |
+| E0101 | nil dereference without `?.` or `??`               | Type              | pre-release           |
+| E0102 | nullable interpolation                             | Type              | pre-release           |
+| E0103 | non-nullable field requires initialiser            | Type              | pre-release           |
+| E0104 | nullable type used where non-nullable required     | Type              | pre-release           |
+| E0201 | reassignment of `const` binding                    | Type              | pre-release           |
+| E0202 | reassignment of `readonly` binding                 | Type              | pre-release           |
+| E0203 | reassignment of `param` binding                    | Type              | pre-release           |
+| E0204 | mutation of `readonly` value                       | Type              | pre-release           |
+| E0205 | non-constant expression in `const` right-hand side | Type              | pre-release           |
+| E0301 | type cycle with no terminating field               | Type              | pre-release           |
+| E0302 | recursive type without indirection                 | Type              | pre-release           |
+| E0401 | generic type argument count mismatch               | Type              | pre-release           |
+| E0402 | generic constraint violation                       | Type              | pre-release           |
+| E1001 | undefined identifier                               | Name resolution   | pre-release           |
+| E1002 | undefined member                                   | Name resolution   | pre-release           |
+| E1003 | undefined module                                   | Name resolution   | pre-release           |
+| E1101 | shadowed declaration                               | Name resolution   | pre-release (warning) |
+| E1102 | variable already declared in this scope            | Name resolution   | pre-release           |
+| E1201 | forward reference inside function body             | Name resolution   | pre-release           |
+| E1202 | use before declaration in block scope              | Name resolution   | pre-release           |
+| E2001 | unexpected token                                   | Syntax            | pre-release           |
+| E2002 | unterminated string literal                        | Syntax            | pre-release           |
+| E2003 | unterminated block comment                         | Syntax            | pre-release           |
+| E2004 | unterminated raw string                            | Syntax            | pre-release           |
+| E2005 | invalid escape sequence                            | Syntax            | pre-release           |
+| E2006 | invalid numeric literal                            | Syntax            | pre-release           |
+| E2007 | invalid regex flag                                 | Syntax            | pre-release           |
+| E2008 | unterminated regex literal                         | Syntax            | pre-release           |
+| E2009 | unterminated string interpolation                  | Syntax            | pre-release           |
+| E2010 | unexpected character                               | Syntax            | pre-release           |
+| E2011 | stray semicolon                                    | Syntax            | pre-release           |
+| E2012 | `#` not followed by `{`                            | Syntax            | pre-release           |
+| E2013 | single-character operator requires doubling        | Syntax            | pre-release           |
+| E2014 | unbalanced closing bracket                         | Syntax            | pre-release           |
+| E2101 | bare `{` cannot begin an expression                | Syntax            | pre-release           |
+| E2102 | empty type construction missing `{ }`              | Syntax            | pre-release           |
+| E2201 | `import` after declaration                         | Syntax            | pre-release           |
+| E2202 | `param` after `fn` or top-level statement          | Syntax            | pre-release           |
+| E2203 | top-level `return`                                 | Syntax            | pre-release           |
+| E2204 | `try` without `catch` or `finally`                 | Syntax            | pre-release           |
+| E2205 | `catch` after catch-all                            | Syntax            | pre-release           |
+| E2206 | `finally` not last in `try`                        | Syntax            | pre-release           |
+| E2207 | `return` / `break` / `continue` inside `finally`   | Syntax            | pre-release           |
+| E2208 | duplicate field name in type declaration           | Syntax            | pre-release           |
+| E2209 | trailing comma not permitted here                  | Syntax            | pre-release           |
+| E2210 | line continuation rule violation                   | Syntax            | pre-release           |
+| E3001 | unknown plugin                                     | Module            | pre-release           |
+| E3002 | plugin not installed                               | Module            | pre-release           |
+| E3003 | circular import                                    | Module            | pre-release           |
+| E3004 | invalid module alias                               | Module            | pre-release           |
+| E3101 | ambiguous unqualified type reference               | Module            | pre-release           |
+| E3102 | plugin type collides with stdlib type              | Module            | pre-release           |
+| E3201 | manifest version mismatch                          | Module            | pre-release           |
+| E4001 | unknown decorator                                  | Param / decorator | pre-release           |
+| E4002 | decorator not permitted here                       | Param / decorator | pre-release           |
+| E4101 | invalid `@allowed` argument                        | Param / decorator | pre-release           |
+| E4102 | invalid `@minLength` / `@maxLength` argument       | Param / decorator | pre-release           |
+| E4201 | `param` block syntax error                         | Param / decorator | pre-release           |
+| E4202 | `param` after `param` block ends                   | Param / decorator | pre-release           |
+| E5001 | integer overflow                                   | Runtime           | pre-release           |
+| E5002 | integer division by zero                           | Runtime           | pre-release           |
+| E5003 | integer modulo by zero                             | Runtime           | pre-release           |
+| E5004 | float division by zero                             | Runtime           | pre-release           |
+| E5005 | float modulo by zero                               | Runtime           | pre-release           |
+| E5006 | math domain violation                              | Runtime           | pre-release           |
+| E5101 | array index out of range                           | Runtime           | pre-release           |
+| E5102 | substring bounds out of range                      | Runtime           | pre-release           |
+| E5201 | nil dereference at runtime                         | Runtime           | pre-release           |
+| E5301 | file not found                                     | Runtime           | pre-release           |
+| E5302 | permission denied                                  | Runtime           | pre-release           |
+| E5303 | path is a directory, file expected                 | Runtime           | pre-release           |
+| E5304 | path is a file, directory expected                 | Runtime           | pre-release           |
+| E5305 | I/O failure (residual)                             | Runtime           | pre-release           |
+| E5401 | network connection failed                          | Runtime           | pre-release           |
+| E5402 | HTTP error response                                | Runtime           | pre-release           |
+| E5403 | DNS resolution failed                              | Runtime           | pre-release           |
+| E5404 | network timeout                                    | Runtime           | pre-release           |
+| E5501 | JSON parse error                                   | Runtime           | pre-release           |
+| E5502 | JSON type coercion failure                         | Runtime           | pre-release           |
+| E5601 | process timeout                                    | Runtime           | pre-release           |
+| E5602 | process exit non-zero (under `OrFail`)             | Runtime           | pre-release           |
+| E5603 | process spawn failed                               | Runtime           | pre-release           |
+| E5701 | guid parse error                                   | Runtime           | pre-release           |
+| E5702 | parse error (residual)                             | Runtime           | pre-release           |
+| E5801 | required environment variable not set              | Runtime           | pre-release           |
+| E5901 | call stack overflow                                | Runtime           | pre-release           |
+| E5902 | circular initialisation                            | Runtime           | pre-release           |
+| E5903 | runtime failure (residual catch-all)               | Runtime           | pre-release           |
+| E9001 | internal compiler error — please report            | Internal          | pre-release           |
 
 ---
 
@@ -295,6 +296,16 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** A `readonly` value cannot be mutated. This includes mutating fields of a `readonly` struct or appending to a `readonly` array.
 - **Source decision:** D-291 (deep immutability).
+
+---
+
+### E0205 — non-constant expression in `const` right-hand side
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** The right-hand side of a `const` declaration must be a compile-time constant expression (D-289). Allowed forms are: literals, grouped literals, binary arithmetic/comparison/logical operators on constant operands, unary `-`/`!` on constant operands, and references to other `const`-bound identifiers. References to `readonly` or mutable identifiers, function calls, array/map literals, and interpolated strings with `${}` are not allowed. Change the binding to `readonly` if a runtime value is needed.
+- **Source decision:** D-288; D-289.
 
 ---
 

@@ -97,6 +97,13 @@ public sealed class RunCommand {
         } catch (GrobRuntimeException runtimeEx) {
             DiagnosticFormatter.WriteRuntime(runtimeEx, filePath, _stderr);
             return 1;
+        } catch (GrobInternalException internalEx) {
+            // Internal errors indicate a compiler or VM invariant violation.
+            // Report as a user-facing message without exposing the host stack
+            // trace (D-039). Include the message for diagnostics.
+            _stderr.WriteLine($"error: internal error: {internalEx.Message}");
+            _stderr.WriteLine("Please report this as a bug at https://github.com/grob-lang/grob/issues");
+            return 1;
         }
     }
 }

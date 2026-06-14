@@ -222,8 +222,88 @@ public sealed partial class Compiler : AstVisitor<object?> {
         GroupingExpr g => EvalConstantExpr(g.Inner),
         IdentifierExpr id when id.Declaration is ConstDecl cd
                              => FetchCachedConst(cd, id.Name),
+        // D-289: binary arithmetic, comparison and logical operators on
+        // compile-time constant operands are allowed constant forms.
+        BinaryExpr b => EvalBinaryConstant(b),
+        // D-289: unary - and ! on compile-time constant operands.
+        UnaryExpr u => EvalUnaryConstant(u),
         _ => ThrowNonConstantExpression(expr),
     };
+
+    /// <summary>
+    /// Folds a <see cref="BinaryExpr"/> whose operands are both compile-time
+    /// constants. Handles the arithmetic, comparison and logical operators
+    /// permitted by D-289.
+    /// </summary>
+    private GrobValue EvalBinaryConstant(BinaryExpr b) {
+        GrobValue left = EvalConstantExpr(b.Left);
+        GrobValue right = EvalConstantExpr(b.Right);
+
+        return b.Operator switch {
+            // Arithmetic
+            BinaryOperator.Add when left.IsInt && right.IsInt
+                => GrobValue.FromInt(left.AsInt() + right.AsInt()),
+            BinaryOperator.Add when left.IsFloat && right.IsFloat
+                => GrobValue.FromFloat(left.AsFloat() + right.AsFloat()),
+            BinaryOperator.Add when left.IsString && right.IsString
+                => GrobValue.FromString(left.AsString() + right.AsString()),
+            BinaryOperator.Subtract when left.IsInt && right.IsInt
+                => GrobValue.FromInt(left.AsInt() - right.AsInt()),
+            BinaryOperator.Subtract when left.IsFloat && right.IsFloat
+                => GrobValue.FromFloat(left.AsFloat() - right.AsFloat()),
+            BinaryOperator.Multiply when left.IsInt && right.IsInt
+                => GrobValue.FromInt(left.AsInt() * right.AsInt()),
+            BinaryOperator.Multiply when left.IsFloat && right.IsFloat
+                => GrobValue.FromFloat(left.AsFloat() * right.AsFloat()),
+            BinaryOperator.Divide when left.IsInt && right.IsInt
+                => GrobValue.FromInt(left.AsInt() / right.AsInt()),
+            BinaryOperator.Divide when left.IsFloat && right.IsFloat
+                => GrobValue.FromFloat(left.AsFloat() / right.AsFloat()),
+            BinaryOperator.Modulo when left.IsInt && right.IsInt
+                => GrobValue.FromInt(left.AsInt() % right.AsInt()),
+            BinaryOperator.Modulo when left.IsFloat && right.IsFloat
+                => GrobValue.FromFloat(left.AsFloat() % right.AsFloat()),
+            // Comparison — type-agnostic equality
+            BinaryOperator.Equal => GrobValue.FromBool(left.Equals(right)),
+            BinaryOperator.NotEqual => GrobValue.FromBool(!left.Equals(right)),
+            BinaryOperator.Less when left.IsInt && right.IsInt
+                => GrobValue.FromBool(left.AsInt() < right.AsInt()),
+            BinaryOperator.Less when left.IsFloat && right.IsFloat
+                => GrobValue.FromBool(left.AsFloat() < right.AsFloat()),
+            BinaryOperator.Less when left.IsString && right.IsString
+                => GrobValue.FromBool(string.CompareOrdinal(left.AsString(), right.AsString()) < 0),
+            BinaryOperator.LessEqual when left.IsInt && right.IsInt
+                => GrobValue.FromBool(left.AsInt() <= right.AsInt()),
+            BinaryOperator.LessEqual when left.IsFloat && right.IsFloat
+                => GrobValue.FromBool(left.AsFloat() <= right.AsFloat()),
+            BinaryOperator.Greater when left.IsInt && right.IsInt
+                => GrobValue.FromBool(left.AsInt() > right.AsInt()),
+            BinaryOperator.Greater when left.IsFloat && right.IsFloat
+                => GrobValue.FromBool(left.AsFloat() > right.AsFloat()),
+            BinaryOperator.GreaterEqual when left.IsInt && right.IsInt
+                => GrobValue.FromBool(left.AsInt() >= right.AsInt()),
+            BinaryOperator.GreaterEqual when left.IsFloat && right.IsFloat
+                => GrobValue.FromBool(left.AsFloat() >= right.AsFloat()),
+            // Logical (no short-circuit needed for compile-time evaluation)
+            BinaryOperator.And => GrobValue.FromBool(left.AsBool() && right.AsBool()),
+            BinaryOperator.Or => GrobValue.FromBool(left.AsBool() || right.AsBool()),
+            _ => ThrowNonConstantExpression(b),
+        };
+    }
+
+    /// <summary>
+    /// Folds a <see cref="UnaryExpr"/> whose operand is a compile-time constant.
+    /// Handles unary <c>-</c> and <c>!</c> as permitted by D-289.
+    /// </summary>
+    private GrobValue EvalUnaryConstant(UnaryExpr u) {
+        GrobValue operand = EvalConstantExpr(u.Operand);
+        return u.Operator switch {
+            UnaryOperator.Negate when operand.IsInt => GrobValue.FromInt(-operand.AsInt()),
+            UnaryOperator.Negate when operand.IsFloat => GrobValue.FromFloat(-operand.AsFloat()),
+            UnaryOperator.Not => GrobValue.FromBool(!operand.AsBool()),
+            _ => ThrowNonConstantExpression(u),
+        };
+    }
 
     /// <summary>
     /// Throws because a non-constant expression reached the constant folder; this
