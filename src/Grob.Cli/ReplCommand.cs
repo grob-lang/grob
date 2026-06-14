@@ -63,6 +63,9 @@ public sealed class ReplCommand {
     private readonly Dictionary<string, GrobType> _sessionTypes =
         new(StringComparer.Ordinal);
 
+    // Virtual source-file name used in all diagnostics emitted for REPL entries.
+    private const string ReplSource = "<repl>";
+
     /// <summary>
     /// Initialises a <see cref="ReplCommand"/> that reads from
     /// <paramref name="input"/> and writes output and errors to the supplied writers.
@@ -145,7 +148,7 @@ public sealed class ReplCommand {
     /// </summary>
     private static bool IsIncompleteSource(string source) {
         var bag = new DiagnosticBag();
-        IReadOnlyList<Token> tokens = Lexer.Scan(source, bag, "<repl>");
+        IReadOnlyList<Token> tokens = Lexer.Scan(source, bag, ReplSource);
         return HasOpenBrackets(tokens);
     }
 
@@ -197,7 +200,7 @@ public sealed class ReplCommand {
 
         // 3. Full pipeline.
         var bag = new DiagnosticBag();
-        IReadOnlyList<Token> tokens = Lexer.Scan(fullSrc, bag, "<repl>");
+        IReadOnlyList<Token> tokens = Lexer.Scan(fullSrc, bag, ReplSource);
         CompilationUnit unit = Parser.Parse(tokens, bag);
         new TypeChecker(bag).Check(unit);
 
@@ -226,11 +229,8 @@ public sealed class ReplCommand {
         // 5. Execute against the persistent VM.
         try {
             _vm.Run(chunk);
-        } catch (GrobExitException) {
-            // Re-throw — the caller's Run() loop will exit.
-            throw;
         } catch (GrobRuntimeException runtimeEx) {
-            DiagnosticFormatter.WriteRuntime(runtimeEx, "<repl>", _stderr);
+            DiagnosticFormatter.WriteRuntime(runtimeEx, ReplSource, _stderr);
             return;     // report and continue — the REPL session is not over
         }
 
@@ -251,7 +251,7 @@ public sealed class ReplCommand {
     /// </summary>
     private static bool IsBareExpression(string entrySrc) {
         var bag = new DiagnosticBag();
-        IReadOnlyList<Token> tokens = Lexer.Scan(entrySrc, bag, "<repl>");
+        IReadOnlyList<Token> tokens = Lexer.Scan(entrySrc, bag, ReplSource);
         CompilationUnit unit = Parser.Parse(tokens, bag);
 
         if (unit.TopLevel.Count != 1) return false;
@@ -312,7 +312,7 @@ public sealed class ReplCommand {
     /// </summary>
     private void RegisterNewDeclarations(string entrySrc) {
         var bag = new DiagnosticBag();
-        IReadOnlyList<Token> tokens = Lexer.Scan(entrySrc, bag, "<repl>");
+        IReadOnlyList<Token> tokens = Lexer.Scan(entrySrc, bag, ReplSource);
         CompilationUnit unit = Parser.Parse(tokens, bag);
 
         foreach (AstNode node in unit.TopLevel) {
