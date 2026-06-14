@@ -288,7 +288,7 @@ public sealed class VirtualMachine {
                             // D-110: exit(n) terminates the script with the given code.
                             // The value on the stack is the int exit code.
                             long code = _stack.Pop().AsInt();
-                            throw new GrobExitException((int)code);
+                            throw new GrobExitException(checked((int)code));
                         }
 
                     // --- Nil handling (Sprint 3 Increment D) ---

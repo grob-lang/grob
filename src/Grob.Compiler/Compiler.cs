@@ -242,25 +242,29 @@ public sealed partial class Compiler : AstVisitor<object?> {
         return b.Operator switch {
             // Arithmetic
             BinaryOperator.Add when left.IsInt && right.IsInt
-                => GrobValue.FromInt(left.AsInt() + right.AsInt()),
+                => GrobValue.FromInt(checked(left.AsInt() + right.AsInt())),
             BinaryOperator.Add when left.IsFloat && right.IsFloat
                 => GrobValue.FromFloat(left.AsFloat() + right.AsFloat()),
             BinaryOperator.Add when left.IsString && right.IsString
                 => GrobValue.FromString(left.AsString() + right.AsString()),
             BinaryOperator.Subtract when left.IsInt && right.IsInt
-                => GrobValue.FromInt(left.AsInt() - right.AsInt()),
+                => GrobValue.FromInt(checked(left.AsInt() - right.AsInt())),
             BinaryOperator.Subtract when left.IsFloat && right.IsFloat
                 => GrobValue.FromFloat(left.AsFloat() - right.AsFloat()),
             BinaryOperator.Multiply when left.IsInt && right.IsInt
-                => GrobValue.FromInt(left.AsInt() * right.AsInt()),
+                => GrobValue.FromInt(checked(left.AsInt() * right.AsInt())),
             BinaryOperator.Multiply when left.IsFloat && right.IsFloat
                 => GrobValue.FromFloat(left.AsFloat() * right.AsFloat()),
             BinaryOperator.Divide when left.IsInt && right.IsInt
-                => GrobValue.FromInt(left.AsInt() / right.AsInt()),
+                => right.AsInt() == 0
+                    ? throw new GrobInternalException("Division by zero in compile-time constant expression.")
+                    : GrobValue.FromInt(checked(left.AsInt() / right.AsInt())),
             BinaryOperator.Divide when left.IsFloat && right.IsFloat
                 => GrobValue.FromFloat(left.AsFloat() / right.AsFloat()),
             BinaryOperator.Modulo when left.IsInt && right.IsInt
-                => GrobValue.FromInt(left.AsInt() % right.AsInt()),
+                => right.AsInt() == 0
+                    ? throw new GrobInternalException("Modulo by zero in compile-time constant expression.")
+                    : GrobValue.FromInt(checked(left.AsInt() % right.AsInt())),
             BinaryOperator.Modulo when left.IsFloat && right.IsFloat
                 => GrobValue.FromFloat(left.AsFloat() % right.AsFloat()),
             // Comparison — type-agnostic equality
@@ -298,7 +302,7 @@ public sealed partial class Compiler : AstVisitor<object?> {
     private GrobValue EvalUnaryConstant(UnaryExpr u) {
         GrobValue operand = EvalConstantExpr(u.Operand);
         return u.Operator switch {
-            UnaryOperator.Negate when operand.IsInt => GrobValue.FromInt(-operand.AsInt()),
+            UnaryOperator.Negate when operand.IsInt => GrobValue.FromInt(checked(-operand.AsInt())),
             UnaryOperator.Negate when operand.IsFloat => GrobValue.FromFloat(-operand.AsFloat()),
             UnaryOperator.Not => GrobValue.FromBool(!operand.AsBool()),
             _ => ThrowNonConstantExpression(u),

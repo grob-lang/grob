@@ -428,4 +428,56 @@ public sealed class TypeCheckerVariableTests {
         Assert.Equal("E0202", diag.Code);
         Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
+
+    // -----------------------------------------------------------------------
+    // IsConstantExpr / E0205 — non-constant RHS for const binding (QA pass fix)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ConstDecl_RhsIsVariable_EmitsE0205() {
+        // A regular (mutable) variable on the RHS is not a compile-time constant.
+        DiagnosticBag bag = Check("""
+            x := 5
+            const C := x
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0205", diag.Code);
+        Assert.Equal((2, 12), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void ConstDecl_RhsIsReadonlyVar_EmitsE0205() {
+        // A readonly binding is not a compile-time constant either.
+        DiagnosticBag bag = Check("""
+            readonly x := 10
+            const C := x
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0205", diag.Code);
+        Assert.Equal((2, 12), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void ConstDecl_RhsIsConstExpr_NoE0205() {
+        // Binary expression of two literals — IsConstantExpr returns true.
+        DiagnosticBag bag = Check("const X := 1 + 2");
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void ConstDecl_RhsIsChainedConst_NoE0205() {
+        // Identifier referencing another const — IdentifierExpr arm of IsConstantExpr.
+        DiagnosticBag bag = Check("""
+            const A := 10
+            const B := A
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void ConstDecl_RhsIsUnaryNegate_NoE0205() {
+        // UnaryExpr with constant operand is a constant expression.
+        DiagnosticBag bag = Check("const X := -5");
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
 }

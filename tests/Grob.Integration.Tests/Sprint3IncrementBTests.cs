@@ -99,13 +99,16 @@ public sealed class Sprint3IncrementBTests {
     }
 
     // -----------------------------------------------------------------------
-    // exit(code) — deferred: requires exit() function support (Sprint 5+)
+    // exit(code) — compiled as Constant + OpCode.Exit (QA pass sprint 3)
     // -----------------------------------------------------------------------
 
-    [Fact(Skip = "exit() function call requires Call opcode support (Sprint 5). Infrastructure (GrobExitException) is in place; fixture deferred.")]
+    [Fact]
     public void ExitBuiltin_SetsProcessExitCode() {
-        // When exit() is implemented, a fixture containing `exit(2)` should
-        // cause RunCommand.Run to return 2.
-        Assert.Fail("Test body deferred to Sprint 5.");
+        // Fixture: exit(2) — RunCommand must return 2.
+        (string stdout, string stderr, int exitCode) = RunFile("exit-code.grob");
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, stdout);
+        Assert.Equal(string.Empty, stderr);
     }
 }
