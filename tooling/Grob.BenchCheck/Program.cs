@@ -15,12 +15,9 @@ using Grob.BenchCheck;
 
 return Cli.Run(args);
 
-internal static class Cli
-{
-    public static int Run(string[] args)
-    {
-        try
-        {
+internal static class Cli {
+    public static int Run(string[] args) {
+        try {
             var opts = Options.Parse(args);
 
             var policy = BenchCheck.LoadPolicy(opts.PolicyPath);
@@ -32,31 +29,25 @@ internal static class Cli
             if (opts.SummaryPath is { Length: > 0 } summary)
                 File.AppendAllText(summary, rendered + Environment.NewLine);
 
-            return report.Outcome switch
-            {
+            return report.Outcome switch {
                 Outcome.Pass => 0,
                 Outcome.Regression => 1,
                 _ => 2,
             };
-        }
-        catch (Exception ex) when (ex is OptionsException or FileNotFoundException or InvalidDataException or DirectoryNotFoundException)
-        {
+        } catch (Exception ex) when (ex is OptionsException or FileNotFoundException or InvalidDataException or DirectoryNotFoundException) {
             Console.Error.WriteLine($"BenchCheck: {ex.Message}");
             return 2;
         }
     }
 
-    private static string Render(Policy policy, BaselineSide fresh, EvaluationReport report)
-    {
+    private static string Render(Policy policy, BaselineSide fresh, EvaluationReport report) {
         static string Pct(double? v) => v is null ? "—" : v.Value.ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture) + "%";
-        static string Short(string fullName)
-        {
+        static string Short(string fullName) {
             var lastDot = fullName.LastIndexOf('.');
             return lastDot >= 0 ? fullName[(lastDot + 1)..] : fullName;
         }
 
-        var verdict = report.Outcome switch
-        {
+        var verdict = report.Outcome switch {
             Outcome.Pass => "PASS",
             Outcome.Regression => "REGRESSION",
             _ => "CANNOT COMPARE",
@@ -70,10 +61,8 @@ internal static class Cli
         sb.AppendLine();
         sb.AppendLine("| Category | Benchmark | vs rolling | vs origin | Status |");
         sb.AppendLine("| --- | --- | ---: | ---: | --- |");
-        foreach (var d in report.Deltas)
-        {
-            var status = d.Class switch
-            {
+        foreach (var d in report.Deltas) {
+            var status = d.Class switch {
                 DeltaClass.Ok => "ok",
                 DeltaClass.Informational => "info",
                 DeltaClass.NewBenchmark => "new",
@@ -86,8 +75,7 @@ internal static class Cli
             sb.AppendLine($"| {d.Category} | {Short(d.FullName)} | {Pct(d.PerSprintPercent)} | {Pct(d.CumulativePercent)} | {status} |");
         }
 
-        if (report.Notes.Count > 0)
-        {
+        if (report.Notes.Count > 0) {
             sb.AppendLine();
             foreach (var note in report.Notes)
                 sb.AppendLine($"> {note}");
@@ -97,19 +85,15 @@ internal static class Cli
     }
 }
 
-internal sealed record Options(string ResultsDir, string BaselineDir, string PolicyPath, string? SummaryPath)
-{
-    public static Options Parse(string[] args)
-    {
+internal sealed record Options(string ResultsDir, string BaselineDir, string PolicyPath, string? SummaryPath) {
+    public static Options Parse(string[] args) {
         var results = "BenchmarkDotNet.Artifacts/results";
         var baseline = "bench/Grob.Benchmarks/baseline";
         string? policy = null;
         string? summary = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
 
-        for (var i = 0; i < args.Length; i++)
-        {
-            switch (args[i])
-            {
+        for (var i = 0; i < args.Length; i++) {
+            switch (args[i]) {
                 case "--results": results = Next(args, ref i); break;
                 case "--baseline": baseline = Next(args, ref i); break;
                 case "--policy": policy = Next(args, ref i); break;
