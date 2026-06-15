@@ -395,4 +395,228 @@ public sealed class CompilerStatementTests {
         List<OpCode> ops = ReadOpcodes(chunk);
         Assert.DoesNotContain(OpCode.DefineGlobal, ops);
     }
+
+    // -----------------------------------------------------------------------
+    // EvalBinaryConstant — float arithmetic arms
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ConstDecl_FloatSubtractFloat_FoldsToResult() {
+        Chunk chunk = CompileSource("""
+            const X := 3.0 - 1.5
+            print(X)
+            """);
+        bool found = false;
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            if (chunk.ReadConstant(i).IsFloat && chunk.ReadConstant(i).AsFloat() == 1.5) { found = true; break; }
+        }
+        Assert.True(found, "Expected folded constant 1.5 in pool.");
+    }
+
+    [Fact]
+    public void ConstDecl_FloatMultiplyFloat_FoldsToProduct() {
+        Chunk chunk = CompileSource("""
+            const X := 2.0 * 3.0
+            print(X)
+            """);
+        bool found = false;
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            if (chunk.ReadConstant(i).IsFloat && chunk.ReadConstant(i).AsFloat() == 6.0) { found = true; break; }
+        }
+        Assert.True(found, "Expected folded constant 6.0 in pool.");
+    }
+
+    [Fact]
+    public void ConstDecl_FloatDivideFloat_FoldsToQuotient() {
+        Chunk chunk = CompileSource("""
+            const X := 9.0 / 3.0
+            print(X)
+            """);
+        bool found = false;
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            if (chunk.ReadConstant(i).IsFloat && chunk.ReadConstant(i).AsFloat() == 3.0) { found = true; break; }
+        }
+        Assert.True(found, "Expected folded constant 3.0 in pool.");
+    }
+
+    [Fact]
+    public void ConstDecl_FloatModuloFloat_FoldsToRemainder() {
+        Chunk chunk = CompileSource("""
+            const X := 5.0 % 2.0
+            print(X)
+            """);
+        bool found = false;
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            if (chunk.ReadConstant(i).IsFloat && chunk.ReadConstant(i).AsFloat() == 1.0) { found = true; break; }
+        }
+        Assert.True(found, "Expected folded constant 1.0 in pool.");
+    }
+
+    // -----------------------------------------------------------------------
+    // EvalBinaryConstant — comparison arms (produce bool constants)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ConstDecl_IntEqual_FoldsToBool() {
+        Chunk chunk = CompileSource("""
+            const X := 1 == 1
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void ConstDecl_IntNotEqual_FoldsToBool() {
+        Chunk chunk = CompileSource("""
+            const X := 1 != 2
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void ConstDecl_IntLess_FoldsToBool() {
+        Chunk chunk = CompileSource("""
+            const X := 1 < 2
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void ConstDecl_FloatLess_FoldsToBool() {
+        Chunk chunk = CompileSource("""
+            const X := 1.0 < 2.0
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void ConstDecl_StringLess_FoldsToBool() {
+        // Less/string arm — string.CompareOrdinal
+        Chunk chunk = CompileSource("""
+            const X := "a" < "b"
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void ConstDecl_IntLessEqual_FoldsToBool() {
+        Chunk chunk = CompileSource("""
+            const X := 1 <= 1
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void ConstDecl_FloatLessEqual_FoldsToBool() {
+        Chunk chunk = CompileSource("""
+            const X := 1.0 <= 2.0
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void ConstDecl_IntGreater_FoldsToBool() {
+        Chunk chunk = CompileSource("""
+            const X := 2 > 1
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void ConstDecl_FloatGreater_FoldsToBool() {
+        Chunk chunk = CompileSource("""
+            const X := 2.0 > 1.0
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void ConstDecl_IntGreaterEqual_FoldsToBool() {
+        Chunk chunk = CompileSource("""
+            const X := 2 >= 2
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void ConstDecl_FloatGreaterEqual_FoldsToBool() {
+        Chunk chunk = CompileSource("""
+            const X := 2.0 >= 1.0
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    // -----------------------------------------------------------------------
+    // EvalBinaryConstant — logical arms
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ConstDecl_And_FoldsToFalse() {
+        // And arm — true && false = false
+        Chunk chunk = CompileSource("""
+            const X := true && false
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+        bool found = false;
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            if (chunk.ReadConstant(i).IsBool && !chunk.ReadConstant(i).AsBool()) { found = true; break; }
+        }
+        Assert.True(found, "Expected folded constant false in pool.");
+    }
+
+    [Fact]
+    public void ConstDecl_Or_FoldsToTrue() {
+        // Or arm — false || true = true
+        Chunk chunk = CompileSource("""
+            const X := false || true
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+    }
+
+    // -----------------------------------------------------------------------
+    // EvalBinaryConstant — division/modulo by zero throw paths
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ConstDecl_IntDivideByZero_ThrowsGrobInternalException() {
+        // The zero-divisor guard in EvalBinaryConstant must throw before C#'s
+        // DivideByZeroException can surface.
+        Assert.Throws<GrobInternalException>(() => CompileSource("const X := 1 / 0"));
+    }
+
+    [Fact]
+    public void ConstDecl_IntModuloByZero_ThrowsGrobInternalException() {
+        Assert.Throws<GrobInternalException>(() => CompileSource("const X := 1 % 0"));
+    }
+
+    // -----------------------------------------------------------------------
+    // EvalUnaryConstant — negate float arm
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ConstDecl_UnaryNegateFloat_FoldsToNegative() {
+        // UnaryOperator.Negate when operand.IsFloat arm.
+        Chunk chunk = CompileSource("""
+            const X := -3.14
+            print(X)
+            """);
+        Assert.DoesNotContain(OpCode.GetGlobal, ReadOpcodes(chunk));
+        bool found = false;
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            if (chunk.ReadConstant(i).IsFloat && chunk.ReadConstant(i).AsFloat() == -3.14) { found = true; break; }
+        }
+        Assert.True(found, "Expected folded constant -3.14 in pool.");
+    }
 }
