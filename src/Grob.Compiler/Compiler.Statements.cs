@@ -82,12 +82,27 @@ public sealed partial class Compiler {
     /// <inheritdoc/>
     public override object? VisitExpressionStmt(ExpressionStmt node) {
         if (node.Expression is CallExpr call &&
-            call.Callee is IdentifierExpr { Name: "print" } &&
-            call.Arguments.Count == 1) {
-            // Emit the single argument then the Print opcode.
-            Visit(call.Arguments[0].Value);
-            _chunk.WriteOpCode(OpCode.Print, call.Range.Start.Line);
-            return null;
+            call.Callee is IdentifierExpr callee) {
+            int callLine = call.Range.Start.Line;
+
+            if (callee.Name == "print" && call.Arguments.Count == 1) {
+                // Emit the single argument then the Print opcode.
+                Visit(call.Arguments[0].Value);
+                _chunk.WriteOpCode(OpCode.Print, callLine);
+                return null;
+            }
+
+            if (callee.Name == "exit") {
+                // D-110: exit(n) or exit() — emit code then Exit opcode.
+                // exit() with no argument exits with code 0.
+                if (call.Arguments.Count == 1) {
+                    Visit(call.Arguments[0].Value);
+                } else {
+                    EmitConstant(GrobValue.FromInt(0), callLine);
+                }
+                _chunk.WriteOpCode(OpCode.Exit, callLine);
+                return null;
+            }
         }
 
         // All other expression statements leave a value on the stack; pop it.

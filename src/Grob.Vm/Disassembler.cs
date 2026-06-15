@@ -93,6 +93,7 @@ public static class Disassembler {
             OpCode.Not => SimpleInstruction(opCode, offset, writer),
             OpCode.Return => SimpleInstruction(opCode, offset, writer),
             OpCode.Print => SimpleInstruction(opCode, offset, writer),
+            OpCode.Exit => SimpleInstruction(opCode, offset, writer),
             OpCode.CloseUpvalue => SimpleInstruction(opCode, offset, writer),
             OpCode.GetIndex => SimpleInstruction(opCode, offset, writer),
             OpCode.SetIndex => SimpleInstruction(opCode, offset, writer),

@@ -430,13 +430,19 @@ time but accumulating) shows up against the historical baseline.
 ## 8. Baseline Storage
 
 Baseline results are committed to the repository as JSON, alongside
-the benchmarks themselves:
+the benchmarks themselves. Each gating category carries **two** baseline
+files — a rolling baseline and a frozen origin baseline — plus a single
+`policy.json` holding the thresholds (D-313):
 
 ```
 bench/Grob.Benchmarks/baseline/
-├── compile.json
+├── policy.json            ← thresholds and gating categories (data, not code)
+├── compile.json           ← rolling: updated each sprint
+├── compile.origin.json    ← frozen origin: the cumulative anchor
 ├── vm.json
+├── vm.origin.json
 ├── endToEnd.json
+├── endToEnd.origin.json
 └── stability.json
 ```
 
@@ -449,10 +455,41 @@ BenchmarkDotNet produces JSON output natively. Committing it gives:
 - Reviewable change in pull requests — a baseline update is part of the
   diff, not a side effect
 
-Baseline updates are deliberate. A regression-aware sprint that
-intentionally trades some performance for correctness, clarity or
-safety updates the baseline as part of the same commit, with the
-rationale in the commit message.
+**Rolling versus origin (D-313).** The rolling baseline
+(`<category>.json`) is the per-sprint anchor: it is updated at each
+sprint close and the next sprint's run is measured against it. The
+origin baseline (`<category>.origin.json`) is the cumulative anchor: it
+is frozen the first time a category's baseline is established and is
+**not** updated each sprint. When a category's baseline is first
+committed, the same JSON is written to both files; thereafter only the
+rolling file moves. The origin is re-frozen only by a deliberate,
+logged event — most obviously after the optimisation sprint pays the
+accumulated debt down, at which point the new, better numbers become the
+origin for the remainder of the v1 track.
+
+**Baseline updates are deliberate.** A regression-aware sprint that
+intentionally trades some performance for correctness, clarity or safety
+updates the rolling baseline as part of the same commit, with the
+rationale in the commit message and a decisions-log entry. The
+regression gate (§9) never updates a baseline on its own — it reads,
+compares and reports; the human commits the update.
+
+`policy.json` holds the per-sprint threshold, the cumulative threshold
+and the list of categories with their gating flags. It is data so the
+cumulative budget is a number the maintainer edits, not a constant
+recompiled into the tool. Its shape:
+
+```json
+{
+  "perSprintPercent": 5.0,
+  "cumulativePercent": 12.0,
+  "categories": [
+    { "name": "compile",  "namespacePrefix": "Grob.Benchmarks.Compile",  "baseline": "compile.json",  "gating": true  },
+    { "name": "vm",       "namespacePrefix": "Grob.Benchmarks.Vm",       "baseline": "vm.json",       "gating": false },
+    { "name": "endToEnd", "namespacePrefix": "Grob.Benchmarks.EndToEnd", "baseline": "endToEnd.json", "gating": false }
+  ]
+}
+```
 
 ### 8.1 Canonical Production Path — GitHub Actions Workflow
 
@@ -475,7 +512,7 @@ local machine.
    `bench/Grob.Benchmarks/baseline/` and commit.
 
 **Commit message convention.** Record the workflow run ID, the runner used
-(`windows-latest`), and the sprint context. Example:
+(`windows-latest`) and the sprint context. Example:
 `bench: first compile-time baseline (windows-latest, run #42) per D-302 / D-309`.
 This anchors the file to a specific, reproducible origin.
 
@@ -483,6 +520,17 @@ This anchors the file to a specific, reproducible origin.
 All future baseline production and regression-check runs must use the same
 runner type. Cross-runner comparisons are not valid — the absolute numbers
 are not comparable across runner types.
+
+**The regression gate runs inside this workflow (D-313).** After the
+benchmark run, the workflow invokes `tooling/Grob.BenchCheck` against the
+committed baselines and the fresh `-report-full.json`. The tool computes
+the two-axis comparison (§9), writes a per-benchmark delta table to the job
+summary and exits non-zero on a breach — so the workflow run itself goes
+red when a gating category regresses. The check reads only; it never
+commits a baseline. Committing an updated baseline remains the deliberate
+manual step above. A run triggered on a non-canonical runner
+(`ubuntu-latest`) fails the gate by design — the runner guard refuses a
+cross-runner comparison rather than producing a meaningless green.
 
 ### 8.2 Local Invocation — Debugging and One-Off Exploration
 
@@ -510,34 +558,76 @@ directory. This path is in `.gitignore` and must never be committed.
 ## 9. Per-Sprint Regression Policy
 
 The end of every sprint runs the full compile-time, VM execution and
-end-to-end benchmark suite. The stability test runs separately at a
-longer cadence (per release).
+end-to-end benchmark suite through the `benchmark.yml` workflow (§8.1).
+The stability test runs separately at a longer cadence (per release). The
+benchmark run belongs **after** the sprint's correctness QA loop has
+landed and the code is final — measuring a state that is about to change
+wastes the run.
 
-**Comparison:** new results compared against the committed baseline.
-Comparisons are only valid between runs on the same runner type (`windows-latest`
-per D-309 / §8.1). Cross-runner comparisons are not valid; mixing runner types
-across runs of the same baseline category voids the comparison.
+The policy has **two comparison axes** (D-313). A single axis — comparing
+only against the immediately prior baseline and then updating it — ratchets:
+a regression below the gate passes, becomes the new normal and a steady
+few-percent-per-sprint creep compounds invisibly. The two axes close that.
 
-**Threshold:** **5% regression on the end-to-end script benchmarks**
-is the gate. Compile-time and VM execution benchmarks are informational
-— useful for diagnosing where an end-to-end regression came from, but
-not gates on their own. Micro-benchmark noise is real and a 5% regression
-on a single tight loop is not by itself a problem.
+**Axis 1 — per-sprint gate (noise filter).** New results compared against
+the **rolling** baseline (`<category>.json`). Threshold **5%** on a gating
+category. This catches an acute regression — the sprint that boxes a value
+on the dispatch hot path and jumps 30%. 5% is a noise floor, not a budget:
+most sprints touch no hot path and should read near 0%. It is set at 5%
+because run-to-run variance on the shared `windows-latest` runner is
+genuinely a few percent; a tighter gate fires on infrastructure noise, and
+tightening it has a precondition — a quieter measurement first.
+
+**Axis 2 — cumulative ceiling (anti-ratchet).** New results compared
+against the **frozen origin** baseline (`<category>.origin.json`).
+Threshold **12%** total drift to v1. A slow creep trips this within a few
+sprints even when every individual step is inside the 5% per-sprint gate.
+Read it against the arc: Grob lands benchmarking before optimisation, so
+features add real, correct overhead (checked arithmetic, nil checks, the
+extra type-checker passes) through the build sprints, and the dedicated
+optimisation pass claws it back. The 12% is sized for "necessary trades
+through features, recovered at optimisation", not "never regress".
+
+**Comparison validity.** Both axes are only valid between runs on the same
+runner type (`windows-latest` per D-309 / §8.1). The gate tool guards this
+from `HostEnvironmentInfo` and refuses a cross-runner comparison.
+
+**Which category gates.** The end-to-end script benchmarks are the primary
+gate — they measure the thing that matters. Compile-time and VM execution
+are diagnostic, there to localise where an end-to-end regression came from.
+**During build-out, before the end-to-end workload exists** (its thirteen
+validation scripts need control flow in Sprint 4 and functions in Sprint
+5), **compile-time gates cumulatively instead.** For a scripting language
+that compiles-and-runs on every invocation with no persistent process,
+compile time is real wall-clock time-to-result, not merely diagnostic — a
+script that goes from 50 ms to 200 ms to compile is a genuine regression
+even with execution unchanged. VM execution stays informational while it
+remains a first baseline with no origin to anchor against. When end-to-end
+becomes live it takes over as the gate and compile/VM drop to
+informational. That flip is a deliberate `gating` edit in `policy.json`,
+not an automatic change.
+
+**The gate is mechanical, not eyeballed.** `tooling/Grob.BenchCheck`
+performs both comparisons inside the workflow (§8.1) and the run goes red
+on a breach. Ownership is split: the **workflow** decides pass/fail; the
+**maintainer** adjudicates a failure.
 
 **On a regression flag:**
 
-1. Diagnose. Use the compile-time and VM execution breakdowns to
-   localise where the slowdown lives.
-2. Either fix it before the sprint closes, or document the trade-off,
-   update the baseline, and capture the decision in the decisions log.
+1. Diagnose. Use the compile-time and VM execution breakdowns to localise
+   where the slowdown lives.
+2. Either fix it before the sprint closes, or accept it as a deliberate
+   trade-off — update the rolling baseline, capture the decision in the
+   decisions log and (rarely, for a sanctioned step-change) re-freeze the
+   origin.
 
-**On an improvement:** update the baseline. A 15% speedup is welcome,
-but if it is not captured in the baseline the next sprint will not
-notice when half of it is lost.
+**On an improvement:** update the rolling baseline. A 15% speedup is
+welcome, but if it is not captured the next sprint will not notice when
+half of it is lost. Leave the origin frozen — the improvement shows as
+headroom against the cumulative ceiling, which is the point.
 
-An hour of automated benchmarking at the close of a two-week sprint
-is rounding-error overhead against the cost of catching regressions
-late.
+An hour of automated benchmarking at the close of a two-week sprint is
+rounding-error overhead against the cost of catching regressions late.
 
 ---
 

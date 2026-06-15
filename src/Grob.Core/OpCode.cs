@@ -229,6 +229,9 @@ public enum OpCode : byte {
     /// <summary>Print top-of-stack to stdout with a trailing newline; pops the value.</summary>
     Print,
 
+    /// <summary>Terminate the script with the int exit code on top of the stack; pops the code (D-110).</summary>
+    Exit,
+
     // -------------------------------------------------------------------------
     // Increment / decrement
     // -------------------------------------------------------------------------

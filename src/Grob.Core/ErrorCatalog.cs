@@ -152,6 +152,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>non-constant expression in `const` right-hand side</summary>
+    public static readonly ErrorDescriptor E0205 = new(
+        Code: "E0205",
+        Title: "non-constant expression in `const` right-hand side",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>type cycle with no terminating field</summary>
     public static readonly ErrorDescriptor E0301 = new(
         Code: "E0301",
@@ -901,6 +910,7 @@ public static class ErrorCatalog {
         E0202,
         E0203,
         E0204,
+        E0205,
         E0301,
         E0302,
         E0401,
