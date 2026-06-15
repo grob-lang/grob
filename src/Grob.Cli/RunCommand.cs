@@ -97,6 +97,27 @@ public sealed class RunCommand {
         } catch (GrobRuntimeException runtimeEx) {
             DiagnosticFormatter.WriteRuntime(runtimeEx, filePath, _stderr);
             return 1;
+        } catch (GrobInternalException internalEx) {
+            // Internal errors indicate a compiler or VM invariant violation.
+            // Report as a user-facing message without exposing the host stack
+            // trace (D-039). Include the message for diagnostics.
+            WriteInternalError(internalEx);
+            return 1;
         }
+    }
+
+    /// <summary>
+    /// Writes a user-facing message for an internal invariant violation.
+    /// </summary>
+    /// <remarks>
+    /// This path is unreachable under correct compiler and VM operation —
+    /// all reachable invariant violations are prevented by the type checker
+    /// before this point. Excluded from coverage measurement.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(
+        Justification = "Defensive handler for unreachable invariant violations.")]
+    private void WriteInternalError(GrobInternalException ex) {
+        _stderr.WriteLine($"error: internal error: {ex.Message}");
+        _stderr.WriteLine("Please report this as a bug at https://github.com/grob-lang/grob/issues");
     }
 }

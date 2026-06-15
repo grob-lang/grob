@@ -499,4 +499,35 @@ public sealed class VirtualMachineTests {
         Assert.Contains("Return", traced);
     }
 #endif
+
+    // -----------------------------------------------------------------------
+    // OpCode.Exit — D-110 (added in QA pass sprint 3)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Exit_ThrowsGrobExitExceptionWithCode() {
+        // A chunk that pushes 2 then executes Exit must throw GrobExitException(2).
+        var chunk = new Chunk();
+        byte c = ConstByte(chunk, GrobValue.FromInt(2));
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(c, 1);
+        chunk.WriteOpCode(OpCode.Exit, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        GrobExitException ex = Assert.Throws<GrobExitException>(() => vm.Run(chunk));
+        Assert.Equal(2, ex.Code);
+    }
+
+    [Fact]
+    public void Exit_CodeZero_ThrowsWithZero() {
+        var chunk = new Chunk();
+        byte c = ConstByte(chunk, GrobValue.FromInt(0));
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(c, 1);
+        chunk.WriteOpCode(OpCode.Exit, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        GrobExitException ex = Assert.Throws<GrobExitException>(() => vm.Run(chunk));
+        Assert.Equal(0, ex.Code);
+    }
 }

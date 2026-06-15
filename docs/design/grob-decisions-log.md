@@ -310,6 +310,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-310 | May 2026                                                          | Tooling — build               | C# 14 / .NET 10 SDK pinning corrected; `LangVersion 14` canonical; Sprint 2-end QA verified clean Debug and Release builds under corrected pinning               |
 | D-311 | May 2026                                                          | Compiler — type checker       | Unresolved-identifier `Declaration` sentinel: `UnresolvedDecl.Instance` satisfies the §3.1.1 non-null invariant at every error path; addendum to D-137           |
 | D-312 | June 2026                                                         | CLI — bare invocation         | Bare `grob` (no subcommand) ≡ `grob --help` — prints command listing to stdout, exit 0. Does not launch the REPL; `grob repl` is the sole REPL entrance          |
+| D-313 | June 2026                                                         | Tooling — benchmarking        | Two-axis benchmark regression policy: 5% per-sprint vs rolling baseline + 12% cumulative vs frozen origin; `Grob.BenchCheck` makes `benchmark.yml` the gate; compile-time gates until end-to-end is live. Refines D-302/D-309 |
 
 ---
 
@@ -2969,6 +2970,30 @@ Character rationale and the help text itself live in `grob-personality-identity.
 
 ---
 
+### D-313 — Two-axis benchmark regression policy and the regression gate (June 2026)
+
+Area: Tooling — benchmarking
+Supersedes: none
+Superseded by: none
+Refines: D-302, D-309
+
+**Context.** D-302 established the harness and the committed baselines; D-309 moved baseline production to the `benchmark.yml` workflow and pinned `windows-latest`. Both were silent on the operational question: at sprint close, _who_ compares the new run against the baseline, _how_ the comparison is performed and what stops a slow per-sprint regression from compounding invisibly.
+
+**The gap — single-axis comparison ratchets.** The §9 policy compared each sprint's run against the _immediately prior_ committed baseline and then updated that baseline. A regression below the 5% gate passes, becomes the new baseline and the next sprint measures against the degraded number. A steady 4%-per-sprint creep — each step individually "in tolerance" — compounds to roughly 60% over a dozen sprints while never tripping the gate. Comparison was also unowned and unmechanised: copying the workflow artifact over the baseline is replacement, not comparison.
+
+**The decision — two comparison axes.**
+
+1. **Per-sprint gate (noise filter).** Fresh run compared against the _rolling_ baseline (`baseline/<category>.json`, updated each sprint). Threshold **5%** on a gating category. This catches acute regressions; 5% is a sane noise floor for a shared `windows-latest` runner, below which measurement noise produces false positives. Tightening it has a precondition — a quieter measurement (dedicated runner, more iterations, or median-of-runs).
+2. **Cumulative ceiling (anti-ratchet).** Fresh run compared against a _frozen origin_ baseline (`baseline/<category>.origin.json`), established once and never auto-updated. Threshold **12%** total drift to v1. A slow creep trips this within a few sprints even when every per-sprint step is in tolerance. The origin is re-frozen only by a deliberate, logged event — for example after the optimisation sprint pays the accumulated debt down.
+
+**Gating category during build-out.** The end-to-end category is the primary gate per §9, but its workload (the thirteen validation-suite scripts) is not runnable until control flow (Sprint 4) and functions (Sprint 5) exist. Until then **compile-time gates cumulatively** — for a scripting language that compiles-and-runs on every invocation with no persistent process, compile time is real wall-clock time-to-result, not merely diagnostic. VM execution is informational while it remains a first baseline with no origin to anchor against. When end-to-end becomes live it becomes the gate and compile/VM drop to informational — a deliberate `policy.json` edit, not an automatic flip.
+
+**The mechanism and ownership.** A committed tool, `tooling/Grob.BenchCheck`, performs the comparison: it reads the rolling and origin baselines and the fresh `-report-full.json`, matches benchmarks by `FullName`, computes the per-benchmark delta on `Statistics.Mean`, guards that the fresh run and the baseline share a runner (`HostEnvironmentInfo`) and exits non-zero on a breach. The `benchmark.yml` workflow runs it after the benchmark run, so the **workflow is the gate** — the run goes red on a regression rather than relying on an eyeball. The maintainer adjudicates: a flagged regression is either fixed before the sprint closes, or accepted as a deliberate trade-off with a baseline update and a decisions-log entry. Thresholds and gating categories live in `bench/Grob.Benchmarks/baseline/policy.json` as data, so the cumulative budget is a number the maintainer edits, not code.
+
+Detail in `grob-benchmarking-strategy.md` §8 (storage, the frozen origin, `policy.json`) and §9 (the two-axis policy and the gate).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3190,6 +3215,12 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 — D-313: two-axis benchmark regression policy. A 5%_
+_per-sprint gate against the rolling baseline plus a 12% cumulative ceiling_
+_against a frozen origin baseline; `tooling/Grob.BenchCheck` makes_
+_`benchmark.yml` the gate; compile-time gates cumulatively until the_
+_end-to-end workload is live. Refines D-302, D-309. §8 and §9 of_
+_`grob-benchmarking-strategy.md` rewritten._
 _Updated June 2026 — D-312: bare `grob` (no subcommand, no args) is_
 _equivalent to `grob --help` — prints the command listing to stdout and_
 _exits 0. Does not launch the REPL; `grob repl` is the sole REPL entrance._
