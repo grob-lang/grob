@@ -1,17 +1,12 @@
----
-name: 'Grob Plugins'
-description: 'Authoring conventions for first-party and third-party Grob plugins via IGrobPlugin.'
-applyTo: 'plugins/**/*.cs'
----
-
 # Grob plugin authoring
 
-A plugin is a NuGet package tagged `grob-plugin` that implements `IGrobPlugin` and
-registers native functions and types with the VM. The first-party plugins
-(`Grob.Http`, `Grob.Crypto`, `Grob.Zip`) live under `plugins/` and are built and
-tested **exactly as a third-party plugin would be** — they reference `Grob.Runtime`
-and nothing else. If a first-party plugin needs special treatment from the runtime,
-the plugin model is broken; fix the model, not the plugin.
+These rules apply to `plugins/**/*.cs`. A plugin is a NuGet package tagged
+`grob-plugin` that implements `IGrobPlugin` and registers native functions and types
+with the VM. The first-party plugins (`Grob.Http`, `Grob.Crypto`, `Grob.Zip`) live
+under `plugins/` and are built and tested **exactly as a third-party plugin would
+be** — they reference `Grob.Runtime` and nothing else. If a first-party plugin needs
+special treatment from the runtime, the plugin model is broken; fix the model, not
+the plugin.
 
 `Grob.Http` is the reference implementation — the most complete example of a
 well-authored plugin. When in doubt, follow its shape.
@@ -66,8 +61,8 @@ and unambiguous.
 
 A plugin is tested by registering it into a VM instance and asserting the output of
 its functions — the same approach as `Grob.Stdlib.Tests`. The Definition of Done for
-a plugin includes publication to NuGet with the `grob-plugin` tag. The skill
-`authoring-a-plugin` in `.github/skills/` walks the full procedure end to end.
+a plugin includes publication to NuGet with the `grob-plugin` tag. The
+`authoring-a-plugin` skill walks the full procedure end to end.
 
 For HTTP, crypto and archive APIs, ground unfamiliar .NET BCL usage against the
 Microsoft Learn MCP server rather than guessing signatures.

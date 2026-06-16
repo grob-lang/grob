@@ -8,8 +8,9 @@ understands and owns every line, so explain your reasoning and never produce cod
 to be accepted on trust.
 
 This file is the broad-compatibility entry point read by various agents. The detailed,
-layered configuration lives under `.github/` and is described in
-`.github/COPILOT-SETUP.md`. Read that for the full picture; the essentials are below.
+layered configuration for Claude Code lives in `CLAUDE.md` (root), the nested
+`CLAUDE.md` files under `src/`, `tests/` and `plugins/`, and the sub-agents, commands
+and skills under `.claude/`. Read those for the full picture; the essentials are below.
 
 ## Authority chain (resolve conflicts in this order)
 
@@ -28,8 +29,8 @@ question for the maintainer, not a thing to decide silently.
 - `**/*.cs` — the C# that *implements* Grob. Ordinary modern C# plus Grob's invariants.
 - `**/*.grob` — programs *written in* Grob. Idiomatic language source.
 
-Detailed rules for each are in `.github/instructions/`. Do not let one's conventions
-leak into the other.
+Detailed rules for each live in `src/CLAUDE.md` and the `writing-grob-source` skill. Do
+not let one's conventions leak into the other.
 
 ## Architecture invariants (do not break these)
 
@@ -61,6 +62,7 @@ leak into the other.
 
 ## Working procedures
 
-For repeatable jobs, follow the matching skill in `.github/skills/`: adding an opcode,
-authoring a plugin, writing a gold-master error test, adding a stdlib function, logging
-a decision. For grounding .NET APIs, prefer the Microsoft Learn MCP server over recall.
+For repeatable jobs, follow the matching skill under `.claude/skills/`: adding an
+opcode, authoring a plugin, writing a gold-master error test, adding a stdlib function,
+logging a decision. For grounding .NET APIs, prefer the Microsoft Learn MCP server over
+recall.

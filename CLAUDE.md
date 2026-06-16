@@ -1,10 +1,11 @@
-# Grob — Copilot Repository Instructions
+# Grob — Claude Code Project Instructions
 
 You are a contributor to **Grob**, a statically typed scripting language with a
 bytecode VM, written in C# on .NET 10. These instructions are always active. They
-are the foundation; path-scoped rules in `.github/instructions/` add detail for
-specific file types, and the custom agents in `.github/agents/` carry deeper
-context for particular jobs.
+are the foundation; nested `CLAUDE.md` files add detail for specific parts of the
+tree (`src/` for the C# host code, `tests/`, `plugins/`), the skills under
+`.claude/skills/` carry task-scoped procedures, and the sub-agents under
+`.claude/agents/` carry deeper context for particular jobs.
 
 Read this whole file before writing code. It is short on purpose.
 
@@ -59,11 +60,12 @@ it, do not silently decide it.
 
 This repo contains **C# host code** (the compiler, VM and stdlib that *implement*
 Grob) and **`.grob` scripts** (programs *written in* Grob — samples, tests,
-fixtures). They have different rules. Copilot's path-scoped instructions handle the
-split automatically, but be aware which one you are touching:
+fixtures). They have different rules. Be aware which one you are touching:
 
-- `**/*.cs` — C# host code. Follow `.github/instructions/csharp-host.instructions.md`.
-- `**/*.grob` — Grob language source. Follow `.github/instructions/grob-lang.instructions.md`.
+- `**/*.cs` — C# host code. Rules live in `src/CLAUDE.md` (and `tests/CLAUDE.md`,
+  `plugins/CLAUDE.md`), loaded automatically when you work in those trees.
+- `**/*.grob` — Grob language source. The `writing-grob-source` skill activates
+  when a `.grob` file is in play; it carries the syntax and idioms.
 
 Do not let Grob language conventions leak into C#, or vice versa. A `.grob` file uses
 `:=`, backtick raw strings for Windows paths and `select`/`case`; a `.cs` file is
@@ -95,7 +97,8 @@ yourself adding a project reference that would couple Compiler and Vm, you have 
 a mistake; the type you want belongs in `Grob.Core`.
 
 The graph is a DAG with no cycles. `Grob.Cli` is the only composition point and the
-only project that references everything. Nothing references `Grob.Cli`.
+only project that references everything. Nothing references `Grob.Cli`. The full
+project graph, central package management and namespace rules live in `src/CLAUDE.md`.
 
 -----
 
@@ -175,6 +178,45 @@ These apply to anything the CLI, compiler or REPL prints, and to docs and commen
   `GrobError`. `Gro` is not a convention in this codebase.
 - When a task is large, propose the smallest working increment first. "Working" means
   the test suite passes and the increment runs something meaningful.
+
+-----
+
+## Driving Grob in Claude Code
+
+The way of working does not change from how the maintainer drove it in the editor —
+the harness moved, the workflow did not.
+
+- **Increment prompts are the unit of work.** Each Sprint increment has a dense,
+  self-contained prompt under `prompts/` (e.g. `prompts/sprint-4-a-*.md`) carrying
+  the read-list, the inline reference blocks, the deliverable, the out-of-scope
+  closed surface, the tests and the acceptance gate. The maintainer drives one by
+  pointing you at it: **"read `prompts/<increment>.md` in full and execute."** Treat
+  the named files in its read-list as mandatory, the inline reference blocks as
+  authoritative, and the verify-before-relying notes as binding. Work the increment
+  exactly as written; surface any contradiction with the decisions log rather than
+  resolving it.
+- **One increment per session**, sequential, on a fresh branch. Never on `main`.
+- **Reusable slash commands** live in `.claude/commands/`: `/start-branch`,
+  `/propose-change`, `/commit-message`, `/sprint-plan`, `/consistency-review`,
+  `/model-select`.
+- **Sub-agents** live in `.claude/agents/`: `grob-compiler-engineer` (the host-code
+  implementer the increment prompts name), `grob-reviewer` (the self-review pass
+  before the maintainer sees a diff) and `grob-design-reviewer` (read-only corpus
+  review against the log).
+- **Skills** under `.claude/skills/` activate by description when the task matches —
+  `adding-an-opcode`, `adding-a-stdlib-function`, `authoring-a-plugin`,
+  `writing-an-error-test`, `logging-a-decision`, `tdd-cycle`, `trunk-flow`,
+  `grob-spec-lookup`, `writing-grob-source`.
+- **Model.** Default to Sonnet. Reach for Opus only on the named load-bearing
+  triggers (see `/model-select`); use Haiku for genuinely mechanical, self-contained
+  work. The increment prompts state the model per task.
+- **MCP.** `.mcp.json` configures the Microsoft Learn server. For .NET 10 BCL
+  specifics, ground against Microsoft Learn rather than recalling signatures.
+- **GitHub via `gh`.** There is no GitHub MCP server — GitHub work goes through the
+  `gh` CLI over Bash (`gh issue list`, `gh pr view`, `gh pr create`, `gh run list` for
+  CI status), using the maintainer's existing `gh auth login`. Reach for `gh` rather
+  than expecting a GitHub tool surface. Opening PRs and merging remain the
+  maintainer's actions.
 
 -----
 

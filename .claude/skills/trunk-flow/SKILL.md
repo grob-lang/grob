@@ -13,9 +13,9 @@ work that happens _inside_ a branch, see:
 
 - `tdd-cycle/SKILL.md` — the red/green/refactor procedure that produces
   the commits.
-- `.github/instructions/commits.instructions.md` — full conventional-commits
+- `the /commit-message command` — full conventional-commits
   rules.
-- `.github/instructions/tests.instructions.md` — coverage taxonomy and the
+- `tests/CLAUDE.md` — coverage taxonomy and the
   90% bar that gates every commit.
 
 ## Core rules
@@ -101,7 +101,7 @@ Every commit message follows:
 <footer>
 ```
 
-See `.github/instructions/commits.instructions.md` for the full rules. The
+See `the /commit-message command` for the full rules. The
 short version:
 
 - **Imperative subject**, lowercase, no trailing full stop, ≤50 chars where

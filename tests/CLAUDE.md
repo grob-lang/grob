@@ -1,13 +1,8 @@
----
-name: "Grob Tests"
-description: "Testing conventions across the five xUnit projects and the integration/error-example fixtures."
-applyTo: "tests/**/*.cs"
----
-
 # Grob test conventions
 
-Tests are not optional and are never added retroactively. Every change ships with
-tests for the behaviour it adds. These rules sit on top of the C# host-code rules.
+These rules apply to `tests/**/*.cs`. Tests are not optional and are never added
+retroactively. Every change ships with tests for the behaviour it adds. These rules
+sit on top of the C# host-code rules in `src/CLAUDE.md`.
 
 ## The five projects and what each owns
 
@@ -66,7 +61,7 @@ The error-examples library pairs each case: one `*_grob.txt` source and one
 `*_expected.txt` gold-master diagnostic. The expected file is the exact stderr output,
 byte for byte — file, line, column, message, suggestion. When a diagnostic's wording
 changes, regenerate and review every affected `_expected.txt` deliberately; never
-hand-edit one to make a test pass. The skill `writing-an-error-test` walks the
+hand-edit one to make a test pass. The `writing-an-error-test` skill walks the
 procedure.
 
 ## Conventions
@@ -82,8 +77,10 @@ procedure.
   `tests/Grob.Core.Tests/TokenTests.cs`.
 - Test names state the behaviour: `PlainString_SegmentsIntoStartPartEnd`, not
   `Plain_string_segments_into_start_part_end` and not `PlainStringSegmentsIntoStartPartEnd`.
+- `FluentAssertions` for assertions — no `Assert.Equal` or `Assert.True` in behaviour
+  assertions. `FsCheck.Xunit` for property-based testing, in from day one.
 - Integration-test fixtures use Windows paths in backticks, like real Grob scripts.
 - Assert on exit codes as well as output — Grob is a Unix-style tool where exit codes
   carry meaning.
-- No flaky timing assertions in the unit suites. Performance lives in
-  `bench/Grob.Benchmarks`, gated separately.
+- No flaky timing assertions in the unit suites. No `Thread.Sleep`. Performance lives
+  in `bench/Grob.Benchmarks`, gated separately.

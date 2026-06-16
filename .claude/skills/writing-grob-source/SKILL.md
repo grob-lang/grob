@@ -1,10 +1,9 @@
 ---
-name: 'Grob Language Source'
-description: 'Syntax, idioms and conventions for writing .grob programs — samples, fixtures, integration tests.'
-applyTo: '**/*.grob'
+name: writing-grob-source
+description: Syntax, idioms and conventions for writing .grob programs — sample scripts, integration-test fixtures, error examples. Use this skill whenever you create or edit a .grob file, so the language source is idiomatic and valid against the v1 surface. Covers bindings, the three string forms, nullability, control flow, lambdas, collection pipelines, structs, errors, the stdlib surface and numerics.
 ---
 
-# Grob language source
+# Writing Grob language source
 
 These rules apply to `.grob` files — programs written *in* Grob (sample scripts,
 integration-test fixtures, error examples). They do not apply to the C# that
@@ -89,8 +88,7 @@ is non-nil unless its type says so.
 ## Collections and pipelines
 
 The collection API uses **`.select()`**, not `.map()` — `select` superseded `map`
-entirely (the one-way principle: no two ways to do the same thing). Chain
-fluently:
+entirely (the one-way principle: no two ways to do the same thing). Chain fluently:
 
 ```grob
 entries := fs.list(path, recursive: true)
