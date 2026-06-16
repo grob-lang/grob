@@ -1,9 +1,11 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 
 namespace Grob.BenchCheck;
 
 internal static class Cli {
+    [ExcludeFromCodeCoverage(Justification = "I/O sink: writes to Console and File. Logic is in BenchCheck.Evaluate (unit-tested) and Cli.Render (unit-tested).")]
     public static int Run(string[] args) {
         try {
             var opts = Options.Parse(args);
@@ -28,7 +30,7 @@ internal static class Cli {
         }
     }
 
-    private static string Render(Policy policy, BaselineSide fresh, EvaluationReport report) {
+    internal static string Render(Policy policy, BaselineSide fresh, EvaluationReport report) {
         static string Pct(double? v) => v is null ? "—" : v.Value.ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture) + "%";
         static string Short(string fullName) {
             var lastDot = fullName.LastIndexOf('.');

@@ -12,3 +12,10 @@ using Grob.BenchCheck;
 //   exit 2  cannot compare / usage / IO error
 
 return Cli.Run(args);
+
+// CLI entry point — exits 0 (pass), 1 (regression) or 2 (cannot compare / error).
+// Unit tests cover Options.Parse, Cli.Render and BenchCheck.Evaluate.
+// Wiring exercised by the CI gate workflow.
+[System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(
+    Justification = "CLI entry point; unit tests cover Options.Parse, Cli.Render and BenchCheck.Evaluate. Wiring exercised by the CI gate workflow.")]
+internal partial class Program { protected Program() { } }
