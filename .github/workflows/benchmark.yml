@@ -41,7 +41,7 @@ jobs:
         run: >
           dotnet run --configuration Release
           --project bench/Grob.Benchmarks
-          -- --filter '*' --exporters json markdown
+          -- --filter '*' --exporters fulljson markdown
 
       - name: Publish results to job summary
         if: always()
