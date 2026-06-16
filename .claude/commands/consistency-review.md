@@ -1,13 +1,16 @@
 ---
-name: "Consistency Review"
-description: "Run an adversarial cross-document and code consistency review against the decisions log across the five review dimensions."
-agent: "Grob Design Reviewer"
-tools: ["search", "read"]
+description: Run an adversarial cross-document and code consistency review against the decisions log across the five review dimensions.
+argument-hint: [scope — whole corpus, or a named doc/area]
 ---
 
 # Run a consistency review
 
-Conduct an adversarial consistency review of: **${input:scope:Whole corpus, or name the docs/area to focus on}**.
+Conduct an adversarial consistency review of: **$ARGUMENTS** (default to the whole
+corpus if no scope is given).
+
+This command pairs with the `grob-design-reviewer` sub-agent — for a large or
+whole-corpus pass, delegate to that agent so the review runs read-only and reports
+without resolving. The dimensions and standard below are the same either way.
 
 `docs/design/grob-decisions-log.md` is the authority. Every other document is
 supplementary; where one conflicts with the log, the log wins and the other doc is
@@ -30,11 +33,11 @@ Review across the five dimensions, in order, and report findings under each head
 
 For each finding give: what, where (file + line/section), which authority it
 contradicts, and the resolution options — not a chosen resolution. Rank blockers
-(Sprint 1 acceptance or implementation correctness) first, then quality, then
-cosmetics. Confirm a contradiction is real before reporting it; two compatible
-descriptions at different detail levels are not a conflict. If a dimension is clean, say
-so — do not manufacture findings.
+(acceptance or implementation correctness) first, then quality, then cosmetics. Confirm
+a contradiction is real before reporting it; two compatible descriptions at different
+detail levels are not a conflict. If a dimension is clean, say so — do not manufacture
+findings.
 
 Do not edit anything. Produce the review; resolution is the maintainer's call.
 
-**Model suggestion:** use a strong model for this — it turns on judgement, not mechanics.
+**Model:** use Opus for this — it turns on judgement, not mechanics.

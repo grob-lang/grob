@@ -24,12 +24,13 @@ When two sources disagree, the higher-ranked source wins:
    These reflect what the decisions log has settled, but if a spec doc says
    one thing and the decisions log says another, the log wins. Surface the
    drift rather than silently following one source.
-4. **Operational guidance** — files under `.github/`:
-   `.github/instructions/*.instructions.md` (csharp, tests, commits,
-   project-layout), `.github/agents/*.agent.md` (implementer, reviewer),
-   skill files under `.github/skills/`, and `copilot-instructions.md`.
-   Cannot override the decisions log; if you find a contradiction, the log
-   wins and the operational file needs updating.
+4. **Operational guidance** — the Claude Code harness:
+   the root `CLAUDE.md`, the nested `CLAUDE.md` files (`src/` for C# host
+   code, `tests/`, `plugins/`), the sub-agents under `.claude/agents/`
+   (`grob-compiler-engineer`, `grob-reviewer`, `grob-design-reviewer`), the
+   slash commands under `.claude/commands/`, and the skills under
+   `.claude/skills/`. Cannot override the decisions log; if you find a
+   contradiction, the log wins and the operational file needs updating.
 
 ## The lookup pattern
 
@@ -143,7 +144,7 @@ both for the same fact:
 - **For spec detail beyond what a decision summarises:**
   `From grob-language-fundamentals.md §29, …` or
   `grob-type-registry.md lists …`. File path with section if applicable.
-- **For operational rules:** `Per .github/instructions/csharp.instructions.md,
+- **For operational rules:** `Per src/CLAUDE.md,
 …` or `Per the implementer agent, …`. Full path, or the agent's name.
 
 When a fact has both a D-### and a spec section, the D-### is the
@@ -180,7 +181,7 @@ block comment?"
 3. Answer: No. `Grob.Stdlib` depends on `Grob.Core` and `Grob.Runtime`
    only. The DAG forbids upward references.
 4. Citation: "Per `grob-solution-architecture.md` and the project-layout
-   rules in `.github/instructions/project-layout.instructions.md`,
+   rules in `src/CLAUDE.md`,
    `Grob.Stdlib` depends only on `Grob.Core` and `Grob.Runtime`.
    Referencing `Grob.Compiler` would violate the DAG."
 
@@ -251,7 +252,7 @@ When this happens:
    propose a fix?"
 
     Or: "The reviewer agent checks `[ExcludeFromCodeCoverage]`
-    justifications, but `csharp.instructions.md` doesn't actually state
+    justifications, but `src/CLAUDE.md` doesn't actually state
     what counts as substantive. The instruction file should be the
     source; the reviewer is enforcing a rule the instruction file
     doesn't quite spell out. Should I propose tightening the instruction

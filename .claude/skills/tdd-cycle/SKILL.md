@@ -160,7 +160,7 @@ edge-case tests now, each through its own red/green/refactor cycle.
   subtype at runtime.
 - **Edge cases.** Inputs at the boundaries of what's representable or
   expected. The Grob-specific edge categories per layer (lexer, parser,
-  type checker, VM, stdlib) live in `tests.instructions.md` — read the
+  type checker, VM, stdlib) live in `tests/CLAUDE.md` — read the
   list for the layer you're working in. Don't guess at categories; the
   list exists because they were chosen deliberately.
 
@@ -231,7 +231,7 @@ API**. Inject an abstraction:
 The interfaces live in `Grob.Core`; the concrete implementations live at
 the composition root (`Grob.Cli`). Tests substitute fakes. This is the
 single largest determinant of whether a project hits the 90% bar — see
-`csharp.instructions.md` for the full set of design-for-testability rules.
+`src/CLAUDE.md` for the full set of design-for-testability rules.
 
 ## Regression cycles
 
