@@ -3,14 +3,13 @@ using Xunit;
 
 namespace Grob.BenchCheck.Tests;
 
-public class BenchCheckTests
-{
+public class BenchCheckTests {
     private const string CompilePrefix = "Grob.Benchmarks.Compile";
     private const string Bench = "Grob.Benchmarks.Compile.CompileBenchmarks.Compile_TwoExpressions";
 
-    private static readonly BdnHostEnvironmentInfo Windows =
+    private static readonly BdnHostEnvironmentInfo _windows =
         new("Windows 10 (10.0.20348.2461)", "Intel Xeon Platinum 8370C", "10.0.0");
-    private static readonly BdnHostEnvironmentInfo Linux =
+    private static readonly BdnHostEnvironmentInfo _linux =
         new("Ubuntu 22.04.4 LTS", "AMD EPYC 7763", "10.0.0");
 
     private static Policy PolicyWith(bool compileGating) => new(
@@ -21,8 +20,7 @@ public class BenchCheckTests
     private static BaselineSide Side(BdnHostEnvironmentInfo host, double mean)
         => new(host, new Dictionary<string, double> { [Bench] = mean });
 
-    private static Func<string, BaselineSide?> Loader(BaselineSide? rolling, BaselineSide? origin) => name => name switch
-    {
+    private static Func<string, BaselineSide?> Loader(BaselineSide? rolling, BaselineSide? origin) => name => name switch {
         "compile.json" => rolling,
         "compile.origin.json" => origin,
         _ => null,
@@ -58,39 +56,36 @@ public class BenchCheckTests
     // --- the gate ---
 
     [Fact]
-    public void Within_both_thresholds_passes()
-    {
+    public void Within_both_thresholds_passes() {
         var report = BenchCheck.Evaluate(
             PolicyWith(compileGating: true),
-            fresh: Side(Windows, 102),                 // +2% vs rolling, +2% vs origin
-            Loader(rolling: Side(Windows, 100), origin: Side(Windows, 100)));
+            fresh: Side(_windows, 102),                 // +2% vs rolling, +2% vs origin
+            Loader(rolling: Side(_windows, 100), origin: Side(_windows, 100)));
 
         Assert.Equal(Outcome.Pass, report.Outcome);
         Assert.Equal(DeltaClass.Ok, Assert.Single(report.Deltas).Class);
     }
 
     [Fact]
-    public void Acute_per_sprint_regression_fails()
-    {
+    public void Acute_per_sprint_regression_fails() {
         var report = BenchCheck.Evaluate(
             PolicyWith(compileGating: true),
-            fresh: Side(Windows, 130),                 // +30% vs rolling
-            Loader(rolling: Side(Windows, 100), origin: Side(Windows, 100)));
+            fresh: Side(_windows, 130),                 // +30% vs rolling
+            Loader(rolling: Side(_windows, 100), origin: Side(_windows, 100)));
 
         Assert.Equal(Outcome.Regression, report.Outcome);
         Assert.Equal(DeltaClass.PerSprintBreach, Assert.Single(report.Deltas).Class);
     }
 
     [Fact]
-    public void Slow_creep_trips_cumulative_even_when_per_sprint_is_in_tolerance()
-    {
+    public void Slow_creep_trips_cumulative_even_when_per_sprint_is_in_tolerance() {
         // The ratchet case D-313 exists to catch: each sprint adds a little,
         // each step is under 5% vs the prior baseline, but the total since
         // origin has crossed the 12% ceiling.
         var report = BenchCheck.Evaluate(
             PolicyWith(compileGating: true),
-            fresh: Side(Windows, 113),                 // +2.7% vs rolling (110), +13% vs origin (100)
-            Loader(rolling: Side(Windows, 110), origin: Side(Windows, 100)));
+            fresh: Side(_windows, 113),                 // +2.7% vs rolling (110), +13% vs origin (100)
+            Loader(rolling: Side(_windows, 110), origin: Side(_windows, 100)));
 
         var delta = Assert.Single(report.Deltas);
         Assert.Equal(Outcome.Regression, report.Outcome);
@@ -100,26 +95,24 @@ public class BenchCheckTests
     }
 
     [Fact]
-    public void Non_gating_category_regression_is_reported_not_failed()
-    {
+    public void Non_gating_category_regression_is_reported_not_failed() {
         var policy = new Policy(5.0, 12.0,
             [new PolicyCategory("compile", CompilePrefix, "compile.json", Gating: false)]);
 
         var report = BenchCheck.Evaluate(
             policy,
-            fresh: Side(Windows, 200),                 // +100%, but category is informational
-            Loader(rolling: Side(Windows, 100), origin: Side(Windows, 100)));
+            fresh: Side(_windows, 200),                 // +100%, but category is informational
+            Loader(rolling: Side(_windows, 100), origin: Side(_windows, 100)));
 
         Assert.Equal(Outcome.Pass, report.Outcome);
         Assert.Equal(DeltaClass.Informational, Assert.Single(report.Deltas).Class);
     }
 
     [Fact]
-    public void Missing_rolling_baseline_is_establishing_not_a_failure()
-    {
+    public void Missing_rolling_baseline_is_establishing_not_a_failure() {
         var report = BenchCheck.Evaluate(
             PolicyWith(compileGating: true),
-            fresh: Side(Windows, 100),
+            fresh: Side(_windows, 100),
             Loader(rolling: null, origin: null));
 
         Assert.Equal(Outcome.Pass, report.Outcome);
@@ -127,26 +120,23 @@ public class BenchCheckTests
     }
 
     [Fact]
-    public void Runner_mismatch_on_gating_category_cannot_compare()
-    {
+    public void Runner_mismatch_on_gating_category_cannot_compare() {
         var report = BenchCheck.Evaluate(
             PolicyWith(compileGating: true),
-            fresh: Side(Linux, 100),                   // ran on linux
-            Loader(rolling: Side(Windows, 100), origin: Side(Windows, 100)));  // baseline on windows
+            fresh: Side(_linux, 100),                   // ran on _linux
+            Loader(rolling: Side(_windows, 100), origin: Side(_windows, 100)));  // baseline on _windows
 
         Assert.Equal(Outcome.CannotCompare, report.Outcome);
         Assert.Equal(DeltaClass.RunnerMismatch, Assert.Single(report.Deltas).Class);
     }
 
     [Fact]
-    public void New_benchmark_absent_from_baseline_is_informational()
-    {
-        var fresh = new BaselineSide(Windows, new Dictionary<string, double>
-        {
+    public void New_benchmark_absent_from_baseline_is_informational() {
+        var fresh = new BaselineSide(_windows, new Dictionary<string, double> {
             [Bench] = 100,
             ["Grob.Benchmarks.Compile.CompileBenchmarks.Compile_BrandNew"] = 999,
         });
-        var rolling = new BaselineSide(Windows, new Dictionary<string, double> { [Bench] = 100 });
+        var rolling = new BaselineSide(_windows, new Dictionary<string, double> { [Bench] = 100 });
 
         var report = BenchCheck.Evaluate(PolicyWith(compileGating: true), fresh, Loader(rolling, rolling));
 
@@ -155,12 +145,11 @@ public class BenchCheckTests
     }
 
     [Fact]
-    public void Missing_origin_skips_cumulative_axis_without_failing()
-    {
+    public void Missing_origin_skips_cumulative_axis_without_failing() {
         var report = BenchCheck.Evaluate(
             PolicyWith(compileGating: true),
-            fresh: Side(Windows, 103),                 // +3% vs rolling, under the per-sprint gate
-            Loader(rolling: Side(Windows, 100), origin: null));
+            fresh: Side(_windows, 103),                 // +3% vs rolling, under the per-sprint gate
+            Loader(rolling: Side(_windows, 100), origin: null));
 
         var delta = Assert.Single(report.Deltas);
         Assert.Equal(Outcome.Pass, report.Outcome);

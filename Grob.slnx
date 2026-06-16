@@ -23,4 +23,8 @@
   <Folder Name="/bench/">
     <Project Path="bench\Grob.Benchmarks\Grob.Benchmarks.csproj" />
   </Folder>
+  <Folder Name="/tooling/">
+    <Project Path="tooling\Grob.BenchCheck\Grob.BenchCheck.csproj" />
+    <Project Path="tooling\Grob.BenchCheck.Tests\Grob.BenchCheck.Tests.csproj" />
+  </Folder>
 </Solution>
