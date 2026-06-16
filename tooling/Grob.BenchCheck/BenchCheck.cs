@@ -235,30 +235,41 @@ public static class BenchCheck {
                 double? perSprint = rolling.Means.TryGetValue(name, out var rMean) ? Percent(freshMean, rMean) : null;
                 double? cumulative = origin is not null && origin.Means.TryGetValue(name, out var oMean) ? Percent(freshMean, oMean) : null;
 
-                DeltaClass cls;
-                if (perSprint is null) {
-                    cls = DeltaClass.NewBenchmark; // new benchmark this sprint — informational
-                } else if (!category.Gating) {
-                    cls = DeltaClass.Informational;
-                } else if (perSprint.Value > policy.PerSprintPercent) {
-                    cls = DeltaClass.PerSprintBreach;
-                    regression = true;
-                } else if (cumulative is not null && cumulative.Value > policy.CumulativePercent) {
-                    cls = DeltaClass.CumulativeBreach;
-                    regression = true;
-                } else {
-                    cls = DeltaClass.Ok;
-                }
+                var (cls, isRegression) = ClassifyDelta(
+                    perSprint, cumulative, category.Gating,
+                    policy.PerSprintPercent, policy.CumulativePercent);
+                if (isRegression) regression = true;
 
                 deltas.Add(new BenchmarkDelta(category.Name, name, perSprint, cumulative, cls));
             }
         }
 
-        var outcome = cannotCompare ? Outcome.CannotCompare
-            : regression ? Outcome.Regression
-            : Outcome.Pass;
+        Outcome outcome;
+        if (cannotCompare)
+            outcome = Outcome.CannotCompare;
+        else if (regression)
+            outcome = Outcome.Regression;
+        else
+            outcome = Outcome.Pass;
 
         return new EvaluationReport(outcome, deltas, notes);
+    }
+
+    private static (DeltaClass Class, bool IsRegression) ClassifyDelta(
+        double? perSprint,
+        double? cumulative,
+        bool gating,
+        double perSprintThreshold,
+        double cumulativeThreshold) {
+        if (perSprint is null)
+            return (DeltaClass.NewBenchmark, false);
+        if (!gating)
+            return (DeltaClass.Informational, false);
+        if (perSprint.Value > perSprintThreshold)
+            return (DeltaClass.PerSprintBreach, true);
+        if (cumulative is not null && cumulative.Value > cumulativeThreshold)
+            return (DeltaClass.CumulativeBreach, true);
+        return (DeltaClass.Ok, false);
     }
 
     /// <summary>
@@ -268,9 +279,11 @@ public static class BenchCheck {
     /// </summary>
     /// <param name="fresh">The new mean nanoseconds.</param>
     /// <param name="baseline">The reference mean nanoseconds.</param>
-    /// <returns>Signed percentage change, e.g. <c>+5.0</c> for 5% slower.</returns>
+    /// <returns>Signed percentage change, e.g. <c>+5.0</c> for 5% slower.
+    /// Returns <c>0</c> when <paramref name="baseline"/> is effectively zero
+    /// (below 1 picosecond) to avoid division by zero.</returns>
     public static double Percent(double fresh, double baseline)
-        => baseline == 0 ? 0 : (fresh - baseline) / baseline * 100.0;
+        => Math.Abs(baseline) < 1e-3 ? 0 : (fresh - baseline) / baseline * 100.0;
 
     /// <summary>
     /// Derives the origin baseline filename from the rolling baseline filename by
