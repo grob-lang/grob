@@ -311,6 +311,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-311 | May 2026                                                          | Compiler — type checker       | Unresolved-identifier `Declaration` sentinel: `UnresolvedDecl.Instance` satisfies the §3.1.1 non-null invariant at every error path; addendum to D-137           |
 | D-312 | June 2026                                                         | CLI — bare invocation         | Bare `grob` (no subcommand) ≡ `grob --help` — prints command listing to stdout, exit 0. Does not launch the REPL; `grob repl` is the sole REPL entrance          |
 | D-313 | June 2026                                                         | Tooling — benchmarking        | Two-axis benchmark regression policy: 5% per-sprint vs rolling baseline + 12% cumulative vs frozen origin; `Grob.BenchCheck` makes `benchmark.yml` the gate; compile-time gates until end-to-end is live. Refines D-302/D-309 |
+| D-314 | June 2026                                                         | Methodology — harness         | Implementation harness migrated Copilot → Claude Code: durable rules in `CLAUDE.md`, plan mode as the approval gate, increment prompts as `.claude/commands/` slash commands, Opus 4.8 subagent for named sub-problems, GPT-5.3 Codex cold-read via Codex CLI, CodeRabbit retained. Workflow shape unchanged |
 
 ---
 
@@ -2994,6 +2995,28 @@ Detail in `grob-benchmarking-strategy.md` §8 (storage, the frozen origin, `poli
 
 ---
 
+### D-314 — Implementation harness migrated to Claude Code (June 2026)
+
+Area: Development methodology — implementation harness
+Supersedes: none
+Superseded by: none
+
+**Context.** Through Sprints 1–3 the implementation agent was GitHub Copilot in VS Code, driven by a pre-planned increment workflow and a substantial `.github/` prompt harness. Sprint 4 onward runs on Claude Code in VS Code. This entry records the migration so the change of harness is a logged decision rather than ambient drift, and so the increment prompts have a single durable reference for the new primitives.
+
+**The decision — what changes.** The implementation *workflow* does not change: an in-IDE agent edits the live working tree, one concern per branch, plan-then-build, the Husky.NET pre-push gate, CodeRabbit pre-PR, a PR per increment, `main` protected. What changes is the harness the workflow runs on.
+
+1. **Durable rules live in `CLAUDE.md`.** TDD-first, one-concern-per-branch, the `ErrorCatalog` mandate (D-308), the §3.1.1 non-null invariant, C# 14 / .NET 10 (D-310), verify-before-relying-on-`D-###`, the closed-`OpCode`/stable-parser facts and the model policy are project memory, always in context. Per-increment load-bearing rules (the closed do-not-touch surface, exact error-code numbers, the §-references) stay inlined in each increment prompt — the anti-rogue inline-reference discipline is retained and strengthened, because the durable rules can no longer be edited away between increments.
+2. **Plan mode is the approval gate.** The "post a numbered plan and wait for maintainer approval" step is now native plan mode: the agent presents its plan and waits for approval before editing. Replaces the manual instruction.
+3. **Increment prompts are slash commands** under `.claude/commands/` (`/sprint-4-a` … `/sprint-4-f`), versioned with the repo as the `.github/` harness was. Kickoffs and QA briefs remain plain markdown under `prompts/<sprint>/`, with archive copies of the increment commands alongside them.
+4. **Model policy is unchanged in intent, re-expressed for the harness.** Sonnet 4.6 (High) is the default session workhorse; Opus 4.8 is reserved for named structural sub-problems gated behind "only if this specific thing gets fiddly", expressed as an Opus-pinned subagent under `.claude/agents/` rather than a per-chat model switch. Haiku for genuinely mechanical arms.
+5. **The two-model QA loop is unchanged.** GPT-5.3 Codex remains the external adversarial cold-reader — a Claude subagent shares the implementer's blind spots and is rejected for that role. The change is delivery: the QA brief becomes the instruction file for an in-repo Codex CLI run against the merged sprint branch, giving the cold-read real working-tree access rather than a snapshot. CodeRabbit is retained as the in-loop pre-PR reviewer; no Claude reviewer subagent is introduced.
+
+**Why log it.** The harness is part of how every line of Grob gets built. Recording the migration keeps the build contract self-consistent — the Sprint 4 increment prompts reference `CLAUDE.md`, plan mode and the Opus subagent as established, and a reader of the corpus can trace why the prompt format changed shape between Sprint 3 and Sprint 4. The `.github/` Copilot harness is retained in history under `prompts/` for the sprints it drove.
+
+No language-design or specification surface is touched by this entry.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3215,6 +3238,15 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 — D-314: implementation harness migrated from GitHub_
+_Copilot to Claude Code. Durable rules move to `CLAUDE.md`; plan mode_
+_becomes the approval gate; increment prompts become `.claude/commands/`_
+_slash commands; the Opus 4.8 carve-out becomes a `.claude/agents/`_
+_subagent; the GPT-5.3 Codex cold-read runs via Codex CLI against the_
+_merged branch; CodeRabbit is retained, no Claude reviewer subagent is_
+_added. The implementation workflow shape (one concern per branch,_
+_plan-then-build, pre-push gate, PR per increment, `main` protected) is_
+_unchanged. No language or spec surface touched._
 _Updated June 2026 — D-313: two-axis benchmark regression policy. A 5%_
 _per-sprint gate against the rolling baseline plus a 12% cumulative ceiling_
 _against a frozen origin baseline; `tooling/Grob.BenchCheck` makes_

@@ -291,6 +291,86 @@ public sealed class VirtualMachine {
                             throw new GrobExitException(checked((int)code));
                         }
 
+                    // --- Boolean and comparison opcodes (Sprint 4 Increment A) ---
+
+                    case OpCode.Not: {
+                            bool v = _stack.Pop().AsBool();
+                            _stack.Push(GrobValue.FromBool(!v), line);
+                            break;
+                        }
+                    case OpCode.Equal: {
+                            GrobValue b = _stack.Pop();
+                            GrobValue a = _stack.Pop();
+                            _stack.Push(GrobValue.FromBool(a.Equals(b)), line);
+                            break;
+                        }
+                    case OpCode.NotEqual: {
+                            GrobValue b = _stack.Pop();
+                            GrobValue a = _stack.Pop();
+                            _stack.Push(GrobValue.FromBool(!a.Equals(b)), line);
+                            break;
+                        }
+                    case OpCode.LessInt: {
+                            long b = _stack.Pop().AsInt();
+                            long a = _stack.Pop().AsInt();
+                            _stack.Push(GrobValue.FromBool(a < b), line);
+                            break;
+                        }
+                    case OpCode.LessFloat: {
+                            double b = _stack.Pop().AsFloat();
+                            double a = _stack.Pop().AsFloat();
+                            _stack.Push(GrobValue.FromBool(a < b), line);
+                            break;
+                        }
+                    case OpCode.LessString: {
+                            string b = _stack.Pop().AsString();
+                            string a = _stack.Pop().AsString();
+                            _stack.Push(GrobValue.FromBool(string.CompareOrdinal(a, b) < 0), line);
+                            break;
+                        }
+                    case OpCode.LessEqualInt: {
+                            long b = _stack.Pop().AsInt();
+                            long a = _stack.Pop().AsInt();
+                            _stack.Push(GrobValue.FromBool(a <= b), line);
+                            break;
+                        }
+                    case OpCode.LessEqualFloat: {
+                            double b = _stack.Pop().AsFloat();
+                            double a = _stack.Pop().AsFloat();
+                            _stack.Push(GrobValue.FromBool(a <= b), line);
+                            break;
+                        }
+                    case OpCode.GreaterInt: {
+                            long b = _stack.Pop().AsInt();
+                            long a = _stack.Pop().AsInt();
+                            _stack.Push(GrobValue.FromBool(a > b), line);
+                            break;
+                        }
+                    case OpCode.GreaterFloat: {
+                            double b = _stack.Pop().AsFloat();
+                            double a = _stack.Pop().AsFloat();
+                            _stack.Push(GrobValue.FromBool(a > b), line);
+                            break;
+                        }
+                    case OpCode.GreaterString: {
+                            string b = _stack.Pop().AsString();
+                            string a = _stack.Pop().AsString();
+                            _stack.Push(GrobValue.FromBool(string.CompareOrdinal(a, b) > 0), line);
+                            break;
+                        }
+                    case OpCode.GreaterEqualInt: {
+                            long b = _stack.Pop().AsInt();
+                            long a = _stack.Pop().AsInt();
+                            _stack.Push(GrobValue.FromBool(a >= b), line);
+                            break;
+                        }
+                    case OpCode.GreaterEqualFloat: {
+                            double b = _stack.Pop().AsFloat();
+                            double a = _stack.Pop().AsFloat();
+                            _stack.Push(GrobValue.FromBool(a >= b), line);
+                            break;
+                        }
+
                     // --- Nil handling (Sprint 3 Increment D) ---
 
                     case OpCode.IsNil: {

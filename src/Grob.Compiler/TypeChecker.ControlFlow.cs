@@ -9,8 +9,17 @@ public sealed partial class TypeChecker {
     // -----------------------------------------------------------------------
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Validates that the condition is <c>bool</c> (E0001) then visits
+    /// the then-block and the optional else-block or else-if chain.
+    /// </remarks>
     public override GrobType VisitIf(IfStmt node) {
-        Visit(node.Condition);
+        GrobType condType = Visit(node.Condition);
+        if (condType != GrobType.Bool && condType != GrobType.Error) {
+            EmitError(ErrorCatalog.E0001,
+                $"'if' condition must be 'bool'; found '{TypeName(condType)}'.",
+                node.Condition.Range);
+        }
         Visit(node.Then);
         if (node.Else is not null) Visit(node.Else);
         return GrobType.Unknown;
