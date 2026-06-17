@@ -156,6 +156,61 @@ public sealed class Sprint4IncrementATests {
         Assert.Equal($"greater{NL}", stdout);
     }
 
+    /// <summary>
+    /// String <c>&lt;=</c> lowers to <c>!(a &gt; b)</c>. End-to-end it must produce the
+    /// correct boolean for the true, equal and false cases — proving the lowering is
+    /// semantically equivalent, not just the right opcode shape.
+    /// </summary>
+    [Theory]
+    [InlineData("\"apple\"", "\"banana\"", "yes")]   // less than → true
+    [InlineData("\"apple\"", "\"apple\"", "yes")]    // equal → true
+    [InlineData("\"banana\"", "\"apple\"", "no")]    // greater → false
+    public void If_StringLessEqual_ExecutesCorrectBranch(string left, string right, string expected) {
+        string stdout = Run($$"""
+            if ({{left}} <= {{right}}) {
+                print("yes")
+            } else {
+                print("no")
+            }
+            """);
+        Assert.Equal($"{expected}{NL}", stdout);
+    }
+
+    /// <summary>
+    /// String <c>&gt;=</c> lowers to <c>!(a &lt; b)</c>; same equivalence check.
+    /// </summary>
+    [Theory]
+    [InlineData("\"banana\"", "\"apple\"", "yes")]   // greater than → true
+    [InlineData("\"apple\"", "\"apple\"", "yes")]    // equal → true
+    [InlineData("\"apple\"", "\"banana\"", "no")]    // less → false
+    public void If_StringGreaterEqual_ExecutesCorrectBranch(string left, string right, string expected) {
+        string stdout = Run($$"""
+            if ({{left}} >= {{right}}) {
+                print("yes")
+            } else {
+                print("no")
+            }
+            """);
+        Assert.Equal($"{expected}{NL}", stdout);
+    }
+
+    /// <summary>
+    /// A mixed-arm ternary (<c>int</c>/<c>float</c>) unifies to <c>float</c>; whichever
+    /// arm runs must leave a float on the stack so a parent float operation succeeds.
+    /// Regression: before arm-coercion the int then-arm crashed the VM with a kind
+    /// mismatch when consumed by <c>+ 1.0</c> (AddFloat over an int value).
+    /// </summary>
+    [Theory]
+    [InlineData("true", "3")]    // then-arm 2 (→ 2.0) + 1.0 = 3.0
+    [InlineData("false", "4")]   // else-arm 3.0 + 1.0 = 4.0
+    public void Ternary_MixedArms_CoercesToFloatAtRuntime(string cond, string expected) {
+        string stdout = Run($"""
+            x := ({cond} ? 2 : 3.0) + 1.0
+            print(x)
+            """);
+        Assert.Equal($"{expected}{NL}", stdout);
+    }
+
     [Fact]
     public void IfElseIfElse_WithComparisons_ProducesCorrectBranch() {
         string stdout = Run("""

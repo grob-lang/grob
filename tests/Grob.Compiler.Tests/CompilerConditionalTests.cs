@@ -259,4 +259,87 @@ public sealed class CompilerConditionalTests {
         List<OpCode> ops = ReadOpcodes(chunk);
         Assert.Contains(OpCode.Equal, ops);
     }
+
+    /// <summary>
+    /// <c>x := "a" &lt; "b"</c> must emit <see cref="OpCode.LessString"/>.
+    /// </summary>
+    [Fact]
+    public void StringLess_EmitsLessString() {
+        Chunk chunk = CompileSource("""x := "a" < "b" """);
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.Contains(OpCode.LessString, ops);
+    }
+
+    /// <summary>
+    /// <c>x := "a" &gt; "b"</c> must emit <see cref="OpCode.GreaterString"/>.
+    /// </summary>
+    [Fact]
+    public void StringGreater_EmitsGreaterString() {
+        Chunk chunk = CompileSource("""x := "a" > "b" """);
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.Contains(OpCode.GreaterString, ops);
+    }
+
+    /// <summary>
+    /// The closed <c>OpCode</c> enum has no <c>LessEqualString</c>; <c>"a" &lt;= "b"</c>
+    /// lowers to the strict comparison plus negation — <c>!(a &gt; b)</c> — so it must
+    /// emit <see cref="OpCode.GreaterString"/> followed by <see cref="OpCode.Not"/>,
+    /// and never <see cref="OpCode.LessEqualInt"/> (which would call AsInt on a string).
+    /// </summary>
+    [Fact]
+    public void StringLessEqual_LowersToGreaterStringThenNot() {
+        Chunk chunk = CompileSource("""x := "a" <= "b" """);
+        List<OpCode> ops = ReadOpcodes(chunk);
+        int idx = ops.IndexOf(OpCode.GreaterString);
+        Assert.True(idx >= 0, "expected GreaterString in the lowered sequence");
+        Assert.Equal(OpCode.Not, ops[idx + 1]);
+        Assert.DoesNotContain(OpCode.LessEqualInt, ops);
+    }
+
+    /// <summary>
+    /// <c>"a" &gt;= "b"</c> lowers to <c>!(a &lt; b)</c> — <see cref="OpCode.LessString"/>
+    /// followed by <see cref="OpCode.Not"/>, never <see cref="OpCode.GreaterEqualInt"/>.
+    /// </summary>
+    [Fact]
+    public void StringGreaterEqual_LowersToLessStringThenNot() {
+        Chunk chunk = CompileSource("""x := "a" >= "b" """);
+        List<OpCode> ops = ReadOpcodes(chunk);
+        int idx = ops.IndexOf(OpCode.LessString);
+        Assert.True(idx >= 0, "expected LessString in the lowered sequence");
+        Assert.Equal(OpCode.Not, ops[idx + 1]);
+        Assert.DoesNotContain(OpCode.GreaterEqualInt, ops);
+    }
+
+    /// <summary>
+    /// A ternary whose arms unify to a wider type (<c>int</c>/<c>float</c> → <c>float</c>)
+    /// must be typed as that wider type when consumed by a parent expression. Here
+    /// <c>(true ? 1 : 2.0) + 1.0</c> must select <see cref="OpCode.AddFloat"/>: the parent
+    /// '+' sees the ternary as <c>float</c>, not <c>int</c> from the then-arm alone.
+    /// Guards against inferring the ternary type from the then-arm only.
+    /// </summary>
+    [Fact]
+    public void Ternary_MixedArmsConsumedByParent_WidensToFloat() {
+        Chunk chunk = CompileSource("x := (true ? 1 : 2.0) + 1.0");
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.Contains(OpCode.AddFloat, ops);
+        Assert.DoesNotContain(OpCode.AddInt, ops);
+    }
+
+    /// <summary>
+    /// A ternary with one nullable and one non-nullable arm (either order) unifies to
+    /// the nullable type. Unlike int/float, <c>T</c> and <c>T?</c> share a runtime
+    /// representation, so no coercion opcode is emitted. Exercises the T/T? widening
+    /// branch of the compiler's ternary result-type computation.
+    /// </summary>
+    [Fact]
+    public void Ternary_NullableAndNonNullableArms_WidensWithoutCoercion() {
+        Chunk chunk = CompileSource("""
+            flag := true
+            n: int? := nil
+            a := flag ? n : 5
+            b := flag ? 5 : n
+            """);
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.DoesNotContain(OpCode.IntToFloat, ops);
+    }
 }

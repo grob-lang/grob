@@ -38,6 +38,8 @@ brief is a navigation aid.
 5. **Range with step / descending** — `0..100 step 5`, `10..0 step -1`.
    Ascending uses `<=` and `+= step`; descending (negative step) uses `>=` and
    `+= step`. Descending without an explicit negative step is a compile error.
+   Step must be a non-zero `int` (literal or variable) — a zero step is a
+   compile error, never an infinite loop.
 
 ## Where the fiddliness actually lives — solve these, ignore the rest
 
