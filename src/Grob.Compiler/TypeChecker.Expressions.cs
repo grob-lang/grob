@@ -267,11 +267,58 @@ public sealed partial class TypeChecker {
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Validates the condition is <c>bool</c> (E0001), visits both arms, and
+    /// unifies their types via <see cref="UnifyTernaryArms"/> (E0001 on mismatch).
+    /// </remarks>
     public override GrobType VisitTernary(TernaryExpr node) {
-        Visit(node.Condition);
-        Visit(node.Then);
-        Visit(node.Else);
-        return GrobType.Unknown;
+        GrobType condType = Visit(node.Condition);
+        if (condType != GrobType.Bool && condType != GrobType.Error) {
+            EmitError(ErrorCatalog.E0001,
+                $"Ternary condition must be 'bool'; found '{TypeName(condType)}'.",
+                node.Condition.Range);
+        }
+        GrobType thenType = Visit(node.Then);
+        GrobType elseType = Visit(node.Else);
+        return UnifyTernaryArms(thenType, elseType, node.Range);
+    }
+
+    /// <summary>
+    /// Unifies the types of two ternary (or switch-expression) arms into a single
+    /// result type.  Emits E0001 when the arms are incompatible.
+    /// </summary>
+    /// <remarks>
+    /// Rules (int/float widening and T → T? promotion are the only implicit
+    /// conversions; everything else is an error):
+    /// <list type="bullet">
+    ///   <item><description>Error or Unknown propagates silently (cascade suppression).</description></item>
+    ///   <item><description>Identical types → that type.</description></item>
+    ///   <item><description><c>int</c> + <c>float</c> (either order) → <c>float</c>.</description></item>
+    ///   <item><description><c>T</c> + <c>T?</c> (either order) → <c>T?</c>.</description></item>
+    ///   <item><description>All other combinations → E0001, returns <see cref="GrobType.Error"/>.</description></item>
+    /// </list>
+    /// This method is <c>internal</c> so Sprint 4E's switch-expression arm unification
+    /// can reuse it without code duplication.
+    /// </remarks>
+    internal GrobType UnifyTernaryArms(GrobType thenType, GrobType elseType, SourceRange range) {
+        if (thenType == GrobType.Error || elseType == GrobType.Error) return GrobType.Error;
+        if (thenType == GrobType.Unknown || elseType == GrobType.Unknown) return GrobType.Unknown;
+        if (thenType == elseType) return thenType;
+
+        // int ↔ float implicit widening across arms.
+        if ((thenType == GrobType.Int && elseType == GrobType.Float) ||
+            (thenType == GrobType.Float && elseType == GrobType.Int))
+            return GrobType.Float;
+
+        // T + T? widening: one arm is nullable, the other is the non-nullable element type.
+        if (GrobTypeHelpers.ToNullable(thenType) == elseType) return elseType;
+        if (GrobTypeHelpers.ToNullable(elseType) == thenType) return thenType;
+
+        EmitError(ErrorCatalog.E0001,
+            $"Ternary arms must produce the same type; " +
+            $"found '{TypeName(thenType)}' and '{TypeName(elseType)}'.",
+            range);
+        return GrobType.Error;
     }
 
     /// <inheritdoc/>

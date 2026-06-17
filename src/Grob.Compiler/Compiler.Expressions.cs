@@ -196,7 +196,9 @@ public sealed partial class Compiler {
                         : OpCode.NegateInt,
                     line);
                 break;
-                // UnaryOperator.Not — deferred to Sprint 3 (boolean/comparison support)
+            case UnaryOperator.Not:
+                _chunk.WriteOpCode(OpCode.Not, line);
+                break;
         }
         return null;
     }
@@ -217,6 +219,56 @@ public sealed partial class Compiler {
             Visit(node.Left);
             Visit(node.Right);
             _chunk.WriteOpCode(OpCode.NilCoalesce, line);
+            return null;
+        }
+
+        // Logical AND — short-circuit via JumpIfFalse (no dedicated And opcode).
+        // Stack discipline: JumpIfFalse pops the condition.
+        //
+        //   evaluate left
+        //   JumpIfFalse → false_label      // pops left; skip right when false
+        //   evaluate right                 // left was true; right is the result
+        //   Jump → end
+        //   false_label: False             // synthesised false for the short-circuit path
+        //   end:
+        if (node.Operator == BinaryOperator.And) {
+            Visit(node.Left);
+            int falseJump = EmitJump(OpCode.JumpIfFalse, line);
+            Visit(node.Right);
+            int endJump = EmitJump(OpCode.Jump, line);
+            PatchJump(falseJump);
+            _chunk.WriteOpCode(OpCode.False, line);  // false_label
+            PatchJump(endJump);
+            return null;
+        }
+
+        // Logical OR — short-circuit via JumpIfTrue (no dedicated Or opcode).
+        // Stack discipline: JumpIfTrue peeks (leaves the value on the stack).
+        //
+        //   evaluate left
+        //   JumpIfTrue → end               // peeks left; left stays on stack as result if true
+        //   Pop                            // discard the peeked false value
+        //   evaluate right                 // right is the result
+        //   end:
+        if (node.Operator == BinaryOperator.Or) {
+            Visit(node.Left);
+            int endJump = EmitJump(OpCode.JumpIfTrue, line);
+            _chunk.WriteOpCode(OpCode.Pop, line);
+            Visit(node.Right);
+            PatchJump(endJump);
+            return null;
+        }
+
+        // Comparison operators — emit typed opcodes selected from operand types.
+        if (IsComparisonOperator(node.Operator)) {
+            Visit(node.Left);
+            // Coerce int → float for mixed numeric comparisons.
+            if (lt == GrobType.Int && rt == GrobType.Float)
+                _chunk.WriteOpCode(OpCode.IntToFloat, node.Left.Range.Start.Line);
+            Visit(node.Right);
+            if (rt == GrobType.Int && lt == GrobType.Float)
+                _chunk.WriteOpCode(OpCode.IntToFloat, node.Right.Range.Start.Line);
+            _chunk.WriteOpCode(GetComparisonOpCode(node.Operator, lt, rt), line);
             return null;
         }
 
@@ -246,6 +298,38 @@ public sealed partial class Compiler {
         }
 
         _chunk.WriteOpCode(GetArithmeticOpCode(node.Operator, resultType), line);
+        return null;
+    }
+
+    // -----------------------------------------------------------------------
+    // Ternary expression
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Emits the ternary <c>cond ? then : else</c> using forward-jump backpatching:
+    /// condition → <see cref="OpCode.JumpIfFalse"/> to else-arm → then-arm →
+    /// <see cref="OpCode.Jump"/> past else-arm → else-arm.
+    /// Exactly one arm is evaluated per condition value.  The result type is the
+    /// unified arm type (already resolved by the type checker).
+    /// </remarks>
+    public override object? VisitTernary(TernaryExpr node) {
+        int line = node.Range.Start.Line;
+
+        // Condition; JumpIfFalse pops and jumps to the else-arm when false.
+        Visit(node.Condition);
+        int falseJump = EmitJump(OpCode.JumpIfFalse, line);
+
+        // Then-arm.
+        Visit(node.Then);
+        int endJump = EmitJump(OpCode.Jump, line);
+
+        // Else-arm.
+        PatchJump(falseJump);
+        Visit(node.Else);
+
+        // Both arms converge here.
+        PatchJump(endJump);
         return null;
     }
 
@@ -308,6 +392,32 @@ public sealed partial class Compiler {
     // Type helpers
     // -----------------------------------------------------------------------
 
+    private static bool IsComparisonOperator(BinaryOperator op) => op switch {
+        BinaryOperator.Equal or BinaryOperator.NotEqual or
+        BinaryOperator.Less or BinaryOperator.LessEqual or
+        BinaryOperator.Greater or BinaryOperator.GreaterEqual => true,
+        _ => false,
+    };
+
+    /// <summary>
+    /// Selects the typed comparison opcode for <paramref name="op"/> based on the
+    /// left and right operand types.  For mixed int/float operands the left is already
+    /// coerced to float by the caller before emitting this opcode.
+    /// </summary>
+    private static OpCode GetComparisonOpCode(BinaryOperator op, GrobType lt, GrobType rt) {
+        bool isFloat = lt == GrobType.Float || rt == GrobType.Float;
+        bool isString = lt == GrobType.String;
+        return op switch {
+            BinaryOperator.Equal => OpCode.Equal,
+            BinaryOperator.NotEqual => OpCode.NotEqual,
+            BinaryOperator.Less => isFloat ? OpCode.LessFloat : isString ? OpCode.LessString : OpCode.LessInt,
+            BinaryOperator.LessEqual => isFloat ? OpCode.LessEqualFloat : OpCode.LessEqualInt,
+            BinaryOperator.Greater => isFloat ? OpCode.GreaterFloat : isString ? OpCode.GreaterString : OpCode.GreaterInt,
+            BinaryOperator.GreaterEqual => isFloat ? OpCode.GreaterEqualFloat : OpCode.GreaterEqualInt,
+            _ => ThrowUnsupportedBinaryOp(op, GrobType.Bool)
+        };
+    }
+
     private static OpCode GetArithmeticOpCode(BinaryOperator op, GrobType type) => (op, type) switch {
         (BinaryOperator.Add, GrobType.Int) => OpCode.AddInt,
         (BinaryOperator.Add, GrobType.Float) => OpCode.AddFloat,
@@ -348,6 +458,8 @@ public sealed partial class Compiler {
         GroupingExpr g => GetExprType(g.Inner),
         UnaryExpr u => GetUnaryResultType(u),
         BinaryExpr b => GetBinaryResultType(b),
+        // Ternary: the type checker has already unified both arms; either arm gives the result type.
+        TernaryExpr t => GetExprType(t.Then),
         _ => GrobType.Unknown
     };
 
