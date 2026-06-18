@@ -55,22 +55,13 @@ public sealed partial class Compiler : AstVisitor<object?> {
     // -----------------------------------------------------------------------
     private sealed class LoopContext {
         private readonly List<int> _breakSites = [];
-        private readonly List<int> _continueSites = [];
 
         /// <summary>
-        /// Chunk offset of the continue target.
-        /// <list type="bullet">
-        /// <item><description>
-        /// ≥ 0: the known jump-back target (loop top).  <see cref="Compiler.VisitContinue"/>
-        /// emits <see cref="OpCode.Loop"/> directly.  Used by <c>while</c>.
-        /// </description></item>
-        /// <item><description>
-        /// −1: not yet known (for...in lowering, Increment C).
-        /// <see cref="Compiler.VisitContinue"/> emits a forward <see cref="OpCode.Jump"/>
-        /// placeholder and records the site in <see cref="ContinueSites"/> for
-        /// backpatching when the increment step is compiled.
-        /// </description></item>
-        /// </list>
+        /// Chunk offset that <c>continue</c> jumps back to.  For <c>while</c> this
+        /// is the loop top (the condition), set at loop entry.  It is settable so
+        /// that the <c>for...in</c> lowering in Increment C can retarget
+        /// <c>continue</c> at the increment step rather than the condition — the
+        /// counter must advance on every iteration, including a <c>continue</c>.
         /// </summary>
         public int ContinueTarget { get; set; }
 
@@ -88,10 +79,8 @@ public sealed partial class Compiler : AstVisitor<object?> {
         }
 
         public void RecordBreak(int patchSite) => _breakSites.Add(patchSite);
-        public void RecordContinue(int patchSite) => _continueSites.Add(patchSite);
 
         public IReadOnlyList<int> BreakSites => _breakSites;
-        public IReadOnlyList<int> ContinueSites => _continueSites;
     }
 
     private readonly Stack<LoopContext> _loopContexts = new();

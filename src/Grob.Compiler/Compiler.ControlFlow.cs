@@ -91,17 +91,12 @@ public sealed partial class Compiler {
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Jumps to the loop's continue target, after popping any locals declared
-    /// inside the loop body above this point.
-    /// <list type="bullet">
-    /// <item><description>For <c>while</c>: <see cref="LoopContext.ContinueTarget"/> is
-    ///   the loop top (condition) — emits <see cref="OpCode.Loop"/> backward
-    ///   immediately.</description></item>
-    /// <item><description>For <c>for...in</c> lowering (Increment C):
-    ///   <see cref="LoopContext.ContinueTarget"/> is −1 until the increment step is
-    ///   compiled; emits a forward <see cref="OpCode.Jump"/> placeholder recorded
-    ///   in <see cref="LoopContext.ContinueSites"/> for backpatching.</description></item>
-    /// </list>
+    /// Jumps backward to the loop's continue target via <see cref="OpCode.Loop"/>,
+    /// after popping any locals declared inside the loop body above this point.
+    /// For <c>while</c> the target is the loop top (the condition).  The target is
+    /// taken from <see cref="LoopContext.ContinueTarget"/> rather than hard-coded,
+    /// so the <c>for...in</c> lowering in Increment C can point <c>continue</c> at
+    /// the increment step instead.
     /// </remarks>
     public override object? VisitContinue(ContinueStmt node) {
         if (_loopContexts.Count == 0)
@@ -119,14 +114,7 @@ public sealed partial class Compiler {
             _chunk.WriteByte(ToByteOperand(localsToPop, "continue locals pop"), line);
         }
 
-        if (ctx.ContinueTarget >= 0) {
-            // Continue target is known: emit backward Loop jump to the condition.
-            EmitLoop(ctx.ContinueTarget, line);
-        } else {
-            // Continue target not yet known (for...in lowering): forward placeholder.
-            int site = EmitJump(OpCode.Jump, line);
-            ctx.RecordContinue(site);
-        }
+        EmitLoop(ctx.ContinueTarget, line);
         return null;
     }
 
