@@ -69,9 +69,18 @@ public sealed partial class TypeChecker {
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A <c>for...in</c> is a loop, so its body is walked with
+    /// <see cref="_loopDepth"/> incremented — <c>break</c> and <c>continue</c>
+    /// inside the body are accepted exactly as they are for <c>while</c>.
+    /// (Codegen for <c>for...in</c> lands in Increment C; this is the
+    /// loop-control placement rule only.)
+    /// </remarks>
     public override GrobType VisitForIn(ForInStmt node) {
         Visit(node.Iterable);
+        _loopDepth++;
         Visit(node.Body);
+        _loopDepth--;
         return GrobType.Unknown;
     }
 

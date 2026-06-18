@@ -38,7 +38,10 @@ public sealed class CompilerLoopTests {
         new TypeChecker(bag).Check(unit);
         Assert.False(bag.HasErrors,
             $"TypeChecker produced unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
-        return GrobCompiler.Compile(unit, bag);
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        Assert.False(bag.HasErrors,
+            $"Compiler produced unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+        return chunk;
     }
 
     /// <summary>
@@ -105,6 +108,7 @@ public sealed class CompilerLoopTests {
         Assert.True(bag.HasErrors);
         Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E0001");
         Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(7, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -145,7 +149,9 @@ public sealed class CompilerLoopTests {
     public void Break_InsideIfButOutsideLoop_ProducesE2211() {
         DiagnosticBag bag = TypeCheckSource("if (true) { break }");
         Assert.True(bag.HasErrors);
-        Assert.Single(bag.Errors, e => e.Code == "E2211");
+        Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E2211");
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(13, diag.Range.Start.Column);
     }
 
     /// <summary>
@@ -156,7 +162,9 @@ public sealed class CompilerLoopTests {
     public void Continue_InsideIfButOutsideLoop_ProducesE2212() {
         DiagnosticBag bag = TypeCheckSource("if (true) { continue }");
         Assert.True(bag.HasErrors);
-        Assert.Single(bag.Errors, e => e.Code == "E2212");
+        Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E2212");
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(13, diag.Range.Start.Column);
     }
 
     /// <summary>
@@ -175,6 +183,26 @@ public sealed class CompilerLoopTests {
     public void Continue_InsideWhile_IsLegal() {
         DiagnosticBag bag = TypeCheckSource("while (true) { continue }");
         Assert.False(bag.HasErrors);
+    }
+
+    /// <summary>
+    /// <c>break</c> inside a <c>for...in</c> body is legal — a <c>for...in</c> is a
+    /// loop, so the loop-depth gate must accept it (no E2211).  Codegen for
+    /// <c>for...in</c> is Increment C; this guards the placement rule only.
+    /// </summary>
+    [Fact]
+    public void Break_InsideForIn_IsLegal() {
+        DiagnosticBag bag = TypeCheckSource("xs := nil\nfor v in xs { break }\n");
+        Assert.DoesNotContain(bag.Errors, e => e.Code == "E2211");
+    }
+
+    /// <summary>
+    /// <c>continue</c> inside a <c>for...in</c> body is legal — no E2212.
+    /// </summary>
+    [Fact]
+    public void Continue_InsideForIn_IsLegal() {
+        DiagnosticBag bag = TypeCheckSource("xs := nil\nfor v in xs { continue }\n");
+        Assert.DoesNotContain(bag.Errors, e => e.Code == "E2212");
     }
 
     // -----------------------------------------------------------------------
@@ -304,6 +332,51 @@ public sealed class CompilerLoopTests {
         // Both should land at position 0 (the True condition).
         Assert.Equal(0, 7 - continueOffset);
         Assert.Equal(0, 10 - bodyOffset);
+    }
+
+    // -----------------------------------------------------------------------
+    // Compiler — break / continue pop locals declared above them in the body
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// A <c>break</c> reached after a local has been declared in the loop body
+    /// must emit <see cref="OpCode.PopN"/> to discard that local before the
+    /// forward <see cref="OpCode.Jump"/> — the break bypasses the block's normal
+    /// <c>PopN</c> cleanup, so it cleans up itself.
+    /// </summary>
+    [Fact]
+    public void While_BreakWithLocalInBody_PopsLocalBeforeJump() {
+        Chunk chunk = CompileSource("""
+            while (true) {
+                x := 1
+                break
+            }
+            """);
+        List<OpCode> ops = ReadOpcodes(chunk);
+
+        int popIdx = ops.IndexOf(OpCode.PopN);
+        Assert.True(popIdx >= 0, "break must pop the loop-body local before jumping");
+        Assert.Equal(OpCode.Jump, ops[popIdx + 1]);
+    }
+
+    /// <summary>
+    /// A <c>continue</c> reached after a local has been declared in the loop body
+    /// must emit <see cref="OpCode.PopN"/> to discard that local before the
+    /// backward <see cref="OpCode.Loop"/> jump.
+    /// </summary>
+    [Fact]
+    public void While_ContinueWithLocalInBody_PopsLocalBeforeLoop() {
+        Chunk chunk = CompileSource("""
+            while (true) {
+                x := 1
+                continue
+            }
+            """);
+        List<OpCode> ops = ReadOpcodes(chunk);
+
+        int popIdx = ops.IndexOf(OpCode.PopN);
+        Assert.True(popIdx >= 0, "continue must pop the loop-body local before looping");
+        Assert.Equal(OpCode.Loop, ops[popIdx + 1]);
     }
 
     // -----------------------------------------------------------------------

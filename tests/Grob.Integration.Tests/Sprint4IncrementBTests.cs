@@ -27,6 +27,8 @@ public sealed class Sprint4IncrementBTests {
         Assert.False(bag.HasErrors,
             $"Pipeline produced unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
         Chunk chunk = GrobCompiler.Compile(unit, bag);
+        Assert.False(bag.HasErrors,
+            $"Compiler produced unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
         var output = new StringWriter(new StringBuilder());
         var vm = new VirtualMachine(output);
         vm.Run(chunk);
@@ -265,6 +267,25 @@ public sealed class Sprint4IncrementBTests {
             """);
         // 'msg' is local to the body; 'i' survives.
         Assert.Equal($"3{NL}", stdout);
+    }
+
+    /// <summary>
+    /// A local declared inside a <c>while</c> body is not visible after the loop:
+    /// referencing it produces E1001 (undefined identifier), proving the body
+    /// scope closes at the loop exit.
+    /// </summary>
+    [Fact]
+    public void WhileLoop_LocalInBody_NotVisibleAfterLoop() {
+        DiagnosticBag bag = TypeCheck("""
+            i := 0
+            while (i < 3) {
+                msg := "iter"
+                i = i + 1
+            }
+            print(msg)
+            """);
+        Assert.True(bag.HasErrors);
+        Assert.Single(bag.Errors, e => e.Code == "E1001");
     }
 
     // -----------------------------------------------------------------------
