@@ -690,4 +690,71 @@ public sealed class VirtualMachineConditionalTests {
 
         Assert.True(vm.Stack.Peek().AsBool());
     }
+
+    // -----------------------------------------------------------------------
+    // Float equality — IEEE 754 semantics (NaN != NaN)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// The <see cref="OpCode.Equal"/> opcode is the language-level <c>==</c> operator,
+    /// which is IEEE 754 for floats: <c>NaN == NaN</c> is <c>false</c>. It must use
+    /// <see cref="GrobValue"/>'s <c>==</c> operator, not the collection-friendly
+    /// <c>Equals</c> (where <c>NaN.Equals(NaN)</c> is <c>true</c> so maps can locate
+    /// NaN keys). NaN is not yet constructible from .grob source (scientific-notation
+    /// literals and stdlib math are post-MVP), so this is a VM-level guard.
+    /// </summary>
+    [Fact]
+    public void Equal_NaNvsNaN_ReturnsFalse() {
+        var chunk = new Chunk();
+        byte nan = ConstByte(chunk, GrobValue.FromFloat(double.NaN));
+
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(nan, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(nan, 1);
+        chunk.WriteOpCode(OpCode.Equal, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        Assert.False(vm.Stack.Peek().AsBool());
+    }
+
+    /// <summary>
+    /// Mirror of the above: <c>NaN != NaN</c> is <c>true</c> under IEEE 754.
+    /// </summary>
+    [Fact]
+    public void NotEqual_NaNvsNaN_ReturnsTrue() {
+        var chunk = new Chunk();
+        byte nan = ConstByte(chunk, GrobValue.FromFloat(double.NaN));
+
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(nan, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(nan, 1);
+        chunk.WriteOpCode(OpCode.NotEqual, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        Assert.True(vm.Stack.Peek().AsBool());
+    }
+
+    /// <summary>
+    /// Sanity guard that the IEEE switch does not break ordinary float equality:
+    /// two equal non-NaN floats still compare equal.
+    /// </summary>
+    [Fact]
+    public void Equal_SameFloat_ReturnsTrue() {
+        var chunk = new Chunk();
+        byte cf = ConstByte(chunk, GrobValue.FromFloat(2.5));
+
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(cf, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(cf, 1);
+        chunk.WriteOpCode(OpCode.Equal, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        Assert.True(vm.Stack.Peek().AsBool());
+    }
 }

@@ -301,13 +301,16 @@ public sealed class VirtualMachine {
                     case OpCode.Equal: {
                             GrobValue b = _stack.Pop();
                             GrobValue a = _stack.Pop();
-                            _stack.Push(GrobValue.FromBool(a.Equals(b)), line);
+                            // Language-level '==' uses GrobValue's IEEE 754 operator (NaN != NaN,
+                            // +0.0 == -0.0), NOT the collection-friendly Equals where NaN.Equals(NaN)
+                            // is true. See GrobValue.operator== and D-315.
+                            _stack.Push(GrobValue.FromBool(a == b), line);
                             break;
                         }
                     case OpCode.NotEqual: {
                             GrobValue b = _stack.Pop();
                             GrobValue a = _stack.Pop();
-                            _stack.Push(GrobValue.FromBool(!a.Equals(b)), line);
+                            _stack.Push(GrobValue.FromBool(a != b), line);
                             break;
                         }
                     case OpCode.LessInt: {

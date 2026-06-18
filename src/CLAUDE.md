@@ -275,6 +275,18 @@ FOR loops are lowered to WHILE by the compiler — the VM never sees a FOR opcod
 Forward jumps use backpatching; backward jumps (loops) use known positions. `&&` and
 `||` short-circuit via jumps, not dedicated opcodes.
 
+**Emission must respect the closed enum and the runtime representation — the type
+checker permitting an operation does not mean a direct opcode exists for the resolved
+operand types** (D-315). The set is intentionally asymmetric: string `<`/`>` have
+opcodes but `<=`/`>=` do not — lower the latter to the strict comparison plus `Not`
+(`a <= b ≡ !(a > b)`) rather than falling through to a wrong-typed opcode that faults
+the VM. When a value's static type is widened across branches or arms (the int/float
+ternary, the switch expression) coerce each branch at runtime — a unified static type
+alone leaves a narrower value on the stack and the VM faults on a kind mismatch. The
+equality opcodes `Equal`/`NotEqual` are the language `==`/`!=`: they use `GrobValue`'s
+IEEE 754 `operator==` (`NaN != NaN`), never the collection-friendly `Equals` where
+`NaN.Equals(NaN)` is true.
+
 ## Diagnostics infrastructure
 
 The `Diagnostics` namespace exists from Sprint 1: a `Diagnostic` record (severity,
