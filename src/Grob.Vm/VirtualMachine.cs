@@ -419,6 +419,16 @@ public sealed class VirtualMachine {
                                 ip += (hi << 8) | lo;
                             break;
                         }
+                    case OpCode.Loop: {
+                            // Unconditional backward jump (Sprint 4 Increment B).
+                            // The 2-byte big-endian offset is subtracted from the
+                            // instruction pointer after the two operand bytes are read,
+                            // landing exactly at the loop-top (condition start).
+                            int hi = chunk.ReadByte(ip++);
+                            int lo = chunk.ReadByte(ip++);
+                            ip -= (hi << 8) | lo;
+                            break;
+                        }
 
                     // --- Properties (Sprint 3 Increment D — partial; struct fields Sprint 5) ---
 
