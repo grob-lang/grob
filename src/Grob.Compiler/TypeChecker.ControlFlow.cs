@@ -26,16 +26,61 @@ public sealed partial class TypeChecker {
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Validates that the condition is <c>bool</c> (E0001), then walks the body
+    /// with <see cref="_loopDepth"/> incremented so that <c>break</c> and
+    /// <c>continue</c> inside the body are accepted.
+    /// </remarks>
     public override GrobType VisitWhile(WhileStmt node) {
-        Visit(node.Condition);
+        GrobType condType = Visit(node.Condition);
+        if (condType != GrobType.Bool && condType != GrobType.Error) {
+            EmitError(ErrorCatalog.E0001,
+                $"'while' condition must be 'bool'; found '{TypeName(condType)}'.",
+                node.Condition.Range);
+        }
+        _loopDepth++;
         Visit(node.Body);
+        _loopDepth--;
         return GrobType.Unknown;
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Validates that <c>break</c> appears inside a loop (<see cref="_loopDepth"/> &gt; 0).
+    /// A <c>break</c> inside a <c>select</c> case that is itself inside a loop is valid
+    /// because <c>select</c> (Increment D) does not push to <see cref="_loopDepth"/>.
+    /// </remarks>
+    public override GrobType VisitBreak(BreakStmt node) {
+        if (_loopDepth == 0)
+            EmitError(ErrorCatalog.E2211, "'break' used outside a loop.", node.Range);
+        return GrobType.Unknown;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Validates that <c>continue</c> appears inside a loop (<see cref="_loopDepth"/> &gt; 0).
+    /// A <c>continue</c> inside a <c>select</c> case that is itself inside a loop is valid
+    /// because <c>select</c> (Increment D) does not push to <see cref="_loopDepth"/>.
+    /// </remarks>
+    public override GrobType VisitContinue(ContinueStmt node) {
+        if (_loopDepth == 0)
+            EmitError(ErrorCatalog.E2212, "'continue' used outside a loop.", node.Range);
+        return GrobType.Unknown;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A <c>for...in</c> is a loop, so its body is walked with
+    /// <see cref="_loopDepth"/> incremented — <c>break</c> and <c>continue</c>
+    /// inside the body are accepted exactly as they are for <c>while</c>.
+    /// (Codegen for <c>for...in</c> lands in Increment C; this is the
+    /// loop-control placement rule only.)
+    /// </remarks>
     public override GrobType VisitForIn(ForInStmt node) {
         Visit(node.Iterable);
+        _loopDepth++;
         Visit(node.Body);
+        _loopDepth--;
         return GrobType.Unknown;
     }
 

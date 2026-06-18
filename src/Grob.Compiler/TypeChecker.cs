@@ -26,6 +26,15 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly DiagnosticBag _diagnostics;
     private readonly Stack<Dictionary<string, Symbol>> _scopes = new();
 
+    // -----------------------------------------------------------------------
+    // Loop-context depth (Sprint 4 Increment B).
+    // Incremented on entering a loop (while / for...in), decremented on exit.
+    // break / continue are valid only when _loopDepth > 0.
+    // select (Increment D) must NOT increment this — break/continue inside a
+    // select arm apply to the enclosing loop, not to the select.
+    // -----------------------------------------------------------------------
+    private int _loopDepth;
+
     /// <summary>Initialises a new <see cref="TypeChecker"/> that writes into <paramref name="diagnostics"/>.</summary>
     public TypeChecker(DiagnosticBag diagnostics) {
         ArgumentNullException.ThrowIfNull(diagnostics);

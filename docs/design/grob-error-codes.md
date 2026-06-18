@@ -105,6 +105,8 @@ read by `grob --explain Exxxx`.
 | E2208 | duplicate field name in type declaration           | Syntax            | pre-release           |
 | E2209 | trailing comma not permitted here                  | Syntax            | pre-release           |
 | E2210 | line continuation rule violation                   | Syntax            | pre-release           |
+| E2211 | `break` outside a loop                             | Syntax            | pre-release           |
+| E2212 | `continue` outside a loop                          | Syntax            | pre-release           |
 | E3001 | unknown plugin                                     | Module            | pre-release           |
 | E3002 | plugin not installed                               | Module            | pre-release           |
 | E3003 | circular import                                    | Module            | pre-release           |
@@ -659,6 +661,26 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** A statement spans multiple lines in a way the implicit line-continuation heuristic cannot resolve. Add explicit grouping or restructure.
 - **Source:** `grob-language-fundamentals.md` §14.
+
+---
+
+### E2211 — `break` outside a loop
+
+- **Category:** Syntax
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A `break` statement appeared outside the body of a `while` or `for...in` loop. `break` exits the innermost enclosing loop; there must be one. Inside a `select` case, `break` applies to the nearest enclosing loop — if none exists, this error is still raised.
+- **Source decision:** Sprint 4 Increment B.
+
+---
+
+### E2212 — `continue` outside a loop
+
+- **Category:** Syntax
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A `continue` statement appeared outside the body of a `while` or `for...in` loop. `continue` skips to the next iteration of the innermost enclosing loop; there must be one. Inside a `select` case, `continue` applies to the nearest enclosing loop — if none exists, this error is still raised.
+- **Source decision:** Sprint 4 Increment B.
 
 ---
 

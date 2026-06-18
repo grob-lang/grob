@@ -44,6 +44,47 @@ public sealed partial class Compiler : AstVisitor<object?> {
     // -----------------------------------------------------------------------
     private readonly Dictionary<ConstDecl, GrobValue> _constValues = [];
 
+    // -----------------------------------------------------------------------
+    // Loop-context stack (Sprint 4 Increment B).
+    //
+    // A LoopContext is pushed when compiling a while or for...in loop and popped
+    // when the loop exits.  break and continue resolve to the top context.
+    // select (Increment D) does NOT push a context — so break/continue inside a
+    // select case fall through to the nearest enclosing loop context, giving
+    // Increment D the correct semantics for free.
+    // -----------------------------------------------------------------------
+    private sealed class LoopContext {
+        private readonly List<int> _breakSites = [];
+
+        /// <summary>
+        /// Chunk offset that <c>continue</c> jumps back to.  For <c>while</c> this
+        /// is the loop top (the condition), set at loop entry.  It is settable so
+        /// that the <c>for...in</c> lowering in Increment C can retarget
+        /// <c>continue</c> at the increment step rather than the condition — the
+        /// counter must advance on every iteration, including a <c>continue</c>.
+        /// </summary>
+        public int ContinueTarget { get; set; }
+
+        /// <summary>
+        /// Value of <c>_nextSlot</c> at loop entry.  Used to compute how many
+        /// locals to pop before a <c>break</c> or <c>continue</c> that exits the
+        /// current local scope without running the normal <see cref="VisitBlock"/>
+        /// cleanup.
+        /// </summary>
+        public int BaseSlot { get; }
+
+        public LoopContext(int continueTarget, int baseSlot) {
+            ContinueTarget = continueTarget;
+            BaseSlot = baseSlot;
+        }
+
+        public void RecordBreak(int patchSite) => _breakSites.Add(patchSite);
+
+        public IReadOnlyList<int> BreakSites => _breakSites;
+    }
+
+    private readonly Stack<LoopContext> _loopContexts = new();
+
     private bool IsGlobalScope => _localScopes.Count == 0;
 
     private Compiler() { }
@@ -369,5 +410,36 @@ public sealed partial class Compiler : AstVisitor<object?> {
                 $"Jump offset {offset} overflows the 16-bit limit. The expression is too large.");
         _chunk.PatchByte(patchSite, (byte)(offset >> 8));
         _chunk.PatchByte(patchSite + 1, (byte)(offset & 0xFF));
+    }
+
+    /// <summary>
+    /// Emits a <see cref="OpCode.Loop"/> instruction (backward jump) that sends
+    /// the VM's instruction pointer back to <paramref name="loopStart"/>.
+    /// </summary>
+    /// <remarks>
+    /// Unlike forward jumps, the offset is computed immediately and written in-line
+    /// — no backpatching is needed because the loop-top position is always known
+    /// before the body is compiled.
+    /// <para>
+    /// Offset formula: <c>(chunk.Count + 2) − loopStart</c> (computed after the
+    /// opcode byte, before the two offset bytes).  The VM reads the two bytes
+    /// advancing its instruction pointer to <c>loopEnd</c>, then subtracts the
+    /// offset: <c>ip = loopEnd − offset = loopStart</c>.
+    /// </para>
+    /// </remarks>
+    /// <param name="loopStart">
+    /// Chunk offset of the first byte of the loop's condition — recorded before
+    /// any condition or body code is emitted.
+    /// </param>
+    /// <param name="line">Source line attributed to the opcode byte.</param>
+    internal void EmitLoop(int loopStart, int line) {
+        _chunk.WriteOpCode(OpCode.Loop, line);
+        // chunk.Count is now at the high-byte position; adding 2 gives loopEnd.
+        int offset = (_chunk.Count + 2) - loopStart;
+        if ((uint)offset > ushort.MaxValue)
+            throw new GrobInternalException(
+                $"Loop offset {offset} overflows the 16-bit limit. The loop body is too large.");
+        _chunk.WriteByte((byte)(offset >> 8), line);
+        _chunk.WriteByte((byte)(offset & 0xFF), line);
     }
 }

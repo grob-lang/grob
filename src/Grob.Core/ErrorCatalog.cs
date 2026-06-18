@@ -498,6 +498,24 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>`break` outside a loop</summary>
+    public static readonly ErrorDescriptor E2211 = new(
+        Code: "E2211",
+        Title: "`break` outside a loop",
+        Category: ErrorCategory.Syntax,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
+    /// <summary>`continue` outside a loop</summary>
+    public static readonly ErrorDescriptor E2212 = new(
+        Code: "E2212",
+        Title: "`continue` outside a loop",
+        Category: ErrorCategory.Syntax,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     // ---- Module / import — E3001–E3999 ----
 
     /// <summary>unknown plugin</summary>
@@ -948,6 +966,8 @@ public static class ErrorCatalog {
         E2208,
         E2209,
         E2210,
+        E2211,
+        E2212,
         E3001,
         E3002,
         E3003,
