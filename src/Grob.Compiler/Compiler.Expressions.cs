@@ -392,6 +392,118 @@ public sealed partial class Compiler {
     }
 
     // -----------------------------------------------------------------------
+    // Switch expression
+    //
+    // Jump-based, value-leaving: the subject is evaluated once into a synthetic
+    // local; each non-final arm re-loads it, applies the pattern test and
+    // JumpIfFalse skips to the next arm; a matched arm evaluates its result and
+    // stores it back into the subject slot with SetLocal — leaving exactly one
+    // value on the stack — then Jumps to the end. The final arm is the untested
+    // fall-through tail (exhaustiveness, proven by the type checker, guarantees it
+    // matches). Unlike select, no trailing PopN: the result value is the
+    // expression's value and stays on the stack.
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public override object? VisitSwitchExpr(SwitchExprNode node) {
+        int line = node.Range.Start.Line;
+        GrobType subjectType = GetExprType(node.Subject);
+        GrobType resultType = GetSwitchExprResultType(node);
+
+        _localScopes.Push([]);
+        int scopeBase = _nextSlot;
+        Visit(node.Subject);
+        int subjectSlot = DeclareLocalSlot("$subject");
+
+        var endJumps = new List<int>();
+        int armCount = node.Arms.Count;
+        for (int i = 0; i < armCount; i++) {
+            SwitchArm arm = node.Arms[i];
+            bool isTail = i == armCount - 1;
+            // The last arm — and any catch-all — is the untested fall-through.
+            bool tested = !isTail && arm.Pattern is not CatchAllPattern;
+
+            int nextArmJump = -1;
+            if (tested) {
+                EmitGetLocal(subjectSlot, line);
+                EmitPatternTest(arm.Pattern, subjectType, line);
+                nextArmJump = EmitJump(OpCode.JumpIfFalse, line);
+            }
+
+            Visit(arm.Result);
+            CoerceArmToFloat(arm.Result, resultType);
+            EmitSetLocal(subjectSlot, line); // store result into the subject slot
+
+            if (!isTail) {
+                endJumps.Add(EmitJump(OpCode.Jump, line));
+            }
+            if (tested) {
+                PatchJump(nextArmJump);
+            }
+        }
+
+        foreach (int site in endJumps) PatchJump(site);
+
+        _localScopes.Pop();
+        _nextSlot = scopeBase; // the result is an unnamed operand-stack temporary at scopeBase
+        return null;
+    }
+
+    // Emits a boolean pattern test with the subject already loaded as the left operand.
+    private void EmitPatternTest(SwitchPattern pattern, GrobType subjectType, int line) {
+        if (pattern is ValuePattern vp) {
+            Visit(vp.Value);
+            _chunk.WriteOpCode(OpCode.Equal, line); // type-agnostic, mirrors select
+        } else if (pattern is RelationalPattern rp) {
+            EmitRelationalPatternTest(rp, subjectType, line);
+        }
+        // CatchAllPattern is never tested — the caller treats it as an untested arm.
+    }
+
+    // Emits a relational pattern test: subject (left, already loaded) compared with the
+    // operand (right). Mirrors EmitComparison — int↔float coercion and the string
+    // '<='/'>=' lowering to strict-plus-Not (the closed enum has no string opcode for them).
+    private void EmitRelationalPatternTest(RelationalPattern rp, GrobType subjectType, int line) {
+        GrobType operandType = GetExprType(rp.Operand);
+        if (subjectType == GrobType.Int && operandType == GrobType.Float)
+            _chunk.WriteOpCode(OpCode.IntToFloat, line);
+        Visit(rp.Operand);
+        if (operandType == GrobType.Int && subjectType == GrobType.Float)
+            _chunk.WriteOpCode(OpCode.IntToFloat, line);
+
+        if (subjectType == GrobType.String &&
+            (rp.Op == BinaryOperator.LessEqual || rp.Op == BinaryOperator.GreaterEqual)) {
+            OpCode strict = rp.Op == BinaryOperator.LessEqual ? OpCode.GreaterString : OpCode.LessString;
+            _chunk.WriteOpCode(strict, line);
+            _chunk.WriteOpCode(OpCode.Not, line);
+            return;
+        }
+
+        _chunk.WriteOpCode(GetComparisonOpCode(rp.Op, subjectType, operandType), line);
+    }
+
+    /// <summary>
+    /// The result type of a switch expression is all its arm results unified, mirroring
+    /// the type checker's <see cref="TypeChecker.UnifyTernaryArms"/> widening so parent
+    /// opcode selection sees the unified type. The program has type-checked clean by
+    /// emission time, so the arms are known to unify.
+    /// </summary>
+    private static GrobType GetSwitchExprResultType(SwitchExprNode node) {
+        GrobType result = GrobType.Error;
+        bool have = false;
+        foreach (SwitchArm arm in node.Arms) {
+            GrobType armType = GetExprType(arm.Result);
+            if (!have) {
+                result = armType;
+                have = true;
+            } else {
+                result = WidenArmTypes(result, armType);
+            }
+        }
+        return result;
+    }
+
+    // -----------------------------------------------------------------------
     // Member access (optional chaining)
     // -----------------------------------------------------------------------
 
@@ -534,6 +646,7 @@ public sealed partial class Compiler {
         UnaryExpr u => GetUnaryResultType(u),
         BinaryExpr b => GetBinaryResultType(b),
         TernaryExpr t => GetTernaryResultType(t),
+        SwitchExprNode s => GetSwitchExprResultType(s),
         _ => GrobType.Unknown
     };
 
@@ -544,15 +657,22 @@ public sealed partial class Compiler {
     /// already type-checked clean by emission time, so the arms are known to unify;
     /// the then-arm type is the conservative fallback.
     /// </summary>
-    private static GrobType GetTernaryResultType(TernaryExpr node) {
-        GrobType thenType = GetExprType(node.Then);
-        GrobType elseType = GetExprType(node.Else);
-        if (thenType == elseType) return thenType;
-        if ((thenType == GrobType.Int && elseType == GrobType.Float) ||
-            (thenType == GrobType.Float && elseType == GrobType.Int)) return GrobType.Float;
-        if (GrobTypeHelpers.ToNullable(thenType) == elseType) return elseType;
-        if (GrobTypeHelpers.ToNullable(elseType) == thenType) return thenType;
-        return thenType;
+    private static GrobType GetTernaryResultType(TernaryExpr node) =>
+        WidenArmTypes(GetExprType(node.Then), GetExprType(node.Else));
+
+    /// <summary>
+    /// Widens two arm types to their unified type — the int/float and <c>T</c>/<c>T?</c>
+    /// promotions the type checker's <see cref="TypeChecker.UnifyTernaryArms"/> applies.
+    /// Used by both the ternary and the switch expression at emission time, where the
+    /// arms are already known to unify, so the first arm is the conservative fallback.
+    /// </summary>
+    private static GrobType WidenArmTypes(GrobType first, GrobType second) {
+        if (first == second) return first;
+        if ((first == GrobType.Int && second == GrobType.Float) ||
+            (first == GrobType.Float && second == GrobType.Int)) return GrobType.Float;
+        if (GrobTypeHelpers.ToNullable(first) == second) return second;
+        if (GrobTypeHelpers.ToNullable(second) == first) return first;
+        return first;
     }
 
     private static GrobType GetUnaryResultType(UnaryExpr node) => node.Operator switch {

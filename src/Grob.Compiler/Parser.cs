@@ -850,10 +850,76 @@ public sealed class Parser {
                         e = new IndexExpr(RangeBetween(e.Range.Start, rb.Location), e, idx);
                         break;
                     }
+                case TokenKind.Switch: {
+                        Advance(); // consume 'switch'
+                        Expect(TokenKind.LeftBrace, _e2001, "expected '{' to open switch body");
+                        List<SwitchArm> arms = ParseSwitchArms();
+                        Token rb = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close switch body");
+                        e = new SwitchExprNode(RangeBetween(e.Range.Start, rb.Location), e, arms);
+                        break;
+                    }
                 default:
                     return e;
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Switch expression (§3.1) — comma-separated `pattern => result` arms, an
+    // optional trailing comma, newlines permitted around separators.
+    // -----------------------------------------------------------------------
+
+    private List<SwitchArm> ParseSwitchArms() {
+        List<SwitchArm> arms = [];
+        SkipNewlines();
+        if (Check(TokenKind.RightBrace)) return arms;
+        arms.Add(ParseSwitchArm());
+        while (Match(TokenKind.Comma)) {
+            SkipNewlines();
+            if (Check(TokenKind.RightBrace)) break; // trailing comma
+            arms.Add(ParseSwitchArm());
+        }
+        SkipNewlines();
+        return arms;
+    }
+
+    private SwitchArm ParseSwitchArm() {
+        SourceLocation start = Current.Location;
+        SwitchPattern pattern = ParseSwitchPattern();
+        Expect(TokenKind.Arrow, _e2001, "expected '=>' after switch pattern");
+        Expression result = ParseExpression();
+        return new SwitchArm(RangeFrom(start), pattern, result);
+    }
+
+    private SwitchPattern ParseSwitchPattern() {
+        // Catch-all: the identifier '_'.
+        if (Check(TokenKind.Identifier) && Current.Lexeme == "_") {
+            Token underscore = Advance();
+            return new CatchAllPattern(new SourceRange(underscore.Location, underscore.Location));
+        }
+
+        // Relational pattern: a leading comparison operator over a constant operand.
+        BinaryOperator? relOp = Current.Kind switch {
+            TokenKind.Less => BinaryOperator.Less,
+            TokenKind.LessEqual => BinaryOperator.LessEqual,
+            TokenKind.Greater => BinaryOperator.Greater,
+            TokenKind.GreaterEqual => BinaryOperator.GreaterEqual,
+            _ => null,
+        };
+        if (relOp is not null) {
+            SourceLocation start = Current.Location;
+            Advance();
+            // ParseTernary (not ParseExpression) so a `pattern => result` arm is not
+            // misread as a lambda — `=>` is the arm arrow, not a lambda body.
+            Expression operand = ParseTernary();
+            return new RelationalPattern(RangeBetween(start, operand.Range.End), relOp.Value, operand);
+        }
+
+        // Value pattern: a constant expression of the scrutinee's type. ParseTernary
+        // (not ParseExpression) keeps the following `=>` as the arm arrow rather than a
+        // lambda body.
+        Expression value = ParseTernary();
+        return new ValuePattern(value.Range, value);
     }
 
     private List<CallArgument> ParseCallArguments() {

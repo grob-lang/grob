@@ -58,6 +58,23 @@ public abstract class AstWalker : AstVisitor<Unit> {
     }
 
     /// <inheritdoc/>
+    public override Unit VisitSwitchExpr(SwitchExprNode node) {
+        Visit(node.Subject);
+        foreach (SwitchArm arm in node.Arms) {
+            switch (arm.Pattern) {
+                case ValuePattern vp:
+                    Visit(vp.Value);
+                    break;
+                case RelationalPattern rp:
+                    Visit(rp.Operand);
+                    break;
+            }
+            Visit(arm.Result);
+        }
+        return default;
+    }
+
+    /// <inheritdoc/>
     public override Unit VisitArrayLiteral(ArrayLiteralExpr node) {
         foreach (Expression element in node.Elements) {
             Visit(element);

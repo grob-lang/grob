@@ -66,6 +66,9 @@ public abstract class AstVisitor<T> {
     /// <summary>Hook for <see cref="TernaryExpr"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
     public virtual T VisitTernary(TernaryExpr node) => DefaultVisit(node);
 
+    /// <summary>Hook for <see cref="SwitchExprNode"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
+    public virtual T VisitSwitchExpr(SwitchExprNode node) => DefaultVisit(node);
+
     /// <summary>Hook for <see cref="ArrayLiteralExpr"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
     public virtual T VisitArrayLiteral(ArrayLiteralExpr node) => DefaultVisit(node);
 
