@@ -430,19 +430,66 @@ public sealed class VirtualMachine {
                             break;
                         }
 
-                    // --- Properties (Sprint 3 Increment D — partial; struct fields Sprint 5) ---
+                    // --- Arrays and maps (Sprint 4 Increment C — for...in iteration surface) ---
+
+                    case OpCode.NewArray: {
+                            // 1-byte element count. Pop that many values (LIFO) and
+                            // reverse-fill so the array preserves source order.
+                            byte count = chunk.ReadByte(ip++);
+                            var elements = new GrobValue[count];
+                            for (int i = count - 1; i >= 0; i--) elements[i] = _stack.Pop();
+                            _stack.Push(GrobValue.FromArray(new GrobArray(elements)), line);
+                            break;
+                        }
+                    case OpCode.GetIndex: {
+                            // array[int] → element (E5101 out of range); map[string] → value
+                            // or nil on a miss (map lookup is V?, not a throw).
+                            GrobValue index = _stack.Pop();
+                            GrobValue receiver = _stack.Pop();
+                            if (receiver.TryAsArray(out GrobArray? array)) {
+                                long i = index.AsInt();
+                                if (i < 0 || i >= array!.Count)
+                                    throw new GrobRuntimeException(ErrorCatalog.E5101.Code, line, column,
+                                        $"array index {i} is out of range for an array of length {array!.Count}");
+                                _stack.Push(array[(int)i], line);
+                            } else if (receiver.TryAsMap(out GrobMap? map)) {
+                                _stack.Push(
+                                    map!.TryGetValue(index.AsString(), out GrobValue value) ? value : GrobValue.Nil,
+                                    line);
+                            } else if (receiver.IsNil) {
+                                throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column,
+                                    "nil dereference: cannot index nil value");
+                            } else {
+                                throw new GrobInternalException(
+                                    $"GetIndex on receiver of kind {receiver.Kind} is not supported.");
+                            }
+                            break;
+                        }
+
+                    // --- Properties (struct fields Sprint 5; array.length and map.keys here) ---
 
                     case OpCode.GetProperty: {
-                            // 1-byte name-index operand; consumed here, used in Sprint 5.
-                            ip++;
+                            byte nameIdx = chunk.ReadByte(ip++);
+                            string propertyName = chunk.ReadConstant(nameIdx).AsString();
                             GrobValue receiver = _stack.Pop();
                             // Nil receiver raises E5201 (nil dereference at runtime).
-                            // Struct field resolution is deferred to Sprint 5.
                             if (receiver.IsNil)
                                 throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column,
                                     "nil dereference: cannot access member on nil value");
+                            if (receiver.TryAsArray(out GrobArray? array) && propertyName == "length") {
+                                _stack.Push(GrobValue.FromInt(array!.Count), line);
+                                break;
+                            }
+                            if (receiver.TryAsMap(out GrobMap? map) && propertyName == "keys") {
+                                var keys = new GrobArray(
+                                    map!.InsertionOrderKeys.Select(GrobValue.FromString));
+                                _stack.Push(GrobValue.FromArray(keys), line);
+                                break;
+                            }
+                            // Struct field resolution is deferred to Sprint 5.
                             throw new GrobInternalException(
-                                $"opcode {OpCode.GetProperty} on non-nil receiver not yet implemented (Sprint 5)");
+                                $"opcode {OpCode.GetProperty} '{propertyName}' on receiver of kind " +
+                                $"{receiver.Kind} not yet implemented (Sprint 5).");
                         }
 
                     // --- Top-level return ends this chunk's execution ---

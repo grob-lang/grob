@@ -72,6 +72,10 @@ read by `grob --explain Exxxx`.
 | E0302 | recursive type without indirection                 | Type              | pre-release           |
 | E0401 | generic type argument count mismatch               | Type              | pre-release           |
 | E0402 | generic constraint violation                       | Type              | pre-release           |
+| E0501 | `for...in` subject is not iterable                 | Type              | pre-release           |
+| E0502 | single-identifier `for...in` over a `map`          | Type              | pre-release           |
+| E0503 | descending range without explicit negative `step`  | Type              | pre-release           |
+| E0504 | reassignment of `for...in` iterator variable       | Type              | pre-release           |
 | E1001 | undefined identifier                               | Name resolution   | pre-release           |
 | E1002 | undefined member                                   | Name resolution   | pre-release           |
 | E1003 | undefined module                                   | Name resolution   | pre-release           |
@@ -348,6 +352,46 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** A generic type argument does not satisfy the constraint declared on the type parameter, e.g. `sort<U: Comparable>` called with a non-comparable `U`.
 - **Source decision:** D-281.
+
+---
+
+### E0501 — `for...in` subject is not iterable
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** The subject of a `for...in` loop is not an array, a map or a numeric range. Only those three forms can be iterated.
+- **Source decision:** Sprint 4 Increment C.
+
+---
+
+### E0502 — single-identifier `for...in` over a `map`
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A `for...in` loop over a `map` must bind two identifiers (`for k, v in m`). Iterate the keys alone with `for k in m.keys`.
+- **Source decision:** Sprint 4 Increment C.
+
+---
+
+### E0503 — descending range without explicit negative `step`
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A numeric range whose start bound is greater than its end bound descends, and a descending range requires an explicit negative `step`. Add `step -1` (or another negative step) to iterate downward.
+- **Source decision:** Sprint 4 Increment C.
+
+---
+
+### E0504 — reassignment of `for...in` iterator variable
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** The iteration variable of a `for...in` loop (`item`, the index `i`, or the map `k`/`v`) is immutable within the loop body and cannot be reassigned. Copy it to a `:=` binding to mutate a local.
+- **Source decision:** Sprint 4 Increment C.
 
 ---
 
@@ -1142,3 +1186,5 @@ None as of v1.
 _Initial allocation: 94 codes across 7 categories. All `pre-release` until v1.0 ships. Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule)._
 
 _Updated May 2026 — count corrected from a stale "86 codes" to the actual 94 codes present in the summary index and full entries. No codes were added in this edit; the footer total had not been updated as codes accrued. The 7-category structure (E0xxx–E9xxx) is unchanged._
+
+_Updated June 2026 — Sprint 4 Increment C added the `for...in` iteration diagnostics E0501–E0504 in the previously empty E05xx sub-block of the Type category, bringing the total to 98 codes._

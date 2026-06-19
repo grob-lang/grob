@@ -158,6 +158,11 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             "string" => GrobType.String,
             "bool" => GrobType.Bool,
             "nil" => GrobType.Nil,
+            // Unparameterised collection tags (Sprint 4 Increment C). Element/key/value
+            // type tracking awaits generics (Sprint 5); the bare tag is enough for the
+            // for...in lowering to select an iteration shape.
+            "array" => GrobType.Array,
+            "map" => GrobType.Map,
             _ => GrobType.Unknown, // void, user-defined types, generics — deferred Sprint 5+
         };
         return typeRef.IsNullable ? GrobTypeHelpers.ToNullable(baseType) : baseType;
@@ -247,6 +252,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         GrobType.NullableFloat => "float?",
         GrobType.NullableString => "string?",
         GrobType.NullableBool => "bool?",
+        GrobType.Array => "array",
+        GrobType.Map => "map",
         _ => "unknown",
     };
 

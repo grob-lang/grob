@@ -141,6 +141,12 @@ public sealed partial class TypeChecker {
     }
 
     private GrobType ResolveComparison(BinaryExpr node, GrobType left, GrobType right) {
+        // An operand of unknown type (e.g. an array element, whose element type is
+        // untracked until generics) is permissive: a comparison always yields bool.
+        // '==' / '!=' compile to the type-agnostic Equal/NotEqual; a relational
+        // operator falls to the int comparison, correct for the int element case.
+        if (left == GrobType.Unknown || right == GrobType.Unknown) return GrobType.Bool;
+
         // == and != accept same-type operands or mixed numeric operands.
         if (node.Operator == BinaryOperator.Equal || node.Operator == BinaryOperator.NotEqual) {
             if (left == right || BothNumeric(left, right)) return GrobType.Bool;
@@ -261,9 +267,15 @@ public sealed partial class TypeChecker {
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Resolves to <see cref="GrobType.Array"/> so a <c>for...in</c> subject can
+    /// be recognised as iterable. Element-type tracking awaits generics (Sprint 5),
+    /// so the array's element type is not inferred here — iteration over the array
+    /// binds <c>item</c> as <see cref="GrobType.Unknown"/>.
+    /// </remarks>
     public override GrobType VisitArrayLiteral(ArrayLiteralExpr node) {
         foreach (Expression element in node.Elements) Visit(element);
-        return GrobType.Unknown;
+        return GrobType.Array;
     }
 
     /// <inheritdoc/>
@@ -322,10 +334,29 @@ public sealed partial class TypeChecker {
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// A numeric range only appears as a <c>for...in</c> subject. Validates that
+    /// the bounds and any <c>step</c> are <c>int</c> (E0001) and that a literal
+    /// descending range carries an explicit negative <c>step</c> (E0503).
+    /// </remarks>
     public override GrobType VisitNumericRange(NumericRangeExpr node) {
-        Visit(node.Start);
-        Visit(node.End);
-        if (node.Step is not null) Visit(node.Step);
+        GrobType startType = Visit(node.Start);
+        GrobType endType = Visit(node.End);
+        GrobType stepType = node.Step is not null ? Visit(node.Step) : GrobType.Int;
+
+        RequireIntRangeComponent(startType, node.Start.Range, "start bound");
+        RequireIntRangeComponent(endType, node.End.Range, "end bound");
+        if (node.Step is not null)
+            RequireIntRangeComponent(stepType, node.Step.Range, "step");
+
+        // A descending range needs an explicit negative step. Detectable only when
+        // both bounds are integer literals; otherwise the direction is a runtime
+        // property and is not rejected here.
+        if (node.Step is null && IsLiteralDescending(node)) {
+            EmitError(ErrorCatalog.E0503,
+                "A descending numeric range requires an explicit negative 'step', as in '..' step -1'.",
+                node.Range);
+        }
         return GrobType.Unknown;
     }
 

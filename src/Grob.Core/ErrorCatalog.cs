@@ -197,6 +197,42 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>`for...in` subject is not iterable</summary>
+    public static readonly ErrorDescriptor E0501 = new(
+        Code: "E0501",
+        Title: "`for...in` subject is not iterable",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
+    /// <summary>single-identifier `for...in` over a `map`</summary>
+    public static readonly ErrorDescriptor E0502 = new(
+        Code: "E0502",
+        Title: "single-identifier `for...in` over a `map`",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
+    /// <summary>descending range without explicit negative `step`</summary>
+    public static readonly ErrorDescriptor E0503 = new(
+        Code: "E0503",
+        Title: "descending range without explicit negative `step`",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
+    /// <summary>reassignment of `for...in` iterator variable</summary>
+    public static readonly ErrorDescriptor E0504 = new(
+        Code: "E0504",
+        Title: "reassignment of `for...in` iterator variable",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     // ---- Name resolution — E1001–E1999 ----
 
     /// <summary>undefined identifier</summary>
@@ -933,6 +969,10 @@ public static class ErrorCatalog {
         E0302,
         E0401,
         E0402,
+        E0501,
+        E0502,
+        E0503,
+        E0504,
         E1001,
         E1002,
         E1003,
