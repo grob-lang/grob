@@ -394,10 +394,10 @@ public sealed class TypeCheckerTests {
         Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
     }
 
-    /// <summary>A <c>for x in xs</c> loop type-checks without error.</summary>
+    /// <summary>A <c>for x in xs</c> loop over an array type-checks without error.</summary>
     [Fact]
     public void ControlFlow_ForIn_NoError() {
-        (_, DiagnosticBag bag) = TypeCheckSource("xs := nil\nfor v in xs { }\n");
+        (_, DiagnosticBag bag) = TypeCheckSource("xs := [1, 2, 3]\nfor v in xs { }\n");
         Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
     }
 

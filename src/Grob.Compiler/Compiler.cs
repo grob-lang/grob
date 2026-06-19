@@ -55,32 +55,49 @@ public sealed partial class Compiler : AstVisitor<object?> {
     // -----------------------------------------------------------------------
     private sealed class LoopContext {
         private readonly List<int> _breakSites = [];
+        private readonly List<int> _continueSites = [];
 
         /// <summary>
-        /// Chunk offset that <c>continue</c> jumps back to.  For <c>while</c> this
-        /// is the loop top (the condition), set at loop entry.  It is settable so
-        /// that the <c>for...in</c> lowering in Increment C can retarget
-        /// <c>continue</c> at the increment step rather than the condition — the
-        /// counter must advance on every iteration, including a <c>continue</c>.
+        /// Chunk offset that a backward-jumping <c>continue</c> targets.  For
+        /// <c>while</c> this is the loop top (the condition), set at loop entry.
+        /// Unused when <see cref="HasForwardContinue"/> is <c>true</c> — the
+        /// <c>for...in</c> lowering needs <c>continue</c> to reach the increment
+        /// step, which sits <em>after</em> the body, so it forward-jumps and
+        /// backpatches via <see cref="ContinueSites"/> instead.
         /// </summary>
         public int ContinueTarget { get; set; }
 
         /// <summary>
-        /// Value of <c>_nextSlot</c> at loop entry.  Used to compute how many
-        /// locals to pop before a <c>break</c> or <c>continue</c> that exits the
-        /// current local scope without running the normal <see cref="VisitBlock"/>
-        /// cleanup.
+        /// Value of <c>_nextSlot</c> at loop entry (for <c>while</c>) or just above
+        /// the synthetic iteration locals (for <c>for...in</c>).  Used to compute
+        /// how many locals to pop before a <c>break</c> or <c>continue</c> that
+        /// exits the current local scope without running the normal
+        /// <see cref="VisitBlock"/> cleanup.
         /// </summary>
         public int BaseSlot { get; }
 
-        public LoopContext(int continueTarget, int baseSlot) {
+        /// <summary>
+        /// When <c>true</c>, <c>continue</c> emits a forward <see cref="OpCode.Jump"/>
+        /// (recorded on <see cref="ContinueSites"/> and backpatched to the increment
+        /// step when the loop closes) rather than a backward <see cref="OpCode.Loop"/>.
+        /// Set by the <c>for...in</c> lowering so the counter advances on every
+        /// iteration, including one ended by <c>continue</c>.
+        /// </summary>
+        public bool HasForwardContinue { get; }
+
+        public LoopContext(int continueTarget, int baseSlot, bool hasForwardContinue = false) {
             ContinueTarget = continueTarget;
             BaseSlot = baseSlot;
+            HasForwardContinue = hasForwardContinue;
         }
 
         public void RecordBreak(int patchSite) => _breakSites.Add(patchSite);
 
         public IReadOnlyList<int> BreakSites => _breakSites;
+
+        public void RecordContinue(int patchSite) => _continueSites.Add(patchSite);
+
+        public IReadOnlyList<int> ContinueSites => _continueSites;
     }
 
     private readonly Stack<LoopContext> _loopContexts = new();

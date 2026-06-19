@@ -65,7 +65,10 @@ public sealed partial class TypeChecker {
         GrobType valueType = Visit(node.Value);
 
         // Type-check: value must be assignable to the binding's declared type.
-        if (symbol.Type != GrobType.Error && valueType != GrobType.Error &&
+        // An Unknown target type (e.g. a not-yet-tracked array element binding) is
+        // permissive — there is nothing concrete to check against.
+        if (symbol.Type != GrobType.Error && symbol.Type != GrobType.Unknown &&
+            valueType != GrobType.Error &&
             !TypesAreAssignable(valueType, symbol.Type)) {
             EmitError(PickAssignabilityError(valueType, symbol.Type),
                 $"Cannot assign value of type '{TypeName(valueType)}' to binding '{target.Name}' of type '{TypeName(symbol.Type)}'.",
@@ -178,6 +181,10 @@ public sealed partial class TypeChecker {
         else if (symbol.DeclarationNode is ReadonlyDecl)
             EmitError(ErrorCatalog.E0202,
                 $"Cannot reassign 'readonly' binding '{target.Name}'.", target.Range);
+        else if (symbol.DeclarationNode is ForInStmt)
+            EmitError(ErrorCatalog.E0504,
+                $"Cannot reassign 'for...in' iteration variable '{target.Name}'; it is immutable within the loop body.",
+                target.Range);
 
         target.ResolvedType = symbol.Type;
         target.Declaration = symbol.DeclarationNode;

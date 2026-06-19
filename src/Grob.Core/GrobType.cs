@@ -47,4 +47,20 @@ public enum GrobType {
 
     /// <summary>Nullable boolean — the Grob <c>bool?</c> type.</summary>
     NullableBool,
+
+    // ---- Collection types — Sprint 4 Increment C (for...in iteration surface) ----
+
+    /// <summary>
+    /// Array — the Grob <c>array</c> type. Element type tracking awaits generics
+    /// (Sprint 5); for now this is the unparameterised array tag the <c>for...in</c>
+    /// lowering reads to select the array iteration shape.
+    /// </summary>
+    Array,
+
+    /// <summary>
+    /// Map — the Grob <c>map</c> type. Key and value type tracking awaits generics
+    /// (Sprint 5); for now this is the unparameterised map tag the <c>for...in</c>
+    /// lowering reads to select the map iteration shape.
+    /// </summary>
+    Map,
 }

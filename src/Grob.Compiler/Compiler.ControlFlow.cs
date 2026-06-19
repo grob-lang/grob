@@ -114,9 +114,254 @@ public sealed partial class Compiler {
             _chunk.WriteByte(ToByteOperand(localsToPop, "continue locals pop"), line);
         }
 
-        EmitLoop(ctx.ContinueTarget, line);
+        if (ctx.HasForwardContinue) {
+            // for...in: the increment step sits after the body, so continue must
+            // forward-jump to it. The site is backpatched in VisitForIn.
+            int site = EmitJump(OpCode.Jump, line);
+            ctx.RecordContinue(site);
+        } else {
+            // while: continue re-evaluates the condition at the loop top.
+            EmitLoop(ctx.ContinueTarget, line);
+        }
         return null;
     }
+
+    // -----------------------------------------------------------------------
+    // for...in  (Sprint 4 Increment C)
+    //
+    // Every form lowers to the while machine over the Increment B loop-context
+    // model. The synthetic iteration locals (counter, limit, step, keys array,
+    // map) live in a scope spanning the loop; the visible iteration variables
+    // (item, k, v) are re-bound in a fresh body scope each iteration so they are
+    // immutable per-iteration bindings. 'continue' targets the increment step via
+    // a forward jump (HasForwardContinue) so the counter always advances.
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public override object? VisitForIn(ForInStmt node) {
+        int line = node.Range.Start.Line;
+
+        // The iteration locals must be stack locals even at top level, so a scope
+        // is opened for them. GetLocal/SetLocal/IncrementInt then address them.
+        _localScopes.Push([]);
+        int forScopeBase = _nextSlot;
+
+        if (node.Iterable is NumericRangeExpr range)
+            EmitRangeForIn(node, range, line);
+        else if (GetExprType(node.Iterable) == GrobType.Map)
+            EmitMapForIn(node, line);
+        else
+            EmitArrayForIn(node, line);
+
+        _localScopes.Pop();
+        _nextSlot = forScopeBase;
+        return null;
+    }
+
+    /// <summary>
+    /// Numeric-range lowering. The counter is the visible loop variable, held in a
+    /// for-scope local; the end bound and optional step are synthetic for-scope
+    /// locals. Ascending iteration compares with <c>&lt;=</c> (inclusive) and steps
+    /// by <c>++</c> or <c>+= step</c>; a negative literal step compares with
+    /// <c>&gt;=</c> and steps by <c>+= step</c>.
+    /// </summary>
+    private void EmitRangeForIn(ForInStmt node, NumericRangeExpr range, int line) {
+        Visit(range.Start);
+        int counter = DeclareLocalSlot(node.Variables[0]);
+        Visit(range.End);
+        int limit = DeclareLocalSlot("$hi");
+
+        bool descending = IsNegativeStepLiteral(range.Step);
+        bool hasStep = range.Step is not null;
+        int stepSlot = -1;
+        if (hasStep) {
+            Visit(range.Step!);
+            stepSlot = DeclareLocalSlot("$step");
+        }
+
+        int syntheticCount = hasStep ? 3 : 2;
+        OpCode compare = descending ? OpCode.GreaterEqualInt : OpCode.LessEqualInt;
+
+        EmitForInLoop(node, syntheticCount, line,
+            emitCondition: () => {
+                EmitGetLocal(counter, line);
+                EmitGetLocal(limit, line);
+                _chunk.WriteOpCode(compare, line);
+            },
+            emitIteratorBindings: () => { /* counter is the visible variable */ },
+            emitIncrement: () => {
+                if (hasStep) {
+                    EmitGetLocal(counter, line);
+                    EmitGetLocal(stepSlot, line);
+                    _chunk.WriteOpCode(OpCode.AddInt, line);
+                    EmitSetLocal(counter, line);
+                } else {
+                    EmitIncrementLocal(counter, line);
+                }
+            });
+    }
+
+    /// <summary>
+    /// Array lowering for both the single form (<c>for item in arr</c>) and the
+    /// index form (<c>for i, item in arr</c>). A synthetic array local and counter
+    /// drive <c>i &lt; arr.length</c>; <c>item</c> is re-bound from <c>arr[i]</c>
+    /// each iteration. In the index form the counter is the visible <c>i</c>.
+    /// </summary>
+    private void EmitArrayForIn(ForInStmt node, int line) {
+        bool indexForm = node.Variables.Count == 2;
+        Visit(node.Iterable);
+        int array = DeclareLocalSlot("$arr");
+
+        EmitConstant(GrobValue.FromInt(0L), line);
+        int counter = DeclareLocalSlot(indexForm ? node.Variables[0] : "$i");
+        string itemName = indexForm ? node.Variables[1] : node.Variables[0];
+
+        EmitForInLoop(node, syntheticCount: 2, line,
+            emitCondition: () => {
+                EmitGetLocal(counter, line);
+                EmitGetLocal(array, line);
+                EmitGetProperty("length", line);
+                _chunk.WriteOpCode(OpCode.LessInt, line);
+            },
+            emitIteratorBindings: () => {
+                EmitGetLocal(array, line);
+                EmitGetLocal(counter, line);
+                _chunk.WriteOpCode(OpCode.GetIndex, line);
+                DeclareLocalSlot(itemName);
+            },
+            emitIncrement: () => EmitIncrementLocal(counter, line));
+    }
+
+    /// <summary>
+    /// Map lowering (<c>for k, v in m</c>). The map and its insertion-order keys
+    /// array are materialised once into for-scope locals before the loop; the
+    /// counter walks the keys array. Each iteration binds <c>k = keys[i]</c> then
+    /// <c>v = m[k]</c>.
+    /// </summary>
+    private void EmitMapForIn(ForInStmt node, int line) {
+        Visit(node.Iterable);
+        int map = DeclareLocalSlot("$map");
+
+        EmitGetLocal(map, line);
+        EmitGetProperty("keys", line); // materialise the keys array exactly once
+        int keys = DeclareLocalSlot("$keys");
+
+        EmitConstant(GrobValue.FromInt(0L), line);
+        int counter = DeclareLocalSlot("$i");
+
+        string keyName = node.Variables[0];
+        string valueName = node.Variables[1];
+
+        EmitForInLoop(node, syntheticCount: 3, line,
+            emitCondition: () => {
+                EmitGetLocal(counter, line);
+                EmitGetLocal(keys, line);
+                EmitGetProperty("length", line);
+                _chunk.WriteOpCode(OpCode.LessInt, line);
+            },
+            emitIteratorBindings: () => {
+                EmitGetLocal(keys, line);
+                EmitGetLocal(counter, line);
+                _chunk.WriteOpCode(OpCode.GetIndex, line);
+                int keySlot = DeclareLocalSlot(keyName);
+
+                EmitGetLocal(map, line);
+                EmitGetLocal(keySlot, line);
+                _chunk.WriteOpCode(OpCode.GetIndex, line);
+                DeclareLocalSlot(valueName);
+            },
+            emitIncrement: () => EmitIncrementLocal(counter, line));
+    }
+
+    /// <summary>
+    /// The shared while machine for every <c>for...in</c> form. Emits the
+    /// condition, the body (in its own scope so per-iteration bindings are popped),
+    /// the increment step (the <c>continue</c> target) and the backward loop jump,
+    /// then patches the exit and the recorded <c>break</c> sites and pops the
+    /// synthetic for-scope locals.
+    /// </summary>
+    private void EmitForInLoop(
+        ForInStmt node, int syntheticCount, int line,
+        Action emitCondition, Action emitIteratorBindings, Action emitIncrement) {
+        // Base slot for break/continue cleanup: just above the synthetic locals.
+        int baseSlot = _nextSlot;
+        var ctx = new LoopContext(continueTarget: 0, baseSlot: baseSlot, hasForwardContinue: true);
+        _loopContexts.Push(ctx);
+
+        int loopStart = _chunk.Count;
+        emitCondition();
+        int exitJump = EmitJump(OpCode.JumpIfFalse, line);
+
+        // Body scope: iterator variables plus any body locals, popped each iteration.
+        _localScopes.Push([]);
+        emitIteratorBindings();
+        foreach (Statement stmt in node.Body.Statements) Visit(stmt);
+        List<LocalVar> bodyScope = _localScopes.Pop();
+        if (bodyScope.Count > 0) {
+            _chunk.WriteOpCode(OpCode.PopN, line);
+            _chunk.WriteByte(ToByteOperand(bodyScope.Count, "for...in body PopN"), line);
+            _nextSlot -= bodyScope.Count;
+        }
+
+        // Increment step — the continue target. Backpatch every continue jump here.
+        foreach (int site in ctx.ContinueSites) PatchJump(site);
+        emitIncrement();
+        EmitLoop(loopStart, line);
+
+        // Exit — condition-false and break both land here, before the synthetic pop.
+        PatchJump(exitJump);
+        _loopContexts.Pop();
+        foreach (int site in ctx.BreakSites) PatchJump(site);
+
+        if (syntheticCount > 0) {
+            _chunk.WriteOpCode(OpCode.PopN, line);
+            _chunk.WriteByte(ToByteOperand(syntheticCount, "for...in synthetic PopN"), line);
+            _nextSlot -= syntheticCount;
+        }
+    }
+
+    /// <summary>
+    /// Declares a stack local at the next free slot, recording it in the current
+    /// scope so name lookups resolve it. The value is expected to already be on the
+    /// top of the operand stack — that stack position is the slot.
+    /// </summary>
+    private int DeclareLocalSlot(string name) {
+        if ((uint)_nextSlot > byte.MaxValue)
+            throw new GrobInternalException(
+                $"Local slot overflow declaring '{name}' in for...in lowering.");
+        int slot = _nextSlot++;
+        _localScopes.Peek().Add(new LocalVar(name, slot));
+        return slot;
+    }
+
+    private void EmitGetLocal(int slot, int line) {
+        _chunk.WriteOpCode(OpCode.GetLocal, line);
+        _chunk.WriteByte(ToByteOperand(slot, "local slot"), line);
+    }
+
+    private void EmitSetLocal(int slot, int line) {
+        _chunk.WriteOpCode(OpCode.SetLocal, line);
+        _chunk.WriteByte(ToByteOperand(slot, "local slot"), line);
+    }
+
+    private void EmitIncrementLocal(int slot, int line) {
+        _chunk.WriteOpCode(OpCode.IncrementInt, line);
+        _chunk.WriteByte(ToByteOperand(slot, "local slot"), line);
+    }
+
+    private void EmitGetProperty(string name, int line) {
+        int nameIdx = GetOrCreateGlobalNameIndex(name);
+        _chunk.WriteOpCode(OpCode.GetProperty, line);
+        _chunk.WriteByte(ToByteOperand(nameIdx, "property name"), line);
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when <paramref name="step"/> is a negative
+    /// integer literal — written as a unary minus over an int literal, the only
+    /// form the parser produces for a negative number.
+    /// </summary>
+    private static bool IsNegativeStepLiteral(Expression? step) =>
+        step is UnaryExpr { Operator: UnaryOperator.Negate, Operand: IntLiteralExpr };
 
     // -----------------------------------------------------------------------
     // if / else if / else

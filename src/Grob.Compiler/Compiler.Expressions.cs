@@ -168,6 +168,18 @@ public sealed partial class Compiler {
         return null;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Emits each element in source order, then a single <see cref="OpCode.NewArray"/>
+    /// (1-byte element count) which pops the elements and pushes the new array.
+    /// </remarks>
+    public override object? VisitArrayLiteral(ArrayLiteralExpr node) {
+        foreach (Expression element in node.Elements) Visit(element);
+        _chunk.WriteOpCode(OpCode.NewArray, node.Range.Start.Line);
+        _chunk.WriteByte(ToByteOperand(node.Elements.Count, "array literal length"), node.Range.Start.Line);
+        return null;
+    }
+
     /// <summary>
     /// Returns the cached <see cref="GrobValue"/> for a <see cref="ConstDecl"/>.
     /// <see cref="VisitConstDecl"/> always caches the value before any reference site is
@@ -517,6 +529,7 @@ public sealed partial class Compiler {
         BoolLiteralExpr => GrobType.Bool,
         NilLiteralExpr => GrobType.Nil,
         IdentifierExpr id => id.ResolvedType,
+        ArrayLiteralExpr => GrobType.Array,
         GroupingExpr g => GetExprType(g.Inner),
         UnaryExpr u => GetUnaryResultType(u),
         BinaryExpr b => GetBinaryResultType(b),

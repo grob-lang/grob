@@ -1,14 +1,25 @@
 namespace Grob.Core;
 
 /// <summary>
-/// Runtime map value. Holds string-keyed <see cref="GrobValue"/> entries.
-/// The full implementation lands with the VM in a later sprint.
+/// Runtime map value. Holds string-keyed <see cref="GrobValue"/> entries in
+/// insertion order — the order <c>for k, v in m</c> iteration walks (Sprint 4
+/// Increment C). Backed by <see cref="OrderedDictionary{TKey, TValue}"/> so the
+/// insertion-order contract is guaranteed, not incidental.
 /// </summary>
 public sealed class GrobMap {
-    private readonly Dictionary<string, GrobValue> _entries = new(StringComparer.Ordinal);
+    private readonly OrderedDictionary<string, GrobValue> _entries =
+        new(StringComparer.Ordinal);
 
     /// <summary>Read-only view of the underlying entry dictionary.</summary>
     public IReadOnlyDictionary<string, GrobValue> Entries => _entries;
+
+    /// <summary>
+    /// The map's keys in insertion order — the key set <c>for k, v in m</c>
+    /// materialises once before iterating (Sprint 4 Increment C). This is the live
+    /// ordered-key view of the backing dictionary, not a copy: the caller
+    /// snapshots it (the VM builds a <c>GrobArray</c>) rather than retaining it.
+    /// </summary>
+    public IReadOnlyList<string> InsertionOrderKeys => _entries.Keys;
 
     /// <summary>Gets or sets the value associated with <paramref name="key"/>.</summary>
     public GrobValue this[string key] {
