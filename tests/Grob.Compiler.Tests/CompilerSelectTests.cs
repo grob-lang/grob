@@ -325,6 +325,8 @@ public sealed class CompilerSelectTests {
         DiagnosticBag bag = TypeCheckSource("while (true) { select (1) { case 1 { break } } }");
         Assert.True(bag.HasErrors);
         Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E2211");
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(38, diag.Range.Start.Column);
         Assert.DoesNotContain(bag.Errors, e => e.Code == "E2212");
     }
 
@@ -337,6 +339,8 @@ public sealed class CompilerSelectTests {
         DiagnosticBag bag = TypeCheckSource("select (1) { case 1 { break } }");
         Assert.True(bag.HasErrors);
         Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E2211");
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(23, diag.Range.Start.Column);
     }
 
     /// <summary>
@@ -349,6 +353,8 @@ public sealed class CompilerSelectTests {
             "while (true) { while (true) { select (1) { case 1 { break } } } }");
         Assert.True(bag.HasErrors);
         Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E2211");
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(53, diag.Range.Start.Column);
     }
 
     /// <summary>
@@ -370,6 +376,8 @@ public sealed class CompilerSelectTests {
         DiagnosticBag bag = TypeCheckSource("select (1) { case 1 { continue } }");
         Assert.True(bag.HasErrors);
         Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E2212");
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(23, diag.Range.Start.Column);
     }
 
     /// <summary>
