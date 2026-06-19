@@ -1,0 +1,7 @@
+// E2212 — `continue` used outside any loop
+// Eventual path: docs/errors/examples/break-continue-outside-loop/break-continue-outside-loop.grob
+count := 3
+if (count > 0) {
+    continue
+}
+print(count)

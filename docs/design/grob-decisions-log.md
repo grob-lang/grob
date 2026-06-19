@@ -312,7 +312,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-312 | June 2026                                                         | CLI — bare invocation         | Bare `grob` (no subcommand) ≡ `grob --help` — prints command listing to stdout, exit 0. Does not launch the REPL; `grob repl` is the sole REPL entrance          |
 | D-313 | June 2026                                                         | Tooling — benchmarking        | Two-axis benchmark regression policy: 5% per-sprint vs rolling baseline + 12% cumulative vs frozen origin; `Grob.BenchCheck` makes `benchmark.yml` the gate; compile-time gates until end-to-end is live. Refines D-302/D-309 |
 | D-314 | June 2026                                                         | Methodology — harness         | Implementation harness migrated Copilot → Claude Code: durable rules in `CLAUDE.md`, plan mode as the approval gate, increment prompts as `.claude/commands/` slash commands, Opus 4.8 subagent for named sub-problems, GPT-5.3 Codex cold-read via Codex CLI, CodeRabbit retained. Workflow shape unchanged |
-| D-315 | June 2026                                                         | VM / Compiler — comparison & equality | The `Equal`/`NotEqual` opcodes are the language `==`/`!=` and use IEEE 754 (`NaN != NaN`) via `GrobValue.operator==`, not collection `Equals`. String `<=`/`>=` lower to strict + `Not` (the closed enum has no string equal-comparison opcode); float keeps dedicated `<=`/`>=` for NaN correctness, int for hot-loop performance. Sprint 4A shipped `==` on `Equals`; corrected |
+| D-315 | June 2026                                                         | Control flow                  | `break`/`continue` in `select`: asymmetric. `break` inside `select` is a compile error (E2211) at any nesting; `continue` passes through to the nearest enclosing loop. `select` is not loop-control-transparent. Resolves Requirements/Fundamentals contradiction; E2212 added for `break`/`continue` outside any loop |
 
 ---
 
@@ -3018,19 +3018,25 @@ No language-design or specification surface is touched by this entry.
 
 ---
 
-### D-315 — Comparison and equality opcode semantics (June 2026)
+### D-315 — `break`/`continue` in `select`: asymmetric (June 2026)
 
-Area: VM / Compiler — comparison and equality operators
+Area: Control flow — `select` statement and loop control
 Supersedes: none
 Superseded by: none
 
-**The decision.** Two points settle how the back end realises the language's comparison and equality operators over the closed `OpCode` set (the enum is fixed from Sprint 2 — these are mapping and lowering choices, not new opcodes).
+**Context.** Two corpus documents disagreed on what `break`/`continue` do inside a `select` arm that sits inside a loop. `grob-v1-requirements.md` (Sprint 4 scope) said both pass through to the enclosing loop — `select` transparent, the loop-context stack sees nothing. `grob-language-fundamentals.md` §3 said `break` does not apply inside `select` and the author must restructure into a function or use a flag. D-301 settles `select` exhaustiveness only and does not reach this. This entry resolves the contradiction.
 
-1. **`==`/`!=` are IEEE 754 for floats.** The `Equal`/`NotEqual` opcodes implement the language `==`/`!=` operators and use `GrobValue.operator==`/`operator!=`, where `NaN != NaN` and `+0.0 == -0.0`. They must **not** use `GrobValue.Equals`, which is the collection-friendly surface where `NaN.Equals(NaN)` is `true` (so maps and sets can locate NaN keys). The two surfaces are deliberately distinct (see `GrobValue` and §20 of `grob-language-fundamentals.md`); the opcode that backs the language operator takes the language semantics. Sprint 4A's first cut emitted `==`/`!=` against `Equals`, which would make `nan == nan` return `true`; corrected here. Not yet reachable from `.grob` source (scientific-notation literals and stdlib `math` are post-MVP, and division by zero throws rather than yielding `Infinity`), so it ships as a VM-level guard ahead of those features landing.
+**The decision.** `break` and `continue` are treated asymmetrically inside `select`, because they had different jobs in the C-family the audience comes from:
 
-2. **String `<=`/`>=` lower to strict + `Not`.** The closed enum carries `LessString`/`GreaterString` but no `LessEqualString`/`GreaterEqualString`. The type checker permits string operands for all four relational operators (§6), so the compiler lowers the equal forms: `a <= b ≡ !(a > b)` and `a >= b ≡ !(a < b)`. This is exact because ordinal string order is total. The asymmetry against the numeric types is principled, not an oversight: **float** keeps dedicated `<=`/`>=` opcodes because the lowering is wrong under NaN (`NaN <= x` is `false`, but `!(NaN > x)` is `true`); **int** keeps them for hot-loop performance; **string** is totally ordered and never on a hot path, so the one extra `Not` is free and the enum stays lean. Adding string equal-comparison opcodes would be a permanent stability commitment (ADR-0013) buying nothing over the lowering.
+1. **`break` inside a `select` arm is a compile error — E2211 — at any nesting, whether or not an enclosing loop exists.** In C-family languages `break` is a `switch`-local operation: it controls fall-through. Grob's `select` has no fall-through (D-301), so that meaning is gone. The only remaining interpretation, "exit the enclosing loop", is a silent footgun for the target audience: a C# developer writes a case-terminating `break` reflexively (`break` is mandatory at the end of every C# `switch` case), and under a transparent rule that reflex would blow out of the loop — same code, opposite meaning, no diagnostic. Rejecting it outright with a teaching error is the safe disposition and is consistent with D-275, where `break` in a context with no meaning (`finally`) is a compile error rather than a silent action.
 
-**Why log it.** Both points were latent gaps between what the type checker permits and what the closed enum directly provides — the kind of mismatch that surfaces as a silent miscompilation or a wrong runtime answer. Recording the rule keeps later increments that emit comparisons (Sprint 4D's `select` equality ladder, 4E's switch-expression arm comparisons) from re-deriving it or repeating the `Equals`-vs-`==` slip. Full detail of the equality surfaces is in `GrobValue`; the operator set is §6 and §20 of `grob-language-fundamentals.md`.
+2. **`continue` inside a `select` arm passes through to the nearest enclosing loop**, exactly as in C#. `continue` was never a `select`-local operation — `select` is not iterative — so there is no fall-through meaning to lose and no muscle-memory trap to spring. The skip-to-next-iteration pattern (`case "skip" { continue }` inside a dispatch loop) is core to Grob's input-loop use cases and is preserved with no ambiguity. If there is no enclosing loop, it is the generic out-of-loop error (E2212).
+
+**Consequence — `select` is not loop-control-transparent.** The earlier "transparent, pushes nothing onto the loop-context stack" framing in the requirements is withdrawn. The compiler must track `select` nesting so the type checker/compiler can raise E2211 on a `break` whose nearest enclosing control construct is a `select`, while still resolving `continue` (and a `break` that is *not* inside a `select`) to the nearest enclosing loop.
+
+**Companion finding — E2212.** `break`/`continue` outside any loop was already specified as a compile error in the requirements but had no registry code. E2212 (`break` or `continue` outside a loop, Syntax) is added in the same edit, following the E2207 precedent of one code covering both keywords.
+
+**Escape hatch unchanged.** Exiting an enclosing loop from inside a `select` is done by restructuring into a function and using `return`, or a flag variable — the same v1 answer the scope-cut list already gives for labelled break (post-MVP). Spec text lives at `grob-language-fundamentals.md` §3; Sprint 4 scope and acceptance in `grob-v1-requirements.md` §4.
 
 ---
 
@@ -3255,13 +3261,19 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_Updated June 2026 — D-315: comparison and equality opcode semantics. The_
-_`Equal`/`NotEqual` opcodes are the language `==`/`!=` and use IEEE 754_
-_(`NaN != NaN`) via `GrobValue.operator==`, not collection `Equals`; Sprint_
-_4A's `Equals`-backed cut is corrected. String `<=`/`>=` lower to the strict_
-_comparison plus `Not` (the closed enum has no string equal-comparison_
-_opcode); float retains dedicated `<=`/`>=` for NaN correctness, int for_
-_hot-loop performance. No new opcodes; mapping and lowering only._
+_Updated June 2026 — D-315: `break`/`continue` in `select` resolved_
+_asymmetric. `break` inside a `select` arm is a compile error (E2211) at_
+_any nesting, whether or not a loop encloses it — its C-family fall-through_
+_job is gone under D-301 and the loop-exit reading is a silent footgun for_
+_the C# audience (reflexive case-terminating `break`). `continue` passes_
+_through to the nearest enclosing loop as in C#; the skip pattern is_
+_preserved. `select` is therefore not loop-control-transparent — the_
+_earlier "pushes nothing onto the loop-context stack" framing in_
+_`grob-v1-requirements.md` is withdrawn. Companion finding: E2212_
+_(`break`/`continue` outside any loop) added — already a specified compile_
+_error with no registry code. Resolves the Requirements §4 / Fundamentals_
+_§3 contradiction; D-301 stays exhaustiveness-only. Edits: Fundamentals §3,_
+_Requirements §4 Sprint 4 scope/acceptance, error registry (E2211, E2212)._
 _Updated June 2026 — D-314: implementation harness migrated from GitHub_
 _Copilot to Claude Code. Durable rules move to `CLAUDE.md`; plan mode_
 _becomes the approval gate; increment prompts become `.claude/commands/`_

@@ -280,6 +280,8 @@ than a fatal `error[Exxxx]:`.
 | E2203 | `top-level-return` | Syntax |
 | E2204 | `try-without-catch-or-finally` | Syntax |
 | E2205 | `catch-after-catch-all` | Syntax |
+| E2211 | `break-inside-select` | Syntax |
+| E2212 | `break-continue-outside-loop` | Syntax |
 | E3001 | `unknown-plugin` | Module |
 | E3002 | `plugin-not-installed` | Module |
 | E3101 | `ambiguous-type-reference` | Module |

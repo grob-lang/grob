@@ -680,10 +680,14 @@ interpolation works. `grob run hello.grob` executes a script file.
   negative step is a compile error.
 - `select (value) { case X { } case Y, Z { } default { } }` — first
   match, no fall-through. `default` optional.
-- `break` — exits innermost loop. Compile error outside a loop.
-- `continue` — skips to next iteration. Compile error outside a loop.
-- `break`/`continue` inside `select` do NOT apply to the `select` — they
-  apply to an enclosing loop if one exists.
+- `break` — exits innermost loop. Compile error (E2212) outside a loop.
+- `continue` — skips to next iteration. Compile error (E2212) outside a loop.
+- `break`/`continue` inside `select` are asymmetric (D-315). `break` inside a
+  `select` arm is a compile error (E2211) at any nesting — `select` has no
+  fall-through, so `break` has no meaning there and the loop-exit reading is a
+  footgun. `continue` inside a `select` arm passes through to the nearest
+  enclosing loop. `break`/`continue` with no enclosing loop is E2212. The
+  compiler tracks `select` nesting; `select` is not loop-control-transparent.
 - Logical `&&` and `||` — short-circuit using `JumpIfFalse`/`JumpIfTrue`.
   Not dedicated opcodes.
 - Ternary `condition ? a : b` — jump-based compilation.
@@ -693,7 +697,10 @@ interpolation works. `grob run hello.grob` executes a script file.
 **Acceptance:** All control flow constructs work correctly. Array `for...in`
 and map `for k, v in` iteration work correctly. Single-identifier `for k in`
 on a map produces a clear compile error. The calculator smoke test script
-runs. Nested loops with `break`/`continue` behave as specified.
+runs. Nested loops with `break`/`continue` behave as specified. `break` inside
+a `select` is E2211 (with or without an enclosing loop); `continue` inside a
+`select` continues the nearest enclosing loop; `break`/`continue` with no
+enclosing loop is E2212.
 
 ### Sprint 5 — Functions and Closures
 

@@ -530,4 +530,140 @@ public sealed class VirtualMachineTests {
         GrobExitException ex = Assert.Throws<GrobExitException>(() => vm.Run(chunk));
         Assert.Equal(0, ex.Code);
     }
+
+    // -------------------------------------------------------------------------
+    // select / case — the equality ladder (Sprint 4 Increment D)
+    //
+    // The VM gains no new opcode for select; these tests prove the existing
+    // Equal / JumpIfFalse / Jump / GetLocal / PopN opcodes execute the ladder
+    // shape the compiler emits: subject evaluated once into a synthetic local,
+    // first-match with no fall-through, optional default tail, multi-value cases
+    // ORed to one block, and a no-op when nothing matches.
+    // -------------------------------------------------------------------------
+
+    private sealed record SelectCase(long[] Patterns, long Marker);
+
+    private static int EmitJumpSite(Chunk c, OpCode op) {
+        c.WriteOpCode(op, 1);
+        int site = c.Count;
+        c.WriteByte(0xFF, 1);
+        c.WriteByte(0xFF, 1);
+        return site;
+    }
+
+    private static void PatchJumpSite(Chunk c, int site) {
+        int offset = c.Count - (site + 2);
+        c.PatchByte(site, (byte)(offset >> 8));
+        c.PatchByte(site + 1, (byte)(offset & 0xFF));
+    }
+
+    private static void EmitMarker(Chunk c, long marker) {
+        byte k = ConstByte(c, GrobValue.FromInt(marker));
+        c.WriteOpCode(OpCode.Constant, 1);
+        c.WriteByte(k, 1);
+        c.WriteOpCode(OpCode.Print, 1);
+    }
+
+    /// <summary>
+    /// Builds and runs a chunk shaped exactly like the compiler's <c>select</c>
+    /// emission — subject in slot 0, an equality ladder over the cases, an optional
+    /// default tail, a trailing <see cref="OpCode.PopN"/> — and returns the printed
+    /// markers. Each case body prints its marker, so the output identifies which
+    /// branch ran.
+    /// </summary>
+    private static string RunSelect(long subject, SelectCase[] cases, long? defaultMarker) {
+        var chunk = new Chunk();
+        byte subjConst = ConstByte(chunk, GrobValue.FromInt(subject));
+        chunk.WriteOpCode(OpCode.Constant, 1);
+        chunk.WriteByte(subjConst, 1); // subject -> slot 0
+
+        var endJumps = new List<int>();
+        foreach (SelectCase clause in cases) {
+            var orJumps = new List<int>();
+            int nextCaseSite = -1;
+            for (int i = 0; i < clause.Patterns.Length; i++) {
+                chunk.WriteOpCode(OpCode.GetLocal, 1);
+                chunk.WriteByte(0, 1); // slot 0 = subject
+                byte p = ConstByte(chunk, GrobValue.FromInt(clause.Patterns[i]));
+                chunk.WriteOpCode(OpCode.Constant, 1);
+                chunk.WriteByte(p, 1);
+                chunk.WriteOpCode(OpCode.Equal, 1);
+                if (i < clause.Patterns.Length - 1) {
+                    int jf = EmitJumpSite(chunk, OpCode.JumpIfFalse); // not equal -> next pattern
+                    orJumps.Add(EmitJumpSite(chunk, OpCode.Jump));    // equal -> body
+                    PatchJumpSite(chunk, jf);
+                } else {
+                    nextCaseSite = EmitJumpSite(chunk, OpCode.JumpIfFalse); // not equal -> next case
+                }
+            }
+
+            // Body — all OR-jumps converge here.
+            foreach (int site in orJumps) PatchJumpSite(chunk, site);
+            EmitMarker(chunk, clause.Marker);
+            endJumps.Add(EmitJumpSite(chunk, OpCode.Jump)); // body terminator -> end
+
+            // Next case starts here.
+            PatchJumpSite(chunk, nextCaseSite);
+        }
+
+        if (defaultMarker is long d) EmitMarker(chunk, d);
+
+        foreach (int site in endJumps) PatchJumpSite(chunk, site);
+        chunk.WriteOpCode(OpCode.PopN, 1);
+        chunk.WriteByte(1, 1); // discard subject
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, output) = NewVm();
+        vm.Run(chunk);
+        Assert.Equal(0, vm.Stack.Count);
+        return output.ToString();
+    }
+
+    [Fact]
+    public void Select_FirstMatchingCaseRuns_AndSelectExits() {
+        // Two cases could be considered; only the first matching one runs.
+        string output = RunSelect(
+            subject: 1,
+            cases: [new SelectCase([1], 100), new SelectCase([1], 200)],
+            defaultMarker: 999);
+        Assert.Equal($"100{Environment.NewLine}", output);
+    }
+
+    [Fact]
+    public void Select_DefaultRuns_OnlyWhenNoCaseMatches() {
+        string output = RunSelect(
+            subject: 7,
+            cases: [new SelectCase([1], 100), new SelectCase([2], 200)],
+            defaultMarker: 999);
+        Assert.Equal($"999{Environment.NewLine}", output);
+    }
+
+    [Fact]
+    public void Select_NoMatchNoDefault_DoesNothing() {
+        string output = RunSelect(
+            subject: 7,
+            cases: [new SelectCase([1], 100), new SelectCase([2], 200)],
+            defaultMarker: null);
+        Assert.Equal(string.Empty, output);
+    }
+
+    [Theory]
+    [InlineData(1L)]
+    [InlineData(2L)]
+    public void Select_MultiValueCase_MatchesEitherValue(long subject) {
+        string output = RunSelect(
+            subject: subject,
+            cases: [new SelectCase([1, 2], 100)],
+            defaultMarker: 999);
+        Assert.Equal($"100{Environment.NewLine}", output);
+    }
+
+    [Fact]
+    public void Select_MultiValueCase_FallsToDefaultWhenNeitherMatches() {
+        string output = RunSelect(
+            subject: 3,
+            cases: [new SelectCase([1, 2], 100)],
+            defaultMarker: 999);
+        Assert.Equal($"999{Environment.NewLine}", output);
+    }
 }

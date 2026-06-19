@@ -99,9 +99,16 @@ select (value) {
 - Exhaustiveness is **not** enforced on `select` statements. See "Why `select`
   is non-exhaustive" below.
 - Works on any comparable type: `int`, `string`, `bool`.
-- `break` does not apply inside `select` — no fall-through means it is never
-  needed. To exit an enclosing loop from inside a `select`, restructure into a
-  function and use `return`, or use a flag variable.
+- `break` inside a `select` arm is a **compile error** (E2211) at any nesting,
+  whether or not a loop encloses the `select`. There is no fall-through to break
+  out of (D-301), so `break` has no meaning here, and silently retargeting it at
+  the enclosing loop would betray the C# reflex of writing a case-terminating
+  `break`. To exit an enclosing loop from inside a `select`, restructure into a
+  function and use `return`, or use a flag variable. (D-315)
+- `continue` inside a `select` arm applies to the **nearest enclosing loop**,
+  exactly as in C# — `select` is not iterative, so there is nothing select-local
+  for `continue` to do. `continue` with no enclosing loop is a compile error
+  (E2212). (D-315)
 - `select` is always a **statement**. The switch expression (`value switch { }`)
   is always an **expression**. The two forms are syntactically unambiguous.
 

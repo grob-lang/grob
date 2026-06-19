@@ -1,0 +1,8 @@
+error[E2211]: `break` inside `select`
+  --> break-inside-select.grob:6:9
+   |
+ 6 |         break
+   |         ^^^^^
+   |
+   = note: a `select` arm has no fall-through, so `break` has nothing to exit
+   = help: to exit an enclosing loop, restructure into a function and use `return`, or use a flag variable
