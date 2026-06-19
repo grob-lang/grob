@@ -364,6 +364,77 @@ public sealed partial class Compiler {
         step is UnaryExpr { Operator: UnaryOperator.Negate, Operand: IntLiteralExpr };
 
     // -----------------------------------------------------------------------
+    // select / case  (Sprint 4 Increment D)
+    //
+    // An equality ladder over A's conditional-jump machinery. The subject is
+    // evaluated once into a synthetic local; each case re-fetches it, compares
+    // with Equal, and JumpIfFalse skips to the next test. A matched body ends with
+    // an unconditional Jump to the select exit (first-match, no fall-through). A
+    // multi-value case ORs several Equal tests to one body via a Jump-to-body on
+    // each non-final pattern. 'default' is the fall-through tail. select pushes no
+    // loop context, so 'continue' inside a case resolves to an enclosing loop and
+    // 'break' inside a case was already rejected by the type checker (E2211, D-315).
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public override object? VisitSelect(SelectStmt node) {
+        int line = node.Range.Start.Line;
+
+        // The subject lives in a synthetic local for the duration of the ladder, so
+        // each pattern test can re-load it. A scope is opened so GetLocal addresses it.
+        _localScopes.Push([]);
+        int scopeBase = _nextSlot;
+        Visit(node.Subject);
+        int subjectSlot = DeclareLocalSlot("$subject");
+
+        // Body-terminating jumps, all patched to the select exit once it is known.
+        var endJumps = new List<int>();
+
+        foreach (CaseClause clause in node.Cases) {
+            // OR-jumps for a multi-value case — each non-final pattern that matches
+            // jumps to the shared body.
+            var orJumps = new List<int>();
+            int nextCaseJump = -1;
+
+            for (int i = 0; i < clause.Patterns.Count; i++) {
+                EmitGetLocal(subjectSlot, line);
+                Visit(clause.Patterns[i]);
+                _chunk.WriteOpCode(OpCode.Equal, line);
+
+                if (i < clause.Patterns.Count - 1) {
+                    int notEqual = EmitJump(OpCode.JumpIfFalse, line); // try the next pattern
+                    orJumps.Add(EmitJump(OpCode.Jump, line));          // matched -> shared body
+                    PatchJump(notEqual);
+                } else {
+                    // Final pattern: a miss skips the whole case to the next test/tail.
+                    nextCaseJump = EmitJump(OpCode.JumpIfFalse, line);
+                }
+            }
+
+            // Shared body: every OR-jump and the final-pattern fall-through land here.
+            foreach (int site in orJumps) PatchJump(site);
+            Visit(clause.Body);
+            endJumps.Add(EmitJump(OpCode.Jump, line)); // exit the select after the body
+
+            // The next case (or the tail) starts here.
+            PatchJump(nextCaseJump);
+        }
+
+        // 'default' runs only when no case matched — the fall-through tail.
+        if (node.Default is not null) Visit(node.Default);
+
+        // Every matched body converges here, as does the no-match fall-through.
+        foreach (int site in endJumps) PatchJump(site);
+
+        // Discard the synthetic subject local.
+        _chunk.WriteOpCode(OpCode.PopN, line);
+        _chunk.WriteByte(ToByteOperand(1, "select subject pop"), line);
+        _localScopes.Pop();
+        _nextSlot = scopeBase;
+        return null;
+    }
+
+    // -----------------------------------------------------------------------
     // if / else if / else
     // -----------------------------------------------------------------------
 

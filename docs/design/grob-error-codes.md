@@ -109,8 +109,8 @@ read by `grob --explain Exxxx`.
 | E2208 | duplicate field name in type declaration           | Syntax            | pre-release           |
 | E2209 | trailing comma not permitted here                  | Syntax            | pre-release           |
 | E2210 | line continuation rule violation                   | Syntax            | pre-release           |
-| E2211 | `break` outside a loop                             | Syntax            | pre-release           |
-| E2212 | `continue` outside a loop                          | Syntax            | pre-release           |
+| E2211 | `break` inside `select`                            | Syntax            | pre-release           |
+| E2212 | `break` / `continue` outside a loop                | Syntax            | pre-release           |
 | E3001 | unknown plugin                                     | Module            | pre-release           |
 | E3002 | plugin not installed                               | Module            | pre-release           |
 | E3003 | circular import                                    | Module            | pre-release           |
@@ -708,23 +708,25 @@ read by `grob --explain Exxxx`.
 
 ---
 
-### E2211 — `break` outside a loop
+### E2211 — `break` inside `select`
 
 - **Category:** Syntax
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A `break` statement appeared outside the body of a `while` or `for...in` loop. `break` exits the innermost enclosing loop; there must be one. Inside a `select` case, `break` applies to the nearest enclosing loop — if none exists, this error is still raised.
-- **Source decision:** Sprint 4 Increment B.
+- **Description:** `break` does not apply inside a `select` arm. `select` has no fall-through (D-301), so there is nothing for `break` to exit, and `break` is not retargeted at an enclosing loop. Fires at any nesting, whether or not a loop encloses the `select`. To exit an enclosing loop from inside a `select`, restructure into a function and use `return`, or use a flag variable. `continue` inside a `select` is permitted and applies to the nearest enclosing loop.
+- **Source decision:** D-315.
+- **Source:** `grob-language-fundamentals.md` §3.
 
 ---
 
-### E2212 — `continue` outside a loop
+### E2212 — `break` / `continue` outside a loop
 
 - **Category:** Syntax
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A `continue` statement appeared outside the body of a `while` or `for...in` loop. `continue` skips to the next iteration of the innermost enclosing loop; there must be one. Inside a `select` case, `continue` applies to the nearest enclosing loop — if none exists, this error is still raised.
-- **Source decision:** Sprint 4 Increment B.
+- **Description:** `break` and `continue` are only valid inside a loop body (`while`, `for...in`). Neither appears inside any enclosing loop at the point of use. A `continue` inside a `select` resolves to the nearest enclosing loop and only raises this error when no loop encloses the `select`; a `break` inside a `select` raises E2211 instead.
+- **Source decision:** D-315.
+- **Source:** `grob-v1-requirements.md` §4.
 
 ---
 
@@ -1188,3 +1190,5 @@ _Initial allocation: 94 codes across 7 categories. All `pre-release` until v1.0 
 _Updated May 2026 — count corrected from a stale "86 codes" to the actual 94 codes present in the summary index and full entries. No codes were added in this edit; the footer total had not been updated as codes accrued. The 7-category structure (E0xxx–E9xxx) is unchanged._
 
 _Updated June 2026 — Sprint 4 Increment C added the `for...in` iteration diagnostics E0501–E0504 in the previously empty E05xx sub-block of the Type category, bringing the total to 98 codes._
+
+_Updated June 2026 — D-315: E2211 retitled to `break` inside `select` and E2212 retitled to `break` / `continue` outside a loop, reflecting the asymmetric resolution. Both codes pre-existed; no new codes were added by this edit._

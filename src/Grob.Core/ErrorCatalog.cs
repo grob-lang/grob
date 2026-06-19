@@ -534,19 +534,19 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
-    /// <summary>`break` outside a loop</summary>
+    /// <summary>`break` inside `select`</summary>
     public static readonly ErrorDescriptor E2211 = new(
         Code: "E2211",
-        Title: "`break` outside a loop",
+        Title: "`break` inside `select`",
         Category: ErrorCategory.Syntax,
         Status: ErrorStatus.PreRelease,
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
-    /// <summary>`continue` outside a loop</summary>
+    /// <summary>`break` / `continue` outside a loop</summary>
     public static readonly ErrorDescriptor E2212 = new(
         Code: "E2212",
-        Title: "`continue` outside a loop",
+        Title: "`break` / `continue` outside a loop",
         Category: ErrorCategory.Syntax,
         Status: ErrorStatus.PreRelease,
         Severity: DiagnosticSeverity.Error,

@@ -1,0 +1,8 @@
+error[E2212]: `break` / `continue` outside a loop
+  --> break-continue-outside-loop.grob:5:5
+   |
+ 5 |     continue
+   |     ^^^^^^^^
+   |
+   = note: `continue` is only valid inside a `while` or `for...in` loop
+   = help: move it inside a loop body

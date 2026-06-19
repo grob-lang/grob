@@ -28,8 +28,8 @@ public sealed partial class TypeChecker {
     /// <inheritdoc/>
     /// <remarks>
     /// Validates that the condition is <c>bool</c> (E0001), then walks the body
-    /// with <see cref="_loopDepth"/> incremented so that <c>break</c> and
-    /// <c>continue</c> inside the body are accepted.
+    /// with a <see cref="ControlFrame.Loop"/> pushed so that <c>break</c> and
+    /// <c>continue</c> inside the body resolve to this loop.
     /// </remarks>
     public override GrobType VisitWhile(WhileStmt node) {
         GrobType condType = Visit(node.Condition);
@@ -38,32 +38,39 @@ public sealed partial class TypeChecker {
                 $"'while' condition must be 'bool'; found '{TypeName(condType)}'.",
                 node.Condition.Range);
         }
-        _loopDepth++;
+        _controlFrames.Push(ControlFrame.Loop);
         Visit(node.Body);
-        _loopDepth--;
+        _controlFrames.Pop();
         return GrobType.Unknown;
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Validates that <c>break</c> appears inside a loop (<see cref="_loopDepth"/> &gt; 0).
-    /// A <c>break</c> inside a <c>select</c> case that is itself inside a loop is valid
-    /// because <c>select</c> (Increment D) does not push to <see cref="_loopDepth"/>.
+    /// Resolves <c>break</c> against the control-frame stack (D-315): the nearest
+    /// frame being a <see cref="ControlFrame.Select"/> is E2211 (<c>break</c> has no
+    /// meaning in a <c>select</c> and is not retargeted at an enclosing loop); a
+    /// <see cref="ControlFrame.Loop"/> on top is valid; an empty stack is E2212.
     /// </remarks>
     public override GrobType VisitBreak(BreakStmt node) {
-        if (_loopDepth == 0)
-            EmitError(ErrorCatalog.E2211, "'break' used outside a loop.", node.Range);
+        if (_controlFrames.Count == 0)
+            EmitError(ErrorCatalog.E2212, "'break' used outside a loop.", node.Range);
+        else if (_controlFrames.Peek() == ControlFrame.Select)
+            EmitError(ErrorCatalog.E2211,
+                "'break' is not permitted inside a 'select'. " +
+                "To exit an enclosing loop from inside a 'select', restructure into a function and use 'return', or use a flag variable.",
+                node.Range);
         return GrobType.Unknown;
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Validates that <c>continue</c> appears inside a loop (<see cref="_loopDepth"/> &gt; 0).
-    /// A <c>continue</c> inside a <c>select</c> case that is itself inside a loop is valid
-    /// because <c>select</c> (Increment D) does not push to <see cref="_loopDepth"/>.
+    /// Resolves <c>continue</c> against the control-frame stack (D-315): it skips any
+    /// <see cref="ControlFrame.Select"/> frames and targets the nearest enclosing
+    /// <see cref="ControlFrame.Loop"/>. When the stack contains no loop at all, it is
+    /// E2212.
     /// </remarks>
     public override GrobType VisitContinue(ContinueStmt node) {
-        if (_loopDepth == 0)
+        if (!_controlFrames.Contains(ControlFrame.Loop))
             EmitError(ErrorCatalog.E2212, "'continue' used outside a loop.", node.Range);
         return GrobType.Unknown;
     }
@@ -77,9 +84,9 @@ public sealed partial class TypeChecker {
     /// <c>i</c> as <c>int</c>, <c>k</c>/<c>v</c> from the map). The variables are
     /// registered in a scope spanning the body with the <see cref="ForInStmt"/> as
     /// their declaration node, so a reassignment is detected as E0504 and the
-    /// §3.1.1 invariant holds on references. The body is walked with
-    /// <see cref="_loopDepth"/> incremented, so <c>break</c> and <c>continue</c>
-    /// inside it are accepted.
+    /// §3.1.1 invariant holds on references. The body is walked with a
+    /// <see cref="ControlFrame.Loop"/> pushed, so <c>break</c> and <c>continue</c>
+    /// inside it resolve to this loop.
     /// </remarks>
     public override GrobType VisitForIn(ForInStmt node) {
         (GrobType firstType, GrobType secondType) = ResolveIterationVariableTypes(node);
@@ -92,9 +99,9 @@ public sealed partial class TypeChecker {
         if (node.Variables.Count == 2)
             RegisterSymbol(node.Variables[1], secondType, node.Range.Start, node);
 
-        _loopDepth++;
+        _controlFrames.Push(ControlFrame.Loop);
         Visit(node.Body);
-        _loopDepth--;
+        _controlFrames.Pop();
         _scopes.Pop();
         return GrobType.Unknown;
     }
@@ -166,13 +173,33 @@ public sealed partial class TypeChecker {
         start.Value > end.Value;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Evaluates the subject type, then checks each case value is comparable to it —
+    /// an incompatible case value is E0001 (type mismatch) at the offending pattern.
+    /// No exhaustiveness check: <c>select</c> is non-exhaustive by design (D-301).
+    /// A <see cref="ControlFrame.Select"/> is pushed for the duration of the case and
+    /// default bodies so that <c>break</c>/<c>continue</c> resolve per D-315.
+    /// </remarks>
     public override GrobType VisitSelect(SelectStmt node) {
-        Visit(node.Subject);
+        GrobType subjectType = Visit(node.Subject);
+
+        _controlFrames.Push(ControlFrame.Select);
         foreach (CaseClause c in node.Cases) {
-            foreach (Expression pattern in c.Patterns) Visit(pattern);
+            foreach (Expression pattern in c.Patterns) {
+                GrobType patternType = Visit(pattern);
+                if (subjectType != GrobType.Error && subjectType != GrobType.Unknown
+                    && patternType != GrobType.Error && patternType != GrobType.Unknown
+                    && patternType != subjectType) {
+                    EmitError(ErrorCatalog.E0001,
+                        $"'case' value of type '{TypeName(patternType)}' is not comparable to " +
+                        $"the 'select' subject of type '{TypeName(subjectType)}'.",
+                        pattern.Range);
+                }
+            }
             Visit(c.Body);
         }
         if (node.Default is not null) Visit(node.Default);
+        _controlFrames.Pop();
         return GrobType.Unknown;
     }
 

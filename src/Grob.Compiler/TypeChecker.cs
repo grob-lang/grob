@@ -27,13 +27,20 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly Stack<Dictionary<string, Symbol>> _scopes = new();
 
     // -----------------------------------------------------------------------
-    // Loop-context depth (Sprint 4 Increment B).
-    // Incremented on entering a loop (while / for...in), decremented on exit.
-    // break / continue are valid only when _loopDepth > 0.
-    // select (Increment D) must NOT increment this — break/continue inside a
-    // select arm apply to the enclosing loop, not to the select.
+    // Control-frame stack (Sprint 4 Increments B and D; D-315).
+    //
+    // A frame is pushed on entering a loop (while / for...in) or a select, and
+    // popped on exit. break / continue resolve against the stack, distinguishing
+    // LOOP frames from SELECT frames:
+    //   - break:    nearest frame is a SELECT  -> E2211 (break has no meaning in a
+    //               select — D-301 removed fall-through, and it is not retargeted at
+    //               an enclosing loop). A LOOP frame on top -> valid. Empty -> E2212.
+    //   - continue: skip SELECT frames, target the nearest LOOP frame. None -> E2212.
+    // select is therefore NOT loop-control-transparent (D-315).
     // -----------------------------------------------------------------------
-    private int _loopDepth;
+    private enum ControlFrame { Loop, Select }
+
+    private readonly Stack<ControlFrame> _controlFrames = new();
 
     /// <summary>Initialises a new <see cref="TypeChecker"/> that writes into <paramref name="diagnostics"/>.</summary>
     public TypeChecker(DiagnosticBag diagnostics) {

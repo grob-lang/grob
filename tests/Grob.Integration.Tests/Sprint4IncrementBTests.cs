@@ -293,13 +293,15 @@ public sealed class Sprint4IncrementBTests {
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// <c>break</c> outside any loop must produce exactly E2211.
+    /// <c>break</c> outside any loop and any <c>select</c> must produce exactly E2212
+    /// — the generic out-of-loop code (D-315). E2211 is reserved for <c>break</c>
+    /// inside a <c>select</c>.
     /// </summary>
     [Fact]
-    public void Break_OutsideLoop_ProducesE2211() {
+    public void Break_OutsideLoop_ProducesE2212() {
         DiagnosticBag bag = TypeCheck("break");
         Assert.True(bag.HasErrors);
-        Assert.Single(bag.Errors, e => e.Code == "E2211");
+        Assert.Single(bag.Errors, e => e.Code == "E2212");
     }
 
     /// <summary>

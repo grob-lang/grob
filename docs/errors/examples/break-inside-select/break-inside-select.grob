@@ -1,0 +1,11 @@
+// E2211 — `break` used inside a `select` arm, where it has no meaning
+// Eventual path: docs/errors/examples/break-inside-select/break-inside-select.grob
+verb := "stop"
+select (verb) {
+    case "stop" {
+        break
+    }
+    default {
+        print(verb)
+    }
+}

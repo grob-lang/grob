@@ -116,14 +116,15 @@ public sealed class CompilerLoopTests {
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// <c>break</c> at the top level (outside any loop) must produce E2211
-    /// with the correct source location.
+    /// <c>break</c> at the top level (outside any loop and any <c>select</c>) must
+    /// produce E2212 — the generic out-of-loop code (D-315). E2211 is reserved for
+    /// <c>break</c> inside a <c>select</c>.
     /// </summary>
     [Fact]
-    public void Break_OutsideLoop_ProducesE2211() {
+    public void Break_OutsideLoop_ProducesE2212() {
         DiagnosticBag bag = TypeCheckSource("break");
         Assert.True(bag.HasErrors);
-        Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E2211");
+        Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E2212");
         Assert.Equal(1, diag.Range.Start.Line);
         Assert.Equal(1, diag.Range.Start.Column);
     }
@@ -143,13 +144,13 @@ public sealed class CompilerLoopTests {
 
     /// <summary>
     /// <c>break</c> inside an <c>if</c> that is not inside any loop must still
-    /// produce E2211 — the <c>if</c> block does not create a loop context.
+    /// produce E2212 — the <c>if</c> block does not create a loop context (D-315).
     /// </summary>
     [Fact]
-    public void Break_InsideIfButOutsideLoop_ProducesE2211() {
+    public void Break_InsideIfButOutsideLoop_ProducesE2212() {
         DiagnosticBag bag = TypeCheckSource("if (true) { break }");
         Assert.True(bag.HasErrors);
-        Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E2211");
+        Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E2212");
         Assert.Equal(1, diag.Range.Start.Line);
         Assert.Equal(13, diag.Range.Start.Column);
     }
