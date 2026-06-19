@@ -15,9 +15,11 @@ public sealed class GrobMap {
 
     /// <summary>
     /// The map's keys in insertion order — the key set <c>for k, v in m</c>
-    /// materialises once before iterating (Sprint 4 Increment C).
+    /// materialises once before iterating (Sprint 4 Increment C). This is the live
+    /// ordered-key view of the backing dictionary, not a copy: the caller
+    /// snapshots it (the VM builds a <c>GrobArray</c>) rather than retaining it.
     /// </summary>
-    public IReadOnlyList<string> InsertionOrderKeys => _entries.Keys.ToList();
+    public IReadOnlyList<string> InsertionOrderKeys => _entries.Keys;
 
     /// <summary>Gets or sets the value associated with <paramref name="key"/>.</summary>
     public GrobValue this[string key] {

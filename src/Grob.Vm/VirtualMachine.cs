@@ -481,9 +481,13 @@ public sealed class VirtualMachine {
                                 break;
                             }
                             if (receiver.TryAsMap(out GrobMap? map) && propertyName == "keys") {
-                                var keys = new GrobArray(
-                                    map!.InsertionOrderKeys.Select(GrobValue.FromString));
-                                _stack.Push(GrobValue.FromArray(keys), line);
+                                // No LINQ on the dispatch path: build the keys array with a
+                                // manual indexed loop over the live ordered-key view.
+                                IReadOnlyList<string> keyView = map!.InsertionOrderKeys;
+                                var elements = new GrobValue[keyView.Count];
+                                for (int i = 0; i < keyView.Count; i++)
+                                    elements[i] = GrobValue.FromString(keyView[i]);
+                                _stack.Push(GrobValue.FromArray(new GrobArray(elements)), line);
                                 break;
                             }
                             // Struct field resolution is deferred to Sprint 5.
