@@ -354,7 +354,7 @@ public sealed partial class TypeChecker {
         // property and is not rejected here.
         if (node.Step is null && IsLiteralDescending(node)) {
             EmitError(ErrorCatalog.E0503,
-                "A descending numeric range requires an explicit negative 'step', as in '..' step -1'.",
+                "A descending numeric range requires an explicit negative 'step', as in '3..0 step -1'.",
                 node.Range);
         }
         return GrobType.Unknown;
