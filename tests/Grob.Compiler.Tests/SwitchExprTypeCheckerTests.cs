@@ -157,6 +157,18 @@ public sealed class SwitchExprTypeCheckerTests {
         Assert.False(bag.HasErrors);
     }
 
+    /// <summary>
+    /// A subject that fails to type-check (an undefined identifier) suppresses the
+    /// derived non-exhaustiveness diagnostic — only E1001 is reported, not a cascaded
+    /// E0505.
+    /// </summary>
+    [Fact]
+    public void UndefinedSubject_SuppressesE0505() {
+        DiagnosticBag bag = TypeCheckSource("y := missing switch { 1 => 10, 2 => 20 }");
+        Assert.Single(bag.Errors, e => e.Code == "E1001");
+        Assert.DoesNotContain(bag.Errors, e => e.Code == "E0505");
+    }
+
     // -----------------------------------------------------------------------
     // §3.1.1 invariant — every identifier carries ResolvedType and Declaration
     // -----------------------------------------------------------------------

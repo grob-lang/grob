@@ -361,7 +361,9 @@ public sealed partial class TypeChecker {
             }
         }
 
-        if (!IsExhaustive(subjectType, node.Arms)) {
+        // Cascade suppression: a subject that already failed to type-check would
+        // otherwise produce a derived, misleading non-exhaustiveness diagnostic.
+        if (subjectType != GrobType.Error && !IsExhaustive(subjectType, node.Arms)) {
             EmitError(ErrorCatalog.E0505,
                 "Switch expression is not exhaustive; add a '_' arm or cover every possible value.",
                 node.Range);
@@ -440,9 +442,7 @@ public sealed partial class TypeChecker {
     /// never contribute.
     /// </summary>
     private static bool IsExhaustive(GrobType subjectType, IReadOnlyList<SwitchArm> arms) {
-        foreach (SwitchArm arm in arms) {
-            if (arm.Pattern is CatchAllPattern) return true;
-        }
+        if (arms.Any(arm => arm.Pattern is CatchAllPattern)) return true;
 
         if (subjectType == GrobType.Bool) {
             return HasBoolValueArm(arms, true) && HasBoolValueArm(arms, false);
@@ -450,32 +450,21 @@ public sealed partial class TypeChecker {
 
         if (GrobTypeHelpers.IsNullable(subjectType)) {
             if (!HasNilArm(arms)) return false;
-            List<SwitchArm> nonNil = [];
-            foreach (SwitchArm arm in arms) {
-                if (!IsNilArm(arm)) nonNil.Add(arm);
-            }
+            List<SwitchArm> nonNil = arms.Where(arm => !IsNilArm(arm)).ToList();
             return IsExhaustive(GrobTypeHelpers.ElementType(subjectType), nonNil);
         }
 
         return false;
     }
 
-    private static bool HasBoolValueArm(IReadOnlyList<SwitchArm> arms, bool value) {
-        foreach (SwitchArm arm in arms) {
-            if (arm.Pattern is ValuePattern { Value: BoolLiteralExpr b } && b.Value == value) return true;
-        }
-        return false;
-    }
+    private static bool HasBoolValueArm(IReadOnlyList<SwitchArm> arms, bool value) =>
+        arms.Any(arm => arm.Pattern is ValuePattern { Value: BoolLiteralExpr b } && b.Value == value);
 
     private static bool IsNilArm(SwitchArm arm) =>
         arm.Pattern is ValuePattern { Value: NilLiteralExpr };
 
-    private static bool HasNilArm(IReadOnlyList<SwitchArm> arms) {
-        foreach (SwitchArm arm in arms) {
-            if (IsNilArm(arm)) return true;
-        }
-        return false;
-    }
+    private static bool HasNilArm(IReadOnlyList<SwitchArm> arms) =>
+        arms.Any(IsNilArm);
 
     /// <inheritdoc/>
     /// <remarks>

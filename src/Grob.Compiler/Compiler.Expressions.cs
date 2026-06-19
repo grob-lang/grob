@@ -491,14 +491,9 @@ public sealed partial class Compiler {
     private static GrobType GetSwitchExprResultType(SwitchExprNode node) {
         GrobType result = GrobType.Error;
         bool have = false;
-        foreach (SwitchArm arm in node.Arms) {
-            GrobType armType = GetExprType(arm.Result);
-            if (!have) {
-                result = armType;
-                have = true;
-            } else {
-                result = WidenArmTypes(result, armType);
-            }
+        foreach (GrobType armType in node.Arms.Select(arm => GetExprType(arm.Result))) {
+            result = have ? WidenArmTypes(result, armType) : armType;
+            have = true;
         }
         return result;
     }
@@ -667,6 +662,10 @@ public sealed partial class Compiler {
     /// arms are already known to unify, so the first arm is the conservative fallback.
     /// </summary>
     private static GrobType WidenArmTypes(GrobType first, GrobType second) {
+        // Match UnifyTernaryArms' cascade handling so emission-time widening agrees with
+        // the checker when an arm is Error (a prior failure) or Unknown (e.g. a call).
+        if (first == GrobType.Error || second == GrobType.Error) return GrobType.Error;
+        if (first == GrobType.Unknown || second == GrobType.Unknown) return GrobType.Unknown;
         if (first == second) return first;
         if ((first == GrobType.Int && second == GrobType.Float) ||
             (first == GrobType.Float && second == GrobType.Int)) return GrobType.Float;
