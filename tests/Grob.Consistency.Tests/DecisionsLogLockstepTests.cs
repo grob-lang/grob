@@ -75,6 +75,23 @@ public sealed class DecisionsLogLockstepTests {
     }
 
     [Fact]
+    public void ParsingExtractsEveryTargetOnAMultiTargetSupersessionLine() {
+        // A single line can list several targets ("Superseded by: D-288, D-291");
+        // both must be extracted, not just the first (the log has such lines).
+        var path = Path.Join(Path.GetTempPath(), $"drift-log-{Guid.NewGuid():N}.md");
+        File.WriteAllText(path,
+            "| D-1 | June 2026 | Area | desc |\n\n### D-1 — Title\nSuperseded by: D-288, D-291\n");
+        try {
+            var facts = ConsistencyChecks.ParseDecisionsLog(path);
+
+            Assert.Contains("D-288", facts.SupersessionTargets);
+            Assert.Contains("D-291", facts.SupersessionTargets);
+        } finally {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void LiveDecisionsLog_ExcludesPostMvpEntryFromTheIndexBijection() {
         var facts = ConsistencyChecks.ParseDecisionsLog(RepoPaths.DecisionsLog);
 

@@ -331,7 +331,7 @@ public static partial class ConsistencyChecks {
     /// <returns>A passing result when the guard is found, otherwise a failure.</returns>
     public static CheckResult CheckErrorCatalogGuardPresent(string repoRoot) {
         const string name = "ErrorCatalog agreement guard (D-308)";
-        var path = Path.Combine(
+        var path = Path.Join(
             repoRoot, "tests", "Grob.Core.Tests", "ErrorCatalogAgreementTests.cs");
 
         if (!File.Exists(path)) {
@@ -387,8 +387,11 @@ public static partial class ConsistencyChecks {
     [GeneratedRegex(@"^###\s+(D-(?:PM-)?\d+)\b", RegexOptions.None, RegexTimeoutMs)]
     private static partial Regex FullEntryRegex();
 
-    [GeneratedRegex(@"(?:Supersedes|Superseded by):.*?(D-(?:PM-)?\d+)", RegexOptions.None, RegexTimeoutMs)]
-    private static partial Regex SupersessionRegex();
+    [GeneratedRegex(@"(?:Supersedes|Superseded by):", RegexOptions.None, RegexTimeoutMs)]
+    private static partial Regex SupersessionHeaderRegex();
+
+    [GeneratedRegex(@"D-(?:PM-)?\d+", RegexOptions.None, RegexTimeoutMs)]
+    private static partial Regex DecisionCodeRegex();
 
     [GeneratedRegex(@"ADR-(\d{4})", RegexOptions.None, RegexTimeoutMs)]
     private static partial Regex AdrReferenceRegex();
@@ -416,11 +419,11 @@ public static partial class ConsistencyChecks {
     /// <returns>The number of distinct codes in the summary-index section.</returns>
     /// <exception cref="AnchorNotFoundException">The summary index could not be located.</exception>
     public static int ParseSummaryIndexCount(string errorCodesPath) {
-        var codes = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var line in SectionLines(errorCodesPath, "## Summary Index", "## ")) {
-            var m = SummaryRowRegex().Match(line);
-            if (m.Success) codes.Add(m.Groups[1].Value);
-        }
+        var codes = SectionLines(errorCodesPath, "## Summary Index", "## ")
+            .Select(line => SummaryRowRegex().Match(line))
+            .Where(m => m.Success)
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
 
         if (codes.Count == 0) {
             throw new AnchorNotFoundException(
@@ -436,10 +439,11 @@ public static partial class ConsistencyChecks {
     /// <returns>The stated total.</returns>
     /// <exception cref="AnchorNotFoundException">No canonical total line was found.</exception>
     public static int ParseFooterTotal(string errorCodesPath) {
-        foreach (var line in File.ReadLines(errorCodesPath)) {
-            var m = FooterTotalRegex().Match(line);
-            if (m.Success) return int.Parse(m.Groups[1].Value);
-        }
+        var match = File.ReadLines(errorCodesPath)
+            .Select(line => FooterTotalRegex().Match(line))
+            .FirstOrDefault(m => m.Success);
+        if (match is not null) return int.Parse(match.Groups[1].Value);
+
         throw new AnchorNotFoundException(
             Path.GetFileName(errorCodesPath), "**Total: N codes …** canonical total line");
     }
@@ -467,8 +471,12 @@ public static partial class ConsistencyChecks {
                 if (!code.StartsWith("D-PM-", StringComparison.Ordinal)) numericEntries.Add(code);
             }
 
-            foreach (Match s in SupersessionRegex().Matches(line)) {
-                supersession.Add(s.Groups[1].Value);
+            // A single line can list several targets ("Superseded by: D-288, D-291"),
+            // so extract every code after the header, not just the first.
+            if (SupersessionHeaderRegex().IsMatch(line)) {
+                foreach (Match s in DecisionCodeRegex().Matches(line)) {
+                    supersession.Add(s.Value);
+                }
             }
         }
 
@@ -514,11 +522,11 @@ public static partial class ConsistencyChecks {
     /// <returns>The set of four-digit ADR numbers with a file.</returns>
     /// <exception cref="AnchorNotFoundException">The ADR directory holds no numbered files.</exception>
     public static IReadOnlySet<string> ParseAvailableAdrs(string adrDir) {
-        var available = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var file in Directory.EnumerateFiles(adrDir, "*.md", SearchOption.TopDirectoryOnly)) {
-            var m = AdrFileRegex().Match(Path.GetFileName(file));
-            if (m.Success) available.Add(m.Groups[1].Value);
-        }
+        var available = Directory.EnumerateFiles(adrDir, "*.md", SearchOption.TopDirectoryOnly)
+            .Select(file => AdrFileRegex().Match(Path.GetFileName(file)))
+            .Where(m => m.Success)
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
 
         if (available.Count == 0) {
             throw new AnchorNotFoundException(
@@ -607,7 +615,7 @@ public static partial class ConsistencyChecks {
     /// bounded by <paramref name="startHeading"/> and <paramref name="endHeading"/>.
     /// </summary>
     /// <exception cref="AnchorNotFoundException">No non-empty fenced block was found.</exception>
-    private static IReadOnlyList<string> FencedBlock(
+    private static List<string> FencedBlock(
         string path, string startHeading, string endHeading, string anchor) {
         var block = new List<string>();
         var inBlock = false;

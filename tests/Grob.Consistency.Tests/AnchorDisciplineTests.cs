@@ -10,7 +10,7 @@ namespace Grob.Consistency.Tests;
 /// </summary>
 public sealed class AnchorDisciplineTests {
     private static string TempFile(string content) {
-        var path = Path.Combine(Path.GetTempPath(), $"drift-anchor-{Guid.NewGuid():N}.md");
+        var path = Path.Join(Path.GetTempPath(), $"drift-anchor-{Guid.NewGuid():N}.md");
         File.WriteAllText(path, content);
         return path;
     }
@@ -44,8 +44,10 @@ public sealed class AnchorDisciplineTests {
     public void DecisionsLog_ThrowsWhenNeitherIndexNorEntriesAreFound() {
         var path = TempFile("# Decisions\n\nNothing structured here.\n");
         try {
-            Assert.Throws<AnchorNotFoundException>(
+            var ex = Assert.Throws<AnchorNotFoundException>(
                 () => ConsistencyChecks.ParseDecisionsLog(path));
+            Assert.Contains("D-###", ex.Anchor);
+            Assert.Equal(Path.GetFileName(path), ex.Document);
         } finally {
             File.Delete(path);
         }
@@ -55,8 +57,10 @@ public sealed class AnchorDisciplineTests {
     public void SpecOpCodes_ThrowWhenTheBlockIsMissing() {
         var path = TempFile("# Requirements\n\n### 3.3 OpCode\n\nProse, no csharp block.\n\n### 3.4 Tokens\n");
         try {
-            Assert.Throws<AnchorNotFoundException>(
+            var ex = Assert.Throws<AnchorNotFoundException>(
                 () => ConsistencyChecks.ParseSpecOpCodes(path));
+            Assert.Contains("3.3", ex.Anchor);
+            Assert.Equal(Path.GetFileName(path), ex.Document);
         } finally {
             File.Delete(path);
         }
@@ -66,8 +70,10 @@ public sealed class AnchorDisciplineTests {
     public void SpecTokenAtoms_ThrowWhenTheListingIsMissing() {
         var path = TempFile("# Requirements\n\n### 3.4 Token Kind\n\nProse, no fenced listing.\n\n### 3.5 Next\n");
         try {
-            Assert.Throws<AnchorNotFoundException>(
+            var ex = Assert.Throws<AnchorNotFoundException>(
                 () => ConsistencyChecks.ParseSpecTokenAtoms(path));
+            Assert.Contains("3.4", ex.Anchor);
+            Assert.Equal(Path.GetFileName(path), ex.Document);
         } finally {
             File.Delete(path);
         }

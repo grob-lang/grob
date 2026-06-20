@@ -28,14 +28,16 @@ public sealed class ErrorCatalogGuardTests {
     public void Fails_WhenTheGuardNoLongerReferencesBothSides() {
         var root = Directory.CreateTempSubdirectory("drift-guard-hollow-");
         try {
-            var dir = Directory.CreateDirectory(Path.Combine(root.FullName, "tests", "Grob.Core.Tests"));
+            var dir = Directory.CreateDirectory(Path.Join(root.FullName, "tests", "Grob.Core.Tests"));
             File.WriteAllText(
-                Path.Combine(dir.FullName, "ErrorCatalogAgreementTests.cs"),
+                Path.Join(dir.FullName, "ErrorCatalogAgreementTests.cs"),
                 "// a file that no longer guards anything");
 
             var result = ConsistencyChecks.CheckErrorCatalogGuardPresent(root.FullName);
 
             Assert.False(result.Ok);
+            Assert.Contains(result.Discrepancies, d =>
+                d.Contains("ErrorCatalog") && d.Contains("grob-error-codes.md"));
         } finally {
             root.Delete(recursive: true);
         }
