@@ -230,18 +230,21 @@ compile-and-disassemble:
 - ternary and switch expression: exactly one arm reachable per condition/match,
   and every path leaves exactly one value on the stack (assert stack height).
 
-### 4.3 `break`/`continue` resolve to the innermost loop, and `select` passes through
+### 4.3 `break`/`continue` resolve to the innermost loop; `select` is not loop-control-transparent (D-315)
 
 The loop-context stack (Increment B) is the foundation C and D build on. Verify:
 
 - A nested `while`/`for`: `break`/`continue` act on the **innermost** loop; the
   outer loop is untouched.
-- `break`/`continue` outside any loop are E2211/E2212, with source locations.
-- **`select` pushes no loop context:** a `break`/`continue` inside a `select`
-  case acts on the **enclosing loop** (compile `while { select { case … { break } } }`
-  and confirm the `break` exits the `while`), or is E2211/E2212 if there is no
-  enclosing loop. A `select` that captures `break`/`continue` itself is a
-  CORRECTNESS finding.
+- `continue` outside any loop is E2212, with a source location.
+- **`break` inside a `select` arm is always E2211 (D-315)** — at any nesting,
+  whether or not a loop encloses the `select`. Compile
+  `while { select { case … { break } } }` and confirm it raises **E2211**, not a
+  `break` that exits the `while`. A `select` that silently retargets `break` at
+  the enclosing loop is a CORRECTNESS finding.
+- **`continue` inside a `select` arm passes through to the nearest enclosing
+  loop** (D-315) — `select` pushes no loop context for `continue` resolution.
+  With no enclosing loop, `continue` inside a `select` is E2212.
 
 ### 4.4 `for...in` lowers correctly for every form
 
@@ -335,11 +338,14 @@ scope; baseline provenance is in.
   **superseded**. For Sprint 4 the calculator is loop-and-`select` based over the
   Sprint 1–4 surface. A finding "the calculator should call a function" tests
   Sprint 5 early and is noise.
-- **E2211/E2212/E0501–E0505 were assigned this sprint.** They are new registry
-  entries at the next-free numbers in their blocks (ADR-0014, ADR-0017). Verify
-  they exist, are referenced via catalog descriptors and carry the §-wording. "These
-  codes did not exist before" is expected — they are new; the question is whether
-  they are now correctly registered and used.
+- **E0501–E0505 were newly assigned this sprint; E2211/E2212 pre-existed and were
+  retitled by D-315.** The iteration codes E0501–E0505 are new registry entries at
+  the next-free numbers in their block (ADR-0014, ADR-0017) — "these codes did not
+  exist before" is expected for them. E2211/E2212 are **not** new: the registry
+  changelog records that both pre-existed and D-315 only retitled them to reflect
+  the asymmetric `select` resolution, adding no codes. Verify all of these exist,
+  are referenced via catalog descriptors and carry the §-wording; a finding that
+  frames E2211/E2212 as newly created is noise.
 
 A "this `:=` could be a collection expression" or "this method could be a primary
 constructor" suggestion is stylistic modernisation and out of scope. The build is
