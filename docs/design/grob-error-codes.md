@@ -76,6 +76,7 @@ read by `grob --explain Exxxx`.
 | E0502 | single-identifier `for...in` over a `map`          | Type              | pre-release           |
 | E0503 | descending range without explicit negative `step`  | Type              | pre-release           |
 | E0504 | reassignment of `for...in` iterator variable       | Type              | pre-release           |
+| E0505 | non-exhaustive switch expression                   | Type              | pre-release           |
 | E1001 | undefined identifier                               | Name resolution   | pre-release           |
 | E1002 | undefined member                                   | Name resolution   | pre-release           |
 | E1003 | undefined module                                   | Name resolution   | pre-release           |
@@ -392,6 +393,16 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** The iteration variable of a `for...in` loop (`item`, the index `i`, or the map `k`/`v`) is immutable within the loop body and cannot be reassigned. Copy it to a `:=` binding to mutate a local.
 - **Source decision:** Sprint 4 Increment C.
+
+---
+
+### E0505 — non-exhaustive switch expression
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A switch expression must cover every possible value of its scrutinee (§3.1). Coverage is proven by a `_` catch-all arm, by matching both `true` and `false` for a `bool` scrutinee, or by matching `nil` and otherwise covering the element type for a nullable scrutinee. Relational patterns never contribute to exhaustiveness. Add a `_` arm or cover the remaining cases. This is the deliberate counterpart to the non-exhaustive `select` statement (D-301).
+- **Source decision:** Sprint 4 Increment E.
 
 ---
 
@@ -1190,5 +1201,7 @@ _Initial allocation: 94 codes across 7 categories. All `pre-release` until v1.0 
 _Updated May 2026 — count corrected from a stale "86 codes" to the actual 94 codes present in the summary index and full entries. No codes were added in this edit; the footer total had not been updated as codes accrued. The 7-category structure (E0xxx–E9xxx) is unchanged._
 
 _Updated June 2026 — Sprint 4 Increment C added the `for...in` iteration diagnostics E0501–E0504 in the previously empty E05xx sub-block of the Type category, bringing the total to 98 codes._
+
+_Updated June 2026 — Sprint 4 Increment E added E0505 (non-exhaustive switch expression) to the E05xx sub-block of the Type category, bringing the total to 99 codes._
 
 _Updated June 2026 — D-315: E2211 retitled to `break` inside `select` and E2212 retitled to `break` / `continue` outside a loop, reflecting the asymmetric resolution. Both codes pre-existed; no new codes were added by this edit._

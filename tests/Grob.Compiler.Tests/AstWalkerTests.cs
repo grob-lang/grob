@@ -238,6 +238,18 @@ public class AstWalkerTests {
     }
 
     [Fact]
+    public void Walker_RecursesIntoSwitchExprSubjectPatternsAndResults() {
+        SwitchExprNode sw = new(R, Id("subj"), [
+            new SwitchArm(R, new ValuePattern(R, Id("vp")), Id("vr")),
+            new SwitchArm(R, new RelationalPattern(R, BinaryOperator.GreaterEqual, Id("rp")), Id("rr")),
+            new SwitchArm(R, new CatchAllPattern(R), Id("cr")),
+        ]);
+        IdentifierCollector c = new();
+        c.Visit(sw);
+        Assert.Equal(["subj", "vp", "vr", "rp", "rr", "cr"], c.Names);
+    }
+
+    [Fact]
     public void Walker_NumericRange_WithoutStep_DoesNotThrow() {
         NumericRangeExpr range = new(R, Id("s"), Id("e"), null);
         IdentifierCollector c = new();

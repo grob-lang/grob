@@ -333,6 +333,149 @@ public sealed partial class TypeChecker {
         return GrobType.Error;
     }
 
+    // -----------------------------------------------------------------------
+    // Switch expression (§3.1) — patterns (D-277), exhaustiveness, arm unification.
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Type-checks each arm pattern against the scrutinee (D-277), proves exhaustiveness
+    /// (§3.1) — a non-exhaustive switch is <see cref="ErrorCatalog.E0505"/> — and unifies
+    /// every arm result to one type via <see cref="UnifyTernaryArms"/> (E0001 on
+    /// mismatch), the same mechanism the ternary uses (Increment A). The resolved type
+    /// of the whole expression is the unified arm type.
+    /// </remarks>
+    public override GrobType VisitSwitchExpr(SwitchExprNode node) {
+        GrobType subjectType = Visit(node.Subject);
+
+        GrobType resultType = GrobType.Error;
+        bool haveResult = false;
+        foreach (SwitchArm arm in node.Arms) {
+            CheckPattern(arm.Pattern, subjectType);
+            GrobType armType = Visit(arm.Result);
+            if (!haveResult) {
+                resultType = armType;
+                haveResult = true;
+            } else {
+                resultType = UnifyTernaryArms(resultType, armType, arm.Result.Range);
+            }
+        }
+
+        // Cascade suppression: a subject that already failed to type-check would
+        // otherwise produce a derived, misleading non-exhaustiveness diagnostic.
+        if (subjectType != GrobType.Error && !IsExhaustive(subjectType, node.Arms)) {
+            EmitError(ErrorCatalog.E0505,
+                "Switch expression is not exhaustive; add a '_' arm or cover every possible value.",
+                node.Range);
+        }
+
+        return haveResult ? resultType : GrobType.Error;
+    }
+
+    /// <summary>
+    /// Type-checks one switch-expression pattern against the scrutinee type (§3.1).
+    /// A value pattern must be assignable to the scrutinee (E0001), with <c>nil</c>
+    /// legal only on a nullable scrutinee; a relational pattern requires an ordered
+    /// scrutinee and an assignable operand (E0001); a catch-all needs no check.
+    /// </summary>
+    private void CheckPattern(SwitchPattern pattern, GrobType subjectType) {
+        switch (pattern) {
+            case ValuePattern vp:
+                CheckValuePattern(vp, subjectType);
+                break;
+            case RelationalPattern rp:
+                CheckRelationalPattern(rp, subjectType);
+                break;
+            case CatchAllPattern:
+                break;
+        }
+    }
+
+    private void CheckValuePattern(ValuePattern vp, GrobType subjectType) {
+        GrobType patternType = Visit(vp.Value);
+        if (patternType == GrobType.Error || subjectType == GrobType.Error) return;
+
+        if (patternType == GrobType.Nil) {
+            if (!GrobTypeHelpers.IsNullable(subjectType)) {
+                EmitError(ErrorCatalog.E0001,
+                    $"'nil' pattern is not valid for non-nullable scrutinee type '{TypeName(subjectType)}'.",
+                    vp.Range);
+            }
+            return;
+        }
+
+        if (!IsPatternAssignable(patternType, subjectType)) {
+            EmitError(ErrorCatalog.E0001,
+                $"Switch pattern type '{TypeName(patternType)}' is not assignable to scrutinee type '{TypeName(subjectType)}'.",
+                vp.Range);
+        }
+    }
+
+    private void CheckRelationalPattern(RelationalPattern rp, GrobType subjectType) {
+        GrobType operandType = Visit(rp.Operand);
+        if (operandType == GrobType.Error || subjectType == GrobType.Error) return;
+
+        if (!IsOrdered(subjectType)) {
+            EmitError(ErrorCatalog.E0001,
+                $"Relational pattern requires an ordered scrutinee ('int', 'float' or 'string'); found '{TypeName(subjectType)}'.",
+                rp.Range);
+            return;
+        }
+
+        if (!IsPatternAssignable(operandType, subjectType)) {
+            EmitError(ErrorCatalog.E0001,
+                $"Relational pattern operand type '{TypeName(operandType)}' is not assignable to scrutinee type '{TypeName(subjectType)}'.",
+                rp.Range);
+        }
+    }
+
+    private static bool IsOrdered(GrobType type) =>
+        type == GrobType.Int || type == GrobType.Float || type == GrobType.String;
+
+    /// <summary>
+    /// A pattern type is assignable to the scrutinee when it equals the scrutinee's
+    /// (nullable-unwrapped) type, or it is an <c>int</c> literal widening to a
+    /// <c>float</c> scrutinee — the only implicit numeric conversion in Grob.
+    /// </summary>
+    private static bool IsPatternAssignable(GrobType patternType, GrobType subjectType) {
+        GrobType target = GrobTypeHelpers.IsNullable(subjectType)
+            ? GrobTypeHelpers.ElementType(subjectType)
+            : subjectType;
+        if (patternType == target) return true;
+        return patternType == GrobType.Int && target == GrobType.Float;
+    }
+
+    /// <summary>
+    /// Proves switch exhaustiveness (§3.1): a <c>_</c> arm, or a <c>bool</c> scrutinee
+    /// with both <c>true</c> and <c>false</c> matched, or a nullable scrutinee with
+    /// <c>nil</c> matched and the element type otherwise covered. Relational patterns
+    /// never contribute.
+    /// </summary>
+    private static bool IsExhaustive(GrobType subjectType, IReadOnlyList<SwitchArm> arms) {
+        if (arms.Any(arm => arm.Pattern is CatchAllPattern)) return true;
+
+        if (subjectType == GrobType.Bool) {
+            return HasBoolValueArm(arms, true) && HasBoolValueArm(arms, false);
+        }
+
+        if (GrobTypeHelpers.IsNullable(subjectType)) {
+            if (!HasNilArm(arms)) return false;
+            List<SwitchArm> nonNil = arms.Where(arm => !IsNilArm(arm)).ToList();
+            return IsExhaustive(GrobTypeHelpers.ElementType(subjectType), nonNil);
+        }
+
+        return false;
+    }
+
+    private static bool HasBoolValueArm(IReadOnlyList<SwitchArm> arms, bool value) =>
+        arms.Any(arm => arm.Pattern is ValuePattern { Value: BoolLiteralExpr b } && b.Value == value);
+
+    private static bool IsNilArm(SwitchArm arm) =>
+        arm.Pattern is ValuePattern { Value: NilLiteralExpr };
+
+    private static bool HasNilArm(IReadOnlyList<SwitchArm> arms) =>
+        arms.Any(IsNilArm);
+
     /// <inheritdoc/>
     /// <remarks>
     /// A numeric range only appears as a <c>for...in</c> subject. Validates that

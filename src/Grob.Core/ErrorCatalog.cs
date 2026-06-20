@@ -233,6 +233,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>non-exhaustive switch expression</summary>
+    public static readonly ErrorDescriptor E0505 = new(
+        Code: "E0505",
+        Title: "non-exhaustive switch expression",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     // ---- Name resolution — E1001–E1999 ----
 
     /// <summary>undefined identifier</summary>
@@ -973,6 +982,7 @@ public static class ErrorCatalog {
         E0502,
         E0503,
         E0504,
+        E0505,
         E1001,
         E1002,
         E1003,
