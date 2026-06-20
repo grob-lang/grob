@@ -26,7 +26,7 @@ public sealed record DecisionsLogFacts(
     IReadOnlyList<string> SupersessionTargets);
 
 /// <summary>
-/// An atom extracted from the §3.4 TokenKind listing, with the document line for
+/// An atom extracted from the §3.4 TokenKind listing, with the section for
 /// diagnostics.
 /// </summary>
 /// <param name="Section">The §3.4 sub-section the atom came from (Keywords, Operators, …).</param>
@@ -41,7 +41,7 @@ public sealed record SpecAtom(string Section, string Text);
 /// and the xUnit gate both drive this one implementation — there is no second
 /// copy of the logic.
 /// </summary>
-public static class ConsistencyChecks {
+public static partial class ConsistencyChecks {
     // -------------------------------------------------------------------------
     // 4.1.1 — Error-code count agreement
     // -------------------------------------------------------------------------
@@ -183,13 +183,12 @@ public static class ConsistencyChecks {
             .Where(name => !actual.Contains(name))
             .Distinct()
             .OrderBy(name => name, StringComparer.Ordinal)
+            .Select(name => $"{label} '{name}' is declared in the spec but absent from the {label} enum")
             .ToList();
 
         return missing.Count == 0
             ? CheckResult.Pass($"{label} completeness")
-            : CheckResult.Fail($"{label} completeness", missing
-                .Select(name => $"{label} '{name}' is declared in the spec but absent from the {label} enum")
-                .ToList());
+            : CheckResult.Fail($"{label} completeness", missing);
     }
 
     /// <summary>
@@ -331,11 +330,12 @@ public static class ConsistencyChecks {
     /// <param name="repoRoot">The repository root to search under.</param>
     /// <returns>A passing result when the guard is found, otherwise a failure.</returns>
     public static CheckResult CheckErrorCatalogGuardPresent(string repoRoot) {
+        const string name = "ErrorCatalog agreement guard (D-308)";
         var path = Path.Combine(
             repoRoot, "tests", "Grob.Core.Tests", "ErrorCatalogAgreementTests.cs");
 
         if (!File.Exists(path)) {
-            return CheckResult.Fail("ErrorCatalog agreement guard (D-308)", [
+            return CheckResult.Fail(name, [
                 $"The D-308 catalog↔registry guard was not found at {path}. " +
                 "It is the load-bearing agreement test the consistency suite indexes."]);
         }
@@ -344,8 +344,8 @@ public static class ConsistencyChecks {
         var guards = text.Contains("ErrorCatalog", StringComparison.Ordinal)
                      && text.Contains("grob-error-codes.md", StringComparison.Ordinal);
         return guards
-            ? CheckResult.Pass("ErrorCatalog agreement guard (D-308)")
-            : CheckResult.Fail("ErrorCatalog agreement guard (D-308)", [
+            ? CheckResult.Pass(name)
+            : CheckResult.Fail(name, [
                 $"{path} exists but no longer references both ErrorCatalog and " +
                 "grob-error-codes.md — it may no longer be the catalog↔registry guard."]);
     }
@@ -367,13 +367,47 @@ public static class ConsistencyChecks {
     public static IReadOnlySet<string> ActualTokenKindNames() => Enum.GetNames<TokenKind>().ToHashSet();
 
     // -------------------------------------------------------------------------
-    // Defensive parsers (the "stated" side) — throw on missing anchors
+    // Source-generated regexes (the "stated" side)
     // -------------------------------------------------------------------------
 
-    private static readonly Regex _summaryRowPattern =
-        new(@"^\|\s*(E\d{4})\s*\|", RegexOptions.Compiled);
-    private static readonly Regex _footerTotalPattern =
-        new(@"\*\*Total:\s*(\d+)\s*codes", RegexOptions.Compiled);
+    // Every pattern below is linear (no nested quantifiers over overlapping
+    // classes), but a match timeout is set as a defence-in-depth ReDoS backstop
+    // even though the inputs are trusted in-repo documents.
+    private const int RegexTimeoutMs = 2_000;
+
+    [GeneratedRegex(@"^\|\s*(E\d{4})\s*\|", RegexOptions.None, RegexTimeoutMs)]
+    private static partial Regex SummaryRowRegex();
+
+    [GeneratedRegex(@"\*\*Total:\s*(\d+)\s*codes", RegexOptions.None, RegexTimeoutMs)]
+    private static partial Regex FooterTotalRegex();
+
+    [GeneratedRegex(@"^\|\s*(D-\d+)\s*\|", RegexOptions.None, RegexTimeoutMs)]
+    private static partial Regex IndexCodeRegex();
+
+    [GeneratedRegex(@"^###\s+(D-(?:PM-)?\d+)\b", RegexOptions.None, RegexTimeoutMs)]
+    private static partial Regex FullEntryRegex();
+
+    [GeneratedRegex(@"(?:Supersedes|Superseded by):.*?(D-(?:PM-)?\d+)", RegexOptions.None, RegexTimeoutMs)]
+    private static partial Regex SupersessionRegex();
+
+    [GeneratedRegex(@"ADR-(\d{4})", RegexOptions.None, RegexTimeoutMs)]
+    private static partial Regex AdrReferenceRegex();
+
+    [GeneratedRegex(@"^(\d{4})-", RegexOptions.None, RegexTimeoutMs)]
+    private static partial Regex AdrFileRegex();
+
+    [GeneratedRegex(@"^\s*([A-Za-z_]\w*)\s*,", RegexOptions.None, RegexTimeoutMs)]
+    private static partial Regex EnumMemberRegex();
+
+    // A §3.4 sub-section: a label at column 0, then its body up to the next label
+    // or the end of the block. Singleline lets the body span continuation lines.
+    [GeneratedRegex(@"^([A-Za-z][A-Za-z-]*):[ \t]*(.*?)(?=^[A-Za-z][A-Za-z-]*:|\z)",
+        RegexOptions.Multiline | RegexOptions.Singleline, RegexTimeoutMs)]
+    private static partial Regex TokenSectionRegex();
+
+    // -------------------------------------------------------------------------
+    // Defensive parsers (the "stated" side) — throw on missing anchors
+    // -------------------------------------------------------------------------
 
     /// <summary>
     /// Counts the distinct codes in the registry summary index.
@@ -382,16 +416,9 @@ public static class ConsistencyChecks {
     /// <returns>The number of distinct codes in the summary-index section.</returns>
     /// <exception cref="AnchorNotFoundException">The summary index could not be located.</exception>
     public static int ParseSummaryIndexCount(string errorCodesPath) {
-        var inSection = false;
-        var codes = new HashSet<string>();
-        foreach (var line in File.ReadLines(errorCodesPath)) {
-            if (line.StartsWith("## Summary Index", StringComparison.Ordinal)) {
-                inSection = true;
-                continue;
-            }
-            if (inSection && line.StartsWith("## ", StringComparison.Ordinal)) break;
-            if (!inSection) continue;
-            var m = _summaryRowPattern.Match(line);
+        var codes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var line in SectionLines(errorCodesPath, "## Summary Index", "## ")) {
+            var m = SummaryRowRegex().Match(line);
             if (m.Success) codes.Add(m.Groups[1].Value);
         }
 
@@ -410,19 +437,12 @@ public static class ConsistencyChecks {
     /// <exception cref="AnchorNotFoundException">No canonical total line was found.</exception>
     public static int ParseFooterTotal(string errorCodesPath) {
         foreach (var line in File.ReadLines(errorCodesPath)) {
-            var m = _footerTotalPattern.Match(line);
+            var m = FooterTotalRegex().Match(line);
             if (m.Success) return int.Parse(m.Groups[1].Value);
         }
         throw new AnchorNotFoundException(
             Path.GetFileName(errorCodesPath), "**Total: N codes …** canonical total line");
     }
-
-    private static readonly Regex _indexCodePattern =
-        new(@"^\|\s*(D-\d+)\s*\|", RegexOptions.Compiled);
-    private static readonly Regex _fullEntryPattern =
-        new(@"^###\s+(D-(?:PM-)?\d+)\b", RegexOptions.Compiled);
-    private static readonly Regex _supersessionPattern =
-        new(@"(?:Supersedes|Superseded by):.*?(D-(?:PM-)?\d+)", RegexOptions.Compiled);
 
     /// <summary>
     /// Parses the decisions-log facts the lockstep check needs.
@@ -437,17 +457,17 @@ public static class ConsistencyChecks {
         var supersession = new List<string>();
 
         foreach (var line in File.ReadLines(decisionsLogPath)) {
-            var idx = _indexCodePattern.Match(line);
+            var idx = IndexCodeRegex().Match(line);
             if (idx.Success) indexCodes.Add(idx.Groups[1].Value);
 
-            var entry = _fullEntryPattern.Match(line);
+            var entry = FullEntryRegex().Match(line);
             if (entry.Success) {
                 var code = entry.Groups[1].Value;
                 allEntries.Add(code);
                 if (!code.StartsWith("D-PM-", StringComparison.Ordinal)) numericEntries.Add(code);
             }
 
-            foreach (Match s in _supersessionPattern.Matches(line)) {
+            foreach (Match s in SupersessionRegex().Matches(line)) {
                 supersession.Add(s.Groups[1].Value);
             }
         }
@@ -460,11 +480,6 @@ public static class ConsistencyChecks {
 
         return new DecisionsLogFacts(indexCodes, numericEntries, allEntries, supersession);
     }
-
-    private static readonly Regex _adrReferencePattern =
-        new(@"ADR-(\d{4})", RegexOptions.Compiled);
-    private static readonly Regex _adrFilePattern =
-        new(@"^(\d{4})-", RegexOptions.Compiled);
 
     /// <summary>
     /// Collects every ADR reference across the design markdown files.
@@ -479,7 +494,7 @@ public static class ConsistencyChecks {
             var lineNo = 0;
             foreach (var line in File.ReadLines(file)) {
                 lineNo++;
-                foreach (Match m in _adrReferencePattern.Matches(line)) {
+                foreach (Match m in AdrReferenceRegex().Matches(line)) {
                     references.Add(new AdrReference(name, lineNo, m.Groups[1].Value));
                 }
             }
@@ -501,7 +516,7 @@ public static class ConsistencyChecks {
     public static IReadOnlySet<string> ParseAvailableAdrs(string adrDir) {
         var available = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in Directory.EnumerateFiles(adrDir, "*.md", SearchOption.TopDirectoryOnly)) {
-            var m = _adrFilePattern.Match(Path.GetFileName(file));
+            var m = AdrFileRegex().Match(Path.GetFileName(file));
             if (m.Success) available.Add(m.Groups[1].Value);
         }
 
@@ -512,61 +527,29 @@ public static class ConsistencyChecks {
         return available;
     }
 
-    private static readonly Regex _enumMemberPattern =
-        new(@"^\s*([A-Za-z_]\w*)\s*,", RegexOptions.Compiled);
-
     /// <summary>
-    /// Parses the opcode names the spec lists in the §3.3 <c>csharp</c> enum block.
+    /// Parses the opcode names the spec lists in the §3.3 enum block. Comment and
+    /// brace lines do not match the member pattern, so no separate filtering is
+    /// needed — only <c>Name,</c> lines are collected.
     /// </summary>
     /// <param name="requirementsPath">Path to grob-v1-requirements.md.</param>
     /// <returns>The opcode identifiers declared in §3.3, in order.</returns>
     /// <exception cref="AnchorNotFoundException">The §3.3 opcode block could not be located.</exception>
     public static IReadOnlyList<string> ParseSpecOpCodes(string requirementsPath) {
-        var lines = File.ReadAllLines(requirementsPath);
-        var names = new List<string>();
-        var section = false;
-        var inBlock = false;
-        var inEnum = false;
+        var block = FencedBlock(requirementsPath, "### 3.3", "### 3.4", "### 3.3 OpCode enum csharp block");
 
-        foreach (var raw in lines) {
-            if (!section) {
-                if (raw.StartsWith("### 3.3", StringComparison.Ordinal)) section = true;
-                continue;
-            }
-            if (raw.StartsWith("### 3.4", StringComparison.Ordinal)) break;
-
-            if (!inBlock) {
-                if (raw.TrimStart().StartsWith("```", StringComparison.Ordinal)) inBlock = true;
-                continue;
-            }
-            if (raw.TrimStart().StartsWith("```", StringComparison.Ordinal)) break;
-
-            var line = raw.Trim();
-            if (line.StartsWith("//", StringComparison.Ordinal)) continue;
-            if (line.Contains("enum OpCode", StringComparison.Ordinal)) { inEnum = true; continue; }
-            if (!inEnum) continue;
-            if (line.StartsWith("{", StringComparison.Ordinal) || line.StartsWith("}", StringComparison.Ordinal)) continue;
-
-            var m = _enumMemberPattern.Match(line);
-            if (m.Success) names.Add(m.Groups[1].Value);
-        }
+        var names = block
+            .Select(line => EnumMemberRegex().Match(line.Trim()))
+            .Where(m => m.Success)
+            .Select(m => m.Groups[1].Value)
+            .ToList();
 
         if (names.Count == 0) {
             throw new AnchorNotFoundException(
-                Path.GetFileName(requirementsPath), "### 3.3 OpCode enum csharp block");
+                Path.GetFileName(requirementsPath), "### 3.3 OpCode enum members (Name, lines)");
         }
         return names;
     }
-
-    private static readonly Regex _sectionLabelPattern =
-        new(@"^([A-Z][A-Za-z-]*):\s*(.*)$", RegexOptions.Compiled);
-
-    // §3.4 sub-sections the gate verifies. Built-ins are excluded: the spec states
-    // print/exit/input are resolved as identifiers, not their own token kinds.
-    private static readonly IReadOnlySet<string> _commaSplitSections =
-        new HashSet<string>(StringComparer.Ordinal) { "Keywords", "Literals", "Structure" };
-    private static readonly IReadOnlySet<string> _whitespaceSplitSections =
-        new HashSet<string>(StringComparer.Ordinal) { "Operators", "Punctuation" };
 
     /// <summary>
     /// Parses the §3.4 TokenKind listing into atoms, one per keyword, glyph or
@@ -576,58 +559,13 @@ public static class ConsistencyChecks {
     /// <returns>Every §3.4 atom the gate checks.</returns>
     /// <exception cref="AnchorNotFoundException">The §3.4 fenced listing could not be located.</exception>
     public static IReadOnlyList<SpecAtom> ParseSpecTokenAtoms(string requirementsPath) {
-        var lines = File.ReadAllLines(requirementsPath);
-        var section = false;
-        var inBlock = false;
-        string? current = null;
-        var buffers = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var block = FencedBlock(requirementsPath, "### 3.4", "### 3.5", "### 3.4 TokenKind fenced listing");
+        var blockText = string.Join("\n", block);
 
-        foreach (var raw in lines) {
-            if (!section) {
-                if (raw.StartsWith("### 3.4", StringComparison.Ordinal)) section = true;
-                continue;
-            }
-            if (raw.StartsWith("### 3.5", StringComparison.Ordinal)) break;
-
-            if (!inBlock) {
-                if (raw.TrimStart().StartsWith("```", StringComparison.Ordinal)) inBlock = true;
-                continue;
-            }
-            if (raw.TrimStart().StartsWith("```", StringComparison.Ordinal)) break;
-
-            var label = _sectionLabelPattern.Match(raw);
-            if (label.Success) {
-                current = label.Groups[1].Value;
-                buffers[current] = [label.Groups[2].Value];
-            } else if (current is not null) {
-                buffers[current].Add(raw.Trim());
-            }
-        }
-
-        if (buffers.Count == 0) {
-            throw new AnchorNotFoundException(
-                Path.GetFileName(requirementsPath), "### 3.4 TokenKind fenced listing");
-        }
-
-        var atoms = new List<SpecAtom>();
-        foreach (var (label, parts) in buffers) {
-            var text = string.Join(" ", parts).Trim();
-            if (label == "Builtins" || label == "Built-ins") continue;
-
-            if (label == "Decorators") {
-                // The line is "@ (followed by identifier: …)" — only the @ is a token.
-                atoms.Add(new SpecAtom(label, "@"));
-                continue;
-            }
-
-            IEnumerable<string> raw = _commaSplitSections.Contains(label)
-                ? text.Split([',', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries)
-                : _whitespaceSplitSections.Contains(label)
-                    ? text.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries)
-                    : [];
-
-            foreach (var token in raw) atoms.Add(new SpecAtom(label, token));
-        }
+        var atoms = TokenSectionRegex()
+            .Matches(blockText)
+            .SelectMany(m => AtomsForSection(m.Groups[1].Value, m.Groups[2].Value))
+            .ToList();
 
         if (atoms.Count == 0) {
             throw new AnchorNotFoundException(
@@ -635,6 +573,78 @@ public static class ConsistencyChecks {
         }
         return atoms;
     }
+
+    // -------------------------------------------------------------------------
+    // Parsing helpers
+    // -------------------------------------------------------------------------
+
+    private static readonly char[] _commaSeparators = [',', ' ', '\t', '\n', '\r'];
+    private static readonly char[] _whitespaceSeparators = [' ', '\t', '\n', '\r'];
+    private static readonly HashSet<string> _whitespaceSplitSections =
+        new(StringComparer.Ordinal) { "Operators", "Punctuation" };
+    private static readonly HashSet<string> _commaSplitSections =
+        new(StringComparer.Ordinal) { "Keywords", "Literals", "Structure" };
+
+    /// <summary>
+    /// Yields the lines of a markdown section, from the line after
+    /// <paramref name="startHeading"/> up to (but excluding) the next line starting
+    /// with <paramref name="endHeading"/>.
+    /// </summary>
+    private static IEnumerable<string> SectionLines(string path, string startHeading, string endHeading) {
+        var inSection = false;
+        foreach (var line in File.ReadLines(path)) {
+            if (!inSection) {
+                inSection = line.StartsWith(startHeading, StringComparison.Ordinal);
+                continue;
+            }
+            if (line.StartsWith(endHeading, StringComparison.Ordinal)) yield break;
+            yield return line;
+        }
+    }
+
+    /// <summary>
+    /// Returns the lines inside the first fenced code block within the section
+    /// bounded by <paramref name="startHeading"/> and <paramref name="endHeading"/>.
+    /// </summary>
+    /// <exception cref="AnchorNotFoundException">No non-empty fenced block was found.</exception>
+    private static IReadOnlyList<string> FencedBlock(
+        string path, string startHeading, string endHeading, string anchor) {
+        var block = new List<string>();
+        var inBlock = false;
+        foreach (var line in SectionLines(path, startHeading, endHeading)) {
+            var fence = line.TrimStart().StartsWith("```", StringComparison.Ordinal);
+            if (!inBlock) {
+                if (fence) inBlock = true;
+                continue;
+            }
+            if (fence) break;
+            block.Add(line);
+        }
+
+        if (block.Count == 0) {
+            throw new AnchorNotFoundException(Path.GetFileName(path), anchor);
+        }
+        return block;
+    }
+
+    /// <summary>
+    /// Splits one §3.4 sub-section's body into atoms. Built-ins are excluded (the
+    /// spec resolves print/exit/input as identifiers, not token kinds); the
+    /// decorator section contributes only the <c>@</c> glyph.
+    /// </summary>
+    private static IEnumerable<SpecAtom> AtomsForSection(string label, string body) {
+        if (label is "Builtins" or "Built-ins") return [];
+        if (label == "Decorators") return [new SpecAtom(label, "@")];
+
+        if (_whitespaceSplitSections.Contains(label)) return Atoms(label, body, _whitespaceSeparators);
+        if (_commaSplitSections.Contains(label)) return Atoms(label, body, _commaSeparators);
+        return [];
+    }
+
+    private static IEnumerable<SpecAtom> Atoms(string label, string body, char[] separators)
+        => body
+            .Split(separators, StringSplitOptions.RemoveEmptyEntries)
+            .Select(token => new SpecAtom(label, token));
 
     // -------------------------------------------------------------------------
     // Orchestration — wire parsers to live facts and run every check
@@ -645,22 +655,19 @@ public static class ConsistencyChecks {
     /// all paths from the repository root.
     /// </summary>
     /// <returns>One <see cref="CheckResult"/> per check, in a stable order.</returns>
-    public static IReadOnlyList<CheckResult> RunAll() {
-        var results = new List<CheckResult> {
-            CompareErrorCodeCount(
-                ParseSummaryIndexCount(RepoPaths.ErrorCodes),
-                ActualErrorCatalogCount(),
-                ParseFooterTotal(RepoPaths.ErrorCodes)),
-            CheckDecisionsLockstep(ParseDecisionsLog(RepoPaths.DecisionsLog)),
-            CheckAdrReferences(
-                ParseAdrReferences(RepoPaths.DesignDir),
-                ParseAvailableAdrs(RepoPaths.AdrDir)),
-            CheckEnumCompleteness(
-                "OpCode", ParseSpecOpCodes(RepoPaths.Requirements), ActualOpCodeNames()),
-            CheckTokenKindCompleteness(
-                ParseSpecTokenAtoms(RepoPaths.Requirements), ActualTokenKindNames()),
-            CheckErrorCatalogGuardPresent(RepoPaths.RepoRoot()),
-        };
-        return results;
-    }
+    public static IReadOnlyList<CheckResult> RunAll() => [
+        CompareErrorCodeCount(
+            ParseSummaryIndexCount(RepoPaths.ErrorCodes),
+            ActualErrorCatalogCount(),
+            ParseFooterTotal(RepoPaths.ErrorCodes)),
+        CheckDecisionsLockstep(ParseDecisionsLog(RepoPaths.DecisionsLog)),
+        CheckAdrReferences(
+            ParseAdrReferences(RepoPaths.DesignDir),
+            ParseAvailableAdrs(RepoPaths.AdrDir)),
+        CheckEnumCompleteness(
+            "OpCode", ParseSpecOpCodes(RepoPaths.Requirements), ActualOpCodeNames()),
+        CheckTokenKindCompleteness(
+            ParseSpecTokenAtoms(RepoPaths.Requirements), ActualTokenKindNames()),
+        CheckErrorCatalogGuardPresent(RepoPaths.RepoRoot()),
+    ];
 }
