@@ -112,8 +112,10 @@ no error across all twenty projects.
 (NuGet + Actions).
 
 **Added (D-317):** `.github/workflows/nuget-audit.yml` — locked-mode restore then
-`dotnet list package --vulnerable --include-transitive`, parsed to fail the job
-on any advisory banner. CodeQL documented as default setup (F-B2).
+`dotnet list Grob.slnx package --vulnerable --include-transitive --format json`,
+with the structured JSON parsed (any `vulnerabilities` entry fails the job). The
+JSON form is stable across CLI locale and wording changes, unlike the console
+text. CodeQL documented as default setup (F-B2).
 
 **Negative proof.** Planted a known-vulnerable package (`System.Net.Http` 4.3.0).
 
@@ -251,6 +253,29 @@ exact.
 
 These are tracked in OQ-018, which also corrects the record: signing is unrelated
 to OQ-013 (the `Grob.Llm` plugin); the earlier association was a framing error.
+
+---
+
+## Post-review hardening (SonarCloud + CodeRabbit on PR #76)
+
+The first CI run surfaced review findings, all addressed on the same branch:
+
+- **SonarCloud `githubactions:S6506` (gitleaks.yml)** — `curl -L` could follow a
+  redirect down to plaintext HTTP. Fixed by forcing `--proto '=https'
+  --proto-redir '=https' --tlsv1.2`, and by adding a pinned-SHA256 integrity
+  check of the gitleaks tarball before install. This cleared the new-code
+  security rating from C back to A.
+- **CodeRabbit — harden-runner parity** — the two new workflows (`gitleaks.yml`,
+  `nuget-audit.yml`) were missing the `step-security/harden-runner` audit step
+  present on every other Linux job. Added to both.
+- **CodeRabbit — gitleaks download integrity** — addressed by the SHA256
+  verification above.
+- **CodeRabbit — brittle text grep** — the NuGet-audit gate now parses
+  `--format json` instead of grepping the English console banner.
+
+All other checks on PR #76 were green on the first run, including the new
+gitleaks "Secret scan", "NuGet vulnerability gate" and "SBOM (CycloneDX)" jobs,
+CodeQL, Trivy and TruffleHog.
 
 ---
 
