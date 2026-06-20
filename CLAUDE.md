@@ -71,9 +71,12 @@ Chris.**
   push.
 - **CodeRabbit** is the in-loop pre-PR reviewer (a deliberate step before the
   PR is opened). There is no Claude reviewer subagent.
-- **SonarCloud** is enforced via `SonarAnalyzer.CSharp` with
-  `TreatWarningsAsErrors` in `Directory.Build.props`. **CodeQL** runs in CI
-  (too slow for per-push local execution).
+- **SonarCloud** runs in CI via the `dotnet-sonarscanner` workflow
+  (`.github/workflows/sonarcloud.yml`) on push and pull request — not a NuGet
+  analyzer package. `TreatWarningsAsErrors` in `Directory.Build.props` enforces
+  the SDK Roslyn analyzers and the `NuGetAudit` advisory gate (D-317).
+  **CodeQL** runs in CI via GitHub Advanced Security default setup (too slow for
+  per-push local execution); there is no `codeql.yml` and none should be added.
 - **External QA cold-read.** At sprint close, the QA brief is the instruction
   file for an in-repo **GPT-5.3 Codex** (Codex CLI) run against the merged
   branch — a different model family, to catch correlated blind spots. This is
