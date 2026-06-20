@@ -2,13 +2,16 @@
 
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
+    <!-- Floating versions are deliberately disabled (D-317): every package is
+         pinned to an exact version here so a fresh restore resolves to the same
+         versions the committed lockfiles already record. Dependency bumps arrive
+         as reviewable Dependabot PRs, not silent floats. -->
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageVersion Include="BenchmarkDotNet" Version="0.15.*" />
-    <PackageVersion Include="OmniSharp.Extensions.LanguageServer" Version="0.19.*" />
-    <PackageVersion Include="coverlet.collector" Version="10.0.*" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="OmniSharp.Extensions.LanguageServer" Version="0.19.9" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />

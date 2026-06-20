@@ -14,6 +14,29 @@
     <RuntimeFrameworkVersion Condition="'$(RuntimeFrameworkVersion)' == ''">10.0.8</RuntimeFrameworkVersion>
   </PropertyGroup>
 
+  <!-- Supply-chain: NuGet vulnerability auditing at restore time (D-317). Audits
+       direct and transitive packages; with TreatWarningsAsErrors above, an
+       advisory at or above the audit level escalates NU190x to a build error,
+       so a newly disclosed vulnerability fails the build rather than restoring
+       silently. -->
+  <PropertyGroup>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+  </PropertyGroup>
+
+  <!-- Deterministic, reproducible builds with SourceLink (D-317). SourceLink is
+       built into the .NET 10 SDK for GitHub-hosted repos, so no package is
+       added. ContinuousIntegrationBuild is set only under CI: it normalises
+       stored paths, which is correct on the build server but would strip useful
+       local paths from a developer's own build. -->
+  <PropertyGroup>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+  </PropertyGroup>
+
   <!-- Belt-and-braces guard alongside global.json: fail the build if anyone
        restores/builds with an SDK below the patched minimum. -->
   <Target Name="EnforceMinimumDotnetSdk" BeforeTargets="BeforeBuild;CoreCompile">

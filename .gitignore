@@ -44,7 +44,7 @@ Desktop.ini
 # Node.js
 node_modules/
 
-# Grob local packages directory
+# Grob local packages directory (covers .grob/packages and tool caches)
 .grob/
 
 # Grob bytecode cache directory (D-298)
@@ -52,6 +52,11 @@ node_modules/
 
 # Grob compiled bytecode files
 *.grobc
+
+# Supply-chain artefacts produced locally (D-317). The SBOM and any gitleaks
+# report are generated in CI as uploaded artefacts, never committed.
+sbom.json
+gitleaks-report.json
 
 # Test results
 TestResults/

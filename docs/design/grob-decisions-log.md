@@ -314,6 +314,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-314 | June 2026                                                         | Methodology — harness         | Implementation harness migrated Copilot → Claude Code: durable rules in `CLAUDE.md`, plan mode as the approval gate, increment prompts as `.claude/commands/` slash commands, Opus 4.8 subagent for named sub-problems, GPT-5.3 Codex cold-read via Codex CLI, CodeRabbit retained. Workflow shape unchanged |
 | D-315 | June 2026                                                         | Control flow                  | `break`/`continue` in `select`: asymmetric. `break` inside `select` is a compile error (E2211) at any nesting; `continue` passes through to the nearest enclosing loop. `select` is not loop-control-transparent. Resolves Requirements/Fundamentals contradiction; E2212 added for `break`/`continue` outside any loop |
 | D-316 | June 2026                                                         | Tooling — quality gate        | Corpus consistency regime: one-time A1 reconciliation (stale error-code total 99→103 and stale Sprint-1 status row corrected) plus a permanent CI-enforced drift gate (`tests/Grob.Consistency.Tests`) asserting error-code count agreement, decisions-log lockstep, ADR-reference integrity and opcode/TokenKind completeness, with D-308's `ErrorCatalog` agreement test referenced as the catalog↔registry guard. Generalises D-308; self-relative checks, no frozen baseline |
+| D-317 | June 2026                                                         | Tooling — supply chain        | Project hardening interlude (Sprint 4→5): central package management with exact pins and committed lockfiles under locked-mode restore, NuGet and CodeQL vulnerability gates, deterministic builds with SourceLink, SHA-pinned least-privilege workflows, gitleaks CI secret scanning, and CycloneDX SBOM and build-provenance scaffolding. Additive repository hardening; complements §11 language/runtime security, does not overlap it. Code signing deferred to first public release (OQ-018) |
 
 ---
 
@@ -3063,6 +3064,29 @@ Superseded by: none
 
 ---
 
+### D-317 — Project hardening interlude — supply-chain, build, workflow, secret and provenance integrity (June 2026)
+
+Area: Tooling — supply chain
+Supersedes: none
+Superseded by: none
+
+**Context.** The Grob _repository_ — its dependencies, build, CI workflows, secret hygiene and provenance — is distinct from the _language and runtime_ security covered by §11 of `grob-v1-requirements.md` (`process.run`, `@secure`, plugin-as-arbitrary-code). §11 hardens what a Grob script can do; this decision hardens how the Grob project itself is built and shipped. The two do not overlap. Run as the second half of the Sprint 4→5 interlude, after the A-increment drift gate (D-316) was green, this is additive build-and-CI work that touches no `src/` code, no spec language content, no error catalog and no test logic.
+
+**The decision — additive hardening across six controls.**
+
+1. **Dependency integrity.** Central Package Management with every version pinned to an exact value (floating ranges removed), a single pinned NuGet source with `packageSourceMapping` and disabled fallback folders, a committed `packages.lock.json` per project, and `--locked-mode` restore in CI so an unexpected transitive change fails the restore rather than resolving silently. Restore-time `NuGetAudit` (`NuGetAuditMode=all`) escalates advisories to build errors via the existing `TreatWarningsAsErrors`.
+2. **Vulnerability scanning.** A `dotnet list package --vulnerable --include-transitive` CI gate, the existing Trivy filesystem scan, and CodeQL — confirmed wired via GitHub Advanced Security **default setup** (no workflow file; default setup scans the default branch and pull requests, and an advanced workflow would conflict with it). Dependabot covers the NuGet and GitHub-Actions ecosystems.
+3. **Deterministic builds.** `Deterministic`, CI-only `ContinuousIntegrationBuild`, `EmbedUntrackedSources` and `PublishRepositoryUrl` with the SDK-built-in SourceLink; the `global.json` SDK pin (10.0.300, `rollForward: latestFeature`) is consistent with D-310; analyzer and tool versions are pinned through CPM and a `.config/dotnet-tools.json` manifest.
+4. **Workflow hardening.** Every GitHub Action pinned to a full commit SHA, least-privilege `permissions`, `persist-credentials: false` on checkout, `step-security/harden-runner` in audit mode on Linux jobs, `concurrency` to cancel superseded runs, and no `pull_request_target` exposure.
+5. **Secret hygiene.** A gitleaks CI gate (pattern-based, working tree and full history) added alongside the existing TruffleHog verified-credential scan, so a planted secret fails the job whether or not it is a live credential; `.gitignore` coverage confirmed for local supply-chain artefacts.
+6. **Provenance scaffolding.** A CycloneDX SBOM (`sbom.json`) produced as a build artifact on every CI run, and `actions/attest-build-provenance` wired into the release workflow, guarded so it activates only when a `v*` tag publishes real artifacts.
+
+**Deferred — not omitted (OQ-018).** Code signing of the `grob` executable, signed release artifacts, full SLSA Level 3 provenance and cross-machine reproducible-build attestation are attached to the first public release, when the runtime first ships as a distributable artifact. The runtime is not a shipping artifact in v1, so signing is not scaffolded against a build that ships nothing. The earlier association of signing with OQ-013 was a framing error — OQ-013 on disk is the `Grob.Llm` plugin.
+
+**Consequence.** The repository has a supply-chain and build-integrity floor that fails the build the moment a dependency, a workflow or a committed secret regresses, complementing the language/runtime security of §11 without overlapping it.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3284,6 +3308,14 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 (interlude B) — D-317: project hardening interlude. Additive_
+_supply-chain and build-integrity hardening of the repository: central package_
+_management with exact pins and committed lockfiles under locked-mode restore,_
+_NuGet and CodeQL vulnerability gates (CodeQL via GitHub default setup),_
+_deterministic builds with SourceLink, SHA-pinned least-privilege workflows,_
+_gitleaks CI secret scanning alongside TruffleHog, and CycloneDX SBOM and_
+_build-provenance scaffolding. Complements §11 language/runtime security; does_
+_not overlap it. Code signing deferred to first public release (OQ-018)._
 _Updated June 2026 (interlude A) — D-316: corpus consistency regime. A1_
 _reconciled the corpus to a green floor (error-code canonical total corrected_
 _99 → 103, four unaccounted codes named; Project Status row corrected off_

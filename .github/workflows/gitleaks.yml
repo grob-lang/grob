@@ -1,0 +1,54 @@
+name: "Security: gitleaks"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-latest
+
+    env:
+      # Pinned gitleaks release. Dependabot does not track raw binary
+      # downloads, so bump this deliberately when upgrading.
+      GITLEAKS_VERSION: "8.30.1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          # Full history so the scan covers every commit, not just the tip.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks (pinned)
+        run: |
+          set -euo pipefail
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL "$url" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # Working-tree scan: every file in the checkout is scanned by pattern, so a
+      # planted secret fails the job whether or not it is a live, verifiable
+      # credential. This is the pattern-based complement to the TruffleHog
+      # verified-only scan (D-317). --redact keeps any match out of the log.
+      - name: Scan working tree (gitleaks dir)
+        run: gitleaks dir . --redact --verbose --exit-code 1
+
+      # History scan: confirms no secret was committed in any past commit, not
+      # just the current tree (the §2.5 history-scan requirement). fetch-depth 0
+      # above makes the full history available.
+      - name: Scan git history (gitleaks git)
+        run: gitleaks git . --redact --verbose --exit-code 1

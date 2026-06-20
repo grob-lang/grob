@@ -412,6 +412,34 @@ touches both. Likely v1.1.
 
 ---
 
+### OQ-018 — Code Signing and Release Provenance for the First Public Artifact
+
+**Question:** When the Grob runtime first ships as a distributable artifact,
+what is the signing approach, and how is the provenance chain that the hardening
+interlude (D-317) scaffolds completed?
+
+**Context.** The B increment of the Sprint 4→5 interlude built the supply-chain
+floor: deterministic builds, a CycloneDX SBOM on every CI run, and
+`actions/attest-build-provenance` wired into the release workflow but guarded so
+it activates only when a `v*` tag publishes real artifacts. What it deliberately
+did **not** do is sign a shipping executable, because there is no shipping
+executable in v1 — "compile to executable" is post-MVP and winget distribution
+is future. Signing belongs with the first public release, not scaffolded against
+a build that ships nothing.
+
+**To decide at that point:** the code-signing approach for `grob.exe` (and any
+installer), signed release artifacts, and whether to complete the chain to full
+SLSA Level 3, including reproducible-build attestation across machines beyond the
+deterministic compilation already in place.
+
+**This is a deliberate deferral, not an omission.** It is unrelated to OQ-013
+(the `Grob.Llm` plugin); the earlier association of signing with OQ-013 was a
+framing error and is corrected here.
+
+**Defer until:** the first public release of a `grob` executable or installer.
+
+---
+
 ## Resolved Questions
 
 These questions have been decided. Full rationale is preserved here for reference.
@@ -810,6 +838,12 @@ _table of `grob-decisions-log.md`. The full rationale is preserved here._
 
 ---
 
+_Document updated June 2026 (interlude B) — OQ-018 (code signing and release_
+_provenance for the first public artifact) added, deferred until the first_
+_public release of a `grob` executable or installer. Authorised by D-317, which_
+_scaffolds the SBOM and build-provenance chain this question completes. Noted as_
+_unrelated to OQ-013 (`Grob.Llm` plugin): the earlier association of signing_
+_with OQ-013 was a framing error, corrected here._
 _Document updated May 2026 — OQ-015 (`Grob.Sql` plugin shape), OQ-016 (array_
 _aggregation methods on `T[]`), and OQ-017 (triple-backtick interpolation via_
 _`$```...``` ` prefix) added as open questions, all deferred until post-v1._
