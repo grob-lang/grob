@@ -3,18 +3,18 @@ using Grob.Compiler;
 using Grob.Core;
 using Grob.Vm;
 
-namespace Grob.Benchmarks.Run;
+namespace Grob.Benchmarks.Vm;
 
 /// <summary>
 /// VM-execution category benchmarks (Sprint 3 baseline, D-309).
 /// Measures the full pipeline — lex, parse, type-check, compile, VM execute —
 /// for representative programmes.  The baseline JSON for this category is
 /// produced via the <c>benchmark.yml</c> GitHub Actions workflow (D-309) on a
-/// <c>windows-latest</c> runner; the committed <c>baseline/run.json</c> must
+/// <c>windows-latest</c> runner; the committed <c>baseline/vm.json</c> must
 /// not be replaced with a locally-produced file.
 /// </summary>
 [MemoryDiagnoser]
-public class RunBenchmarks {
+public class VmBenchmarks {
     private string _declAndArith = null!;
     private string _interpolation = null!;
     private string _controlFlow = null!;
@@ -25,7 +25,7 @@ public class RunBenchmarks {
         // Path.Join is used here (not Path.Combine) — Path.Join never resets
         // the path on a rooted later argument, which avoids the CodeQL
         // cs/path-injection concern that Path.Combine carries.
-        string fixturesDir = Path.Join(AppContext.BaseDirectory, "Fixtures", "Run");
+        string fixturesDir = Path.Join(AppContext.BaseDirectory, "Fixtures", "Vm");
         _declAndArith = File.ReadAllText(Path.Join(fixturesDir, "decl-and-arith.grob"));
         _interpolation = File.ReadAllText(Path.Join(fixturesDir, "interpolation.grob"));
         _controlFlow = File.ReadAllText(Path.Join(fixturesDir, "control-flow.grob"));

@@ -1,5 +1,5 @@
 {
-   "Title":"Grob.Benchmarks.Run.RunBenchmarks-20260620-111344",
+   "Title":"Grob.Benchmarks.Vm.VmBenchmarks-20260620-111344",
    "HostEnvironmentInfo":{
       "BenchmarkDotNetCaption":"BenchmarkDotNet",
       "BenchmarkDotNetVersion":"0.15.8",
@@ -21,13 +21,13 @@
    },
    "Benchmarks":[
       {
-         "DisplayInfo":"RunBenchmarks.Run_DeclAndArith: DefaultJob",
-         "Namespace":"Grob.Benchmarks.Run",
-         "Type":"RunBenchmarks",
+         "DisplayInfo":"VmBenchmarks.Run_DeclAndArith: DefaultJob",
+         "Namespace":"Grob.Benchmarks.Vm",
+         "Type":"VmBenchmarks",
          "Method":"Run_DeclAndArith",
          "MethodTitle":"Run_DeclAndArith",
          "Parameters":"",
-         "FullName":"Grob.Benchmarks.Run.RunBenchmarks.Run_DeclAndArith",
+         "FullName":"Grob.Benchmarks.Vm.VmBenchmarks.Run_DeclAndArith",
          "HardwareIntrinsics":"AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256",
          "Statistics":{
             "OriginalValues":[
@@ -686,13 +686,13 @@
             }
          ]
       },{
-         "DisplayInfo":"RunBenchmarks.Run_Interpolation: DefaultJob",
-         "Namespace":"Grob.Benchmarks.Run",
-         "Type":"RunBenchmarks",
+         "DisplayInfo":"VmBenchmarks.Run_Interpolation: DefaultJob",
+         "Namespace":"Grob.Benchmarks.Vm",
+         "Type":"VmBenchmarks",
          "Method":"Run_Interpolation",
          "MethodTitle":"Run_Interpolation",
          "Parameters":"",
-         "FullName":"Grob.Benchmarks.Run.RunBenchmarks.Run_Interpolation",
+         "FullName":"Grob.Benchmarks.Vm.VmBenchmarks.Run_Interpolation",
          "HardwareIntrinsics":"AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256",
          "Statistics":{
             "OriginalValues":[
@@ -1260,13 +1260,13 @@
             }
          ]
       },{
-         "DisplayInfo":"RunBenchmarks.Run_ControlFlow: DefaultJob",
-         "Namespace":"Grob.Benchmarks.Run",
-         "Type":"RunBenchmarks",
+         "DisplayInfo":"VmBenchmarks.Run_ControlFlow: DefaultJob",
+         "Namespace":"Grob.Benchmarks.Vm",
+         "Type":"VmBenchmarks",
          "Method":"Run_ControlFlow",
          "MethodTitle":"Run_ControlFlow",
          "Parameters":"",
-         "FullName":"Grob.Benchmarks.Run.RunBenchmarks.Run_ControlFlow",
+         "FullName":"Grob.Benchmarks.Vm.VmBenchmarks.Run_ControlFlow",
          "HardwareIntrinsics":"AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256",
          "Statistics":{
             "OriginalValues":[
