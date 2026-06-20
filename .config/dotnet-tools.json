@@ -4,16 +4,12 @@
   "tools": {
     "dotnet-sonarscanner": {
       "version": "11.2.1",
-      "commands": [
-        "dotnet-sonarscanner"
-      ],
+      "commands": ["dotnet-sonarscanner"],
       "rollForward": false
     },
     "cyclonedx": {
       "version": "6.2.0",
-      "commands": [
-        "dotnet-CycloneDX"
-      ],
+      "commands": ["dotnet-CycloneDX"],
       "rollForward": false
     }
   }
