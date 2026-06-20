@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Grob.DriftCheck</RootNamespace>
+    <AssemblyName>Grob.DriftCheck</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Tooling: not packaged, not part of the product solution graph. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Reads the live OpCode / TokenKind / ErrorCatalog facts to check them
+       against the design corpus. Grob.Core is the only Grob assembly it needs. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Grob.Core\Grob.Core.csproj" />
+  </ItemGroup>
+
+</Project>
