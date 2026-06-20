@@ -1,0 +1,66 @@
+name: "Security: gitleaks"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-latest
+
+    env:
+      # Pinned gitleaks release. Dependabot does not track raw binary
+      # downloads, so bump this deliberately when upgrading: fetch the new
+      # SHA256 from the gitleaks_<version>_checksums.txt release asset.
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@5c7944e73c4c2a096b17a9cb74d65b6c2bbafbde # v2.9.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          # Full history so the scan covers every commit, not just the tip.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          # --proto/--proto-redir '=https' force HTTPS on both the initial
+          # request and any redirect, so the download can never be downgraded
+          # to plaintext. The pinned SHA256 then verifies integrity before the
+          # binary is installed (supply-chain guard).
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 -sSfL "$url" -o gitleaks.tar.gz
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # Working-tree scan: every file in the checkout is scanned by pattern, so a
+      # planted secret fails the job whether or not it is a live, verifiable
+      # credential. This is the pattern-based complement to the TruffleHog
+      # verified-only scan (D-317). --redact keeps any match out of the log.
+      - name: Scan working tree (gitleaks dir)
+        run: gitleaks dir . --redact --verbose --exit-code 1
+
+      # History scan: confirms no secret was committed in any past commit, not
+      # just the current tree (the §2.5 history-scan requirement). fetch-depth 0
+      # above makes the full history available.
+      - name: Scan git history (gitleaks git)
+        run: gitleaks git . --redact --verbose --exit-code 1

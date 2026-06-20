@@ -21,6 +21,14 @@ jobs:
     runs-on: ${{ inputs.runner }}
 
     steps:
+      # harden-runner only supports Linux runners; the benchmark runner can be
+      # windows-latest, so this is skipped there.
+      - name: Harden runner
+        if: runner.os == 'Linux'
+        uses: step-security/harden-runner@5c7944e73c4c2a096b17a9cb74d65b6c2bbafbde # v2.9.1
+        with:
+          egress-policy: audit
+
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -34,8 +42,8 @@ jobs:
 
       - name: Restore
         run: |
-          dotnet restore bench/Grob.Benchmarks/Grob.Benchmarks.csproj
-          dotnet restore tooling/Grob.BenchCheck/Grob.BenchCheck.csproj
+          dotnet restore bench/Grob.Benchmarks/Grob.Benchmarks.csproj --locked-mode
+          dotnet restore tooling/Grob.BenchCheck/Grob.BenchCheck.csproj --locked-mode
 
       - name: Run benchmarks
         run: >
