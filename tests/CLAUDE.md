@@ -77,8 +77,11 @@ procedure.
   `tests/Grob.Core.Tests/TokenTests.cs`.
 - Test names state the behaviour: `PlainString_SegmentsIntoStartPartEnd`, not
   `Plain_string_segments_into_start_part_end` and not `PlainStringSegmentsIntoStartPartEnd`.
-- `FluentAssertions` for assertions — no `Assert.Equal` or `Assert.True` in behaviour
-  assertions. `FsCheck.Xunit` for property-based testing, in from day one.
+- Plain xUnit assertions (`Assert.Equal`, `Assert.True`, `Assert.Single`, …) with a
+  descriptive message on the assertions that need one. This is the project
+  convention across every test project — `FluentAssertions` and `FsCheck` are
+  deliberately not used (not in `Directory.Packages.props`, no `.Should()` anywhere)
+  and must not be introduced. Reviewers and tools should not suggest them.
 - Integration-test fixtures use Windows paths in backticks, like real Grob scripts.
 - Assert on exit codes as well as output — Grob is a Unix-style tool where exit codes
   carry meaning.

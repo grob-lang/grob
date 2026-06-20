@@ -83,11 +83,11 @@ Shared dependencies — production and test — are version-managed in
 centrally. Any new `<PackageReference>` carrying an explicit `Version=` attribute is
 a defect.
 
-Shared test dependencies that every `*.Tests` project references belong in
-`Directory.Build.props` under a condition targeting `*.Tests` projects only, so each
-picks them up without per-project boilerplate: `xunit`,
-`xunit.runner.visualstudio`, `FluentAssertions`, `FsCheck.Xunit`,
-`coverlet.collector`, `Microsoft.NET.Test.Sdk`.
+Test dependencies are `Microsoft.NET.Test.Sdk`, `xunit` and
+`xunit.runner.visualstudio`, declared per test project, plus `coverlet.collector`,
+which `Directory.Build.props` adds automatically to every `*.Tests` project. The
+test suite uses plain xUnit assertions; `FluentAssertions` and `FsCheck` are
+deliberately not used and are not in `Directory.Packages.props`.
 
 ## Namespaces follow folders
 

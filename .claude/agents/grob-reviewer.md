@@ -71,15 +71,16 @@ mid-token", etc.
 - Flag if the change appears to lower the project's coverage materially without the
   commit body acknowledging it.
 
-**7. Property-based testing.** `FsCheck` is in from day one. For any change to lexer,
-parser, type checker or VM:
+**7. Invariant coverage.** `FsCheck` is not adopted in this project (not in
+`Directory.Packages.props`, no usage); do not flag its absence or suggest adding
+it. Instead, for any change to lexer, parser, type checker or VM, check the
+invariants are covered by example-based `[Theory]` rows:
 
-- Is there an `FsCheck` property test asserting the relevant invariant? ("Any input
-  either tokenises or diagnoses, never throws." "Any token sequence either parses to
-  AST or recovers with diagnostics, never infinite-loops.")
-- If a property test discovered a failing case during this work, is the shrunk input
-  added as a regression `[Theory]` row alongside the property test? Both must be
-  present — the property catches the class, the row pins the specific case.
+- Are the boundary and adversarial inputs covered ("malformed input either
+  tokenises or diagnoses, never throws"; "any token sequence either parses to AST
+  or recovers with diagnostics, never infinite-loops")?
+- If a specific failing case was found during this work, is it pinned as a
+  regression `[Theory]` row?
 
 **8. Regression discipline.** Every bug fix gets a test that fails before the fix and
 passes after. Check:
@@ -135,9 +136,10 @@ The full commit conventions are carried by the `/commit-message` command and the
 - File-scoped namespaces. One public type per file. Same-line (K&R) braces.
 - Nullable reference types enabled. No silent null suppression (`!` operator) without
   justification.
-- xUnit + FluentAssertions + FsCheck for tests.
+- xUnit for tests, with plain xUnit assertions. `FluentAssertions` and `FsCheck`
+  are deliberately not used (not in `Directory.Packages.props`); do not flag their
+  absence and do not suggest introducing them.
 - `Subject_BehaviourClause` test naming.
-- No `Assert.Equal` or `Assert.True` — FluentAssertions everywhere.
 
 **14. Error model.** New diagnostics should:
 

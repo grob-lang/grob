@@ -1,6 +1,6 @@
 ---
 name: tdd-cycle
-description: The strict red/green/refactor TDD procedure for Grob, with xUnit and FluentAssertions specifics. Use when starting a new test, when about to write production code, when finishing a cycle or when uncertain whether you should be writing a test or implementation next.
+description: The strict red/green/refactor TDD procedure for Grob, with xUnit specifics. Use when starting a new test, when about to write production code, when finishing a cycle or when uncertain whether you should be writing a test or implementation next.
 ---
 
 # TDD cycle for Grob
@@ -38,8 +38,8 @@ public class LexerTests
         var tokens = lexer.ScanAll();
 
         // Assert
-        tokens.Should().ContainSingle()
-            .Which.Kind.Should().Be(TokenKind.Eof);
+        var token = Assert.Single(tokens);
+        Assert.Equal(TokenKind.Eof, token.Kind);
     }
 }
 ```
@@ -110,37 +110,25 @@ behaviour — revert and try a smaller step.
 The refactor step is **not optional**. Skipping it accumulates the design
 debt TDD is supposed to prevent.
 
-### Step 4: Property test (lexer / parser / type checker / VM only)
+### Step 4: Invariant coverage (lexer / parser / type checker / VM only)
 
-For any work on the compilation or execution pipeline, write an FsCheck
-property test alongside the example-based test. The property asserts the
-invariant that no input — valid, invalid, or pathological — should ever
-crash the layer; it must always tokenise, parse, type-check, or execute to
-either a result or a diagnostic.
-
-```csharp
-[Property]
-public Property Scan_AnyInput_NeverThrows(string input)
-{
-    return ((Action)(() => new Lexer(input).ScanAll().ToList()))
-        .Should()
-        .NotThrow()
-        .ToProperty();
-}
-```
-
-If the property test finds a failing input, **don't fix the bug and move
-on.** Add the shrunk input as a regression `[Theory]` row alongside the
-property test in the same cycle. The property catches the class; the row
-pins the specific case.
+For any work on the compilation or execution pipeline, cover the layer's
+invariant alongside the example-based test: no input — valid, invalid, or
+pathological — should ever crash the layer; it must always tokenise, parse,
+type-check, or execute to either a result or a diagnostic. Express this with
+`[Theory]` rows of boundary and adversarial inputs. (`FsCheck` is not used in
+this project — not in `Directory.Packages.props` — so do not reach for
+property-based testing here.)
 
 ````csharp
 [Theory]
-[InlineData("```")]  // discovered by FsCheck — three backticks, no content
-public void Scan_TripleBacktickEmpty_DoesNotThrow(string input)
+[InlineData("")]
+[InlineData("```")]      // three backticks, no content
+[InlineData("\"unterminated")]
+public void Scan_PathologicalInput_DoesNotThrow(string input)
 {
-    Action act = () => new Lexer(input).ScanAll().ToList();
-    act.Should().NotThrow();
+    var ex = Record.Exception(() => new Lexer(input).ScanAll().ToList());
+    Assert.Null(ex);
 }
 ````
 
@@ -279,8 +267,8 @@ at the bug.
 public void Scan_DecimalIntegerLiteral_ProducesIntToken(string source, long expected)
 {
     var token = new Lexer(source).ScanAll().First();
-    token.Kind.Should().Be(TokenKind.IntLiteral);
-    token.IntValue.Should().Be(expected);
+    Assert.Equal(TokenKind.IntLiteral, token.Kind);
+    Assert.Equal(expected, token.IntValue);
 }
 ```
 
@@ -305,70 +293,49 @@ public void Scan_InvalidStringLiteral_ProducesExpectedDiagnostic(
     string expectedCode)
 {
     var diagnostics = new Lexer(source).ScanAll().Diagnostics;
-    diagnostics.Should().ContainSingle()
-        .Which.Code.Should().Be(expectedCode);
+    var diag = Assert.Single(diagnostics);
+    Assert.Equal(expectedCode, diag.Code);
 }
 ```
 
-### `[Property]` for invariants
+## Assertion patterns (plain xUnit)
 
-Property tests live alongside `[Fact]` and `[Theory]` tests in the same
-class. Use them for the cross-input invariants that example-based tests
-can't reach exhaustively.
-
-```csharp
-[Property]
-public Property Parse_AnyTokenSequence_NeverInfiniteLoops(string input)
-{
-    return ((Func<bool>)(() =>
-    {
-        var tokens = new Lexer(input).ScanAll();
-        var parser = new Parser(tokens);
-        parser.Parse();
-        return true;
-    })).Should().NotThrow().And.Subject().ToProperty();
-}
-```
-
-## FluentAssertions patterns
-
-Always use FluentAssertions. Never raw xUnit assertions.
+The project uses plain xUnit assertions — `FluentAssertions` is deliberately not
+used (it is not in `Directory.Packages.props` and there are no `.Should()` calls
+anywhere). Do not introduce it. Add a message to assertions that need one.
 
 ```csharp
 // Equality
-result.Should().Be(expected);
-result.Should().NotBe(unexpected);
+Assert.Equal(expected, result);
+Assert.NotEqual(unexpected, result);
 
-// Reference equality
-result.Should().BeSameAs(reference);
+// Reference equality (use for the §3.1.1 sentinels)
+Assert.Same(reference, result);
 
 // Collections
-tokens.Should().HaveCount(3);
-tokens.Should().ContainSingle();              // exactly one
-tokens.Should().BeEmpty();
-tokens.Should().StartWith(expectedToken);
-tokens.Should().AllSatisfy(t => t.Kind.Should().Be(TokenKind.IntLiteral));
+Assert.Equal(3, tokens.Count);
+var only = Assert.Single(tokens);             // exactly one, returns it
+Assert.Empty(tokens);
+Assert.All(tokens, t => Assert.Equal(TokenKind.IntLiteral, t.Kind));
 
 // Strings
-message.Should().Contain("expected substring");
-message.Should().StartWith("error:");
-message.Should().MatchRegex(@"line \d+");
+Assert.Contains("expected substring", message);
+Assert.StartsWith("error:", message);
+Assert.Matches(@"line \d+", message);
 
-// Exceptions
-Action act = () => new Lexer(null!).ScanAll();
-act.Should().Throw<ArgumentNullException>()
-    .WithMessage("*source*");
+// Exceptions — capture and assert the payload, do not assert the type alone
+var ex = Assert.Throws<ArgumentNullException>(() => new Lexer(null!).ScanAll());
+Assert.Equal("source", ex.ParamName);
 
-// Object graphs
-result.Should().BeEquivalentTo(expected);     // deep equality
+// Booleans carry a message so a failure explains itself
+Assert.True(result.Ok, string.Join("; ", result.Discrepancies));
 ```
 
-Avoid `result.Should().NotBeNull()` followed by access — use
-`.Should().NotBeNull().And.Subject` or `.Which`:
+`Assert.Single` returns the element, so the "assert one then inspect it" pattern is:
 
 ```csharp
-diagnostics.Should().ContainSingle()
-    .Which.Code.Should().Be("E0042");
+var diag = Assert.Single(diagnostics);
+Assert.Equal("E0042", diag.Code);
 ```
 
 ## Named exceptions to TDD
