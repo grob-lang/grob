@@ -15,7 +15,7 @@ fn greet(name: string): string {
 
 fn main(): int {
     sum := add(2, 3)
-    if sum > 4 {
+    if (sum > 4) {
         print(greet("Grob"))
     } else {
         print("nope")

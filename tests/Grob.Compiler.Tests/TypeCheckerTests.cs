@@ -383,14 +383,14 @@ public sealed class TypeCheckerTests {
     /// <summary>An <c>if/else</c> tree type-checks without error.</summary>
     [Fact]
     public void ControlFlow_If_WithElse_NoError() {
-        (_, DiagnosticBag bag) = TypeCheckSource("x := 5\nif x < 10 { y := 1 } else { z := 2 }\n");
+        (_, DiagnosticBag bag) = TypeCheckSource("x := 5\nif (x < 10) { y := 1 } else { z := 2 }\n");
         Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
     }
 
     /// <summary>A <c>while</c> loop type-checks without error.</summary>
     [Fact]
     public void ControlFlow_While_NoError() {
-        (_, DiagnosticBag bag) = TypeCheckSource("x := 0\nwhile x < 5 { }\n");
+        (_, DiagnosticBag bag) = TypeCheckSource("x := 0\nwhile (x < 5) { }\n");
         Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
     }
 
@@ -406,7 +406,7 @@ public sealed class TypeCheckerTests {
     public void ControlFlow_Select_NoError() {
         (_, DiagnosticBag bag) = TypeCheckSource("""
             x := 1
-            select x {
+            select (x) {
             case 1 { y := 1 }
             default { z := 2 }
             }

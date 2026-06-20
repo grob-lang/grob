@@ -69,7 +69,7 @@ public sealed class TypeCheckerConditionalTests {
         Diagnostic error = Assert.Single(bag.Errors);
         Assert.Equal("E0001", error.Code);
         Assert.Equal(1, error.Range.Start.Line);
-        Assert.Equal(4, error.Range.Start.Column);  // GroupingExpr '(42)' starts at '(' = column 4
+        Assert.Equal(5, error.Range.Start.Column);  // condition '42' starts after 'if (' = column 5
     }
 
     /// <summary>
@@ -83,7 +83,7 @@ public sealed class TypeCheckerConditionalTests {
         Diagnostic error = Assert.Single(bag.Errors);
         Assert.Equal("E0001", error.Code);
         Assert.Equal(1, error.Range.Start.Line);
-        Assert.Equal(23, error.Range.Start.Column);  // GroupingExpr '(42)' starts at '(' = column 23
+        Assert.Equal(24, error.Range.Start.Column);  // condition '42' starts after 'else if (' = column 24
     }
 
     /// <summary>

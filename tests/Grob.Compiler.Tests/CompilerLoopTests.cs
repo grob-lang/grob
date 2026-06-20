@@ -108,7 +108,7 @@ public sealed class CompilerLoopTests {
         Assert.True(bag.HasErrors);
         Diagnostic diag = Assert.Single(bag.Errors, e => e.Code == "E0001");
         Assert.Equal(1, diag.Range.Start.Line);
-        Assert.Equal(7, diag.Range.Start.Column);
+        Assert.Equal(8, diag.Range.Start.Column);  // condition '42' starts after 'while (' = column 8
     }
 
     // -----------------------------------------------------------------------

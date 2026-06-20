@@ -300,10 +300,9 @@ public sealed class CompilerSelectTests {
         Assert.False(bag.HasErrors);
 
         SelectStmt select = unit.TopLevel.OfType<SelectStmt>().Single();
-        // The parenthesised subject is wrapped in a GroupingExpr; the identifier
-        // node carrying the invariant is its inner expression.
-        var grouping = Assert.IsType<GroupingExpr>(select.Subject);
-        var subject = Assert.IsType<IdentifierExpr>(grouping.Inner);
+        // The required parentheses are consumed as grammar, so the subject is the
+        // bare condition expression — here the identifier carrying the invariant.
+        var subject = Assert.IsType<IdentifierExpr>(select.Subject);
         Assert.Equal(GrobType.Int, subject.ResolvedType);
         Assert.NotNull(subject.Declaration);
 
