@@ -1,0 +1,123 @@
+// Sprint 4 close-gate: loop-and-select calculator.
+// Exercises the full Sprint 1-4 language surface without user functions.
+// Expected stdout is the gold master in Sprint4IncrementFTests.cs.
+
+// Sprint 3 — const and readonly declarations
+const STEPS := 6
+readonly LABEL := "Calculator"
+
+// Sprint 3E — string interpolation
+print("${LABEL}: ${STEPS} steps")
+
+result := 0
+i := 0
+
+// Sprint 4B — while loop
+while (i < STEPS) {
+
+    // Sprint 4E — switch expressions derive the operator and value from the step index,
+    // giving the type checker a concrete type for each binding.
+    op := i switch {
+        0 => "+",
+        1 => "skip",
+        2 => "-",
+        3 => "*",
+        4 => "+",
+        _ => "-"
+    }
+
+    val := i switch {
+        0 => 10,
+        1 => 0,
+        2 => 3,
+        3 => 5,
+        4 => 8,
+        _ => 1
+    }
+
+    // Sprint 4D — select dispatches on the operator string.
+    // The "skip" case uses continue inside a select arm, which passes through
+    // to the enclosing while loop (D-315).
+    select (op) {
+        case "+" {
+            result = result + val
+        }
+        case "-" {
+            result = result - val
+        }
+        case "*" {
+            result = result * val
+        }
+        case "skip" {
+            i++
+            continue
+        }
+        default {
+            print("  unknown op '${op}'")
+        }
+    }
+
+    // Sprint 3E — string interpolation in every step
+    print("  ${op} ${val} -> ${result}")
+    i++
+}
+
+// Sprint 4A — if/else if/else with || logical-or short-circuit
+if (result > 100 || result < 0) {
+    print("range: out")
+} else if (result > 20) {
+    print("range: high")
+} else {
+    print("range: low")
+}
+
+// Sprint 4A — && short-circuit and ternary
+posCheck := (result > 0 && result <= 100) ? "yes" : "no"
+print("Pos check: ${posCheck}")
+
+// Sprint 4C — for...in over an array (single-identifier form)
+operands := [10, 3, 5, 8, 1]
+print("Operands:")
+for v in operands {
+    print("  ${v}")
+}
+
+// Sprint 4C — numeric range with step
+print("Even 0..8:")
+for n in 0..8 step 2 {
+    print("  ${n}")
+}
+
+// Sprint 4B — while with break and continue (not inside a select)
+print("Skip 3:")
+k := 0
+while (k < 5) {
+    k++
+    if (k == 3) {
+        continue
+    }
+    if (k == 5) {
+        break
+    }
+    print("  ${k}")
+}
+
+// Sprint 4C — for...in over an array with the index form (two-identifier)
+ops := ["+", "-", "*", "+", "-"]
+print("Operations:")
+for idx, op in ops {
+    print("  [${idx}] ${op}")
+}
+
+// Sprint 4E — switch expression produces the grade value
+grade := result switch {
+    >= 30 => "A",
+    >= 20 => "B",
+    _     => "C"
+}
+
+// Sprint 4A — ternary produces the sign prefix
+sign := result >= 0 ? "+" : "-"
+
+// Sprint 3E — string interpolation in the final summary line
+print("Result: ${sign}${result} grade=${grade}")

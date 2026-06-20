@@ -56,6 +56,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 4F close-gate: calculator smoke script. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-4f\*.grob"
+             Link="fixtures\sprint-4f\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
