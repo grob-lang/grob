@@ -60,11 +60,10 @@ These are not preferences. Breaking one is a defect even if the tests pass:
 - **All three test categories per feature.** Happy path, failure path, edge cases. A
   happy-path test alone is not done. Compiler output tests (source → assert bytecode)
   are the highest-priority surface; that is where bugs live.
-- **Property tests alongside examples.** For any lexer, parser, type checker or VM
-  work, the example-based tests are accompanied by an `FsCheck` property test
-  asserting the relevant invariant. When the property finds a failing input, add the
-  shrunk input as a regression `[Theory]` row in the same change — the property
-  catches the class, the row pins the case.
+- **Cover the invariants, not just the happy path.** For any lexer, parser, type
+  checker or VM work, exercise boundary and adversarial inputs with `[Theory]` rows
+  (malformed input never throws; recovery never loops). `FsCheck` is not used in this
+  project (not in `Directory.Packages.props`); do not add it.
 - **`internal` is the default; `public` is opt-in.** Production projects declare
   `InternalsVisibleTo` for their test assembly. Do not grow the public surface to
   enable testing.

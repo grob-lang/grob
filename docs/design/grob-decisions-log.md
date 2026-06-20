@@ -25,7 +25,7 @@
 | v1 requirements specified        | ✅ Done — April 2026                        |
 | Tooling strategy defined         | ✅ Done — April 2026                        |
 | MVP defined and scoped           | ✅ Done — see grob-v1-requirements.md       |
-| Implementation started           | 🔄 In progress — Sprint 1, cleared by D-305 |
+| Implementation started           | 🔄 In progress — Sprints 1–4 complete; Sprint 4→5 interlude |
 
 ---
 
@@ -313,6 +313,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-313 | June 2026                                                         | Tooling — benchmarking        | Two-axis benchmark regression policy: 5% per-sprint vs rolling baseline + 12% cumulative vs frozen origin; `Grob.BenchCheck` makes `benchmark.yml` the gate; compile-time gates until end-to-end is live. Refines D-302/D-309 |
 | D-314 | June 2026                                                         | Methodology — harness         | Implementation harness migrated Copilot → Claude Code: durable rules in `CLAUDE.md`, plan mode as the approval gate, increment prompts as `.claude/commands/` slash commands, Opus 4.8 subagent for named sub-problems, GPT-5.3 Codex cold-read via Codex CLI, CodeRabbit retained. Workflow shape unchanged |
 | D-315 | June 2026                                                         | Control flow                  | `break`/`continue` in `select`: asymmetric. `break` inside `select` is a compile error (E2211) at any nesting; `continue` passes through to the nearest enclosing loop. `select` is not loop-control-transparent. Resolves Requirements/Fundamentals contradiction; E2212 added for `break`/`continue` outside any loop |
+| D-316 | June 2026                                                         | Tooling — quality gate        | Corpus consistency regime: one-time A1 reconciliation (stale error-code total 99→103 and stale Sprint-1 status row corrected) plus a permanent CI-enforced drift gate (`tests/Grob.Consistency.Tests`) asserting error-code count agreement, decisions-log lockstep, ADR-reference integrity and opcode/TokenKind completeness, with D-308's `ErrorCatalog` agreement test referenced as the catalog↔registry guard. Generalises D-308; self-relative checks, no frozen baseline |
 
 ---
 
@@ -3040,6 +3041,28 @@ Superseded by: none
 
 ---
 
+### D-316 — Corpus consistency regime: reconciliation plus a permanent drift gate (June 2026)
+
+Area: Tooling — quality gate
+Supersedes: none
+Superseded by: none
+
+**Context.** The corpus has drifted from the code and from itself before, in exactly the ways a one-time audit cannot prevent from recurring. The error-code total has read 86, then 94, then 98, then 99 at different points — the registry footer itself records a "stale 86 → 94" correction — while the live count was 103. ADR cross-references have drifted in bulk (`ADR-0007 → 0012`, `ADR-0008 → 0013`). A `D-###` collision (D-286) is on record. Each of these is mechanically detectable. D-308 already proved the pattern for one document: its `ErrorCatalog` agreement test parses `grob-error-codes.md` and asserts the catalog agrees with the registry, failing the build on drift. This decision generalises that pattern to the rest of the corpus.
+
+**The decision — two parts.**
+
+1. **A1, reconciliation.** A one-time pass brought the corpus to a green floor. Findings are recorded in `interlude-A-findings.md`. The non-language corrections made: the error-code canonical total was corrected from a stale 99 to the live 103 (four codes — E0205, E1102, E2211, E2212 — had accrued without a footer count update; no codes were added, removed or renumbered), and the Project Status "Sprint 1" implementation row was corrected to "Sprints 1-4 complete; Sprint 4→5 interlude". Divergences that touch language behaviour or closed-surface spec content (the `Exit` opcode listed in code but absent from §3.3) were surfaced, not silently resolved.
+
+2. **A2, the drift gate.** `tests/Grob.Consistency.Tests` is a stateless xUnit suite that runs as part of the normal `dotnet test` on every commit — no separate cadence, because it is a correctness gate, not a benchmark. It reads the canonical documents from `docs/design/` and the wiki from `docs/wiki/ADR/` at repo-resolved paths and asserts: error-code count agreement (summary index = `ErrorCatalog.All.Count` = the canonical footer total); decisions-log lockstep (no duplicate `D-###`, an exact index↔entry bijection, every supersession target resolving); ADR-reference integrity (every `ADR-00NN` in the design corpus resolves to a file under `docs/wiki/ADR/`); and OpCode/TokenKind completeness (every name the spec declares complete in §3.3/§3.4 exists in the enum). D-308's `ErrorCatalog` agreement test is referenced as the catalog↔registry guard rather than duplicated, so the suite is the single index of every mechanical agreement check in the build. The shared check library lives in `tooling/Grob.DriftCheck`, which also provides a console entry for local `dotnet run` — the xUnit suite is the gate; the console is convenience, over the same logic.
+
+**Self-relative, no frozen baseline.** Every check compares two live facts against each other — a stated count against an actual count, a reference against its target — so none needs a point-in-time snapshot. The D-313 `BenchCheck` frozen-origin pattern remains available if a future check needs one, but no consistency check does, so no `drift.origin.json` is introduced.
+
+**Parsing discipline.** The documents are hand-maintained markdown. Every parser is defensive: a check that cannot locate its anchor section fails loudly (`AnchorNotFoundException`) naming the document and the expected anchor, never passing by silently finding nothing. A green result means "checked and agreed", never "found nothing to check".
+
+**Consequence.** The consistency floor is enforceable rather than aspirational. Each future increment that changes a count, a reference or an enum either keeps the corpus in agreement or fails the build the moment it does not.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3261,6 +3284,14 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 (interlude A) — D-316: corpus consistency regime. A1_
+_reconciled the corpus to a green floor (error-code canonical total corrected_
+_99 → 103, four unaccounted codes named; Project Status row corrected off_
+_"Sprint 1"). A2 added `tests/Grob.Consistency.Tests`, a stateless agreement_
+_suite running on every commit, asserting error-code count agreement,_
+_decisions-log lockstep, ADR-reference integrity and opcode/TokenKind_
+_completeness, with D-308's `ErrorCatalog` test referenced as the_
+_catalog↔registry guard. Generalises D-308; self-relative, no frozen baseline._
 _Updated June 2026 — D-315: `break`/`continue` in `select` resolved_
 _asymmetric. `break` inside a `select` arm is a compile error (E2211) at_
 _any nesting, whether or not a loop encloses it — its C-family fall-through_

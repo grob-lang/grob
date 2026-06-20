@@ -1196,6 +1196,12 @@ None as of v1.
 
 ---
 
+**Total: 103 codes across 7 categories.** This is the canonical current count;
+it is the live total in the summary index above and is asserted equal to
+`ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
+D-316). The dated lines below are the historical record of how the count
+changed; this line is the single source for the present total.
+
 _Initial allocation: 94 codes across 7 categories. All `pre-release` until v1.0 ships. Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule)._
 
 _Updated May 2026 — count corrected from a stale "86 codes" to the actual 94 codes present in the summary index and full entries. No codes were added in this edit; the footer total had not been updated as codes accrued. The 7-category structure (E0xxx–E9xxx) is unchanged._
@@ -1205,3 +1211,5 @@ _Updated June 2026 — Sprint 4 Increment C added the `for...in` iteration diagn
 _Updated June 2026 — Sprint 4 Increment E added E0505 (non-exhaustive switch expression) to the E05xx sub-block of the Type category, bringing the total to 99 codes._
 
 _Updated June 2026 — D-315: E2211 retitled to `break` inside `select` and E2212 retitled to `break` / `continue` outside a loop, reflecting the asymmetric resolution. Both codes pre-existed; no new codes were added by this edit._
+
+_Updated June 2026 (interlude A, D-316) — canonical total corrected from a stale "99 codes" to the actual 103 present in the summary index and `ErrorCatalog`. Four codes had accrued without a footer count update: E0205 (Sprint 3), E1102 (Sprint 3), E2211 and E2212 (Sprint 4, D-315). No codes were added, removed or renumbered by this edit; the drift was in the prose total alone. A standing total line has been added above and the count is now gated by `Grob.Consistency.Tests` so this class of drift cannot recur silently._
