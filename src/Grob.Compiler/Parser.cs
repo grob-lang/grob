@@ -473,7 +473,9 @@ public sealed class Parser {
     private IfStmt ParseIf() {
         SourceLocation start = Current.Location;
         Expect(TokenKind.If, _e2001, "expected 'if'");
+        Expect(TokenKind.LeftParen, _e2001, "expected '(' before if condition");
         Expression cond = ParseExpression();
+        Expect(TokenKind.RightParen, _e2001, "expected ')' after if condition");
         BlockStmt then = ParseBlock();
         Statement? elseBranch = null;
         // `else` may follow on the next line — skip newlines after the
@@ -491,7 +493,9 @@ public sealed class Parser {
     private WhileStmt ParseWhile() {
         SourceLocation start = Current.Location;
         Expect(TokenKind.While, _e2001, "expected 'while'");
+        Expect(TokenKind.LeftParen, _e2001, "expected '(' before while condition");
         Expression cond = ParseExpression();
+        Expect(TokenKind.RightParen, _e2001, "expected ')' after while condition");
         BlockStmt body = ParseBlock();
         return new WhileStmt(RangeFrom(start), cond, body);
     }
@@ -581,7 +585,9 @@ public sealed class Parser {
     private SelectStmt ParseSelect() {
         SourceLocation start = Current.Location;
         Expect(TokenKind.Select, _e2001, "expected 'select'");
+        Expect(TokenKind.LeftParen, _e2001, "expected '(' before select subject");
         Expression subject = ParseExpression();
+        Expect(TokenKind.RightParen, _e2001, "expected ')' after select subject");
         Expect(TokenKind.LeftBrace, _e2001, "expected '{' to open select body");
         SkipNewlines();
         List<CaseClause> cases = [];

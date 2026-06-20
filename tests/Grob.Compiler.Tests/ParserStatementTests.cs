@@ -1,4 +1,5 @@
 using Grob.Compiler.Ast;
+using Grob.Core;
 
 using Xunit;
 
@@ -54,17 +55,56 @@ public class ParserStatementTests {
     [Fact]
     public void If_Else_If_Else() {
         CompilationUnit unit = ParseOk(
-            "if a { 1 } else if b { 2 } else { 3 }\n");
+            "if (a) { 1 } else if (b) { 2 } else { 3 }\n");
         IfStmt outer = Single<IfStmt>(unit);
         IfStmt inner = Assert.IsType<IfStmt>(outer.Else);
         Assert.IsType<BlockStmt>(inner.Else);
     }
 
     [Fact]
+    public void If_WithoutOpeningParen_IsError() {
+        // §1: parentheses around the condition are required. The diagnostic
+        // pins at the condition token where the '(' should have been.
+        (_, DiagnosticBag bag) = Parse("if a { 1 }\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(4, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void If_WithoutClosingParen_IsError() {
+        (_, DiagnosticBag bag) = Parse("if (a { 1 }\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(7, d.Range.Start.Column);
+    }
+
+    [Fact]
     public void While_Body_Parses() {
-        CompilationUnit unit = ParseOk("while c { x = x + 1 }\n");
+        CompilationUnit unit = ParseOk("while (c) { x = x + 1 }\n");
         WhileStmt w = Single<WhileStmt>(unit);
         Assert.Single(w.Body.Statements);
+    }
+
+    [Fact]
+    public void While_WithoutOpeningParen_IsError() {
+        // §2: parentheses around the condition are required.
+        (_, DiagnosticBag bag) = Parse("while c { c = false }\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(7, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void While_WithoutClosingParen_IsError() {
+        (_, DiagnosticBag bag) = Parse("while (c { c = false }\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(10, d.Range.Start.Column);
     }
 
     [Fact]
@@ -108,7 +148,7 @@ public class ParserStatementTests {
 
     [Fact]
     public void BreakAndContinue() {
-        CompilationUnit unit = ParseOk("while c { break\ncontinue }\n");
+        CompilationUnit unit = ParseOk("while (c) { break\ncontinue }\n");
         WhileStmt w = Single<WhileStmt>(unit);
         Assert.IsType<BreakStmt>(w.Body.Statements[0]);
         Assert.IsType<ContinueStmt>(w.Body.Statements[1]);
@@ -137,10 +177,29 @@ public class ParserStatementTests {
     [Fact]
     public void Select_With_Cases_And_Default() {
         CompilationUnit unit = ParseOk(
-            "select x {\ncase 1 { a }\ncase 2, 3 { b }\ndefault { c }\n}\n");
+            "select (x) {\ncase 1 { a }\ncase 2, 3 { b }\ndefault { c }\n}\n");
         SelectStmt s = Single<SelectStmt>(unit);
         Assert.Equal(2, s.Cases.Count);
         Assert.Equal(2, s.Cases[1].Patterns.Count);
         Assert.NotNull(s.Default);
+    }
+
+    [Fact]
+    public void Select_WithoutOpeningParen_IsError() {
+        // §3: parentheses around the subject value are required.
+        (_, DiagnosticBag bag) = Parse("select x {\ncase 1 { a }\n}\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(8, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Select_WithoutClosingParen_IsError() {
+        (_, DiagnosticBag bag) = Parse("select (x {\ncase 1 { a }\n}\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(11, d.Range.Start.Column);
     }
 }
