@@ -380,42 +380,52 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckPattern(SwitchPattern pattern, GrobType subjectType) {
         switch (pattern) {
-            case ValuePattern vp: {
-                    GrobType patternType = Visit(vp.Value);
-                    if (patternType == GrobType.Error || subjectType == GrobType.Error) return;
-                    if (patternType == GrobType.Nil) {
-                        if (!GrobTypeHelpers.IsNullable(subjectType)) {
-                            EmitError(ErrorCatalog.E0001,
-                                $"'nil' pattern is not valid for non-nullable scrutinee type '{TypeName(subjectType)}'.",
-                                vp.Range);
-                        }
-                        return;
-                    }
-                    if (!IsPatternAssignable(patternType, subjectType)) {
-                        EmitError(ErrorCatalog.E0001,
-                            $"Switch pattern type '{TypeName(patternType)}' is not assignable to scrutinee type '{TypeName(subjectType)}'.",
-                            vp.Range);
-                    }
-                    return;
-                }
-            case RelationalPattern rp: {
-                    GrobType operandType = Visit(rp.Operand);
-                    if (operandType == GrobType.Error || subjectType == GrobType.Error) return;
-                    if (!IsOrdered(subjectType)) {
-                        EmitError(ErrorCatalog.E0001,
-                            $"Relational pattern requires an ordered scrutinee ('int', 'float' or 'string'); found '{TypeName(subjectType)}'.",
-                            rp.Range);
-                        return;
-                    }
-                    if (!IsPatternAssignable(operandType, subjectType)) {
-                        EmitError(ErrorCatalog.E0001,
-                            $"Relational pattern operand type '{TypeName(operandType)}' is not assignable to scrutinee type '{TypeName(subjectType)}'.",
-                            rp.Range);
-                    }
-                    return;
-                }
+            case ValuePattern vp:
+                CheckValuePattern(vp, subjectType);
+                break;
+            case RelationalPattern rp:
+                CheckRelationalPattern(rp, subjectType);
+                break;
             case CatchAllPattern:
-                return;
+                break;
+        }
+    }
+
+    private void CheckValuePattern(ValuePattern vp, GrobType subjectType) {
+        GrobType patternType = Visit(vp.Value);
+        if (patternType == GrobType.Error || subjectType == GrobType.Error) return;
+
+        if (patternType == GrobType.Nil) {
+            if (!GrobTypeHelpers.IsNullable(subjectType)) {
+                EmitError(ErrorCatalog.E0001,
+                    $"'nil' pattern is not valid for non-nullable scrutinee type '{TypeName(subjectType)}'.",
+                    vp.Range);
+            }
+            return;
+        }
+
+        if (!IsPatternAssignable(patternType, subjectType)) {
+            EmitError(ErrorCatalog.E0001,
+                $"Switch pattern type '{TypeName(patternType)}' is not assignable to scrutinee type '{TypeName(subjectType)}'.",
+                vp.Range);
+        }
+    }
+
+    private void CheckRelationalPattern(RelationalPattern rp, GrobType subjectType) {
+        GrobType operandType = Visit(rp.Operand);
+        if (operandType == GrobType.Error || subjectType == GrobType.Error) return;
+
+        if (!IsOrdered(subjectType)) {
+            EmitError(ErrorCatalog.E0001,
+                $"Relational pattern requires an ordered scrutinee ('int', 'float' or 'string'); found '{TypeName(subjectType)}'.",
+                rp.Range);
+            return;
+        }
+
+        if (!IsPatternAssignable(operandType, subjectType)) {
+            EmitError(ErrorCatalog.E0001,
+                $"Relational pattern operand type '{TypeName(operandType)}' is not assignable to scrutinee type '{TypeName(subjectType)}'.",
+                rp.Range);
         }
     }
 
