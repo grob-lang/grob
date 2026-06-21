@@ -155,8 +155,9 @@ public sealed class CompilerFunctionTests {
     [Fact]
     public void FnBody_BareReturn_EmitsNilThenReturn() {
         // A value-less 'return' emits Nil + Return — the early-exit path returns nil.
+        // The return type is nullable so the bare return (yielding nil) type-checks.
         Chunk chunk = CompileSource("""
-            fn early(n: int): int {
+            fn early(n: int): int? {
             if (n < 0) {
             return
             }

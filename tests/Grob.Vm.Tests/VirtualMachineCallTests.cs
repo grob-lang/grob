@@ -202,5 +202,7 @@ public sealed class VirtualMachineCallTests {
         var (vm, _) = NewVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
         Assert.Equal(ErrorCatalog.E5901.Code, ex.Code);
+        Assert.Equal(1, ex.Line);    // the recursive call site's line in the hand-built chunk
+        Assert.Equal(0, ex.Column);  // no column recorded for hand-built bytecode
     }
 }

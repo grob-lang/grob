@@ -166,6 +166,33 @@ public sealed class TypeCheckerFunctionTests {
             $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
     }
 
+    [Fact]
+    public void Return_BareInNonNullableFunction_RaisesE0005() {
+        // 'void' is not a user-declarable return type, so a bare return (yielding
+        // nil) does not satisfy a non-nullable declared type.
+        DiagnosticBag bag = Check("""
+            fn f(): int {
+            return
+            }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0005.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column); // the bare return statement
+    }
+
+    [Fact]
+    public void Return_BareInNullableFunction_NoError() {
+        // A nullable return type accepts the nil that a bare return yields.
+        DiagnosticBag bag = Check("""
+            fn f(): int? {
+            return
+            }
+            """);
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
     // -----------------------------------------------------------------------
     // E2203 — top-level return
     // -----------------------------------------------------------------------

@@ -55,16 +55,22 @@ public sealed partial class TypeChecker {
         }
 
         GrobType expected = _functionReturnTypes.Peek();
-        if (node.Value is not null) {
-            GrobType actual = Visit(node.Value);
-            // An Unknown declared return type (e.g. void / a deferred type) is
-            // permissive; cascade suppression covers an already-errored value.
-            if (expected != GrobType.Unknown && actual != GrobType.Error &&
-                !TypesAreAssignable(actual, expected)) {
-                EmitError(ErrorCatalog.E0005,
-                    $"Cannot return a value of type '{TypeName(actual)}' from a function declared to return '{TypeName(expected)}'.",
-                    node.Value.Range);
-            }
+
+        // A bare 'return' yields nil. Since 'void' is not a user-declarable return
+        // type (only print() is void — §"print() and void"), a bare return must
+        // still satisfy the declared type: it is accepted only by a nullable or nil
+        // return type, and is E0005 against a non-nullable one.
+        GrobType actual = node.Value is not null ? Visit(node.Value) : GrobType.Nil;
+
+        // An Unknown declared return type (a deferred type) is permissive; cascade
+        // suppression covers an already-errored value.
+        if (expected != GrobType.Unknown && actual != GrobType.Error &&
+            !TypesAreAssignable(actual, expected)) {
+            EmitError(ErrorCatalog.E0005,
+                node.Value is not null
+                    ? $"Cannot return a value of type '{TypeName(actual)}' from a function declared to return '{TypeName(expected)}'."
+                    : $"A bare 'return' yields 'nil', which is not assignable to the declared return type '{TypeName(expected)}'.",
+                node.Value is not null ? node.Value.Range : node.Range);
         }
         return GrobType.Unknown;
     }

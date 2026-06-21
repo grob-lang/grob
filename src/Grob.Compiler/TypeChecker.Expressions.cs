@@ -253,26 +253,43 @@ public sealed partial class TypeChecker {
             return GrobType.Unknown;
         }
 
+        CheckPositionalCall(node, fn, argTypes);
+        return ResolveTypeRef(fn.ReturnType);
+    }
+
+    /// <summary>
+    /// Validates a positional call against a resolved <paramref name="fn"/>: the
+    /// argument count (E0003), then each argument's type (E0004). An arity mismatch
+    /// suppresses the per-argument checks — the positions no longer line up.
+    /// </summary>
+    private void CheckPositionalCall(CallExpr node, FnDecl fn, GrobType[] argTypes) {
         int expected = fn.Parameters.Count;
         if (node.Arguments.Count != expected) {
             EmitError(ErrorCatalog.E0003,
                 $"Function '{fn.Name}' expects {expected} argument{(expected == 1 ? "" : "s")}, but {node.Arguments.Count} {(node.Arguments.Count == 1 ? "was" : "were")} supplied.",
                 node.Range);
-        } else {
-            for (int i = 0; i < expected; i++) {
-                GrobType paramType = fn.Parameters[i].Type is not null
-                    ? ResolveTypeRef(fn.Parameters[i].Type!)
-                    : GrobType.Unknown;
-                if (paramType != GrobType.Unknown && argTypes[i] != GrobType.Error &&
-                    !TypesAreAssignable(argTypes[i], paramType)) {
-                    EmitError(ErrorCatalog.E0004,
-                        $"Argument {i + 1} to '{fn.Name}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter '{fn.Parameters[i].Name}' of type '{TypeName(paramType)}'.",
-                        node.Arguments[i].Value.Range);
-                }
-            }
+            return;
         }
+        for (int i = 0; i < expected; i++) {
+            CheckArgumentType(node, fn, argTypes[i], i);
+        }
+    }
 
-        return ResolveTypeRef(fn.ReturnType);
+    /// <summary>
+    /// Checks one positional argument's type against its parameter (E0004). An
+    /// Unknown parameter type (a deferred type) is permissive, and cascade
+    /// suppression covers an argument that already errored.
+    /// </summary>
+    private void CheckArgumentType(CallExpr node, FnDecl fn, GrobType argType, int index) {
+        GrobType paramType = fn.Parameters[index].Type is not null
+            ? ResolveTypeRef(fn.Parameters[index].Type!)
+            : GrobType.Unknown;
+        if (paramType != GrobType.Unknown && argType != GrobType.Error &&
+            !TypesAreAssignable(argType, paramType)) {
+            EmitError(ErrorCatalog.E0004,
+                $"Argument {index + 1} to '{fn.Name}' has type '{TypeName(argType)}', which is not assignable to parameter '{fn.Parameters[index].Name}' of type '{TypeName(paramType)}'.",
+                node.Arguments[index].Value.Range);
+        }
     }
 
     /// <inheritdoc/>
