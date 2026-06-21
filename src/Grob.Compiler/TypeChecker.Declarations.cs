@@ -19,7 +19,13 @@ public sealed partial class TypeChecker {
             RegisterSymbol(p.Name, paramType, p.Range.Start, node);
             if (p.DefaultValue is not null) Visit(p.DefaultValue);
         }
+
+        // Track the declared return type so VisitReturn can check returned values
+        // (E0005) and distinguish an in-function return from a top-level one (E2203).
+        _functionReturnTypes.Push(ResolveTypeRef(node.ReturnType));
         Visit(node.Body);
+        _functionReturnTypes.Pop();
+
         _scopes.Pop();
         return GrobType.Unknown;
     }

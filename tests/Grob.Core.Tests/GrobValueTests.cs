@@ -117,7 +117,7 @@ public sealed class GrobValueTests {
 
     [Fact]
     public void Function_RoundTrip() {
-        var fn = new GrobFunction("add", 2);
+        var fn = new BytecodeFunction("add", 2, new Chunk());
         var v = GrobValue.FromFunction(fn);
 
         Assert.Equal(GrobValueKind.Function, v.Kind);
@@ -137,7 +137,7 @@ public sealed class GrobValueTests {
         GrobValue arr = GrobValue.FromArray(new GrobArray());
         GrobValue map = GrobValue.FromMap(new GrobMap());
         GrobValue st = GrobValue.FromStruct(new GrobStruct("T"));
-        GrobValue fn = GrobValue.FromFunction(new GrobFunction("f", 0));
+        GrobValue fn = GrobValue.FromFunction(new BytecodeFunction("f", 0, new Chunk()));
 
         // IsNil
         Assert.True(nil.IsNil);
@@ -392,7 +392,7 @@ public sealed class GrobValueTests {
 
     [Fact]
     public void ToString_Function_IncludesName() {
-        Assert.Equal("<fn add>", GrobValue.FromFunction(new GrobFunction("add", 2)).ToString());
+        Assert.Equal("<fn add>", GrobValue.FromFunction(new BytecodeFunction("add", 2, new Chunk())).ToString());
     }
 
     // ----- Per-kind GetHashCode and Equals branches -----
@@ -411,10 +411,10 @@ public sealed class GrobValueTests {
 
     [Fact]
     public void Function_EqualsAndHash_ByReference() {
-        var fn = new GrobFunction("f", 0);
+        var fn = new BytecodeFunction("f", 0, new Chunk());
         var v1 = GrobValue.FromFunction(fn);
         var v2 = GrobValue.FromFunction(fn);
-        var v3 = GrobValue.FromFunction(new GrobFunction("f", 0));
+        var v3 = GrobValue.FromFunction(new BytecodeFunction("f", 0, new Chunk()));
 
         Assert.Equal(v1, v2);
         Assert.Equal(v1.GetHashCode(), v2.GetHashCode());
@@ -467,7 +467,7 @@ public sealed class GrobValueTests {
         Assert.Same(map, GrobValue.FromMap(map).AsMap());
         var st = new GrobStruct("T");
         Assert.Same(st, GrobValue.FromStruct(st).AsStruct());
-        var fn = new GrobFunction("f", 0);
+        var fn = new BytecodeFunction("f", 0, new Chunk());
         Assert.Same(fn, GrobValue.FromFunction(fn).AsFunction());
     }
 
@@ -484,7 +484,7 @@ public sealed class GrobValueTests {
         Assert.True(GrobValue.FromMap(map).TryAsMap(out var m)); Assert.Same(map, m);
         var st = new GrobStruct("T");
         Assert.True(GrobValue.FromStruct(st).TryAsStruct(out var t)); Assert.Same(st, t);
-        var fn = new GrobFunction("f", 0);
+        var fn = new BytecodeFunction("f", 0, new Chunk());
         Assert.True(GrobValue.FromFunction(fn).TryAsFunction(out var k)); Assert.Same(fn, k);
     }
 

@@ -233,10 +233,63 @@ public sealed partial class TypeChecker {
     // -----------------------------------------------------------------------
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Sprint 5 Increment A — the positional call path. Resolves the callee, checks
+    /// the argument count against the parameter count (E0003) and each argument's
+    /// type against its parameter (E0004), and resolves the call to the function's
+    /// declared return type. Built-in and unresolved callees stay permissive; named
+    /// arguments and defaults are Increment B.
+    /// </remarks>
     public override GrobType VisitCall(CallExpr node) {
         Visit(node.Callee);
-        foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
-        return GrobType.Unknown;
+        var argTypes = new GrobType[node.Arguments.Count];
+        for (int i = 0; i < node.Arguments.Count; i++) {
+            argTypes[i] = Visit(node.Arguments[i].Value);
+        }
+
+        // Only user-defined functions are checked positionally here. Built-ins
+        // (print/exit/input) and unresolved callees are permissive.
+        if (node.Callee is not IdentifierExpr { Declaration: FnDecl fn }) {
+            return GrobType.Unknown;
+        }
+
+        CheckPositionalCall(node, fn, argTypes);
+        return ResolveTypeRef(fn.ReturnType);
+    }
+
+    /// <summary>
+    /// Validates a positional call against a resolved <paramref name="fn"/>: the
+    /// argument count (E0003), then each argument's type (E0004). An arity mismatch
+    /// suppresses the per-argument checks — the positions no longer line up.
+    /// </summary>
+    private void CheckPositionalCall(CallExpr node, FnDecl fn, GrobType[] argTypes) {
+        int expected = fn.Parameters.Count;
+        if (node.Arguments.Count != expected) {
+            EmitError(ErrorCatalog.E0003,
+                $"Function '{fn.Name}' expects {expected} argument{(expected == 1 ? "" : "s")}, but {node.Arguments.Count} {(node.Arguments.Count == 1 ? "was" : "were")} supplied.",
+                node.Range);
+            return;
+        }
+        for (int i = 0; i < expected; i++) {
+            CheckArgumentType(node, fn, argTypes[i], i);
+        }
+    }
+
+    /// <summary>
+    /// Checks one positional argument's type against its parameter (E0004). An
+    /// Unknown parameter type (a deferred type) is permissive, and cascade
+    /// suppression covers an argument that already errored.
+    /// </summary>
+    private void CheckArgumentType(CallExpr node, FnDecl fn, GrobType argType, int index) {
+        GrobType paramType = fn.Parameters[index].Type is not null
+            ? ResolveTypeRef(fn.Parameters[index].Type!)
+            : GrobType.Unknown;
+        if (paramType != GrobType.Unknown && argType != GrobType.Error &&
+            !TypesAreAssignable(argType, paramType)) {
+            EmitError(ErrorCatalog.E0004,
+                $"Argument {index + 1} to '{fn.Name}' has type '{TypeName(argType)}', which is not assignable to parameter '{fn.Parameters[index].Name}' of type '{TypeName(paramType)}'.",
+                node.Arguments[index].Value.Range);
+        }
     }
 
     /// <inheritdoc/>

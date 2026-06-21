@@ -499,6 +499,27 @@ public sealed partial class Compiler {
     }
 
     // -----------------------------------------------------------------------
+    // Call (Sprint 5 Increment A — positional)
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Emits the callee, then the arguments in source order, then
+    /// <see cref="OpCode.Call"/> with the argument count as its 1-byte operand. The
+    /// pushed arguments become the callee's first locals over the new frame base.
+    /// Built-in <c>print</c>/<c>exit</c> calls in statement position are intercepted
+    /// by <see cref="VisitExpressionStmt"/> and never reach here.
+    /// </remarks>
+    public override object? VisitCall(CallExpr node) {
+        int line = node.Range.Start.Line;
+        Visit(node.Callee);
+        foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
+        _chunk.WriteOpCode(OpCode.Call, line);
+        _chunk.WriteByte(ToByteOperand(node.Arguments.Count, "call argument count"), line);
+        return null;
+    }
+
+    // -----------------------------------------------------------------------
     // Member access (optional chaining)
     // -----------------------------------------------------------------------
 
@@ -642,6 +663,11 @@ public sealed partial class Compiler {
         BinaryExpr b => GetBinaryResultType(b),
         TernaryExpr t => GetTernaryResultType(t),
         SwitchExprNode s => GetSwitchExprResultType(s),
+        // A call to a user function resolves to that function's declared return type,
+        // so a surrounding operator selects the right typed opcode. Built-in and
+        // unresolved callees stay Unknown.
+        CallExpr { Callee: IdentifierExpr { Declaration: FnDecl fn } }
+            => TypeChecker.ResolveTypeRef(fn.ReturnType),
         _ => GrobType.Unknown
     };
 

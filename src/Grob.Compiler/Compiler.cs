@@ -42,7 +42,7 @@ public sealed partial class Compiler : AstVisitor<object?> {
     // Every reference to a const identifier is inlined as a direct Constant
     // load rather than going through the global/local slot machinery (D-293).
     // -----------------------------------------------------------------------
-    private readonly Dictionary<ConstDecl, GrobValue> _constValues = [];
+    private readonly Dictionary<ConstDecl, GrobValue> _constValues;
 
     // -----------------------------------------------------------------------
     // Loop-context stack (Sprint 4 Increment B).
@@ -104,7 +104,21 @@ public sealed partial class Compiler : AstVisitor<object?> {
 
     private bool IsGlobalScope => _localScopes.Count == 0;
 
-    private Compiler() { }
+    /// <summary>Root compiler for a compilation unit — owns a fresh const cache.</summary>
+    private Compiler() {
+        _constValues = [];
+    }
+
+    /// <summary>
+    /// Sub-compiler for a function body. Each function compiles into its own
+    /// <see cref="Chunk"/> (so it gets a fresh <c>_globalNameIndices</c>, keyed to
+    /// that chunk's constant pool) but shares the root's compile-time
+    /// <paramref name="constValues"/> cache so a body can inline a top-level
+    /// <c>const</c> (D-293) declared before it.
+    /// </summary>
+    private Compiler(Dictionary<ConstDecl, GrobValue> constValues) {
+        _constValues = constValues;
+    }
 
     /// <summary>
     /// Compiles a type-checked <paramref name="unit"/> into a <see cref="Chunk"/>

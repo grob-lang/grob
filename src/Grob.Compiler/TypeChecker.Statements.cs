@@ -43,7 +43,35 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitReturn(ReturnStmt node) {
-        if (node.Value is not null) Visit(node.Value);
+        // A return outside any function body is a script-level return (E2203).
+        // §22: use exit(<n>) to terminate a script. Still visit the value so its
+        // sub-expressions are resolved (§3.1.1) and any nested errors surface.
+        if (_functionReturnTypes.Count == 0) {
+            EmitError(ErrorCatalog.E2203,
+                "'return' is not valid at script level. Use 'exit(<n>)' to terminate a script with a status code.",
+                node.Range);
+            if (node.Value is not null) Visit(node.Value);
+            return GrobType.Unknown;
+        }
+
+        GrobType expected = _functionReturnTypes.Peek();
+
+        // A bare 'return' yields nil. Since 'void' is not a user-declarable return
+        // type (only print() is void — §"print() and void"), a bare return must
+        // still satisfy the declared type: it is accepted only by a nullable or nil
+        // return type, and is E0005 against a non-nullable one.
+        GrobType actual = node.Value is not null ? Visit(node.Value) : GrobType.Nil;
+
+        // An Unknown declared return type (a deferred type) is permissive; cascade
+        // suppression covers an already-errored value.
+        if (expected != GrobType.Unknown && actual != GrobType.Error &&
+            !TypesAreAssignable(actual, expected)) {
+            EmitError(ErrorCatalog.E0005,
+                node.Value is not null
+                    ? $"Cannot return a value of type '{TypeName(actual)}' from a function declared to return '{TypeName(expected)}'."
+                    : $"A bare 'return' yields 'nil', which is not assignable to the declared return type '{TypeName(expected)}'.",
+                node.Value is not null ? node.Value.Range : node.Range);
+        }
         return GrobType.Unknown;
     }
 

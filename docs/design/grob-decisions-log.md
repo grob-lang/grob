@@ -315,6 +315,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-315 | June 2026                                                         | Control flow                  | `break`/`continue` in `select`: asymmetric. `break` inside `select` is a compile error (E2211) at any nesting; `continue` passes through to the nearest enclosing loop. `select` is not loop-control-transparent. Resolves Requirements/Fundamentals contradiction; E2212 added for `break`/`continue` outside any loop |
 | D-316 | June 2026                                                         | Tooling — quality gate        | Corpus consistency regime: one-time A1 reconciliation (stale error-code total 99→103 and stale Sprint-1 status row corrected) plus a permanent CI-enforced drift gate (`tests/Grob.Consistency.Tests`) asserting error-code count agreement, decisions-log lockstep, ADR-reference integrity and opcode/TokenKind completeness, with D-308's `ErrorCatalog` agreement test referenced as the catalog↔registry guard. Generalises D-308; self-relative checks, no frozen baseline |
 | D-317 | June 2026                                                         | Tooling — supply chain        | Project hardening interlude (Sprint 4→5): central package management with exact pins and committed lockfiles under locked-mode restore, NuGet and CodeQL vulnerability gates, deterministic builds with SourceLink, SHA-pinned least-privilege workflows, gitleaks CI secret scanning, and CycloneDX SBOM and build-provenance scaffolding. Additive repository hardening; complements §11 language/runtime security, does not overlap it. Code signing deferred to first public release (OQ-018) |
+| D-318 | June 2026                                                         | Type system — named-arg diagnostics | Named-argument call-site errors (D-113) get dedicated codes E0008–E0011 — named-before-positional, naming a required parameter, duplicate named argument, unknown parameter name — rather than folding into E0003. Registered in Sprint 5 Increment B through their `ErrorCatalog` descriptors |
 
 ---
 
@@ -3087,6 +3088,42 @@ Superseded by: none
 
 ---
 
+### D-318 — Named-argument call-site diagnostics get dedicated codes (June 2026)
+
+Area: Type system — named-argument diagnostics
+Supersedes: none
+Superseded by: none
+
+The four named-argument call-site errors D-113 specifies — a named argument
+before a positional one, a named argument naming a required (defaultless)
+parameter, a duplicate named argument, and a named argument naming an unknown
+parameter — get four dedicated error codes rather than folding into E0003 (wrong
+number of arguments):
+
+- E0008 — named argument before positional
+- E0009 — named argument names a required parameter
+- E0010 — duplicate named argument
+- E0011 — unknown parameter name
+
+Dedicated codes, not a fold into E0003, because each of the four is a distinct
+mistake with a distinct fix, and the diagnostics are part of the product: E0008
+wants "move named arguments after positional ones", E0009 "this parameter has no
+default, pass it positionally", E0010 "this parameter is already supplied", E0011
+"no parameter named X — did you mean Y?". Folding all four into E0003 would
+mis-describe them (none is an arity error) and collapse four targeted suggestions
+into one generic message, against the error-message quality bar. The alternative
+considered — reuse E0003 for arity-shaped cases and E0004 for the rest — was
+rejected for the same reason: the call-site binding errors are a category of their
+own, not instances of arity or type mismatch, which still apply on the bound
+argument set after binding succeeds.
+
+The codes occupy the next-free slots in the E00xx Type block (E0006 and E0007
+taken). Registered in Sprint 5 Increment B through their `ErrorCatalog` descriptors
+(D-308); immutable once shipped (ADR-0017). Full calling-convention detail is in
+`grob-language-fundamentals.md` (the named-argument rules) and D-113.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3308,6 +3345,12 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 — D-318: the four named-argument call-site errors (D-113)_
+_assigned dedicated codes E0008–E0011 — named-before-positional, naming a_
+_required parameter, duplicate named argument, unknown parameter name — rather_
+_than folding into E0003, since none is an arity error and each carries a_
+_distinct fix. Registered in Sprint 5 Increment B through their `ErrorCatalog`_
+_descriptors; no codes added to the catalog by this entry._
 _Updated June 2026 (interlude B) — D-317: project hardening interlude. Additive_
 _supply-chain and build-integrity hardening of the repository: central package_
 _management with exact pins and committed lockfiles under locked-mode restore,_

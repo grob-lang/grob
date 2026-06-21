@@ -1,10 +1,14 @@
 namespace Grob.Core;
 
 /// <summary>
-/// Runtime function/closure reference. Holds a compiled function body.
-/// The full implementation lands with the compiler and closure support.
+/// Runtime function reference — the common base for every callable Grob value.
+/// Sprint 5 Increment A introduces the single concrete subclass
+/// <see cref="BytecodeFunction"/> (a user <c>fn</c> with its own
+/// <see cref="Chunk"/>). Later increments add lambda and native variants on the
+/// same base, so a <see cref="GrobValueKind.Function"/> value is always a
+/// <see cref="GrobFunction"/> regardless of which kind of callable it holds.
 /// </summary>
-public sealed class GrobFunction {
+public abstract class GrobFunction {
     /// <summary>The declared name of the function, or an empty string for anonymous lambdas.</summary>
     public string Name { get; }
 
@@ -15,7 +19,7 @@ public sealed class GrobFunction {
     /// Initialises a new <see cref="GrobFunction"/> with the given
     /// <paramref name="name"/> and <paramref name="arity"/>.
     /// </summary>
-    public GrobFunction(string name, int arity) {
+    protected GrobFunction(string name, int arity) {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentOutOfRangeException.ThrowIfNegative(arity);
         Name = name;

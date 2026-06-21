@@ -76,6 +76,77 @@ public sealed partial class Compiler {
     }
 
     // -----------------------------------------------------------------------
+    // Function declarations and returns (Sprint 5 Increment A)
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Compiles the body into its own <see cref="BytecodeFunction"/>, stores that
+    /// function as a constant in the enclosing chunk, then binds it to its name as
+    /// a global. A forward call resolves at runtime because every top-level <c>fn</c>
+    /// is defined before the script body that calls them runs (and the type checker's
+    /// pass-1 registration already made the name resolvable at compile time).
+    /// </remarks>
+    public override object? VisitFnDecl(FnDecl node) {
+        int line = node.Range.Start.Line;
+        BytecodeFunction fn = CompileFunction(node);
+        EmitConstant(GrobValue.FromFunction(fn), line);
+        int nameIdx = GetOrCreateGlobalNameIndex(node.Name);
+        _chunk.WriteOpCode(OpCode.DefineGlobal, line);
+        _chunk.WriteByte(ToByteOperand(nameIdx, GlobalNameLabel), line);
+        return null;
+    }
+
+    /// <summary>
+    /// Compiles a <see cref="FnDecl"/> body into a standalone
+    /// <see cref="BytecodeFunction"/>. Parameters occupy the first local slots
+    /// (slot 0 = first parameter), addressed against the call frame's stack base at
+    /// runtime. The body always ends with an implicit <c>Nil</c> + <c>Return</c> so
+    /// a path that falls off the end returns nil rather than running past the chunk
+    /// (all-paths-return analysis is not a v1 rule — the spec is silent).
+    /// </summary>
+    private BytecodeFunction CompileFunction(FnDecl node) {
+        var sub = new Compiler(_constValues);
+
+        // Parameters live in the function's outermost scope; the body opens its own
+        // nested scope (VisitBlock), so a body local may shadow a parameter.
+        sub._localScopes.Push([]);
+        foreach (Parameter p in node.Parameters) {
+            if ((uint)sub._nextSlot > byte.MaxValue)
+                throw new GrobInternalException(
+                    $"Parameter slot overflow: function '{node.Name}' exceeds the 1-byte slot limit of {byte.MaxValue}.");
+            sub._localScopes.Peek().Add(new LocalVar(p.Name, sub._nextSlot++));
+        }
+
+        sub.Visit(node.Body);
+
+        // Safety-net return: a body that does not return on every path falls through
+        // to here and returns nil. Frame cleanup on Return discards locals.
+        int endLine = node.Range.End.Line;
+        sub._chunk.WriteOpCode(OpCode.Nil, endLine);
+        sub._chunk.WriteOpCode(OpCode.Return, endLine);
+
+        return new BytecodeFunction(node.Name, node.Parameters.Count, sub._chunk);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Emits the return value (or <c>Nil</c> for a bare <c>return</c>) then
+    /// <see cref="OpCode.Return"/>, which the VM uses to pop the call frame and
+    /// resume the caller. A top-level <c>return</c> is rejected by the type checker
+    /// (E2203) and so never reaches a valid compile.
+    /// </remarks>
+    public override object? VisitReturn(ReturnStmt node) {
+        int line = node.Range.Start.Line;
+        if (node.Value is not null)
+            Visit(node.Value);
+        else
+            _chunk.WriteOpCode(OpCode.Nil, line);
+        _chunk.WriteOpCode(OpCode.Return, line);
+        return null;
+    }
+
+    // -----------------------------------------------------------------------
     // Expression statements (print, exit, and other calls)
     // -----------------------------------------------------------------------
 
