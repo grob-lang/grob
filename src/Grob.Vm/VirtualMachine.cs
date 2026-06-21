@@ -15,9 +15,20 @@ namespace Grob.Vm;
 /// diagnostics) and grob-v1-requirements.md §3.3 (the OpCode set).
 /// </summary>
 public sealed class VirtualMachine {
+    /// <summary>
+    /// Maximum call depth (D-180). The frames array holds call frames only — the
+    /// top-level script is not a frame — so a 257th nested call has no slot and
+    /// raises E5901 rather than overflowing the host's CLR stack.
+    /// </summary>
+    private const int MaxFrames = 256;
+
     private readonly ValueStack _stack = new();
     private readonly TextWriter _out;
     private readonly Dictionary<string, GrobValue> _globals = new(StringComparer.Ordinal);
+
+    /// <summary>The call-stack frames (D-180). Active entries are <c>0.._frameCount-1</c>.</summary>
+    private readonly CallFrame[] _frames = new CallFrame[MaxFrames];
+    private int _frameCount;
 
     /// <summary>
     /// Writer for the per-instruction trace hook. Only read inside
@@ -63,13 +74,19 @@ public sealed class VirtualMachine {
         ArgumentNullException.ThrowIfNull(chunk);
 
         // Defensive: a prior Run that terminated by exception may have left
-        // values on the operand stack. Start every invocation clean so the
-        // VM behaves the same on the Nth chunk as on the first.
+        // values on the operand stack or call frames. Start every invocation
+        // clean so the VM behaves the same on the Nth chunk as on the first.
         _stack.Reset();
+        _frameCount = 0;
 
         int ip = 0;
         int line = 0;
         int column = 0;
+
+        // The script runs with a stack base of zero — its top-level locals use
+        // absolute slots (Sprint 3/4), which is exactly frame-relative addressing
+        // over base zero. Each Call raises the base for the callee's locals.
+        int stackBase = 0;
 
         try {
             while (true) {
@@ -137,29 +154,29 @@ public sealed class VirtualMachine {
                             break;
                         }
 
-                    // --- Locals ---
+                    // --- Locals (slots are relative to the active frame's stack base) ---
                     case OpCode.GetLocal: {
                             byte slot = chunk.ReadByte(ip++);
-                            _stack.Push(_stack.GetSlot(slot), line);
+                            _stack.Push(_stack.GetSlot(stackBase + slot), line);
                             break;
                         }
                     case OpCode.SetLocal: {
                             byte slot = chunk.ReadByte(ip++);
-                            _stack.SetSlot(slot, _stack.Pop());
+                            _stack.SetSlot(stackBase + slot, _stack.Pop());
                             break;
                         }
 
                     // --- Increment / decrement (int locals only; float arms are compile errors) ---
                     case OpCode.IncrementInt: {
                             byte slot = chunk.ReadByte(ip++);
-                            long cur = _stack.GetSlot(slot).AsInt();
-                            _stack.SetSlot(slot, GrobValue.FromInt(checked(cur + 1L)));
+                            long cur = _stack.GetSlot(stackBase + slot).AsInt();
+                            _stack.SetSlot(stackBase + slot, GrobValue.FromInt(checked(cur + 1L)));
                             break;
                         }
                     case OpCode.DecrementInt: {
                             byte slot = chunk.ReadByte(ip++);
-                            long cur = _stack.GetSlot(slot).AsInt();
-                            _stack.SetSlot(slot, GrobValue.FromInt(checked(cur - 1L)));
+                            long cur = _stack.GetSlot(stackBase + slot).AsInt();
+                            _stack.SetSlot(stackBase + slot, GrobValue.FromInt(checked(cur - 1L)));
                             break;
                         }
 
@@ -496,9 +513,56 @@ public sealed class VirtualMachine {
                                 $"{receiver.Kind} not yet implemented (Sprint 5).");
                         }
 
-                    // --- Top-level return ends this chunk's execution ---
-                    case OpCode.Return:
-                        return;
+                    // --- Calls and returns (Sprint 5 Increment A) ---
+
+                    case OpCode.Call: {
+                            // The callee was pushed before its arguments, so it sits
+                            // argCount slots below the top. Its arguments become the
+                            // callee's first locals over a new frame base.
+                            int argCount = chunk.ReadByte(ip++);
+                            if (_frameCount == MaxFrames)
+                                throw new GrobRuntimeException(ErrorCatalog.E5901.Code, line, column,
+                                    "Stack overflow — maximum call depth (256) exceeded");
+
+                            GrobValue calleeValue = _stack.Peek(argCount);
+                            if (!calleeValue.TryAsFunction(out GrobFunction? callee) ||
+                                callee is not BytecodeFunction fn)
+                                throw new GrobInternalException(
+                                    $"Call target is not a bytecode function (kind: {calleeValue.Kind}). " +
+                                    "The type checker should have rejected this source.");
+
+                            // Save the caller's resume context, then switch the
+                            // dispatch loop into the callee's chunk.
+                            _frames[_frameCount++] = new CallFrame {
+                                ReturnChunk = chunk,
+                                ReturnInstructionPointer = ip,
+                                ReturnStackBase = stackBase,
+                            };
+                            stackBase = _stack.Count - argCount;
+                            chunk = fn.Bytecode;
+                            ip = 0;
+                            break;
+                        }
+
+                    case OpCode.Return: {
+                            // A return at script level (no active frame) ends execution
+                            // and leaves the operand stack as-is.
+                            if (_frameCount == 0)
+                                return;
+
+                            GrobValue result = _stack.Pop();
+                            // Discard the callee value, its arguments and its locals in
+                            // one step (everything from the callee value upward).
+                            _stack.TrimToCount(stackBase - 1);
+                            _stack.Push(result, line);
+
+                            // Restore the caller's execution context.
+                            CallFrame frame = _frames[--_frameCount];
+                            chunk = frame.ReturnChunk;
+                            ip = frame.ReturnInstructionPointer;
+                            stackBase = frame.ReturnStackBase;
+                            break;
+                        }
 
                     default:
                         throw new GrobInternalException(

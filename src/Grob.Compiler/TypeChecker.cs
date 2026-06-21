@@ -42,6 +42,16 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
     private readonly Stack<ControlFrame> _controlFrames = new();
 
+    // -----------------------------------------------------------------------
+    // Function return-type stack (Sprint 5 Increment A).
+    //
+    // Pushed on entering a fn body and popped on exit, so VisitReturn can check a
+    // returned value against the enclosing function's declared return type (E0005)
+    // and reject a return that has no enclosing function (E2203). A non-empty stack
+    // means "inside a function body".
+    // -----------------------------------------------------------------------
+    private readonly Stack<GrobType> _functionReturnTypes = new();
+
     /// <summary>Initialises a new <see cref="TypeChecker"/> that writes into <paramref name="diagnostics"/>.</summary>
     public TypeChecker(DiagnosticBag diagnostics) {
         ArgumentNullException.ThrowIfNull(diagnostics);
@@ -158,7 +168,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// applying the nullable modifier when <see cref="TypeRef.IsNullable"/> is
     /// <c>true</c> (Sprint 3 Increment D — D-014).
     /// </summary>
-    private static GrobType ResolveTypeRef(TypeRef typeRef) {
+    internal static GrobType ResolveTypeRef(TypeRef typeRef) {
         GrobType baseType = typeRef.Name switch {
             "int" => GrobType.Int,
             "float" => GrobType.Float,

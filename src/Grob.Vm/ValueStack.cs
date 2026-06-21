@@ -102,6 +102,20 @@ public sealed class ValueStack {
     }
 
     /// <summary>
+    /// Truncate the live region to exactly <paramref name="count"/> values,
+    /// clearing the vacated slots so any reference values are released to the GC
+    /// (D-304). Used by <see cref="OpCode.Return"/> to discard a returning frame's
+    /// callee value, arguments and locals in one step before the result is pushed.
+    /// The caller guarantees <paramref name="count"/> is within the current live
+    /// region (a returning call frame always sits above its caller's stack base).
+    /// </summary>
+    internal void TrimToCount(int count) {
+        if (count < _top)
+            Array.Clear(_values, count, _top - count);   // release reference slots for GC (D-304)
+        _top = count;
+    }
+
+    /// <summary>
     /// Snapshot the live region of the stack — used by the
     /// <c>#if DEBUG</c> trace hook to render the stack each iteration.
     /// </summary>

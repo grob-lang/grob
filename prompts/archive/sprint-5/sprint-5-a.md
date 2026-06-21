@@ -69,9 +69,19 @@ Read, in order:
 >   for block scoping, now based at the frame rather than at a single global base.
 >   `GetLocal`/`SetLocal` decode against the active frame's base. No dictionary, no
 >   string lookup.
-> - **Recursion.** Falls out of the call frame with no special handling — a
->   function that calls itself pushes another frame. The only bound is the frame
->   array.
+> - **Callee resolution — a top-level `fn` is a global, resolved late.** A
+>   function name at a call site resolves to its **global slot** (a `GetGlobal`-style
+>   read), not a direct compile-time `BytecodeFunction` reference baked into the
+>   call. The fixed script structure puts every `fn` declaration above the top-level
+>   code, so all functions are defined before any code runs; resolving the callee by
+>   global slot at the call is what makes a **forward** call (to a function declared
+>   later in the file) and **mutual** recursion work at runtime, not just at
+>   type-check. Compiling a direct `BytecodeFunction` reference instead would break
+>   on forward order — do not.
+> - **Recursion — direct and mutual.** Falls out of the call frame and the global
+>   callee resolution with no special handling: a function that calls itself, or two
+>   functions that call each other (`isEven`/`isOdd`), each push another frame and
+>   resolve the callee by global slot. The only bound is the frame array.
 > - **Stack overflow (E5901).** When the frame count would exceed the fixed
 >   `CallFrame[256]` capacity, raise the `RuntimeError` **E5901** (call-stack
 >   overflow) through its `ErrorCatalog` descriptor, carrying the source line. The
@@ -158,8 +168,10 @@ narrowing.**
    its own `Chunk`. Parameters occupy the first local slots; `Return` is emitted
    for explicit returns and for the end of a non-void body per the spec's return
    rule.
-4. **Compiler — calls.** Emit the callee, the argument expressions in order, then
-   `Call` with the argument count.
+4. **Compiler — calls.** Resolve the callee to its **global slot** (not a direct
+   compile-time `BytecodeFunction` reference), emit that read, then the argument
+   expressions in order, then `Call` with the argument count. Global-slot resolution
+   is what makes forward and mutual references work at runtime.
 5. **VM — `Call` / `Return` dispatch.** Implement the two handlers against the
    `CallFrame[256]` array and the stack-base arithmetic in
    `grob-vm-architecture.md`. `GetLocal`/`SetLocal` resolve against the active
@@ -207,6 +219,10 @@ Per §3.5, route each test to the project matching its kind.
     the expected depth (the callee's locals and the callee value are discarded on
     `Return`).
   - A directly recursive function (e.g. factorial) computes correctly.
+  - **Mutual recursion** (an `isEven`/`isOdd` pair where each calls the other, the
+    second declared after the first) computes correctly — proving a forward
+    function reference resolves at **runtime** via the global slot, not only at
+    type-check.
   - A non-terminating recursion raises **E5901** as a `RuntimeError` and does
     **not** crash the host with a CLR `StackOverflowException`.
 - **Integration tests (`Grob.Integration.Tests`):**

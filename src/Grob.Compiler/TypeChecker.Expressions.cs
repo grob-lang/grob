@@ -233,10 +233,46 @@ public sealed partial class TypeChecker {
     // -----------------------------------------------------------------------
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Sprint 5 Increment A — the positional call path. Resolves the callee, checks
+    /// the argument count against the parameter count (E0003) and each argument's
+    /// type against its parameter (E0004), and resolves the call to the function's
+    /// declared return type. Built-in and unresolved callees stay permissive; named
+    /// arguments and defaults are Increment B.
+    /// </remarks>
     public override GrobType VisitCall(CallExpr node) {
         Visit(node.Callee);
-        foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
-        return GrobType.Unknown;
+        var argTypes = new GrobType[node.Arguments.Count];
+        for (int i = 0; i < node.Arguments.Count; i++) {
+            argTypes[i] = Visit(node.Arguments[i].Value);
+        }
+
+        // Only user-defined functions are checked positionally here. Built-ins
+        // (print/exit/input) and unresolved callees are permissive.
+        if (node.Callee is not IdentifierExpr { Declaration: FnDecl fn }) {
+            return GrobType.Unknown;
+        }
+
+        int expected = fn.Parameters.Count;
+        if (node.Arguments.Count != expected) {
+            EmitError(ErrorCatalog.E0003,
+                $"Function '{fn.Name}' expects {expected} argument{(expected == 1 ? "" : "s")}, but {node.Arguments.Count} {(node.Arguments.Count == 1 ? "was" : "were")} supplied.",
+                node.Range);
+        } else {
+            for (int i = 0; i < expected; i++) {
+                GrobType paramType = fn.Parameters[i].Type is not null
+                    ? ResolveTypeRef(fn.Parameters[i].Type!)
+                    : GrobType.Unknown;
+                if (paramType != GrobType.Unknown && argTypes[i] != GrobType.Error &&
+                    !TypesAreAssignable(argTypes[i], paramType)) {
+                    EmitError(ErrorCatalog.E0004,
+                        $"Argument {i + 1} to '{fn.Name}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter '{fn.Parameters[i].Name}' of type '{TypeName(paramType)}'.",
+                        node.Arguments[i].Value.Range);
+                }
+            }
+        }
+
+        return ResolveTypeRef(fn.ReturnType);
     }
 
     /// <inheritdoc/>

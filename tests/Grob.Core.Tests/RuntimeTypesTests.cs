@@ -191,11 +191,11 @@ public sealed class RuntimeTypesTests {
         Assert.True(a.Equals(b));
     }
 
-    // ----- GrobFunction -----
+    // ----- GrobFunction (via its concrete BytecodeFunction subclass) -----
 
     [Fact]
     public void GrobFunction_Constructor_StoresNameAndArity() {
-        var fn = new GrobFunction("add", 2);
+        var fn = new BytecodeFunction("add", 2, new Chunk());
 
         Assert.Equal("add", fn.Name);
         Assert.Equal(2, fn.Arity);
@@ -203,15 +203,26 @@ public sealed class RuntimeTypesTests {
 
     [Fact]
     public void GrobFunction_NullName_Throws() =>
-        Assert.Throws<ArgumentNullException>(() => new GrobFunction(null!, 0));
+        Assert.Throws<ArgumentNullException>(() => new BytecodeFunction(null!, 0, new Chunk()));
 
     [Fact]
     public void GrobFunction_NegativeArity_Throws() =>
-        Assert.Throws<ArgumentOutOfRangeException>(() => new GrobFunction("f", -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new BytecodeFunction("f", -1, new Chunk()));
+
+    [Fact]
+    public void BytecodeFunction_NullBytecode_Throws() =>
+        Assert.Throws<ArgumentNullException>(() => new BytecodeFunction("f", 0, null!));
+
+    [Fact]
+    public void BytecodeFunction_StoresBytecodeChunk() {
+        var chunk = new Chunk();
+        var fn = new BytecodeFunction("f", 0, chunk);
+        Assert.Same(chunk, fn.Bytecode);
+    }
 
     [Fact]
     public void GrobFunction_EmptyName_IsAllowed_ForAnonymousLambdas() {
-        var fn = new GrobFunction("", 0);
+        var fn = new BytecodeFunction("", 0, new Chunk());
         Assert.Equal("", fn.Name);
     }
 
