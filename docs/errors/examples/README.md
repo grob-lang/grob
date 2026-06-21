@@ -263,6 +263,10 @@ than a fatal `error[Exxxx]:`.
 | E0005 | `return-type-mismatch-string-for-int` | Type |
 | E0006 | `undefined-method-on-int` | Type |
 | E0007 | `invalid-implicit-conversion-float-to-int` | Type |
+| E0008 | `named-argument-before-positional` | Type |
+| E0009 | `named-argument-names-required-parameter` | Type |
+| E0010 | `duplicate-named-argument` | Type |
+| E0011 | `unknown-parameter-name` | Type |
 | E0101 | `nil-deref-method-call` | Type |
 | E0102 | `nullable-interpolation` | Type |
 | E0201 | `const-reassignment` | Type |
@@ -312,3 +316,6 @@ than a fatal `error[Exxxx]:`.
 *Batch 2: 24 examples, Session D Part 3 Continuation, April 2026.*
 *Batch 3: 4 examples (3 stack-frame chain, 1 warning), Session D Part 3 Continuation, April 2026.*
 *Stack-frame chain render and warning-severity render formats locked in Batch 3.*
+
+*Sprint 5 Increment B: 4 examples (E0008–E0011, the named-argument call-site*
+*diagnostics), June 2026. Source decision D-318 (D-113).*

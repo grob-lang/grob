@@ -59,6 +59,10 @@ read by `grob --explain Exxxx`.
 | E0005 | return type mismatch                               | Type              | pre-release           |
 | E0006 | undefined method on type                           | Type              | pre-release           |
 | E0007 | invalid implicit conversion                        | Type              | pre-release           |
+| E0008 | named argument before positional                   | Type              | pre-release           |
+| E0009 | named argument names a required parameter           | Type              | pre-release           |
+| E0010 | duplicate named argument                            | Type              | pre-release           |
+| E0011 | unknown parameter name                              | Type              | pre-release           |
 | E0101 | nil dereference without `?.` or `??`               | Type              | pre-release           |
 | E0102 | nullable interpolation                             | Type              | pre-release           |
 | E0103 | non-nullable field requires initialiser            | Type              | pre-release           |
@@ -225,6 +229,46 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** An implicit conversion was attempted where Grob does not permit one. The only permitted implicit conversion is `int → float`.
 - **Source decision:** D-178.
+
+---
+
+### E0008 — named argument before positional
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A named argument appeared before a positional argument at a call site. The calling convention requires all positional arguments first, then named arguments.
+- **Source decision:** D-318 (D-113).
+
+---
+
+### E0009 — named argument names a required parameter
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A named argument named a required (defaultless) parameter. Only parameters with a default value may be passed by name; required parameters are positional-only.
+- **Source decision:** D-318 (D-113).
+
+---
+
+### E0010 — duplicate named argument
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A parameter was supplied more than once — named twice, or named and also supplied positionally.
+- **Source decision:** D-318 (D-113).
+
+---
+
+### E0011 — unknown parameter name
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A named argument named a parameter the callee does not declare.
+- **Source decision:** D-318 (D-113).
 
 ---
 
@@ -1196,7 +1240,7 @@ None as of v1.
 
 ---
 
-**Total: 103 codes across 7 categories.** This is the canonical current count;
+**Total: 107 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
@@ -1213,3 +1257,5 @@ _Updated June 2026 — Sprint 4 Increment E added E0505 (non-exhaustive switch e
 _Updated June 2026 — D-315: E2211 retitled to `break` inside `select` and E2212 retitled to `break` / `continue` outside a loop, reflecting the asymmetric resolution. Both codes pre-existed; no new codes were added by this edit._
 
 _Updated June 2026 (interlude A, D-316) — canonical total corrected from a stale "99 codes" to the actual 103 present in the summary index and `ErrorCatalog`. Four codes had accrued without a footer count update: E0205 (Sprint 3), E1102 (Sprint 3), E2211 and E2212 (Sprint 4, D-315). No codes were added, removed or renumbered by this edit; the drift was in the prose total alone. A standing total line has been added above and the count is now gated by `Grob.Consistency.Tests` so this class of drift cannot recur silently._
+
+_Updated June 2026 — Sprint 5 Increment B added the four named-argument call-site diagnostics E0008–E0011 (named-before-positional, naming a required parameter, duplicate named argument, unknown parameter name) in the E00xx sub-block of the Type category, bringing the total to 107 codes. Source decision D-318 (D-113)._

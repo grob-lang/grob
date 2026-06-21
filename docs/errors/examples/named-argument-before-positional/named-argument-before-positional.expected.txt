@@ -1,0 +1,8 @@
+error[E0008]: named argument before positional
+  --> named-argument-before-positional.grob:7:22
+   |
+ 7 | print(box(height: 2, 5))
+   |                      ^
+   |
+   = note: positional argument follows a named argument
+   = help: move all positional arguments before the named arguments

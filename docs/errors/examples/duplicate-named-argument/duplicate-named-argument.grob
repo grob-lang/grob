@@ -1,0 +1,7 @@
+// E0010 — the same parameter supplied by name twice
+// Eventual path: docs/errors/examples/duplicate-named-argument/duplicate-named-argument.grob
+fn box(width: int, height: int = 10): int {
+    return width * height
+}
+
+print(box(1, height: 2, height: 3))

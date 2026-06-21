@@ -47,11 +47,11 @@ public sealed class ErrorCodeCountTests {
     }
 
     [Fact]
-    public void Corpus_HasTheExpectedLiveCountOf103() {
+    public void Corpus_HasTheExpectedLiveCountOf107() {
         // A standing anchor: if the count legitimately changes, this and the
         // canonical footer line move together, by intent, in the same change.
-        Assert.Equal(103, ConsistencyChecks.ActualErrorCatalogCount());
-        Assert.Equal(103, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
-        Assert.Equal(103, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
+        Assert.Equal(107, ConsistencyChecks.ActualErrorCatalogCount());
+        Assert.Equal(107, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
+        Assert.Equal(107, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
     }
 }

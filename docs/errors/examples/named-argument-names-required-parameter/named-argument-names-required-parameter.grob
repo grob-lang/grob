@@ -1,0 +1,7 @@
+// E0009 — passing a required (defaultless) parameter by name
+// Eventual path: docs/errors/examples/named-argument-names-required-parameter/named-argument-names-required-parameter.grob
+fn power(base: int, exponent: int = 2): int {
+    return base * exponent
+}
+
+print(power(base: 5))

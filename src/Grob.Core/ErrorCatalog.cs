@@ -80,6 +80,42 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>named argument before positional</summary>
+    public static readonly ErrorDescriptor E0008 = new(
+        Code: "E0008",
+        Title: "named argument before positional",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
+    /// <summary>named argument names a required parameter</summary>
+    public static readonly ErrorDescriptor E0009 = new(
+        Code: "E0009",
+        Title: "named argument names a required parameter",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
+    /// <summary>duplicate named argument</summary>
+    public static readonly ErrorDescriptor E0010 = new(
+        Code: "E0010",
+        Title: "duplicate named argument",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
+    /// <summary>unknown parameter name</summary>
+    public static readonly ErrorDescriptor E0011 = new(
+        Code: "E0011",
+        Title: "unknown parameter name",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>nil dereference without `?.` or `??`</summary>
     public static readonly ErrorDescriptor E0101 = new(
         Code: "E0101",
@@ -965,6 +1001,10 @@ public static class ErrorCatalog {
         E0005,
         E0006,
         E0007,
+        E0008,
+        E0009,
+        E0010,
+        E0011,
         E0101,
         E0102,
         E0103,

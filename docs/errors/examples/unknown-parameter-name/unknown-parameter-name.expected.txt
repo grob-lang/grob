@@ -1,0 +1,8 @@
+error[E0011]: unknown parameter name
+  --> unknown-parameter-name.grob:7:14
+   |
+ 7 | print(box(1, depth: 4))
+   |              ^^^^^
+   |
+   = note: 'box' has no parameter named 'depth'
+   = help: the parameters of 'box' are 'width' and 'height'

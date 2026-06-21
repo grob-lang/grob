@@ -17,7 +17,15 @@ public sealed partial class TypeChecker {
             GrobType paramType = p.Type is not null ? ResolveTypeRef(p.Type) : GrobType.Unknown;
             // Use the owning FnDecl as the declaring node — Parameter is not an AstNode.
             RegisterSymbol(p.Name, paramType, p.Range.Start, node);
-            if (p.DefaultValue is not null) Visit(p.DefaultValue);
+            if (p.DefaultValue is not null) {
+                GrobType defaultType = Visit(p.DefaultValue);
+                if (paramType != GrobType.Unknown && defaultType != GrobType.Error
+                    && !TypesAreAssignable(defaultType, paramType)) {
+                    EmitError(ErrorCatalog.E0004,
+                        $"Default value for parameter '{p.Name}' has type '{TypeName(defaultType)}', which is not assignable to '{TypeName(paramType)}'.",
+                        p.DefaultValue.Range);
+                }
+            }
         }
 
         // Track the declared return type so VisitReturn can check returned values
