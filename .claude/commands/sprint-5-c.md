@@ -1,5 +1,5 @@
 ---
-description: "Sprint 5 · Increment C — lambdas and natives. The three lambda forms, block-body implicit-last-expression with return early-exit (D-276), NativeFunction + RegisterNative, the native↔VM call-back bridge, and filter/select/sort/each as the lambda-consuming array natives. Top-level reference resolution only (D-296 categories 1–3) — no upvalue capture. Plus the mechanical §6 map → select fix."
+description: "Sprint 5 · Increment C — lambdas and natives. The three lambda forms, block-body implicit-last-expression with return early-exit (D-276), NativeFunction + RegisterNative, the native↔VM call-back bridge, and filter/select/sort/each as the lambda-consuming array natives. Top-level reference resolution only (D-296 categories 1–3) — no upvalue capture. Plus the mechanical §6 map → select fix, and the D-319 cooperative-cancellation seam: a CancellationToken on the VM run entry and a masked step-budget check in the dispatch loop, the counter on the VM instance so the budget spans the re-entrant native↔VM bridge."
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
 ---
@@ -14,7 +14,13 @@ call back into the VM, and the array higher-order methods `filter`/`select`/`sor
 references (D-296 categories 1–3 — `const` inlined, `readonly`/mutable read from
 the globals table). **Upvalue capture of enclosing-function locals (category 4) is
 Increment D** — do not build it here. This increment also makes the mechanical §6
-`map` → `select` correction.
+`map` → `select` correction, and folds in one cross-cutting VM-core change from
+**D-319**: a cooperative-cancellation **step-budget seam** in the dispatch loop.
+It lands here, not elsewhere, because this increment builds the re-entrant native↔VM
+call-back bridge — so the seam's load-bearing property (one budget that spans
+re-entrant execution, catching a runaway lambda invoked by a native) is testable
+exactly where the bridge is built. The seam is mechanism only; it is not lambda or
+native logic.
 
 Read, in order:
 
@@ -37,8 +43,10 @@ Read, in order:
    argument.
 5. Decisions: **D-115** (lambdas and closures), **D-276** (block-body lambda
    return), **D-296** (four-category resolution), **D-280** (`select` replaces
-   `map`), **D-281** (`sort` key-selector). Grep the log; do not take their
-   content from this prompt.
+   `map`), **D-281** (`sort` key-selector), and **D-319** (the playground embedding
+   host — the dispatch-loop cancellation/step-budget seam, adopted into v1 and
+   folded into this increment). Grep the log; do not take their content from this
+   prompt.
 
 > **Verify before relying on cited decisions and sections.** Grep
 > `grob-language-fundamentals.md` §12.1 and the lambda grammar, and
@@ -93,6 +101,22 @@ Read, in order:
 > - **No new opcodes.** Lambdas-without-capture compile to a `BytecodeFunction` and
 >   a normal `Call`; natives dispatch through the same `Call` arm. No
 >   `Closure`/upvalue opcode is emitted in this increment.
+> - **Cooperative cancellation / step budget (D-319) — VM-core, not lambda logic.**
+>   The VM run entry takes a `CancellationToken` (default `CancellationToken.None`,
+>   which means unlimited — production wires that). The dispatch loop checks it on a
+>   masked interval (`if ((++_steps & BudgetMask) == 0) token.ThrowIfCancellationRequested();`)
+>   so a runaway script can be interrupted; in steady state the cost is a counter
+>   increment and an occasional predictable branch. The step counter lives on the
+>   **VM instance**, not per-`Run` and not per-frame, so the budget is **continuous
+>   across the re-entrant call-back bridge** — a runaway lambda invoked by a native
+>   (`arr.each(x => while (true) {})`) is caught, not just a runaway top-level loop.
+>   Cancellation surfaces as `OperationCanceledException` — a .NET exception
+>   **outside the `GrobError` hierarchy** — so a Grob `catch e` (D-274) cannot
+>   swallow it, the same uncatchable property `ExitSignal` has for `exit()`. **No
+>   new opcode, no new error code, no parser or AST edit.** The seam is the
+>   mechanism only — it is not a Grob-level `timeout` API and not `process.run`'s
+>   timeout; the host decides the cancellation policy (manual, a wall-clock
+>   `CancellationTokenSource`, or a step cap).
 >
 > **The §6 `map` → `select` correction.** `grob-v1-requirements.md` §6 (Sprint 5
 > acceptance) reads "Lambdas work in filter, **map**, sort". `map` was removed by
@@ -114,9 +138,9 @@ This work does **not** go on `main`.
 1. Work in **plan mode**. Present a numbered plan — the lambda compilation
    (`BytecodeFunction`, categories 1–3 resolution, block-body return), the
    `NativeFunction`/`RegisterNative` surface and its assembly home, the native↔VM
-   call-back bridge, the four array natives, the §6 one-word fix and the tests —
-   and wait for Chris's approval. Name the call-back bridge explicitly as the
-   load-bearing sub-problem.
+   call-back bridge, the four array natives, the D-319 cancellation seam, the §6
+   one-word fix and the tests — and wait for Chris's approval. Name the call-back
+   bridge explicitly as the load-bearing sub-problem.
 2. On approval, run `/start-branch` and propose `feat/lambdas-and-natives`. Wait
    for Chris to create the branch.
 3. Implement with TDD — tests written and confirmed **failing** first (follow
@@ -159,6 +183,14 @@ and the four array higher-order methods — top-level reference resolution only.
 6. **Diagnostics via `ErrorCatalog` (D-308).** Argument-type mismatches on a
    lambda's parameter or a native's signature reuse **E0004**; no new codes are
    expected in this increment. If one seems needed, stop and surface.
+7. **VM — cooperative-cancellation step-budget seam (D-319).** Add a
+   `CancellationToken` to the VM run entry (default `CancellationToken.None`) and a
+   masked step-budget check in the dispatch loop. The step counter is a **VM-instance
+   field**, so the budget spans the re-entrant call-back bridge built in item 3 —
+   a runaway lambda invoked by a native is caught, not only a runaway top-level
+   loop. Cancellation surfaces as `OperationCanceledException` (outside `GrobError`,
+   uncatchable by Grob `catch`). Production wires the unlimited default; the seam is
+   the mechanism, not a policy. No new opcode, no new error code.
 
 No new opcodes, no parser or AST edits.
 
@@ -170,7 +202,11 @@ top-level initialisation state machine and flow-sensitive narrowing (Increment E
 Anonymous struct construction (`#{ }`) and `select()` projections returning
 anonymous structs (Sprint 6). Multi-parameter lambdas have grammar support but no
 v1 stdlib native consumes one (`sort` is key-selector) — do not invent a native
-that does. Do not edit the parser, the AST or the `OpCode` enum.
+that does. Do not edit the parser, the AST or the `OpCode` enum. For the D-319
+seam: build the mechanism only — the `CancellationToken` on the run entry and the
+masked dispatch-loop check. Do not add a Grob-level `timeout`/`deadline` language
+surface, a `process.run` timeout, or any cancellation policy; production wires the
+unlimited default.
 
 ## Tests
 
@@ -193,6 +229,13 @@ Per §3.5, route each test to the project matching its kind.
   - The call-back bridge: a native that invokes a lambda argument per element
     produces the right result and leaves the stack at the expected depth (the
     re-entrant frame discipline holds).
+  - **Cancellation (D-319):** a runaway top-level loop (`while (true) {}`) run with a
+    token that cancels terminates with `OperationCanceledException` rather than
+    hanging, and a Grob `try/catch` around it does **not** swallow the cancellation.
+  - **Cancellation spans the bridge (D-319):** a runaway lambda invoked through a
+    native (`arr.each(x => while (true) {})`) is also cancelled — proving the budget
+    counter is on the VM instance, not per-`Run` or per-frame. The unlimited default
+    (`CancellationToken.None`) never cancels a terminating program.
 - **Integration tests (`Grob.Integration.Tests`):**
   - A script using `arr.filter(...).select(...).sort(...)` with top-level-referencing
     lambdas runs end-to-end and produces the expected stdout (`select`, not `map`).
@@ -207,6 +250,10 @@ Per §3.5, route each test to the project matching its kind.
 - `NativeFunction`/`RegisterNative` exist; the VM dispatches natives transparently;
   the call-back bridge runs a lambda argument re-entrantly with correct frame
   discipline; `filter`/`select`/`sort`/`each` work.
+- The D-319 cancellation seam works: a runaway loop and a runaway lambda-through-a-
+  native both terminate under a cancelling token via `OperationCanceledException`
+  (outside `GrobError`, uncatchable by Grob `catch`); the unlimited default never
+  cancels a terminating program; no new opcode, no new error code.
 - §6 reads "filter, select, sort"; the consistency gate (D-316) stays green.
 - The §3.1.1 invariant holds; no new opcodes; the DAG holds (decide the native
   home in `Grob.Stdlib`/`Grob.Runtime`, never an upward reference).
@@ -225,7 +272,9 @@ subagent. There is no closure carve-out in this increment.
 Summarise: the lambda compilation and how categories 1–3 resolve, the
 `NativeFunction`/`RegisterNative` surface and its assembly home, the native↔VM
 call-back bridge as built and the frame discipline across it, the four array
-natives, and the §6 correction. Note for the next chat: Increment D is closures —
+natives, the D-319 cancellation seam (where the step counter lives and how it spans
+the bridge, confirmed by the runaway-lambda-through-a-native test), and the §6
+correction. Note for the next chat: Increment D is closures —
 category-4 upvalue capture (`GetUpvalue`/`SetUpvalue`/`CloseUpvalue`/`Closure`),
 open upvalues over stack slots, closed upvalues to the heap on the enclosing
 function's return, independent capture per call. D is the Opus carve-out

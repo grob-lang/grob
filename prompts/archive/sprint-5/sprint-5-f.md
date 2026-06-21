@@ -69,6 +69,10 @@ Read, in order:
 >   baseline, 12% cumulative vs the frozen origin — D-313). A flagged regression is
 >   either fixed before close or accepted with a baseline update and a decisions-log
 >   entry — the maintainer adjudicates; the implementer surfaces, does not decide.
+>   Note: the dispatch loop now carries the **D-319 cooperative-cancellation
+>   step-budget check** (folded into Increment C). A small VM-execution step-up at
+>   this baseline attributable to that masked check is **expected and known**, not an
+>   unexplained regression — surface it as such when adjudicating the gate.
 > - **No new feature work.** This increment is fixture, acceptance verification and
 >   benchmark-baseline work. No new opcodes, no type-checker or compiler feature, no
 >   parser/AST edits. If proving the acceptance reveals a gap in A–E, surface it as
@@ -127,7 +131,8 @@ baseline. **No new feature work.**
    directly covered.
 3. **Third VM-execution benchmark baseline.** Produced by `benchmark.yml` (D-309)
    on the merged branch, passing the two-axis gate (`Grob.BenchCheck`, D-313).
-   Surface the gate result; a flagged regression is the maintainer's call.
+   Surface the gate result, attributing any small step-up to the D-319 step-budget
+   check added in Increment C; a flagged regression is the maintainer's call.
 4. **Raise the §6-rewrite question** for Chris — do not rewrite §6 unprompted.
 
 No new opcodes, no parser/AST edits, no feature work.

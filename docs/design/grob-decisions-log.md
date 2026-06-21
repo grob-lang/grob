@@ -316,6 +316,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-316 | June 2026                                                         | Tooling — quality gate        | Corpus consistency regime: one-time A1 reconciliation (stale error-code total 99→103 and stale Sprint-1 status row corrected) plus a permanent CI-enforced drift gate (`tests/Grob.Consistency.Tests`) asserting error-code count agreement, decisions-log lockstep, ADR-reference integrity and opcode/TokenKind completeness, with D-308's `ErrorCatalog` agreement test referenced as the catalog↔registry guard. Generalises D-308; self-relative checks, no frozen baseline |
 | D-317 | June 2026                                                         | Tooling — supply chain        | Project hardening interlude (Sprint 4→5): central package management with exact pins and committed lockfiles under locked-mode restore, NuGet and CodeQL vulnerability gates, deterministic builds with SourceLink, SHA-pinned least-privilege workflows, gitleaks CI secret scanning, and CycloneDX SBOM and build-provenance scaffolding. Additive repository hardening; complements §11 language/runtime security, does not overlap it. Code signing deferred to first public release (OQ-018) |
 | D-318 | June 2026                                                         | Type system — named-arg diagnostics | Named-argument call-site errors (D-113) get dedicated codes E0008–E0011 — named-before-positional, naming a required parameter, duplicate named argument, unknown parameter name — rather than folding into E0003. Registered in Sprint 5 Increment B through their `ErrorCatalog` descriptors |
+| D-319 | June 2026                                                         | Tooling — playground          | Browser playground is a client-side Blazor WASM embedding host on the existing Azure SWA (Route 1 — nothing sent to a server) wiring an alternate capability set: `fs`→in-memory virtual filesystem, `env`→synthetic map, `process`→unsupported (in-hierarchy host error, no new code). Requires a pure embeddable engine — OS contact behind injected host capabilities (in `Grob.Runtime`, confirmed DAG-clean), `exit` already handled via the existing `ExitSignal` (D-274), VM fresh per run (D-300). Dispatch-loop cancellation/step-budget seam adopted into v1 and folded into Sprint 5 Increment C (counter on the VM instance so it spans the re-entrant bridge; surfaces as `OperationCanceledException`, outside `GrobError`); rest of the playground build deferred post-v1 |
 
 ---
 
@@ -3124,6 +3125,102 @@ taken). Registered in Sprint 5 Increment B through their `ErrorCatalog` descript
 
 ---
 
+### D-319 — Browser playground: a client-side embedding host with a virtual filesystem (June 2026)
+
+Area: Tooling — playground
+Supersedes: none
+Superseded by: none
+
+**Context.** A browser playground — type-check and run Grob in the page, as the
+Topaz and Go playgrounds do — is wanted as recruitment material and as the most
+direct "try it" surface for the LinkedIn series and `grob-lang.dev`. The question
+it forces is not whether a playground can be built but whether the engine is
+embeddable enough to host one without a server. Two routes were weighed: (1)
+client-side — the managed pipeline compiled to Blazor WebAssembly and run in the
+page; (2) server-side — the real `grob` CLI executed per request in a hardened
+sandbox.
+
+**The decision — Route 1, client-side.** The playground runs `Grob.Core`,
+`Grob.Compiler`, `Grob.Vm` and the pure stdlib in Blazor WebAssembly, served as
+static assets from the existing Azure Static Web App (`grob-lang.dev`). Nothing is
+sent to a server. This is chosen over the server route because it carries no
+hosting cost and — decisively — no untrusted-code execution surface: running
+arbitrary user scripts server-side is a real security commitment a solo project
+should not take on. The client-side route keeps the "nothing leaves your machine"
+property as a stated feature, not a convenience.
+
+**The architecture — the playground is a second embedding host.** The standard
+library is already plugins the host registers at VM startup, and the host already
+chooses the registration set. The playground is a host that wires an alternate
+capability set:
+
+- `fs` → an in-memory virtual filesystem (path→bytes), seeded with sample data,
+  populated by browser file upload, exported as a zip. The same in-memory
+  implementation is the unit-test filesystem double, so it is not playground-only
+  cost.
+- `env` → a synthetic, host-supplied variable map.
+- `process` → unsupported. Calls raise a runtime error in the existing `GrobError`
+  hierarchy with a host-supplied message naming the playground limitation. **No new
+  shipped error code** — this is a host condition, not a language error, so the
+  immutable error registry (ADR-0017) stays clean. Surfaced as a pre-flight banner
+  on Check ("this script uses `process`, which the playground can't run") plus the
+  runtime diagnostic if run anyway. User-facing phrasing: "some functionality not
+  currently supported in the playground".
+
+**The enabling principle — a pure, embeddable engine.** Route 1 only works if the
+engine never touches the OS directly and never assumes it owns the process. Every
+side effect goes through an injected host capability interface — provisionally
+`IFileSystem`, `IEnvironment`, `IProcessRunner`, `IStandardStreams`, `IClock`,
+`IRandomSource` — implemented by the CLI host with the BCL and by the playground
+host with the in-page equivalents. This is not playground-specific: the LSP and the
+test suite want the identical embeddability. The capability interfaces sit alongside
+`IGrobPlugin` in `Grob.Runtime`, confirmed against `grob-solution-architecture.md`:
+`Grob.Vm` already references `Grob.Runtime`, and exposing the capabilities through
+the existing `GrobVM` registration surface adds no new reference and no cycle. This
+puts the capability contract on the public plugin NuGet surface — which is correct,
+since a third-party plugin doing I/O must also route through it to stay sandboxable.
+No OS call may
+leak down into `Grob.Core`, `Grob.Compiler` or `Grob.Vm`; host contact stays in the
+host layer, as the CLI already does.
+
+**Two correctness points that bind regardless of the playground.** `exit()` is
+already designed for this: `ExitSignal` (D-110) — an uncatchable internal signal in
+`Grob.Runtime` — unwinds the run, the host observes it and reads the exit code, and
+a bare `catch e` (D-274) cannot reach it. The playground host catches `ExitSignal`
+at the top of its run loop exactly as the CLI host does; the runtime never calls
+`Environment.Exit`. And the VM must be fresh
+per run with no static mutable run-state — the playground re-instantiates on every
+Run, the LSP re-runs constantly, the test suite runs thousands of times per process
+— extending the parser's statelessness discipline (D-300) to the runtime. The
+`ErrorCatalog` statics (D-308) are immutable shared data and are unaffected.
+
+**One accommodation has a current-sprint window.** Each accommodation above is built
+when its module is built — stream injection and `exit` with the Sprint 8 IO
+built-ins; `fs`/`env`/`process` capabilities with the Sprint 8/9 stdlib — so
+flagging them is enough. The exception is a cheap cancellation/step-budget check in
+the VM dispatch loop: Blazor WebAssembly is single-threaded by default, so a runaway
+script freezes the tab with no way to interrupt. Its natural window is current v1 VM
+work, and it is the hot path. **Adopted into v1 scope** and folded into Sprint 5
+Increment C (`feat/lambdas-and-natives`): a `CancellationToken` on the VM run entry
+(default `CancellationToken.None`, unlimited) and a masked step-budget check in the
+dispatch loop, with the step counter on the **VM instance** so the budget spans
+re-entrant native→VM→lambda execution — a runaway lambda invoked by a native is
+caught, not only a runaway top-level loop. It surfaces as `OperationCanceledException`
+(a .NET exception outside `GrobError`), so a Grob `catch e` cannot swallow it, the
+same uncatchable property as `ExitSignal`. No new opcode, no new error code. Increment
+C because that is where the re-entrant call-back bridge lands, so the
+budget-spans-the-bridge property is testable there; the rest of the playground build
+stays post-v1.
+
+**Build timing — deferred, post-v1.** The playground is not v1 sprint scope and not
+a release gate. This entry settles the route and the host architecture so the
+Sprint 8/9 stdlib work is built against the right seam; the playground itself is
+built post-v1. Full detail — capability-contract sketches, the per-module
+disposition and the accommodation map — is in
+`docs/design/grob-playground-architecture.md`.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3345,6 +3442,41 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 — Playground follow-up: D-319 refined against the live_
+_`grob-solution-architecture.md` and the Sprint 5 increment prompts. DAG home_
+_confirmed — the host capability interfaces sit in `Grob.Runtime` beside_
+_`IGrobPlugin`, reached through the existing `GrobVM` registration surface (no new_
+_reference, no cycle), which puts them on the public plugin NuGet contract (correct,_
+_so plugins doing I/O stay sandboxable). The `exit()` correctness point is already_
+_handled by the existing `ExitSignal`. The dispatch-loop cancellation/step-budget_
+_seam is adopted into v1 and folded into Sprint 5 Increment C: a `CancellationToken`_
+_on the VM run entry (default unlimited) with a masked dispatch-loop check, the_
+_counter on the VM instance so the budget spans the re-entrant native↔VM bridge,_
+_surfacing as `OperationCanceledException` (outside `GrobError`, so a Grob `catch e`_
+_cannot swallow it). No new opcode, no new error code; the consistency gate (D-316)_
+_and catalog agreement (D-308) are unaffected. Sprint 5 Increment F gains a one-line_
+_benchmark-attribution note so the small VM-execution step-up from the seam reads as_
+_expected, not as an unexplained regression. No new decision number — these are_
+_refinements to D-319._
+_Updated June 2026 — Playground architecture session: D-319 (the browser_
+_playground is a client-side Blazor WebAssembly embedding host served from the_
+_existing Azure Static Web App, chosen over a server-side sandbox so nothing is_
+_sent to a server and no untrusted-code execution surface is taken on) added as a_
+_full entry with matching summary index row. The playground is a second embedding_
+_host wiring an alternate capability set: `fs` → an in-memory virtual filesystem_
+_(seeded, upload-fed, zip-exportable, doubling as the unit-test filesystem double),_
+_`env` → a synthetic map, `process` → unsupported via an in-hierarchy host runtime_
+_error with no new shipped error code — surfaced as "some functionality not_
+_currently supported in the playground". Enabling principle recorded: the engine_
+_must be a pure, embeddable library with all OS contact behind injected host_
+_capability interfaces (`IFileSystem`, `IEnvironment`, `IProcessRunner`,_
+_`IStandardStreams`, `IClock`, `IRandomSource`), shared with the LSP and test_
+_hosts. Two binding correctness points: `exit()` is a non-catchable unwind outside_
+_`GrobError` so a bare `catch e` (D-274) cannot swallow it, and the VM is fresh per_
+_run with no static mutable run-state (extends D-300). The one accommodation with a_
+_current-sprint window — a cheap cancellation/step-budget check in the VM dispatch_
+_loop — is flagged for v1; build timing otherwise deferred post-v1. Full detail in_
+_`grob-playground-architecture.md`._
 _Updated June 2026 — D-318: the four named-argument call-site errors (D-113)_
 _assigned dedicated codes E0008–E0011 — named-before-positional, naming a_
 _required parameter, duplicate named argument, unknown parameter name — rather_
