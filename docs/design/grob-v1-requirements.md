@@ -743,7 +743,7 @@ closures.
   the type checker narrows `x` from `T?` to `T`.
 
 **Acceptance:** Functions call and return correctly. Lambdas work in
-`filter`, `map`, `sort`. Closures capture enclosing variables. Named
+`filter`, `select`, `sort`. Closures capture enclosing variables. Named
 parameters work. The type checker catches arity mismatches and type
 mismatches on arguments.
 

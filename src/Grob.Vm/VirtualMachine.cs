@@ -1,3 +1,4 @@
+using System.Threading;
 using Grob.Core;
 
 namespace Grob.Vm;
@@ -6,10 +7,15 @@ namespace Grob.Vm;
 /// The Grob stack-based bytecode VM. Owns the operand stack and the
 /// fetch-decode-execute dispatch loop. Sprint 2 Increment B implements the
 /// subset of <see cref="OpCode"/> needed to execute hand-constructed chunks
-/// up to <c>print(2 + 3 * 4)</c> — see <see cref="Run"/> for the supported
-/// set; out-of-scope opcodes (control flow, calls, structs, arrays,
-/// closures, exceptions, properties, build-string, etc.) raise
-/// <see cref="GrobInternalException"/> until their owning increment lands.
+/// up to <c>print(2 + 3 * 4)</c>; subsequent increments extend the dispatch
+/// table. Out-of-scope opcodes raise <see cref="GrobInternalException"/> until
+/// their owning increment lands.
+///
+/// Sprint 5 Increment C adds:
+/// - <see cref="NativeFunction"/> dispatch and the re-entrant call-back bridge
+///   (<see cref="InvokeCallable"/>).
+/// - Array higher-order method binding (<see cref="OpCode.GetProperty"/> arm).
+/// - D-319 cooperative-cancellation step-budget seam (<see cref="Run"/>).
 ///
 /// Authority: grob-vm-architecture.md (dispatch loop, value stack, developer
 /// diagnostics) and grob-v1-requirements.md §3.3 (the OpCode set).
@@ -22,6 +28,15 @@ public sealed class VirtualMachine {
     /// </summary>
     private const int MaxFrames = 256;
 
+    /// <summary>
+    /// D-319: check the cancellation token every 256 dispatch iterations.
+    /// The mask must be a power-of-two minus one so the bitwise AND is a
+    /// single instruction.  256 iterations ≈ 1–2 µs at current throughput —
+    /// fine-grained enough to feel instant to an interactive user, coarse
+    /// enough that the test-and-branch cost is negligible in steady state.
+    /// </summary>
+    private const long BudgetMask = 0xFF;
+
     private readonly ValueStack _stack = new();
     private readonly TextWriter _out;
     private readonly Dictionary<string, GrobValue> _globals = new(StringComparer.Ordinal);
@@ -29,6 +44,39 @@ public sealed class VirtualMachine {
     /// <summary>The call-stack frames (D-180). Active entries are <c>0.._frameCount-1</c>.</summary>
     private readonly CallFrame[] _frames = new CallFrame[MaxFrames];
     private int _frameCount;
+
+    // -----------------------------------------------------------------------
+    // D-319: step counter — VM-instance lifetime, NOT reset per Run() call so
+    // the budget is continuous across the re-entrant native↔VM call-back bridge.
+    // -----------------------------------------------------------------------
+    private long _steps;
+
+    // -----------------------------------------------------------------------
+    // Active dispatch state (instance fields so InvokeCallable can save/restore
+    // them when bridging into a re-entrant lambda call from a native).
+    // The outer Run() initialises these; RunDispatch reads/writes them in place.
+    // -----------------------------------------------------------------------
+
+    /// <summary>The chunk currently being dispatched.</summary>
+    private Chunk _activeChunk = null!;
+
+    /// <summary>Instruction pointer into <see cref="_activeChunk"/>.</summary>
+    private int _ip;
+
+    /// <summary>
+    /// Stack index of slot 0 for the active call frame.  Locals are addressed
+    /// as <c>_stack[_stackBase + slot]</c>.
+    /// </summary>
+    private int _stackBase;
+
+    /// <summary>
+    /// The <see cref="CancellationToken"/> for the current top-level
+    /// <see cref="Run"/> invocation.  Stored as a field so
+    /// <see cref="InvokeCallable"/> can thread it through re-entrant
+    /// <see cref="RunDispatch"/> calls without adding parameters to every
+    /// switch arm.
+    /// </summary>
+    private CancellationToken _cancellationToken;
 
     /// <summary>
     /// Writer for the per-instruction trace hook. Only read inside
@@ -58,6 +106,17 @@ public sealed class VirtualMachine {
     public IReadOnlyDictionary<string, GrobValue> Globals => _globals;
 
     /// <summary>
+    /// Register a native C# function under <paramref name="name"/> in the global
+    /// variables table so that Grob scripts can call it by that name.
+    /// Overwrites any previous binding with the same name (last write wins).
+    /// </summary>
+    public void RegisterNative(string name, NativeFunction fn) {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(fn);
+        _globals[name] = GrobValue.FromFunction(fn);
+    }
+
+    /// <summary>
     /// Execute <paramref name="chunk"/> until <see cref="OpCode.Return"/>.
     /// Running off the end of the bytecode without a <see cref="OpCode.Return"/>
     /// is treated as a malformed chunk — it raises
@@ -65,12 +124,22 @@ public sealed class VirtualMachine {
     /// a terminating <c>Return</c> and hand-constructed test chunks must do
     /// the same.
     /// </summary>
+    /// <param name="chunk">The top-level bytecode chunk to execute.</param>
+    /// <param name="cancellationToken">
+    /// D-319: the cooperative-cancellation token.  Pass
+    /// <see cref="CancellationToken.None"/> (the default) for unlimited
+    /// execution — production callers wire their own policy.  When the token
+    /// is signalled, the dispatch loop raises
+    /// <see cref="OperationCanceledException"/> on the next budget-check
+    /// boundary; this exception is outside the <see cref="GrobRuntimeException"/>
+    /// hierarchy so a Grob <c>catch</c> block cannot swallow it.
+    /// </param>
     // Bytecode dispatch loop. Per D-302 each opcode is handled inline in a
     // single switch to keep dispatch branch-free; extracting per-opcode
     // handlers would add a call frame per instruction and is explicitly
     // rejected. SonarCloud suppresses S3776 (cognitive complexity) for this
     // file in .github/workflows/sonarcloud.yml.
-    public void Run(Chunk chunk) {
+    public void Run(Chunk chunk, CancellationToken cancellationToken = default) {
         ArgumentNullException.ThrowIfNull(chunk);
 
         // Defensive: a prior Run that terminated by exception may have left
@@ -79,42 +148,78 @@ public sealed class VirtualMachine {
         _stack.Reset();
         _frameCount = 0;
 
-        int ip = 0;
+        // Initialise active dispatch state (instance fields shared with InvokeCallable).
+        _activeChunk = chunk;
+        _ip = 0;
+        _stackBase = 0;
+        _cancellationToken = cancellationToken;
+
+        // _steps is intentionally NOT reset — the step budget is VM-instance-lifetime
+        // so it spans re-entrant InvokeCallable calls (D-319).
+
+        RunDispatch(floorFrameCount: 0, isReentrant: false);
+    }
+
+    // -----------------------------------------------------------------------
+    // Core dispatch loop
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Inner dispatch loop.  Executes bytecode from the current
+    /// <see cref="_activeChunk"/> / <see cref="_ip"/> / <see cref="_stackBase"/>
+    /// until the dispatch's entry body returns.
+    /// </summary>
+    /// <param name="floorFrameCount">
+    /// In re-entrant mode, the <see cref="_frameCount"/> value the callee was invoked
+    /// at; a <c>Return</c> that pops back to this depth ends the invocation.  Ignored
+    /// in top-level mode (where the script's terminal <c>Return</c> at frame 0 is the
+    /// exit signal).
+    /// </param>
+    /// <param name="isReentrant">
+    /// <see langword="false"/> for the top-level <see cref="Run"/> dispatch: the script
+    /// body runs at frame 0 and is not a call frame, so its terminal <c>Return</c>
+    /// (executed with <see cref="_frameCount"/> already 0, nothing to pop) ends the
+    /// dispatch — and a top-level function call that returns to frame 0 must
+    /// <em>continue</em> the script.  <see langword="true"/> for
+    /// <see cref="InvokeCallable"/>: the callee is a real frame above
+    /// <paramref name="floorFrameCount"/>, so the dispatch ends when that frame's
+    /// <c>Return</c> pops <see cref="_frameCount"/> back down to the floor.
+    /// </param>
+    private void RunDispatch(int floorFrameCount, bool isReentrant) {
         int line = 0;
         int column = 0;
 
-        // The script runs with a stack base of zero — its top-level locals use
-        // absolute slots (Sprint 3/4), which is exactly frame-relative addressing
-        // over base zero. Each Call raises the base for the callee's locals.
-        int stackBase = 0;
-
         try {
             while (true) {
-                if (ip >= chunk.Count)
+                // D-319: cooperative cancellation check every BudgetMask+1 steps.
+                if ((++_steps & BudgetMask) == 0)
+                    _cancellationToken.ThrowIfCancellationRequested();
+
+                if (_ip >= _activeChunk.Count)
                     throw new GrobInternalException(
                         "execution ran past end of chunk without Return");
 
-                line = chunk.GetLine(ip);
-                column = chunk.GetColumn(ip);
+                line = _activeChunk.GetLine(_ip);
+                column = _activeChunk.GetColumn(_ip);
 
 #if DEBUG
-                TraceInstruction(chunk, ip);
+                TraceInstruction(_activeChunk, _ip);
 #endif
 
-                byte instruction = chunk.ReadByte(ip);
-                ip++;
+                byte instruction = _activeChunk.ReadByte(_ip);
+                _ip++;
 
                 switch ((OpCode)instruction) {
                     // --- Constants and singletons ---
                     case OpCode.Constant: {
-                            byte index = chunk.ReadByte(ip++);
-                            _stack.Push(chunk.ReadConstant(index), line);
+                            byte index = _activeChunk.ReadByte(_ip++);
+                            _stack.Push(_activeChunk.ReadConstant(index), line);
                             break;
                         }
                     case OpCode.ConstantLong: {
-                            int index = (chunk.ReadByte(ip) << 8) | chunk.ReadByte(ip + 1);
-                            ip += 2;
-                            _stack.Push(chunk.ReadConstant(index), line);
+                            int index = (_activeChunk.ReadByte(_ip) << 8) | _activeChunk.ReadByte(_ip + 1);
+                            _ip += 2;
+                            _stack.Push(_activeChunk.ReadConstant(index), line);
                             break;
                         }
                     case OpCode.Nil: _stack.Push(GrobValue.Nil, line); break;
@@ -123,21 +228,21 @@ public sealed class VirtualMachine {
 
                     case OpCode.Pop: _stack.Pop(); break;
                     case OpCode.PopN: {
-                            byte count = chunk.ReadByte(ip++);
+                            byte count = _activeChunk.ReadByte(_ip++);
                             for (int i = 0; i < count; i++) _stack.Pop();
                             break;
                         }
 
                     // --- Globals ---
                     case OpCode.DefineGlobal: {
-                            byte nameIdx = chunk.ReadByte(ip++);
-                            string name = chunk.ReadConstant(nameIdx).AsString();
+                            byte nameIdx = _activeChunk.ReadByte(_ip++);
+                            string name = _activeChunk.ReadConstant(nameIdx).AsString();
                             _globals[name] = _stack.Pop();
                             break;
                         }
                     case OpCode.GetGlobal: {
-                            byte nameIdx = chunk.ReadByte(ip++);
-                            string name = chunk.ReadConstant(nameIdx).AsString();
+                            byte nameIdx = _activeChunk.ReadByte(_ip++);
+                            string name = _activeChunk.ReadConstant(nameIdx).AsString();
                             if (!_globals.TryGetValue(name, out GrobValue val))
                                 throw new GrobRuntimeException(ErrorCatalog.E1001.Code, line, column,
                                     $"Undefined global '{name}'.");
@@ -145,8 +250,8 @@ public sealed class VirtualMachine {
                             break;
                         }
                     case OpCode.SetGlobal: {
-                            byte nameIdx = chunk.ReadByte(ip++);
-                            string name = chunk.ReadConstant(nameIdx).AsString();
+                            byte nameIdx = _activeChunk.ReadByte(_ip++);
+                            string name = _activeChunk.ReadConstant(nameIdx).AsString();
                             if (!_globals.ContainsKey(name))
                                 throw new GrobRuntimeException(ErrorCatalog.E1001.Code, line, column,
                                     $"Undefined global '{name}'.");
@@ -156,27 +261,27 @@ public sealed class VirtualMachine {
 
                     // --- Locals (slots are relative to the active frame's stack base) ---
                     case OpCode.GetLocal: {
-                            byte slot = chunk.ReadByte(ip++);
-                            _stack.Push(_stack.GetSlot(stackBase + slot), line);
+                            byte slot = _activeChunk.ReadByte(_ip++);
+                            _stack.Push(_stack.GetSlot(_stackBase + slot), line);
                             break;
                         }
                     case OpCode.SetLocal: {
-                            byte slot = chunk.ReadByte(ip++);
-                            _stack.SetSlot(stackBase + slot, _stack.Pop());
+                            byte slot = _activeChunk.ReadByte(_ip++);
+                            _stack.SetSlot(_stackBase + slot, _stack.Pop());
                             break;
                         }
 
                     // --- Increment / decrement (int locals only; float arms are compile errors) ---
                     case OpCode.IncrementInt: {
-                            byte slot = chunk.ReadByte(ip++);
-                            long cur = _stack.GetSlot(stackBase + slot).AsInt();
-                            _stack.SetSlot(stackBase + slot, GrobValue.FromInt(checked(cur + 1L)));
+                            byte slot = _activeChunk.ReadByte(_ip++);
+                            long cur = _stack.GetSlot(_stackBase + slot).AsInt();
+                            _stack.SetSlot(_stackBase + slot, GrobValue.FromInt(checked(cur + 1L)));
                             break;
                         }
                     case OpCode.DecrementInt: {
-                            byte slot = chunk.ReadByte(ip++);
-                            long cur = _stack.GetSlot(stackBase + slot).AsInt();
-                            _stack.SetSlot(stackBase + slot, GrobValue.FromInt(checked(cur - 1L)));
+                            byte slot = _activeChunk.ReadByte(_ip++);
+                            long cur = _stack.GetSlot(_stackBase + slot).AsInt();
+                            _stack.SetSlot(_stackBase + slot, GrobValue.FromInt(checked(cur - 1L)));
                             break;
                         }
 
@@ -280,7 +385,7 @@ public sealed class VirtualMachine {
                             // LIFO so we reverse-fill the parts array to restore source order.
                             // Each fragment is converted to string via ToString() — this is the
                             // display/toString rule for interpolation slots (D-279).
-                            byte count = chunk.ReadByte(ip++);
+                            byte count = _activeChunk.ReadByte(_ip++);
                             var parts = new string[count];
                             for (int i = count - 1; i >= 0; i--) {
                                 parts[i] = _stack.Pop().ToString();
@@ -413,27 +518,27 @@ public sealed class VirtualMachine {
                     case OpCode.Jump: {
                             // Unconditional forward jump. The 2-byte big-endian offset counts
                             // bytes from the instruction immediately after the two operand bytes.
-                            int hi = chunk.ReadByte(ip++);
-                            int lo = chunk.ReadByte(ip++);
-                            ip += (hi << 8) | lo;
+                            int hi = _activeChunk.ReadByte(_ip++);
+                            int lo = _activeChunk.ReadByte(_ip++);
+                            _ip += (hi << 8) | lo;
                             break;
                         }
                     case OpCode.JumpIfFalse: {
                             // Conditional forward jump; pops the bool condition.
-                            int hi = chunk.ReadByte(ip++);
-                            int lo = chunk.ReadByte(ip++);
+                            int hi = _activeChunk.ReadByte(_ip++);
+                            int lo = _activeChunk.ReadByte(_ip++);
                             GrobValue cond = _stack.Pop();
                             if (!cond.AsBool())
-                                ip += (hi << 8) | lo;
+                                _ip += (hi << 8) | lo;
                             break;
                         }
                     case OpCode.JumpIfTrue: {
                             // Conditional forward jump for OR short-circuit; peeks (does not pop)
                             // so the condition value remains on the stack as the result.
-                            int hi = chunk.ReadByte(ip++);
-                            int lo = chunk.ReadByte(ip++);
+                            int hi = _activeChunk.ReadByte(_ip++);
+                            int lo = _activeChunk.ReadByte(_ip++);
                             if (_stack.Peek().AsBool())
-                                ip += (hi << 8) | lo;
+                                _ip += (hi << 8) | lo;
                             break;
                         }
                     case OpCode.Loop: {
@@ -441,9 +546,9 @@ public sealed class VirtualMachine {
                             // The 2-byte big-endian offset is subtracted from the
                             // instruction pointer after the two operand bytes are read,
                             // landing exactly at the loop-top (condition start).
-                            int hi = chunk.ReadByte(ip++);
-                            int lo = chunk.ReadByte(ip++);
-                            ip -= (hi << 8) | lo;
+                            int hi = _activeChunk.ReadByte(_ip++);
+                            int lo = _activeChunk.ReadByte(_ip++);
+                            _ip -= (hi << 8) | lo;
                             break;
                         }
 
@@ -452,7 +557,7 @@ public sealed class VirtualMachine {
                     case OpCode.NewArray: {
                             // 1-byte element count. Pop that many values (LIFO) and
                             // reverse-fill so the array preserves source order.
-                            byte count = chunk.ReadByte(ip++);
+                            byte count = _activeChunk.ReadByte(_ip++);
                             var elements = new GrobValue[count];
                             for (int i = count - 1; i >= 0; i--) elements[i] = _stack.Pop();
                             _stack.Push(GrobValue.FromArray(new GrobArray(elements)), line);
@@ -483,19 +588,32 @@ public sealed class VirtualMachine {
                             break;
                         }
 
-                    // --- Properties (struct fields Sprint 5; array.length and map.keys here) ---
+                    // --- Properties (array.length, map.keys, and Sprint 5C array methods) ---
 
                     case OpCode.GetProperty: {
-                            byte nameIdx = chunk.ReadByte(ip++);
-                            string propertyName = chunk.ReadConstant(nameIdx).AsString();
+                            byte nameIdx = _activeChunk.ReadByte(_ip++);
+                            string propertyName = _activeChunk.ReadConstant(nameIdx).AsString();
                             GrobValue receiver = _stack.Pop();
                             // Nil receiver raises E5201 (nil dereference at runtime).
                             if (receiver.IsNil)
                                 throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column,
                                     "nil dereference: cannot access member on nil value");
-                            if (receiver.TryAsArray(out GrobArray? array) && propertyName == "length") {
-                                _stack.Push(GrobValue.FromInt(array!.Count), line);
-                                break;
+                            if (receiver.TryAsArray(out GrobArray? array)) {
+                                if (propertyName == "length") {
+                                    _stack.Push(GrobValue.FromInt(array!.Count), line);
+                                    break;
+                                }
+                                // Sprint 5C: array higher-order method binding.
+                                // Capture the token at property-access time so the bound native
+                                // carries the live token through to InvokeCallable.
+                                CancellationToken ct = _cancellationToken;
+                                NativeFunction? method = ArrayNatives.GetMethod(
+                                    propertyName, array!,
+                                    (callable, args) => InvokeCallable(callable, args, line, column, ct));
+                                if (method is not null) {
+                                    _stack.Push(GrobValue.FromFunction(method), line);
+                                    break;
+                                }
                             }
                             if (receiver.TryAsMap(out GrobMap? map) && propertyName == "keys") {
                                 // No LINQ on the dispatch path: build the keys array with a
@@ -513,54 +631,84 @@ public sealed class VirtualMachine {
                                 $"{receiver.Kind} not yet implemented (Sprint 5).");
                         }
 
-                    // --- Calls and returns (Sprint 5 Increment A) ---
+                    // --- Calls and returns (Sprint 5 Increment A + C) ---
 
                     case OpCode.Call: {
                             // The callee was pushed before its arguments, so it sits
                             // argCount slots below the top. Its arguments become the
                             // callee's first locals over a new frame base.
-                            int argCount = chunk.ReadByte(ip++);
+                            int argCount = _activeChunk.ReadByte(_ip++);
                             if (_frameCount == MaxFrames)
                                 throw new GrobRuntimeException(ErrorCatalog.E5901.Code, line, column,
                                     "Stack overflow — maximum call depth (256) exceeded");
 
                             GrobValue calleeValue = _stack.Peek(argCount);
-                            if (!calleeValue.TryAsFunction(out GrobFunction? callee) ||
-                                callee is not BytecodeFunction fn)
+                            if (!calleeValue.TryAsFunction(out GrobFunction? callee))
                                 throw new GrobInternalException(
-                                    $"Call target is not a bytecode function (kind: {calleeValue.Kind}). " +
+                                    $"Call target is not a function (kind: {calleeValue.Kind}). " +
                                     "The type checker should have rejected this source.");
+
+                            // Sprint 5C: dispatch NativeFunction transparently.
+                            if (callee is NativeFunction native) {
+                                // Collect args from the stack in call order (bottom to top).
+                                var callArgs = new GrobValue[argCount];
+                                for (int i = argCount - 1; i >= 0; i--) callArgs[i] = _stack.Pop();
+                                _stack.Pop(); // pop the callee value itself
+
+                                // Build the VmInvoker that threads back through this VM instance.
+                                CancellationToken ct = _cancellationToken;
+                                VmInvoker invoker = (callable, args) =>
+                                    InvokeCallable(callable, args, line, column, ct);
+
+                                GrobValue nativeResult = native.Implementation(callArgs, invoker);
+                                _stack.Push(nativeResult, line);
+                                break;
+                            }
+
+                            // Bytecode function — save caller context, switch to callee chunk.
+                            if (callee is not BytecodeFunction fn)
+                                throw new GrobInternalException(
+                                    $"Call target is an unknown GrobFunction subtype: {callee!.GetType().Name}.");
 
                             // Save the caller's resume context, then switch the
                             // dispatch loop into the callee's chunk.
                             _frames[_frameCount++] = new CallFrame {
-                                ReturnChunk = chunk,
-                                ReturnInstructionPointer = ip,
-                                ReturnStackBase = stackBase,
+                                ReturnChunk = _activeChunk,
+                                ReturnInstructionPointer = _ip,
+                                ReturnStackBase = _stackBase,
                             };
-                            stackBase = _stack.Count - argCount;
-                            chunk = fn.Bytecode;
-                            ip = 0;
+                            _stackBase = _stack.Count - argCount;
+                            _activeChunk = fn.Bytecode;
+                            _ip = 0;
                             break;
                         }
 
                     case OpCode.Return: {
-                            // A return at script level (no active frame) ends execution
-                            // and leaves the operand stack as-is.
-                            if (_frameCount == 0)
+                            // Top-level mode: the script body runs at frame 0 and is not a
+                            // call frame.  Its terminal Return executes with _frameCount
+                            // already 0 (nothing to pop) and ends the dispatch.  A function
+                            // call that returns to frame 0 pops a frame (handled below) and
+                            // the script continues — so this guard is top-level only.
+                            if (!isReentrant && _frameCount == 0)
                                 return;
 
                             GrobValue result = _stack.Pop();
                             // Discard the callee value, its arguments and its locals in
                             // one step (everything from the callee value upward).
-                            _stack.TrimToCount(stackBase - 1);
+                            _stack.TrimToCount(_stackBase - 1);
                             _stack.Push(result, line);
 
                             // Restore the caller's execution context.
                             CallFrame frame = _frames[--_frameCount];
-                            chunk = frame.ReturnChunk;
-                            ip = frame.ReturnInstructionPointer;
-                            stackBase = frame.ReturnStackBase;
+                            _activeChunk = frame.ReturnChunk;
+                            _ip = frame.ReturnInstructionPointer;
+                            _stackBase = frame.ReturnStackBase;
+
+                            // Re-entrant mode: when the callee frame pops back to the floor,
+                            // the InvokeCallable callee has returned — the result is on the
+                            // stack and caller state is restored, so end this dispatch.
+                            if (isReentrant && _frameCount == floorFrameCount)
+                                return;
                             break;
                         }
 
@@ -574,6 +722,77 @@ public sealed class VirtualMachine {
             // that overflows surfaces as E5001 carrying the failing line.
             throw new GrobArithmeticException(ErrorCatalog.E5001.Code, line, column, "integer overflow");
         }
+        // Note: OperationCanceledException from ThrowIfCancellationRequested() is NOT
+        // caught here — it propagates to the caller of Run() as required by D-319.
+    }
+
+    // -----------------------------------------------------------------------
+    // Re-entrant call-back bridge (D-319 load-bearing sub-problem)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Invoke a Grob callable (typically a lambda argument received by a
+    /// <see cref="NativeFunction"/>) and return its result.  This is the
+    /// re-entrant bridge: it saves the current dispatch state to a call frame,
+    /// switches <see cref="RunDispatch"/> into the callee's chunk, and returns
+    /// to the native only after the callee has returned.
+    ///
+    /// The step counter (<see cref="_steps"/>) is NOT reset, so the D-319
+    /// cancellation budget is continuous across the bridge — a runaway lambda
+    /// invoked by a native is caught by the same token as a runaway top-level
+    /// loop.
+    /// </summary>
+    private GrobValue InvokeCallable(
+            GrobValue callable, GrobValue[] args,
+            int line, int column, CancellationToken ct) {
+        if (!callable.TryAsFunction(out GrobFunction? fn))
+            throw new GrobInternalException(
+                $"InvokeCallable: value of kind {callable.Kind} is not callable. " +
+                "The type checker should have rejected the call site.");
+
+        // Nested native: call the C# delegate directly without entering bytecode dispatch.
+        if (fn is NativeFunction nativeFn) {
+            VmInvoker nestedInvoker = (c, a) => InvokeCallable(c, a, line, column, ct);
+            return nativeFn.Implementation(args, nestedInvoker);
+        }
+
+        if (fn is not BytecodeFunction bf)
+            throw new GrobInternalException(
+                $"InvokeCallable: unknown GrobFunction subtype {fn!.GetType().Name}.");
+
+        if (_frameCount == MaxFrames)
+            throw new GrobRuntimeException(ErrorCatalog.E5901.Code, line, column,
+                "Stack overflow — maximum call depth (256) exceeded");
+
+        // Remember the frame depth before pushing; RunDispatch stops when the callee
+        // frame pops back to this floor.
+        int floorFrameCount = _frameCount;
+
+        // Push the callee and its arguments so Return can clean them up normally.
+        _stack.Push(callable, line);
+        foreach (GrobValue arg in args)
+            _stack.Push(arg, line);
+
+        // Save current dispatch state to the frame array.
+        _frames[_frameCount++] = new CallFrame {
+            ReturnChunk = _activeChunk,
+            ReturnInstructionPointer = _ip,
+            ReturnStackBase = _stackBase,
+        };
+        _stackBase = _stack.Count - args.Length;
+        _activeChunk = bf.Bytecode;
+        _ip = 0;
+
+        // The previous _cancellationToken is already set (same token for the whole Run()).
+        // Update in case InvokeCallable is called with a different ct (defensive).
+        _cancellationToken = ct;
+
+        // Run the callee to completion.  On the callee's Return back to the floor,
+        // RunDispatch restores _activeChunk/_ip/_stackBase from the frame and returns.
+        RunDispatch(floorFrameCount, isReentrant: true);
+
+        // The Return arm already pushed the result and restored caller state.
+        return _stack.Pop();
     }
 
 #if DEBUG

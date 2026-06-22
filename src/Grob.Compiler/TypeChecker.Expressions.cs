@@ -87,6 +87,8 @@ public sealed partial class TypeChecker {
             UnaryOperator.Negate when operand == GrobType.Int => GrobType.Int,
             UnaryOperator.Negate when operand == GrobType.Float => GrobType.Float,
             UnaryOperator.Not when operand == GrobType.Bool => GrobType.Bool,
+            // Unknown operand (e.g. lambda parameter) — be permissive; propagate Unknown.
+            _ when operand == GrobType.Unknown => GrobType.Unknown,
             UnaryOperator.Negate => EmitErrorAndReturn(ErrorCatalog.E0002,
                 $"Operator '-' cannot be applied to type '{TypeName(operand)}'.", node.Range),
             UnaryOperator.Not => EmitErrorAndReturn(ErrorCatalog.E0002,
@@ -133,6 +135,12 @@ public sealed partial class TypeChecker {
             (left == GrobType.Float && right == GrobType.Int)) {
             return GrobType.Float;
         }
+
+        // One or both operands are of unknown type (e.g. a lambda parameter whose type
+        // is inferred at the call site, or a deferred member type).  Be permissive and
+        // propagate Unknown — the VM will validate types at runtime.  This mirrors the
+        // Unknown pass-through in ResolveComparison below.
+        if (left == GrobType.Unknown || right == GrobType.Unknown) return GrobType.Unknown;
 
         // All other combinations are type errors — e.g. int + string.
         return EmitErrorAndReturn(ErrorCatalog.E0002,
@@ -242,10 +250,27 @@ public sealed partial class TypeChecker {
     /// type. Built-in and unresolved callees stay permissive.
     /// </remarks>
     public override GrobType VisitCall(CallExpr node) {
+        // Sprint 5C: array higher-order method calls (filter/select/sort/each).
+        // The callee is a member access on an array receiver; we visit the target
+        // directly (not the whole MemberAccessExpr) so we can branch on the receiver type
+        // without a double-visit.
+        if (node.Callee is MemberAccessExpr memberAccess) {
+            GrobType receiverType = Visit(memberAccess.Target);
+            // Visit argument values to satisfy §3.1.1 on any identifiers inside them.
+            var argTypes = new GrobType[node.Arguments.Count];
+            for (int i = 0; i < node.Arguments.Count; i++)
+                argTypes[i] = Visit(node.Arguments[i].Value);
+
+            if (receiverType == GrobType.Array && IsArrayHigherOrderMethod(memberAccess.Member)) {
+                return ValidateArrayMethodCall(node, memberAccess.Member, argTypes);
+            }
+            return GrobType.Unknown;
+        }
+
         Visit(node.Callee);
-        var argTypes = new GrobType[node.Arguments.Count];
+        var callArgTypes = new GrobType[node.Arguments.Count];
         for (int i = 0; i < node.Arguments.Count; i++) {
-            argTypes[i] = Visit(node.Arguments[i].Value);
+            callArgTypes[i] = Visit(node.Arguments[i].Value);
         }
 
         // Only user-defined functions are checked positionally here. Built-ins
@@ -254,8 +279,52 @@ public sealed partial class TypeChecker {
             return GrobType.Unknown;
         }
 
-        CheckCall(node, fn, argTypes);
+        CheckCall(node, fn, callArgTypes);
         return ResolveTypeRef(fn.ReturnType);
+    }
+
+    private static bool IsArrayHigherOrderMethod(string name) =>
+        name is "filter" or "select" or "sort" or "each";
+
+    /// <summary>
+    /// Validates an array higher-order method call and returns the result type.
+    /// Emits E0004 when a <c>filter</c> predicate's inferred return type is known
+    /// to be non-bool (neither <see cref="GrobType.Unknown"/> nor
+    /// <see cref="GrobType.Error"/> — those are permissive).
+    /// </summary>
+    private GrobType ValidateArrayMethodCall(
+            CallExpr node, string methodName, GrobType[] argTypes) {
+        switch (methodName) {
+            case "filter": {
+                    // First argument must be a predicate returning bool.
+                    if (node.Arguments.Count >= 1 &&
+                        node.Arguments[0].Value is LambdaExpr lambdaPred &&
+                        _lambdaReturnTypes.TryGetValue(lambdaPred, out GrobType bodyType) &&
+                        bodyType != GrobType.Unknown && bodyType != GrobType.Error &&
+                        bodyType != GrobType.Bool) {
+                        EmitError(ErrorCatalog.E0004,
+                            $"'filter' predicate must return 'bool'; found '{TypeName(bodyType)}'.",
+                            node.Arguments[0].Value.Range);
+                    }
+                    return GrobType.Array;
+                }
+            case "select":
+                return GrobType.Array;
+            case "sort":
+                // Optional second arg must be bool (the 'descending' flag).
+                if (node.Arguments.Count >= 2 &&
+                    argTypes[1] != GrobType.Bool && argTypes[1] != GrobType.Unknown &&
+                    argTypes[1] != GrobType.Error) {
+                    EmitError(ErrorCatalog.E0004,
+                        $"'sort' second argument ('descending') must be 'bool'; found '{TypeName(argTypes[1])}'.",
+                        node.Arguments[1].Value.Range);
+                }
+                return GrobType.Array;
+            case "each":
+                return GrobType.Unknown; // void
+            default:
+                return GrobType.Unknown;
+        }
     }
 
     /// <summary>
@@ -693,12 +762,70 @@ public sealed partial class TypeChecker {
     }
 
     /// <inheritdoc/>
-    // Deferred to Sprint 5 (grob-lang/grob#44): lambda scoping, parameter type
-    // inference, and closure capture are designed together. Partial traversal
-    // now would register inferred-type parameters as Unknown — non-null but
-    // semantically incorrect. Nothing downstream observes this gap today.
-    [ExcludeFromCodeCoverage(Justification = "Lambda type-checking is deferred to Sprint 5 (grob-lang/grob#44).")]
-    public override GrobType VisitLambda(LambdaExpr node) => GrobType.Unknown;
+    /// <remarks>
+    /// Sprint 5 Increment C — D-296 categories 1–3 only (top-level references).
+    ///
+    /// Registers each lambda parameter as <see cref="GrobType.Unknown"/> (inferred)
+    /// with the <see cref="LambdaExpr"/> as its declaring node, satisfying the §3.1.1
+    /// invariant: every identifier that resolves to a parameter carries a non-null
+    /// <see cref="IdentifierExpr.Declaration"/>. The body is then visited in the
+    /// parameter scope so all nested identifier nodes are resolved.
+    ///
+    /// The inferred body return type is stored in
+    /// <see cref="_lambdaReturnTypes"/> keyed by this node, so
+    /// <see cref="ValidateArrayMethodCall"/> can check predicate types (E0004 on
+    /// <c>filter</c>). Category-4 upvalue capture is Increment D.
+    /// </remarks>
+    public override GrobType VisitLambda(LambdaExpr node) {
+        // Open a scope for the lambda's parameters.
+        _scopes.Push(new Dictionary<string, Symbol>());
+        foreach (Parameter p in node.Parameters) {
+            // Lambda parameter types are inferred (not declared), so register as Unknown.
+            // Use the LambdaExpr as the declaring node — Parameter is not an AstNode.
+            RegisterSymbol(p.Name, GrobType.Unknown, p.Range.Start, node);
+        }
+
+        // Track a return-type context so VisitReturn can validate early-return stmts
+        // inside a block-body lambda (E0005) and distinguish them from top-level
+        // returns (E2203).
+        _functionReturnTypes.Push(GrobType.Unknown);
+
+        // Infer the body type and store it for callers (e.g. ValidateArrayMethodCall).
+        GrobType bodyType = node.Body switch {
+            LambdaExpressionBody exprBody => Visit(exprBody.Expression),
+            LambdaBlockBody blockBody => VisitLambdaBlock(blockBody),
+            _ => GrobType.Unknown,
+        };
+        _lambdaReturnTypes[node] = bodyType;
+
+        _functionReturnTypes.Pop();
+        _scopes.Pop();
+
+        // Return Unknown for the lambda value's own type — there is no GrobType.Function
+        // variant in this increment.  Callers that need the body type use _lambdaReturnTypes.
+        return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Visits all statements in a block-body lambda and infers the return type.
+    /// Returns the type of the last <see cref="ExpressionStmt"/>'s expression (the
+    /// implicit last-expression result per D-276), or <see cref="GrobType.Nil"/> when
+    /// the last statement is not an expression.
+    /// </summary>
+    private GrobType VisitLambdaBlock(LambdaBlockBody blockBody) {
+        IReadOnlyList<AstNode> stmts = blockBody.Block.Statements;
+        if (stmts.Count == 0) return GrobType.Nil;
+
+        for (int i = 0; i < stmts.Count - 1; i++)
+            Visit(stmts[i]);
+
+        // The last statement determines the implicit return type.
+        AstNode last = stmts[stmts.Count - 1];
+        if (last is ExpressionStmt exprStmt)
+            return Visit(exprStmt.Expression); // implicit return value; don't emit Pop
+        Visit(last);
+        return GrobType.Nil;
+    }
 
     // -----------------------------------------------------------------------
     // Internal guards
