@@ -241,7 +241,7 @@ public sealed partial class Compiler {
                 break;
 
             case LambdaBlockBody blockBody:
-                CompileLambdaBlock(sub, blockBody, line);
+                CompileLambdaBlock(sub, blockBody);
                 break;
         }
 
@@ -263,7 +263,7 @@ public sealed partial class Compiler {
     /// return value, followed by <see cref="OpCode.Return"/>. All other last statements
     /// compile normally and fall through to the caller's safety-net Nil + Return.
     /// </summary>
-    private static void CompileLambdaBlock(Compiler sub, LambdaBlockBody blockBody, int endLine) {
+    private static void CompileLambdaBlock(Compiler sub, LambdaBlockBody blockBody) {
         // Open a scope for block-body locals (mirrors VisitBlock but without a PopN at
         // the end — Return handles frame cleanup in the VM).
         sub._localScopes.Push([]);

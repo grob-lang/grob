@@ -82,14 +82,15 @@ public sealed class CompilerLambdaTests {
     /// Returns the first <see cref="BytecodeFunction"/> constant found in the enclosing
     /// chunk — the lambda object pushed by <see cref="OpCode.Constant"/>.
     /// </summary>
-    private static BytecodeFunction FirstLambdaConstant(Chunk chunk) {
-        List<Instr> instrs = Decode(chunk);
-        foreach (Instr instr in instrs.Where(i => i.Op is OpCode.Constant or OpCode.ConstantLong)) {
-            GrobValue v = chunk.ReadConstant(instr.Arg);
-            if (v.IsFunction && v.AsFunction() is BytecodeFunction bf) return bf;
-        }
-        throw new InvalidOperationException("No BytecodeFunction constant found in chunk.");
-    }
+    private static BytecodeFunction FirstLambdaConstant(Chunk chunk) =>
+        Decode(chunk)
+            .Where(i => i.Op is OpCode.Constant or OpCode.ConstantLong)
+            .Select(i => chunk.ReadConstant(i.Arg))
+            .Where(v => v.IsFunction)
+            .Select(v => v.AsFunction())
+            .OfType<BytecodeFunction>()
+            .FirstOrDefault()
+        ?? throw new InvalidOperationException("No BytecodeFunction constant found in chunk.");
 
     // -----------------------------------------------------------------------
     // Expression-body lambda: x => x > 0
@@ -173,16 +174,14 @@ public sealed class CompilerLambdaTests {
             """);
 
         BytecodeFunction fn = FirstLambdaConstant(outer);
-        List<Instr> instrs = Decode(fn.Bytecode);
 
-        // Find the Constant opcode that's NOT GetLocal(x) — must be the inlined 5.
         // The lambda body is: GetLocal(x), Constant(5), GreaterInt, Return, Nil, Return.
-        GrobValue? inlinedConst = null;
-        foreach (Instr instr in instrs.Where(i => i.Op == OpCode.Constant)) {
-            GrobValue v = fn.Bytecode.ReadConstant(instr.Arg);
-            if (v.Kind == GrobValueKind.Int && v.AsInt() == 5) { inlinedConst = v; break; }
-        }
-        Assert.True(inlinedConst.HasValue, "Expected inlined constant '5' in lambda chunk.");
+        // The inlined THRESHOLD appears as a Constant whose value is the int 5.
+        bool hasInlinedFive = Decode(fn.Bytecode)
+            .Where(i => i.Op == OpCode.Constant)
+            .Select(i => fn.Bytecode.ReadConstant(i.Arg))
+            .Any(v => v.Kind == GrobValueKind.Int && v.AsInt() == 5);
+        Assert.True(hasInlinedFive, "Expected inlined constant '5' in lambda chunk.");
     }
 
     // -----------------------------------------------------------------------
