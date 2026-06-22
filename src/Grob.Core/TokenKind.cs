@@ -62,8 +62,9 @@ public enum TokenKind {
     /// <summary>throw</summary>
     Throw,
 
-    /// <summary>select</summary>
-    Select,
+    // 'select' is a reserved identifier, not a keyword (D-320) — it lexes as
+    // TokenKind.Identifier. There is deliberately no Select member: the spec §3.4
+    // lists it under "Reserved IDs", not "Keywords".
 
     /// <summary>case</summary>
     Case,

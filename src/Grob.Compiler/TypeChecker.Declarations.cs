@@ -10,6 +10,11 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitFnDecl(FnDecl node) {
+        // A reserved identifier (formatAs, select) may not be a function name
+        // (E1103, D-320). The fn name carries no standalone source location, so the
+        // diagnostic points at the declaration head.
+        CheckReservedBindingName(node.Name, node.Range);
+
         // The fn name was already registered in pass 1; don't re-register here.
         // Default expressions materialise at the call site (D-113), so they are
         // type-checked in the enclosing scope — before the parameter scope opens.
@@ -21,6 +26,9 @@ public sealed partial class TypeChecker {
         // Push a scope for parameters, then visit the body (which pushes its own scope).
         _scopes.Push(new Dictionary<string, Symbol>());
         foreach (Parameter p in node.Parameters) {
+            // A reserved identifier (formatAs, select) may not be a parameter name
+            // (E1103, D-320).
+            CheckReservedBindingName(p.Name, p.Range);
             GrobType paramType = p.Type is not null ? ResolveTypeRef(p.Type) : GrobType.Unknown;
             // Use the owning FnDecl as the declaring node — Parameter is not an AstNode.
             RegisterSymbol(p.Name, paramType, p.Range.Start, node);
@@ -58,7 +66,15 @@ public sealed partial class TypeChecker {
     }
 
     /// <inheritdoc/>
-    public override GrobType VisitTypeDecl(TypeDecl node) => GrobType.Unknown; // Sprint 6
+    public override GrobType VisitTypeDecl(TypeDecl node) {
+        // Full type-field checking lands in Sprint 6. The one rule that applies now:
+        // a reserved identifier (formatAs, select) may not be a field name (E1103,
+        // D-320).
+        foreach (TypeField field in node.Fields) {
+            CheckReservedBindingName(field.Name, field.Range);
+        }
+        return GrobType.Unknown;
+    }
 
     /// <inheritdoc/>
     public override GrobType VisitConstDecl(ConstDecl node) {

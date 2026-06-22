@@ -218,7 +218,9 @@ public static partial class ConsistencyChecks {
             ["catch"] = "Catch",
             ["finally"] = "Finally",
             ["throw"] = "Throw",
-            ["select"] = "Select",
+            // 'select' is a reserved identifier (D-320), not a keyword — it has no
+            // TokenKind member and §3.4 lists it under "Reserved IDs", so it is not
+            // a keyword atom here.
             ["case"] = "Case",
             ["default"] = "Default",
             ["break"] = "Break",
@@ -319,6 +321,39 @@ public static partial class ConsistencyChecks {
     }
 
     // -------------------------------------------------------------------------
+    // 4.1.6 — native method names avoid hard keywords (D-320)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Asserts that no registered native method name is a hard keyword. A hard
+    /// keyword lexes to a keyword token, so the member-access parser — which expects
+    /// an identifier after <c>.</c> — cannot parse <c>receiver.method(...)</c> for a
+    /// method of that name. Reserved identifiers (<c>formatAs</c>, <c>select</c>) are
+    /// deliberately permitted as method names; the check is against the hard-keyword
+    /// set, not the reserved-identifier set (D-320). This is the durable guard that
+    /// turns the next such collision into a build failure instead of an unparseable
+    /// call.
+    /// </summary>
+    /// <param name="nativeMethodNames">The registered dotted method names.</param>
+    /// <param name="hardKeywordLexemes">The hard-keyword lexemes (spec §3.4).</param>
+    /// <returns>A passing result when the two sets are disjoint, otherwise a failure.</returns>
+    public static CheckResult CheckNativeMethodsAvoidKeywords(
+        IReadOnlySet<string> nativeMethodNames,
+        IReadOnlySet<string> hardKeywordLexemes) {
+        var collisions = nativeMethodNames
+            .Where(hardKeywordLexemes.Contains)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .Select(name =>
+                $"native method '{name}' is a hard keyword — '.{name}(...)' cannot parse " +
+                "after '.'. Make it a reserved identifier or rename the method (D-320).")
+            .ToList();
+
+        return collisions.Count == 0
+            ? CheckResult.Pass("native-method vs hard-keyword collision")
+            : CheckResult.Fail("native-method vs hard-keyword collision", collisions);
+    }
+
+    // -------------------------------------------------------------------------
     // 4.1.5 — ErrorCatalog agreement reference (the D-308 guard is discoverable)
     // -------------------------------------------------------------------------
 
@@ -401,6 +436,10 @@ public static partial class ConsistencyChecks {
 
     [GeneratedRegex(@"^\s*([A-Za-z_]\w*)\s*,", RegexOptions.None, RegexTimeoutMs)]
     private static partial Regex EnumMemberRegex();
+
+    // A native-method arm in ArrayNatives.GetMethod: "name" => new NativeFunction(.
+    [GeneratedRegex("\"([A-Za-z_]\\w*)\"\\s*=>\\s*new NativeFunction\\(", RegexOptions.None, RegexTimeoutMs)]
+    private static partial Regex NativeMethodArmRegex();
 
     // A §3.4 sub-section: a label at column 0, then its body up to the next label
     // or the end of the block. Singleline lets the body span continuation lines.
@@ -582,6 +621,29 @@ public static partial class ConsistencyChecks {
         return atoms;
     }
 
+    /// <summary>
+    /// Parses the registered array higher-order method names from the
+    /// <c>ArrayNatives.GetMethod</c> switch — the live registry of dotted method
+    /// names. Each arm has the shape <c>"name" =&gt; new NativeFunction(...)</c>.
+    /// </summary>
+    /// <param name="arrayNativesPath">Path to <c>src/Grob.Vm/ArrayNatives.cs</c>.</param>
+    /// <returns>The registered method-name set.</returns>
+    /// <exception cref="AnchorNotFoundException">No native-method arms were found.</exception>
+    public static IReadOnlySet<string> ParseArrayNativeMethodNames(string arrayNativesPath) {
+        var text = File.ReadAllText(arrayNativesPath);
+        var names = NativeMethodArmRegex()
+            .Matches(text)
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (names.Count == 0) {
+            throw new AnchorNotFoundException(
+                Path.GetFileName(arrayNativesPath),
+                "ArrayNatives.GetMethod switch arms (\"name\" => new NativeFunction(...))");
+        }
+        return names;
+    }
+
     // -------------------------------------------------------------------------
     // Parsing helpers
     // -------------------------------------------------------------------------
@@ -676,6 +738,12 @@ public static partial class ConsistencyChecks {
             "OpCode", ParseSpecOpCodes(RepoPaths.Requirements), ActualOpCodeNames()),
         CheckTokenKindCompleteness(
             ParseSpecTokenAtoms(RepoPaths.Requirements), ActualTokenKindNames()),
+        CheckNativeMethodsAvoidKeywords(
+            ParseArrayNativeMethodNames(RepoPaths.ArrayNatives),
+            ParseSpecTokenAtoms(RepoPaths.Requirements)
+                .Where(a => a.Section == "Keywords")
+                .Select(a => a.Text)
+                .ToHashSet(StringComparer.Ordinal)),
         CheckErrorCatalogGuardPresent(RepoPaths.RepoRoot()),
     ];
 }

@@ -325,6 +325,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>reserved identifier used as a binding name</summary>
+    public static readonly ErrorDescriptor E1103 = new(
+        Code: "E1103",
+        Title: "reserved identifier used as a binding name",
+        Category: ErrorCategory.NameResolution,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>forward reference inside function body</summary>
     public static readonly ErrorDescriptor E1201 = new(
         Code: "E1201",
@@ -1028,6 +1037,7 @@ public static class ErrorCatalog {
         E1003,
         E1101,
         E1102,
+        E1103,
         E1201,
         E1202,
         E2001,

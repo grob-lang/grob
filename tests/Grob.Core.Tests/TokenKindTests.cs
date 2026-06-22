@@ -30,7 +30,6 @@ public sealed class TokenKindTests {
     [InlineData(TokenKind.Catch)]
     [InlineData(TokenKind.Finally)]
     [InlineData(TokenKind.Throw)]
-    [InlineData(TokenKind.Select)]
     [InlineData(TokenKind.Case)]
     [InlineData(TokenKind.Default)]
     [InlineData(TokenKind.Break)]
@@ -158,6 +157,8 @@ public sealed class TokenKindTests {
 
     [Fact]
     public void EnumSurface_HasExpectedCardinality() {
-        Assert.Equal(81, Enum.GetValues<TokenKind>().Length);
+        // 81 -> 80: D-320 removed the Select member ('select' is now a reserved
+        // identifier that lexes as TokenKind.Identifier, not a keyword).
+        Assert.Equal(80, Enum.GetValues<TokenKind>().Length);
     }
 }

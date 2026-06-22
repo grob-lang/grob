@@ -25,7 +25,6 @@ public class LexerKeywordTests {
         ["catch", TokenKind.Catch],
         ["finally", TokenKind.Finally],
         ["throw", TokenKind.Throw],
-        ["select", TokenKind.Select],
         ["case", TokenKind.Case],
         ["default", TokenKind.Default],
         ["break", TokenKind.Break],
@@ -52,6 +51,18 @@ public class LexerKeywordTests {
     public void BuiltInName_IsAnIdentifier(string name) {
         Token tok = SingleToken(name);
         Assert.Equal(TokenKind.Identifier, tok.Kind);
+    }
+
+    [Theory]
+    [InlineData("select")]
+    [InlineData("formatAs")]
+    public void ReservedIdentifier_IsAnIdentifier(string name) {
+        // D-320 / D-282: reserved identifiers lex as ordinary identifiers so they
+        // stay legal as member names after '.'; the prohibition on binding them is
+        // a type-checker rule (E1103), not a lexer one.
+        Token tok = SingleToken(name);
+        Assert.Equal(TokenKind.Identifier, tok.Kind);
+        Assert.Equal(name, tok.Lexeme);
     }
 
     [Fact]
