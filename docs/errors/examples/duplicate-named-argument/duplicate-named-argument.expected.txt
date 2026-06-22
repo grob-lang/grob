@@ -1,0 +1,8 @@
+error[E0010]: duplicate named argument
+  --> duplicate-named-argument.grob:7:25
+   |
+ 7 | print(box(1, height: 2, height: 3))
+   |                         ^^^^^^
+   |
+   = note: parameter 'height' is already supplied
+   = help: remove the duplicate named argument

@@ -1,0 +1,7 @@
+// E0011 — naming a parameter the function does not declare
+// Eventual path: docs/errors/examples/unknown-parameter-name/unknown-parameter-name.grob
+fn box(width: int, height: int = 10): int {
+    return width * height
+}
+
+print(box(1, depth: 4))

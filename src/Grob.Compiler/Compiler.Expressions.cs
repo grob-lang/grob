@@ -513,10 +513,61 @@ public sealed partial class Compiler {
     public override object? VisitCall(CallExpr node) {
         int line = node.Range.Start.Line;
         Visit(node.Callee);
+
+        // Named arguments, or a positional call that omits a defaulted parameter,
+        // need reorder-and-fill so the callee receives a fully-bound positional list
+        // in parameter declaration order. A pure positional call that supplies every
+        // parameter takes the fast path, emitting arguments in source order.
+        if (node.Callee is IdentifierExpr { Declaration: FnDecl fn } &&
+            (node.Arguments.Any(a => a.Name is not null) || node.Arguments.Count != fn.Parameters.Count)) {
+            EmitReorderedArguments(node, fn);
+            _chunk.WriteOpCode(OpCode.Call, line);
+            _chunk.WriteByte(ToByteOperand(fn.Parameters.Count, "call argument count"), line);
+            return null;
+        }
+
         foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
         _chunk.WriteOpCode(OpCode.Call, line);
         _chunk.WriteByte(ToByteOperand(node.Arguments.Count, "call argument count"), line);
         return null;
+    }
+
+    /// <summary>
+    /// Emits the arguments of <paramref name="node"/> in parameter declaration order:
+    /// positionals into the leading slots, named arguments into their parameters, and
+    /// omitted defaults materialised into the remaining slots. The default expression
+    /// compiles at the call site. The type checker has already validated the binding,
+    /// so every slot resolves to a positional or a default here.
+    /// </summary>
+    private void EmitReorderedArguments(CallExpr node, FnDecl fn) {
+        var boundExprs = new Expression?[fn.Parameters.Count];
+
+        int positional = 0;
+        foreach (CallArgument arg in node.Arguments) {
+            if (arg.Name is null) {
+                if (positional < boundExprs.Length) boundExprs[positional] = arg.Value;
+                positional++;
+            } else {
+                int p = ParameterIndex(fn, arg.Name);
+                if (p >= 0) boundExprs[p] = arg.Value;
+            }
+        }
+
+        for (int i = 0; i < boundExprs.Length; i++) {
+            Expression value = boundExprs[i] ?? fn.Parameters[i].DefaultValue!;
+            Visit(value);
+        }
+    }
+
+    /// <summary>
+    /// Returns the index of the parameter named <paramref name="name"/> in
+    /// <paramref name="fn"/>, or <c>-1</c> when no parameter has that name.
+    /// </summary>
+    private static int ParameterIndex(FnDecl fn, string name) {
+        for (int i = 0; i < fn.Parameters.Count; i++) {
+            if (fn.Parameters[i].Name == name) return i;
+        }
+        return -1;
     }
 
     // -----------------------------------------------------------------------
