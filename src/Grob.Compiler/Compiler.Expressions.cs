@@ -180,6 +180,131 @@ public sealed partial class Compiler {
         return null;
     }
 
+    // -----------------------------------------------------------------------
+    // Lambda expression  (Sprint 5 Increment C — categories 1–3 only)
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Compiles the lambda into its own <see cref="BytecodeFunction"/> (using the same
+    /// sub-compiler pattern as <see cref="VisitFnDecl"/>) and emits a single
+    /// <see cref="OpCode.Constant"/> in the enclosing chunk so the value is pushed onto
+    /// the stack. The lambda is then an opaque callable that the caller stores, passes,
+    /// or immediately uses as an argument.
+    ///
+    /// <para><b>Category 1–3 resolution.</b> The sub-compiler inherits the root's
+    /// <c>_constValues</c> cache, so top-level <c>const</c> references inside the body
+    /// are inlined (category 1). Any other identifier resolves via
+    /// <see cref="EmitLoad"/>, which falls through to <see cref="OpCode.GetGlobal"/> for
+    /// names not found in the sub-compiler's local scopes — correct for top-level
+    /// <c>readonly</c> (category 2) and mutable (category 3). Writes inside block-body
+    /// lambdas similarly emit <see cref="OpCode.SetGlobal"/>. Category 4 (enclosing-
+    /// function-local capture) is Increment D; no upvalue opcodes are emitted here.</para>
+    ///
+    /// <para><b>Block-body return semantics (D-276).</b> When the body is a
+    /// <see cref="LambdaBlockBody"/>, compilation proceeds statement-by-statement. The
+    /// last statement is special: if it is an <see cref="ExpressionStmt"/>, its inner
+    /// expression is compiled without the trailing <see cref="OpCode.Pop"/> so the value
+    /// stays on the stack as the implicit return value, and <see cref="OpCode.Return"/>
+    /// follows immediately. Any other last statement compiles normally and falls through
+    /// to the safety-net <see cref="OpCode.Nil"/> + <see cref="OpCode.Return"/>.</para>
+    /// </remarks>
+    public override object? VisitLambda(LambdaExpr node) {
+        int line = node.Range.Start.Line;
+        var sub = new Compiler(_constValues);
+
+        // Lambda parameters occupy the first local slots (slot 0, 1, …).
+        sub._localScopes.Push([]);
+        foreach (Parameter p in node.Parameters) {
+            if ((uint)sub._nextSlot > byte.MaxValue)
+                throw new GrobInternalException(
+                    $"Parameter slot overflow: lambda exceeds the 1-byte slot limit of {byte.MaxValue}.");
+            sub._localScopes.Peek().Add(new LocalVar(p.Name, sub._nextSlot++));
+        }
+
+        switch (node.Body) {
+            case LambdaExpressionBody exprBody:
+                if (IsBuiltinVoidCall(exprBody.Expression)) {
+                    // print/exit are void — no return value on the stack.  Route via
+                    // VisitExpressionStmt (which has the built-in opcode mapping) so the
+                    // lambda's chunk gets the correct Print/Exit opcode rather than a
+                    // GetGlobal.  The safety-net Nil+Return below supplies nil as the
+                    // implicit return value (which callers like 'each' discard).
+                    sub.VisitExpressionStmt(
+                        new ExpressionStmt(exprBody.Expression.Range, exprBody.Expression));
+                    // Fall through to safety-net Nil+Return.
+                } else {
+                    // Non-void expression body: value stays on stack → Return.
+                    sub.Visit(exprBody.Expression);
+                    sub._chunk.WriteOpCode(OpCode.Return, line);
+                }
+                break;
+
+            case LambdaBlockBody blockBody:
+                CompileLambdaBlock(sub, blockBody);
+                break;
+        }
+
+        // Safety-net return: a block body (or empty expression body path) that does not
+        // return on every path falls through to here and returns nil.
+        sub._chunk.WriteOpCode(OpCode.Nil, line);
+        sub._chunk.WriteOpCode(OpCode.Return, line);
+
+        var fn = new BytecodeFunction(string.Empty, node.Parameters.Count, sub._chunk);
+        EmitConstant(GrobValue.FromFunction(fn), line);
+        return null;
+    }
+
+    /// <summary>
+    /// Compiles the statements of a <see cref="LambdaBlockBody"/> into
+    /// <paramref name="sub"/>'s chunk with D-276 semantics: the last statement's
+    /// expression (if it is an <see cref="ExpressionStmt"/>) is compiled without a
+    /// trailing <see cref="OpCode.Pop"/> so it stays on the stack as the implicit
+    /// return value, followed by <see cref="OpCode.Return"/>. All other last statements
+    /// compile normally and fall through to the caller's safety-net Nil + Return.
+    /// </summary>
+    private static void CompileLambdaBlock(Compiler sub, LambdaBlockBody blockBody) {
+        // Open a scope for block-body locals (mirrors VisitBlock but without a PopN at
+        // the end — Return handles frame cleanup in the VM).
+        sub._localScopes.Push([]);
+
+        IReadOnlyList<AstNode> stmts = blockBody.Block.Statements;
+        if (stmts.Count == 0) {
+            sub._localScopes.Pop();
+            return; // safety-net Nil+Return is emitted by the caller
+        }
+
+        // Compile all statements except the last normally.
+        for (int i = 0; i < stmts.Count - 1; i++)
+            sub.Visit(stmts[i]);
+
+        // Compile the last statement with D-276 semantics.
+        AstNode last = stmts[stmts.Count - 1];
+        if (last is ExpressionStmt exprStmt) {
+            int stmtLine = exprStmt.Range.Start.Line;
+            if (IsBuiltinVoidCall(exprStmt.Expression)) {
+                // print/exit are void — emit via VisitExpressionStmt (which carries the
+                // built-in opcode mapping) so the chunk gets Print/Exit rather than a
+                // GetGlobal.  No explicit Return needed — fall through to safety-net.
+                sub.VisitExpressionStmt(exprStmt);
+                // Fall through to caller's safety-net Nil+Return.
+            } else {
+                // Non-void expression: skip VisitExpressionStmt (which would emit Pop)
+                // and visit the inner expression directly so the value stays on the stack.
+                sub.Visit(exprStmt.Expression);
+                sub._chunk.WriteOpCode(OpCode.Return, stmtLine);
+            }
+        } else {
+            sub.Visit(last);
+            // Fall through to caller's safety-net.
+        }
+
+        // Pop the block-body scope from the compiler's scope stack.  The VM's Return
+        // handles the actual runtime stack cleanup; PopN is only needed for fall-through
+        // paths inside the block, none of which exist after an explicit Return.
+        sub._localScopes.Pop();
+    }
+
     /// <summary>
     /// Returns the cached <see cref="GrobValue"/> for a <see cref="ConstDecl"/>.
     /// <see cref="VisitConstDecl"/> always caches the value before any reference site is
@@ -329,9 +454,14 @@ public sealed partial class Compiler {
     private void EmitArithmetic(BinaryExpr node, GrobType lt, GrobType rt, int line) {
         bool leftNeedsCoerce = lt == GrobType.Int && rt == GrobType.Float;
         bool rightNeedsCoerce = rt == GrobType.Int && lt == GrobType.Float;
-        GrobType resultType = (lt == GrobType.Float || rt == GrobType.Float)
-            ? GrobType.Float
-            : lt;
+        // resultType: Float if either operand is float; Unknown operands (lambda
+        // parameters) default to Int — the same optimistic convention used in
+        // ComparisonCategory. A lambda that passes a float array gets a VM-level
+        // type fault; typed parameter inference (Increment D) will fix this.
+        // When baseType is Unknown both operands are non-float by construction, so the
+        // Unknown fallback can only ever be Int.
+        GrobType baseType = (lt == GrobType.Float || rt == GrobType.Float) ? GrobType.Float : lt;
+        GrobType resultType = baseType == GrobType.Unknown ? GrobType.Int : baseType;
 
         Visit(node.Left);
         if (leftNeedsCoerce) {
@@ -787,4 +917,19 @@ public sealed partial class Compiler {
         if (left == GrobType.String) return GrobType.String;
         return left;
     }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when <paramref name="expr"/> is a call to a
+    /// built-in void function (<c>print</c> or <c>exit</c>).
+    ///
+    /// <para>These built-ins are handled by <see cref="VisitExpressionStmt"/> and
+    /// emit dedicated VM opcodes (<see cref="OpCode.Print"/> / <see cref="OpCode.Exit"/>)
+    /// rather than a <see cref="OpCode.GetGlobal"/> + <see cref="OpCode.Call"/>. In
+    /// expression context (e.g. a lambda expression body) the caller must route through
+    /// <see cref="VisitExpressionStmt"/> so the correct opcode is emitted; the safety-net
+    /// <see cref="OpCode.Nil"/> + <see cref="OpCode.Return"/> in <see cref="VisitLambda"/>
+    /// supplies the implicit nil return value (which <c>each</c>-style callers discard).</para>
+    /// </summary>
+    private static bool IsBuiltinVoidCall(Expression expr) =>
+        expr is CallExpr { Callee: IdentifierExpr { Name: "print" or "exit" } };
 }

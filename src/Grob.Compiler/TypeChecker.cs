@@ -52,6 +52,20 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // -----------------------------------------------------------------------
     private readonly Stack<GrobType> _functionReturnTypes = new();
 
+    // -----------------------------------------------------------------------
+    // Lambda return-type inference (Sprint 5 Increment C).
+    //
+    // VisitLambda stores the inferred body return type here so that
+    // ValidateArrayMethodCall can check 'filter' predicates against bool (E0004)
+    // without exposing the inferred type as the lambda expression's GrobType.
+    // -----------------------------------------------------------------------
+
+    // LambdaExpr is a record whose GetHashCode recurses into nested AST nodes and
+    // would stack-overflow on deeply nested lambdas. Use reference identity so the
+    // dictionary entry is keyed by object identity, not structural equality.
+    private readonly Dictionary<LambdaExpr, GrobType> _lambdaReturnTypes =
+        new(ReferenceEqualityComparer.Instance);
+
     /// <summary>Initialises a new <see cref="TypeChecker"/> that writes into <paramref name="diagnostics"/>.</summary>
     public TypeChecker(DiagnosticBag diagnostics) {
         ArgumentNullException.ThrowIfNull(diagnostics);
