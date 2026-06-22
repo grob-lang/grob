@@ -262,8 +262,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // diverge. 'formatAs' additionally carries a bare-member rule (D-282); 'select'
     // does not — it is an ordinary method.
     // -----------------------------------------------------------------------
-    private static readonly IReadOnlySet<string> _reservedIdentifiers =
-        new HashSet<string>(StringComparer.Ordinal) { "formatAs", "select" };
+    private static readonly HashSet<string> _reservedIdentifiers =
+        new(StringComparer.Ordinal) { "formatAs", "select" };
 
     /// <summary>
     /// Emits <see cref="ErrorCatalog.E1103"/> when <paramref name="name"/> is a

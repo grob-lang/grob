@@ -87,6 +87,8 @@ public sealed class SelectReservedIdentifierTests {
         (_, DiagnosticBag bag) = Parse("select 5");
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E2001", diag.Code);
+        // The diagnostic points at 'select' itself (statement-head dispatch), col 1.
+        Assert.Equal((1, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
     }
 
     // -----------------------------------------------------------------------
