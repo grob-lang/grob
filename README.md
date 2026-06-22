@@ -40,7 +40,7 @@ readable scripting cleanly. Grob is designed to fill that gap.
 
 ## Status
 
-Grob is being built in the open. The language design is complete and implementation has begun — Sprint 1 is underway, starting with the solution skeleton and the lexer.
+Grob is being built in the open. The language design is complete and implementation is well underway — Sprint 5 (Functions and Closures) is active.
 
 What exists today:
 
@@ -53,7 +53,7 @@ What exists today:
 - CLI personality and error message design
 - Mascot (Sparky) — character sheet v1 complete
 
-What comes next: building out the VM in the order laid out in the [VM Architecture](https://github.com/grob-lang/grob/blob/main/docs/wiki/VM-Architecture/Overview.md) documentation.
+What comes next: standard library modules, the plugin system, and the thirteen validation scripts that are the v1 release gate.
 
 **This is a real project with serious design behind it. It is not ready yet.**
 Watch the repo if you want to follow along.
