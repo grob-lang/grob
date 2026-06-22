@@ -11,21 +11,19 @@ public sealed partial class TypeChecker {
     /// <inheritdoc/>
     public override GrobType VisitFnDecl(FnDecl node) {
         // The fn name was already registered in pass 1; don't re-register here.
+        // Default expressions materialise at the call site (D-113), so they are
+        // type-checked in the enclosing scope — before the parameter scope opens.
+        // A default that references a sibling parameter therefore resolves to E1001
+        // here, rather than binding to the parameter and then silently compiling
+        // against caller scope.
+        CheckParameterDefaults(node);
+
         // Push a scope for parameters, then visit the body (which pushes its own scope).
         _scopes.Push(new Dictionary<string, Symbol>());
         foreach (Parameter p in node.Parameters) {
             GrobType paramType = p.Type is not null ? ResolveTypeRef(p.Type) : GrobType.Unknown;
             // Use the owning FnDecl as the declaring node — Parameter is not an AstNode.
             RegisterSymbol(p.Name, paramType, p.Range.Start, node);
-            if (p.DefaultValue is not null) {
-                GrobType defaultType = Visit(p.DefaultValue);
-                if (paramType != GrobType.Unknown && defaultType != GrobType.Error
-                    && !TypesAreAssignable(defaultType, paramType)) {
-                    EmitError(ErrorCatalog.E0004,
-                        $"Default value for parameter '{p.Name}' has type '{TypeName(defaultType)}', which is not assignable to '{TypeName(paramType)}'.",
-                        p.DefaultValue.Range);
-                }
-            }
         }
 
         // Track the declared return type so VisitReturn can check returned values
@@ -36,6 +34,27 @@ public sealed partial class TypeChecker {
 
         _scopes.Pop();
         return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Type-checks each parameter default in the function's enclosing scope (the
+    /// parameter scope is not yet open), checking the default's type against its
+    /// parameter (E0004). A default referencing a sibling parameter resolves to
+    /// E1001 here, which is the intended behaviour: defaults compile at the call
+    /// site, where sibling parameters are not in scope.
+    /// </summary>
+    private void CheckParameterDefaults(FnDecl node) {
+        foreach (Parameter p in node.Parameters) {
+            if (p.DefaultValue is null) continue;
+            GrobType defaultType = Visit(p.DefaultValue);
+            GrobType paramType = p.Type is not null ? ResolveTypeRef(p.Type) : GrobType.Unknown;
+            if (paramType != GrobType.Unknown && defaultType != GrobType.Error
+                && !TypesAreAssignable(defaultType, paramType)) {
+                EmitError(ErrorCatalog.E0004,
+                    $"Default value for parameter '{p.Name}' has type '{TypeName(defaultType)}', which is not assignable to '{TypeName(paramType)}'.",
+                    p.DefaultValue.Range);
+            }
+        }
     }
 
     /// <inheritdoc/>

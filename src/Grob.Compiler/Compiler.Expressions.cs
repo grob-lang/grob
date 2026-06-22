@@ -520,7 +520,7 @@ public sealed partial class Compiler {
         // parameter takes the fast path, emitting arguments in source order.
         if (node.Callee is IdentifierExpr { Declaration: FnDecl fn } &&
             (node.Arguments.Any(a => a.Name is not null) || node.Arguments.Count != fn.Parameters.Count)) {
-            EmitReorderedArguments(node, fn, line);
+            EmitReorderedArguments(node, fn);
             _chunk.WriteOpCode(OpCode.Call, line);
             _chunk.WriteByte(ToByteOperand(fn.Parameters.Count, "call argument count"), line);
             return null;
@@ -539,7 +539,7 @@ public sealed partial class Compiler {
     /// compiles at the call site. The type checker has already validated the binding,
     /// so every slot resolves to a positional or a default here.
     /// </summary>
-    private void EmitReorderedArguments(CallExpr node, FnDecl fn, int line) {
+    private void EmitReorderedArguments(CallExpr node, FnDecl fn) {
         var boundExprs = new Expression?[fn.Parameters.Count];
 
         int positional = 0;

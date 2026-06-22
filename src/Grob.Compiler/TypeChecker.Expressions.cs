@@ -274,68 +274,16 @@ public sealed partial class TypeChecker {
         var boundType = new GrobType?[paramCount];
         var boundRange = new SourceRange?[paramCount];
 
-        bool seenNamed = false;
-        bool bindingError = false;
-        int positionalCount = 0;
-
-        for (int i = 0; i < node.Arguments.Count; i++) {
-            CallArgument arg = node.Arguments[i];
-            if (arg.Name is null) {
-                // A positional argument after a named one breaks the convention.
-                if (seenNamed) {
-                    EmitError(ErrorCatalog.E0008,
-                        $"In the call to '{fn.Name}', a positional argument follows a named argument. Move all named arguments after the positional ones.",
-                        arg.Value.Range);
-                    return;
-                }
-                if (positionalCount < paramCount) {
-                    boundType[positionalCount] = argTypes[i];
-                    boundRange[positionalCount] = arg.Value.Range;
-                }
-                positionalCount++;
-                continue;
-            }
-
-            seenNamed = true;
-            int p = ParameterIndex(fn, arg.Name);
-            if (p < 0) {
-                EmitError(ErrorCatalog.E0011,
-                    $"Function '{fn.Name}' has no parameter named '{arg.Name}'.",
-                    arg.Range);
-                bindingError = true;
-                continue;
-            }
-            if (fn.Parameters[p].DefaultValue is null) {
-                EmitError(ErrorCatalog.E0009,
-                    $"Parameter '{arg.Name}' of '{fn.Name}' is required and has no default, so it cannot be passed by name. Pass it positionally.",
-                    arg.Range);
-                bindingError = true;
-                continue;
-            }
-            if (boundType[p] is not null) {
-                EmitError(ErrorCatalog.E0010,
-                    $"Parameter '{arg.Name}' of '{fn.Name}' is already supplied.",
-                    arg.Range);
-                bindingError = true;
-                continue;
-            }
-            boundType[p] = argTypes[i];
-            boundRange[p] = arg.Value.Range;
+        // Binding errors (E0008–E0011) are all collected, then suppress the
+        // downstream arity/type checks to keep one diagnostic per root cause.
+        if (!BindArguments(node, fn, argTypes, boundType, boundRange, out int positionalCount)) {
+            return;
         }
-
-        if (bindingError) return;
 
         // Arity (E0003) on the bound set — too many positionals, or a required
         // (defaultless) parameter left unbound.
         if (positionalCount > paramCount || HasUnboundRequired(fn, boundType)) {
-            int supplied = node.Arguments.Count;
-            int required = fn.Parameters.Count(pm => pm.DefaultValue is null);
-            string expectation = required == paramCount
-                ? $"{paramCount} argument{(paramCount == 1 ? "" : "s")}"
-                : $"between {required} and {paramCount} arguments";
-            EmitError(ErrorCatalog.E0003,
-                $"Function '{fn.Name}' expects {expectation}, but {supplied} {(supplied == 1 ? "was" : "were")} supplied.",
-                node.Range);
+            EmitArityError(node, fn);
             return;
         }
 
@@ -347,6 +295,99 @@ public sealed partial class TypeChecker {
             }
         }
     }
+
+    /// <summary>
+    /// Binds the arguments of <paramref name="node"/> to the parameters of
+    /// <paramref name="fn"/>: positionals into the leading slots, named arguments
+    /// into their parameters. Emits the call-site binding diagnostics (E0008 named
+    /// before positional, E0009/E0010/E0011 via <see cref="TryBindNamed"/>) and
+    /// collects every independent one. Returns <see langword="true"/> when binding
+    /// was clean, <see langword="false"/> when any binding error was emitted.
+    /// </summary>
+    private bool BindArguments(CallExpr node, FnDecl fn, GrobType[] argTypes,
+            GrobType?[] boundType, SourceRange?[] boundRange, out int positionalCount) {
+        bool ok = true;
+        bool seenNamed = false;
+        positionalCount = 0;
+
+        for (int i = 0; i < node.Arguments.Count; i++) {
+            CallArgument arg = node.Arguments[i];
+            if (arg.Name is not null) {
+                seenNamed = true;
+                if (!TryBindNamed(fn, arg, argTypes[i], boundType, boundRange)) ok = false;
+                continue;
+            }
+
+            // A positional argument after a named one breaks the convention. Keep
+            // scanning so independent later errors still surface.
+            if (seenNamed) {
+                EmitError(ErrorCatalog.E0008,
+                    $"In the call to '{fn.Name}', a positional argument follows a named argument. Move all named arguments after the positional ones.",
+                    arg.Value.Range);
+                ok = false;
+                continue;
+            }
+            if (positionalCount < boundType.Length) {
+                boundType[positionalCount] = argTypes[i];
+                boundRange[positionalCount] = arg.Value.Range;
+            }
+            positionalCount++;
+        }
+
+        return ok;
+    }
+
+    /// <summary>
+    /// Binds one named argument to its parameter, emitting E0011 (unknown name),
+    /// E0009 (names a required parameter) or E0010 (already supplied) when it cannot.
+    /// Returns <see langword="true"/> when the argument bound cleanly.
+    /// </summary>
+    private bool TryBindNamed(FnDecl fn, CallArgument arg, GrobType argType,
+            GrobType?[] boundType, SourceRange?[] boundRange) {
+        int p = ParameterIndex(fn, arg.Name!);
+        if (p < 0) {
+            EmitError(ErrorCatalog.E0011,
+                $"Function '{fn.Name}' has no parameter named '{arg.Name}'.",
+                arg.Range);
+            return false;
+        }
+        if (fn.Parameters[p].DefaultValue is null) {
+            EmitError(ErrorCatalog.E0009,
+                $"Parameter '{arg.Name}' of '{fn.Name}' is required and has no default, so it cannot be passed by name. Pass it positionally.",
+                arg.Range);
+            return false;
+        }
+        if (boundType[p] is not null) {
+            EmitError(ErrorCatalog.E0010,
+                $"Parameter '{arg.Name}' of '{fn.Name}' is already supplied.",
+                arg.Range);
+            return false;
+        }
+        boundType[p] = argType;
+        boundRange[p] = arg.Value.Range;
+        return true;
+    }
+
+    /// <summary>
+    /// Emits the arity diagnostic (E0003) for a call whose bound argument set does
+    /// not satisfy <paramref name="fn"/>. The expected count renders as a single
+    /// number when every parameter is required, or a range when some have defaults.
+    /// </summary>
+    private void EmitArityError(CallExpr node, FnDecl fn) {
+        int paramCount = fn.Parameters.Count;
+        int required = fn.Parameters.Count(pm => pm.DefaultValue is null);
+        int supplied = node.Arguments.Count;
+        string expectation = required == paramCount
+            ? $"{paramCount} {Plural(paramCount, "argument")}"
+            : $"between {required} and {paramCount} arguments";
+        string suppliedVerb = supplied == 1 ? "was" : "were";
+        EmitError(ErrorCatalog.E0003,
+            $"Function '{fn.Name}' expects {expectation}, but {supplied} {suppliedVerb} supplied.",
+            node.Range);
+    }
+
+    /// <summary>Returns <paramref name="noun"/> pluralised for a count of <paramref name="n"/>.</summary>
+    private static string Plural(int n, string noun) => n == 1 ? noun : noun + "s";
 
     /// <summary>
     /// Returns the index of the parameter named <paramref name="name"/> in

@@ -60,6 +60,37 @@ public sealed class TypeCheckerNamedArgumentTests {
     }
 
     [Fact]
+    public void Default_ReferencingAnotherParameter_RaisesE1001() {
+        // Defaults materialise at the call site (D-113), so they are checked in the
+        // enclosing scope — a default cannot reference a sibling parameter. Without
+        // this, 'a' would resolve to the parameter at check time but compile against
+        // caller scope, a silent miscompile.
+        DiagnosticBag bag = Check("""
+            fn f(a: int, b: int = a + 1): int {
+            return a + b
+            }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E1001.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(23, diag.Range.Start.Column); // the 'a' in 'b: int = a + 1'
+    }
+
+    [Fact]
+    public void Default_ReferencingEnclosingConst_NoError() {
+        // A default may reference an identifier visible at the call site (here a
+        // top-level const), which resolves cleanly in the enclosing scope.
+        DiagnosticBag bag = Check("""
+            const BASE := 10
+            fn f(a: int, b: int = BASE): int {
+            return a + b
+            }
+            f(1)
+            """);
+        Assert.False(bag.HasErrors, ErrorSummary(bag));
+    }
+
+    [Fact]
     public void Default_CorrectType_NoError() {
         DiagnosticBag bag = Check("""
             fn f(a: int = 99): int {
@@ -190,6 +221,27 @@ public sealed class TypeCheckerNamedArgumentTests {
         Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
         Assert.Equal(4, diag.Range.Start.Line);
         Assert.Equal(6, diag.Range.Start.Column); // the 'x:' named argument
+    }
+
+    // -----------------------------------------------------------------------
+    // Two-mode collection — independent binding errors in one call are all
+    // reported; the checker does not stop at the first (no E0008 early return).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MultipleBindingErrors_AllReported() {
+        // 'b: 1' (named) then '2' (positional after named → E0008) then
+        // 'x: 3' (unknown name → E0011). Both must surface, not just the first.
+        DiagnosticBag bag = Check("""
+            fn f(a: int, b: int = 10): int {
+            return a + b
+            }
+            f(b: 1, 2, x: 3)
+            """);
+        List<Diagnostic> errors = bag.Errors.ToList();
+        Assert.Equal(2, errors.Count);
+        Assert.Contains(errors, d => d.Code == ErrorCatalog.E0008.Code);
+        Assert.Contains(errors, d => d.Code == ErrorCatalog.E0011.Code);
     }
 
     // -----------------------------------------------------------------------
