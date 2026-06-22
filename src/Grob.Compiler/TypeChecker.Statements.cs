@@ -95,8 +95,10 @@ public sealed partial class TypeChecker {
         // Type-check: value must be assignable to the binding's declared type.
         // An Unknown target type (e.g. a not-yet-tracked array element binding) is
         // permissive — there is nothing concrete to check against.
+        // An Unknown value type (e.g. a lambda parameter or a deferred inference) is
+        // also permissive — it could be the right type at runtime; the VM validates.
         if (symbol.Type != GrobType.Error && symbol.Type != GrobType.Unknown &&
-            valueType != GrobType.Error &&
+            valueType != GrobType.Error && valueType != GrobType.Unknown &&
             !TypesAreAssignable(valueType, symbol.Type)) {
             EmitError(PickAssignabilityError(valueType, symbol.Type),
                 $"Cannot assign value of type '{TypeName(valueType)}' to binding '{target.Name}' of type '{TypeName(symbol.Type)}'.",

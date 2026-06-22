@@ -266,6 +266,50 @@ public sealed class RuntimeTypesTests {
         Assert.False(s.TryGetField("nope", out _));
     }
 
+    // ----- NativeFunction -----
+
+    [Fact]
+    public void NativeFunction_Constructor_StoresNameArityAndImpl() {
+        Func<GrobValue[], VmInvoker, GrobValue> impl = static (_, _) => GrobValue.Nil;
+        var fn = new NativeFunction("double", 1, impl);
+
+        Assert.Equal("double", fn.Name);
+        Assert.Equal(1, fn.Arity);
+        Assert.Same(impl, fn.Implementation);
+    }
+
+    [Fact]
+    public void NativeFunction_WrapsIntoFunctionValue() {
+        var fn = new NativeFunction("add", 2, static (_, _) => GrobValue.Nil);
+        var value = GrobValue.FromFunction(fn);
+
+        Assert.True(value.TryAsFunction(out GrobFunction? got));
+        Assert.Same(fn, got);
+    }
+
+    [Fact]
+    public void NativeFunction_ToString_IncludesName() {
+        var fn = new NativeFunction("triple", 1, static (_, _) => GrobValue.Nil);
+        var value = GrobValue.FromFunction(fn);
+
+        Assert.Contains("triple", value.ToString());
+    }
+
+    [Fact]
+    public void NativeFunction_NullImplementation_Throws() =>
+        Assert.Throws<ArgumentNullException>(() =>
+            new NativeFunction("f", 0, null!));
+
+    [Fact]
+    public void NativeFunction_NullName_Throws() =>
+        Assert.Throws<ArgumentNullException>(() =>
+            new NativeFunction(null!, 0, static (_, _) => GrobValue.Nil));
+
+    [Fact]
+    public void NativeFunction_NegativeArity_Throws() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new NativeFunction("f", -1, static (_, _) => GrobValue.Nil));
+
     [Fact]
     public void GrobStruct_Equals_SameInstance_ReturnsTrue() {
         var s = new GrobStruct("T");
