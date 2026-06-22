@@ -433,10 +433,14 @@ types that the language supports. It is not grown incrementally.
 
 ```
 Keywords:       fn, if, else, while, for, in, return, const, readonly, type,
-                param, import, as, try, catch, finally, throw, select, case,
-                default, break, continue, true, false, nil, step, switch
+                param, import, as, try, catch, finally, throw, case, default,
+                break, continue, true, false, nil, step, switch
 Built-ins:      print, exit, input (identifiers resolved at type-check time
                 against registered natives — not keywords)
+Reserved IDs:   formatAs, select (lex as identifiers and stay legal as member
+                names after `.`; prohibited as binding names — E1103. D-282,
+                D-320. `select` is the select-statement head only at statement
+                position; `arr.select(fn)` is a method call.)
 Operators:      + - * / % = := == != < > <= >= ! && || ? : ?? ?.
                 += -= *= /= %= ++ -- .. =>
 Punctuation:    ( ) { } [ ] , . #{ ///

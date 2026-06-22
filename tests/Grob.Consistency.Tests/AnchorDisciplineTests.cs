@@ -78,4 +78,17 @@ public sealed class AnchorDisciplineTests {
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public void ArrayNativeMethodNames_ThrowWhenNoArmsAreFound() {
+        var path = TempFile("internal static class ArrayNatives {\n    // no GetMethod switch arms here\n}\n");
+        try {
+            var ex = Assert.Throws<AnchorNotFoundException>(
+                () => ConsistencyChecks.ParseArrayNativeMethodNames(path));
+            Assert.Contains("GetMethod", ex.Anchor);
+            Assert.Equal(Path.GetFileName(path), ex.Document);
+        } finally {
+            File.Delete(path);
+        }
+    }
 }

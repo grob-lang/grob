@@ -18,6 +18,9 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitVarDecl(VarDeclStmt node) {
+        // A reserved identifier (formatAs, select) may not be bound (E1103, D-320).
+        CheckReservedBindingName(node.Name, node.Range);
+
         // Check for same-scope re-declaration (E1102) before visiting the initializer
         // so we don't clobber a valid symbol if the name is already in this scope.
         if (_scopes.Peek().ContainsKey(node.Name)) {

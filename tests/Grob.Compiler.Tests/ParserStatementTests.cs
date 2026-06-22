@@ -186,12 +186,15 @@ public class ParserStatementTests {
 
     [Fact]
     public void Select_WithoutOpeningParen_IsError() {
-        // §3: parentheses around the subject value are required.
+        // §3: parentheses around the subject value are required. Since D-320 'select'
+        // is a reserved identifier dispatched at statement head, so a leading 'select'
+        // not followed by '(' fails at the head itself — the diagnostic points at
+        // 'select' (column 1), not at the token after it.
         (_, DiagnosticBag bag) = Parse("select x {\ncase 1 { a }\n}\n");
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", d.Code);
         Assert.Equal(1, d.Range.Start.Line);
-        Assert.Equal(8, d.Range.Start.Column);
+        Assert.Equal(1, d.Range.Start.Column);
     }
 
     [Fact]

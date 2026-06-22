@@ -111,6 +111,14 @@ select (value) {
   (E2212). (D-315)
 - `select` is always a **statement**. The switch expression (`value switch { }`)
   is always an **expression**. The two forms are syntactically unambiguous.
+- `select` is a **reserved identifier, not a hard keyword** (D-320). The lexer
+  emits it as an `Identifier`; the parser reads a leading `select (` at
+  statement-head position as this statement, and `select` after a `.` as a
+  method name. This is what lets the pipeline transform `arr.select(fn)` (D-280)
+  and the `select` statement coexist without colliding. User code may not
+  declare a binding named `select` — field, parameter, local or function — which
+  is a compile error (E1103), the same rule that governs `formatAs` (D-282). See
+  §12, "Reserved identifiers".
 
 ### Why `select` is non-exhaustive
 
@@ -912,6 +920,30 @@ lambda cannot be used in a position that requires a value.
 
 Lambda return types are always inferred from the body. There is no syntax to
 declare a lambda's return type in v1.
+
+### Reserved identifiers
+
+A small set of names lex as ordinary identifiers but may not be used as binding
+names — field, parameter, local or function. They are **reserved identifiers**,
+not keywords: the lexer emits `Identifier` for them, and they remain legal as
+member names after a `.`. Declaring a binding with one of these names is a
+compile error (E1103).
+
+The v1 reserved identifiers are:
+
+- `formatAs` (D-282) — the collection-to-string terminator module. A bare
+  `<expr>.formatAs` with no following method call is additionally an error,
+  because `formatAs` carries compiler-rewrite sugar.
+- `select` (D-320) — reserved so the `select` statement (§3) and the universal
+  pipeline transform `arr.select(fn)` (D-280) can share the name. Unlike
+  `formatAs`, `select` is an ordinary method, so `.select` is plain member
+  access with no bare-member rule.
+
+Reserving an identifier rather than adding a keyword keeps a name usable as a
+method while removing it from the binding namespace. No registered native method
+name may collide with a reserved word; the consistency suite (D-316) checks this
+mechanically, so a new built-in whose name shadows a keyword fails the build
+rather than shipping as a call no source program can write.
 
 ---
 

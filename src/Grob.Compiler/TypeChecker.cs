@@ -253,6 +253,32 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         return null;
     }
 
+    // -----------------------------------------------------------------------
+    // Reserved identifiers (D-320, generalised from D-282).
+    //
+    // 'formatAs' and 'select' lex as ordinary identifiers and stay legal as member
+    // names after '.', but they may not be bound by user code — a field, parameter,
+    // local or function name. Both names consult this single set so the rule cannot
+    // diverge. 'formatAs' additionally carries a bare-member rule (D-282); 'select'
+    // does not — it is an ordinary method.
+    // -----------------------------------------------------------------------
+    private static readonly HashSet<string> _reservedIdentifiers =
+        new(StringComparer.Ordinal) { "formatAs", "select" };
+
+    /// <summary>
+    /// Emits <see cref="ErrorCatalog.E1103"/> when <paramref name="name"/> is a
+    /// reserved identifier used as a binding name. Called at every binding-declaration
+    /// site — local, function name, parameter and type field.
+    /// </summary>
+    private void CheckReservedBindingName(string name, SourceRange range) {
+        if (_reservedIdentifiers.Contains(name)) {
+            EmitError(ErrorCatalog.E1103,
+                $"'{name}' is a reserved identifier and cannot be used as a binding name. "
+              + "Rename the binding.",
+                range);
+        }
+    }
+
     private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode) {
         _scopes.Peek()[name] = new Symbol {
             Name = name,

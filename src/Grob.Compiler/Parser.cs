@@ -439,6 +439,15 @@ public sealed class Parser {
     }
 
     private Statement ParseStatement() {
+        // 'select' is a reserved identifier, not a keyword (D-320), so it arrives as
+        // an Identifier. At statement head it has exactly one statement meaning —
+        // the select statement — recognised by a following '('. A leading 'select'
+        // used as a binding name ('select :=', 'select: T :=') falls through to the
+        // declaration path so the type checker reports E1103. Any other leading
+        // 'select' is a malformed select statement.
+        if (Current.Kind == TokenKind.Identifier && Current.Lexeme == "select") {
+            return ParseLeadingSelectStatement();
+        }
         switch (Current.Kind) {
             case TokenKind.LeftBrace: return ParseBlock();
             case TokenKind.If: return ParseIf();
@@ -456,7 +465,6 @@ public sealed class Parser {
                     return new ContinueStmt(RangeFrom(s));
                 }
             case TokenKind.Try: return ParseTry();
-            case TokenKind.Select: return ParseSelect();
             case TokenKind.Const: return ParseConstDeclAsStatement();
             default: return ParseExpressionOrAssignmentStatement();
         }
@@ -582,9 +590,27 @@ public sealed class Parser {
         return new CatchClause(RangeFrom(start), exceptionType, exceptionVar, body);
     }
 
+    /// <summary>
+    /// Dispatches a leading 'select' identifier at statement head (D-320). The
+    /// caller has confirmed <see cref="Current"/> is the identifier 'select'.
+    /// </summary>
+    private Statement ParseLeadingSelectStatement() {
+        TokenKind next = PeekAt(1).Kind;
+        if (next == TokenKind.LeftParen) return ParseSelect();
+        // A binding-declaration form ('select :=' or 'select: T :=') is a name use,
+        // not a statement: parse it normally so the type checker reports E1103.
+        if (next == TokenKind.ColonAssign || next == TokenKind.Colon) {
+            return ParseExpressionOrAssignmentStatement();
+        }
+        throw Fail(_e2001,
+            "'select' must be followed by '(' — the select statement form is "
+          + "'select (subject) { case ... }'");
+    }
+
     private SelectStmt ParseSelect() {
         SourceLocation start = Current.Location;
-        Expect(TokenKind.Select, _e2001, "expected 'select'");
+        // 'select' lexes as an identifier (D-320); consume it as the statement head.
+        Advance();
         Expect(TokenKind.LeftParen, _e2001, "expected '(' before select subject");
         Expression subject = ParseExpression();
         Expect(TokenKind.RightParen, _e2001, "expected ')' after select subject");

@@ -86,6 +86,7 @@ read by `grob --explain Exxxx`.
 | E1003 | undefined module                                   | Name resolution   | pre-release           |
 | E1101 | shadowed declaration                               | Name resolution   | pre-release (warning) |
 | E1102 | variable already declared in this scope            | Name resolution   | pre-release           |
+| E1103 | reserved identifier used as a binding name         | Name resolution   | pre-release           |
 | E1201 | forward reference inside function body             | Name resolution   | pre-release           |
 | E1202 | use before declaration in block scope              | Name resolution   | pre-release           |
 | E2001 | unexpected token                                   | Syntax            | pre-release           |
@@ -494,6 +495,16 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** A `:=` declaration was applied to a name that already exists in the current scope. Use `=` to reassign an existing binding.
 - **Source decision:** Sprint 3 Increment A.
+
+---
+
+### E1103 — reserved identifier used as a binding name
+
+- **Category:** Name resolution
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A reserved identifier was used as a binding name — a field, parameter, local or function. Reserved identifiers lex as ordinary identifiers and stay legal as member names after a `.`, but they may not be bound by user code. The v1 reserved identifiers are `formatAs` (D-282) and `select` (D-320). Rename the binding. This is what lets the `select` statement and the `arr.select(fn)` pipeline transform (D-280) share the name, and what lets `formatAs` be a module accessor without occupying the binding namespace.
+- **Source decision:** D-320 (rule generalised from D-282; the `formatAs` reserved-identifier rule shipped without a code and is now covered here).
 
 ---
 
@@ -1240,7 +1251,7 @@ None as of v1.
 
 ---
 
-**Total: 107 codes across 7 categories.** This is the canonical current count;
+**Total: 108 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
@@ -1259,3 +1270,5 @@ _Updated June 2026 — D-315: E2211 retitled to `break` inside `select` and E221
 _Updated June 2026 (interlude A, D-316) — canonical total corrected from a stale "99 codes" to the actual 103 present in the summary index and `ErrorCatalog`. Four codes had accrued without a footer count update: E0205 (Sprint 3), E1102 (Sprint 3), E2211 and E2212 (Sprint 4, D-315). No codes were added, removed or renumbered by this edit; the drift was in the prose total alone. A standing total line has been added above and the count is now gated by `Grob.Consistency.Tests` so this class of drift cannot recur silently._
 
 _Updated June 2026 — Sprint 5 Increment B added the four named-argument call-site diagnostics E0008–E0011 (named-before-positional, naming a required parameter, duplicate named argument, unknown parameter name) in the E00xx sub-block of the Type category, bringing the total to 107 codes. Source decision D-318 (D-113)._
+
+_Updated June 2026 — Sprint 5 correctness increment added E1103 (reserved identifier used as a binding name) in the E11xx sub-block of the Name resolution category, bringing the total to 108 codes. The code covers both `select` (D-320) and `formatAs` (D-282) — D-282's reserved-identifier rule had shipped with no code. Source decision D-320._

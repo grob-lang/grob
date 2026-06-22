@@ -317,6 +317,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-317 | June 2026                                                         | Tooling — supply chain        | Project hardening interlude (Sprint 4→5): central package management with exact pins and committed lockfiles under locked-mode restore, NuGet and CodeQL vulnerability gates, deterministic builds with SourceLink, SHA-pinned least-privilege workflows, gitleaks CI secret scanning, and CycloneDX SBOM and build-provenance scaffolding. Additive repository hardening; complements §11 language/runtime security, does not overlap it. Code signing deferred to first public release (OQ-018) |
 | D-318 | June 2026                                                         | Type system — named-arg diagnostics | Named-argument call-site errors (D-113) get dedicated codes E0008–E0011 — named-before-positional, naming a required parameter, duplicate named argument, unknown parameter name — rather than folding into E0003. Registered in Sprint 5 Increment B through their `ErrorCatalog` descriptors |
 | D-319 | June 2026                                                         | Tooling — playground          | Browser playground is a client-side Blazor WASM embedding host on the existing Azure SWA (Route 1 — nothing sent to a server) wiring an alternate capability set: `fs`→in-memory virtual filesystem, `env`→synthetic map, `process`→unsupported (in-hierarchy host error, no new code). Requires a pure embeddable engine — OS contact behind injected host capabilities (in `Grob.Runtime`, confirmed DAG-clean), `exit` already handled via the existing `ExitSignal` (D-274), VM fresh per run (D-300). Dispatch-loop cancellation/step-budget seam adopted into v1 and folded into Sprint 5 Increment C (counter on the VM instance so it spans the re-entrant bridge; surfaces as `OperationCanceledException`, outside `GrobError`); rest of the playground build deferred post-v1 |
+| D-320 | June 2026                                                         | Lexer/parser — name collision | `select` is a reserved identifier, not a hard keyword (the D-282 `formatAs` mechanism): the lexer emits `Identifier` and `select` leaves the keyword set, the statement parser promotes a leading `select (` at statement head, and `expr.select(...)` parses as member access. Resolves the D-280 (`.select()` universal transform) vs D-301 (`select` statement) collision that made `.select(...)` ungrammatical from source though checker/VM/compiler supported it — blocking six release-gate scripts (3, 5, 7, 8, 9, 12). The type checker forbids `select` as a binding name; adds E1103 (reserved identifier used as a binding name), also covering `formatAs`'s previously code-less rule. v1 reserved set `{ formatAs, select }`. Consistency gate (D-316) gains a native-method-name vs reserved-word check. Implemented as a Sprint 5 correctness increment after Increment C; D/E/F unchanged |
 
 ---
 
@@ -3221,6 +3222,73 @@ disposition and the accommodation map — is in
 
 ---
 
+### D-320 — `select` is a reserved identifier, not a hard keyword (June 2026)
+
+Area: Lexer / parser — keyword vs method-name collision
+Supersedes: none
+Superseded by: none
+
+**Context.** D-280 made `.select()` the single universal pipeline
+transformation on `T[]` — the LINQ-for-scripting identity move. D-301 made
+`select` the non-exhaustive multi-branch statement keyword. The two collide. A
+lexer that reserves `select` emits a keyword token, so the member-access parser
+— which expects an identifier after `.` — rejects `arr.select(...)`. The type
+checker, compiler and VM never meet that barrier because they operate on the
+registered native, so they support a call no source program can write.
+`grob-language-fundamentals.md` §12 already uses `.select(...)` as the canonical
+pipeline form while §3 reserves the word: the spec demonstrates a call its own
+lexer forbids. The consequence is not cosmetic — six of the thirteen
+release-gate scripts (3, 5, 7, 8, 9 and 12) call `.select(...)` from source and
+cannot parse under keyword lexing, so the headline transform is reachable only
+from C# test harnesses calling the native directly.
+
+**The decision — `select` is a reserved identifier, not a keyword.** This is
+the mechanism D-282 established for `formatAs`. The lexer emits `Identifier` for
+`select` and `select` leaves the keyword set. The statement parser promotes a
+leading `select (` at statement-head position to the `select` statement;
+everywhere else — after `.`, or as a primary — `select` is an ordinary
+identifier, so `expr.select(...)` parses as member access. Because a reserved
+identifier can never be bound by user code, a leading `select (` at statement
+head has exactly one possible meaning: there is no lookahead heuristic and no
+grammar ambiguity. The type checker forbids `select` as a declared binding name
+— field, parameter, local or function — under the same rule that already
+governs `formatAs`.
+
+**A gap in D-282, now filled.** D-282 shipped the reserved-identifier rule for
+`formatAs` with no error code. A single new code — **E1103, reserved identifier
+used as a binding name** — serves both `formatAs` and `select`. The v1
+reserved-identifier set is `{ formatAs, select }`. The two are not identical in
+every respect: `formatAs` is compiler-rewrite sugar with a bare-member rule
+(`<expr>.formatAs` without a following call is an error), whereas `select` is an
+ordinary method, so no bare-member rule attaches to it — `.select` is plain
+member access. `case` and `default` remain hard keywords; they have no method
+form, so there is no collision to resolve.
+
+**Alternatives rejected.** Reverting D-280 to `map`, or renaming the `select`
+statement, each dodges the collision by weakening a deliberate identity
+decision. Collapsing the statement into a `switch` statement removes this
+instance but not the class, and reopens the settled statement/expression naming
+split (D-301). The reserved-identifier route keeps both D-280 and D-301 intact
+and generalises to any future keyword/method clash — which the consistency gate
+(D-316) now enforces mechanically: a new check in `Grob.Consistency.Tests`
+asserts that no registered native method name collides with a reserved word, so
+this class of drift cannot recur silently.
+
+**Spec and implementation.** Spec text: `grob-language-fundamentals.md` §3 (the
+select-statement lexing note) and a new "Reserved identifiers" subsection in
+§12; `grob-error-codes.md` E1103; the `TokenKind` keyword list in
+`grob-v1-requirements.md`. Implemented as a Sprint 5 **correctness increment**
+slotted immediately after the merged Increment C, ahead of D/E/F — the parser
+must accept `.select` before the increment that registers the array
+higher-order natives and before the six scripts can run, and the fix is
+independent of the closure and named-argument work. It legitimately edits
+already-merged Sprint 4 lexer behaviour — the `select` statement shipped
+reserving the keyword — which is within this increment's declared scope, not a
+closed-surface breach. The feature increments D, E and F keep their letters; no
+F→G renumber.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3442,6 +3510,27 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 — D-320: `select` is a reserved identifier, not a hard_
+_keyword. D-280 made `.select()` the universal pipeline transform and D-301 made_
+_`select` the statement keyword; reserving the word as a keyword made_
+_`arr.select(...)` ungrammatical from source even though the checker, VM and_
+_compiler supported it — and §12 of `grob-language-fundamentals.md` already used_
+_`.select(...)` as the canonical pipeline form, so the spec demonstrated a call_
+_its own lexer forbade. Six release-gate scripts (3, 5, 7, 8, 9, 12) were blocked._
+_Resolution is the D-282 `formatAs` mechanism: the lexer emits `Identifier`,_
+_`select` leaves the keyword set, the statement parser promotes a leading_
+_`select (` at statement head, `expr.select(...)` parses as member access, and_
+_the type checker forbids `select` as a binding name. Fills a gap D-282 left —_
+_its reserved-identifier rule had no error code — by adding E1103 (reserved_
+_identifier used as a binding name), serving both `formatAs` and `select`; v1_
+_reserved set `{ formatAs, select }`. The consistency gate (D-316) gains a check_
+_asserting no registered native method name collides with a reserved word. Edits:_
+_decisions-log full entry + summary index row; `grob-language-fundamentals.md` §3_
+_lexing note and a new §12 "Reserved identifiers" subsection;_
+_`grob-error-codes.md` E1103 (total 107→108); `grob-v1-requirements.md` `TokenKind`_
+_keyword list (`select` moved to a reserved-identifiers note). Implemented as a_
+_Sprint 5 correctness increment after the merged Increment C; feature increments_
+_D, E and F keep their letters — no F→G renumber._
 _Updated June 2026 — Playground follow-up: D-319 refined against the live_
 _`grob-solution-architecture.md` and the Sprint 5 increment prompts. DAG home_
 _confirmed — the host capability interfaces sit in `Grob.Runtime` beside_

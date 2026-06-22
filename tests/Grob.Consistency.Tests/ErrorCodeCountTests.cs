@@ -47,11 +47,12 @@ public sealed class ErrorCodeCountTests {
     }
 
     [Fact]
-    public void Corpus_HasTheExpectedLiveCountOf107() {
+    public void Corpus_HasTheExpectedLiveCountOf108() {
         // A standing anchor: if the count legitimately changes, this and the
         // canonical footer line move together, by intent, in the same change.
-        Assert.Equal(107, ConsistencyChecks.ActualErrorCatalogCount());
-        Assert.Equal(107, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
-        Assert.Equal(107, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
+        // D-320 added E1103 (reserved identifier used as a binding name): 107 -> 108.
+        Assert.Equal(108, ConsistencyChecks.ActualErrorCatalogCount());
+        Assert.Equal(108, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
+        Assert.Equal(108, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
     }
 }

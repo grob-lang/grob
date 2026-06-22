@@ -536,7 +536,11 @@ public sealed class Lexer {
             "catch" => TokenKind.Catch,
             "finally" => TokenKind.Finally,
             "throw" => TokenKind.Throw,
-            "select" => TokenKind.Select,
+            // 'select' is a reserved identifier, not a hard keyword (D-320): it lexes
+            // as an identifier so it stays legal as a member name after '.' (the
+            // 'arr.select(fn)' pipeline transform, D-280). The statement parser
+            // promotes a leading 'select (' at statement head; the type checker
+            // forbids binding it (E1103).
             "case" => TokenKind.Case,
             "default" => TokenKind.Default,
             "break" => TokenKind.Break,
