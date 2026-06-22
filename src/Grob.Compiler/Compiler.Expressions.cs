@@ -458,10 +458,10 @@ public sealed partial class Compiler {
         // parameters) default to Int — the same optimistic convention used in
         // ComparisonCategory. A lambda that passes a float array gets a VM-level
         // type fault; typed parameter inference (Increment D) will fix this.
+        // When baseType is Unknown both operands are non-float by construction, so the
+        // Unknown fallback can only ever be Int.
         GrobType baseType = (lt == GrobType.Float || rt == GrobType.Float) ? GrobType.Float : lt;
-        GrobType resultType = baseType == GrobType.Unknown
-            ? (rt == GrobType.Float ? GrobType.Float : GrobType.Int)
-            : baseType;
+        GrobType resultType = baseType == GrobType.Unknown ? GrobType.Int : baseType;
 
         Visit(node.Left);
         if (leftNeedsCoerce) {

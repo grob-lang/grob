@@ -121,8 +121,6 @@ public sealed class VirtualMachineCancellationTests {
         // This test verifies the type invariant that makes Grob catch blocks unable
         // to swallow cancellation: no amount of Grob error handling code can observe
         // or suppress an OperationCanceledException.
-        var cancelled = new OperationCanceledException();
-
         Assert.False(typeof(GrobRuntimeException).IsAssignableFrom(typeof(OperationCanceledException)),
             "OperationCanceledException must not inherit from GrobRuntimeException; " +
             "otherwise a Grob catch block could suppress VM cancellation.");

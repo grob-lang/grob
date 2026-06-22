@@ -61,10 +61,15 @@ public sealed class TypeCheckerLambdaTests {
             $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
 
         IReadOnlyList<IdentifierExpr> identifiers = CollectIdentifiers(unit);
+        Assert.NotEmpty(identifiers); // sanity: at least 'arr' and 'x'
         foreach (IdentifierExpr id in identifiers) {
-            // §3.1.1: Declaration must never be null after type-check.
-            // Lambda parameter identifiers are registered as GrobType.Unknown (inferred),
-            // so we do not assert on ResolvedType — Unknown is valid for parameters.
+            // §3.1.1, both sides. Declaration must never be null after type-check.
+            // ResolvedType is a non-nullable enum (Assert.NotNull would be an xUnit2002
+            // error), so the type-side check is "not the Error sentinel" — on a clean
+            // path no identifier should carry GrobType.Error. A lambda parameter's
+            // ResolvedType is legitimately GrobType.Unknown (inferred), which is a valid
+            // resolved value, not the error sentinel.
+            Assert.NotEqual(GrobType.Error, id.ResolvedType);
             Assert.NotNull(id.Declaration);
         }
     }
@@ -87,10 +92,10 @@ public sealed class TypeCheckerLambdaTests {
         IReadOnlyList<IdentifierExpr> identifiers = CollectIdentifiers(unit);
         Assert.NotEmpty(identifiers); // sanity: at least 'arr' and 'x'
         foreach (IdentifierExpr id in identifiers) {
-            // §3.1.1: Declaration must never be null after type-check.
-            // Note: ResolvedType is NOT checked against 'default' here because lambda
-            // parameters are legitimately Unknown (GrobType.Unknown == default(GrobType) == 0);
-            // 'Unknown' is the correct inferred type for parameters, not an unset sentinel.
+            // §3.1.1, both sides. ResolvedType is a non-nullable enum, so the type-side
+            // check is "not the Error sentinel"; a lambda parameter's legitimately-Unknown
+            // type is a valid resolved value, not the error sentinel.
+            Assert.NotEqual(GrobType.Error, id.ResolvedType);
             Assert.True(id.Declaration != null, $"'{id.Name}' has no Declaration");
         }
     }
@@ -107,9 +112,14 @@ public sealed class TypeCheckerLambdaTests {
             })
             """);
 
-        // Block body is visited — no invariant violation expected.
+        // Block body is visited — no invariant violation expected. Assert the bag is
+        // clean and the collection is non-empty so the loop cannot pass vacuously.
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
         IReadOnlyList<IdentifierExpr> identifiers = CollectIdentifiers(unit);
+        Assert.NotEmpty(identifiers); // sanity: at least 'arr', 'x', 'y'
         foreach (IdentifierExpr id in identifiers) {
+            Assert.NotEqual(GrobType.Error, id.ResolvedType);
             Assert.True(id.Declaration != null, $"'{id.Name}' has null Declaration");
         }
     }
@@ -171,7 +181,12 @@ public sealed class TypeCheckerLambdaTests {
             arr := [3, 1, 2]
             result := arr.sort(x => x, 42)
             """);
-        Assert.Contains(bag.Errors, d => d.Code == "E0004");
+        // Full diagnostic contract: exact code, 1-based line and column. The error
+        // points at the offending '42' argument on line 2, column 28.
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(28, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -215,7 +230,12 @@ public sealed class TypeCheckerLambdaTests {
             arr := [1, 2, 3]
             result := arr.filter(x => 42)
             """);
-        Assert.Contains(bag.Errors, d => d.Code == "E0004");
+        // Full diagnostic contract: exact code, 1-based line and column. The error
+        // points at the offending predicate lambda 'x => 42' on line 2, column 22.
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(22, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -272,7 +292,11 @@ public sealed class TypeCheckerLambdaTests {
             y: int := x + 2
             """);
         Assert.False(bag.HasErrors);
-        foreach (IdentifierExpr id in CollectIdentifiers(unit))
+        IReadOnlyList<IdentifierExpr> identifiers = CollectIdentifiers(unit);
+        Assert.NotEmpty(identifiers);
+        foreach (IdentifierExpr id in identifiers) {
+            Assert.NotEqual(GrobType.Error, id.ResolvedType);
             Assert.NotNull(id.Declaration);
+        }
     }
 }

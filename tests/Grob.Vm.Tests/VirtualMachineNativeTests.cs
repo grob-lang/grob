@@ -36,8 +36,7 @@ public sealed class VirtualMachineNativeTests {
         int calleeIdx = chunk.AddConstant(callee);
         chunk.WriteOpCode(OpCode.Constant, 1);
         chunk.WriteByte((byte)calleeIdx, 1);
-        foreach (GrobValue arg in argValues) {
-            int argIdx = chunk.AddConstant(arg);
+        foreach (int argIdx in argValues.Select(chunk.AddConstant)) {
             chunk.WriteOpCode(OpCode.Constant, 1);
             chunk.WriteByte((byte)argIdx, 1);
         }
@@ -509,8 +508,8 @@ public sealed class VirtualMachineNativeTests {
             // Wrap the array method behaviour for a controlled test:
             // call invoker on elements [10, 20, 30] manually.
             GrobValue fn = args[0];
-            foreach (long v in new[] { 10L, 20L, 30L }) {
-                GrobValue result = invoker(fn, [GrobValue.FromInt(v)]);
+            foreach (GrobValue arg in new[] { 10L, 20L, 30L }.Select(GrobValue.FromInt)) {
+                GrobValue result = invoker(fn, [arg]);
                 visited.Add(result.AsInt());
             }
             return GrobValue.Nil;

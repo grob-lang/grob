@@ -84,11 +84,9 @@ public sealed class CompilerLambdaTests {
     /// </summary>
     private static BytecodeFunction FirstLambdaConstant(Chunk chunk) {
         List<Instr> instrs = Decode(chunk);
-        foreach (Instr instr in instrs) {
-            if (instr.Op is OpCode.Constant or OpCode.ConstantLong) {
-                GrobValue v = chunk.ReadConstant(instr.Arg);
-                if (v.IsFunction && v.AsFunction() is BytecodeFunction bf) return bf;
-            }
+        foreach (Instr instr in instrs.Where(i => i.Op is OpCode.Constant or OpCode.ConstantLong)) {
+            GrobValue v = chunk.ReadConstant(instr.Arg);
+            if (v.IsFunction && v.AsFunction() is BytecodeFunction bf) return bf;
         }
         throw new InvalidOperationException("No BytecodeFunction constant found in chunk.");
     }
@@ -180,11 +178,9 @@ public sealed class CompilerLambdaTests {
         // Find the Constant opcode that's NOT GetLocal(x) — must be the inlined 5.
         // The lambda body is: GetLocal(x), Constant(5), GreaterInt, Return, Nil, Return.
         GrobValue? inlinedConst = null;
-        foreach (Instr instr in instrs) {
-            if (instr.Op == OpCode.Constant) {
-                GrobValue v = fn.Bytecode.ReadConstant(instr.Arg);
-                if (v.Kind == GrobValueKind.Int && v.AsInt() == 5) { inlinedConst = v; break; }
-            }
+        foreach (Instr instr in instrs.Where(i => i.Op == OpCode.Constant)) {
+            GrobValue v = fn.Bytecode.ReadConstant(instr.Arg);
+            if (v.Kind == GrobValueKind.Int && v.AsInt() == 5) { inlinedConst = v; break; }
         }
         Assert.True(inlinedConst.HasValue, "Expected inlined constant '5' in lambda chunk.");
     }
@@ -282,23 +278,20 @@ public sealed class CompilerLambdaTests {
 
     [Fact]
     public void EmptyBlockBodyLambda_EmitsNilAndReturn() {
-        // A sort lambda with an empty block body '{}'.  This is syntactically valid
-        // and the compiler must emit a safety-net Nil + Return so the VM always has
-        // a value to return on the stack.
-        // NOTE: arr.sort(x => {}) returns nil as the key for all elements — the sort
-        // is a no-op in terms of ordering, but the compiler must not crash.
+        // A sort lambda with a genuinely empty block body '{}'.  This is syntactically
+        // valid and type-checks clean (Comparable validation on the nil key is deferred
+        // to Increment D, and only surfaces at VM runtime — not at compile time).  The
+        // compiler must emit a safety-net Nil + Return so the VM always has a value to
+        // return on the stack from the empty-block path.
         Chunk outer = CompileSource("""
             arr := [1, 2, 3]
             arr.sort(x => {
-            x > 0
             })
             """);
 
         BytecodeFunction fn = FirstLambdaConstant(outer);
         List<OpCode> ops = Opcodes(fn.Bytecode);
-        Assert.Contains(OpCode.Return, ops);
-        // Safety-net: Nil must appear (the last instructions are Nil + Return as a
-        // fallthrough guard, regardless of whether an explicit return was emitted).
-        Assert.Contains(OpCode.Nil, ops);
+        // The empty block falls straight through to the safety-net Nil + Return.
+        Assert.Equal([OpCode.Nil, OpCode.Return], ops);
     }
 }

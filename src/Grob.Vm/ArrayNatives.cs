@@ -45,7 +45,9 @@ internal static class ArrayNatives {
             if (keep.AsBool())
                 result.Add(element);
         }
-        return GrobValue.FromArray(new GrobArray([.. result]));
+        // Pass the List directly — GrobArray takes IEnumerable<GrobValue> and copies
+        // once; a [.. result] spread would add a redundant intermediate array.
+        return GrobValue.FromArray(new GrobArray(result));
     }
 
     // -----------------------------------------------------------------------
