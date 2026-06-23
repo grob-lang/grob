@@ -199,7 +199,8 @@ public sealed partial class Compiler {
     /// names not found in the sub-compiler's local scopes — correct for top-level
     /// <c>readonly</c> (category 2) and mutable (category 3). Writes inside block-body
     /// lambdas similarly emit <see cref="OpCode.SetGlobal"/>. Category 4 (enclosing-
-    /// function-local capture) is Increment D; no upvalue opcodes are emitted here.</para>
+    /// function-local capture) emits <see cref="OpCode.GetUpvalue"/>/<see cref="OpCode.SetUpvalue"/>
+    /// and wraps the function in a <see cref="OpCode.Closure"/> instruction (Sprint 5 Increment D).</para>
     ///
     /// <para><b>Block-body return semantics (D-276).</b> When the body is a
     /// <see cref="LambdaBlockBody"/>, compilation proceeds statement-by-statement. The
@@ -211,7 +212,9 @@ public sealed partial class Compiler {
     /// </remarks>
     public override object? VisitLambda(LambdaExpr node) {
         int line = node.Range.Start.Line;
-        var sub = new Compiler(_constValues);
+        // Pass `this` as the enclosing compiler so ResolveUpvalue can find
+        // locals of the current function (category 4, D-296 / D-115).
+        var sub = new Compiler(_constValues, enclosing: this);
 
         // Lambda parameters occupy the first local slots (slot 0, 1, …).
         sub._localScopes.Push([]);
@@ -250,8 +253,23 @@ public sealed partial class Compiler {
         sub._chunk.WriteOpCode(OpCode.Nil, line);
         sub._chunk.WriteOpCode(OpCode.Return, line);
 
-        var fn = new BytecodeFunction(string.Empty, node.Parameters.Count, sub._chunk);
-        EmitConstant(GrobValue.FromFunction(fn), line);
+        int uvCount = sub._upvalues.Count;
+        var fn = new BytecodeFunction(string.Empty, node.Parameters.Count, sub._chunk, uvCount);
+
+        if (uvCount == 0) {
+            // No captures — the cheaper non-closure path (categories 1–3).
+            EmitConstant(GrobValue.FromFunction(fn), line);
+        } else {
+            // Category-4 captures present: emit Closure opcode + descriptor bytes.
+            // Layout: Closure <poolIdx:1> (<isLocal:1> <index:1>) × uvCount
+            int poolIdx = _chunk.AddConstant(GrobValue.FromFunction(fn));
+            _chunk.WriteOpCode(OpCode.Closure, line);
+            _chunk.WriteByte(ToByteOperand(poolIdx, "closure fn index"), line);
+            foreach (UpvalueDescriptor uv in sub._upvalues) {
+                _chunk.WriteByte((byte)(uv.IsLocal ? 1 : 0), line);
+                _chunk.WriteByte(ToByteOperand(uv.Index, "upvalue index"), line);
+            }
+        }
         return null;
     }
 
