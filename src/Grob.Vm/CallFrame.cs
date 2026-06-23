@@ -39,4 +39,12 @@ internal struct CallFrame {
     /// arm can thread upvalues transitively through enclosing closures.
     /// </summary>
     internal Closure? ActiveClosure;
+
+    /// <summary>
+    /// The function executing in this frame — the call target of the
+    /// <see cref="OpCode.Call"/> that pushed it. Used only to name the enclosing
+    /// function when composing the circular-initialisation diagnostic (E5902,
+    /// §19.1, D-321); it carries no per-instruction cost.
+    /// </summary>
+    internal GrobFunction? Callee;
 }

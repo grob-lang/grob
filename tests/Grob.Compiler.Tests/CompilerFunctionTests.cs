@@ -226,4 +226,55 @@ public sealed class CompilerFunctionTests {
             """);
         Assert.Contains(OpCode.AddInt, Opcodes(chunk));
     }
+
+    // -----------------------------------------------------------------------
+    // fn hoisting (D-321): a top-level fn binding is established in a prologue
+    // emitted before the first top-level statement, so a statement that calls a
+    // function declared later in source resolves and runs.
+    // -----------------------------------------------------------------------
+
+    /// <summary>Returns the global name a <see cref="OpCode.DefineGlobal"/> binds.</summary>
+    private static string DefineGlobalName(Chunk chunk, Instr defineGlobal) =>
+        chunk.ReadConstant(defineGlobal.Arg).AsString();
+
+    [Fact]
+    public void ForwardFunctionCall_Compiles_AndBindsFunctionBeforeTheCall() {
+        // print(greet()) precedes 'fn greet' in source; the fn DefineGlobal must be
+        // hoisted ahead of the Call so the slot is Initialised at the call site.
+        Chunk chunk = CompileSource("""
+            print(greet())
+            fn greet(): string {
+            return "hi"
+            }
+            """);
+        List<Instr> instrs = Decode(chunk);
+
+        Instr greetBind = Assert.Single(
+            instrs, i => i.Op == OpCode.DefineGlobal && DefineGlobalName(chunk, i) == "greet");
+        Instr call = Assert.Single(instrs, i => i.Op == OpCode.Call);
+
+        Assert.True(greetBind.Offset < call.Offset,
+            "the fn's DefineGlobal must be emitted in the prologue, before the forward call");
+    }
+
+    [Fact]
+    public void TopLevelFns_AreHoisted_AheadOfTopLevelStatementCode() {
+        // The mutable top-level binding 'x' is declared before the fn in source, but
+        // the fn's DefineGlobal is hoisted into the prologue ahead of x's DefineGlobal.
+        Chunk chunk = CompileSource("""
+            x := 1
+            fn f(): int {
+            return 2
+            }
+            """);
+        List<Instr> instrs = Decode(chunk);
+
+        Instr fBind = Assert.Single(
+            instrs, i => i.Op == OpCode.DefineGlobal && DefineGlobalName(chunk, i) == "f");
+        Instr xBind = Assert.Single(
+            instrs, i => i.Op == OpCode.DefineGlobal && DefineGlobalName(chunk, i) == "x");
+
+        Assert.True(fBind.Offset < xBind.Offset,
+            "the fn prologue runs before any top-level value-binding code");
+    }
 }

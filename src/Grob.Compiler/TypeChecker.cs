@@ -101,8 +101,13 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // at the top-level scope, and so that call sites do not get E1001.
         RegisterBuiltins();
 
-        // Pass 1 — register top-level fn and type declarations so that function
-        // bodies can reference declarations appearing later in the same file (D-166).
+        // Pass 1 — register top-level fn and type declarations, and top-level value
+        // bindings (readonly and mutable :=), so that function bodies can reference
+        // any top-level declaration appearing later in the same file (D-166, D-321).
+        // Value bindings register with GrobType.Unknown here (the initialiser type is
+        // not yet known); pass 2 re-registers each with its inferred type when it
+        // visits the declaration, so a forward reference resolves to Unknown (permissive)
+        // rather than E1001, while a backward reference still sees the precise type.
         foreach (AstNode item in unit.TopLevel) {
             switch (item) {
                 case FnDecl fn:
@@ -110,6 +115,12 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
                     break;
                 case TypeDecl td:
                     RegisterSymbol(td.Name, GrobType.Unknown, td.Range.Start, td);
+                    break;
+                case ReadonlyDecl ro:
+                    RegisterSymbol(ro.Name, GrobType.Unknown, ro.Range.Start, ro, provisional: true);
+                    break;
+                case VarDeclStmt vd:
+                    RegisterSymbol(vd.Name, GrobType.Unknown, vd.Range.Start, vd, provisional: true);
                     break;
             }
         }
@@ -304,12 +315,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         }
     }
 
-    private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode) {
+    private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode,
+                               bool provisional = false) {
         _scopes.Peek()[name] = new Symbol {
             Name = name,
             Type = type,
             DeclaredAt = declaredAt,
             DeclarationNode = declarationNode,
+            Provisional = provisional,
         };
     }
 

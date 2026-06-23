@@ -118,6 +118,55 @@ public sealed class VirtualMachineGlobalInitTests {
     }
 
     // -----------------------------------------------------------------------
+    // The E5902 message traces through the function (D-321, §19.1): it names the
+    // binding being initialised, the function that performed the read, and the
+    // uninitialised binding read, each with its source line.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CircularInitialisation_Message_TracesThroughTheFunction() {
+        // fn computeA(): reads B and returns it. (B is declared later.)
+        var computeAChunk = new Chunk();
+        byte bNameInA = NameByte(computeAChunk, "B");
+        computeAChunk.WriteOpCode(OpCode.GetGlobal, 5); computeAChunk.WriteByte(bNameInA, 5);
+        computeAChunk.WriteOpCode(OpCode.Return, 5);
+        var computeA = new BytecodeFunction("computeA", 0, computeAChunk);
+
+        // script (functions hoisted into the prologue):
+        //   Constant <computeA>; DefineGlobal computeA   ; line 4 — Initialised in prologue
+        //   Constant <computeA>; Call 0                  ; line 1 — A's initialiser reads B -> E5902
+        //   DefineGlobal A                               ; line 1 — A is the binding being initialised
+        //   Constant 0; DefineGlobal B                   ; line 2 — B declared later
+        //   Return
+        var script = new Chunk();
+        byte aName = NameByte(script, "A");
+        byte bName = NameByte(script, "B");
+        byte zero = IntByte(script, 0L);
+        int computeAConst = script.AddConstant(GrobValue.FromFunction(computeA));
+        script.WriteOpCode(OpCode.Constant, 4); script.WriteByte((byte)computeAConst, 4);
+        script.WriteOpCode(OpCode.DefineGlobal, 4); script.WriteByte(NameByte(script, "computeA"), 4);
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)computeAConst, 1);
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(0, 1);
+        script.WriteOpCode(OpCode.DefineGlobal, 1); script.WriteByte(aName, 1);
+        script.WriteOpCode(OpCode.Constant, 2); script.WriteByte(zero, 2);
+        script.WriteOpCode(OpCode.DefineGlobal, 2); script.WriteByte(bName, 2);
+        script.WriteOpCode(OpCode.Return, 2);
+
+        var (vm, _) = NewVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
+
+        Assert.Equal("E5902", ex.Code);
+        // Binding being initialised: A on line 1.
+        Assert.Contains("'A'", ex.Message);
+        Assert.Contains("line 1", ex.Message);
+        // The function that performed the read.
+        Assert.Contains("computeA", ex.Message);
+        // The uninitialised binding read: B on line 2.
+        Assert.Contains("'B'", ex.Message);
+        Assert.Contains("line 2", ex.Message);
+    }
+
+    // -----------------------------------------------------------------------
     // Steady-state read: a function called during startup reads a global that
     // has already been initialised. The slot is Initialised, so the startup
     // check passes and no E5902 fires.
