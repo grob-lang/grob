@@ -63,6 +63,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 5E init-state-machine and narrowing fixtures. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-5e\*.grob"
+             Link="fixtures\sprint-5e\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>

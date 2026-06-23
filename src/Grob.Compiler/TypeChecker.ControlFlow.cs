@@ -20,9 +20,46 @@ public sealed partial class TypeChecker {
                 $"'if' condition must be 'bool'; found '{TypeName(condType)}'.",
                 node.Condition.Range);
         }
+
+        // Flow-sensitive narrowing (§6): an `if (x != nil)` guard narrows x from T?
+        // to T for the extent of the then-block. The narrowing is added only when x
+        // is a nullable binding not already narrowed by an enclosing guard, and is
+        // removed on leaving the block — it does not reach the else-branch.
+        string? narrowedName = TryExtractNilGuard(node.Condition);
+        bool addedNarrowing = false;
+        if (narrowedName is not null && !_narrowedTypes.ContainsKey(narrowedName)) {
+            Symbol? sym = LookupSymbol(narrowedName);
+            if (sym is not null && GrobTypeHelpers.IsNullable(sym.Type)) {
+                _narrowedTypes[narrowedName] = GrobTypeHelpers.ElementType(sym.Type);
+                addedNarrowing = true;
+            }
+        }
+
         Visit(node.Then);
+
+        if (addedNarrowing) _narrowedTypes.Remove(narrowedName!);
+
         if (node.Else is not null) Visit(node.Else);
         return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Returns the binding name narrowed by <paramref name="condition"/> when it has
+    /// the form <c>x != nil</c> or <c>nil != x</c> (a single level of parenthesised
+    /// grouping is unwrapped). Returns <see langword="null"/> when the condition is
+    /// not a bare nil-guard — only the <c>!= nil</c> form narrows (§6); other guard
+    /// forms are not introduced.
+    /// </summary>
+    private static string? TryExtractNilGuard(Expression condition) {
+        if (condition is GroupingExpr grouping) condition = grouping.Inner;
+
+        if (condition is BinaryExpr { Operator: BinaryOperator.NotEqual } binary) {
+            if (binary.Left is IdentifierExpr left && binary.Right is NilLiteralExpr)
+                return left.Name;
+            if (binary.Right is IdentifierExpr right && binary.Left is NilLiteralExpr)
+                return right.Name;
+        }
+        return null;
     }
 
     /// <inheritdoc/>

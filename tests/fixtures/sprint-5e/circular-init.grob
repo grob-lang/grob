@@ -1,0 +1,11 @@
+// E5902 — ordering/circular initialisation. A top-level binding's
+// initialiser calls a function whose own declaration has not yet executed
+// during startup (top-level code runs in source order, D-294), so the
+// 'compute' binding is read before it is initialised. Detected at runtime.
+readonly a := compute()
+
+fn compute(): int {
+    return 1
+}
+
+print(a)

@@ -1,0 +1,11 @@
+// Flow-sensitive narrowing: inside `if (name != nil)` the parameter `name`
+// is narrowed from string? to string, so it can be interpolated directly.
+fn greet(name: string?): string {
+    if (name != nil) {
+        return "Hello, ${name}"
+    }
+    return "Hello, stranger"
+}
+
+print(greet("World"))
+print(greet(nil))

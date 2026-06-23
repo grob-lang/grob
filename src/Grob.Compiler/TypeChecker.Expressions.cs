@@ -69,9 +69,15 @@ public sealed partial class TypeChecker {
             node.Declaration = UnresolvedDecl.Instance; // §3.1.1 invariant: Declaration is never null after type-check (D-311).
             return GrobType.Error;
         }
-        node.ResolvedType = symbol.Type;
+        // Flow-sensitive narrowing (§6): inside an `if (x != nil)` block a binding
+        // is narrowed from T? to T. Use the narrowed type when one is active for
+        // this name; the declaration is unchanged (§3.1.1 still holds).
+        GrobType resolvedType = _narrowedTypes.TryGetValue(node.Name, out GrobType narrowed)
+            ? narrowed
+            : symbol.Type;
+        node.ResolvedType = resolvedType;
         node.Declaration = symbol.DeclarationNode;
-        return symbol.Type;
+        return resolvedType;
     }
 
     // -----------------------------------------------------------------------
@@ -158,6 +164,10 @@ public sealed partial class TypeChecker {
         // == and != accept same-type operands or mixed numeric operands.
         if (node.Operator == BinaryOperator.Equal || node.Operator == BinaryOperator.NotEqual) {
             if (left == right || BothNumeric(left, right)) return GrobType.Bool;
+            // A comparison against the nil literal is valid for any operand (§20:
+            // `x == nil` resolves to bool). `x != nil` is the form flow-sensitive
+            // narrowing keys off (§6); it stays valid for an already-narrowed value.
+            if (IsNilComparison(left, right)) return GrobType.Bool;
             return EmitErrorAndReturn(ErrorCatalog.E0002,
                 $"Operator '{OperatorSymbol(node.Operator)}' cannot be applied to types '{TypeName(left)}' and '{TypeName(right)}'.",
                 node.Range);
