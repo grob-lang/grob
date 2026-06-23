@@ -41,6 +41,23 @@ public sealed class VirtualMachine {
     private readonly TextWriter _out;
     private readonly Dictionary<string, GrobValue> _globals = new(StringComparer.Ordinal);
 
+    // -----------------------------------------------------------------------
+    // Top-level initialisation state machine (§19.1, D-294).
+    //
+    // _globalStates carries a SlotState tag per top-level binding name. It is
+    // pre-scanned from the chunk at the start of each Run() so that a GetGlobal
+    // of a binding the chunk defines later can be distinguished from an
+    // undefined name (E1001) and reported as circular initialisation (E5902).
+    // Native functions registered before Run() are not in this map and so are
+    // never subject to the check.
+    //
+    // After the top-level script's terminal Return, _startupComplete is set and
+    // the tag is no longer consulted — the cost is a single branch per global
+    // read during startup and zero afterwards.
+    // -----------------------------------------------------------------------
+    private readonly Dictionary<string, SlotState> _globalStates = new(StringComparer.Ordinal);
+    private bool _startupComplete;
+
     /// <summary>The call-stack frames (D-180). Active entries are <c>0.._frameCount-1</c>.</summary>
     private readonly CallFrame[] _frames = new CallFrame[MaxFrames];
     private int _frameCount;
@@ -164,6 +181,14 @@ public sealed class VirtualMachine {
         _frameCount = 0;
         _openUpvalues.Clear();
 
+        // Top-level initialisation state machine (§19.1, D-294): tag every
+        // top-level binding the chunk defines as Uninitialised, and re-arm the
+        // startup check. The states are rebuilt per Run() so a fresh chunk gets
+        // its own circular-initialisation detection.
+        _globalStates.Clear();
+        _startupComplete = false;
+        ScanTopLevelGlobals(chunk);
+
         // Initialise active dispatch state (instance fields shared with InvokeCallable).
         _activeChunk = chunk;
         _ip = 0;
@@ -253,12 +278,31 @@ public sealed class VirtualMachine {
                     case OpCode.DefineGlobal: {
                             byte nameIdx = _activeChunk.ReadByte(_ip++);
                             string name = _activeChunk.ReadConstant(nameIdx).AsString();
+                            // Transition Uninitialised -> Initialising before the value is
+                            // stored, then -> Initialised once it is. The right-hand side has
+                            // already been evaluated onto the stack, so Initialising is a
+                            // transient within this opcode; both non-Initialised states map to
+                            // the same circular-initialisation diagnostic on a read.
+                            if (_globalStates.ContainsKey(name))
+                                _globalStates[name] = SlotState.Initialising;
                             _globals[name] = _stack.Pop();
+                            if (_globalStates.ContainsKey(name))
+                                _globalStates[name] = SlotState.Initialised;
                             break;
                         }
                     case OpCode.GetGlobal: {
                             byte nameIdx = _activeChunk.ReadByte(_ip++);
                             string name = _activeChunk.ReadConstant(nameIdx).AsString();
+                            // Startup check (§19.1, D-294): a read of a tagged slot that is not
+                            // yet Initialised is a circular initialisation — E5902. Skipped
+                            // entirely once _startupComplete is set, and never applied to
+                            // names that carry no tag (e.g. registered natives).
+                            if (!_startupComplete
+                                && _globalStates.TryGetValue(name, out SlotState state)
+                                && state != SlotState.Initialised)
+                                throw new GrobRuntimeException(ErrorCatalog.E5902.Code, line, column,
+                                    $"Circular initialisation: top-level binding '{name}' was read " +
+                                    "before its declaration had executed.");
                             if (!_globals.TryGetValue(name, out GrobValue val))
                                 throw new GrobRuntimeException(ErrorCatalog.E1001.Code, line, column,
                                     $"Undefined global '{name}'.");
@@ -719,8 +763,13 @@ public sealed class VirtualMachine {
                             // already 0 (nothing to pop) and ends the dispatch.  A function
                             // call that returns to frame 0 pops a frame (handled below) and
                             // the script continues — so this guard is top-level only.
-                            if (!isReentrant && _frameCount == 0)
+                            if (!isReentrant && _frameCount == 0) {
+                                // Top-level code has finished; every top-level binding is now
+                                // Initialised. Subsequent global reads skip the tag check
+                                // (§19.1, D-294).
+                                _startupComplete = true;
                                 return;
+                            }
 
                             GrobValue result = _stack.Pop();
                             // Close any open upvalues that point into this frame's slots
@@ -888,6 +937,95 @@ public sealed class VirtualMachine {
 
         // The Return arm already pushed the result and restored caller state.
         return _stack.Pop();
+    }
+
+    // -----------------------------------------------------------------------
+    // Top-level initialisation pre-scan (Sprint 5 Increment E, §19.1 / D-294).
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Walks the top-level chunk and tags every binding it defines (each
+    /// <see cref="OpCode.DefineGlobal"/>) as <see cref="SlotState.Uninitialised"/>.
+    /// This lets <see cref="OpCode.GetGlobal"/> tell a read of a binding declared
+    /// later in the same source (circular initialisation, E5902) from a read of a
+    /// name that is never defined (E1001). Only the flat top-level instruction
+    /// stream is scanned — function bodies live in the constant pool and define no
+    /// top-level bindings of their own. The scan never throws; it is a best-effort
+    /// pre-pass over already-validated bytecode.
+    /// </summary>
+    private void ScanTopLevelGlobals(Chunk chunk) {
+        int ip = 0;
+        while (ip < chunk.Count) {
+            byte raw = chunk.ReadByte(ip);
+            if (!Enum.IsDefined(typeof(OpCode), raw)) {
+                ip++;
+                continue;
+            }
+
+            switch ((OpCode)raw) {
+                case OpCode.DefineGlobal:
+                    if (ip + 1 < chunk.Count) {
+                        byte nameIdx = chunk.ReadByte(ip + 1);
+                        if (nameIdx < chunk.ConstantCount)
+                            _globalStates[chunk.ReadConstant(nameIdx).AsString()] = SlotState.Uninitialised;
+                    }
+                    ip += 2;
+                    break;
+
+                case OpCode.Closure: {
+                        // Variable-length: pool-index byte + (isLocal, index) pair per upvalue.
+                        int advance = 2;
+                        if (ip + 1 < chunk.Count) {
+                            byte fnIdx = chunk.ReadByte(ip + 1);
+                            if (fnIdx < chunk.ConstantCount
+                                && chunk.ReadConstant(fnIdx).TryAsFunction(out GrobFunction? gf)
+                                && gf is BytecodeFunction fn)
+                                advance += fn.UpvalueCount * 2;
+                        }
+                        ip += advance;
+                        break;
+                    }
+
+                // Two-byte operand (constant-long index or jump offset).
+                case OpCode.ConstantLong:
+                case OpCode.Jump:
+                case OpCode.JumpIfFalse:
+                case OpCode.JumpIfTrue:
+                case OpCode.Loop:
+                    ip += 3;
+                    break;
+
+                // One-byte operand.
+                case OpCode.Constant:
+                case OpCode.PopN:
+                case OpCode.NewArray:
+                case OpCode.BuildString:
+                case OpCode.Call:
+                case OpCode.NewStruct:
+                case OpCode.NewAnonStruct:
+                case OpCode.GetLocal:
+                case OpCode.SetLocal:
+                case OpCode.GetGlobal:
+                case OpCode.SetGlobal:
+                case OpCode.GetUpvalue:
+                case OpCode.SetUpvalue:
+                case OpCode.GetProperty:
+                case OpCode.SetProperty:
+                case OpCode.Import:
+                case OpCode.TryBegin:
+                case OpCode.IncrementInt:
+                case OpCode.DecrementInt:
+                case OpCode.IncrementFloat:
+                case OpCode.DecrementFloat:
+                    ip += 2;
+                    break;
+
+                // No-operand opcodes.
+                default:
+                    ip += 1;
+                    break;
+            }
+        }
     }
 
     // -----------------------------------------------------------------------

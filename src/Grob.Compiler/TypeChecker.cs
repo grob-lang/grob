@@ -66,6 +66,19 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly Dictionary<LambdaExpr, GrobType> _lambdaReturnTypes =
         new(ReferenceEqualityComparer.Instance);
 
+    // -----------------------------------------------------------------------
+    // Flow-sensitive narrowing (Sprint 5 Increment E; §6, §19.1 narrowing rule).
+    //
+    // Inside an `if (x != nil)` block, x is added here mapped to its non-nullable
+    // element type. VisitIdentifier consults this map before falling back to the
+    // symbol's declared type, so a reference to x resolves to T rather than T?
+    // for the block's extent. The entry is removed on leaving the block, so x is
+    // T? again outside it (and in the else-branch). Keyed by name; a nested
+    // `if (x != nil)` does not re-add or remove an entry already present, so the
+    // outer narrowing survives the inner block.
+    // -----------------------------------------------------------------------
+    private readonly Dictionary<string, GrobType> _narrowedTypes = new(StringComparer.Ordinal);
+
     /// <summary>Initialises a new <see cref="TypeChecker"/> that writes into <paramref name="diagnostics"/>.</summary>
     public TypeChecker(DiagnosticBag diagnostics) {
         ArgumentNullException.ThrowIfNull(diagnostics);
@@ -237,6 +250,18 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private static bool BothNumeric(GrobType left, GrobType right) =>
         (left == GrobType.Int || left == GrobType.Float) &&
         (right == GrobType.Int || right == GrobType.Float);
+
+    /// <summary>
+    /// True when either operand is the <c>nil</c> literal. The <c>nil</c> literal is
+    /// comparable against any operand under <c>==</c>/<c>!=</c> (§20: <c>x == nil</c>
+    /// resolves to bool — <c>false</c> when <c>x</c> is non-nil). This is the canonical
+    /// nil check (<c>x == nil</c> / <c>x != nil</c>, either order) that flow-sensitive
+    /// narrowing keys off, and it also holds for a value already narrowed to its
+    /// non-nullable type inside an enclosing guard. <c>nil == nil</c> is already
+    /// accepted by the same-type rule before this is reached.
+    /// </summary>
+    private static bool IsNilComparison(GrobType left, GrobType right) =>
+        left == GrobType.Nil || right == GrobType.Nil;
 
     private static bool IsComparisonOperator(BinaryOperator op) => op switch {
         BinaryOperator.Equal or BinaryOperator.NotEqual or
