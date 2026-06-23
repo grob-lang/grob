@@ -153,6 +153,45 @@ public sealed class CompilerClosureTests {
 
         // The lambda captures 'count' → must emit Closure, not a bare Constant.
         Assert.Contains(OpCode.Closure, ops);
+
+        // Guard: the lambda must be reachable only through Closure, never also as a
+        // function-valued Constant (which would mean a second, un-captured copy).
+        bool anyFunctionConstant = Decode(makeCounter.Bytecode)
+            .Where(i => i.Op == OpCode.Constant)
+            .Select(i => makeCounter.Bytecode.ReadConstant(i.Arg))
+            .Any(v => v.IsFunction);
+        Assert.False(anyFunctionConstant,
+            "Capturing lambda must not also be emitted as a function-valued Constant.");
+    }
+
+    // -----------------------------------------------------------------------
+    // Close-on-scope-exit: a captured block-local emits CloseUpvalue before the
+    // block's slots are popped, so the upvalue migrates to the heap before the
+    // slot can be reused (Addresses PR #88 review — CodeRabbit).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CapturedBlockLocal_EmitsCloseUpvalueAtScopeExit() {
+        Chunk top = CompileSource("""
+            fn test(): int {
+              result := 0
+              capture := () => 0
+              {
+                x := 99
+                capture = () => x
+              }
+              y := 7
+              result = capture()
+              return result
+            }
+            """);
+
+        BytecodeFunction test = FindFunctionByName(top, "test");
+        List<OpCode> ops = Opcodes(test.Bytecode);
+
+        // The block local 'x' is captured, so its scope exit must close the upvalue
+        // rather than blindly PopN the slot.
+        Assert.Contains(OpCode.CloseUpvalue, ops);
     }
 
     // -----------------------------------------------------------------------
@@ -290,8 +329,10 @@ public sealed class CompilerClosureTests {
             // §3.1.1: GrobType is a value type so Assert.NotNull is invalid; verify the
             // TypeChecker set it to a non-error type instead.
             Assert.NotEqual(GrobType.Error, id.ResolvedType);
-            // Declaration must be a non-null node reference (set by TypeChecker).
+            // Clean path: the declaration must be a real node, not the unresolved
+            // sentinel (D-311). Assert the sentinel by reference.
             Assert.NotNull(id.Declaration);
+            Assert.NotSame(UnresolvedDecl.Instance, id.Declaration);
         }
     }
 }

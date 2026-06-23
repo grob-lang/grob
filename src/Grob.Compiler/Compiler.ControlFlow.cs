@@ -77,11 +77,8 @@ public sealed partial class Compiler {
 
         // Pop locals declared inside the loop above this break — they are not
         // cleaned up by VisitBlock because the break jumps past the block exit.
-        int localsToPop = _nextSlot - ctx.BaseSlot;
-        if (localsToPop > 0) {
-            _chunk.WriteOpCode(OpCode.PopN, line);
-            _chunk.WriteByte(ToByteOperand(localsToPop, "break locals pop"), line);
-        }
+        // Closing captured upvalues here too keeps a break-with-capture correct.
+        EmitScopeCleanup(LocalsAboveBaseSlot(ctx.BaseSlot), line);
 
         // Forward jump; patch site is recorded and resolved when the loop closes.
         int site = EmitJump(OpCode.Jump, line);
@@ -108,11 +105,8 @@ public sealed partial class Compiler {
 
         // Pop locals declared inside the loop above this continue — they are not
         // cleaned up by VisitBlock because the continue jumps past the block exit.
-        int localsToPop = _nextSlot - ctx.BaseSlot;
-        if (localsToPop > 0) {
-            _chunk.WriteOpCode(OpCode.PopN, line);
-            _chunk.WriteByte(ToByteOperand(localsToPop, "continue locals pop"), line);
-        }
+        // Closing captured upvalues here too keeps a continue-with-capture correct.
+        EmitScopeCleanup(LocalsAboveBaseSlot(ctx.BaseSlot), line);
 
         if (ctx.HasForwardContinue) {
             // for...in: the increment step sits after the body, so continue must
@@ -298,8 +292,7 @@ public sealed partial class Compiler {
         foreach (Statement stmt in node.Body.Statements) Visit(stmt);
         List<LocalVar> bodyScope = _localScopes.Pop();
         if (bodyScope.Count > 0) {
-            _chunk.WriteOpCode(OpCode.PopN, line);
-            _chunk.WriteByte(ToByteOperand(bodyScope.Count, "for...in body PopN"), line);
+            EmitScopeCleanup(bodyScope, line);
             _nextSlot -= bodyScope.Count;
         }
 
@@ -314,8 +307,10 @@ public sealed partial class Compiler {
         foreach (int site in ctx.BreakSites) PatchJump(site);
 
         if (syntheticCount > 0) {
-            _chunk.WriteOpCode(OpCode.PopN, line);
-            _chunk.WriteByte(ToByteOperand(syntheticCount, "for...in synthetic PopN"), line);
+            // The synthetic for-scope holds the iteration locals — including the
+            // visible range counter / index, which a body lambda may capture — so
+            // close any captured upvalue rather than blindly popping.
+            EmitScopeCleanup(_localScopes.Peek(), line);
             _nextSlot -= syntheticCount;
         }
     }
@@ -332,6 +327,21 @@ public sealed partial class Compiler {
         int slot = _nextSlot++;
         _localScopes.Peek().Add(new LocalVar(name, slot));
         return slot;
+    }
+
+    /// <summary>
+    /// Collects every open local at or above <paramref name="baseSlot"/> across all
+    /// live scopes — the set a <c>break</c> or <c>continue</c> discards when it jumps
+    /// out of one or more nested block scopes. Used to drive
+    /// <see cref="EmitScopeCleanup"/> so captured locals are closed on the early-exit
+    /// path as well as the normal one.
+    /// </summary>
+    private List<LocalVar> LocalsAboveBaseSlot(int baseSlot) {
+        var leaving = new List<LocalVar>();
+        foreach (List<LocalVar> scope in _localScopes)
+            foreach (LocalVar local in scope)
+                if (local.Slot >= baseSlot) leaving.Add(local);
+        return leaving;
     }
 
     private void EmitGetLocal(int slot, int line) {

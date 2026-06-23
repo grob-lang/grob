@@ -279,4 +279,65 @@ public sealed class VirtualMachineClosureTests {
         // getClosure reads x=1 (the value written by incClosure through the shared upvalue).
         Assert.Equal(1L, vm.Stack.Peek().AsInt());
     }
+
+    // -----------------------------------------------------------------------
+    // VM reuse after an abnormal exit (Addresses PR #88 review — CodeRabbit).
+    //
+    // A first run that opens an upvalue and then exits via exit() never reaches
+    // Return, so _openUpvalues retains the open cell. Run() must clear that
+    // per-run state so a second run on the same VM behaves like a fresh one and
+    // CaptureUpvalue cannot deduplicate against the stale cell.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ReusedAfterAbnormalExit_OpenUpvalueDoesNotLeakIntoNextRun() {
+        // Run 1: a function that opens an upvalue (Closure isLocal=1 slot 0) and then
+        // exits before Return, leaving the open cell behind.
+        var leakyFn = BuildOpenThenExitFn();
+        var run1 = new Chunk();
+        int leakyIdx = run1.AddConstant(GrobValue.FromFunction(leakyFn));
+        run1.WriteOpCode(OpCode.Constant, 1); run1.WriteByte((byte)leakyIdx, 1);
+        run1.WriteOpCode(OpCode.Call, 1); run1.WriteByte(0, 1);
+        run1.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        Assert.Throws<GrobExitException>(() => vm.Run(run1));
+
+        // Run 2 on the SAME vm: makeCounter() called once must yield 1, exactly as on
+        // a fresh VM — the stale open cell from run 1 must not be reused.
+        BytecodeFunction makeCounterFn = BuildMakeCounterFn();
+        var run2 = new Chunk();
+        int mcIdx = run2.AddConstant(GrobValue.FromFunction(makeCounterFn));
+        run2.WriteOpCode(OpCode.Constant, 1); run2.WriteByte((byte)mcIdx, 1);
+        run2.WriteOpCode(OpCode.Call, 1); run2.WriteByte(0, 1);     // c = makeCounter()
+        run2.WriteOpCode(OpCode.GetLocal, 1); run2.WriteByte(0, 1); // push c
+        run2.WriteOpCode(OpCode.Call, 1); run2.WriteByte(0, 1);     // c() -> 1
+        run2.WriteOpCode(OpCode.Return, 1);
+
+        vm.Run(run2);
+        Assert.Equal(1L, vm.Stack.Peek().AsInt());
+    }
+
+    // Function body: Constant(7) [local slot 0], Closure(isLocal=1 slot 0) opens an
+    // upvalue, then Constant(0) + Exit terminate before Return runs.
+    private static BytecodeFunction BuildOpenThenExitFn() {
+        var inner = new Chunk();
+        inner.WriteOpCode(OpCode.GetUpvalue, 1); inner.WriteByte(0, 1);
+        inner.WriteOpCode(OpCode.Return, 1);
+        inner.WriteOpCode(OpCode.Nil, 1);
+        inner.WriteOpCode(OpCode.Return, 1);
+        var innerFn = new BytecodeFunction(string.Empty, 0, inner, upvalueCount: 1);
+
+        var chunk = new Chunk();
+        int seven = chunk.AddConstant(GrobValue.FromInt(7));
+        int lambdaIdx = chunk.AddConstant(GrobValue.FromFunction(innerFn));
+        int zero = chunk.AddConstant(GrobValue.FromInt(0));
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)seven, 1);     // local slot 0
+        chunk.WriteOpCode(OpCode.Closure, 1); chunk.WriteByte((byte)lambdaIdx, 1);  // open upvalue
+        chunk.WriteByte(1, 1); chunk.WriteByte(0, 1);                                //   isLocal=1 slot=0
+        chunk.WriteOpCode(OpCode.Pop, 1);                                            // discard closure
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)zero, 1);       // exit code 0
+        chunk.WriteOpCode(OpCode.Exit, 1);                                           // abnormal exit
+        return new BytecodeFunction("leaky", 0, chunk);
+    }
 }

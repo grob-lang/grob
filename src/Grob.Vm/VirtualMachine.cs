@@ -155,11 +155,14 @@ public sealed class VirtualMachine {
     public void Run(Chunk chunk, CancellationToken cancellationToken = default) {
         ArgumentNullException.ThrowIfNull(chunk);
 
-        // Defensive: a prior Run that terminated by exception may have left
-        // values on the operand stack or call frames. Start every invocation
-        // clean so the VM behaves the same on the Nth chunk as on the first.
+        // Defensive: a prior Run that terminated by exception, exit() or
+        // cancellation may have left values on the operand stack, call frames or
+        // open upvalues (a frame that never reached Return). Start every invocation
+        // clean so the VM behaves the same on the Nth chunk as on the first — and
+        // so CaptureUpvalue cannot deduplicate against a stale cell from a prior run.
         _stack.Reset();
         _frameCount = 0;
+        _openUpvalues.Clear();
 
         // Initialise active dispatch state (instance fields shared with InvokeCallable).
         _activeChunk = chunk;

@@ -88,4 +88,103 @@ public sealed class Sprint5IncrementDTests {
         // Elements of [1, 5, 3, 8, 2] that are > 4 are 5 and 8 → 2 elements.
         Assert.Equal("2" + NL, stdout);
     }
+
+    // -----------------------------------------------------------------------
+    // Close-on-scope-exit (Addresses PR #88 review — CodeRabbit).
+    //
+    // A closure that captures a block-local must keep that variable's value even
+    // after the block exits and the slot is reused by a later local. Before the
+    // fix the upvalue stayed open pointing at the (now reused) stack slot, so the
+    // closure read the reused value instead of the captured one.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void BlockLocalCapture_SurvivesScopeExitAndSlotReuse() {
+        string stdout = Run("""
+            fn test(): int {
+              result := 0
+              capture := () => 0
+              {
+                x := 99
+                capture = () => x
+              }
+              y := 7
+              result = capture()
+              return result
+            }
+            print(test())
+            """);
+
+        // Correct closure semantics: the closure captured x = 99; y reusing x's
+        // slot must not be visible through the upvalue.
+        Assert.Equal("99" + NL, stdout);
+    }
+
+    [Fact]
+    public void WhileBodyCapture_EachIterationClosureIsIndependentAfterScopeExit() {
+        // The while body is a block: its local 'snapshot' is captured by a closure
+        // stored in an outer slot. After the body exits each iteration, the slot is
+        // reused; reading the last stored closure must yield the final captured value.
+        string stdout = Run("""
+            fn lastSnapshot(): int {
+              held := () => 0
+              i := 0
+              while (i < 3) {
+                snapshot := i * 10
+                held = () => snapshot
+                i = i + 1
+              }
+              out := 0
+              out = held()
+              return out
+            }
+            print(lastSnapshot())
+            """);
+
+        // Last iteration captured snapshot = 2 * 10 = 20.
+        Assert.Equal("20" + NL, stdout);
+    }
+
+    [Fact]
+    public void ForInBodyCapture_PerIterationItemClosesOnBodyExit() {
+        // 'x' is bound per iteration in the for...in body scope; a closure capturing
+        // it must close on each body exit so the stored closure keeps its own value.
+        string stdout = Run("""
+            fn lastItem(): int {
+              held := () => 0
+              for x in [10, 20, 30] {
+                held = () => x
+              }
+              out := 0
+              out = held()
+              return out
+            }
+            print(lastItem())
+            """);
+
+        // The last iteration captured x = 30.
+        Assert.Equal("30" + NL, stdout);
+    }
+
+    [Fact]
+    public void BreakWithCapture_ClosesCapturedLocalOnEarlyExit() {
+        // A closure captures the body-scope item, then 'break' exits the loop. The
+        // break's cleanup must close the captured upvalue, not just pop the slot.
+        string stdout = Run("""
+            fn firstItem(): int {
+              held := () => 0
+              for x in [5, 6, 7] {
+                held = () => x
+                break
+              }
+              out := 0
+              out = held()
+              return out
+            }
+            print(firstItem())
+            """);
+
+        // Break after the first iteration captured x = 5.
+        Assert.Equal("5" + NL, stdout);
+    }
 }
