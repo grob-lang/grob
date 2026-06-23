@@ -124,7 +124,8 @@ public static class Disassembler {
             OpCode.DefineGlobal => ByteOperandInstruction(opCode, chunk, offset, writer),
             OpCode.GetUpvalue => ByteOperandInstruction(opCode, chunk, offset, writer),
             OpCode.SetUpvalue => ByteOperandInstruction(opCode, chunk, offset, writer),
-            OpCode.Closure => ByteOperandInstruction(opCode, chunk, offset, writer),
+            // Closure is variable-length: pool-index byte + UpvalueCount×2 descriptor bytes.
+            OpCode.Closure => ClosureInstruction(chunk, offset, writer),
             OpCode.GetProperty => ByteOperandInstruction(opCode, chunk, offset, writer),
             OpCode.SetProperty => ByteOperandInstruction(opCode, chunk, offset, writer),
             OpCode.Import => ByteOperandInstruction(opCode, chunk, offset, writer),
@@ -198,6 +199,32 @@ public static class Disassembler {
         int jump = (chunk.ReadByte(offset + 1) << 8) | chunk.ReadByte(offset + 2);
         writer.WriteLine($"{opCode,-20} {jump,4}");
         return offset + 3;
+    }
+
+    private static int ClosureInstruction(Chunk chunk, int offset, TextWriter writer) {
+        if (offset + 1 >= chunk.Count) {
+            writer.WriteLine("Closure <truncated>");
+            return offset + 1;
+        }
+        byte fnIdx = chunk.ReadByte(offset + 1);
+        GrobValue fnVal = SafeReadConstant(chunk, fnIdx);
+        writer.Write($"{"Closure",-20} {fnIdx,4} '{fnVal}'");
+        int advance = 2; // opcode (1) + pool index (1)
+        if (fnVal.TryAsFunction(out GrobFunction? gf) && gf is BytecodeFunction fn) {
+            for (int i = 0; i < fn.UpvalueCount; i++) {
+                if (offset + advance + 1 >= chunk.Count) {
+                    writer.Write(" <truncated>");
+                    writer.WriteLine();
+                    return offset + advance;
+                }
+                byte isLocal = chunk.ReadByte(offset + advance);
+                byte idx = chunk.ReadByte(offset + advance + 1);
+                writer.Write($" [{(isLocal != 0 ? "local" : "upval")} {idx}]");
+                advance += 2;
+            }
+        }
+        writer.WriteLine();
+        return offset + advance;
     }
 
     private static int UnknownInstruction(byte instruction, int offset, TextWriter writer) {

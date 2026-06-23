@@ -28,4 +28,15 @@ internal struct CallFrame {
 
     /// <summary>The stack base to restore for the caller when this frame returns.</summary>
     internal int ReturnStackBase;
+
+    /// <summary>
+    /// The <see cref="Closure"/> currently executing in this frame, or
+    /// <see langword="null"/> when this frame is running a plain
+    /// <see cref="BytecodeFunction"/> (one with no captured upvalues).
+    /// Set by the <see cref="OpCode.Closure"/> call path so that
+    /// <see cref="OpCode.GetUpvalue"/>/<see cref="OpCode.SetUpvalue"/> can
+    /// reach the upvalue array, and so that the <see cref="OpCode.Closure"/>
+    /// arm can thread upvalues transitively through enclosing closures.
+    /// </summary>
+    internal Closure? ActiveClosure;
 }

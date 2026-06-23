@@ -46,6 +46,19 @@ public sealed class VirtualMachine {
     private int _frameCount;
 
     // -----------------------------------------------------------------------
+    // Open-upvalue list (Sprint 5 Increment D — D-115).
+    //
+    // While a closure is active, its captured variables are "open": each
+    // Upvalue points directly at a stack slot so that reads and writes flow
+    // through to the live frame. When the enclosing function returns,
+    // CloseUpvaluesFrom(stackBase) copies every open upvalue at a slot >=
+    // stackBase to the heap and removes it from this list. Two closures from
+    // the same enclosing call that capture the same variable share one Upvalue
+    // object in this list (dedup is in CaptureUpvalue).
+    // -----------------------------------------------------------------------
+    private readonly List<Upvalue> _openUpvalues = [];
+
+    // -----------------------------------------------------------------------
     // D-319: step counter — VM-instance lifetime, NOT reset per Run() call so
     // the budget is continuous across the re-entrant native↔VM call-back bridge.
     // -----------------------------------------------------------------------
@@ -665,7 +678,21 @@ public sealed class VirtualMachine {
                                 break;
                             }
 
-                            // Bytecode function — save caller context, switch to callee chunk.
+                            // Closure — save caller context with ActiveClosure set.
+                            if (callee is Closure closure) {
+                                _frames[_frameCount++] = new CallFrame {
+                                    ReturnChunk = _activeChunk,
+                                    ReturnInstructionPointer = _ip,
+                                    ReturnStackBase = _stackBase,
+                                    ActiveClosure = closure,
+                                };
+                                _stackBase = _stack.Count - argCount;
+                                _activeChunk = closure.Function.Bytecode;
+                                _ip = 0;
+                                break;
+                            }
+
+                            // Plain bytecode function — save caller context (no ActiveClosure).
                             if (callee is not BytecodeFunction fn)
                                 throw new GrobInternalException(
                                     $"Call target is an unknown GrobFunction subtype: {callee!.GetType().Name}.");
@@ -693,6 +720,10 @@ public sealed class VirtualMachine {
                                 return;
 
                             GrobValue result = _stack.Pop();
+                            // Close any open upvalues that point into this frame's slots
+                            // before the slots are discarded. This copies their values
+                            // from the stack to the heap (open → closed transition).
+                            CloseUpvaluesFrom(_stackBase);
                             // Discard the callee value, its arguments and its locals in
                             // one step (everything from the callee value upward).
                             _stack.TrimToCount(_stackBase - 1);
@@ -711,6 +742,56 @@ public sealed class VirtualMachine {
                                 return;
                             break;
                         }
+
+                    // --- Upvalue / Closure opcodes (Sprint 5 Increment D) ---
+
+                    case OpCode.Closure: {
+                            // Variable-length encoding:
+                            //   Closure <fnPoolIdx:1> (<isLocal:1> <index:1>) × fn.UpvalueCount
+                            byte fnIdx = _activeChunk.ReadByte(_ip++);
+                            var fn = (BytecodeFunction)_activeChunk.ReadConstant(fnIdx).AsFunction();
+                            var upvalues = new Upvalue[fn.UpvalueCount];
+                            for (int i = 0; i < fn.UpvalueCount; i++) {
+                                byte isLocal = _activeChunk.ReadByte(_ip++);
+                                byte uvIdx = _activeChunk.ReadByte(_ip++);
+                                if (isLocal != 0) {
+                                    // Capture a local of the current frame (absolute slot = _stackBase + uvIdx).
+                                    upvalues[i] = CaptureUpvalue(_stackBase + uvIdx);
+                                } else {
+                                    // Transitive capture: copy the enclosing closure's upvalue at uvIdx.
+                                    Closure? enclosing = _frameCount > 0
+                                        ? _frames[_frameCount - 1].ActiveClosure
+                                        : null;
+                                    if (enclosing is null)
+                                        throw new GrobInternalException(
+                                            "Closure opcode with isLocal=0 executed outside a closure frame — " +
+                                            "transitive capture requires an enclosing closure context.");
+                                    upvalues[i] = enclosing.Upvalues[uvIdx];
+                                }
+                            }
+                            _stack.Push(GrobValue.FromFunction(new Closure(fn, upvalues)), line);
+                            break;
+                        }
+
+                    case OpCode.GetUpvalue: {
+                            byte slot = _activeChunk.ReadByte(_ip++);
+                            _stack.Push(GetActiveUpvalues()[slot].Read(), line);
+                            break;
+                        }
+
+                    case OpCode.SetUpvalue: {
+                            byte slot = _activeChunk.ReadByte(_ip++);
+                            GetActiveUpvalues()[slot].Write(_stack.Pop());
+                            break;
+                        }
+
+                    case OpCode.CloseUpvalue:
+                        // Close the upvalue tracking the top-of-stack slot, then pop.
+                        // Used when a captured local exits its block scope before the
+                        // enclosing function returns.
+                        CloseUpvaluesFrom(_stack.Count - 1);
+                        _stack.Pop();
+                        break;
 
                     default:
                         throw new GrobInternalException(
@@ -756,9 +837,18 @@ public sealed class VirtualMachine {
             return nativeFn.Implementation(args, nestedInvoker);
         }
 
-        if (fn is not BytecodeFunction bf)
+        // Resolve Closure to its underlying BytecodeFunction for dispatch.
+        Closure? activeClosure = null;
+        BytecodeFunction bf;
+        if (fn is Closure c) {
+            activeClosure = c;
+            bf = c.Function;
+        } else if (fn is BytecodeFunction plain) {
+            bf = plain;
+        } else {
             throw new GrobInternalException(
                 $"InvokeCallable: unknown GrobFunction subtype {fn!.GetType().Name}.");
+        }
 
         if (_frameCount == MaxFrames)
             throw new GrobRuntimeException(ErrorCatalog.E5901.Code, line, column,
@@ -773,11 +863,13 @@ public sealed class VirtualMachine {
         foreach (GrobValue arg in args)
             _stack.Push(arg, line);
 
-        // Save current dispatch state to the frame array.
+        // Save current dispatch state to the frame array; include ActiveClosure when calling
+        // a Closure so GetUpvalue/SetUpvalue can reach the upvalue array.
         _frames[_frameCount++] = new CallFrame {
             ReturnChunk = _activeChunk,
             ReturnInstructionPointer = _ip,
             ReturnStackBase = _stackBase,
+            ActiveClosure = activeClosure,
         };
         _stackBase = _stack.Count - args.Length;
         _activeChunk = bf.Bytecode;
@@ -793,6 +885,56 @@ public sealed class VirtualMachine {
 
         // The Return arm already pushed the result and restored caller state.
         return _stack.Pop();
+    }
+
+    // -----------------------------------------------------------------------
+    // Upvalue helpers (Sprint 5 Increment D).
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns an open <see cref="Upvalue"/> that tracks absolute stack slot
+    /// <paramref name="absoluteSlot"/>. If one already exists in the open-upvalue
+    /// list for that slot (because another closure in the same enclosing frame
+    /// already captured the same variable), the existing object is reused —
+    /// deduplication is what lets two closures share mutations through one cell.
+    /// </summary>
+    private Upvalue CaptureUpvalue(int absoluteSlot) {
+        foreach (Upvalue uv in _openUpvalues)
+            if (uv.SlotIndex == absoluteSlot) return uv;
+        var fresh = new Upvalue(_stack, absoluteSlot);
+        _openUpvalues.Add(fresh);
+        return fresh;
+    }
+
+    /// <summary>
+    /// Closes every open upvalue whose stack slot is ≥ <paramref name="fromSlot"/>
+    /// by copying the value from the stack to the heap cell and removing the entry
+    /// from the open-upvalue list. Called in the <see cref="OpCode.Return"/> path
+    /// before the frame's slots are discarded, and by <see cref="OpCode.CloseUpvalue"/>
+    /// when a captured local exits its block scope mid-function.
+    /// </summary>
+    private void CloseUpvaluesFrom(int fromSlot) {
+        for (int i = _openUpvalues.Count - 1; i >= 0; i--) {
+            if (_openUpvalues[i].SlotIndex >= fromSlot) {
+                _openUpvalues[i].Close();
+                _openUpvalues.RemoveAt(i);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the upvalue array of the closure currently executing in the topmost
+    /// call frame. Throws <see cref="GrobInternalException"/> when called with no
+    /// active closure — GetUpvalue/SetUpvalue are only emitted inside lambda bodies
+    /// that compile with at least one capture, so reaching here without a closure
+    /// indicates a compiler bug.
+    /// </summary>
+    private Upvalue[] GetActiveUpvalues() {
+        Closure? active = _frameCount > 0 ? _frames[_frameCount - 1].ActiveClosure : null;
+        return active?.Upvalues
+            ?? throw new GrobInternalException(
+                "GetUpvalue/SetUpvalue executed outside a closure frame — " +
+                "these opcodes are only emitted inside capturing lambda bodies.");
     }
 
 #if DEBUG

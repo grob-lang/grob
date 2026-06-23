@@ -45,6 +45,44 @@ public sealed partial class Compiler : AstVisitor<object?> {
     private readonly Dictionary<ConstDecl, GrobValue> _constValues;
 
     // -----------------------------------------------------------------------
+    // Upvalue resolution (Sprint 5 Increment D — D-115, D-296 category 4).
+    //
+    // A lambda body that references a local of the immediately enclosing
+    // function (category 4) captures it as an upvalue instead of falling
+    // through to a GetGlobal lookup.
+    //
+    // _enclosing is the sub-compiler that compiled the enclosing function or
+    // lambda body.  It is null at the root compiler and at the top-level
+    // fn-declaration sub-compiler (top-level fns cannot be closures because
+    // there is no enclosing function frame to capture from).
+    //
+    // _upvalues is the descriptor list built up as ResolveUpvalue walks the
+    // chain.  Its count becomes BytecodeFunction.UpvalueCount and its entries
+    // drive the Closure opcode's descriptor bytes.
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// One descriptor entry written into the <see cref="OpCode.Closure"/>
+    /// instruction stream.  <see cref="IsLocal"/> true means the opcode captures
+    /// a local slot of the immediately enclosing function's stack frame;
+    /// false means it copies an upvalue from the enclosing closure's upvalue array.
+    /// </summary>
+    private sealed record UpvalueDescriptor(bool IsLocal, int Index);
+
+    /// <summary>
+    /// The sub-compiler that compiled the enclosing function or lambda body,
+    /// or <see langword="null"/> when this compiler is the root or is compiling
+    /// a top-level <c>fn</c> declaration (which has no enclosing frame to capture from).
+    /// </summary>
+    private readonly Compiler? _enclosing;
+
+    /// <summary>
+    /// Upvalue descriptors accumulated for the function being compiled.
+    /// Ordered by the upvalue slot index (descriptor at index 0 → upvalue 0, etc.).
+    /// </summary>
+    private readonly List<UpvalueDescriptor> _upvalues = [];
+
+    // -----------------------------------------------------------------------
     // Loop-context stack (Sprint 4 Increment B).
     //
     // A LoopContext is pushed when compiling a while or for...in loop and popped
@@ -110,14 +148,27 @@ public sealed partial class Compiler : AstVisitor<object?> {
     }
 
     /// <summary>
-    /// Sub-compiler for a function body. Each function compiles into its own
-    /// <see cref="Chunk"/> (so it gets a fresh <c>_globalNameIndices</c>, keyed to
+    /// Sub-compiler for a top-level <c>fn</c> declaration. Each function compiles
+    /// into its own <see cref="Chunk"/> (fresh <c>_globalNameIndices</c>, keyed to
     /// that chunk's constant pool) but shares the root's compile-time
     /// <paramref name="constValues"/> cache so a body can inline a top-level
     /// <c>const</c> (D-293) declared before it.
+    /// Top-level <c>fn</c>s are not closures — there is no enclosing frame to
+    /// capture from — so <see cref="_enclosing"/> is left null.
     /// </summary>
     private Compiler(Dictionary<ConstDecl, GrobValue> constValues) {
         _constValues = constValues;
+    }
+
+    /// <summary>
+    /// Sub-compiler for a lambda body that may capture enclosing-function locals
+    /// (category 4, D-296). Shares the const cache and links to
+    /// <paramref name="enclosing"/> so <see cref="ResolveUpvalue"/> can walk the
+    /// chain to find the captured variable's home.
+    /// </summary>
+    private Compiler(Dictionary<ConstDecl, GrobValue> constValues, Compiler enclosing) {
+        _constValues = constValues;
+        _enclosing = enclosing;
     }
 
     /// <summary>
@@ -236,7 +287,9 @@ public sealed partial class Compiler : AstVisitor<object?> {
 
     /// <summary>
     /// Emits a load instruction for the variable <paramref name="name"/>:
-    /// <see cref="OpCode.GetLocal"/> when the name resolves to a local slot,
+    /// <see cref="OpCode.GetLocal"/> when the name resolves to a local slot in
+    /// this function's scope, <see cref="OpCode.GetUpvalue"/> when it resolves
+    /// to a captured upvalue (category 4, D-296), or
     /// <see cref="OpCode.GetGlobal"/> otherwise.
     /// </summary>
     private void EmitLoad(string name, int line) {
@@ -244,16 +297,24 @@ public sealed partial class Compiler : AstVisitor<object?> {
         if (slot >= 0) {
             _chunk.WriteOpCode(OpCode.GetLocal, line);
             _chunk.WriteByte(ToByteOperand(slot, "local slot"), line);
-        } else {
-            int nameIdx = GetOrCreateGlobalNameIndex(name);
-            _chunk.WriteOpCode(OpCode.GetGlobal, line);
-            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
+            return;
         }
+        int uv = ResolveUpvalue(name);
+        if (uv >= 0) {
+            _chunk.WriteOpCode(OpCode.GetUpvalue, line);
+            _chunk.WriteByte(ToByteOperand(uv, "upvalue index"), line);
+            return;
+        }
+        int nameIdx = GetOrCreateGlobalNameIndex(name);
+        _chunk.WriteOpCode(OpCode.GetGlobal, line);
+        _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
     }
 
     /// <summary>
     /// Emits a store instruction for the variable <paramref name="name"/>:
-    /// <see cref="OpCode.SetLocal"/> when the name resolves to a local slot,
+    /// <see cref="OpCode.SetLocal"/> when the name resolves to a local slot in
+    /// this function's scope, <see cref="OpCode.SetUpvalue"/> when it resolves
+    /// to a captured upvalue (category 4, D-296), or
     /// <see cref="OpCode.SetGlobal"/> otherwise.
     /// The value to store must already be on the top of the stack.
     /// </summary>
@@ -262,11 +323,59 @@ public sealed partial class Compiler : AstVisitor<object?> {
         if (slot >= 0) {
             _chunk.WriteOpCode(OpCode.SetLocal, line);
             _chunk.WriteByte(ToByteOperand(slot, "local slot"), line);
-        } else {
-            int nameIdx = GetOrCreateGlobalNameIndex(name);
-            _chunk.WriteOpCode(OpCode.SetGlobal, line);
-            _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
+            return;
         }
+        int uv = ResolveUpvalue(name);
+        if (uv >= 0) {
+            _chunk.WriteOpCode(OpCode.SetUpvalue, line);
+            _chunk.WriteByte(ToByteOperand(uv, "upvalue index"), line);
+            return;
+        }
+        int nameIdx = GetOrCreateGlobalNameIndex(name);
+        _chunk.WriteOpCode(OpCode.SetGlobal, line);
+        _chunk.WriteByte(ToByteOperand(nameIdx, "global name"), line);
+    }
+
+    // -----------------------------------------------------------------------
+    // Upvalue resolution helpers (Sprint 5 Increment D).
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Resolves <paramref name="name"/> as a category-4 capture (D-296) by walking
+    /// the enclosing-compiler chain.  Returns the upvalue slot index in this
+    /// compiler's <see cref="_upvalues"/> list, or −1 if the variable is not found
+    /// in any enclosing function's local scope (i.e. it is a global or a
+    /// categories-1/2/3 reference that falls through to <c>GetGlobal</c>).
+    /// </summary>
+    private int ResolveUpvalue(string name) {
+        if (_enclosing is null) return -1;
+
+        // Is the variable a direct local of the immediately enclosing function?
+        int localSlot = _enclosing.FindLocalSlot(name);
+        if (localSlot >= 0)
+            return AddUpvalue(isLocal: true, index: localSlot);
+
+        // Is it captured transitively by the enclosing closure?
+        int enclosingUv = _enclosing.ResolveUpvalue(name);
+        if (enclosingUv >= 0)
+            return AddUpvalue(isLocal: false, index: enclosingUv);
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Registers a new upvalue descriptor (isLocal, index) — or returns the
+    /// existing slot if this descriptor was already recorded.  Deduplication
+    /// ensures that two lambdas in the same enclosing function capturing the
+    /// same variable share a single upvalue object at runtime.
+    /// </summary>
+    private int AddUpvalue(bool isLocal, int index) {
+        for (int i = 0; i < _upvalues.Count; i++) {
+            if (_upvalues[i].IsLocal == isLocal && _upvalues[i].Index == index)
+                return i;
+        }
+        _upvalues.Add(new UpvalueDescriptor(isLocal, index));
+        return _upvalues.Count - 1;
     }
 
     /// <summary>
