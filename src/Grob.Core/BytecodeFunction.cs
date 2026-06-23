@@ -32,6 +32,9 @@ public sealed class BytecodeFunction : GrobFunction {
     public BytecodeFunction(string name, int arity, Chunk bytecode, int upvalueCount = 0)
         : base(name, arity) {
         ArgumentNullException.ThrowIfNull(bytecode);
+        // The VM allocates the upvalue array and reads that many descriptor pairs
+        // from the Closure instruction, so a negative count is a malformed function.
+        ArgumentOutOfRangeException.ThrowIfNegative(upvalueCount);
         Bytecode = bytecode;
         UpvalueCount = upvalueCount;
     }

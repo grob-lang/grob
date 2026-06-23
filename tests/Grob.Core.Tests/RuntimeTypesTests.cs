@@ -214,6 +214,17 @@ public sealed class RuntimeTypesTests {
         Assert.Throws<ArgumentNullException>(() => new BytecodeFunction("f", 0, null!));
 
     [Fact]
+    public void BytecodeFunction_NegativeUpvalueCount_Throws() =>
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new BytecodeFunction("f", 0, new Chunk(), upvalueCount: -1));
+
+    [Fact]
+    public void BytecodeFunction_StoresUpvalueCount() {
+        var fn = new BytecodeFunction("f", 0, new Chunk(), upvalueCount: 3);
+        Assert.Equal(3, fn.UpvalueCount);
+    }
+
+    [Fact]
     public void BytecodeFunction_StoresBytecodeChunk() {
         var chunk = new Chunk();
         var fn = new BytecodeFunction("f", 0, chunk);

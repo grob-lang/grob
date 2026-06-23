@@ -32,7 +32,24 @@ public sealed partial class Compiler : AstVisitor<object?> {
     // the local variables declared inside it.  When the stack is empty we are
     // at the top-level (global) scope.
     // -----------------------------------------------------------------------
-    private sealed record LocalVar(string Name, int Slot);
+    private sealed class LocalVar {
+        public string Name { get; }
+        public int Slot { get; }
+
+        /// <summary>
+        /// Set when a nested lambda captures this local as an upvalue (D-115).
+        /// At scope exit the compiler emits <see cref="OpCode.CloseUpvalue"/> for a
+        /// captured local instead of a blind <see cref="OpCode.PopN"/>, so the
+        /// upvalue migrates to the heap before the slot can be reused.
+        /// </summary>
+        public bool Captured { get; set; }
+
+        public LocalVar(string name, int slot) {
+            Name = name;
+            Slot = slot;
+        }
+    }
+
     private readonly Stack<List<LocalVar>> _localScopes = new();
     private int _nextSlot;   // next available stack slot for a new local
 
@@ -286,6 +303,48 @@ public sealed partial class Compiler : AstVisitor<object?> {
     }
 
     /// <summary>
+    /// Marks the local at absolute <paramref name="slot"/> as captured by a nested
+    /// lambda, so its scope-exit cleanup closes the upvalue (D-115). Called from a
+    /// sub-compiler's <see cref="ResolveUpvalue"/> against this enclosing compiler.
+    /// </summary>
+    private void MarkLocalCaptured(int slot) {
+        foreach (List<LocalVar> scope in _localScopes) {
+            foreach (LocalVar local in scope) {
+                if (local.Slot == slot) {
+                    local.Captured = true;
+                    return;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Emits cleanup for <paramref name="locals"/> leaving scope. When none are
+    /// captured (the common path) a single <see cref="OpCode.PopN"/> discards them.
+    /// When at least one is captured, each local is cleaned top-of-stack first:
+    /// <see cref="OpCode.CloseUpvalue"/> for a captured local (close the upvalue to
+    /// the heap, then pop) and <see cref="OpCode.Pop"/> for an uncaptured one. This
+    /// migrates captured variables off the stack before their slots can be reused
+    /// (D-115), which a blind <c>PopN</c> would not do.
+    /// </summary>
+    private void EmitScopeCleanup(IReadOnlyCollection<LocalVar> locals, int line) {
+        if (locals.Count == 0) return;
+
+        if (!locals.Any(l => l.Captured)) {
+            _chunk.WriteOpCode(OpCode.PopN, line);
+            _chunk.WriteByte(ToByteOperand(locals.Count, "scope cleanup PopN"), line);
+            return;
+        }
+
+        // CloseUpvalue closes the top open upvalue then pops one slot; Pop discards
+        // one slot. Process highest slot first so each captured local is on top when
+        // its CloseUpvalue runs.
+        foreach (LocalVar local in locals.OrderByDescending(l => l.Slot)) {
+            _chunk.WriteOpCode(local.Captured ? OpCode.CloseUpvalue : OpCode.Pop, line);
+        }
+    }
+
+    /// <summary>
     /// Emits a load instruction for the variable <paramref name="name"/>:
     /// <see cref="OpCode.GetLocal"/> when the name resolves to a local slot in
     /// this function's scope, <see cref="OpCode.GetUpvalue"/> when it resolves
@@ -352,8 +411,11 @@ public sealed partial class Compiler : AstVisitor<object?> {
 
         // Is the variable a direct local of the immediately enclosing function?
         int localSlot = _enclosing.FindLocalSlot(name);
-        if (localSlot >= 0)
+        if (localSlot >= 0) {
+            // Mark it captured so the enclosing scope closes the upvalue on exit.
+            _enclosing.MarkLocalCaptured(localSlot);
             return AddUpvalue(isLocal: true, index: localSlot);
+        }
 
         // Is it captured transitively by the enclosing closure?
         int enclosingUv = _enclosing.ResolveUpvalue(name);

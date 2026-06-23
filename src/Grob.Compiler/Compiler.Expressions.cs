@@ -181,16 +181,17 @@ public sealed partial class Compiler {
     }
 
     // -----------------------------------------------------------------------
-    // Lambda expression  (Sprint 5 Increment C — categories 1–3 only)
+    // Lambda expression  (Sprint 5 Increment C/D — categories 1–4)
     // -----------------------------------------------------------------------
 
     /// <inheritdoc/>
     /// <remarks>
     /// Compiles the lambda into its own <see cref="BytecodeFunction"/> (using the same
-    /// sub-compiler pattern as <see cref="VisitFnDecl"/>) and emits a single
-    /// <see cref="OpCode.Constant"/> in the enclosing chunk so the value is pushed onto
-    /// the stack. The lambda is then an opaque callable that the caller stores, passes,
-    /// or immediately uses as an argument.
+    /// sub-compiler pattern as <see cref="VisitFnDecl"/>). A non-capturing lambda emits a
+    /// single <see cref="OpCode.Constant"/> in the enclosing chunk so the value is pushed
+    /// onto the stack; a lambda that captures an enclosing-function local instead emits an
+    /// <see cref="OpCode.Closure"/> with its upvalue descriptors. Either way the lambda is
+    /// an opaque callable that the caller stores, passes, or immediately uses as an argument.
     ///
     /// <para><b>Category 1–3 resolution.</b> The sub-compiler inherits the root's
     /// <c>_constValues</c> cache, so top-level <c>const</c> references inside the body

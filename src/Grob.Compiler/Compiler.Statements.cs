@@ -21,8 +21,7 @@ public sealed partial class Compiler {
 
         List<LocalVar> scope = _localScopes.Pop();
         if (scope.Count > 0) {
-            _chunk.WriteOpCode(OpCode.PopN, node.Range.End.Line);
-            _chunk.WriteByte(ToByteOperand(scope.Count, "PopN count"), node.Range.End.Line);
+            EmitScopeCleanup(scope, node.Range.End.Line);
             _nextSlot -= scope.Count;
         }
         return null;
