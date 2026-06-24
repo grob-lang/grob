@@ -23,11 +23,12 @@ public sealed partial class TypeChecker {
 
         // Check for same-scope re-declaration (E1102) before visiting the initializer
         // so we don't clobber a valid symbol if the name is already in this scope.
-        // A pass-1 forward-reference placeholder (D-321) is not a redeclaration — pass 2
-        // finalises it here — so only a non-provisional entry counts as a duplicate.
+        // A pass-1 forward-reference placeholder (D-321, D-324) is not a redeclaration —
+        // pass 2 finalises it here — so only a non-provisional entry counts as a duplicate.
         if (_scopes.Peek().TryGetValue(node.Name, out Symbol? existing) && !existing.Provisional) {
             EmitError(ErrorCatalog.E1102,
-                $"'{node.Name}' is already declared in this scope. Use '=' to reassign.",
+                $"'{node.Name}' is already declared in this scope "
+              + $"(first declared at line {existing.DeclaredAt.Line}). Use '=' to reassign.",
                 node.Range);
             // Still visit the initializer for cascade suppression on its sub-expressions.
             Visit(node.Initializer);

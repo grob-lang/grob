@@ -185,6 +185,89 @@ public sealed class TypeCheckerVariableTests {
     }
 
     // -----------------------------------------------------------------------
+    // Uniform top-level redeclaration (D-324) — fn/fn, type/type, cross-kind
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void FnDecl_DuplicateFnName_EmitsE1102AtSecond() {
+        DiagnosticBag bag = Check("""
+            fn foo(): int { return 1 }
+            fn foo(): int { return 2 }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void TypeDecl_DuplicateTypeName_EmitsE1102AtSecond() {
+        DiagnosticBag bag = Check("""
+            type Bar { x: int }
+            type Bar { y: int }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void VarDecl_BeforeFn_SameName_EmitsE1102AtFn() {
+        // Reverse-order collision: value binding declared before fn with same name.
+        // E1102 must fire at the fn (the offending later declaration), not at the var.
+        DiagnosticBag bag = Check("""
+            foo := 1
+            fn foo(): int { return 2 }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void TypeDecl_BeforeVarDecl_EmitsE1102AtVar() {
+        DiagnosticBag bag = Check("""
+            type foo { x: int }
+            foo := 1
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void FnDecl_BeforeType_SameName_EmitsE1102AtType() {
+        DiagnosticBag bag = Check("""
+            fn foo(): int { return 1 }
+            type foo { x: int }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void TypeDecl_BeforeFn_SameName_EmitsE1102AtFn() {
+        DiagnosticBag bag = Check("""
+            type foo { x: int }
+            fn foo(): int { return 1 }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void FnDecl_DifferentNameFromTopLevelValue_NoError() {
+        // A provisional value binding must not false-positive against a fn with a
+        // different name (D-321 / D-324 preserved).
+        DiagnosticBag bag = Check("""
+            foo := 1
+            fn bar(): int { return foo }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    // -----------------------------------------------------------------------
     // Compound assignment (+=, -=, *=, /=, %=)
     // -----------------------------------------------------------------------
 

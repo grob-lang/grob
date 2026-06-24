@@ -325,10 +325,10 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Warning,
         Throws: null);
 
-    /// <summary>variable already declared in this scope</summary>
+    /// <summary>name already declared in this scope</summary>
     public static readonly ErrorDescriptor E1102 = new(
         Code: "E1102",
-        Title: "variable already declared in this scope",
+        Title: "name already declared in this scope",
         Category: ErrorCategory.NameResolution,
         Status: ErrorStatus.PreRelease,
         Severity: DiagnosticSeverity.Error,

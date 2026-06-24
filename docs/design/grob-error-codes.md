@@ -86,7 +86,7 @@ read by `grob --explain Exxxx`.
 | E1002 | undefined member                                   | Name resolution   | pre-release           |
 | E1003 | undefined module                                   | Name resolution   | pre-release           |
 | E1101 | shadowed declaration                               | Name resolution   | pre-release (warning) |
-| E1102 | variable already declared in this scope            | Name resolution   | pre-release           |
+| E1102 | name already declared in this scope                | Name resolution   | pre-release           |
 | E1103 | reserved identifier used as a binding name         | Name resolution   | pre-release           |
 | E1201 | forward reference inside function body             | Name resolution   | pre-release           |
 | E1202 | use before declaration in block scope              | Name resolution   | pre-release           |
@@ -499,13 +499,13 @@ read by `grob --explain Exxxx`.
 
 ---
 
-### E1102 — variable already declared in this scope
+### E1102 — name already declared in this scope
 
 - **Category:** Name resolution
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A `:=` declaration was applied to a name that already exists in the current scope. Use `=` to reassign an existing binding.
-- **Source decision:** Sprint 3 Increment A.
+- **Description:** A binding-introducing form (`:=`, `readonly`, `const`, `fn`, `type`) declared a name that is already bound in the same scope. The diagnostic is emitted at the second (offending) declaration. For `:=` use `=` to reassign an existing variable binding. For `fn`/`type`/`readonly`/`const` rename the declaration.
+- **Source decision:** Sprint 3 Increment A; broadened to all top-level binding forms by D-324.
 
 ---
 

@@ -1439,6 +1439,11 @@ print(repos.length)
 An `import` after a `param` or `type` is a compile error. A `param` after a
 `fn` or top-level statement is a compile error.
 
+**Name uniqueness.** All binding-introducing forms (`fn`, `type`, `:=`,
+`readonly`, `const`) at the top level share a single name space. Declaring
+the same name twice — regardless of the two kinds involved — is a compile
+error (E1102, D-324). The diagnostic fires at the second declaration.
+
 ---
 
 ## 19.1 Top-Level Initialisation Order
@@ -2107,6 +2112,14 @@ Declares `name` in the current scope and assigns the value of `expression`.
 Valid only on first use of `name` in the current scope. Reusing `:=` for a
 name that already exists in the current scope is a compile error — use `=`
 instead.
+
+**Uniform top-level redeclaration rule (D-324).** All binding-introducing
+forms at the top level — `:=`, `readonly`, `const`, `fn`, `type` — share
+the same collision rule: the second (or later) declaration of a name that is
+already bound is a compile error (E1102), regardless of the kinds involved.
+The diagnostic is emitted at the offending later declaration. Within a
+function body only `:=` introduces local bindings; the same collision rule
+applies there.
 
 ### Assignment — `=` and compound
 

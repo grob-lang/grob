@@ -108,15 +108,17 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         RegisterBuiltins();
 
         // Pass 1 — register top-level fn, type, and value-binding declarations with
-        // provisional GrobType.Unknown placeholders (D-166, D-321). This lets any
+        // provisional GrobType.Unknown placeholders (D-166, D-321, D-324). This lets any
         // top-level item reference any other top-level name without an E1001.
+        // All declarations are registered as provisional so that pass 2 can detect
+        // collisions uniformly at the finalising visit, always at the offending later decl.
         foreach (AstNode item in unit.TopLevel) {
             switch (item) {
                 case FnDecl fn:
-                    RegisterSymbol(fn.Name, GrobType.Unknown, fn.Range.Start, fn);
+                    RegisterSymbol(fn.Name, GrobType.Unknown, fn.Range.Start, fn, provisional: true);
                     break;
                 case TypeDecl td:
-                    RegisterSymbol(td.Name, GrobType.Unknown, td.Range.Start, td);
+                    RegisterSymbol(td.Name, GrobType.Unknown, td.Range.Start, td, provisional: true);
                     break;
                 case ReadonlyDecl ro:
                     RegisterProvisionalValueBinding(ro.Name, ro.Range.Start, ro);
@@ -325,15 +327,19 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
     /// <summary>
     /// Pass-1 registration of a top-level value binding as a provisional placeholder
-    /// (D-321). Skips the registration when the name is already bound by a
-    /// non-provisional symbol — a `fn`, `type` or earlier-finalised binding — so the
-    /// placeholder never masks a genuine redeclaration: pass 2 then still raises E1102
-    /// at the colliding binding. A pre-existing provisional placeholder for the same
-    /// name (two top-level value bindings) is harmlessly overwritten; pass 2 finalises
-    /// the first and reports the second.
+    /// (D-321, D-324). Skips when the name is already bound by a non-provisional symbol
+    /// (an earlier-finalised binding) or by an fn/type provisional — both are authoritative
+    /// and must not be masked. A pre-existing value-binding provisional for the same name
+    /// is harmlessly overwritten; pass 2 finalises the first and reports the second.
     /// </summary>
     private void RegisterProvisionalValueBinding(string name, SourceLocation declaredAt, AstNode declarationNode) {
-        if (_scopes.Peek().TryGetValue(name, out Symbol? existing) && !existing.Provisional) return;
+        if (_scopes.Peek().TryGetValue(name, out Symbol? existing)) {
+            if (!existing.Provisional) return;
+            // An fn/type provisional from pass 1 takes precedence over a value-binding
+            // provisional: do not overwrite it. Pass 2 will detect the collision when the
+            // value visitor finalises its entry and finds the fn/type already real.
+            if (existing.DeclarationNode is FnDecl or TypeDecl) return;
+        }
         RegisterSymbol(name, GrobType.Unknown, declaredAt, declarationNode, provisional: true);
     }
 
@@ -346,6 +352,26 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             DeclarationNode = declarationNode,
             Provisional = provisional,
         };
+    }
+
+    /// <summary>
+    /// Finalises a pass-1 provisional top-level entry as a real binding (D-324). When
+    /// a real (non-provisional) binding already exists for <paramref name="name"/>,
+    /// emits <see cref="ErrorCatalog.E1102"/> at <paramref name="range"/> and returns
+    /// <see langword="false"/> without registering. Otherwise registers the symbol and
+    /// returns <see langword="true"/>. The note in the message carries the prior
+    /// declaration's line so the user can locate both declarations.
+    /// </summary>
+    private bool FinalizeTopLevelBinding(
+        string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode, SourceRange range) {
+        if (_scopes.Peek().TryGetValue(name, out Symbol? existing) && !existing.Provisional) {
+            EmitError(ErrorCatalog.E1102,
+                $"'{name}' is already declared in this scope (first declared at line {existing.DeclaredAt.Line}).",
+                range);
+            return false;
+        }
+        RegisterSymbol(name, type, declaredAt, declarationNode);
+        return true;
     }
 
     /// <summary>
