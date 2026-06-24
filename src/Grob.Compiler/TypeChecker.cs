@@ -117,10 +117,10 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
                     RegisterSymbol(td.Name, GrobType.Unknown, td.Range.Start, td);
                     break;
                 case ReadonlyDecl ro:
-                    RegisterSymbol(ro.Name, GrobType.Unknown, ro.Range.Start, ro, provisional: true);
+                    RegisterProvisionalValueBinding(ro.Name, ro.Range.Start, ro);
                     break;
                 case VarDeclStmt vd:
-                    RegisterSymbol(vd.Name, GrobType.Unknown, vd.Range.Start, vd, provisional: true);
+                    RegisterProvisionalValueBinding(vd.Name, vd.Range.Start, vd);
                     break;
             }
         }
@@ -313,6 +313,20 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
               + "Rename the binding.",
                 range);
         }
+    }
+
+    /// <summary>
+    /// Pass-1 registration of a top-level value binding as a provisional placeholder
+    /// (D-321). Skips the registration when the name is already bound by a
+    /// non-provisional symbol — a `fn`, `type` or earlier-finalised binding — so the
+    /// placeholder never masks a genuine redeclaration: pass 2 then still raises E1102
+    /// at the colliding binding. A pre-existing provisional placeholder for the same
+    /// name (two top-level value bindings) is harmlessly overwritten; pass 2 finalises
+    /// the first and reports the second.
+    /// </summary>
+    private void RegisterProvisionalValueBinding(string name, SourceLocation declaredAt, AstNode declarationNode) {
+        if (_scopes.Peek().TryGetValue(name, out Symbol? existing) && !existing.Provisional) return;
+        RegisterSymbol(name, GrobType.Unknown, declaredAt, declarationNode, provisional: true);
     }
 
     private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode,

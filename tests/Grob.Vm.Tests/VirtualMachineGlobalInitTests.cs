@@ -159,11 +159,64 @@ public sealed class VirtualMachineGlobalInitTests {
         // Binding being initialised: A on line 1.
         Assert.Contains("'A'", ex.Message);
         Assert.Contains("line 1", ex.Message);
-        // The function that performed the read.
+        // The function that performed the read, with its declaration line (line 4).
         Assert.Contains("computeA", ex.Message);
+        Assert.Contains("line 4", ex.Message);
         // The uninitialised binding read: B on line 2.
         Assert.Contains("'B'", ex.Message);
         Assert.Contains("line 2", ex.Message);
+    }
+
+    // -----------------------------------------------------------------------
+    // The E5902 trace survives the re-entrant native bridge: when a native
+    // invokes a Grob function (via the VmInvoker) during startup and that
+    // function reads an uninitialised binding, InvokeCallable's frame carries
+    // the callee so the message still names the function (D-321).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CircularInitialisation_ThroughNativeBridge_NamesTheFunction() {
+        // fn reader(): reads B (declared later) and returns it.
+        var readerChunk = new Chunk();
+        byte bInReader = NameByte(readerChunk, "B");
+        readerChunk.WriteOpCode(OpCode.GetGlobal, 7); readerChunk.WriteByte(bInReader, 7);
+        readerChunk.WriteOpCode(OpCode.Return, 7);
+        var reader = new BytecodeFunction("reader", 0, readerChunk);
+
+        // Native 'apply' invokes its single function argument with no args.
+        var apply = new NativeFunction("apply", 1, (args, invoke) => invoke(args[0], []));
+
+        // script:
+        //   Constant <reader>; DefineGlobal reader       ; prologue — Initialised
+        //   GetGlobal apply; Constant <reader>; Call 1    ; A's initialiser: apply(reader)
+        //                                                 ;   -> reader reads B (Uninit) -> E5902
+        //   DefineGlobal A                                ; A being initialised
+        //   Constant 0; DefineGlobal B                    ; B declared later
+        //   Return
+        var script = new Chunk();
+        byte aName = NameByte(script, "A");
+        byte bName = NameByte(script, "B");
+        byte applyName = NameByte(script, "apply");
+        byte zero = IntByte(script, 0L);
+        int readerConst = script.AddConstant(GrobValue.FromFunction(reader));
+        script.WriteOpCode(OpCode.Constant, 7); script.WriteByte((byte)readerConst, 7);
+        script.WriteOpCode(OpCode.DefineGlobal, 7); script.WriteByte(NameByte(script, "reader"), 7);
+        script.WriteOpCode(OpCode.GetGlobal, 1); script.WriteByte(applyName, 1);
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)readerConst, 1);
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(1, 1);
+        script.WriteOpCode(OpCode.DefineGlobal, 1); script.WriteByte(aName, 1);
+        script.WriteOpCode(OpCode.Constant, 2); script.WriteByte(zero, 2);
+        script.WriteOpCode(OpCode.DefineGlobal, 2); script.WriteByte(bName, 2);
+        script.WriteOpCode(OpCode.Return, 2);
+
+        var (vm, _) = NewVm();
+        vm.RegisterNative("apply", apply);
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
+
+        Assert.Equal("E5902", ex.Code);
+        // The trace names the function invoked through the native bridge.
+        Assert.Contains("reader", ex.Message);
+        Assert.Contains("'B'", ex.Message);
     }
 
     // -----------------------------------------------------------------------

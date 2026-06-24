@@ -1400,7 +1400,7 @@ initialisation, matching the forward-reference resolution the two-pass type
 checker already grants (§17). After the prologue, top-level code executes
 top-to-bottom in source order. This applies uniformly to every top-level
 statement — mutable `:=` declarations, `readonly` declarations, function calls
-used for side effects, and control-flow statements.
+used for side effects and control-flow statements.
 
 Because functions are hoisted, **calling a function declared later in source is
 always valid** — it is not a circular initialisation:

@@ -925,12 +925,15 @@ public sealed class VirtualMachine {
             _stack.Push(arg, line);
 
         // Save current dispatch state to the frame array; include ActiveClosure when calling
-        // a Closure so GetUpvalue/SetUpvalue can reach the upvalue array.
+        // a Closure so GetUpvalue/SetUpvalue can reach the upvalue array. Carry the callee
+        // so an E5902 raised through this re-entrant native bridge still names the function
+        // (§19.1, D-321), exactly as the direct Call arms do.
         _frames[_frameCount++] = new CallFrame {
             ReturnChunk = _activeChunk,
             ReturnInstructionPointer = _ip,
             ReturnStackBase = _stackBase,
             ActiveClosure = activeClosure,
+            Callee = fn,
         };
         _stackBase = _stack.Count - args.Length;
         _activeChunk = bf.Bytecode;
@@ -951,7 +954,7 @@ public sealed class VirtualMachine {
     /// <summary>
     /// Composes the circular-initialisation diagnostic (E5902, §19.1, D-321),
     /// tracing through the function: the top-level binding whose initialiser is
-    /// running, the function that performed the read, and the binding
+    /// running, the function that performed the read and the binding
     /// <paramref name="readName"/> read before its declaration had executed — each
     /// with its source line. Called only on the rare E5902 path, so it favours
     /// clarity over speed.
@@ -980,11 +983,16 @@ public sealed class VirtualMachine {
             (initName, initLine) = (readName, readLine);
 
         string readClause = $"top-level binding '{readName}' (line {readLine})";
-        return functionName is { Length: > 0 }
-            ? $"While initialising top-level binding '{initName}' (line {initLine}), "
-              + $"function '{functionName}' read {readClause} before its declaration had executed."
-            : $"While initialising top-level binding '{initName}' (line {initLine}), "
-              + $"{readClause} was read before its declaration had executed.";
+        if (functionName is not { Length: > 0 })
+            return $"While initialising top-level binding '{initName}' (line {initLine}), "
+                 + $"{readClause} was read before its declaration had executed.";
+
+        // A top-level function is itself a hoisted binding, so its declaration line is
+        // recorded in the pre-scan; include it when known to match the §19.1 template.
+        int fnLine = DeclarationLineOf(functionName);
+        string fnClause = fnLine > 0 ? $"function '{functionName}' (line {fnLine})" : $"function '{functionName}'";
+        return $"While initialising top-level binding '{initName}' (line {initLine}), "
+             + $"{fnClause} read {readClause} before its declaration had executed.";
     }
 
     /// <summary>

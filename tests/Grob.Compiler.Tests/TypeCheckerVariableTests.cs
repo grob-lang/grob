@@ -170,6 +170,20 @@ public sealed class TypeCheckerVariableTests {
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
     }
 
+    [Fact]
+    public void VarDecl_CollidesWithEarlierTopLevelFunction_EmitsE1102() {
+        // A mutable binding that reuses a top-level function's name is a same-scope
+        // redeclaration (E1102). Pass-1 fn hoisting (D-321) must not let the value
+        // binding's provisional placeholder silently overwrite the function symbol.
+        DiagnosticBag bag = Check("""
+            fn foo(): int { return 1 }
+            foo := 1
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
     // -----------------------------------------------------------------------
     // Compound assignment (+=, -=, *=, /=, %=)
     // -----------------------------------------------------------------------
