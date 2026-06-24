@@ -74,6 +74,7 @@ read by `grob --explain Exxxx`.
 | E0205 | non-constant expression in `const` right-hand side | Type              | pre-release           |
 | E0301 | type cycle with no terminating field               | Type              | pre-release           |
 | E0302 | recursive type without indirection                 | Type              | pre-release           |
+| E0303 | circular type dependency among top-level value bindings | Type         | pre-release           |
 | E0401 | generic type argument count mismatch               | Type              | pre-release           |
 | E0402 | generic constraint violation                       | Type              | pre-release           |
 | E0501 | `for...in` subject is not iterable                 | Type              | pre-release           |
@@ -378,6 +379,16 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** A type's required field references the type itself directly. Sibling of E0301 — fires on the trivial single-type self-reference case where E0301's multi-step cycle walk is not needed.
 - **Source decision:** D-287.
+
+---
+
+### E0303 — circular type dependency among top-level value bindings
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** Two or more unannotated top-level value bindings (`readonly` or `var`) form a cycle in their initialisers such that the type of each binding cannot be resolved without first knowing the type of another in the cycle. Annotated bindings are resolved from their declared type and do not participate in value-type dependency edges; annotated mutual cycles surface instead as runtime E5902.
+- **Source decision:** D-323.
 
 ---
 
@@ -1251,7 +1262,7 @@ None as of v1.
 
 ---
 
-**Total: 108 codes across 7 categories.** This is the canonical current count;
+**Total: 109 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count

@@ -4,16 +4,22 @@ using Grob.Core;
 namespace Grob.Compiler;
 
 /// <summary>
-/// Two-pass type checker (D-166). Annotates the AST in place — sets
+/// Three-pass type checker (D-166, D-323). Annotates the AST in place — sets
 /// <see cref="IdentifierExpr.ResolvedType"/> and <see cref="IdentifierExpr.Declaration"/>
 /// on every identifier node — and accumulates all type diagnostics into the
 /// <see cref="DiagnosticBag"/> without stopping at the first error.
 /// Emits no bytecode; that is Increment D.
 /// </summary>
 /// <remarks>
-/// <para><b>Pass 1 — registration.</b> Walks every top-level <c>fn</c> and <c>type</c>
-/// declaration and registers the name in the global scope. This is what lets a
-/// function body reference a function declared later in the same file (D-166).</para>
+/// <para><b>Pass 1 — registration.</b> Walks every top-level <c>fn</c>, <c>type</c>
+/// and value binding declaration and registers the name in the global scope with a
+/// provisional <see cref="GrobType.Unknown"/> placeholder (D-166, D-321).</para>
+/// <para><b>Pass 1.5 — value-binding type resolution.</b> Resolves the static type of
+/// every top-level value binding (<c>readonly</c> / <c>var</c>) from its initialiser,
+/// in initialiser-dependency order using a DFS. This means pass 2 sees the real type
+/// when a function body reads a forward-declared value binding, rather than
+/// <see cref="GrobType.Unknown"/> (D-323). Unannotated mutual cycles are detected
+/// here and reported as E0303; annotated cycles surface at runtime as E5902.</para>
 /// <para><b>Pass 2 — validation.</b> Walks all top-level items in source order,
 /// resolving names, inferring types, checking arithmetic and comparison rules, and
 /// reporting every violation via the diagnostic bag.</para>
@@ -86,7 +92,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     }
 
     /// <summary>
-    /// Runs the two-pass type check over <paramref name="unit"/>, mutating
+    /// Runs the three-pass type check over <paramref name="unit"/>, mutating
     /// identifier nodes in-place and accumulating all diagnostics into the bag
     /// supplied at construction.
     /// </summary>
@@ -101,13 +107,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // at the top-level scope, and so that call sites do not get E1001.
         RegisterBuiltins();
 
-        // Pass 1 — register top-level fn and type declarations, and top-level value
-        // bindings (readonly and mutable :=), so that function bodies can reference
-        // any top-level declaration appearing later in the same file (D-166, D-321).
-        // Value bindings register with GrobType.Unknown here (the initialiser type is
-        // not yet known); pass 2 re-registers each with its inferred type when it
-        // visits the declaration, so a forward reference resolves to Unknown (permissive)
-        // rather than E1001, while a backward reference still sees the precise type.
+        // Pass 1 — register top-level fn, type, and value-binding declarations with
+        // provisional GrobType.Unknown placeholders (D-166, D-321). This lets any
+        // top-level item reference any other top-level name without an E1001.
         foreach (AstNode item in unit.TopLevel) {
             switch (item) {
                 case FnDecl fn:
@@ -124,6 +126,12 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
                     break;
             }
         }
+
+        // Pass 1.5 — resolve the static type of each top-level value binding from
+        // its initialiser, in dependency order, before pass 2 validates function
+        // bodies. Without this pass a function body reading a forward-declared value
+        // binding would see GrobType.Unknown and trigger a false E0005 (D-323).
+        ResolveTopLevelValueBindingTypes(unit);
 
         // Pass 2 — validate all top-level items in source order.
         foreach (AstNode item in unit.TopLevel) {
@@ -338,6 +346,21 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             DeclarationNode = declarationNode,
             Provisional = provisional,
         };
+    }
+
+    /// <summary>
+    /// Updates the type of an existing provisional symbol while keeping
+    /// <see cref="Symbol.Provisional"/> <see langword="true"/>. Called by phase 1.5
+    /// after the type of a top-level value binding has been inferred in dependency
+    /// order (D-323). The symbol remains provisional so that pass 2's E1102 guard
+    /// still permits re-registration when it finalises the binding.
+    /// No-ops when the existing symbol is non-provisional (e.g. an fn or type
+    /// declaration whose name is re-used by a value binding — pass 2 handles E1102).
+    /// </summary>
+    private void UpdateProvisionalType(string name, GrobType type) {
+        if (!_scopes.Peek().TryGetValue(name, out Symbol? existing)) return;
+        if (!existing.Provisional) return;
+        RegisterSymbol(name, type, existing.DeclaredAt, existing.DeclarationNode, provisional: true);
     }
 
     /// <summary>Emits an error diagnostic and returns <see cref="GrobType.Error"/>.</summary>

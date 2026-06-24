@@ -1,8 +1,7 @@
 error[E5902]: circular initialisation
-  --> circular-initialisation.grob:5:15
+  --> circular-initialisation.grob:5
    |
- 5 |     return "${product} — built for scripting"
-   |               ^^^^^^^
+ 5 |     return product
    |
    = note: 'product' was read before its declaration on line 8 had executed
    = note: 'tagline' is currently initialising on line 2 and called `buildTagline()`

@@ -1233,17 +1233,24 @@ language conventions. `grob fmt` normalises trailing comma usage.
 ## 17. Forward References
 
 Functions and types can reference other functions and types declared later in the
-same file. The type checker performs two passes:
+same file, and function bodies can read top-level value bindings declared later
+in the same file. The type checker performs three passes (D-166, D-321, D-323):
 
 1. **Registration pass** — walks all top-level declarations (`fn`, `type`, `param`,
-   `import`) and registers their names and signatures in the symbol table.
-2. **Validation pass** — walks all function bodies and top-level code, resolving
-   references against the fully populated symbol table.
+   `import`) and top-level value bindings (`readonly`, `:=`) and registers their
+   names in the symbol table. Value bindings are registered with a provisional
+   `unknown` type placeholder.
+2. **Value-binding type resolution pass** — resolves the static type of each
+   top-level value binding from its initialiser, in initialiser-dependency order
+   (see §17.2). After this pass, every top-level value binding's type is known
+   before any function body is validated.
+3. **Validation pass** — walks all function bodies and top-level code, resolving
+   references against the fully populated and typed symbol table.
 
 This means declaration order does not matter at the top level. A function can call
 a function declared below it, and a type can reference a type declared below it.
 
-**Supported forward-reference forms.** The two-pass model admits all of the
+**Supported forward-reference forms.** The three-pass model admits all of the
 following at the top level:
 
 - Function-to-function forward reference.
@@ -1256,6 +1263,10 @@ following at the top level:
 - Self-reference — direct recursion, a function calling itself.
 - Mutual reference — indirect recursion, functions calling each other or
   types referencing each other via nullable fields.
+- **Function body reading a top-level value binding declared later.** The
+  value-binding type resolution pass (§17.2) resolves types before function
+  bodies are validated, so `fn f(): int { return x }` followed by
+  `readonly x := 5` type-checks correctly.
 
 Inside function bodies, the standard rule applies: `:=`, `const` and `readonly`
 declare in the current scope, and the name must be declared before use within
@@ -1326,6 +1337,47 @@ type Node {
 
 ---
 
+## 17.2 Value-Binding Type Cycles
+
+Top-level value bindings can reference one another in their initialisers, forming
+a dependency graph on the type of each binding. The type checker walks this graph
+in the value-binding type resolution pass (§17, pass 2) using the same
+`Unvisited` / `Visiting` / `Visited` three-colour DFS as §17.1. A back-edge —
+a binding that is currently being resolved being referenced again — signals a
+cycle (D-323).
+
+**Unannotated mutual cycle — compile-time error E0303.**
+
+```grob
+readonly a := b   // a's type depends on b's type
+readonly b := a   // b's type depends on a's type — cycle
+```
+
+Neither type can be resolved without the other. The type checker emits **E0303**
+("circular type dependency among top-level value bindings") and assigns the
+`error` cascade type to both bindings. This is a compile-time error; the
+programme does not reach the runtime.
+
+**Annotated mutual cycle — runtime error E5902.**
+
+```grob
+readonly a: int := b   // a's type is int, declared explicitly
+readonly b: int := a   // b's type is int, declared explicitly
+```
+
+When a binding has a type annotation, its type is resolved directly from the
+annotation — no type-dependency edge runs from the binding to its initialiser's
+identifiers. Both `a` and `b` are typed as `int` without a cycle in the type
+graph, so the type checker accepts this programme. The cycle is structural, not
+typed — it surfaces at runtime as **E5902** when `b`'s slot is still
+`Uninitialised` at the point `a`'s initialiser executes (§19.1).
+
+**Call expressions do not create value-type dependency edges.** A call
+`readonly x := f()` where `f(): int` is declared later resolves `x` to `int`
+via the function's declared return type — no edge to any other value binding.
+
+---
+
 ## 18. Shadowing
 
 A local variable may shadow a variable from an enclosing scope, including function
@@ -1392,15 +1444,15 @@ An `import` after a `param` or `type` is a compile error. A `param` after a
 ## 19.1 Top-Level Initialisation Order
 
 **Execution order.** `import`, `param` and `type` declarations are processed by
-the two-pass type checker, and every top-level `fn` binding is **established
-(`Initialised`) before any top-level code executes** — the compiler emits the
-function bindings in a prologue that runs ahead of the first top-level statement
-(D-321). Functions are therefore runtime-available throughout top-level
-initialisation, matching the forward-reference resolution the two-pass type
-checker already grants (§17). After the prologue, top-level code executes
-top-to-bottom in source order. This applies uniformly to every top-level
-statement — mutable `:=` declarations, `readonly` declarations, function calls
-used for side effects and control-flow statements.
+the three-pass type checker (§17), and every top-level `fn` binding is
+**established (`Initialised`) before any top-level code executes** — the
+compiler emits the function bindings in a prologue that runs ahead of the first
+top-level statement (D-321). Functions are therefore runtime-available throughout
+top-level initialisation, matching the forward-reference resolution the
+three-pass type checker already grants (§17). After the prologue, top-level code
+executes top-to-bottom in source order. This applies uniformly to every
+top-level statement — mutable `:=` declarations, `readonly` declarations,
+function calls used for side effects and control-flow statements.
 
 Because functions are hoisted, **calling a function declared later in source is
 always valid** — it is not a circular initialisation:
@@ -1420,10 +1472,13 @@ for `const` bindings.
 Top-level code can read any top-level binding. A function declared at the top
 level can read top-level bindings from its body regardless of where the
 bindings are declared relative to the function. This is a natural consequence
-of the two-pass type checker (§17) — all top-level names are in scope from
-inside any function body, and the type checker's pass 1 registers every
-top-level name, value bindings included, so a function body resolves a
-later-declared top-level value (D-321).
+of the three-pass type checker (§17) — all top-level names are in scope from
+inside any function body, the type checker's pass 1 registers every top-level
+name (value bindings included), and phase 1.5 resolves each value binding's
+type in dependency order before function bodies are validated (D-321, D-323).
+A function body reading a later-declared top-level value sees the real type, not
+a placeholder — for example, `fn f(): int { return x }` followed by
+`readonly x := 5` resolves `x` to `int` and type-checks without error.
 
 `E5902` applies **only to value-binding initialisation cycles** — a `readonly`
 or mutable top-level binding whose initialiser, directly or through a function
@@ -1507,13 +1562,21 @@ This is a runtime error, reported through the exception machinery (§27). The
 exception type is `RuntimeError`; the script halts. No user-level `try`/`catch`
 can recover — the script cannot complete startup.
 
-**Why runtime, not compile-time.** Detecting the cycle at compile time would
-require inter-procedural analysis — tracing which functions a top-level
-initialiser transitively calls and which top-level bindings those functions
-read. The type checker does not otherwise perform inter-procedural analysis,
-and adding it for this one case would be disproportionate. The runtime check
-is cheap, produces a precise diagnostic, and preserves the simpler type
-checker design.
+**Why runtime for annotated cycles; compile-time for unannotated cycles.**
+
+An unannotated mutual value cycle — `readonly a := b` / `readonly b := a` — is
+caught at compile time as **E0303** by the type-resolution pass (§17.2), because
+neither binding's type can be inferred without the other.
+
+The runtime E5902 applies to annotated cycles — `readonly a: int := b` /
+`readonly b: int := a` — where each binding's type is declared explicitly and
+the type checker is satisfied, but the values still depend on each other at
+runtime. Detecting this at compile time would require inter-procedural analysis
+— tracing which functions a top-level initialiser transitively calls and which
+top-level bindings those functions read. The type checker does not otherwise
+perform inter-procedural analysis, and adding it for this case would be
+disproportionate. The runtime check is cheap, produces a precise diagnostic,
+and preserves the simpler type-checker design.
 
 ---
 

@@ -215,6 +215,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>circular type dependency among top-level value bindings</summary>
+    public static readonly ErrorDescriptor E0303 = new(
+        Code: "E0303",
+        Title: "circular type dependency among top-level value bindings",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>generic type argument count mismatch</summary>
     public static readonly ErrorDescriptor E0401 = new(
         Code: "E0401",
@@ -1025,6 +1034,7 @@ public static class ErrorCatalog {
         E0205,
         E0301,
         E0302,
+        E0303,
         E0401,
         E0402,
         E0501,
