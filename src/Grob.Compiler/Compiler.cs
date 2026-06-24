@@ -210,10 +210,41 @@ public sealed partial class Compiler : AstVisitor<object?> {
     // -----------------------------------------------------------------------
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Top-level items are emitted in three ordered phases (D-321):
+    /// <list type="number">
+    ///   <item><description><b>Const pre-pass.</b> Every <c>const</c> is folded and cached
+    ///     (no bytecode). Running this first lets a hoisted <c>fn</c> body inline any
+    ///     top-level <c>const</c> regardless of their relative source order (D-293).</description></item>
+    ///   <item><description><b>Fn prologue.</b> Every top-level <c>fn</c> emits its
+    ///     <see cref="OpCode.DefineGlobal"/> before any top-level statement runs, so the
+    ///     binding is <c>Initialised</c> ahead of the code that may call it. Top-level
+    ///     named functions capture no upvalues (D-296), so this is a plain binding
+    ///     prologue with no capture-ordering hazard. This is what makes a call to a
+    ///     function declared later in source resolve at runtime rather than raising
+    ///     E5902 (§19.1).</description></item>
+    ///   <item><description><b>Main body.</b> Every remaining top-level item runs in
+    ///     source order. E5902 is therefore reachable only for a genuine value-binding
+    ///     initialisation cycle.</description></item>
+    /// </list>
+    /// </remarks>
     public override object? VisitCompilationUnit(CompilationUnit node) {
+        // Phase 1 — fold and cache every top-level const (emits no bytecode).
         foreach (AstNode item in node.TopLevel) {
-            Visit(item);
+            if (item is ConstDecl) Visit(item);
         }
+
+        // Phase 2 — fn prologue: bind every top-level function before any top-level
+        // statement executes, so forward calls resolve at runtime.
+        foreach (AstNode item in node.TopLevel) {
+            if (item is FnDecl) Visit(item);
+        }
+
+        // Phase 3 — top-level statements and value bindings in source order.
+        foreach (AstNode item in node.TopLevel) {
+            if (item is not ConstDecl and not FnDecl) Visit(item);
+        }
+
         int returnLine = node.Range.End.Line;
         _chunk.WriteOpCode(OpCode.Return, returnLine);
         return null;

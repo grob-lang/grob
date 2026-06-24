@@ -1391,11 +1391,24 @@ An `import` after a `param` or `type` is a compile error. A `param` after a
 
 ## 19.1 Top-Level Initialisation Order
 
-**Execution order.** After `import`, `param`, `type` and `fn` declarations
-have been processed by the two-pass type checker, top-level code executes
+**Execution order.** `import`, `param` and `type` declarations are processed by
+the two-pass type checker, and every top-level `fn` binding is **established
+(`Initialised`) before any top-level code executes** — the compiler emits the
+function bindings in a prologue that runs ahead of the first top-level statement
+(D-321). Functions are therefore runtime-available throughout top-level
+initialisation, matching the forward-reference resolution the two-pass type
+checker already grants (§17). After the prologue, top-level code executes
 top-to-bottom in source order. This applies uniformly to every top-level
 statement — mutable `:=` declarations, `readonly` declarations, function calls
-used for side effects, and control-flow statements.
+used for side effects and control-flow statements.
+
+Because functions are hoisted, **calling a function declared later in source is
+always valid** — it is not a circular initialisation:
+
+```grob
+print(greet())                     // valid: greet is established before this runs
+fn greet(): string { return "hi" }
+```
 
 `const` declarations do not participate in top-level execution. The type
 checker resolves every `const` at compile time and the compiler inlines each
@@ -1408,9 +1421,18 @@ Top-level code can read any top-level binding. A function declared at the top
 level can read top-level bindings from its body regardless of where the
 bindings are declared relative to the function. This is a natural consequence
 of the two-pass type checker (§17) — all top-level names are in scope from
-inside any function body.
+inside any function body, and the type checker's pass 1 registers every
+top-level name, value bindings included, so a function body resolves a
+later-declared top-level value (D-321).
 
-At runtime, a binding has a value only once its declaration statement has
+`E5902` applies **only to value-binding initialisation cycles** — a `readonly`
+or mutable top-level binding whose initialiser, directly or through a function
+it calls, reads a top-level value binding whose own declaration has not yet
+run. Calling a function declared later in source is **not** an E5902 case:
+functions are hoisted and established before any top-level code executes, so
+the call always resolves (see _Execution order_ above).
+
+At runtime, a value binding has a value only once its declaration statement has
 executed. Reading a `readonly` or mutable top-level binding from a function
 called during initialisation, before that binding's declaration has run, is
 a **runtime error**.
@@ -1426,6 +1448,12 @@ fn computeB(): int { return A + 1 }    // reads A
 When `A`'s declaration runs, `computeA()` is called, which reads `B`. `B`'s
 declaration has not yet executed, so `B` has no value. The runtime detects
 this and halts with a diagnostic.
+
+This example is reachable precisely _because_ functions are hoisted: `computeA`
+and `computeB` are established before `A`'s initialiser runs, so the call to
+`computeA()` resolves and the cycle is exposed at `B`'s read — a value-binding
+cycle, not a forward call. Were functions not hoisted, the call would fail
+first and the genuine cycle would never be reached (D-321).
 
 **Detection.** Each top-level binding slot carries a three-state tag —
 `Uninitialised`, `Initialising`, `Initialised`. The declaration statement

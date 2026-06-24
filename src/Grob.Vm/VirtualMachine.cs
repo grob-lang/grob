@@ -58,6 +58,13 @@ public sealed class VirtualMachine {
     private readonly Dictionary<string, SlotState> _globalStates = new(StringComparer.Ordinal);
     private bool _startupComplete;
 
+    // Top-level bindings in DefineGlobal (emission) order, each with the source line
+    // of its declaration. Built by the pre-scan and used only to compose the E5902
+    // trace-through-function message (§19.1, D-321): the binding being initialised is
+    // the first entry not yet Initialised, and a read binding's declaration line is
+    // looked up here.
+    private readonly List<(string Name, int Line)> _topLevelBindings = [];
+
     /// <summary>The call-stack frames (D-180). Active entries are <c>0.._frameCount-1</c>.</summary>
     private readonly CallFrame[] _frames = new CallFrame[MaxFrames];
     private int _frameCount;
@@ -186,6 +193,7 @@ public sealed class VirtualMachine {
         // startup check. The states are rebuilt per Run() so a fresh chunk gets
         // its own circular-initialisation detection.
         _globalStates.Clear();
+        _topLevelBindings.Clear();
         _startupComplete = false;
         ScanTopLevelGlobals(chunk);
 
@@ -301,8 +309,7 @@ public sealed class VirtualMachine {
                                 && _globalStates.TryGetValue(name, out SlotState state)
                                 && state != SlotState.Initialised)
                                 throw new GrobRuntimeException(ErrorCatalog.E5902.Code, line, column,
-                                    $"Circular initialisation: top-level binding '{name}' was read " +
-                                    "before its declaration had executed.");
+                                    ComposeCircularInitMessage(name));
                             if (!_globals.TryGetValue(name, out GrobValue val))
                                 throw new GrobRuntimeException(ErrorCatalog.E1001.Code, line, column,
                                     $"Undefined global '{name}'.");
@@ -732,6 +739,7 @@ public sealed class VirtualMachine {
                                     ReturnInstructionPointer = _ip,
                                     ReturnStackBase = _stackBase,
                                     ActiveClosure = closure,
+                                    Callee = closure,
                                 };
                                 _stackBase = _stack.Count - argCount;
                                 _activeChunk = closure.Function.Bytecode;
@@ -750,6 +758,7 @@ public sealed class VirtualMachine {
                                 ReturnChunk = _activeChunk,
                                 ReturnInstructionPointer = _ip,
                                 ReturnStackBase = _stackBase,
+                                Callee = fn,
                             };
                             _stackBase = _stack.Count - argCount;
                             _activeChunk = fn.Bytecode;
@@ -916,12 +925,15 @@ public sealed class VirtualMachine {
             _stack.Push(arg, line);
 
         // Save current dispatch state to the frame array; include ActiveClosure when calling
-        // a Closure so GetUpvalue/SetUpvalue can reach the upvalue array.
+        // a Closure so GetUpvalue/SetUpvalue can reach the upvalue array. Carry the callee
+        // so an E5902 raised through this re-entrant native bridge still names the function
+        // (§19.1, D-321), exactly as the direct Call arms do.
         _frames[_frameCount++] = new CallFrame {
             ReturnChunk = _activeChunk,
             ReturnInstructionPointer = _ip,
             ReturnStackBase = _stackBase,
             ActiveClosure = activeClosure,
+            Callee = fn,
         };
         _stackBase = _stack.Count - args.Length;
         _activeChunk = bf.Bytecode;
@@ -937,6 +949,61 @@ public sealed class VirtualMachine {
 
         // The Return arm already pushed the result and restored caller state.
         return _stack.Pop();
+    }
+
+    /// <summary>
+    /// Composes the circular-initialisation diagnostic (E5902, §19.1, D-321),
+    /// tracing through the function: the top-level binding whose initialiser is
+    /// running, the function that performed the read and the binding
+    /// <paramref name="readName"/> read before its declaration had executed — each
+    /// with its source line. Called only on the rare E5902 path, so it favours
+    /// clarity over speed.
+    /// </summary>
+    private string ComposeCircularInitMessage(string readName) {
+        int readLine = DeclarationLineOf(readName);
+
+        // The binding being initialised is the earliest top-level binding not yet
+        // Initialised: hoisted functions and already-run bindings are Initialised,
+        // and a read-before-declaration can only target a binding declared later, so
+        // the first non-Initialised entry in emission order is the current initialiser.
+        (string Name, int Line)? initialising = null;
+        foreach ((string Name, int Line) binding in _topLevelBindings) {
+            if (!_globalStates.TryGetValue(binding.Name, out SlotState s) || s != SlotState.Initialised) {
+                initialising = binding;
+                break;
+            }
+        }
+
+        // The function that performed the read is the call target of the active frame.
+        // A read directly in a top-level initialiser (no enclosing call) has none.
+        string? functionName = _frameCount > 0 ? _frames[_frameCount - 1].Callee?.Name : null;
+
+        if (initialising is not (string initName, int initLine))
+            // Defensive: the read binding is itself the only candidate.
+            (initName, initLine) = (readName, readLine);
+
+        string readClause = $"top-level binding '{readName}' (line {readLine})";
+        if (functionName is not { Length: > 0 })
+            return $"While initialising top-level binding '{initName}' (line {initLine}), "
+                 + $"{readClause} was read before its declaration had executed.";
+
+        // A top-level function is itself a hoisted binding, so its declaration line is
+        // recorded in the pre-scan; include it when known to match the §19.1 template.
+        int fnLine = DeclarationLineOf(functionName);
+        string fnClause = fnLine > 0 ? $"function '{functionName}' (line {fnLine})" : $"function '{functionName}'";
+        return $"While initialising top-level binding '{initName}' (line {initLine}), "
+             + $"{fnClause} read {readClause} before its declaration had executed.";
+    }
+
+    /// <summary>
+    /// Returns the source line of <paramref name="name"/>'s top-level declaration as
+    /// recorded by the pre-scan, or 0 when the name carries no recorded binding.
+    /// </summary>
+    private int DeclarationLineOf(string name) {
+        foreach ((string Name, int Line) binding in _topLevelBindings) {
+            if (binding.Name == name) return binding.Line;
+        }
+        return 0;
     }
 
     // -----------------------------------------------------------------------
@@ -966,8 +1033,13 @@ public sealed class VirtualMachine {
                 case OpCode.DefineGlobal:
                     if (ip + 1 < chunk.Count) {
                         byte nameIdx = chunk.ReadByte(ip + 1);
-                        if (nameIdx < chunk.ConstantCount)
-                            _globalStates[chunk.ReadConstant(nameIdx).AsString()] = SlotState.Uninitialised;
+                        if (nameIdx < chunk.ConstantCount) {
+                            string name = chunk.ReadConstant(nameIdx).AsString();
+                            _globalStates[name] = SlotState.Uninitialised;
+                            // Record the binding in emission order with its source line,
+                            // for the E5902 trace (§19.1, D-321).
+                            _topLevelBindings.Add((name, chunk.GetLine(ip)));
+                        }
                     }
                     ip += 2;
                     break;

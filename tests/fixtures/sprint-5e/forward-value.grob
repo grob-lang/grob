@@ -1,0 +1,11 @@
+// A function body reads a top-level value binding declared later in source. Pass-1
+// registers top-level value bindings, so the read resolves (no E1001), and at call
+// time the binding is already initialised (D-321, §19.1).
+fn show(): int {
+    print(label)
+    return 0
+}
+
+readonly label := "hi"
+
+show()

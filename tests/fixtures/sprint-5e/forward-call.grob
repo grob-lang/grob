@@ -1,0 +1,8 @@
+// A top-level statement calls a function declared later in source. Functions are
+// hoisted (established before any top-level code runs), so the forward call
+// resolves and runs — it is NOT a circular initialisation (D-321, §19.1).
+print(greet())
+
+fn greet(): string {
+    return "hi"
+}

@@ -318,6 +318,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-318 | June 2026                                                         | Type system — named-arg diagnostics | Named-argument call-site errors (D-113) get dedicated codes E0008–E0011 — named-before-positional, naming a required parameter, duplicate named argument, unknown parameter name — rather than folding into E0003. Registered in Sprint 5 Increment B through their `ErrorCatalog` descriptors |
 | D-319 | June 2026                                                         | Tooling — playground          | Browser playground is a client-side Blazor WASM embedding host on the existing Azure SWA (Route 1 — nothing sent to a server) wiring an alternate capability set: `fs`→in-memory virtual filesystem, `env`→synthetic map, `process`→unsupported (in-hierarchy host error, no new code). Requires a pure embeddable engine — OS contact behind injected host capabilities (in `Grob.Runtime`, confirmed DAG-clean), `exit` already handled via the existing `ExitSignal` (D-274), VM fresh per run (D-300). Dispatch-loop cancellation/step-budget seam adopted into v1 and folded into Sprint 5 Increment C (counter on the VM instance so it spans the re-entrant bridge; surfaces as `OperationCanceledException`, outside `GrobError`); rest of the playground build deferred post-v1 |
 | D-320 | June 2026                                                         | Lexer/parser — name collision | `select` is a reserved identifier, not a hard keyword (the D-282 `formatAs` mechanism): the lexer emits `Identifier` and `select` leaves the keyword set, the statement parser promotes a leading `select (` at statement head, and `expr.select(...)` parses as member access. Resolves the D-280 (`.select()` universal transform) vs D-301 (`select` statement) collision that made `.select(...)` ungrammatical from source though checker/VM/compiler supported it — blocking six release-gate scripts (3, 5, 7, 8, 9, 12). The type checker forbids `select` as a binding name; adds E1103 (reserved identifier used as a binding name), also covering `formatAs`'s previously code-less rule. v1 reserved set `{ formatAs, select }`. Consistency gate (D-316) gains a native-method-name vs reserved-word check. Implemented as a Sprint 5 correctness increment after Increment C; D/E/F unchanged |
+| D-321 | June 2026                                                         | Runtime / type checker — init order | Top-level `fn` bindings are runtime-hoisted: the compiler emits every top-level function's `DefineGlobal` in a prologue ahead of the first top-level statement, so each slot is `Initialised` before any top-level code runs. Two-pass checker pass 1 now registers top-level value bindings (`readonly` and mutable `:=`), not only `fn`/`type`, so a function body resolves a later-declared top-level value without E1001. E5902 is thereby narrowed to genuine value-binding initialisation cycles; calling a function declared later in source is no longer an E5902 trigger. The VM composes the E5902 message tracing through the function (binding initialising, function that read, binding read, with lines), via the `ErrorCatalog.E5902` descriptor (D-308). Refines D-294 and D-166; clean because top-level fns capture no upvalues (D-296). Sprint 5 correctness increment after Increment E; does not regress 5E's init-state machine |
 
 ---
 
@@ -3289,6 +3290,22 @@ F→G renumber.
 
 ---
 
+### D-321 — Top-level fn bindings hoisted; pass-1 registers value bindings; E5902 narrowed to value cycles (June 2026)
+
+Area: Runtime / type checker — top-level initialisation order
+Supersedes: none
+Superseded by: none
+
+**The decision.** Every top-level `fn` binding is established (`Initialised`) before any top-level code executes: the compiler emits each top-level function's `DefineGlobal` in a prologue ahead of the first top-level statement, so a function is runtime-available throughout top-level initialisation. The two-pass type checker's pass 1 now registers top-level value bindings — `readonly` and mutable `:=` — in addition to `fn` and `type`, so a function body resolves a top-level value declared later in source without E1001. As a consequence, **E5902 (circular initialisation) is narrowed to genuine value-binding initialisation cycles only**; a call to a function declared later in source is no longer an E5902 trigger — and never should have been one.
+
+**Rationale — a soundness gap between static analysis and the runtime.** This refines D-294 (which detected the cycle but, because functions were emitted in source order, raised E5902 on a forward _call_ — a non-cycle) and D-166 (the two-pass checker, whose pass 1 omitted value bindings, contradicting §19.1's promise that all top-level names are in scope from inside any function body). The two were coupled: the checker accepted both `greet(); fn greet()...` and a function body reading a later-declared top-level value, yet the runtime broke the first (E5902 on a non-cycle) and the checker broke the second (E1001). Static analysis promised what the runtime denied. Hoisting closes the first gap; pass-1 value registration closes the second. The computeA/computeB cycle of §19.1 is reachable _because_ functions are hoisted — the call resolves and the cycle surfaces at the value read.
+
+**Why it is clean.** Top-level named functions capture no upvalues (D-296 captures enclosing-function locals only; a top-level fn references globals), so the prologue is a plain binding sequence with no capture-ordering hazard. Pass-1 value placeholders carry a `provisional` flag so the same-scope redeclaration check (E1102) treats a pass-1 entry as not-yet-declared and is unaffected. The VM composes the E5902 diagnostic through the `ErrorCatalog.E5902` descriptor (D-308), tracing the function: the binding being initialised, the function that read the uninitialised binding and the binding read, each with its source line — matching the §19.1 template.
+
+**Spec and implementation.** Spec text: `grob-language-fundamentals.md` §19.1. Compiler: `VisitCompilationUnit` three-phase emission (const pre-pass so a hoisted fn body inlines any top-level `const`; fn prologue; then top-level statements in source order). Type checker: pass-1 value registration with the provisional-symbol flag. VM: `CallFrame.Callee` and the top-level-binding pre-scan feed the message composer. Landed as a Sprint 5 correctness increment after Increment E; refines, and does not regress, 5E's initialisation-state machine and flow-sensitive narrowing.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3510,6 +3527,18 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 — D-321: top-level `fn` bindings are runtime-hoisted (a_
+_compiler prologue binds every top-level function before the first top-level_
+_statement runs) and the two-pass checker's pass 1 now registers top-level value_
+_bindings as well as `fn`/`type`. Together these make a forward call and a_
+_function body's read of a later-declared top-level value resolve and run, and_
+_narrow E5902 to genuine value-binding initialisation cycles — a forward call is_
+_no longer an E5902 trigger. The VM composes the E5902 message tracing through_
+_the function via the `ErrorCatalog.E5902` descriptor. Refines D-294 and D-166;_
+_clean because top-level fns capture no upvalues (D-296). Edits: Fundamentals_
+_§19.1, the `circular-initialisation` error example, compiler `VisitCompilationUnit`,_
+_type-checker pass 1, VM `CallFrame`/message composer. Sprint 5 correctness_
+_increment after Increment E; 5E's init-state machine unchanged._
 _Updated June 2026 — D-320: `select` is a reserved identifier, not a hard_
 _keyword. D-280 made `.select()` the universal pipeline transform and D-301 made_
 _`select` the statement keyword; reserving the word as a keyword made_

@@ -28,4 +28,14 @@ public sealed class Symbol {
     /// is set to for every identifier that resolves to this symbol.
     /// </summary>
     public required AstNode DeclarationNode { get; init; }
+
+    /// <summary>
+    /// <see langword="true"/> when this entry is a pass-1 forward-reference placeholder
+    /// for a top-level value binding (D-321), registered before its initialiser type is
+    /// known so a function body declared earlier can resolve it (D-166). Pass 2 re-registers
+    /// the binding with its inferred type and clears this flag, so the same-scope
+    /// redeclaration check (E1102) treats the pass-1 placeholder as not-yet-declared
+    /// rather than a duplicate.
+    /// </summary>
+    public bool Provisional { get; init; }
 }
