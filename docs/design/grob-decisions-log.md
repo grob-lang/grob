@@ -3620,7 +3620,7 @@ _E1102 guard in pass 2 is unaffected; non-provisional fn/type symbols are never_
 _overwritten. Lifts the `circular-initialisation` gold-master quarantine: fixture_
 _updated to `return product`, expected.txt updated to line-only `:5` (D-322)._
 _Edits: `TypeChecker.cs` (Check() three-pass, UpdateProvisionalType helper), new_
-_`TypeChecker.ValueResolution.cs` partial, `ErrorCatalog.cs` E0303 (95 codes),_
+_`TypeChecker.ValueResolution.cs` partial, `ErrorCatalog.cs` E0303 (109 codes),_
 _`grob-error-codes.md`, `grob-language-fundamentals.md` §17/§17.2/§19.1, gold-_
 _master pair. Refines D-321 and D-166. Sprint 5 Increment 1._
 _Updated June 2026 — D-322: runtime diagnostics are line-granular. A runtime_

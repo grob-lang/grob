@@ -268,6 +268,106 @@ public sealed class TypeCheckerVariableTests {
     }
 
     // -----------------------------------------------------------------------
+    // D-324 — const and readonly now finalise through FinalizeTopLevelBinding.
+    // Same-kind duplicates and cross-kind collisions both emit E1102 at the
+    // later declaration (PR #92 review).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ConstDecl_DuplicateConstName_EmitsE1102AtSecond() {
+        DiagnosticBag bag = Check("""
+            const foo := 1
+            const foo := 2
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void ReadonlyDecl_DuplicateReadonlyName_EmitsE1102AtSecond() {
+        DiagnosticBag bag = Check("""
+            readonly foo := 1
+            readonly foo := 2
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void ConstDecl_AfterFn_SameName_EmitsE1102AtConst() {
+        DiagnosticBag bag = Check("""
+            fn foo(): int { return 1 }
+            const foo := 2
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void ReadonlyDecl_AfterType_SameName_EmitsE1102AtReadonly() {
+        DiagnosticBag bag = Check("""
+            type foo { x: int }
+            readonly foo := 2
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void ConstDecl_AfterValue_SameName_EmitsE1102AtConst() {
+        DiagnosticBag bag = Check("""
+            foo := 1
+            const foo := 2
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    [Fact]
+    public void VarDecl_AfterReadonly_SameName_EmitsE1102AtVar() {
+        DiagnosticBag bag = Check("""
+            readonly foo := 1
+            foo := 2
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Equal((2, 1), (diag.Range.Start.Line, diag.Range.Start.Column));
+    }
+
+    // -----------------------------------------------------------------------
+    // E1102 reassignment hint: only suggest '=' when the prior binding is a
+    // mutable variable. const/readonly/fn/type cannot be reassigned, so the
+    // hint must be omitted for them (PR #92 review).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void VarDecl_AfterVar_E1102_SuggestsReassign() {
+        DiagnosticBag bag = Check("""
+            foo := 1
+            foo := 2
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.Contains("Use '=' to reassign", diag.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VarDecl_AfterReadonly_E1102_OmitsReassignHint() {
+        DiagnosticBag bag = Check("""
+            readonly foo := 1
+            foo := 2
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1102", diag.Code);
+        Assert.DoesNotContain("Use '=' to reassign", diag.Message, StringComparison.Ordinal);
+    }
+
+    // -----------------------------------------------------------------------
     // Compound assignment (+=, -=, *=, /=, %=)
     // -----------------------------------------------------------------------
 

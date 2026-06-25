@@ -327,19 +327,16 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
     /// <summary>
     /// Pass-1 registration of a top-level value binding as a provisional placeholder
-    /// (D-321, D-324). Skips when the name is already bound by a non-provisional symbol
-    /// (an earlier-finalised binding) or by an fn/type provisional — both are authoritative
-    /// and must not be masked. A pre-existing value-binding provisional for the same name
-    /// is harmlessly overwritten; pass 2 finalises the first and reports the second.
+    /// (D-321, D-324). Skips when the name is already bound by any symbol — a
+    /// non-provisional one (an earlier-finalised binding), an fn/type provisional, or
+    /// an earlier value-binding provisional — so the first declaration stays
+    /// authoritative. A later duplicate must not overwrite the first: phase 1.5 resolves
+    /// the first binding's type and pass 2 reports the duplicate as E1102 at the later
+    /// declaration. Overwriting would let a forward reference resolve against the wrong
+    /// (later) type and emit a bogus cascade before the E1102.
     /// </summary>
     private void RegisterProvisionalValueBinding(string name, SourceLocation declaredAt, AstNode declarationNode) {
-        if (_scopes.Peek().TryGetValue(name, out Symbol? existing)) {
-            if (!existing.Provisional) return;
-            // An fn/type provisional from pass 1 takes precedence over a value-binding
-            // provisional: do not overwrite it. Pass 2 will detect the collision when the
-            // value visitor finalises its entry and finds the fn/type already real.
-            if (existing.DeclarationNode is FnDecl or TypeDecl) return;
-        }
+        if (_scopes.Peek().ContainsKey(name)) return;
         RegisterSymbol(name, GrobType.Unknown, declaredAt, declarationNode, provisional: true);
     }
 
@@ -357,21 +354,20 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// <summary>
     /// Finalises a pass-1 provisional top-level entry as a real binding (D-324). When
     /// a real (non-provisional) binding already exists for <paramref name="name"/>,
-    /// emits <see cref="ErrorCatalog.E1102"/> at <paramref name="range"/> and returns
-    /// <see langword="false"/> without registering. Otherwise registers the symbol and
-    /// returns <see langword="true"/>. The note in the message carries the prior
-    /// declaration's line so the user can locate both declarations.
+    /// emits <see cref="ErrorCatalog.E1102"/> at <paramref name="range"/> and leaves the
+    /// existing binding in place. Otherwise registers the symbol as real. The note in the
+    /// message carries the prior declaration's line so the user can locate both
+    /// declarations.
     /// </summary>
-    private bool FinalizeTopLevelBinding(
+    private void FinalizeTopLevelBinding(
         string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode, SourceRange range) {
         if (_scopes.Peek().TryGetValue(name, out Symbol? existing) && !existing.Provisional) {
             EmitError(ErrorCatalog.E1102,
                 $"'{name}' is already declared in this scope (first declared at line {existing.DeclaredAt.Line}).",
                 range);
-            return false;
+            return;
         }
         RegisterSymbol(name, type, declaredAt, declarationNode);
-        return true;
     }
 
     /// <summary>

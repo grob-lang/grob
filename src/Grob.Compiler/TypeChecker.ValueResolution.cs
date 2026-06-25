@@ -36,7 +36,10 @@ public sealed partial class TypeChecker {
                 VarDeclStmt vd => vd.Name,
                 _ => null,
             };
-            if (name is not null) bindings[name] = item;
+            // Keep the first declaration for a duplicated name authoritative — it is
+            // the one pass 1 registered and pass 2 finalises (PR #92 review). A later
+            // duplicate is reported as E1102 and must not displace the first's type.
+            if (name is not null) bindings.TryAdd(name, item);
         }
 
         if (bindings.Count == 0) return;
@@ -62,7 +65,7 @@ public sealed partial class TypeChecker {
 
         colors[name] = BindingResolutionColor.Visiting;
 
-        IReadOnlyCollection<string> deps = ExtractTypeDependencies(bindings[name], nameSet);
+        HashSet<string> deps = ExtractTypeDependencies(bindings[name], nameSet);
 
         foreach (string dep in deps) {
             if (colors[dep] == BindingResolutionColor.Unvisited) {
@@ -93,7 +96,7 @@ public sealed partial class TypeChecker {
     /// directly depends on for type resolution. Returns an empty set for annotated
     /// bindings — their type is taken from the annotation regardless of the initialiser.
     /// </summary>
-    private static IReadOnlyCollection<string> ExtractTypeDependencies(AstNode binding, HashSet<string> nameSet) {
+    private static HashSet<string> ExtractTypeDependencies(AstNode binding, HashSet<string> nameSet) {
         TypeRef? annotation = binding switch {
             ReadonlyDecl ro => ro.AnnotatedType,
             VarDeclStmt vd => vd.AnnotatedType,
@@ -133,10 +136,12 @@ public sealed partial class TypeChecker {
                 CollectDependencies(tern.Then, nameSet, deps);
                 CollectDependencies(tern.Else, nameSet, deps);
                 break;
-            case CallExpr call:
-                foreach (CallArgument arg in call.Arguments) {
-                    CollectDependencies(arg.Value, nameSet, deps);
-                }
+            case CallExpr:
+                // A call result's type comes from the callee's declared return type
+                // (D-323), not from its arguments. Recursing into arguments would
+                // forge a false value-type dependency edge and report a bogus E0303
+                // for cycles that only close through a call argument; those surface at
+                // runtime as E5902 instead (PR #92 review).
                 break;
         }
     }

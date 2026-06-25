@@ -78,6 +78,8 @@ public sealed class TypeCheckerValueResolutionTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0005.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(8, diag.Range.Start.Column);
         Assert.Contains("string", diag.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("unknown", diag.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -130,6 +132,8 @@ public sealed class TypeCheckerValueResolutionTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0303.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -155,5 +159,56 @@ public sealed class TypeCheckerValueResolutionTests {
         IdentifierExpr bRef = CollectIdentifiers(unit).First(i => i.Name == "b");
         Assert.Equal(GrobType.Int, aRef.ResolvedType);
         Assert.Equal(GrobType.Int, bRef.ResolvedType);
+    }
+
+    // -----------------------------------------------------------------------
+    // Duplicate value binding — the first declaration stays authoritative in
+    // pass 1 / phase 1.5, so a forward reader sees the first type and no bogus
+    // E0005 cascade precedes the E1102 (PR #92 review).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void DuplicateValueBinding_ForwardReader_SeesFirstType_NoBogusE0005() {
+        // 'foo' is declared twice; the first is int, the second string. A forward
+        // reader 'f' expects int. The first provisional must remain authoritative
+        // so 'f' resolves cleanly; only the E1102 redeclaration is reported.
+        DiagnosticBag bag = Check("""
+            fn f(): int {
+            return foo
+            }
+            foo := 1
+            foo := "s"
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E1102.Code, diag.Code);
+        Assert.Equal(5, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
+    }
+
+    // -----------------------------------------------------------------------
+    // Call arguments are not value-type dependency edges (D-323): a call
+    // result's type comes from the callee's declared return type, not its
+    // arguments. A cycle that only closes through a call argument is therefore
+    // not an E0303; the runtime E5902 path covers it (PR #92 review).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CallArgumentCycle_NotTreatedAsTypeDependency_NoE0303() {
+        // 'a := id(b)' resolves a from id's declared return type (int), so there
+        // is no value-type dependency edge from a to b. 'b := a' depends on a,
+        // which is already fixed by id's return type — no compile-time cycle.
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            fn id(n: int): int {
+            return n
+            }
+            readonly a := id(b)
+            readonly b := a
+            """);
+
+        Assert.DoesNotContain(bag.Errors, d => d.Code == ErrorCatalog.E0303.Code);
+
+        IdentifierExpr aRef = CollectIdentifiers(unit).First(i => i.Name == "a");
+        Assert.Equal(GrobType.Int, aRef.ResolvedType);
     }
 }
