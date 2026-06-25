@@ -32,6 +32,7 @@ public sealed partial class TypeChecker {
         Dictionary<string, AstNode> bindings = [];
         foreach (AstNode item in unit.TopLevel) {
             string? name = item switch {
+                ConstDecl cd => cd.Name,
                 ReadonlyDecl ro => ro.Name,
                 VarDeclStmt vd => vd.Name,
                 _ => null,
@@ -98,6 +99,7 @@ public sealed partial class TypeChecker {
     /// </summary>
     private static HashSet<string> ExtractTypeDependencies(AstNode binding, HashSet<string> nameSet) {
         TypeRef? annotation = binding switch {
+            ConstDecl cd => cd.AnnotatedType,
             ReadonlyDecl ro => ro.AnnotatedType,
             VarDeclStmt vd => vd.AnnotatedType,
             _ => null,
@@ -105,6 +107,7 @@ public sealed partial class TypeChecker {
         if (annotation is not null) return [];
 
         Expression? initializer = binding switch {
+            ConstDecl cd => cd.Value,
             ReadonlyDecl ro => ro.Value,
             VarDeclStmt vd => vd.Initializer,
             _ => null,
@@ -148,11 +151,13 @@ public sealed partial class TypeChecker {
 
     private GrobType SilentInferTypeFromBinding(AstNode binding) {
         TypeRef? annotation = binding switch {
+            ConstDecl cd => cd.AnnotatedType,
             ReadonlyDecl ro => ro.AnnotatedType,
             VarDeclStmt vd => vd.AnnotatedType,
             _ => null,
         };
         Expression? initializer = binding switch {
+            ConstDecl cd => cd.Value,
             ReadonlyDecl ro => ro.Value,
             VarDeclStmt vd => vd.Initializer,
             _ => null,
@@ -241,6 +246,7 @@ public sealed partial class TypeChecker {
     }
 
     private static SourceRange GetBindingRange(AstNode binding) => binding switch {
+        ConstDecl cd => cd.Range,
         ReadonlyDecl ro => ro.Range,
         VarDeclStmt vd => vd.Range,
         _ => new SourceRange(SourceLocation.Unknown, SourceLocation.Unknown),

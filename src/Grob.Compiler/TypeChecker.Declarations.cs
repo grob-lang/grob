@@ -97,8 +97,10 @@ public sealed partial class TypeChecker {
                 node.Value.Range);
         }
         GrobType symbolType = ResolveBinding(node.AnnotatedType, initType, node.Value.Range);
-        // const has no pass-1 provisional entry, so FinalizeTopLevelBinding both detects
-        // collisions with prior real entries and registers the symbol as real (D-324).
+        // Finalise the pass-1 provisional entry (D-324). Detects collisions with prior
+        // real bindings and registers as real when free. const joins readonly and := in
+        // the D-323/D-324 pipeline so forward references from earlier top-level items
+        // resolve to the const's type rather than reporting E1001 (PR #92 review).
         FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range);
         return GrobType.Unknown;
     }

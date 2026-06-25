@@ -120,6 +120,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
                 case TypeDecl td:
                     RegisterSymbol(td.Name, GrobType.Unknown, td.Range.Start, td, provisional: true);
                     break;
+                case ConstDecl cd:
+                    RegisterProvisionalValueBinding(cd.Name, cd.Range.Start, cd);
+                    break;
                 case ReadonlyDecl ro:
                     RegisterProvisionalValueBinding(ro.Name, ro.Range.Start, ro);
                     break;

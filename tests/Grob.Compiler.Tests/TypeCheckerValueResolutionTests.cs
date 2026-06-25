@@ -67,6 +67,60 @@ public sealed class TypeCheckerValueResolutionTests {
     }
 
     [Fact]
+    public void ForwardConstRef_FunctionReturn_ResolvesToConstType() {
+        // 'C' is a top-level const declared after 'f'. Pass 1 must register a
+        // provisional and phase 1.5 must resolve its type to int, so f's forward
+        // reference resolves rather than reporting E1001 (PR #92 review — const
+        // joins the D-323/D-324 pipeline alongside readonly and :=).
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            fn f(): int {
+            return C
+            }
+            const C := 1
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+
+        IdentifierExpr cRef = CollectIdentifiers(unit).First(i => i.Name == "C");
+        Assert.Equal(GrobType.Int, cRef.ResolvedType);
+    }
+
+    [Fact]
+    public void ForwardConstRef_FromEarlierConst_ResolvesInDependencyOrder() {
+        // 'A := B' references a const declared later. Phase 1.5 must resolve B's
+        // type (int) before A, so A also resolves to int with no diagnostic.
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            const A := B
+            const B := 2
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+
+        // 'B' is the only identifier reference (A and B on the left are binding
+        // names, not IdentifierExprs). Its resolution to int confirms phase 1.5
+        // typed the later const before the earlier one read it.
+        IdentifierExpr bRef = CollectIdentifiers(unit).First(i => i.Name == "B");
+        Assert.Equal(GrobType.Int, bRef.ResolvedType);
+    }
+
+    [Fact]
+    public void MutualUnannotatedConstCycle_ReportsE0303() {
+        // Unannotated mutual const cycle: neither type is inferable without the
+        // other. const joins the phase-1.5 cycle detection alongside readonly/:=.
+        DiagnosticBag bag = Check("""
+            const A := B
+            const B := A
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0303.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
+    }
+
+    [Fact]
     public void ForwardValueRef_WrongType_ReportsE0005_NamingConcreteType() {
         // Probe 2: 'x' is a string; E0005 must name 'string', not 'unknown'.
         DiagnosticBag bag = Check("""
@@ -206,7 +260,10 @@ public sealed class TypeCheckerValueResolutionTests {
             readonly b := a
             """);
 
-        Assert.DoesNotContain(bag.Errors, d => d.Code == ErrorCatalog.E0303.Code);
+        // The whole point is that this defers to runtime E5902, so there must be
+        // no compile-time diagnostic at all — not merely no E0303 (PR #92 review).
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
 
         IdentifierExpr aRef = CollectIdentifiers(unit).First(i => i.Name == "a");
         Assert.Equal(GrobType.Int, aRef.ResolvedType);
