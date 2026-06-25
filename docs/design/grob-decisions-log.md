@@ -319,6 +319,9 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-319 | June 2026                                                         | Tooling — playground          | Browser playground is a client-side Blazor WASM embedding host on the existing Azure SWA (Route 1 — nothing sent to a server) wiring an alternate capability set: `fs`→in-memory virtual filesystem, `env`→synthetic map, `process`→unsupported (in-hierarchy host error, no new code). Requires a pure embeddable engine — OS contact behind injected host capabilities (in `Grob.Runtime`, confirmed DAG-clean), `exit` already handled via the existing `ExitSignal` (D-274), VM fresh per run (D-300). Dispatch-loop cancellation/step-budget seam adopted into v1 and folded into Sprint 5 Increment C (counter on the VM instance so it spans the re-entrant bridge; surfaces as `OperationCanceledException`, outside `GrobError`); rest of the playground build deferred post-v1 |
 | D-320 | June 2026                                                         | Lexer/parser — name collision | `select` is a reserved identifier, not a hard keyword (the D-282 `formatAs` mechanism): the lexer emits `Identifier` and `select` leaves the keyword set, the statement parser promotes a leading `select (` at statement head, and `expr.select(...)` parses as member access. Resolves the D-280 (`.select()` universal transform) vs D-301 (`select` statement) collision that made `.select(...)` ungrammatical from source though checker/VM/compiler supported it — blocking six release-gate scripts (3, 5, 7, 8, 9, 12). The type checker forbids `select` as a binding name; adds E1103 (reserved identifier used as a binding name), also covering `formatAs`'s previously code-less rule. v1 reserved set `{ formatAs, select }`. Consistency gate (D-316) gains a native-method-name vs reserved-word check. Implemented as a Sprint 5 correctness increment after Increment C; D/E/F unchanged |
 | D-321 | June 2026                                                         | Runtime / type checker — init order | Top-level `fn` bindings are runtime-hoisted: the compiler emits every top-level function's `DefineGlobal` in a prologue ahead of the first top-level statement, so each slot is `Initialised` before any top-level code runs. Two-pass checker pass 1 now registers top-level value bindings (`readonly` and mutable `:=`), not only `fn`/`type`, so a function body resolves a later-declared top-level value without E1001. E5902 is thereby narrowed to genuine value-binding initialisation cycles; calling a function declared later in source is no longer an E5902 trigger. The VM composes the E5902 message tracing through the function (binding initialising, function that read, binding read, with lines), via the `ErrorCatalog.E5902` descriptor (D-308). Refines D-294 and D-166; clean because top-level fns capture no upvalues (D-296). Sprint 5 correctness increment after Increment E; does not regress 5E's init-state machine |
+| D-322 | June 2026                                                         | VM / diagnostics — source position | Runtime diagnostics carry `file:line` only — the column is omitted, not idealised (no fabricated `5:15`); per-opcode column tracking deferred out of v1. The compiled `Chunk`'s debug info is line-keyed (the D-306 disassembler prints lines for the same reason); compile-time diagnostics are unaffected — lexer/parser carry full `(file, line, column)` (D-137), so §10's `14:12` example is met. Not a D-321 regression: D-321 moved E5902 to a function-body read site and so surfaced the line-only render (`:5`) on `circular-initialisation`, but runtime E5902 was always line-only. Gold masters, harnessed and rich, record the real line-only output so they agree. Known-limitation note for `grob-vm-architecture.md` flagged as a follow-up |
+| D-323 | June 2026                                                         | Type checker — value-binding type resolution | Three-pass type checker: new phase 1.5 resolves top-level value-binding types in initialiser-dependency order (DFS, Unvisited/Visiting/Visited) before pass-2 body validation. Forward value reads in function bodies now see the real type, not `GrobType.Unknown`, closing the false-E0005 gap. Unannotated mutual cycles → E0303 (compile-time); annotated cycles → E5902 (runtime). Lifts the `circular-initialisation` gold-master quarantine. New error code E0303. Refines D-321 and D-166 |
+| D-324 | June 2026                                                         | Type checker — uniform top-level redeclaration | E1102 is broadened from `:=`-only to all top-level binding-introducing forms (`fn`, `type`, `readonly`, `const`, `:=`). All top-level declarations are registered as provisional in pass 1; each visitor finalises its own provisional entry in pass 2, so the collision is always detected at the second declaration in source order. Corrects the reverse-order bug where a value-before-fn collision erroneously reported at the earlier value binding. E1102 title broadened from "variable already declared in this scope" to "name already declared in this scope". No new error code; count stays at 109 |
 
 ---
 
@@ -3306,6 +3309,72 @@ Superseded by: none
 
 ---
 
+### D-322 — Runtime diagnostics are line-granular; per-opcode column tracking deferred (June 2026)
+
+Area: VM / diagnostics — runtime source position
+Supersedes: none
+Superseded by: none
+
+**The decision.** Runtime diagnostics carry `file:line` only. The column is omitted, not idealised — a runtime error renders as `script.grob:5`, never a fabricated `5:15`. Per-opcode column tracking is deferred out of v1 scope. Gold-master fixtures, harnessed and rich alike, record the actual line-only output, so the executed master and the long-form `--explain` example agree; neither shows a column the runtime cannot produce.
+
+**Why the gap exists.** The compiled `Chunk`'s debug information is keyed by source line, not by `(line, column)` — the disassembler (D-306) prints source line numbers for the same reason. Compile-time diagnostics are unaffected: the lexer and parser put full `(file, line, column)` on every token and AST node (D-137), so the §10 format example (`deploy.grob:14:12`, a compile-time E0001) is met as written. The shortfall is the runtime layer only, where the read site reduces to a line.
+
+**Not a D-321 regression.** D-321 narrowed E5902 to fire at the value read inside a function body — a function-body opcode — which surfaced the line-only rendering on the `circular-initialisation` example (`:5`, no column). Before D-321, runtime E5902 fired on the forward call, also a runtime opcode and also line-only. Runtime diagnostics never carried a column; D-321 exercised the existing gap, it did not introduce it.
+
+**Scope and follow-up.** Columns at runtime mean a finer debug table emitted per opcode and threaded through the VM's position lookup — a real VM change, correctly outside the init-order increment and outside v1. A companion known-limitation note belongs in `grob-vm-architecture.md` (Chunk debug info is line-granular; runtime diagnostics emit `file:line`, no column, pending per-opcode position tracking); that doc was not in this session's upload and is flagged as a follow-up. Reopens when a real diagnostic needs runtime column precision badly enough to pay for the per-opcode table.
+
+---
+
+### D-323 — Three-pass type checker: value-binding type resolution phase (June 2026)
+
+Area: Type checker — value-binding type resolution
+Supersedes: none
+Superseded by: none
+
+**The decision.** The type checker becomes three-pass: registration (pass 1) → value-binding type resolution (pass 1.5) → validation (pass 2). Phase 1.5 walks every top-level value binding (`readonly` and mutable `:=`) in initialiser-dependency order using a DFS (Unvisited/Visiting/Visited, mirroring §17.1's type-field cycle walk) and updates each symbol's provisional `GrobType.Unknown` placeholder to the binding's real static type before pass 2 validates function bodies.
+
+The immediate fix: a function body reading a forward-declared value binding previously received `GrobType.Unknown` from `VisitIdentifier`, so `TypesAreAssignable(Unknown, int)` returned `false` and E0005 fired incorrectly. Phase 1.5 means pass 2 sees `int` (or whatever the real type is) and the assignability check is correct.
+
+**Dependency edges.** An unannotated binding's type depends on the types of top-level value bindings directly referenced in its initialiser. A function-call result contributes the called function's declared return type (known from pass-1 fn registration), so `readonly x := f()` with `f(): int` resolves to `int` with no value-binding dependency edge. An annotated binding — `readonly a: int := expr` — is resolved from its annotation regardless of `expr`'s type: no dep edge runs through the initialiser. This is the key split: annotated bindings are always typeable in O(1) from their annotation.
+
+**Cycle handling.** A back-edge in the DFS (a Visiting binding is referenced) is a circular type dependency. For an unannotated mutual cycle (`readonly a := b` / `readonly b := a`) neither type is resolvable — E0303 fires at compile time and both bindings are assigned `GrobType.Error` for cascade suppression. For an annotated mutual cycle (`readonly a: int := b` / `readonly b: int := a`) each type is resolved from its annotation; no back-edge forms; the type-checker is satisfied. The cycle is structurally sound at the type level and surfaces only at runtime as E5902 when `b`'s value is `Uninitialised` at the point `a`'s initialiser runs.
+
+**Invariant preserved.** Phase 1.5 calls `UpdateProvisionalType`, which keeps `Provisional = true` on the updated symbol. Pass 2's E1102 guard (`!existing.Provisional`) is therefore not triggered for the update. `UpdateProvisionalType` is a no-op when the named symbol is already non-provisional (a fn or type declaration whose name is also used by a value binding) — pass 2 then handles E1102 for the collision as before.
+
+**New error code.** E0303 — "circular type dependency among top-level value bindings". Category: Type. Compile-time. Distinct from E5902 (runtime circular initialisation).
+
+**Gold master.** The `circular-initialisation` example previously used string interpolation (`"${product} — built for scripting"`) because interpolating an Unknown operand did not trigger a type error, allowing the fixture to reach the VM. Phase 1.5 resolves `product` to `string` before pass 2, so any return form works. The fixture is updated to `return product` (a direct return that exercises the corrected forward-read path). The expected file drops the fabricated column (`:5`, per D-322). Quarantine lifted.
+
+**Spec edits.** §17 updated to include value bindings in the registration pass and to introduce phase 1.5. New §17.2 "Value-binding type cycles" documents the DFS, E0303 and the annotated/unannotated cycle distinction. §19.1 forward-read note updated to state that forward-declared top-level value bindings resolve to their real type (not Unknown) inside function bodies.
+
+**Refines D-321 and D-166.** D-321 registered value-binding names in pass 1 to prevent E1001 on forward reads; D-323 also resolves their types so that pass-2 assignability checks are correct. D-166 established the two-pass type checker; D-323 adds the intermediate resolution phase.
+
+---
+
+### D-324 — Uniform top-level redeclaration: E1102 for all binding forms (June 2026)
+
+Area: Type checker — name-collision detection
+Supersedes: none
+Superseded by: none
+
+**The decision.** E1102 ("name already declared in this scope") is broadened from `:=`-only to all top-level binding-introducing forms: `fn`, `type`, `readonly`, `const`, and `:=`. Any two top-level declarations that share a name — regardless of their kinds — produce E1102 at the second (offending) declaration.
+
+**Pass-1 change.** `fn` and `type` declarations are now registered as provisional in pass 1 (matching the existing treatment of value bindings). Previously they were registered as real (non-provisional), which caused a reverse-order collision bug: when a value binding preceded an `fn`/`type` with the same name, pass 2 ran `VisitVarDecl` first (the value binding was at a lower line), found the fn/type real, and reported E1102 at the value binding — the earlier declaration, not the offending later one.
+
+**`RegisterProvisionalValueBinding` guard.** A new guard prevents a value-binding provisional from overwriting an `fn`/`type` provisional for the same name. Without the guard, `fn foo` (line 2) registered as provisional, then `foo := 1` (line 1 — processed second in the pass-1 loop because passes are source-order) would overwrite it, and the pass-2 collision would be missed.
+
+**`FinalizeTopLevelBinding` helper.** A new private helper (`FinalizeTopLevelBinding`) unifies the collision predicate. It checks whether the name already has a non-provisional (real) entry in the current scope. If so it emits E1102 at the caller-supplied range (the location of the second declaration) and returns `false`; otherwise it calls `RegisterSymbol` to establish the entry as real and returns `true`. All binding visitors call this helper in pass 2: `VisitFnDecl`, `VisitTypeDecl`, `VisitReadonlyDecl`, and `VisitConstDecl`. `VisitVarDecl` retains its inline check (which cannot use the helper without restructuring its init-visit / type-resolution interleave) and is updated to embed the prior location in the message.
+
+**Interaction with D-323 phase 1.5.** When a value binding and an `fn`/`type` share a name, phase 1.5 (`ResolveTopLevelValueBindingTypes`) may call `UpdateProvisionalType` on the `fn`/`type`'s provisional entry, setting its type field. This is benign: `VisitFnDecl`/`VisitTypeDecl` in pass 2 call `RegisterSymbol` with `GrobType.Unknown` regardless, overwriting the stale type. No change to `TypeChecker.ValueResolution.cs`.
+
+**E1102 title.** Broadened from "variable already declared in this scope" to "name already declared in this scope". The error code count remains 109; no new code is introduced.
+
+**Spec edits.** §28 (Declaration `:=`) gains a sub-note describing the uniform top-level redeclaration rule, citing D-324. §19 (Script Structure) gains a "Name uniqueness" paragraph stating the single shared name space for all top-level binding-introducing forms.
+
+**Refines D-321 and D-323.** D-321 introduced provisional registration for value bindings; D-324 extends provisional registration to `fn`/`type` and unifies the collision predicate. D-323's `UpdateProvisionalType` guard (`Provisional = true`) continues to prevent false E1102 for phase-1.5 type updates.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3527,6 +3596,44 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 — D-324: uniform top-level redeclaration. E1102 broadened_
+_from `:=`-only to all top-level binding-introducing forms (`fn`, `type`,_
+_`readonly`, `const`, `:=`). `fn`/`type` pass-1 registration changed to_
+_provisional (matching value bindings); `RegisterProvisionalValueBinding` gains_
+_an fn/type guard; new `FinalizeTopLevelBinding` helper unifies the collision_
+_predicate. Corrects reverse-order bug (value-before-fn collision now fires at_
+_the fn, not the value). E1102 title broadened to "name already declared in this_
+_scope". Count stays 109. Edits: `TypeChecker.cs` (pass-1, guard, helper),_
+_`TypeChecker.Declarations.cs` (VisitFnDecl/VisitTypeDecl/VisitReadonlyDecl/_
+_VisitConstDecl), `TypeChecker.Statements.cs` (VisitVarDecl message),_
+_`ErrorCatalog.cs`, `grob-error-codes.md`, `grob-language-fundamentals.md`_
+_§19/§28. Refines D-321 and D-323. Sprint 5 Increment 2._
+_Updated June 2026 — D-323: three-pass type checker. New phase 1.5 resolves_
+_top-level value-binding types in initialiser-dependency order (DFS,_
+_Unvisited/Visiting/Visited) between pass-1 registration and pass-2 body_
+_validation. Closes the false-E0005 gap for forward value reads in function_
+_bodies (`fn f(): int { return x }` / `readonly x := 5` no longer fails)._
+_Unannotated mutual cycles are a compile-time type-dependency error (new E0303);_
+_annotated mutual cycles are structurally sound for the type checker and surface_
+_at runtime as E5902. `UpdateProvisionalType` keeps `Provisional = true` so the_
+_E1102 guard in pass 2 is unaffected; non-provisional fn/type symbols are never_
+_overwritten. Lifts the `circular-initialisation` gold-master quarantine: fixture_
+_updated to `return product`, expected.txt updated to line-only `:5` (D-322)._
+_Edits: `TypeChecker.cs` (Check() three-pass, UpdateProvisionalType helper), new_
+_`TypeChecker.ValueResolution.cs` partial, `ErrorCatalog.cs` E0303 (109 codes),_
+_`grob-error-codes.md`, `grob-language-fundamentals.md` §17/§17.2/§19.1, gold-_
+_master pair. Refines D-321 and D-166. Sprint 5 Increment 1._
+_Updated June 2026 — D-322: runtime diagnostics are line-granular. A runtime_
+_error renders as `file:line` with no column — omitted, not idealised — because_
+_the compiled `Chunk`'s debug info is keyed by source line (the D-306_
+_disassembler prints lines for the same reason). Compile-time diagnostics keep_
+_full `(file, line, column)` (D-137), so §10's compile-time format example is_
+_unaffected. Not a D-321 regression — D-321 moved E5902 to a function-body read_
+_site and surfaced the line-only render (`:5`) on the `circular-initialisation`_
+_example, but runtime E5902 was always line-only. Gold masters, harnessed and_
+_rich, record the actual line-only output so they agree; no fabricated column._
+_Per-opcode column tracking deferred out of v1. Known-limitation note for_
+_`grob-vm-architecture.md` flagged as a follow-up (that doc not in this upload)._
 _Updated June 2026 — D-321: top-level `fn` bindings are runtime-hoisted (a_
 _compiler prologue binds every top-level function before the first top-level_
 _statement runs) and the two-pass checker's pass 1 now registers top-level value_

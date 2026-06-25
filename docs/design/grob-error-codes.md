@@ -74,6 +74,7 @@ read by `grob --explain Exxxx`.
 | E0205 | non-constant expression in `const` right-hand side | Type              | pre-release           |
 | E0301 | type cycle with no terminating field               | Type              | pre-release           |
 | E0302 | recursive type without indirection                 | Type              | pre-release           |
+| E0303 | circular type dependency among top-level value bindings | Type         | pre-release           |
 | E0401 | generic type argument count mismatch               | Type              | pre-release           |
 | E0402 | generic constraint violation                       | Type              | pre-release           |
 | E0501 | `for...in` subject is not iterable                 | Type              | pre-release           |
@@ -85,7 +86,7 @@ read by `grob --explain Exxxx`.
 | E1002 | undefined member                                   | Name resolution   | pre-release           |
 | E1003 | undefined module                                   | Name resolution   | pre-release           |
 | E1101 | shadowed declaration                               | Name resolution   | pre-release (warning) |
-| E1102 | variable already declared in this scope            | Name resolution   | pre-release           |
+| E1102 | name already declared in this scope                | Name resolution   | pre-release           |
 | E1103 | reserved identifier used as a binding name         | Name resolution   | pre-release           |
 | E1201 | forward reference inside function body             | Name resolution   | pre-release           |
 | E1202 | use before declaration in block scope              | Name resolution   | pre-release           |
@@ -381,6 +382,16 @@ read by `grob --explain Exxxx`.
 
 ---
 
+### E0303 — circular type dependency among top-level value bindings
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** Two or more unannotated top-level value bindings (`readonly` or `:=`) form a cycle in their initialisers such that the type of each binding cannot be resolved without first knowing the type of another in the cycle. Annotated bindings are resolved from their declared type and do not participate in value-type dependency edges; annotated mutual cycles surface instead as runtime E5902.
+- **Source decision:** D-323.
+
+---
+
 ### E0401 — generic type argument count mismatch
 
 - **Category:** Type
@@ -488,13 +499,13 @@ read by `grob --explain Exxxx`.
 
 ---
 
-### E1102 — variable already declared in this scope
+### E1102 — name already declared in this scope
 
 - **Category:** Name resolution
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A `:=` declaration was applied to a name that already exists in the current scope. Use `=` to reassign an existing binding.
-- **Source decision:** Sprint 3 Increment A.
+- **Description:** A binding-introducing form (`:=`, `readonly`, `const`, `fn`, `type`) declared a name that is already bound in the same scope. The diagnostic is emitted at the second (offending) declaration. For `:=` use `=` to reassign an existing variable binding. For `fn`/`type`/`readonly`/`const` rename the declaration.
+- **Source decision:** Sprint 3 Increment A; broadened to all top-level binding forms by D-324.
 
 ---
 
@@ -1251,7 +1262,7 @@ None as of v1.
 
 ---
 
-**Total: 108 codes across 7 categories.** This is the canonical current count;
+**Total: 109 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count

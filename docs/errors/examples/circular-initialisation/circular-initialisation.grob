@@ -2,7 +2,7 @@
 readonly tagline := buildTagline()
 
 fn buildTagline(): string {
-    return "${product} — built for scripting"
+    return product
 }
 
 readonly product := "Grob"

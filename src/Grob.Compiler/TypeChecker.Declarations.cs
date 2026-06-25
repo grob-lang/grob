@@ -15,7 +15,12 @@ public sealed partial class TypeChecker {
         // diagnostic points at the declaration head.
         CheckReservedBindingName(node.Name, node.Range);
 
-        // The fn name was already registered in pass 1; don't re-register here.
+        // Finalise the pass-1 provisional entry as a real binding (D-324). If the name
+        // is already real — a prior fn/type/value decl was finalised first — emits E1102
+        // at this declaration (the offending later one). Still proceeds to validate the
+        // body regardless, so nested errors are reported without suppression.
+        FinalizeTopLevelBinding(node.Name, GrobType.Unknown, node.Range.Start, node, node.Range);
+
         // Default expressions materialise at the call site (D-113), so they are
         // type-checked in the enclosing scope — before the parameter scope opens.
         // A default that references a sibling parameter therefore resolves to E1001
@@ -67,6 +72,9 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitTypeDecl(TypeDecl node) {
+        // Finalise the pass-1 provisional entry as a real binding (D-324).
+        FinalizeTopLevelBinding(node.Name, GrobType.Unknown, node.Range.Start, node, node.Range);
+
         // Full type-field checking lands in Sprint 6. The one rule that applies now:
         // a reserved identifier (formatAs, select) may not be a field name (E1103,
         // D-320).
@@ -89,7 +97,9 @@ public sealed partial class TypeChecker {
                 node.Value.Range);
         }
         GrobType symbolType = ResolveBinding(node.AnnotatedType, initType, node.Value.Range);
-        RegisterSymbol(node.Name, symbolType, node.Range.Start, node);
+        // const has no pass-1 provisional entry, so FinalizeTopLevelBinding both detects
+        // collisions with prior real entries and registers the symbol as real (D-324).
+        FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range);
         return GrobType.Unknown;
     }
 
@@ -122,7 +132,9 @@ public sealed partial class TypeChecker {
     public override GrobType VisitReadonlyDecl(ReadonlyDecl node) {
         GrobType initType = Visit(node.Value);
         GrobType symbolType = ResolveBinding(node.AnnotatedType, initType, node.Value.Range);
-        RegisterSymbol(node.Name, symbolType, node.Range.Start, node);
+        // Finalise the pass-1 provisional entry (D-324). Detects collisions with prior
+        // real bindings and registers as real when free.
+        FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range);
         return GrobType.Unknown;
     }
 

@@ -193,6 +193,35 @@ public sealed class TypeCheckerFunctionTests {
             $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
     }
 
+    [Fact]
+    public void Return_ForwardReferencedReadonlyOfMatchingType_NoError() {
+        // 'f' returns 'x', a 'readonly' binding declared later and inferred int —
+        // the declared return type is satisfied (forward value binding, D-321).
+        DiagnosticBag bag = Check("""
+            fn f(): int {
+            return x
+            }
+            readonly x := 5
+            """);
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    [Fact]
+    public void Return_ForwardReferencedReadonlyOfMismatchedType_RaisesE0005() {
+        // Same shape, but 'x' is inferred string — the int return type is violated.
+        DiagnosticBag bag = Check("""
+            fn f(): int {
+            return x
+            }
+            readonly x := "hello"
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0005.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(8, diag.Range.Start.Column); // the 'x' return value
+    }
+
     // -----------------------------------------------------------------------
     // E2203 — top-level return
     // -----------------------------------------------------------------------
