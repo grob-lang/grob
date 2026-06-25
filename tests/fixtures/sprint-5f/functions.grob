@@ -21,6 +21,14 @@ print(greet("World"))
 print(greet("Alice", greeting: "Hi"))
 
 // --- 3. Closures — two independent counters (category-4 upvalue capture) ---
+// Two lambdas in one activation each capture their own enclosing local (`a`, `b`)
+// as an independent upvalue, and interleaved calls keep the two counts separate.
+// Per-call independence across *distinct* demoCounters() activations, and survival
+// of captured state after the enclosing frame returns, cannot be written in v1
+// source — there is no function-type return annotation (the spec's `fn(): int`
+// form, §category-4, is not parsed) and the array-escape workaround faults the VM.
+// That invariant is owned at the correct layer by Grob.Vm.Tests'
+// TwoClosures_HaveIndependentCounters and ClosedUpvalue_OutlivesEnclosingFrame.
 fn demoCounters(): string {
     a := 0
     inc_a := () => {
