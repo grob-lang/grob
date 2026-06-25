@@ -1,0 +1,63 @@
+// Sprint 5 close — functions.grob
+// Exercises: recursion, named/default args, category-4 closures with per-call
+// independence, filter/select/sort pipeline with capturing lambda, narrowing.
+
+// --- 1. Recursion ---
+fn factorial(n: int): int {
+    if (n <= 1) {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+print(factorial(5))
+
+// --- 2. Named and default parameters ---
+fn greet(name: string, greeting: string = "Hello"): string {
+    return "${greeting}, ${name}!"
+}
+
+print(greet("World"))
+print(greet("Alice", greeting: "Hi"))
+
+// --- 3. Closures — two independent counters (category-4 upvalue capture) ---
+fn demoCounters(): string {
+    a := 0
+    inc_a := () => {
+        a = a + 1
+        a
+    }
+    b := 0
+    inc_b := () => {
+        b = b + 1
+        b
+    }
+    inc_a()
+    inc_a()
+    inc_b()
+    va := inc_a()
+    vb := inc_b()
+    return "a=${va} b=${vb}"
+}
+
+print(demoCounters())
+
+// --- 4. Array pipeline with a capturing lambda ---
+fn above_doubled(nums: array, threshold: int): array {
+    return nums.filter(x => x > threshold)
+        .select(x => x * 2)
+        .sort(x => x)
+}
+
+above_doubled([1, 4, 2, 5, 3], 3).each(x => print(x))
+
+// --- 5. Flow-sensitive narrowing ---
+fn describe(label: string?): string {
+    if (label != nil) {
+        return "value: ${label}"
+    }
+    return "no value"
+}
+
+print(describe("hello"))
+print(describe(nil))
