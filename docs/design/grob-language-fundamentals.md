@@ -669,14 +669,15 @@ A type reference written in source (`TypeRef`) has three forms:
 
 ```ebnf
 TypeRef :=
-    Identifier TypeArgs? ('?' | '[]')*           // named type: int, string, int?, int[]
+    Identifier TypeArgs? ('?' | '[]')?           // named type: int, string, int?, int[]
   | 'fn' '(' (TypeRef (',' TypeRef)*)? ')' ':' TypeRef   // function type: fn(int): bool
-  | '(' TypeRef ')' ('?' | '[]')*              // parenthesised: (fn(): int)?, (fn(): int)[]
+  | '(' TypeRef ')' '?'?                         // parenthesised: (fn(): int)?
 ```
 
 **Suffix precedence.** `?` and `[]` bind to the **return type**, not to the function
 itself. `fn(): int?` is a function returning `int?`; `(fn(): int)?` is a nullable
-function returning `int`. A nullable function or an array of functions requires parens.
+function returning `int`. A nullable function requires parens; an array-of-functions
+form `(fn(): int)[]` is not supported in v1 (element-type tracking awaits generics).
 
 ```grob
 counter: fn(): int := makeCounter()    // variable holding a counter closure

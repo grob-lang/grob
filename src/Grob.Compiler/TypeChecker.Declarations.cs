@@ -70,8 +70,7 @@ public sealed partial class TypeChecker {
             // not merely as fn-to-fn (D-326; Fix H).
             (GrobType paramType, FunctionTypeDescriptor? paramDesc) =
                 p.Type is not null ? ResolveTypeRefFull(p.Type) : (GrobType.Unknown, null);
-            FunctionTypeDescriptor? defaultDesc = p.DefaultValue is LambdaExpr lambdaDefault
-                ? _lambdaDescriptors.GetValueOrDefault(lambdaDefault) : null;
+            FunctionTypeDescriptor? defaultDesc = ExpressionDescriptor(p.DefaultValue);
             bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
             bool compatible = isFunctionParam
                 ? TypesAreAssignable(defaultType, paramType, defaultDesc, paramDesc)

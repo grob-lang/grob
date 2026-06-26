@@ -86,8 +86,8 @@ public sealed partial class TypeChecker {
             // Visited: already resolved — nothing to do.
         }
 
-        GrobType resolvedType = SilentInferTypeFromBinding(bindings[name]);
-        UpdateProvisionalType(name, resolvedType);
+        (GrobType resolvedType, FunctionTypeDescriptor? desc) = SilentInferTypeFromBinding(bindings[name]);
+        UpdateProvisionalType(name, resolvedType, desc);
         colors[name] = BindingResolutionColor.Visited;
     }
 
@@ -146,7 +146,7 @@ public sealed partial class TypeChecker {
         }
     }
 
-    private GrobType SilentInferTypeFromBinding(AstNode binding) {
+    private (GrobType, FunctionTypeDescriptor?) SilentInferTypeFromBinding(AstNode binding) {
         TypeRef? annotation = binding switch {
             ReadonlyDecl ro => ro.AnnotatedType,
             VarDeclStmt vd => vd.AnnotatedType,
@@ -159,7 +159,19 @@ public sealed partial class TypeChecker {
         };
 
         GrobType initType = initializer is not null ? SilentInferType(initializer) : GrobType.Unknown;
-        return SilentResolveBinding(annotation, initType);
+
+        if (annotation is null) return (initType, null);
+
+        // Use ResolveTypeRefFull so FunctionTypeRef annotations produce GrobType.Function
+        // (plus the structural descriptor) rather than Unknown. The static ResolveTypeRef
+        // path does not handle FunctionTypeRef and would cause forward-reference bindings
+        // annotated with a function type to stay Unknown through phase 1.5 (D-326).
+        (GrobType annotated, FunctionTypeDescriptor? desc) = ResolveTypeRefFull(annotation);
+        if (annotated == GrobType.Unknown) return (initType, null);
+        if (initType == GrobType.Error) return (GrobType.Error, null);
+        if (initType == GrobType.Unknown) return (annotated, desc);
+        if (TypesAreAssignable(initType, annotated)) return (annotated, desc);
+        return (GrobType.Error, null);
     }
 
     private GrobType SilentInferType(Expression expr) => expr switch {
@@ -218,26 +230,6 @@ public sealed partial class TypeChecker {
         if ((a == GrobType.Int && b == GrobType.Float) || (a == GrobType.Float && b == GrobType.Int))
             return GrobType.Float;
         return GrobType.Unknown;
-    }
-
-    /// <summary>
-    /// Silent analogue of <see cref="ResolveBinding"/>: resolves the type of a binding
-    /// from its optional annotation and its silently-inferred initialiser type, without
-    /// emitting any diagnostics. When annotation and initialiser are incompatible, returns
-    /// <see cref="GrobType.Error"/> — pass 2 will emit the full E0001 with source location.
-    /// </summary>
-    private static GrobType SilentResolveBinding(TypeRef? annotation, GrobType initType) {
-        if (annotation is null) return initType;
-
-        GrobType annotated = ResolveTypeRef(annotation);
-        if (annotated == GrobType.Unknown) return initType;
-        if (initType == GrobType.Error) return GrobType.Error;
-        // initType == Unknown means the init expr couldn't be typed silently
-        // (e.g. references a not-yet-resolved dep); the annotation wins.
-        if (initType == GrobType.Unknown) return annotated;
-        if (TypesAreAssignable(initType, annotated)) return annotated;
-        // Incompatible: pass 2 will emit E0001 with full diagnostics.
-        return GrobType.Error;
     }
 
     private static SourceRange GetBindingRange(AstNode binding) => binding switch {

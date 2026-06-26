@@ -373,7 +373,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         bool fromIsFunction = from == GrobType.Function || from == GrobType.NullableFunction;
         bool toIsFunction = to == GrobType.Function || to == GrobType.NullableFunction;
         if (fromIsFunction && toIsFunction)
-            return fromDesc is not null && toDesc is not null && DescriptorsAreAssignable(fromDesc, toDesc);
+            return TypesAreAssignable(from, to) &&
+                   fromDesc is not null && toDesc is not null &&
+                   DescriptorsAreAssignable(fromDesc, toDesc);
         return TypesAreAssignable(from, to);
     }
 
@@ -410,7 +412,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         bool fromIsFunction = from == GrobType.Function || from == GrobType.NullableFunction;
         bool toIsFunction = to == GrobType.Function || to == GrobType.NullableFunction;
         if (fromIsFunction && toIsFunction)
-            return fromDesc is not null && toDesc is not null && DescriptorsAreAssignable(fromDesc, toDesc);
+            return TypesAreAssignable(from, to) &&
+                   fromDesc is not null && toDesc is not null &&
+                   DescriptorsAreAssignable(fromDesc, toDesc);
         return TypesAreAssignable(from, to);
     }
 
@@ -540,10 +544,11 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// No-ops when the existing symbol is non-provisional (e.g. an fn or type
     /// declaration whose name is re-used by a value binding — pass 2 handles E1102).
     /// </summary>
-    private void UpdateProvisionalType(string name, GrobType type) {
+    private void UpdateProvisionalType(string name, GrobType type, FunctionTypeDescriptor? functionDescriptor = null) {
         if (!_scopes.Peek().TryGetValue(name, out Symbol? existing)) return;
         if (!existing.Provisional) return;
-        RegisterSymbol(name, type, existing.DeclaredAt, existing.DeclarationNode, provisional: true);
+        RegisterSymbol(name, type, existing.DeclaredAt, existing.DeclarationNode,
+            provisional: true, functionDescriptor: functionDescriptor);
     }
 
     /// <summary>Emits an error diagnostic and returns <see cref="GrobType.Error"/>.</summary>

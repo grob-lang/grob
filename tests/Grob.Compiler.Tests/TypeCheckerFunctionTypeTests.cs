@@ -53,6 +53,8 @@ public sealed class TypeCheckerFunctionTypeTests {
         (_, DiagnosticBag bag) = TypeCheckSource("readonly f: fn(): int := () => \"s\"\n");
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(26, d.Range.Start.Column);
     }
 
     /// <summary><c>x: fn(): int := () => "s"</c> — return-type mismatch emits E0001 at the lambda.</summary>
@@ -122,6 +124,8 @@ public sealed class TypeCheckerFunctionTypeTests {
         (_, DiagnosticBag bag) = TypeCheckSource("fn f(action: fn(): int = () => \"s\"): void { }\n");
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0004", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(26, d.Range.Start.Column);
     }
 
     /// <summary>
@@ -147,6 +151,8 @@ public sealed class TypeCheckerFunctionTypeTests {
             """);
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0004", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(10, d.Range.Start.Column);
     }
 
     /// <summary>
@@ -205,6 +211,8 @@ public sealed class TypeCheckerFunctionTypeTests {
             """);
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0001", d.Code);
+        Assert.Equal(8, d.Range.Start.Line);
+        Assert.Equal(29, d.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -239,6 +247,8 @@ public sealed class TypeCheckerFunctionTypeTests {
             """);
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0005", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(12, d.Range.Start.Column);
     }
 
     /// <summary>
@@ -272,6 +282,8 @@ public sealed class TypeCheckerFunctionTypeTests {
             """);
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0001", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(23, d.Range.Start.Column);
     }
 
     /// <summary>
@@ -282,12 +294,13 @@ public sealed class TypeCheckerFunctionTypeTests {
     [Fact]
     public void FunctionDescriptors_NestedParameterMismatch_IsE0001() {
         (_, DiagnosticBag bag) = TypeCheckSource("""
-            fn takesIntReturner(p: fn(): int): int { return 0 }
-            g: fn(fn(): int): int := takesIntReturner
+            g: fn(fn(): int): int := (p) => 0
             f: fn(fn(): string): int := g
             """);
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0001", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(29, d.Range.Start.Column);
     }
 
     /// <summary>
@@ -300,6 +313,8 @@ public sealed class TypeCheckerFunctionTypeTests {
         (_, DiagnosticBag bag) = TypeCheckSource("x: fn(): int := 5\n");
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(17, d.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -361,5 +376,90 @@ public sealed class TypeCheckerFunctionTypeTests {
             [], GrobType.Function, [], returnsStringReturner);
 
         Assert.NotEqual(a, b);
+    }
+
+    // -----------------------------------------------------------------------
+    // GetHashCode alignment with relaxed equality (PR #95 review fix)
+    //
+    // ParameterDescriptorsEqual treats [] and [null] as the same (no function-typed
+    // positions in both cases). GetHashCode must strip trailing nulls before hashing
+    // so equal descriptors always produce the same hash code.
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// A descriptor built with the 2-arg constructor (ParameterDescriptors = []) equals
+    /// one built with the 4-arg constructor using [null] (same logical shape: no nested
+    /// descriptors). Their hash codes must also be equal so Dictionary/HashSet lookups work.
+    /// </summary>
+    [Fact]
+    public void NestedFunctionType_EmptyVsNullDescriptorList_HashCodeEqual() {
+        FunctionTypeDescriptor twoArg = new([GrobType.Int], GrobType.Bool);
+        FunctionTypeDescriptor fourArgNullSlot = new([GrobType.Int], GrobType.Bool, [null], null);
+        Assert.Equal(twoArg, fourArgNullSlot);
+        Assert.Equal(twoArg.GetHashCode(), fourArgNullSlot.GetHashCode());
+    }
+
+    // -----------------------------------------------------------------------
+    // Nullable function type assignability (PR #95 review fix — outside-diff)
+    //
+    // TypesAreAssignable (4-arg) was bypassing the base nullable/non-nullable
+    // function kind check, so (fn(): int)? could be assigned to fn(): int when
+    // descriptors matched.
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// A nullable function value cannot be assigned to a non-nullable function annotation
+    /// (fn()? → fn() is narrowing and must emit E0104 — the nullable-to-non-nullable code).
+    /// </summary>
+    [Fact]
+    public void NullableFunctionType_AssignedToNonNullable_IsE0104() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            x: (fn(): int)? := () => 1
+            y: fn(): int := x
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0104", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(17, d.Range.Start.Column);
+    }
+
+    // -----------------------------------------------------------------------
+    // Forward-reference function-type binding (PR #95 review fix — UpdateProvisionalType)
+    //
+    // Phase 1.5 updates provisional entries without carrying the function descriptor,
+    // so when pass 2 processes a binding referencing a later binding (source order),
+    // the later binding has no descriptor yet and assignability fails.
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// A top-level value binding referencing a later-declared binding of the same function
+    /// type must type-check without error: phase 1.5 must carry the descriptor so the
+    /// forward reference is resolved correctly.
+    /// </summary>
+    [Fact]
+    public void FunctionType_ForwardReferenceBinding_TypeChecks() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            f: fn(): int := g
+            g: fn(): int := () => 1
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    // -----------------------------------------------------------------------
+    // Grouped-lambda parameter default (PR #95 review fix — ExpressionDescriptor)
+    //
+    // CheckParameterDefaults was only calling _lambdaDescriptors for direct LambdaExpr
+    // defaults. A grouped lambda ((lambda)) resolves to null descriptor, triggering
+    // spurious E0004 even when the signature matches.
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// A parameter default supplied as a grouped lambda with a matching signature must
+    /// type-check without error — the descriptor helper must recurse through the grouping.
+    /// </summary>
+    [Fact]
+    public void HigherOrderParamDefault_GroupedLambda_MatchingSignature_TypeChecks() {
+        (_, DiagnosticBag bag) = TypeCheckSource("fn f(action: fn(): int = (() => 1)): void { }\n");
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
     }
 }

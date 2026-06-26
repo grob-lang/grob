@@ -110,8 +110,14 @@ public sealed class FunctionTypeDescriptor {
             hash.Add(parameterType);
         }
         hash.Add(ReturnDescriptor);
-        foreach (FunctionTypeDescriptor? descriptor in ParameterDescriptors) {
-            hash.Add(descriptor);
+        // Strip trailing nulls so [] and [null, null, ...] hash identically, consistent
+        // with ParameterDescriptorsEqual which treats missing entries as null.
+        int lastIndex = ParameterDescriptors.Count - 1;
+        while (lastIndex >= 0 && ParameterDescriptors[lastIndex] is null) {
+            lastIndex--;
+        }
+        for (int i = 0; i <= lastIndex; i++) {
+            hash.Add(ParameterDescriptors[i]);
         }
         return hash.ToHashCode();
     }
