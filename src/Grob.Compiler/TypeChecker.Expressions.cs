@@ -808,12 +808,18 @@ public sealed partial class TypeChecker {
         };
         _lambdaReturnTypes[node] = bodyType;
 
+        // Build and store the structural descriptor for this lambda (D-326).
+        // Lambda parameter types are inferred (Unknown) in v1; arity is exact.
+        List<GrobType> lambdaParamTypes = node.Parameters.Select(_ => GrobType.Unknown).ToList();
+        _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, bodyType);
+
         _functionReturnTypes.Pop();
         _scopes.Pop();
 
-        // Return Unknown for the lambda value's own type — there is no GrobType.Function
-        // variant in this increment.  Callers that need the body type use _lambdaReturnTypes.
-        return GrobType.Unknown;
+        // Lambdas are now typed as GrobType.Function (D-326). Callers that need
+        // the body return type use _lambdaReturnTypes; callers that need the structural
+        // descriptor use _lambdaDescriptors.
+        return GrobType.Function;
     }
 
     /// <summary>

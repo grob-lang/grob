@@ -404,6 +404,33 @@ public sealed class Parser {
 
     private TypeRef ParseTypeRef() {
         SourceLocation start = Current.Location;
+
+        // Parenthesised type — used for (fn(): T)? or (fn(): T)[] where ? / []
+        // must bind to the outer function rather than its return type (D-326).
+        if (Match(TokenKind.LeftParen)) {
+            TypeRef inner = ParseTypeRef();
+            Expect(TokenKind.RightParen, _e2001, "expected ')' to close parenthesised type");
+            // Only ? is legal as an outer suffix in this position in v1.
+            if (!Match(TokenKind.Question)) return inner;
+            return inner with { IsNullable = true };
+        }
+
+        // Function type — fn(T1, T2): R (D-326). The ? suffix applies to the
+        // return type (parsed recursively), not to the fn itself; that requires parens.
+        if (Match(TokenKind.Fn)) {
+            Expect(TokenKind.LeftParen, _e2001, "expected '(' after 'fn' in function type");
+            List<TypeRef> paramTypes = [];
+            if (!Check(TokenKind.RightParen) && !IsAtEnd) {
+                paramTypes.Add(ParseTypeRef());
+                while (Match(TokenKind.Comma)) paramTypes.Add(ParseTypeRef());
+            }
+            Expect(TokenKind.RightParen, _e2001, "expected ')' to close function type parameters");
+            Expect(TokenKind.Colon, _e2001, "expected ':' after function type parameters");
+            TypeRef returnType = ParseTypeRef();
+            return new FunctionTypeRef(RangeFrom(start), paramTypes, returnType, IsNullable: false);
+        }
+
+        // Identifier-named type (existing arm).
         Token name = Expect(TokenKind.Identifier, _e2001, "expected type name");
         List<TypeRef> args = [];
         if (Match(TokenKind.Less)) {

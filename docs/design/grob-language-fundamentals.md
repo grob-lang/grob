@@ -663,6 +663,27 @@ items: int[] := []       // annotation required — [] provides no element type
   return types is post-MVP. This eliminates a class of inference ambiguity and
   keeps the type checker simple.
 
+**Type-reference grammar (D-326):**
+
+A type reference written in source (`TypeRef`) has three forms:
+
+```ebnf
+TypeRef :=
+    Identifier TypeArgs? '?'?           // named type: int, string, array, T?
+  | 'fn' '(' (TypeRef (',' TypeRef)*)? ')' ':' TypeRef   // function type: fn(int): bool
+  | '(' TypeRef ')' '?'                // parenthesised for nullable function: (fn(): int)?
+```
+
+**Suffix precedence.** `?` and `[]` bind to the **return type**, not to the function
+itself. `fn(): int?` is a function returning `int?`; `(fn(): int)?` is a nullable
+function returning `int`. A nullable function or an array of functions requires parens.
+
+```grob
+counter: fn(): int := makeCounter()    // variable holding a counter closure
+apply: fn(int): bool                   // higher-order parameter
+make: fn(): fn(): int := makeCounter   // fn returning fn (parens only needed for nullable)
+```
+
 ---
 
 ## 10. Type Declarations and Construction

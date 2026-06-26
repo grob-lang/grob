@@ -11,7 +11,7 @@ namespace Grob.Compiler.Ast;
 /// <param name="Name">The unqualified type name.</param>
 /// <param name="TypeArguments">Generic type arguments, empty when the type is non-generic.</param>
 /// <param name="IsNullable"><see langword="true"/> when the reference ends with <c>?</c>.</param>
-public sealed record TypeRef(
+public record TypeRef(
     SourceRange Range,
     string Name,
     IReadOnlyList<TypeRef> TypeArguments,
