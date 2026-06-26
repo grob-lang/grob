@@ -90,6 +90,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly Dictionary<LambdaExpr, FunctionTypeDescriptor> _lambdaDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
+    // _callResultDescriptors maps a call expression to the structural descriptor of its
+    // result, when the callee's declared return type is a function type (D-326; Fix I).
+    // VisitVarDecl / VisitReadonlyDecl read it the same way they read _lambdaDescriptors
+    // for a lambda initialiser, so `c: fn(): int := makeCounter()` checks structurally.
+    // Keyed by reference identity, matching _lambdaDescriptors.
+    private readonly Dictionary<CallExpr, FunctionTypeDescriptor> _callResultDescriptors =
+        new(ReferenceEqualityComparer.Instance);
+
     // -----------------------------------------------------------------------
     // Flow-sensitive narrowing (Sprint 5 Increment E; §6, §19.1 narrowing rule).
     //
@@ -249,6 +257,36 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         ResolveBindingFull(annotation, initType, null, initRange).Type;
 
     /// <summary>
+    /// Returns the structural function descriptor of a binding initialiser, when the
+    /// initialiser is a lambda (from <see cref="_lambdaDescriptors"/>) or a call that
+    /// returns a function type (from <see cref="_callResultDescriptors"/>); otherwise
+    /// <see langword="null"/> (D-326; Fixes G and I). The initialiser must already have
+    /// been visited so its descriptor is recorded.
+    /// </summary>
+    /// <summary>
+    /// Returns the structural function descriptor of a binding initialiser. Delegates to
+    /// <see cref="ExpressionDescriptor"/> so a lambda, a call returning a function type, or
+    /// an identifier bound to a function-typed symbol all carry their descriptor through
+    /// binding (D-326; Fixes G, I and the annotation-to-annotation case).
+    /// </summary>
+    private FunctionTypeDescriptor? InitialiserDescriptor(Expression initialiser) =>
+        ExpressionDescriptor(initialiser);
+
+    /// <summary>
+    /// Returns the structural function descriptor of an arbitrary expression — a lambda,
+    /// a call returning a function type, or an identifier bound to a function-typed symbol
+    /// (D-326; Fix K). Used where a returned or assigned value may be a bound function
+    /// variable rather than a direct lambda. The expression must already have been visited.
+    /// </summary>
+    private FunctionTypeDescriptor? ExpressionDescriptor(Expression expr) => expr switch {
+        LambdaExpr lambda => _lambdaDescriptors.GetValueOrDefault(lambda),
+        CallExpr call => _callResultDescriptors.GetValueOrDefault(call),
+        IdentifierExpr id => LookupSymbol(id.Name)?.FunctionDescriptor,
+        GroupingExpr grp => ExpressionDescriptor(grp.Inner),
+        _ => null,
+    };
+
+    /// <summary>
     /// Maps a syntactic <see cref="TypeRef"/> to a <see cref="GrobType"/>,
     /// applying the nullable modifier when <see cref="TypeRef.IsNullable"/> is
     /// <c>true</c> (Sprint 3 Increment D — D-014).
@@ -278,9 +316,20 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// </summary>
     internal static (GrobType Kind, FunctionTypeDescriptor? Descriptor) ResolveTypeRefFull(TypeRef typeRef) {
         if (typeRef is FunctionTypeRef fnRef) {
-            List<GrobType> paramTypes = fnRef.ParameterTypes.Select(ResolveTypeRef).ToList();
-            GrobType returnType = ResolveTypeRef(fnRef.ReturnType);
-            FunctionTypeDescriptor descriptor = new(paramTypes, returnType);
+            // Resolve each parameter and the return type recursively so that a nested
+            // function type (fn(fn(): int): int) carries its inner descriptor and is
+            // structurally distinguished from fn(fn(): string): int (D-326). The flat
+            // GrobType kind alone collapses both to a single GrobType.Function parameter.
+            var paramTypes = new List<GrobType>(fnRef.ParameterTypes.Count);
+            var paramDescriptors = new List<FunctionTypeDescriptor?>(fnRef.ParameterTypes.Count);
+            foreach (TypeRef paramRef in fnRef.ParameterTypes) {
+                (GrobType paramKind, FunctionTypeDescriptor? paramDesc) = ResolveTypeRefFull(paramRef);
+                paramTypes.Add(paramKind);
+                paramDescriptors.Add(paramDesc);
+            }
+
+            (GrobType returnKind, FunctionTypeDescriptor? returnDesc) = ResolveTypeRefFull(fnRef.ReturnType);
+            FunctionTypeDescriptor descriptor = new(paramTypes, returnKind, paramDescriptors, returnDesc);
             GrobType kind = fnRef.IsNullable ? GrobType.NullableFunction : GrobType.Function;
             return (kind, descriptor);
         }
@@ -324,7 +373,44 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         bool fromIsFunction = from == GrobType.Function || from == GrobType.NullableFunction;
         bool toIsFunction = to == GrobType.Function || to == GrobType.NullableFunction;
         if (fromIsFunction && toIsFunction)
-            return fromDesc is not null && toDesc is not null && fromDesc.Equals(toDesc);
+            return fromDesc is not null && toDesc is not null && DescriptorsAreAssignable(fromDesc, toDesc);
+        return TypesAreAssignable(from, to);
+    }
+
+    /// <summary>
+    /// Structural assignability for function-type descriptors (D-326, invariant
+    /// assignability). Arity must match exactly; each parameter and the return type
+    /// must be assignable position by position, descending into nested function
+    /// descriptors. A <see cref="GrobType.Unknown"/> on either side at any position is
+    /// permissive — this is what lets an inferred lambda (whose parameter and body types
+    /// are <see cref="GrobType.Unknown"/> in v1) bind to a concrete <c>fn(int): int</c>
+    /// annotation, while two fully-concrete descriptors are still compared invariantly.
+    /// </summary>
+    private static bool DescriptorsAreAssignable(FunctionTypeDescriptor from, FunctionTypeDescriptor to) {
+        if (from.ParameterTypes.Count != to.ParameterTypes.Count) return false;
+
+        for (int i = 0; i < from.ParameterTypes.Count; i++) {
+            if (!PositionAssignable(
+                    from.ParameterTypes[i], to.ParameterTypes[i],
+                    DescriptorAt(from.ParameterDescriptors, i), DescriptorAt(to.ParameterDescriptors, i))) {
+                return false;
+            }
+        }
+
+        return PositionAssignable(from.ReturnType, to.ReturnType, from.ReturnDescriptor, to.ReturnDescriptor);
+    }
+
+    private static FunctionTypeDescriptor? DescriptorAt(IReadOnlyList<FunctionTypeDescriptor?> list, int index) =>
+        index < list.Count ? list[index] : null;
+
+    private static bool PositionAssignable(
+        GrobType from, GrobType to, FunctionTypeDescriptor? fromDesc, FunctionTypeDescriptor? toDesc) {
+        // Unknown on either side is permissive (inferred lambda parameter/body types).
+        if (from == GrobType.Unknown || to == GrobType.Unknown) return true;
+        bool fromIsFunction = from == GrobType.Function || from == GrobType.NullableFunction;
+        bool toIsFunction = to == GrobType.Function || to == GrobType.NullableFunction;
+        if (fromIsFunction && toIsFunction)
+            return fromDesc is not null && toDesc is not null && DescriptorsAreAssignable(fromDesc, toDesc);
         return TypesAreAssignable(from, to);
     }
 
@@ -434,14 +520,15 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// declarations.
     /// </summary>
     private void FinalizeTopLevelBinding(
-        string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode, SourceRange range) {
+        string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode, SourceRange range,
+        FunctionTypeDescriptor? functionDescriptor = null) {
         if (_scopes.Peek().TryGetValue(name, out Symbol? existing) && !existing.Provisional) {
             EmitError(ErrorCatalog.E1102,
                 $"'{name}' is already declared in this scope (first declared at line {existing.DeclaredAt.Line}).",
                 range);
             return;
         }
-        RegisterSymbol(name, type, declaredAt, declarationNode);
+        RegisterSymbol(name, type, declaredAt, declarationNode, functionDescriptor: functionDescriptor);
     }
 
     /// <summary>

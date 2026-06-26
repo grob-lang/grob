@@ -65,9 +65,18 @@ public sealed partial class TypeChecker {
         foreach (Parameter p in node.Parameters) {
             if (p.DefaultValue is null) continue;
             GrobType defaultType = Visit(p.DefaultValue);
-            GrobType paramType = p.Type is not null ? ResolveTypeRef(p.Type) : GrobType.Unknown;
-            if (paramType != GrobType.Unknown && defaultType != GrobType.Error
-                && !TypesAreAssignable(defaultType, paramType)) {
+            // Resolve the parameter type with its structural descriptor so a function-type
+            // parameter default (action: fn(): int = () => "s") is checked structurally,
+            // not merely as fn-to-fn (D-326; Fix H).
+            (GrobType paramType, FunctionTypeDescriptor? paramDesc) =
+                p.Type is not null ? ResolveTypeRefFull(p.Type) : (GrobType.Unknown, null);
+            FunctionTypeDescriptor? defaultDesc = p.DefaultValue is LambdaExpr lambdaDefault
+                ? _lambdaDescriptors.GetValueOrDefault(lambdaDefault) : null;
+            bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
+            bool compatible = isFunctionParam
+                ? TypesAreAssignable(defaultType, paramType, defaultDesc, paramDesc)
+                : TypesAreAssignable(defaultType, paramType);
+            if (paramType != GrobType.Unknown && defaultType != GrobType.Error && !compatible) {
                 EmitError(ErrorCatalog.E0004,
                     $"Default value for parameter '{p.Name}' has type '{TypeName(defaultType)}', which is not assignable to '{TypeName(paramType)}'.",
                     p.DefaultValue.Range);
@@ -136,10 +145,15 @@ public sealed partial class TypeChecker {
     /// <inheritdoc/>
     public override GrobType VisitReadonlyDecl(ReadonlyDecl node) {
         GrobType initType = Visit(node.Value);
-        GrobType symbolType = ResolveBinding(node.AnnotatedType, initType, node.Value.Range);
+        // Carry the initialiser's structural descriptor through binding so a function-type
+        // annotation (readonly f: fn(): int := () => 1, or := makeCounter()) is checked
+        // structurally and the descriptor is stored on the symbol (D-326; Fixes G and I).
+        FunctionTypeDescriptor? initDesc = InitialiserDescriptor(node.Value);
+        (GrobType symbolType, FunctionTypeDescriptor? symbolDesc) =
+            ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Value.Range);
         // Finalise the pass-1 provisional entry (D-324). Detects collisions with prior
         // real bindings and registers as real when free.
-        FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range);
+        FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range, symbolDesc);
         return GrobType.Unknown;
     }
 

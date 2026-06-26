@@ -405,14 +405,20 @@ public sealed class Parser {
     private TypeRef ParseTypeRef() {
         SourceLocation start = Current.Location;
 
-        // Parenthesised type — used for (fn(): T)? or (fn(): T)[] where ? / []
-        // must bind to the outer function rather than its return type (D-326).
+        // Parenthesised type — used for (fn(): T)? where ? binds to the outer
+        // function rather than its return type (D-326). The grouped type's range
+        // starts at the opening '(' (RangeFrom(start)), not at the inner type, so a
+        // diagnostic on the group points at the whole group.
+        //
+        // The (fn(): T)[] array-of-functions form D-326 contemplates is not yet
+        // expressible: TypeRef carries no array representation and GrobType.Array is
+        // unparameterised (element-type tracking awaits generics, Sprint 5). Only the
+        // ? suffix is implementable here in v1.
         if (Match(TokenKind.LeftParen)) {
             TypeRef inner = ParseTypeRef();
             Expect(TokenKind.RightParen, _e2001, "expected ')' to close parenthesised type");
-            // Only ? is legal as an outer suffix in this position in v1.
             if (!Match(TokenKind.Question)) return inner;
-            return inner with { IsNullable = true };
+            return inner with { IsNullable = true, Range = RangeFrom(start) };
         }
 
         // Function type — fn(T1, T2): R (D-326). The ? suffix applies to the

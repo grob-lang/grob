@@ -74,6 +74,18 @@ public class ParserFunctionTypeTests {
     }
 
     [Fact]
+    public void FunctionTypeRef_NullableFunction_RangeCoversOpeningParen() {
+        // The range on (fn(): int)? must start at the opening '(' (column 14),
+        // not at the inner 'fn' (column 15), so a diagnostic on the grouped
+        // type points at the whole group, not just its interior.
+        CompilationUnit unit = ParseOk("fn f(action: (fn(): int)?): int { return 0 }\n");
+        FnDecl fn = Single<FnDecl>(unit);
+        FunctionTypeRef paramType = Assert.IsType<FunctionTypeRef>(fn.Parameters[0].Type);
+        Assert.Equal(1, paramType.Range.Start.Line);
+        Assert.Equal(14, paramType.Range.Start.Column);
+    }
+
+    [Fact]
     public void MakeCounter_ReturnAnnotation_Parses() {
         // The canonical D-326 example: fn returning fn(): int.
         CompilationUnit unit = ParseOk("""

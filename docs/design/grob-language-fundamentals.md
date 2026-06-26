@@ -669,9 +669,9 @@ A type reference written in source (`TypeRef`) has three forms:
 
 ```ebnf
 TypeRef :=
-    Identifier TypeArgs? '?'?           // named type: int, string, array, T?
+    Identifier TypeArgs? ('?' | '[]')*           // named type: int, string, int?, int[]
   | 'fn' '(' (TypeRef (',' TypeRef)*)? ')' ':' TypeRef   // function type: fn(int): bool
-  | '(' TypeRef ')' '?'                // parenthesised for nullable function: (fn(): int)?
+  | '(' TypeRef ')' ('?' | '[]')*              // parenthesised: (fn(): int)?, (fn(): int)[]
 ```
 
 **Suffix precedence.** `?` and `[]` bind to the **return type**, not to the function
