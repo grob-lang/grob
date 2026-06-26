@@ -322,6 +322,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-322 | June 2026                                                         | VM / diagnostics — source position | Runtime diagnostics carry `file:line` only — the column is omitted, not idealised (no fabricated `5:15`); per-opcode column tracking deferred out of v1. The compiled `Chunk`'s debug info is line-keyed (the D-306 disassembler prints lines for the same reason); compile-time diagnostics are unaffected — lexer/parser carry full `(file, line, column)` (D-137), so §10's `14:12` example is met. Not a D-321 regression: D-321 moved E5902 to a function-body read site and so surfaced the line-only render (`:5`) on `circular-initialisation`, but runtime E5902 was always line-only. Gold masters, harnessed and rich, record the real line-only output so they agree. Known-limitation note for `grob-vm-architecture.md` flagged as a follow-up |
 | D-323 | June 2026                                                         | Type checker — value-binding type resolution | Three-pass type checker: new phase 1.5 resolves top-level value-binding types in initialiser-dependency order (DFS, Unvisited/Visiting/Visited) before pass-2 body validation. Forward value reads in function bodies now see the real type, not `GrobType.Unknown`, closing the false-E0005 gap. Unannotated mutual cycles → E0303 (compile-time); annotated cycles → E5902 (runtime). Lifts the `circular-initialisation` gold-master quarantine. New error code E0303. Refines D-321 and D-166 |
 | D-324 | June 2026                                                         | Type checker — uniform top-level redeclaration | E1102 is broadened from `:=`-only to all top-level binding-introducing forms (`fn`, `type`, `readonly`, `const`, `:=`). All top-level declarations are registered as provisional in pass 1; each visitor finalises its own provisional entry in pass 2, so the collision is always detected at the second declaration in source order. Corrects the reverse-order bug where a value-before-fn collision erroneously reported at the earlier value binding. E1102 title broadened from "variable already declared in this scope" to "name already declared in this scope". No new error code; count stays at 109 |
+| D-325 | June 2026                                                         | VM — closure upvalue lifecycle | Closures close captured locals by stack location, not by inspecting the return value. The VM keeps an open-upvalue list keyed by stack slot; on frame exit every open upvalue at or above the returning frame's base is closed into its heap cell, regardless of which heap object now references the closure. Route-agnostic by construction: array element, map value, struct field, parameter and direct return are handled identically. Fixes the array-escaped-closure value-stack underflow (`return [inc]` then `arr[0]()`) — value-based closing reached closures referenced directly by the return value but missed closures wrapped in a container, leaving an open upvalue pointing at a truncated slot. Concerns category-4 capture only (D-296); categories 1–3 and top-level fn hoisting (D-321, no captures) are untouched. No new error code; count stays at 109. Sprint 5 Increment 3 |
+| D-326 | June 2026                                                         | Type system — function types | `fn(ParamTypes): ReturnType` becomes a first-class type reference accepted by `ParseTypeRef` anywhere a type is written. Resolves the standing contradiction — v1 mandates explicit return types on every function AND closures are first-class returnable values, so `makeCounter(): fn(): int` could not be written (the only expressible return type was rejected with E2001). Removed by making function types expressible, not by relaxing explicit return types or dropping returnable closures. Structural identity; invariant assignability (no variance in v1); runtime-erased (the callable is already a `GrobFunction`, so no opcode/grobc/`GrobValue` impact). `?`/`[]` bind to the return type — `(fn(): int)?` and `(fn(): int)[]` need parens. User-written function types are monomorphic; the registry's internal `→` generic notation is unchanged and D-080's no-user-generics rule is untouched. Function-type mismatches reuse the existing assignment/argument mismatch codes; no new error code; count stays at 109. Sprint 5 Increment 4 |
 
 ---
 
@@ -3375,6 +3377,62 @@ Superseded by: none
 
 ---
 
+### D-325 — Upvalue closing is location-based, not value-based (June 2026)
+
+Area: VM — closure upvalue lifecycle
+Supersedes: none
+Superseded by: none
+
+**The decision.** A closure closes its captured locals by **stack location**, not by inspecting the return value. The VM maintains an **open-upvalue list** keyed by stack slot (a list sorted by slot descending, the clox `openUpvalues` shape). `OP_CLOSURE` capturing a local either reuses the existing open upvalue for that slot or creates one. On frame exit — `OP_RETURN`, and any explicit `OP_CLOSE_UPVALUE` the compiler emits when a captured local leaves scope early — every open upvalue at or above the returning frame's base is **closed**: its value is copied off the value stack into the heap upvalue cell, and it is removed from the open list. Closing is driven by the stack boundary alone and is indifferent to which heap object now references the closure.
+
+**Root cause of the fault.** Retrieving a closure from a container and calling it (`fn f(): ...[] { inc := () => ...; return [inc] }` then `arr[0]()`) faulted the VM with a value-stack underflow. The cause was **value-based closing** — the close pass reached closures referenced *directly* by the return value but missed closures wrapped in an array, map or struct. The missed closure kept an **open** upvalue pointing at a stack slot the frame's return truncated; the subsequent read of that upvalue underflowed the value stack. Location-based closing has no notion of "the return value", so every escape route is covered by the same boundary sweep.
+
+**The invariant.** After a frame returns, no open upvalue may reference a slot at or above that frame's base. The post-condition is checkable: an assertion (`#if DEBUG`) that the open-upvalue list head, if any, sits strictly below `frame.StackBase` after each `OP_RETURN` makes a regression of this class fail loudly rather than underflow later.
+
+**Scope boundary.** This concerns **category-4 capture only** (D-296) — locals from enclosing function scopes captured as upvalues. Categories 1–3 (const-inlined, top-level global read, top-level global mutable) reference the globals table and are unaffected. Top-level `fn` hoisting (D-321) captures no upvalues and is explicitly out of scope; this change does not touch the prologue or the init-state machine.
+
+**No new error code.** The corrected path produces correct behaviour; it surfaces no diagnostic. Error-code count stays at 109; the D-316 drift gate is unaffected.
+
+**Spec edits.** `grob-vm-architecture.md` gains an upvalue-lifecycle section (open and closed states, the open-upvalue list, capture at `OP_CLOSURE`, the frame-exit close sweep, the post-return invariant). That document is not in this upload — the section is authored by the increment, and this is recorded as a pending spec edit alongside the D-322 known-limitation note already flagged against the same doc.
+
+**Regression.** `Grob.Vm.Tests` gains an **escape matrix**, not a single case, because the bug class is "a captured closure escaped indirectly": closure in array → index → call; closure in map → lookup → call; closure as struct field → access → call; closure returned then immediately invoked; closure passed as a parameter then called. Each must observe the captured value, not fault. A test covering only the array case would invite a point-fix that re-breaks the others.
+
+**Relates to D-296 and D-321.** D-296 defines the four-category capture model; D-325 fixes the runtime mechanism for category 4. D-321 excluded itself from upvalues (top-level fns capture none); D-325 is the complementary fix for the closures that do. Sprint 5 Increment 3.
+
+---
+
+### D-326 — Function types are a first-class type-reference form (June 2026)
+
+Area: Type system — function types
+Supersedes: none
+Superseded by: none
+
+**The decision.** `fn(ParamTypes): ReturnType` is a type reference. `ParseTypeRef` accepts it anywhere a type is written — parameter annotations, return annotations, binding annotations, array element types. This resolves a contradiction that has been latent in the spec: v1 requires an explicit return type on **every** function (§9), and closures are first-class **returnable** values (D-296), so a named function that returns a closure — `fn makeCounter(): fn(): int` — must annotate its return type, and that type *is* a function. The parser rejected the only expressible form with E2001, leaving the canonical `makeCounter` example in the four-category-capture section (D-296) asserting syntax the implementation refused.
+
+**Why this direction.** Three rules cannot all hold: explicit return types on every function; closures are returnable; no function-type syntax. Narrowing the spec to match the parser does not remove the contradiction — any named closure-returning function reintroduces it — so the only clean resolutions are to make function types expressible or to relax explicit return types (a larger v1 reversal that reopens return-type inference, deliberately deferred post-v1). Dropping returnable closures is off the table — it is core identity. Function types are expressed. The consuming path (passing lambdas to built-in `.filter`/`.map`/`.select`) already works through inference against internal signatures and is unchanged; none of the thirteen release-gate scripts depend on user-written function types, so this is a completeness fix for the Functions-and-Closures sprint, not a release-gate unblock.
+
+**Grammar.** `FnType := 'fn' '(' (TypeRef (',' TypeRef)*)? ')' ':' TypeRef`. `ParseTypeRef` gains an `fn` arm. No conflict with declaration parsing: `fn` at statement head is a declaration; `fn` in type position is a type. The two positions never overlap.
+
+**Suffix precedence.** `?` and `[]` bind to the **return type**. `fn(): int?` is a function returning `int?`; `fn(): int[]` returns `int[]`. A nullable function, or an array of functions, requires parentheses: `(fn(): int)?`, `(fn(): int)[]`. This is the single genuine ambiguity and is specified explicitly.
+
+**Identity and assignability.** Structural identity — two function types are equal iff parameter arity, parameter types (positionally) and return type all match. Assignability is **invariant**: no covariance or contravariance in v1. `fn(int): int` is assignable only to `fn(int): int`. Nullable widening still applies as for any type (a non-nullable function value is assignable to the matching `T?` function slot); invariance governs the param/return structure only. Invariance keeps the checker simple and is consistent with the explicit-return-type / no-inference-ambiguity ethos; variance is reassessed post-v1 only if real scripts demand it.
+
+**Monomorphic at the user surface.** Users write concrete parameter and return types — `fn(int): bool`, not `fn(T): bool`. Type variables remain unavailable to users (D-080: consume generic functions, declare none), so function types introduce no generic surface. The type registry's internal `→` callback notation (`filter(fn: T → bool)`) is generic machinery internal to the stdlib and is left as is; the two notations are reconciled in documentation as a tertiary tidy-up.
+
+**Runtime: erased.** The callable is already a `GrobFunction` value; the function *type* is a compile-time concept only. No opcode, no `.grobc` change, no `GrobValue` impact. Blast radius is confined to the parser (`ParseTypeRef`), the type checker (a `FunctionType` `GrobType` with structural equality and the invariant assignability rule) and the type-system docs.
+
+**Three-pass checker fit.** Function-type annotations resolve during pass-1 signature registration — they reference type names pass 1 already knows, with no initialiser-dependency ordering — so D-323's phase 1.5 is not involved and is unaffected.
+
+**No new error code.** A function-type mismatch is an ordinary assignment/argument type error and reuses the existing mismatch family; malformed function-type syntax reuses the existing syntax codes. The exact descriptors are confirmed against `ErrorCatalog`/`grob-error-codes.md` in-increment per D-308. Count stays at 109.
+
+**makeCounter.** The example stops being aspirational — it becomes a passing parser-plus-checker test in this increment.
+
+**Spec edits.** §9 gains the function-type form in the type-reference grammar (citing D-326); `grob-type-registry.md` documents `FunctionType` (structural identity, invariant assignability) and cross-references D-296.
+
+**Relates to D-080, D-296, D-166 and D-323.** Distinct from D-080 (function types are not generics; the no-user-generics rule is untouched). Completes the D-296 closure story at the type-annotation level. Slots into the D-166/D-323 multi-pass checker without disturbing it. Sprint 5 Increment 4.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3596,6 +3654,36 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 — D-326: function types are a first-class type-reference_
+_form. `fn(ParamTypes): ReturnType` is accepted by `ParseTypeRef` anywhere a_
+_type is written. Resolves the explicit-return-type-vs-returnable-closure_
+_contradiction that left `makeCounter(): fn(): int` rejected with E2001._
+_Structural identity; invariant assignability (no variance in v1); runtime-_
+_erased (callable is already a `GrobFunction` — no opcode/grobc/`GrobValue`_
+_change). `?`/`[]` bind to the return type; `(fn(): int)?` / `(fn(): int)[]`_
+_need parens. User surface is monomorphic; the registry's internal `→` notation_
+_and D-080 are untouched. Resolves during pass-1 signature registration (D-323_
+_phase 1.5 not involved). No new error code; mismatches reuse the existing_
+_assignment/argument codes (confirmed in-increment per D-308); count stays 109._
+_The `makeCounter` capture-section example becomes a passing test. Edits: parser_
+_`ParseTypeRef` fn arm, type checker `FunctionType` GrobType + structural_
+_equality + invariant assignability, `grob-language-fundamentals.md` §9,_
+_`grob-type-registry.md`. Relates to D-080/D-296/D-166/D-323. Sprint 5 Increment 4._
+_Updated June 2026 — D-325: upvalue closing is location-based, not value-based._
+_The VM keeps an open-upvalue list keyed by stack slot; on frame exit every open_
+_upvalue at or above the returning frame's base is closed into its heap cell,_
+_independent of which heap object references the closure. Fixes the array-_
+_escaped-closure value-stack underflow (`return [inc]` then `arr[0]()`): value-_
+_based closing missed closures wrapped in a container, leaving an open upvalue_
+_on a truncated slot. Post-return invariant (no open upvalue ≥ frame base)_
+_added as a `#if DEBUG` assertion. Category-4 capture only (D-296); categories_
+_1–3 and top-level fn hoisting (D-321, no captures) untouched. No new error_
+_code; count stays 109. Edits: VM dispatch loop (open-upvalue list, `OP_CLOSURE`_
+_capture, frame-exit close sweep), `Grob.Vm.Tests` escape matrix (array, map,_
+_struct-field, returned-IIFE, parameter — not a single case),_
+_`grob-vm-architecture.md` upvalue-lifecycle section (doc not in this upload —_
+_pending edit, alongside the D-322 known-limitation note). Relates to D-296 and_
+_D-321. Sprint 5 Increment 3._
 _Updated June 2026 — D-324: uniform top-level redeclaration. E1102 broadened_
 _from `:=`-only to all top-level binding-introducing forms (`fn`, `type`,_
 _`readonly`, `const`, `:=`). `fn`/`type` pass-1 registration changed to_

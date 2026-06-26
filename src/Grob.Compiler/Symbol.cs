@@ -38,4 +38,13 @@ public sealed class Symbol {
     /// rather than a duplicate.
     /// </summary>
     public bool Provisional { get; init; }
+
+    /// <summary>
+    /// When <see cref="Type"/> is <see cref="GrobType.Function"/> or
+    /// <see cref="GrobType.NullableFunction"/>, carries the structural descriptor
+    /// (parameter types and return type). <see langword="null"/> for all other types
+    /// and for <c>fn</c> declarations, whose return type is tracked separately in
+    /// the type-checker's return-type stack (D-326).
+    /// </summary>
+    public FunctionTypeDescriptor? FunctionDescriptor { get; init; }
 }

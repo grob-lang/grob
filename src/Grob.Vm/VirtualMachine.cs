@@ -692,10 +692,18 @@ public sealed class VirtualMachine {
                                 _stack.Push(GrobValue.FromArray(new GrobArray(elements)), line);
                                 break;
                             }
-                            // Struct field resolution is deferred to Sprint 5.
+                            if (receiver.TryAsStruct(out GrobStruct? grobStruct)) {
+                                if (grobStruct!.TryGetField(propertyName, out GrobValue fieldValue)) {
+                                    _stack.Push(fieldValue, line);
+                                    break;
+                                }
+                                throw new GrobInternalException(
+                                    $"GetProperty: struct '{grobStruct.TypeName}' has no field '{propertyName}'. " +
+                                    "Type checker should have rejected this before emission.");
+                            }
                             throw new GrobInternalException(
                                 $"opcode {OpCode.GetProperty} '{propertyName}' on receiver of kind " +
-                                $"{receiver.Kind} not yet implemented (Sprint 5).");
+                                $"{receiver.Kind} not yet implemented.");
                         }
 
                     // --- Calls and returns (Sprint 5 Increment A + C) ---
@@ -785,6 +793,22 @@ public sealed class VirtualMachine {
                             // before the slots are discarded. This copies their values
                             // from the stack to the heap (open → closed transition).
                             CloseUpvaluesFrom(_stackBase);
+#if DEBUG
+                            // D-325 post-return invariant: after the sweep, no open upvalue
+                            // may reference a slot at or above the returning frame's base.
+                            // A violation here means CloseUpvaluesFrom missed an upvalue —
+                            // converting that category of bug from a late underflow into an
+                            // immediate, located failure.
+                            {
+                                int frameBase = _stackBase;
+                                foreach (Upvalue uv in _openUpvalues)
+                                    if (uv.SlotIndex >= frameBase)
+                                        throw new GrobInternalException(
+                                            $"Post-return upvalue invariant violated (D-325): " +
+                                            $"open upvalue at slot {uv.SlotIndex} is at or above " +
+                                            $"the returning frame base {frameBase}.");
+                            }
+#endif
                             // Discard the callee value, its arguments and its locals in
                             // one step (everything from the callee value upward).
                             _stack.TrimToCount(_stackBase - 1);

@@ -1216,6 +1216,76 @@ Each layer is independently testable. Each one builds on the previous.
 
 ---
 
+## Upvalue Lifecycle (D-325)
+
+Upvalues are the mechanism by which a closure reads and writes locals of an enclosing
+function after that function's call frame has been discarded. Each upvalue cell passes
+through two states.
+
+### Open and closed states
+
+An **open** upvalue holds a reference to the `ValueStack` object and a slot index. Reads
+and writes go directly through to the live stack slot. This is efficient while the
+enclosing frame is still executing: no heap allocation is needed.
+
+A **closed** upvalue has had its stack slot copied to a heap field (`_closedValue`) inside
+the `Upvalue` object itself. The `ValueStack` reference is nulled and the slot index set
+to `-1`. Reads and writes go to `_closedValue`. The closure now owns the captured value
+independently of any stack.
+
+The transition — open → closed — is called **closing** the upvalue.
+
+### The open-upvalue list
+
+`VirtualMachine` holds `_openUpvalues`, a `List<Upvalue>`. Every open upvalue for the
+current execution is registered in this list. The list is cleared at the start of each
+top-level `Run()` so open upvalues cannot leak across re-entrant or sequential script
+runs.
+
+### Capture at `OP_CLOSURE`
+
+When the VM executes `OP_CLOSURE`, it iterates the upvalue descriptor bytes emitted by
+the compiler. For each descriptor that marks a **local** capture (a variable in the
+immediately enclosing function), the VM calls `CaptureUpvalue(absoluteSlot)`:
+
+1. Walk `_openUpvalues`. If an existing open upvalue already points at `absoluteSlot`,
+   reuse it. Two closures created in the same enclosing frame therefore share one
+   `Upvalue` cell for the same slot, so a write through one is immediately visible via
+   the other.
+2. Otherwise, allocate a fresh `Upvalue(_stack, absoluteSlot)` and append it to
+   `_openUpvalues`.
+
+For a **transitive** capture (a variable in a grandparent or deeper enclosing scope),
+the VM copies the upvalue reference from the enclosing closure's own upvalue array — no
+new cell is created.
+
+### Frame-exit close sweep
+
+When `OP_RETURN` executes for a non-top-level frame, the VM calls
+`CloseUpvaluesFrom(_stackBase)` before discarding the frame's stack slots. The sweep
+iterates `_openUpvalues` in reverse and closes every upvalue whose slot index is at or
+above `_stackBase`. Closed upvalues are removed from the list.
+
+Because the sweep is driven by the **stack location** (the slot index relative to the
+frame base) rather than by inspecting the return value, every open upvalue in the frame
+is closed regardless of which heap object holds a reference to the closure — whether the
+closure is the direct return value, an element of an array, a map value or a struct
+field. This is the D-325 fix; value-based closing missed closures that escaped
+indirectly through containers.
+
+The same sweep runs at `OP_CLOSE_UPVALUE`, which the compiler emits at block-scope
+exits inside a function body where a local captured by an inner closure goes out of
+scope before the function returns.
+
+### Post-return invariant (D-325)
+
+In `DEBUG` builds the VM asserts after each `CloseUpvaluesFrom` sweep that no open
+upvalue in the list has a slot index at or above the frame base that just returned. A
+violation means the sweep missed an upvalue; the assertion converts that class of bug
+from a later value-stack underflow into an immediate, located `GrobInternalException`.
+
+---
+
 ## Key Decisions — Resolved Reference
 
 | Decision             | Notes                                                                                                                                                                                            |

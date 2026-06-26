@@ -40,8 +40,11 @@ public sealed partial class TypeChecker {
         }
 
         GrobType initType = Visit(node.Initializer);
-        GrobType symbolType = ResolveBinding(node.AnnotatedType, initType, node.Initializer.Range);
-        RegisterSymbol(node.Name, symbolType, node.Range.Start, node);
+        FunctionTypeDescriptor? initDesc = node.Initializer is LambdaExpr lambdaInit
+            ? _lambdaDescriptors.GetValueOrDefault(lambdaInit) : null;
+        (GrobType symbolType, FunctionTypeDescriptor? symbolDesc) =
+            ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Initializer.Range);
+        RegisterSymbol(node.Name, symbolType, node.Range.Start, node, functionDescriptor: symbolDesc);
         return GrobType.Unknown;
     }
 
@@ -74,13 +77,25 @@ public sealed partial class TypeChecker {
 
         // An Unknown declared return type (a deferred type) is permissive; cascade
         // suppression covers an already-errored value.
-        if (expected != GrobType.Unknown && actual != GrobType.Error &&
-            !TypesAreAssignable(actual, expected)) {
-            EmitError(ErrorCatalog.E0005,
-                node.Value is not null
-                    ? $"Cannot return a value of type '{TypeName(actual)}' from a function declared to return '{TypeName(expected)}'."
-                    : $"A bare 'return' yields 'nil', which is not assignable to the declared return type '{TypeName(expected)}'.",
-                node.Value is not null ? node.Value.Range : node.Range);
+        if (expected != GrobType.Unknown && actual != GrobType.Error) {
+            bool isFunctionReturn = expected == GrobType.Function || expected == GrobType.NullableFunction;
+            bool compatible;
+            if (isFunctionReturn && node.Value is LambdaExpr retLambda) {
+                // Structural descriptor comparison for direct lambda returns (D-326).
+                FunctionTypeDescriptor? expectedDesc =
+                    _functionReturnDescriptors.TryPeek(out FunctionTypeDescriptor? peeked) ? peeked : null;
+                FunctionTypeDescriptor? actualDesc = _lambdaDescriptors.GetValueOrDefault(retLambda);
+                compatible = TypesAreAssignable(actual, expected, actualDesc, expectedDesc);
+            } else {
+                compatible = TypesAreAssignable(actual, expected);
+            }
+            if (!compatible) {
+                EmitError(ErrorCatalog.E0005,
+                    node.Value is not null
+                        ? $"Cannot return a value of type '{TypeName(actual)}' from a function declared to return '{TypeName(expected)}'."
+                        : $"A bare 'return' yields 'nil', which is not assignable to the declared return type '{TypeName(expected)}'.",
+                    node.Value is not null ? node.Value.Range : node.Range);
+            }
         }
         return GrobType.Unknown;
     }

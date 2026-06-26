@@ -453,10 +453,48 @@ the decisions log.
 
 ---
 
+## `fn(T…): R` (Function Type — Compile-Time Only)
+
+A function type describes a callable value: its parameter arity, positional
+parameter types, and return type. Authorised by D-326; cross-references D-296
+(closure categories) and the `→` internal notation used in stdlib signatures.
+
+**Surface syntax.** `fn(T1, T2): R` — written wherever a `TypeRef` is accepted
+(variable annotations, function return types, parameter types). The `?` suffix
+applies to the **return type** by default; a nullable function itself requires
+parens: `(fn(): int)?`. See `grob-language-fundamentals.md` §9 for the full
+type-reference grammar.
+
+**Identity.** Structural. Two function types are equal when they have the same
+parameter arity, the same positional parameter types in order, and the same
+return type. There are no named function types; the shape alone determines
+equality.
+
+**Assignability.** Invariant in v1. `fn(int): int` is assignable only to
+`fn(int): int` — no covariance on the return type, no contravariance on
+parameter types. Nullable widening still applies: a non-nullable `fn(): T` is
+assignable to `(fn(): T)?`.
+
+**Runtime.** Erased. A `fn(T…): R`-typed binding holds an ordinary
+`GrobFunction` at runtime. The function type is a compile-time constraint only;
+no opcode, no `.grobc` change, no `GrobValue` variant. See D-303.
+
+**Internal notation.** The stdlib registry uses `→` to describe function shapes
+(e.g. `filter(fn: T → bool)`) — this is internal generic notation for built-in
+methods only. User-declared function types use the `fn(T…): R` surface form.
+
+**Members.** None. A function type has no properties, no methods and no
+constructor syntax. A function-typed value is called with `f()` syntax.
+
+---
+
 _This registry will grow as stdlib design progresses. Add entries here when locked._
 
 ---
 
+_Document updated June 2026 — D-326: `fn(T…): R` function type section added._
+_Function types are compile-time only (erased at runtime), structurally identified_
+_and invariantly assignable. Cross-references D-296 and D-303._
 _Document updated May 2026 — D-284 throw-site reconciliation: eight_
 _registry throw sites updated from the residual `RuntimeError` to the_
 _typed leaf in the ten-leaf exception hierarchy (D-284,_

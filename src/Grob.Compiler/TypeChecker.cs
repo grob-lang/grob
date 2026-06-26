@@ -73,6 +73,24 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         new(ReferenceEqualityComparer.Instance);
 
     // -----------------------------------------------------------------------
+    // Function-type structural descriptors (Sprint 5 Increment D — D-326).
+    //
+    // _functionReturnDescriptors is parallel to _functionReturnTypes: pushed and
+    // popped in lockstep with it inside VisitFnDecl. Non-null when the enclosing
+    // fn declares a function-type return annotation; null for primitive/collection
+    // return types. Lambdas do NOT push to this stack (they push GrobType.Unknown
+    // to _functionReturnTypes, so VisitReturn's expected-Unknown guard fires first).
+    //
+    // _lambdaDescriptors maps each lambda expression to its inferred structural
+    // descriptor (arity + inferred body type), keyed by reference identity for the
+    // same reason _lambdaReturnTypes is.
+    // -----------------------------------------------------------------------
+    private readonly Stack<FunctionTypeDescriptor?> _functionReturnDescriptors = new();
+
+    private readonly Dictionary<LambdaExpr, FunctionTypeDescriptor> _lambdaDescriptors =
+        new(ReferenceEqualityComparer.Instance);
+
+    // -----------------------------------------------------------------------
     // Flow-sensitive narrowing (Sprint 5 Increment E; §6, §19.1 narrowing rule).
     //
     // Inside an `if (x != nil)` block, x is added here mapped to its non-nullable
@@ -184,32 +202,51 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     }
 
     /// <summary>
+    /// Resolves a binding's final type and optional function descriptor from its
+    /// annotation and the initializer's inferred type and descriptor. Emits E0104
+    /// when a nullable value targets a non-nullable annotation, otherwise E0001 when
+    /// annotation and initializer are incompatible.
+    /// </summary>
+    /// <param name="annotation">The optional syntactic type annotation on the binding.</param>
+    /// <param name="initType">The resolved type of the initializer expression.</param>
+    /// <param name="initDescriptor">
+    /// The structural descriptor of the initializer, when it is a lambda expression
+    /// (D-326). <see langword="null"/> for non-lambda initialisers.
+    /// </param>
+    /// <param name="initRange">The source range of the initializer, used for diagnostic placement.</param>
+    private (GrobType Type, FunctionTypeDescriptor? Descriptor) ResolveBindingFull(
+        TypeRef? annotation, GrobType initType, FunctionTypeDescriptor? initDescriptor, SourceRange initRange) {
+        if (annotation is null) return (initType, initDescriptor);
+
+        (GrobType annotated, FunctionTypeDescriptor? annotatedDesc) = ResolveTypeRefFull(annotation);
+        if (annotated == GrobType.Unknown) return (initType, initDescriptor); // unrecognised — permissive
+
+        if (initType == GrobType.Error) return (GrobType.Error, null); // cascade suppression
+
+        bool isFunctionAnnotation = annotated == GrobType.Function || annotated == GrobType.NullableFunction;
+        bool compatible = isFunctionAnnotation
+            ? TypesAreAssignable(initType, annotated, initDescriptor, annotatedDesc)
+            : TypesAreAssignable(initType, annotated);
+
+        if (!compatible) {
+            EmitError(PickAssignabilityError(initType, annotated),
+                $"Cannot assign value of type '{TypeName(initType)}' to binding of type '{TypeName(annotated)}'.",
+                initRange);
+            return (GrobType.Error, null);
+        }
+
+        // Annotation wins (e.g. int → float widening is recorded as float).
+        return (annotated, annotatedDesc);
+    }
+
+    /// <summary>
     /// Resolves a binding's final type from its optional annotation and its
     /// initializer's inferred type. Emits E0104 when a nullable value targets a
     /// non-nullable annotation, otherwise E0001 when annotation and initializer
     /// are incompatible.
     /// </summary>
-    private GrobType ResolveBinding(TypeRef? annotation, GrobType initType, SourceRange initRange) {
-        if (annotation is null) {
-            // Pure type inference from the initializer.
-            return initType;
-        }
-
-        GrobType annotated = ResolveTypeRef(annotation);
-        if (annotated == GrobType.Unknown) return initType; // unrecognised annotation — be permissive
-
-        if (initType == GrobType.Error) return GrobType.Error; // cascade suppression
-
-        if (!TypesAreAssignable(initType, annotated)) {
-            EmitError(PickAssignabilityError(initType, annotated),
-                $"Cannot assign value of type '{TypeName(initType)}' to binding of type '{TypeName(annotated)}'.",
-                initRange);
-            return GrobType.Error;
-        }
-
-        // Annotation wins (e.g. int → float widening is recorded as float).
-        return annotated;
-    }
+    private GrobType ResolveBinding(TypeRef? annotation, GrobType initType, SourceRange initRange) =>
+        ResolveBindingFull(annotation, initType, null, initRange).Type;
 
     /// <summary>
     /// Maps a syntactic <see cref="TypeRef"/> to a <see cref="GrobType"/>,
@@ -234,6 +271,23 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     }
 
     /// <summary>
+    /// Extended resolution that also returns the structural <see cref="FunctionTypeDescriptor"/>
+    /// when <paramref name="typeRef"/> is a <see cref="FunctionTypeRef"/> (D-326).
+    /// For all other type references the descriptor is <see langword="null"/> and the
+    /// kind is identical to <see cref="ResolveTypeRef"/>.
+    /// </summary>
+    internal static (GrobType Kind, FunctionTypeDescriptor? Descriptor) ResolveTypeRefFull(TypeRef typeRef) {
+        if (typeRef is FunctionTypeRef fnRef) {
+            List<GrobType> paramTypes = fnRef.ParameterTypes.Select(ResolveTypeRef).ToList();
+            GrobType returnType = ResolveTypeRef(fnRef.ReturnType);
+            FunctionTypeDescriptor descriptor = new(paramTypes, returnType);
+            GrobType kind = fnRef.IsNullable ? GrobType.NullableFunction : GrobType.Function;
+            return (kind, descriptor);
+        }
+        return (ResolveTypeRef(typeRef), null);
+    }
+
+    /// <summary>
     /// Returns <see langword="true"/> when a value of <paramref name="from"/> can
     /// be used where <paramref name="to"/> is expected.
     /// Rules (D-178, D-014):
@@ -253,6 +307,25 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // T is assignable to T? (non-null value into nullable slot).
         if (GrobTypeHelpers.ToNullable(from) == to) return true;
         return false;
+    }
+
+    /// <summary>
+    /// Function-type-aware overload of <see cref="TypesAreAssignable(GrobType,GrobType)"/>.
+    /// When both <paramref name="from"/> and <paramref name="to"/> are function types
+    /// (<see cref="GrobType.Function"/> or <see cref="GrobType.NullableFunction"/>),
+    /// structural identity of the descriptors is required (D-326, invariant assignability).
+    /// Nullable widening (<c>fn(): T</c> assignable to <c>(fn(): T)?</c>) is accepted
+    /// when the descriptors match. Falls back to the plain overload for all other type pairs.
+    /// </summary>
+    private static bool TypesAreAssignable(
+        GrobType from, GrobType to,
+        FunctionTypeDescriptor? fromDesc, FunctionTypeDescriptor? toDesc) {
+        if (from == GrobType.Error || to == GrobType.Error) return true;
+        bool fromIsFunction = from == GrobType.Function || from == GrobType.NullableFunction;
+        bool toIsFunction = to == GrobType.Function || to == GrobType.NullableFunction;
+        if (fromIsFunction && toIsFunction)
+            return fromDesc is not null && toDesc is not null && fromDesc.Equals(toDesc);
+        return TypesAreAssignable(from, to);
     }
 
     /// <summary>
@@ -341,13 +414,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     }
 
     private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode,
-                               bool provisional = false) {
+                               bool provisional = false, FunctionTypeDescriptor? functionDescriptor = null) {
         _scopes.Peek()[name] = new Symbol {
             Name = name,
             Type = type,
             DeclaredAt = declaredAt,
             DeclarationNode = declarationNode,
             Provisional = provisional,
+            FunctionDescriptor = functionDescriptor,
         };
     }
 
@@ -408,6 +482,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         GrobType.NullableBool => "bool?",
         GrobType.Array => "array",
         GrobType.Map => "map",
+        GrobType.Function => "fn",
+        GrobType.NullableFunction => "fn?",
         _ => "unknown",
     };
 

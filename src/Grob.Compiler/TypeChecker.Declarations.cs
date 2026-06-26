@@ -34,16 +34,21 @@ public sealed partial class TypeChecker {
             // A reserved identifier (formatAs, select) may not be a parameter name
             // (E1103, D-320).
             CheckReservedBindingName(p.Name, p.Range);
-            GrobType paramType = p.Type is not null ? ResolveTypeRef(p.Type) : GrobType.Unknown;
+            (GrobType paramType, FunctionTypeDescriptor? paramDesc) =
+                p.Type is not null ? ResolveTypeRefFull(p.Type) : (GrobType.Unknown, null);
             // Use the owning FnDecl as the declaring node — Parameter is not an AstNode.
-            RegisterSymbol(p.Name, paramType, p.Range.Start, node);
+            RegisterSymbol(p.Name, paramType, p.Range.Start, node, functionDescriptor: paramDesc);
         }
 
         // Track the declared return type so VisitReturn can check returned values
         // (E0005) and distinguish an in-function return from a top-level one (E2203).
-        _functionReturnTypes.Push(ResolveTypeRef(node.ReturnType));
+        // _functionReturnDescriptors is pushed in lockstep for function-type returns (D-326).
+        (GrobType returnKind, FunctionTypeDescriptor? returnDesc) = ResolveTypeRefFull(node.ReturnType);
+        _functionReturnTypes.Push(returnKind);
+        _functionReturnDescriptors.Push(returnDesc);
         Visit(node.Body);
         _functionReturnTypes.Pop();
+        _functionReturnDescriptors.Pop();
 
         _scopes.Pop();
         return GrobType.Unknown;

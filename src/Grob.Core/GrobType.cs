@@ -63,4 +63,21 @@ public enum GrobType {
     /// lowering reads to select the map iteration shape.
     /// </summary>
     Map,
+
+    // ---- Function types — Sprint 5 Increment 4 (D-326) ----
+
+    /// <summary>
+    /// Compile-time structural function type — <c>fn(T…): R</c>. Erased at runtime;
+    /// the runtime value is always a <see cref="Grob.Core.GrobValue"/> wrapping a
+    /// <c>GrobFunction</c>. The structural shape is carried in a
+    /// <c>FunctionTypeDescriptor</c> alongside the symbol or expression node.
+    /// </summary>
+    Function,
+
+    /// <summary>
+    /// Nullable function type — <c>(fn(T…): R)?</c>. Nullable widening applies:
+    /// a <see cref="Function"/> value is assignable to a <c>NullableFunction</c> slot
+    /// with the same structural descriptor.
+    /// </summary>
+    NullableFunction,
 }
