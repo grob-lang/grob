@@ -290,7 +290,12 @@ public sealed partial class TypeChecker {
         }
 
         CheckCall(node, fn, callArgTypes);
-        return ResolveTypeRef(fn.ReturnType);
+        // Resolve the declared return type with its structural descriptor so a call that
+        // returns a function type (makeCounter(): fn(): int) flows its descriptor to the
+        // binding annotation via _callResultDescriptors (D-326; Fix I).
+        (GrobType resultKind, FunctionTypeDescriptor? resultDesc) = ResolveTypeRefFull(fn.ReturnType);
+        if (resultDesc is not null) _callResultDescriptors[node] = resultDesc;
+        return resultKind;
     }
 
     private static bool IsArrayHigherOrderMethod(string name) =>
@@ -352,10 +357,13 @@ public sealed partial class TypeChecker {
         int paramCount = fn.Parameters.Count;
         var boundType = new GrobType?[paramCount];
         var boundRange = new SourceRange?[paramCount];
+        // The bound argument expression per slot, so a function-typed parameter can be
+        // checked against the argument's structural descriptor (D-326; Fix J).
+        var boundExpr = new Expression?[paramCount];
 
         // Binding errors (E0008–E0011) are all collected, then suppress the
         // downstream arity/type checks to keep one diagnostic per root cause.
-        if (!BindArguments(node, fn, argTypes, boundType, boundRange, out int positionalCount)) {
+        if (!BindArguments(node, fn, argTypes, boundType, boundRange, boundExpr, out int positionalCount)) {
             return;
         }
 
@@ -370,7 +378,7 @@ public sealed partial class TypeChecker {
         // checked at the declaration site.
         for (int i = 0; i < paramCount; i++) {
             if (boundRange[i] is SourceRange range && boundType[i] is GrobType argType) {
-                CheckBoundArgumentType(fn, i, argType, range);
+                CheckBoundArgumentType(fn, i, argType, range, boundExpr[i]);
             }
         }
     }
@@ -384,7 +392,7 @@ public sealed partial class TypeChecker {
     /// was clean, <see langword="false"/> when any binding error was emitted.
     /// </summary>
     private bool BindArguments(CallExpr node, FnDecl fn, GrobType[] argTypes,
-            GrobType?[] boundType, SourceRange?[] boundRange, out int positionalCount) {
+            GrobType?[] boundType, SourceRange?[] boundRange, Expression?[] boundExpr, out int positionalCount) {
         bool ok = true;
         bool seenNamed = false;
         positionalCount = 0;
@@ -393,7 +401,7 @@ public sealed partial class TypeChecker {
             CallArgument arg = node.Arguments[i];
             if (arg.Name is not null) {
                 seenNamed = true;
-                if (!TryBindNamed(fn, arg, argTypes[i], boundType, boundRange)) ok = false;
+                if (!TryBindNamed(fn, arg, argTypes[i], boundType, boundRange, boundExpr)) ok = false;
                 continue;
             }
 
@@ -409,6 +417,7 @@ public sealed partial class TypeChecker {
             if (positionalCount < boundType.Length) {
                 boundType[positionalCount] = argTypes[i];
                 boundRange[positionalCount] = arg.Value.Range;
+                boundExpr[positionalCount] = arg.Value;
             }
             positionalCount++;
         }
@@ -422,7 +431,7 @@ public sealed partial class TypeChecker {
     /// Returns <see langword="true"/> when the argument bound cleanly.
     /// </summary>
     private bool TryBindNamed(FnDecl fn, CallArgument arg, GrobType argType,
-            GrobType?[] boundType, SourceRange?[] boundRange) {
+            GrobType?[] boundType, SourceRange?[] boundRange, Expression?[] boundExpr) {
         int p = ParameterIndex(fn, arg.Name!);
         if (p < 0) {
             EmitError(ErrorCatalog.E0011,
@@ -444,6 +453,7 @@ public sealed partial class TypeChecker {
         }
         boundType[p] = argType;
         boundRange[p] = arg.Value.Range;
+        boundExpr[p] = arg.Value;
         return true;
     }
 
@@ -495,12 +505,23 @@ public sealed partial class TypeChecker {
     /// parameter type (a deferred type) is permissive, and cascade suppression
     /// covers an argument that already errored.
     /// </summary>
-    private void CheckBoundArgumentType(FnDecl fn, int paramIndex, GrobType argType, SourceRange valueRange) {
-        GrobType paramType = fn.Parameters[paramIndex].Type is not null
-            ? ResolveTypeRef(fn.Parameters[paramIndex].Type!)
-            : GrobType.Unknown;
-        if (paramType != GrobType.Unknown && argType != GrobType.Error &&
-            !TypesAreAssignable(argType, paramType)) {
+    private void CheckBoundArgumentType(
+            FnDecl fn, int paramIndex, GrobType argType, SourceRange valueRange, Expression? argExpr) {
+        // Resolve the parameter with its structural descriptor so a function-typed
+        // parameter is checked against the argument's descriptor, not merely fn-to-fn
+        // (D-326; Fix J).
+        (GrobType paramType, FunctionTypeDescriptor? paramDesc) = fn.Parameters[paramIndex].Type is not null
+            ? ResolveTypeRefFull(fn.Parameters[paramIndex].Type!)
+            : (GrobType.Unknown, null);
+        bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
+        bool compatible;
+        if (isFunctionParam) {
+            FunctionTypeDescriptor? argDesc = argExpr is not null ? InitialiserDescriptor(argExpr) : null;
+            compatible = TypesAreAssignable(argType, paramType, argDesc, paramDesc);
+        } else {
+            compatible = TypesAreAssignable(argType, paramType);
+        }
+        if (paramType != GrobType.Unknown && argType != GrobType.Error && !compatible) {
             EmitError(ErrorCatalog.E0004,
                 $"Argument to '{fn.Name}' has type '{TypeName(argType)}', which is not assignable to parameter '{fn.Parameters[paramIndex].Name}' of type '{TypeName(paramType)}'.",
                 valueRange);

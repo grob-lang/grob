@@ -41,11 +41,13 @@ Confirm each against the live `grob-decisions-log.md` tail before coding:
 ## Load-bearing rules (inline reference)
 
 **Call convention (already correct — do not change its shape).**
-```
+
+```text
 CallFrame { GrobFunction Function; int InstructionPointer; int StackBase; }
 Call:    StackBase = stackTop - argCount;  callee sits at StackBase - 1
 Return:  stackTop  = StackBase - 1;        then push result
 ```
+
 The callee occupies `StackBase - 1` and is discarded by `Return`. This is uniform across call shapes; the bug is not in the call convention.
 
 **Value model.** A closure is a `BytecodeFunction : GrobFunction` carrying upvalues. `Peek(argCount) as GrobFunction` succeeds for a closure. The fault is stack arithmetic in upvalue closing, not a failed cast.

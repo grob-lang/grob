@@ -40,8 +40,7 @@ public sealed partial class TypeChecker {
         }
 
         GrobType initType = Visit(node.Initializer);
-        FunctionTypeDescriptor? initDesc = node.Initializer is LambdaExpr lambdaInit
-            ? _lambdaDescriptors.GetValueOrDefault(lambdaInit) : null;
+        FunctionTypeDescriptor? initDesc = InitialiserDescriptor(node.Initializer);
         (GrobType symbolType, FunctionTypeDescriptor? symbolDesc) =
             ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Initializer.Range);
         RegisterSymbol(node.Name, symbolType, node.Range.Start, node, functionDescriptor: symbolDesc);
@@ -79,12 +78,14 @@ public sealed partial class TypeChecker {
         // suppression covers an already-errored value.
         if (expected != GrobType.Unknown && actual != GrobType.Error) {
             bool isFunctionReturn = expected == GrobType.Function || expected == GrobType.NullableFunction;
+            bool actualIsFunction = actual == GrobType.Function || actual == GrobType.NullableFunction;
             bool compatible;
-            if (isFunctionReturn && node.Value is LambdaExpr retLambda) {
-                // Structural descriptor comparison for direct lambda returns (D-326).
+            if (isFunctionReturn && actualIsFunction && node.Value is not null) {
+                // Structural descriptor comparison for any function-typed return value —
+                // a direct lambda, a call result, or a bound function variable (D-326; Fix K).
                 FunctionTypeDescriptor? expectedDesc =
                     _functionReturnDescriptors.TryPeek(out FunctionTypeDescriptor? peeked) ? peeked : null;
-                FunctionTypeDescriptor? actualDesc = _lambdaDescriptors.GetValueOrDefault(retLambda);
+                FunctionTypeDescriptor? actualDesc = ExpressionDescriptor(node.Value);
                 compatible = TypesAreAssignable(actual, expected, actualDesc, expectedDesc);
             } else {
                 compatible = TypesAreAssignable(actual, expected);
