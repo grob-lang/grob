@@ -318,6 +318,330 @@ public sealed class VirtualMachineClosureTests {
         Assert.Equal(1L, vm.Stack.Peek().AsInt());
     }
 
+    // -----------------------------------------------------------------------
+    // D-325 Escape matrix — Sprint 5 Increment 3.
+    //
+    // Tests M1–M6 verify that a closure whose open upvalue tracks a local of an
+    // enclosing function has that upvalue correctly closed by
+    // CloseUpvaluesFrom(_stackBase) on OP_RETURN, regardless of which container
+    // the closure has been placed into by the time Return executes.
+    //
+    // Shared building block:
+    //   enclosing fn: Constant(42) [slot 0]  Closure(lambda, isLocal=1, slot=0)  ...
+    //   lambda body:  GetUpvalue(0)  Return
+    //   Call result:  42 (the closed value)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns a <see cref="BytecodeFunction"/> that creates local <c>x = 42</c>
+    /// and returns a closure capturing <c>x</c> directly (return value is the closure).
+    /// </summary>
+    private static BytecodeFunction BuildCapture42Fn() {
+        var lambdaChunk = new Chunk();
+        lambdaChunk.WriteOpCode(OpCode.GetUpvalue, 1); lambdaChunk.WriteByte(0, 1);
+        lambdaChunk.WriteOpCode(OpCode.Return, 1);
+        lambdaChunk.WriteOpCode(OpCode.Nil, 1);
+        lambdaChunk.WriteOpCode(OpCode.Return, 1);
+        var lambdaFn = new BytecodeFunction(string.Empty, 0, lambdaChunk, upvalueCount: 1);
+
+        var outerChunk = new Chunk();
+        int fortyTwo = outerChunk.AddConstant(GrobValue.FromInt(42));
+        int lambdaIdx = outerChunk.AddConstant(GrobValue.FromFunction(lambdaFn));
+        outerChunk.WriteOpCode(OpCode.Constant, 1); outerChunk.WriteByte((byte)fortyTwo, 1);
+        outerChunk.WriteOpCode(OpCode.Closure, 1); outerChunk.WriteByte((byte)lambdaIdx, 1);
+        outerChunk.WriteByte(1, 1);   // isLocal = 1
+        outerChunk.WriteByte(0, 1);   // slot = 0 (x)
+        outerChunk.WriteOpCode(OpCode.Return, 1);
+        outerChunk.WriteOpCode(OpCode.Nil, 1);
+        outerChunk.WriteOpCode(OpCode.Return, 1);
+        return new BytecodeFunction("makeCapture42", 0, outerChunk);
+    }
+
+    /// <summary>
+    /// Like <see cref="BuildCapture42Fn"/> but the closure is placed into a
+    /// single-element array before Return — the return value is <c>[closure]</c>,
+    /// not the closure itself. This is the key shape that fails under value-based
+    /// closing and passes under location-based closing (D-325).
+    /// </summary>
+    private static BytecodeFunction BuildCapture42ViaArrayFn() {
+        var lambdaChunk = new Chunk();
+        lambdaChunk.WriteOpCode(OpCode.GetUpvalue, 1); lambdaChunk.WriteByte(0, 1);
+        lambdaChunk.WriteOpCode(OpCode.Return, 1);
+        lambdaChunk.WriteOpCode(OpCode.Nil, 1);
+        lambdaChunk.WriteOpCode(OpCode.Return, 1);
+        var lambdaFn = new BytecodeFunction(string.Empty, 0, lambdaChunk, upvalueCount: 1);
+
+        var outerChunk = new Chunk();
+        int fortyTwo = outerChunk.AddConstant(GrobValue.FromInt(42));
+        int lambdaIdx = outerChunk.AddConstant(GrobValue.FromFunction(lambdaFn));
+        outerChunk.WriteOpCode(OpCode.Constant, 1); outerChunk.WriteByte((byte)fortyTwo, 1); // x := 42 (slot 0)
+        outerChunk.WriteOpCode(OpCode.Closure, 1); outerChunk.WriteByte((byte)lambdaIdx, 1);
+        outerChunk.WriteByte(1, 1);                  // isLocal = 1
+        outerChunk.WriteByte(0, 1);                  // slot = 0 (x)
+        outerChunk.WriteOpCode(OpCode.NewArray, 1); outerChunk.WriteByte(1, 1);              // [closure] — closure now in container
+        outerChunk.WriteOpCode(OpCode.Return, 1);                                             // return [closure], not closure
+        outerChunk.WriteOpCode(OpCode.Nil, 1);
+        outerChunk.WriteOpCode(OpCode.Return, 1);
+        return new BytecodeFunction("makeCapture42ViaArray", 0, outerChunk);
+    }
+
+    // -----------------------------------------------------------------------
+    // M1 — closure stored in an array at the time the enclosing frame exits.
+    //
+    // The return value is [closure], not the closure itself. Location-based
+    // closing (D-325) closes slot 0 (x = 42) regardless; value-based closing
+    // would miss it. After retrieval via GetIndex, the call must return 42.
+    //
+    // Script:
+    //   arr := makeCapture42ViaArray()    ; [closure] at slot 0
+    //   arr[0]()                          ; retrieve closure, call, result on stack
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ClosureEscapedViaArray_ClosedUpvalue_CanBeCalledPostReturn() {
+        BytecodeFunction makeCapture42ViaArrayFn = BuildCapture42ViaArrayFn();
+
+        var script = new Chunk();
+        int fnIdx = script.AddConstant(GrobValue.FromFunction(makeCapture42ViaArrayFn));
+        int zero = script.AddConstant(GrobValue.FromInt(0));
+
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)fnIdx, 1);
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(0, 1);              // arr at slot 0
+
+        script.WriteOpCode(OpCode.GetLocal, 1); script.WriteByte(0, 1);              // push arr
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)zero, 1);     // push 0
+        script.WriteOpCode(OpCode.GetIndex, 1);                                       // arr[0] → closure
+
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(0, 1);               // closure() → 42
+        script.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(script);
+
+        Assert.Equal(42L, vm.Stack.Peek().AsInt());
+    }
+
+    // -----------------------------------------------------------------------
+    // M2 — closure retrieved from a map by string key.
+    //
+    // The closed closure is obtained via BuildCapture42Fn (direct return; upvalue
+    // already closed by CloseUpvaluesFrom in phase 1) and stored in a GrobMap
+    // in C#. A second Run retrieves it by key via GetIndex and calls it.
+    // Proves: a closure held in a map is callable with its closed upvalue intact.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ClosureFromMap_RetrievedByKey_ReturnsCapture() {
+        BytecodeFunction makeCapture42Fn = BuildCapture42Fn();
+
+        // Phase 1: obtain a closed closure on the stack.
+        var phase1 = new Chunk();
+        int fnIdx1 = phase1.AddConstant(GrobValue.FromFunction(makeCapture42Fn));
+        phase1.WriteOpCode(OpCode.Constant, 1); phase1.WriteByte((byte)fnIdx1, 1);
+        phase1.WriteOpCode(OpCode.Call, 1); phase1.WriteByte(0, 1);
+        phase1.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(phase1);
+        GrobValue closureVal = vm.Stack.Peek();   // closed closure, upvalue = 42
+
+        // Store in a map and retrieve by key.
+        var map = new GrobMap();
+        map.Set("fn", closureVal);
+
+        var phase2 = new Chunk();
+        int mapIdx = phase2.AddConstant(GrobValue.FromMap(map));
+        int keyIdx = phase2.AddConstant(GrobValue.FromString("fn"));
+
+        phase2.WriteOpCode(OpCode.Constant, 1); phase2.WriteByte((byte)mapIdx, 1);  // push map
+        phase2.WriteOpCode(OpCode.Constant, 1); phase2.WriteByte((byte)keyIdx, 1);  // push "fn"
+        phase2.WriteOpCode(OpCode.GetIndex, 1);                                       // map["fn"] → closure
+        phase2.WriteOpCode(OpCode.Call, 1); phase2.WriteByte(0, 1);             // closure() → 42
+        phase2.WriteOpCode(OpCode.Return, 1);
+
+        vm.Run(phase2);
+
+        Assert.Equal(42L, vm.Stack.Peek().AsInt());
+    }
+
+    // -----------------------------------------------------------------------
+    // M3 — closure returned from enclosing fn and immediately invoked.
+    //
+    // Equivalent to makeCapture42()(). No intermediate storage; the result of
+    // the first Call is the callee of the second Call. Proves the upvalue is
+    // correctly closed by OP_RETURN before the second Call reads it.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ClosureReturnedThenImmediatelyInvoked_ReturnsCapture() {
+        BytecodeFunction makeCapture42Fn = BuildCapture42Fn();
+
+        var script = new Chunk();
+        int fnIdx = script.AddConstant(GrobValue.FromFunction(makeCapture42Fn));
+
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)fnIdx, 1);
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(0, 1);  // → closure (slot 0)
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(0, 1);  // closure() → 42
+        script.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(script);
+
+        Assert.Equal(42L, vm.Stack.Peek().AsInt());
+    }
+
+    // -----------------------------------------------------------------------
+    // M4 — closure passed as a parameter to a different function, called there.
+    //
+    // callerFn(closure): GetLocal(0) [param], Call(0), Return.
+    // Proves a closed upvalue is readable when the closure executes inside
+    // a call frame that is not related to the enclosing capture frame.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ClosurePassedAsParameter_CalledByCallee_ReturnsCapture() {
+        BytecodeFunction makeCapture42Fn = BuildCapture42Fn();
+
+        // callerFn(closure): pushes param, calls it, returns result.
+        var callerChunk = new Chunk();
+        callerChunk.WriteOpCode(OpCode.GetLocal, 1); callerChunk.WriteByte(0, 1);  // push param (the closure)
+        callerChunk.WriteOpCode(OpCode.Call, 1); callerChunk.WriteByte(0, 1);  // closure() → 42
+        callerChunk.WriteOpCode(OpCode.Return, 1);
+        callerChunk.WriteOpCode(OpCode.Nil, 1);
+        callerChunk.WriteOpCode(OpCode.Return, 1);
+        var callerFn = new BytecodeFunction("caller", 1, callerChunk);
+
+        var script = new Chunk();
+        int makeCapIdx = script.AddConstant(GrobValue.FromFunction(makeCapture42Fn));
+        int callerIdx = script.AddConstant(GrobValue.FromFunction(callerFn));
+
+        // closure := makeCapture42()  →  slot 0
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)makeCapIdx, 1);
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(0, 1);
+
+        // caller(closure)
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)callerIdx, 1);  // callerFn
+        script.WriteOpCode(OpCode.GetLocal, 1); script.WriteByte(0, 1);                 // closure as arg
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(1, 1);                 // caller(closure)
+
+        script.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(script);
+
+        Assert.Equal(42L, vm.Stack.Peek().AsInt());
+    }
+
+    // -----------------------------------------------------------------------
+    // M5 — counter closure escaped via array; SetUpvalue mutations persist.
+    //
+    // makeCounterViaArray returns [counter]. counter() increments its closed
+    // upvalue (SetUpvalue writes to the heap copy). Calling the counter twice
+    // through array[0] must yield 1 then 2 — mutation state accumulates even
+    // after the enclosing frame has been discarded.
+    //
+    // Asserts: second call = 2.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CounterClosureEscapedViaArray_MutationPersistsAcrossMultipleCalls() {
+        // Incrementer lambda: count+1 → count; return new count.
+        var lambdaChunk = new Chunk();
+        int one = lambdaChunk.AddConstant(GrobValue.FromInt(1));
+        lambdaChunk.WriteOpCode(OpCode.GetUpvalue, 1); lambdaChunk.WriteByte(0, 1);
+        lambdaChunk.WriteOpCode(OpCode.Constant, 1); lambdaChunk.WriteByte((byte)one, 1);
+        lambdaChunk.WriteOpCode(OpCode.AddInt, 1);
+        lambdaChunk.WriteOpCode(OpCode.SetUpvalue, 1); lambdaChunk.WriteByte(0, 1);
+        lambdaChunk.WriteOpCode(OpCode.GetUpvalue, 1); lambdaChunk.WriteByte(0, 1);
+        lambdaChunk.WriteOpCode(OpCode.Return, 1);
+        lambdaChunk.WriteOpCode(OpCode.Nil, 1);
+        lambdaChunk.WriteOpCode(OpCode.Return, 1);
+        var lambdaFn = new BytecodeFunction(string.Empty, 0, lambdaChunk, upvalueCount: 1);
+
+        // makeCounterViaArray: count := 0 (slot 0), closure in [closure], return array.
+        var outerChunk = new Chunk();
+        int zero = outerChunk.AddConstant(GrobValue.FromInt(0));
+        int lambdaIdx = outerChunk.AddConstant(GrobValue.FromFunction(lambdaFn));
+        outerChunk.WriteOpCode(OpCode.Constant, 1); outerChunk.WriteByte((byte)zero, 1);
+        outerChunk.WriteOpCode(OpCode.Closure, 1); outerChunk.WriteByte((byte)lambdaIdx, 1);
+        outerChunk.WriteByte(1, 1); outerChunk.WriteByte(0, 1);         // isLocal=1, slot=0
+        outerChunk.WriteOpCode(OpCode.NewArray, 1); outerChunk.WriteByte(1, 1);
+        outerChunk.WriteOpCode(OpCode.Return, 1);
+        outerChunk.WriteOpCode(OpCode.Nil, 1);
+        outerChunk.WriteOpCode(OpCode.Return, 1);
+        var makeCounterViaArrayFn = new BytecodeFunction("makeCounterViaArray", 0, outerChunk);
+
+        var script = new Chunk();
+        int fnIdx = script.AddConstant(GrobValue.FromFunction(makeCounterViaArrayFn));
+        int idx0 = script.AddConstant(GrobValue.FromInt(0));
+
+        // arr := makeCounterViaArray()  →  slot 0
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)fnIdx, 1);
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(0, 1);
+
+        // First call: arr[0]() → 1; discard.
+        script.WriteOpCode(OpCode.GetLocal, 1); script.WriteByte(0, 1);
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)idx0, 1);
+        script.WriteOpCode(OpCode.GetIndex, 1);
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(0, 1);
+        script.WriteOpCode(OpCode.Pop, 1);
+
+        // Second call: arr[0]() → 2; leave on stack.
+        script.WriteOpCode(OpCode.GetLocal, 1); script.WriteByte(0, 1);
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)idx0, 1);
+        script.WriteOpCode(OpCode.GetIndex, 1);
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(0, 1);
+
+        script.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(script);
+
+        Assert.Equal(2L, vm.Stack.Peek().AsInt());
+    }
+
+    // -----------------------------------------------------------------------
+    // M6 — closure stored as a struct field, retrieved via GetProperty, called.
+    //
+    // RED until GetProperty handles GrobStruct receivers (D-325 scope).
+    // The closed closure is placed into a GrobStruct field "fn" in C#.
+    // A second Run retrieves it via GetProperty and calls it.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ClosureFromStruct_FieldAccessAndCall_ReturnsCapture() {
+        BytecodeFunction makeCapture42Fn = BuildCapture42Fn();
+
+        // Phase 1: obtain a closed closure on the stack.
+        var phase1 = new Chunk();
+        int fnIdx1 = phase1.AddConstant(GrobValue.FromFunction(makeCapture42Fn));
+        phase1.WriteOpCode(OpCode.Constant, 1); phase1.WriteByte((byte)fnIdx1, 1);
+        phase1.WriteOpCode(OpCode.Call, 1); phase1.WriteByte(0, 1);
+        phase1.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(phase1);
+        GrobValue closureVal = vm.Stack.Peek();  // closed closure, upvalue = 42
+
+        // Build a GrobStruct with the closure at field "fn".
+        var s = new GrobStruct("Container");
+        s.SetField("fn", closureVal);
+
+        // Phase 2: struct.fn()  →  42.
+        var phase2 = new Chunk();
+        int structIdx = phase2.AddConstant(GrobValue.FromStruct(s));
+        int propIdx = phase2.AddConstant(GrobValue.FromString("fn"));
+
+        phase2.WriteOpCode(OpCode.Constant, 1); phase2.WriteByte((byte)structIdx, 1); // push struct
+        phase2.WriteOpCode(OpCode.GetProperty, 1); phase2.WriteByte((byte)propIdx, 1);   // struct.fn → closure
+        phase2.WriteOpCode(OpCode.Call, 1); phase2.WriteByte(0, 1);               // closure() → 42
+        phase2.WriteOpCode(OpCode.Return, 1);
+
+        vm.Run(phase2);
+
+        Assert.Equal(42L, vm.Stack.Peek().AsInt());
+    }
+
     // Function body: Constant(7) [local slot 0], Closure(isLocal=1 slot 0) opens an
     // upvalue, then Constant(0) + Exit terminate before Return runs.
     private static BytecodeFunction BuildOpenThenExitFn() {
