@@ -324,6 +324,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-324 | June 2026                                                         | Type checker — uniform top-level redeclaration | E1102 is broadened from `:=`-only to all top-level binding-introducing forms (`fn`, `type`, `readonly`, `const`, `:=`). All top-level declarations are registered as provisional in pass 1; each visitor finalises its own provisional entry in pass 2, so the collision is always detected at the second declaration in source order. Corrects the reverse-order bug where a value-before-fn collision erroneously reported at the earlier value binding. E1102 title broadened from "variable already declared in this scope" to "name already declared in this scope". No new error code; count stays at 109 |
 | D-325 | June 2026                                                         | VM — closure upvalue lifecycle | Closures close captured locals by stack location, not by inspecting the return value. The VM keeps an open-upvalue list keyed by stack slot; on frame exit every open upvalue at or above the returning frame's base is closed into its heap cell, regardless of which heap object now references the closure. Route-agnostic by construction: array element, map value, struct field, parameter and direct return are handled identically. Fixes the array-escaped-closure value-stack underflow (`return [inc]` then `arr[0]()`) — value-based closing reached closures referenced directly by the return value but missed closures wrapped in a container, leaving an open upvalue pointing at a truncated slot. Concerns category-4 capture only (D-296); categories 1–3 and top-level fn hoisting (D-321, no captures) are untouched. No new error code; count stays at 109. Sprint 5 Increment 3 |
 | D-326 | June 2026                                                         | Type system — function types | `fn(ParamTypes): ReturnType` becomes a first-class type reference accepted by `ParseTypeRef` anywhere a type is written. Resolves the standing contradiction — v1 mandates explicit return types on every function AND closures are first-class returnable values, so `makeCounter(): fn(): int` could not be written (the only expressible return type was rejected with E2001). Removed by making function types expressible, not by relaxing explicit return types or dropping returnable closures. Structural identity; invariant assignability (no variance in v1); runtime-erased (the callable is already a `GrobFunction`, so no opcode/grobc/`GrobValue` impact). `?`/`[]` bind to the return type — `(fn(): int)?` and `(fn(): int)[]` need parens. User-written function types are monomorphic; the registry's internal `→` generic notation is unchanged and D-080's no-user-generics rule is untouched. Function-type mismatches reuse the existing assignment/argument mismatch codes; no new error code; count stays at 109. Sprint 5 Increment 4 |
+| D-327 | June 2026                                                         | Parser / type system — array type-refs | The `[]` array suffix is a type-reference production: `ParseTypeRef` consumes a postfix `[]`/`?` suffix chain after the primary type, so `int[]`, `int[][]` (D-182), `int[]?` (nullable array) and `int?[]` (array of nullable) parse as type annotations. Closes the D-326 gap — the formalised `TypeRef` grammar omitted the `[]` production its own suffix-precedence prose assumed, so `ParseTypeRef` never consumed `[` in type position even though `int[]` is pervasive across the spec and the `T[]` stdlib signatures (`fs.list(): File[]` etc.). Array type-refs are a built-in constrained generic (D-080, same model as `map<K, V>`), not user-facing generics — no generics-sprint dependency. The checker resolves an array annotation to the existing `T[]` type it already owns; value-position `[` (index, array literal) is unchanged. Runtime-erased — no opcode/grobc/`GrobValue` impact. Malformed suffixes (`int[`, fixed-size `int[5]`) reuse existing parser-error codes via D-300 recovery; no new error code; count stays at 109. Completes D-326; relates to D-182. Sprint 5 Increment 5 |
 
 ---
 
@@ -3433,6 +3434,43 @@ Superseded by: none
 
 ---
 
+### D-327 — Array type-refs: the `[]` suffix is a type-reference production (June 2026)
+
+Area: Parser / type system — array type-references
+Supersedes: none
+Superseded by: none
+
+**The defect.** The `[]` array suffix is used as a type annotation pervasively across the corpus — `int[]`, `string[]`, `File[]` (D-109), `Match[]`, struct fields (`children: Tree[]`), nested `int[][]`/`int[][][]` (D-182) — and the whole stdlib reference is specified in `T[]` return and parameter types. Yet the `TypeRef` grammar formalised by D-326 (§9) had exactly three productions — a named type, a function type and a parenthesised-nullable-function — and **none produced `[]`**. The prose immediately beneath that grammar nonetheless asserted "`?` and `[]` bind to the return type … an array of functions requires parens", referencing a `[]` suffix the grammar never defined. The parser, written to the grammar, never consumed `[` in type position: `int[]` in **value** position parses (array literal, indexing), but `int[]` as a standalone **type annotation** failed. The gap stayed latent until D-326 formalised the type-reference grammar and `(fn(): int)[]` made the missing production visible.
+
+**Why this direction — and not a walk-back.** The alternative on the table was to remove the `[]` examples from type-ref positions until a later generics sprint. That is not viable. First, it contradicts a closed decision: D-182 decided `int[][]` is a valid type. Second, it mislocates arrays as a user-generics feature — per D-080 and the `map` decision, arrays are a **built-in constrained generic users consume but cannot declare**, the same class as `map<K, V>` whose angle-bracket form already parses via `TypeArgs`; array type-refs have zero dependency on user-facing generics. Third, it would make the stdlib un-annotatable, since every `T[]` signature in `grob-stdlib-reference.md` depends on it. The defect is a grammar omission to complete, not a feature to defer.
+
+**Grammar.** `TypeRef` is recast as a primary type carrying a postfix suffix chain, which both adds `[]` and resolves `?`/`[]` precedence uniformly:
+
+```ebnf
+TypeRef     := TypePrimary TypeSuffix*
+TypeSuffix  := '[' ']'                  // array of the preceding type
+             | '?'                       // nullable
+TypePrimary := Identifier TypeArgs?      // named type: int, string, map<K, V>, File, user types
+             | 'fn' '(' (TypeRef (',' TypeRef)*)? ')' ':' TypeRef   // function type
+             | '(' TypeRef ')'           // grouping — required to suffix a function type
+```
+
+`ParseTypeRef` parses a primary, then loops consuming `[` `]` and `?` left to right. The grouping primary `'(' TypeRef ')'` generalises and replaces D-326's dedicated `'(' TypeRef ')' '?'` production — strictly more expressive, one fewer special case, and the only way to suffix a function type (`(fn(): int)[]`, `(fn(): int)?`). No ambiguity with the `fn` param-list parens: a leading `(` with no preceding `fn` is grouping.
+
+**Suffix semantics.** Left-to-right application makes `int[]?` a **nullable array of int** and `int?[]` an **array of nullable int** — distinct types, both parse. `int[][]` is an array of arrays (D-182), no rectangular guarantee. Because a function type's return is itself a `TypeRef`, a trailing suffix binds to the **return type**: `fn(): int[]` returns `int[]`; an array *of* functions needs grouping — `(fn(): int)[]`. This is exactly the precedence the D-326 prose described; D-327 supplies the production that makes it real.
+
+**Checker fit.** An array annotation resolves to the `T[]` array type the checker already owns — value-position literals and `:=` inference already construct it, with its full member registry (`.select`, `.append`, `.format.*`, mutation rules). This increment wires the **annotation path** to that existing representation; it introduces no new runtime type. Resolution happens during pass-1 signature registration alongside other type-name references, with no initialiser-dependency ordering, so D-323's phase 1.5 is not involved.
+
+**Runtime: erased.** An array type-ref is a compile-time annotation over the existing array value representation. No opcode, no `.grobc` change, no `GrobValue` variant.
+
+**Error recovery.** Malformed suffixes reuse the existing parser machinery under D-300: an unterminated `int[` synchronises to the statement boundary and emits an `ErrorDecl`/`ErrorStmt` with the standard expected-token diagnostic; a fixed-size form `int[5]` is rejected — Grob has no fixed-size array types — with guidance toward `int[]`. The exact descriptors are confirmed against `ErrorCatalog`/`grob-error-codes.md` in-increment per D-308. No new error code; count stays at 109. If the in-increment review judges the `int[5]` case to warrant a bespoke "fixed-size array types are not supported" descriptor against the error-message quality bar, that is a deliberate, separately-logged addition — not assumed here.
+
+**Spec edits.** §9's type-reference grammar is replaced with the primary-plus-suffix form and its precedence prose, citing D-327; `grob-type-registry.md`'s `fn(T…): R` surface-syntax note gains the parallel `[]`-binds-to-return clause. The pervasive `int[]` examples already in the corpus now match an implemented grammar.
+
+**Relates to D-326, D-182, D-080, D-300.** Completes the D-326 type-reference grammar. Realises the D-182 nested-array type at the annotation level. Distinct from D-080 — array type-refs are built-in constrained generics, not a user-generic surface. Recovery rides on D-300. Sprint 5 Increment 5.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3654,6 +3692,26 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_Updated June 2026 — D-327: the `[]` array suffix is a type-reference production._
+_`TypeRef` is recast as a primary type plus a postfix `[]`/`?` suffix chain, so_
+_`int[]`, `int[][]` (D-182), `int[]?` (nullable array) and `int?[]` (array of_
+_nullable) parse as type annotations. Closes the gap D-326 left — its formalised_
+_`TypeRef` grammar had no `[]` production though its own suffix-precedence prose_
+_assumed one, so `ParseTypeRef` never consumed `[` in type position even though_
+_`int[]` is pervasive across the spec and the `T[]` stdlib signatures. Array_
+_type-refs are a built-in constrained generic (D-080, same model as `map<K, V>`),_
+_not user-facing generics — no generics-sprint dependency. The grouping primary_
+_`'(' TypeRef ')'` generalises D-326's dedicated parenthesised-nullable-function_
+_production; a trailing suffix binds to the return type, so `(fn(): int)[]` and_
+_`(fn(): int)?` need parens. The checker resolves an array annotation to the_
+_existing `T[]` type (literals/inference already build it) — annotation path only,_
+_no new runtime type. Runtime-erased — no opcode/grobc/`GrobValue` impact._
+_Malformed suffixes (`int[`, fixed-size `int[5]`) reuse existing parser-error_
+_codes via D-300; no new error code; count stays 109. Edits: parser `ParseTypeRef`_
+_suffix loop + array/nullable type-ref AST nodes, type-checker array-annotation_
+_resolution to `T[]`, tests (positions × suffix-precedence × recovery matrix),_
+_`grob-language-fundamentals.md` §9, `grob-type-registry.md` fn-type surface note._
+_Relates to D-326/D-182/D-080/D-300. Sprint 5 Increment 5._
 _Updated June 2026 — D-326: function types are a first-class type-reference_
 _form. `fn(ParamTypes): ReturnType` is accepted by `ParseTypeRef` anywhere a_
 _type is written. Resolves the explicit-return-type-vs-returnable-closure_

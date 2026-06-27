@@ -14,7 +14,8 @@ public static class GrobTypeHelpers {
              or GrobType.NullableFloat
              or GrobType.NullableString
              or GrobType.NullableBool
-             or GrobType.NullableFunction;
+             or GrobType.NullableFunction
+             or GrobType.NullableArray;
 
     /// <summary>
     /// Returns the nullable variant of <paramref name="type"/>.
@@ -28,6 +29,7 @@ public static class GrobTypeHelpers {
         GrobType.String => GrobType.NullableString,
         GrobType.Bool => GrobType.NullableBool,
         GrobType.Function => GrobType.NullableFunction,
+        GrobType.Array => GrobType.NullableArray,
         _ => type,
     };
 
@@ -42,6 +44,7 @@ public static class GrobTypeHelpers {
         GrobType.NullableString => GrobType.String,
         GrobType.NullableBool => GrobType.Bool,
         GrobType.NullableFunction => GrobType.Function,
+        GrobType.NullableArray => GrobType.Array,
         _ => type,
     };
 }

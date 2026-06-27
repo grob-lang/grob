@@ -80,4 +80,13 @@ public enum GrobType {
     /// with the same structural descriptor.
     /// </summary>
     NullableFunction,
+
+    // ---- Nullable array — Sprint 5 Increment 5 (D-327) ----
+
+    /// <summary>
+    /// Nullable array — the Grob <c>T[]?</c> type. Nil is assignable;
+    /// a non-nullable <c>array</c> value widens to this slot. Element-type
+    /// tracking awaits generics (Sprint 5); the tag is the compile-time marker only.
+    /// </summary>
+    NullableArray,
 }

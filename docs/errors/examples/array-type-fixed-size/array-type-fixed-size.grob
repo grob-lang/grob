@@ -1,0 +1,5 @@
+// E2001 — fixed-size array type annotation is not supported; use int[] instead
+// Eventual path: docs/errors/examples/array-type-fixed-size/array-type-fixed-size.grob
+fn f(xs: int[5]): int {
+    return 0
+}

@@ -1,0 +1,8 @@
+error[E2001]: unexpected token
+  --> array-type-fixed-size.grob:3:14
+   |
+ 3 | fn f(xs: int[5]): int {
+   |              ^
+   |
+   = note: expected `]` to close array type suffix
+   = note: got integer literal `5`

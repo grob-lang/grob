@@ -1,0 +1,5 @@
+// E2001 — array type annotation is missing the closing ]
+// Eventual path: docs/errors/examples/array-type-unterminated/array-type-unterminated.grob
+fn f(xs: int[): int {
+    return 0
+}
