@@ -410,6 +410,9 @@ public sealed class Parser {
         // [] wraps the current type as its element type; ? marks the current type nullable.
         while (Check(TokenKind.LeftBracket) || Check(TokenKind.Question)) {
             if (Match(TokenKind.LeftBracket)) {
+                if (Check(TokenKind.IntLiteral) && PeekAt(1).Kind == TokenKind.RightBracket) {
+                    throw Fail(_e2001, "fixed-size array types are not supported — use 'T[]'");
+                }
                 Expect(TokenKind.RightBracket, _e2001, "expected ']' to close array type suffix");
                 current = new ArrayTypeRef(RangeFrom(start), current, IsNullable: false);
             } else {

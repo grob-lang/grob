@@ -42,6 +42,17 @@ public sealed class ArrayTypeRefCheckerTests {
     }
 
     [Fact]
+    public void ArrayAnnotation_RejectsIncompatibleInitializer_ProvesMeaningfulResolution() {
+        // If int[] fell back to GrobType.Unknown the permissive path would accept this.
+        // E0001 here proves the annotation resolved to GrobType.Array, not Unknown.
+        DiagnosticBag bag = Check("items: int[] := 5\n");
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(17, d.Range.Start.Column);
+    }
+
+    [Fact]
     public void NullableArrayAnnotation_AcceptsNil() {
         // items: int[]? := nil — NullableArray accepts nil
         DiagnosticBag bag = Check("items: int[]? := nil\n");
@@ -55,7 +66,10 @@ public sealed class ArrayTypeRefCheckerTests {
         Assert.False(nullable.HasErrors, FormatDiagnostics(nullable));
         // int?[] := nil fails (array is non-nullable — Array does not accept nil)
         DiagnosticBag nonNullableArray = Check("items: int?[] := nil\n");
-        Assert.True(nonNullableArray.HasErrors, "int?[] should not accept nil");
+        Diagnostic dRejected = Assert.Single(nonNullableArray.Errors);
+        Assert.Equal("E0001", dRejected.Code);
+        Assert.Equal(1, dRejected.Range.Start.Line);
+        Assert.Equal(18, dRejected.Range.Start.Column);
     }
 
     [Fact]

@@ -6,8 +6,9 @@ namespace Grob.Core;
 /// </summary>
 public static class GrobTypeHelpers {
     /// <summary>
-    /// Returns <c>true</c> when <paramref name="type"/> is one of the four
-    /// nullable variants (<c>int?</c>, <c>float?</c>, <c>string?</c>, <c>bool?</c>).
+    /// Returns <c>true</c> when <paramref name="type"/> is one of the six
+    /// nullable variants: <c>int?</c>, <c>float?</c>, <c>string?</c>,
+    /// <c>bool?</c>, <c>fn?</c> (D-326) or <c>T[]?</c> (D-327).
     /// </summary>
     public static bool IsNullable(GrobType type) =>
         type is GrobType.NullableInt

@@ -4,5 +4,5 @@ error[E2001]: unexpected token
  3 | fn f(xs: int[5]): int {
    |              ^
    |
-   = note: expected `]` to close array type suffix
+   = note: fixed-size array types are not supported — use 'T[]'
    = note: got integer literal `5`

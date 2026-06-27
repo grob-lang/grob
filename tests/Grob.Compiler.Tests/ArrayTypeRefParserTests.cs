@@ -209,7 +209,10 @@ public sealed class ArrayTypeRefParserTests {
         // ('fn' is a sync anchor regardless of bracket depth) and parses it cleanly.
         string src = "xs: int[ := []\nfn ok(): int { return 0 }\n";
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
-        Assert.Single(bag.Errors);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(10, d.Range.Start.Column);
         // Second declaration was recovered and parsed (not absorbed into the error node)
         Assert.Equal(2, unit.TopLevel.Count);
         Assert.IsType<FnDecl>(unit.TopLevel[1]);
@@ -231,7 +234,10 @@ public sealed class ArrayTypeRefParserTests {
         // newline, so the newline IS a sync anchor and the next statement parses cleanly.
         string src = "xs: int[5] := []\nok := 1\n";
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
-        Assert.Single(bag.Errors);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(9, d.Range.Start.Column);
         Assert.Equal(2, unit.TopLevel.Count);
         Assert.IsType<VarDeclStmt>(unit.TopLevel[1]);
     }
