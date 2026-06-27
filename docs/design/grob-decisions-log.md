@@ -325,6 +325,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-325 | June 2026                                                         | VM — closure upvalue lifecycle | Closures close captured locals by stack location, not by inspecting the return value. The VM keeps an open-upvalue list keyed by stack slot; on frame exit every open upvalue at or above the returning frame's base is closed into its heap cell, regardless of which heap object now references the closure. Route-agnostic by construction: array element, map value, struct field, parameter and direct return are handled identically. Fixes the array-escaped-closure value-stack underflow (`return [inc]` then `arr[0]()`) — value-based closing reached closures referenced directly by the return value but missed closures wrapped in a container, leaving an open upvalue pointing at a truncated slot. Concerns category-4 capture only (D-296); categories 1–3 and top-level fn hoisting (D-321, no captures) are untouched. No new error code; count stays at 109. Sprint 5 Increment 3 |
 | D-326 | June 2026                                                         | Type system — function types | `fn(ParamTypes): ReturnType` becomes a first-class type reference accepted by `ParseTypeRef` anywhere a type is written. Resolves the standing contradiction — v1 mandates explicit return types on every function AND closures are first-class returnable values, so `makeCounter(): fn(): int` could not be written (the only expressible return type was rejected with E2001). Removed by making function types expressible, not by relaxing explicit return types or dropping returnable closures. Structural identity; invariant assignability (no variance in v1); runtime-erased (the callable is already a `GrobFunction`, so no opcode/grobc/`GrobValue` impact). `?`/`[]` bind to the return type — `(fn(): int)?` and `(fn(): int)[]` need parens. User-written function types are monomorphic; the registry's internal `→` generic notation is unchanged and D-080's no-user-generics rule is untouched. Function-type mismatches reuse the existing assignment/argument mismatch codes; no new error code; count stays at 109. Sprint 5 Increment 4 |
 | D-327 | June 2026                                                         | Parser / type system — array type-refs | The `[]` array suffix is a type-reference production: `ParseTypeRef` consumes a postfix `[]`/`?` suffix chain after the primary type, so `int[]`, `int[][]` (D-182), `int[]?` (nullable array) and `int?[]` (array of nullable) parse as type annotations. Closes the D-326 gap — the formalised `TypeRef` grammar omitted the `[]` production its own suffix-precedence prose assumed, so `ParseTypeRef` never consumed `[` in type position even though `int[]` is pervasive across the spec and the `T[]` stdlib signatures (`fs.list(): File[]` etc.). Array type-refs are a built-in constrained generic (D-080, same model as `map<K, V>`), not user-facing generics — no generics-sprint dependency. The checker resolves an array annotation to the existing `T[]` type it already owns; value-position `[` (index, array literal) is unchanged. Runtime-erased — no opcode/grobc/`GrobValue` impact. Malformed suffixes (`int[`, fixed-size `int[5]`) reuse existing parser-error codes via D-300 recovery; no new error code; count stays at 109. Completes D-326; relates to D-182. Sprint 5 Increment 5 |
+| D-328 | June 2026                                                         | Tooling — quality gate        | Test coverage gets a defined scope and a CI floor. A committed exclusion set (`sonar.coverage.exclusions` + annotated `[ExcludeFromCodeCoverage]`/`.runsettings`) removes CLI IO shells (the REPL read-print loop after its eval core is extracted), `tooling/` `Main` wrappers and named defensive/unreachable branches from the denominator — each exclusion carries a reason. `RunCommand`/`DiagnosticFormatter` are NOT excluded: their 0% is an instrumentation gap (validation suite and gold masters exercise them out of the collector's sight), fixed by instrumenting, not excluding. The remaining language-implementation denominator (lexer, parser, type checker, compiler, VM, runtime, stdlib) carries a mechanical 90% line+branch floor enforced in CI, red on breach — a tripwire that triggers triage, not a target to fill. Mirrors the D-313 mechanical gate and the D-316 self-relative CI drift regime; promoted to ADR-0018. The `csharpsquid:S3776` cognitive-complexity issue on the type-checker statement-visit method is closed in the same increment: cover to pin behaviour, decompose under green. No new error code; count unchanged. Sprint 5 Increment 6, before the Codex cold-read |
 
 ---
 
@@ -3471,6 +3472,54 @@ TypePrimary := Identifier TypeArgs?      // named type: int, string, map<K, V>, 
 
 ---
 
+### D-328 — Test-coverage scope and floor (June 2026)
+
+Area: Tooling — quality gate
+Supersedes: none
+Superseded by: none
+
+**Context.** Overall SonarCloud coverage drifted to 88.9%, below the standing 90% expectation.
+The gap was two unrelated problems wearing one number: genuine under-tested logic
+(`Compiler.Statements.cs` at 49.5% with 43 uncovered conditions — half-covered statement
+bytecode emission, the worst failure class because it compiles green and emits incorrect runtime
+behaviour; the type-checker statement surface similarly exposed), and structurally-untestable or
+out-of-scope code counted as if it were testable (CLI read-print IO shells, `tooling/` `Main`
+wrappers, single defensive branches on record types). A bare percentage with no defined scope is
+undefined — it drifts because nobody can say what it is meant to mean, and "top up to 90%"
+invites assertion-free filler that games the number. `RunCommand` and `DiagnosticFormatter` read
+as 0% despite being exercised end-to-end by the validation suite and the gold-master
+error-examples library — an instrumentation gap, not absent tests; excluding them to move the
+number would have hidden the user-facing run-and-diagnostic surface the trust identity most
+depends on.
+
+**The decision — scope plus floor.**
+
+1. **Scope.** A committed exclusion set (`sonar.coverage.exclusions` plus matching
+   `[ExcludeFromCodeCoverage]`/`.runsettings` for local parity) declares what is deliberately
+   out of the denominator, every exclusion carrying a reason: CLI process/IO shells (the REPL
+   read-print loop after its eval core is extracted into a testable, covered unit), `tooling/`
+   `Main` entrypoint wrappers, and annotated defensive/unreachable branches including value
+   variants the compiler does not yet emit. `RunCommand` and `DiagnosticFormatter` are NOT
+   excluded — they are covered by fixing validation-suite/gold-master instrumentation. What
+   remains is the language implementation proper, where a coverage number carries meaning.
+2. **Floor.** The in-scope denominator carries a 90% line+branch coverage floor, enforced in CI,
+   red on breach — mechanical not eyeballed (the D-313 benchmark-gate shape), self-relative with
+   no frozen baseline (the D-316 drift-regime shape), reading blended coverage including
+   conditions because branch coverage on the parser and type checker is the protective number.
+   The floor is a tripwire that triggers triage, not a target to fill.
+
+The single outstanding maintainability issue (`csharpsquid:S3776`, cognitive complexity on the
+type-checker statement-visit method) is closed in the same increment and sequenced with the
+coverage work: cover to pin behaviour, decompose the visit into per-statement-kind handlers
+under green, confirm coverage holds. The refactor is behaviour-preserving — same diagnostics,
+same codes, same order.
+
+Adds no error codes and changes no language semantics. Promoted to ADR-0018. Implemented as
+Sprint 5 Increment 6, before the Codex cold-read, so adversarial QA begins from a clean board.
+Detail in `.claude/commands/sprint-5-increment-6-coverage-scope.md` and ADR-0018.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3692,6 +3741,12 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_June 2026 — Sprint 5 Increment 6 (test-coverage scope and floor): D-328 added as a full entry_
+_with matching summary index row, promoted to ADR-0018. Coverage given a committed exclusion_
+_set and a CI-enforced 90% line+branch floor on the language-implementation denominator;_
+_`csharpsquid:S3776` on the type-checker statement-visit method closed by behaviour-preserving_
+_decomposition under green. No error code added; count unchanged. Detail in_
+_`.claude/commands/sprint-5-increment-6-coverage-scope.md` and ADR-0018._
 _Updated June 2026 — D-327: the `[]` array suffix is a type-reference production._
 _`TypeRef` is recast as a primary type plus a postfix `[]`/`?` suffix chain, so_
 _`int[]`, `int[][]` (D-182), `int[]?` (nullable array) and `int?[]` (array of_
