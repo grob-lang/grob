@@ -1,0 +1,8 @@
+error[E2001]: unexpected token
+  --> array-type-unterminated.grob:3:14
+   |
+ 3 | fn f(xs: int[): int {
+   |              ^
+   |
+   = note: expected `]` to close array type suffix
+   = note: got `)`

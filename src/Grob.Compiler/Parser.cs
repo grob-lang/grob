@@ -399,30 +399,47 @@ public sealed class Parser {
     }
 
     // -----------------------------------------------------------------------
-    // Type references
+    // Type references (D-327: primary-plus-suffix grammar)
     // -----------------------------------------------------------------------
 
     private TypeRef ParseTypeRef() {
         SourceLocation start = Current.Location;
+        TypeRef current = ParseTypePrimary(start);
 
-        // Parenthesised type — used for (fn(): T)? where ? binds to the outer
-        // function rather than its return type (D-326). The grouped type's range
-        // starts at the opening '(' (RangeFrom(start)), not at the inner type, so a
-        // diagnostic on the group points at the whole group.
-        //
-        // The (fn(): T)[] array-of-functions form D-326 contemplates is not yet
-        // expressible: TypeRef carries no array representation and GrobType.Array is
-        // unparameterised (element-type tracking awaits generics, Sprint 5). Only the
-        // ? suffix is implementable here in v1.
+        // Suffix loop: consume [] and ? left to right (D-327).
+        // [] wraps the current type as its element type; ? marks the current type nullable.
+        while (Check(TokenKind.LeftBracket) || Check(TokenKind.Question)) {
+            if (Match(TokenKind.LeftBracket)) {
+                if (Check(TokenKind.IntLiteral) && PeekAt(1).Kind == TokenKind.RightBracket) {
+                    throw Fail(_e2001, "fixed-size array types are not supported — use 'T[]'");
+                }
+                Expect(TokenKind.RightBracket, _e2001, "expected ']' to close array type suffix");
+                current = new ArrayTypeRef(RangeFrom(start), current, IsNullable: false);
+            } else {
+                Advance(); // consume ?
+                current = current with { IsNullable = true, Range = RangeFrom(start) };
+            }
+        }
+
+        return current;
+    }
+
+    private TypeRef ParseTypePrimary(SourceLocation start) {
+        // Parenthesised type — supplies grouping so that ? and [] suffixes bind to
+        // the whole group rather than the return type: (fn(): T)? and (fn(): T)[].
+        // The grouped type's range starts at the opening '(' (RangeFrom(start)) so a
+        // diagnostic on the group points at the whole group. D-327 generalises
+        // D-326's dedicated '(' TypeRef ')' '?' production into this grouping primary
+        // plus the shared suffix loop above.
         if (Match(TokenKind.LeftParen)) {
             TypeRef inner = ParseTypeRef();
             Expect(TokenKind.RightParen, _e2001, "expected ')' to close parenthesised type");
-            if (!Match(TokenKind.Question)) return inner;
-            return inner with { IsNullable = true, Range = RangeFrom(start) };
+            return inner with { Range = RangeFrom(start) };
         }
 
-        // Function type — fn(T1, T2): R (D-326). The ? suffix applies to the
-        // return type (parsed recursively), not to the fn itself; that requires parens.
+        // Function type — fn(T1, T2): R (D-326). Suffixes bind to the return type
+        // (parsed recursively by the suffix loop inside ParseTypeRef), not to the fn
+        // itself — that requires grouping parens: (fn(): T)? or (fn(): T)[].
         if (Match(TokenKind.Fn)) {
             Expect(TokenKind.LeftParen, _e2001, "expected '(' after 'fn' in function type");
             List<TypeRef> paramTypes = [];
@@ -436,7 +453,7 @@ public sealed class Parser {
             return new FunctionTypeRef(RangeFrom(start), paramTypes, returnType, IsNullable: false);
         }
 
-        // Identifier-named type (existing arm).
+        // Identifier-named type with optional generic arguments.
         Token name = Expect(TokenKind.Identifier, _e2001, "expected type name");
         List<TypeRef> args = [];
         if (Match(TokenKind.Less)) {
@@ -446,8 +463,7 @@ public sealed class Parser {
             }
             Expect(TokenKind.Greater, _e2001, "expected '>' to close generic arguments");
         }
-        bool nullable = Match(TokenKind.Question);
-        return new TypeRef(RangeFrom(start), name.Lexeme, args, nullable);
+        return new TypeRef(RangeFrom(start), name.Lexeme, args, IsNullable: false);
     }
 
     // -----------------------------------------------------------------------

@@ -278,6 +278,8 @@ than a fatal `error[Exxxx]:`.
 | E1201 | `forward-reference-in-function` | Name resolution |
 | E1202 | `use-before-declaration-in-block` | Name resolution |
 | E2001 | `unexpected-token-missing-brace` | Syntax |
+| E2001 | `array-type-unterminated` | Syntax |
+| E2001 | `array-type-fixed-size` | Syntax |
 | E2002 | `unterminated-string-literal` | Syntax |
 | E2005 | `invalid-escape-sequence` | Syntax |
 | E2201 | `import-after-declaration` | Syntax |
@@ -319,3 +321,6 @@ than a fatal `error[Exxxx]:`.
 
 *Sprint 5 Increment B: 4 examples (E0008–E0011, the named-argument call-site*
 *diagnostics), June 2026. Source decision D-318 (D-113).*
+
+*Sprint 5 Increment 5: 2 examples (E2001 × 2, array type-ref syntax errors —*
+*unterminated bracket and fixed-size array), June 2026. Source decision D-327.*

@@ -460,9 +460,10 @@ parameter types, and return type. Authorised by D-326; cross-references D-296
 (closure categories) and the `→` internal notation used in stdlib signatures.
 
 **Surface syntax.** `fn(T1, T2): R` — written wherever a `TypeRef` is accepted
-(variable annotations, function return types, parameter types). The `?` suffix
-applies to the **return type** by default; a nullable function itself requires
-parens: `(fn(): int)?`. See `grob-language-fundamentals.md` §9 for the full
+(variable annotations, function return types, parameter types). A trailing `?` or
+`[]` suffix binds to the **return type** by default; a nullable function, or an
+array of functions, itself requires grouping parens — `(fn(): int)?`,
+`(fn(): int)[]` (D-327). See `grob-language-fundamentals.md` §9 for the full
 type-reference grammar.
 
 **Identity.** Structural. Two function types are equal when they have the same

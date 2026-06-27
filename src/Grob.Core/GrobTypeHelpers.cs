@@ -6,15 +6,17 @@ namespace Grob.Core;
 /// </summary>
 public static class GrobTypeHelpers {
     /// <summary>
-    /// Returns <c>true</c> when <paramref name="type"/> is one of the four
-    /// nullable variants (<c>int?</c>, <c>float?</c>, <c>string?</c>, <c>bool?</c>).
+    /// Returns <c>true</c> when <paramref name="type"/> is one of the six
+    /// nullable variants: <c>int?</c>, <c>float?</c>, <c>string?</c>,
+    /// <c>bool?</c>, <c>fn?</c> (D-326) or <c>T[]?</c> (D-327).
     /// </summary>
     public static bool IsNullable(GrobType type) =>
         type is GrobType.NullableInt
              or GrobType.NullableFloat
              or GrobType.NullableString
              or GrobType.NullableBool
-             or GrobType.NullableFunction;
+             or GrobType.NullableFunction
+             or GrobType.NullableArray;
 
     /// <summary>
     /// Returns the nullable variant of <paramref name="type"/>.
@@ -28,6 +30,7 @@ public static class GrobTypeHelpers {
         GrobType.String => GrobType.NullableString,
         GrobType.Bool => GrobType.NullableBool,
         GrobType.Function => GrobType.NullableFunction,
+        GrobType.Array => GrobType.NullableArray,
         _ => type,
     };
 
@@ -42,6 +45,7 @@ public static class GrobTypeHelpers {
         GrobType.NullableString => GrobType.String,
         GrobType.NullableBool => GrobType.Bool,
         GrobType.NullableFunction => GrobType.Function,
+        GrobType.NullableArray => GrobType.Array,
         _ => type,
     };
 }

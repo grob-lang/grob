@@ -663,21 +663,31 @@ items: int[] := []       // annotation required — [] provides no element type
   return types is post-MVP. This eliminates a class of inference ambiguity and
   keeps the type checker simple.
 
-**Type-reference grammar (D-326):**
+**Type-reference grammar (D-326, D-327):**
 
-A type reference written in source (`TypeRef`) has three forms:
+A type reference written in source (`TypeRef`) is a primary type carrying a postfix
+suffix chain:
 
 ```ebnf
-TypeRef :=
-    Identifier TypeArgs? ('?' | '[]')?           // named type: int, string, int?, int[]
-  | 'fn' '(' (TypeRef (',' TypeRef)*)? ')' ':' TypeRef   // function type: fn(int): bool
-  | '(' TypeRef ')' '?'?                         // parenthesised: (fn(): int)?
+TypeRef     := TypePrimary TypeSuffix*
+TypeSuffix  := '[' ']'                  // array of the preceding type
+             | '?'                       // nullable
+TypePrimary := Identifier TypeArgs?      // named type: int, string, map<K, V>, File, T
+             | 'fn' '(' (TypeRef (',' TypeRef)*)? ')' ':' TypeRef   // function type: fn(int): bool
+             | '(' TypeRef ')'           // grouping — required to suffix a function type
 ```
 
-**Suffix precedence.** `?` and `[]` bind to the **return type**, not to the function
-itself. `fn(): int?` is a function returning `int?`; `(fn(): int)?` is a nullable
-function returning `int`. A nullable function requires parens; an array-of-functions
-form `(fn(): int)[]` is not supported in v1 (element-type tracking awaits generics).
+**Suffix chain.** Suffixes apply left to right. `int[]` is an array of `int`;
+`int[][]` an array of arrays (D-182); `int[]?` a nullable array of `int`; `int?[]`
+an array of nullable `int`. The last two are distinct types and both parse.
+
+**Function-type precedence.** A function type's return is itself a `TypeRef`, so a
+trailing suffix binds to the **return type**, not to the function: `fn(): int?`
+returns `int?` and `fn(): int[]` returns `int[]`. A nullable function, or an array
+of functions, requires grouping parens — `(fn(): int)?`, `(fn(): int)[]` — supplied
+by the `'(' TypeRef ')'` primary. D-327 generalises D-326's earlier dedicated
+`'(' TypeRef ')' '?'` production into this grouping primary plus the shared suffix
+chain.
 
 ```grob
 counter: fn(): int := makeCounter()    // variable holding a counter closure

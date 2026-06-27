@@ -292,6 +292,11 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// <c>true</c> (Sprint 3 Increment D — D-014).
     /// </summary>
     internal static GrobType ResolveTypeRef(TypeRef typeRef) {
+        // Array type-ref (D-327): T[] resolves to Array; T[]? resolves to NullableArray.
+        // The element type is not tracked at the GrobType level (deferred to generics sprint).
+        if (typeRef is ArrayTypeRef arr)
+            return arr.IsNullable ? GrobType.NullableArray : GrobType.Array;
+
         GrobType baseType = typeRef.Name switch {
             "int" => GrobType.Int,
             "float" => GrobType.Float,
@@ -315,6 +320,10 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// kind is identical to <see cref="ResolveTypeRef"/>.
     /// </summary>
     internal static (GrobType Kind, FunctionTypeDescriptor? Descriptor) ResolveTypeRefFull(TypeRef typeRef) {
+        // Array type-ref has no structural descriptor — arrays are not function types.
+        if (typeRef is ArrayTypeRef)
+            return (ResolveTypeRef(typeRef), null);
+
         if (typeRef is FunctionTypeRef fnRef) {
             // Resolve each parameter and the return type recursively so that a nested
             // function type (fn(fn(): int): int) carries its inner descriptor and is
@@ -576,6 +585,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         GrobType.Map => "map",
         GrobType.Function => "fn",
         GrobType.NullableFunction => "fn?",
+        GrobType.NullableArray => "array?",
         _ => "unknown",
     };
 
