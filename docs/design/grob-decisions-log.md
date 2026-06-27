@@ -326,6 +326,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-326 | June 2026                                                         | Type system — function types | `fn(ParamTypes): ReturnType` becomes a first-class type reference accepted by `ParseTypeRef` anywhere a type is written. Resolves the standing contradiction — v1 mandates explicit return types on every function AND closures are first-class returnable values, so `makeCounter(): fn(): int` could not be written (the only expressible return type was rejected with E2001). Removed by making function types expressible, not by relaxing explicit return types or dropping returnable closures. Structural identity; invariant assignability (no variance in v1); runtime-erased (the callable is already a `GrobFunction`, so no opcode/grobc/`GrobValue` impact). `?`/`[]` bind to the return type — `(fn(): int)?` and `(fn(): int)[]` need parens. User-written function types are monomorphic; the registry's internal `→` generic notation is unchanged and D-080's no-user-generics rule is untouched. Function-type mismatches reuse the existing assignment/argument mismatch codes; no new error code; count stays at 109. Sprint 5 Increment 4 |
 | D-327 | June 2026                                                         | Parser / type system — array type-refs | The `[]` array suffix is a type-reference production: `ParseTypeRef` consumes a postfix `[]`/`?` suffix chain after the primary type, so `int[]`, `int[][]` (D-182), `int[]?` (nullable array) and `int?[]` (array of nullable) parse as type annotations. Closes the D-326 gap — the formalised `TypeRef` grammar omitted the `[]` production its own suffix-precedence prose assumed, so `ParseTypeRef` never consumed `[` in type position even though `int[]` is pervasive across the spec and the `T[]` stdlib signatures (`fs.list(): File[]` etc.). Array type-refs are a built-in constrained generic (D-080, same model as `map<K, V>`), not user-facing generics — no generics-sprint dependency. The checker resolves an array annotation to the existing `T[]` type it already owns; value-position `[` (index, array literal) is unchanged. Runtime-erased — no opcode/grobc/`GrobValue` impact. Malformed suffixes (`int[`, fixed-size `int[5]`) reuse existing parser-error codes via D-300 recovery; no new error code; count stays at 109. Completes D-326; relates to D-182. Sprint 5 Increment 5 |
 | D-328 | June 2026                                                         | Tooling — quality gate        | Test coverage gets a defined scope and a CI floor. A committed exclusion set (`sonar.coverage.exclusions` + annotated `[ExcludeFromCodeCoverage]`/`.runsettings`) removes CLI IO shells (the REPL read-print loop after its eval core is extracted), `tooling/` `Main` wrappers and named defensive/unreachable branches from the denominator — each exclusion carries a reason. `RunCommand`/`DiagnosticFormatter` are NOT excluded: their 0% is an instrumentation gap (validation suite and gold masters exercise them out of the collector's sight), fixed by instrumenting, not excluding. The remaining language-implementation denominator (lexer, parser, type checker, compiler, VM, runtime, stdlib) carries a mechanical 90% line+branch floor enforced in CI, red on breach — a tripwire that triggers triage, not a target to fill. Mirrors the D-313 mechanical gate and the D-316 self-relative CI drift regime; promoted to ADR-0018. The `csharpsquid:S3776` cognitive-complexity issue on the type-checker statement-visit method is closed in the same increment: cover to pin behaviour, decompose under green. No new error code; count unchanged. Sprint 5 Increment 6, before the Codex cold-read |
+| D-329 | June 2026                                                         | Tooling — versioning          | MinVer (v7.0.0) adopted as the version-management strategy: assembly and package versions are derived from semver git tags with no hardcoded version in any `.csproj`. `MinVerMinimumMajorMinor=0.5` in `Directory.Build.props` gives pre-release builds the version `0.5.0-alpha.0.{height}` until the first semver tag. `v1.0.0` is reserved for post-Sprint-12 release. `ReplCommand` and `Program.cs` banners read `AssemblyInformationalVersionAttribute` (stripping the `+hash` suffix) so the displayed version is always in sync with the assembly. Banner tests assert format only (`Grob \d+\.\d+\.\d+`), not a literal — version-proof forever. |
 
 ---
 
@@ -3517,6 +3518,43 @@ same codes, same order.
 Adds no error codes and changes no language semantics. Promoted to ADR-0018. Implemented as
 Sprint 5 Increment 6, before the Codex cold-read, so adversarial QA begins from a clean board.
 Detail in `.claude/commands/sprint-5-increment-6-coverage-scope.md` and ADR-0018.
+
+---
+
+### D-329 — MinVer version management (June 2026)
+
+Area: Tooling — versioning
+Supersedes: none
+Superseded by: none
+
+**Context.** The CLI banner (`grob repl`, `grob --help`) and the REPL header displayed the
+hardcoded string `"Grob 1.0.0"` — not read from the assembly version. No `<Version>` was set
+in any `.csproj`, so the assembly version defaulted to the .NET SDK implicit `1.0.0`. These
+two `1.0.0` strings were not connected: a version bump in the project file would leave the
+banner stale, and the test asserting `Contains("Grob 1.0.0", stdout)` would break on every
+version increment, making it maintenance friction rather than a real invariant.
+
+Separately, there was no version-management strategy: no semver tags, no tooling to derive
+versions from git history.
+
+**The decision.**
+
+MinVer 7.0.0 is adopted via `Directory.Build.props` (central, applies to every project in the
+solution). The version source of truth is a semver git tag (`v{major}.{minor}.{patch}`). With
+no tag reachable MinVer derives `{major}.{minor}.{patch}-alpha.0.{height}`, where `{height}`
+is the commit count since the last tag (or the repo root). `MinVerMinimumMajorMinor=0.5` is
+set, so pre-release builds between now and the first sprint milestone tag produce
+`0.5.0-alpha.0.{height}`. `PrivateAssets=All` keeps MinVer out of published package graphs.
+
+**Version roadmap:**
+
+- Now → Sprint 6 merge: `0.5.0-alpha.0.{height}` (no tag)
+- After Sprint 6 ships: tag `v0.6.0`; after Sprint 7: `v0.7.0`, etc.
+- After Sprint 12: tag `v1.0.0`
+
+`ReplCommand` and `Program.cs` read `AssemblyInformationalVersionAttribute` and strip the
+`+{hash}` suffix, so the banner always shows the semver portion (`0.5.0-alpha.0.129`).
+Banner tests assert `Grob \d+\.\d+\.\d+` (format only) — version-proof through all sprints.
 
 ---
 

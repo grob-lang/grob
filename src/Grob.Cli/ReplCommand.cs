@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using System.Text;
 
 using Grob.Compiler;
@@ -89,7 +90,12 @@ public sealed class ReplCommand {
     /// </summary>
     /// <returns>Always returns <c>0</c>.</returns>
     public int Run() {
-        _stdout.WriteLine("Grob 1.0.0  |  type 'exit' to quit");
+        string informational = typeof(ReplCommand).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion ?? "unknown";
+        int plusIdx = informational.IndexOf('+');
+        string version = plusIdx >= 0 ? informational[..plusIdx] : informational;
+        _stdout.WriteLine($"Grob {version}  |  type 'exit' to quit");
         _stdout.WriteLine();
 
         while (true) {

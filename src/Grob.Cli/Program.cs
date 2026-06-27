@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 
 using Grob.Cli;
 
@@ -19,7 +20,12 @@ if (args.Length >= 1 && args[0] == "repl") {
 
 // grob / grob --help
 if (args.Length == 0 || args[0] == "--help") {
-    Console.WriteLine("Grob 1.0.0");
+    string informational = typeof(RunCommand).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+        ?.InformationalVersion ?? "unknown";
+    int plusIdx = informational.IndexOf('+');
+    string cliVersion = plusIdx >= 0 ? informational[..plusIdx] : informational;
+    Console.WriteLine($"Grob {cliVersion}");
     Console.WriteLine();
     Console.WriteLine("Usage:");
     Console.WriteLine("  grob run <file>    Run a .grob script");

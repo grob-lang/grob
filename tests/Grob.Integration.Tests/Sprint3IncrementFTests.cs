@@ -76,7 +76,7 @@ public sealed class Sprint3IncrementFTests {
         (string stdout, string _, int exitCode) = RunRepl(string.Empty);
 
         Assert.Equal(0, exitCode);
-        Assert.Contains("Grob 1.0.0", stdout);
+        Assert.Matches(@"Grob \d+\.\d+\.\d+", stdout);
         Assert.Contains("exit", stdout);
     }
 

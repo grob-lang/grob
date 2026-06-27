@@ -28,7 +28,7 @@ public sealed class ReplCommandTests {
         (string stdout, _, int exitCode) = RunRepl(string.Empty);
 
         Assert.Equal(0, exitCode);
-        Assert.Contains("Grob 1.0.0", stdout);
+        Assert.Matches(@"Grob \d+\.\d+\.\d+", stdout);
     }
 
     [Fact]
