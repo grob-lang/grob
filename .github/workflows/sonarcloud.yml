@@ -96,10 +96,35 @@ jobs:
             --collect:"XPlat Code Coverage" \
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
 
+      # D-328: mechanical 90% line-coverage floor.  Aggregates all OpenCover
+      # XML reports emitted by the test step and fails the job if the blended
+      # figure drops below 90%.  Runs before the Sonar end step so a failure
+      # is visible immediately without waiting for the quality-gate callback.
+      - name: Check coverage floor (90%)
+        run: |
+          python3 - << 'EOF'
+          import xml.etree.ElementTree as ET, glob, sys
+          visited = total = 0
+          for f in glob.glob('**/TestResults/**/coverage.opencover.xml', recursive=True):
+              root = ET.parse(f).getroot()
+              s = root.find('Summary')
+              if s is not None:
+                  visited += int(s.get('visitedSequencePoints', 0))
+                  total   += int(s.get('numSequencePoints', 0))
+          if total == 0:
+              print('No coverage data found.', file=sys.stderr)
+              sys.exit(1)
+          pct = 100 * visited / total
+          print(f'Coverage: {pct:.1f}% ({visited}/{total} sequence points)')
+          sys.exit(0 if pct >= 90 else 1)
+          EOF
+
       # End uploads the collected analysis data to SonarCloud.  The token
       # must be supplied again because the end step authenticates
-      # independently of the begin step.
+      # independently of the begin step.  sonar.qualitygate.wait causes the
+      # step to block until SonarCloud computes the quality gate and fail the
+      # job if the gate is red.
       - name: End SonarCloud scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+        run: dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN" /d:sonar.qualitygate.wait=true

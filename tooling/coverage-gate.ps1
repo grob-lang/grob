@@ -9,11 +9,8 @@
     so a developer notices a large regression before pushing. Designed for
     use as a pre-push hook (slow) — never as pre-commit (which must stay fast).
 
-    Threshold defaults to 50 — a regression floor for *overall* line coverage,
-    deliberately lower than the SonarCloud quality gate (which measures
-    *new-code* coverage at 80% and can only be computed server-side). Bump
-    the default once the overall baseline rises. Pass -Threshold 0 to emit
-    the coverage report but skip enforcement.
+    Threshold defaults to 90 — the D-328 coverage floor.  Pass -Threshold 0
+    to emit the coverage report but skip enforcement.
 
     Output:
       * Per-project coverage files under
@@ -23,7 +20,7 @@
 
 [CmdletBinding()]
 param(
-    [int] $Threshold = 50
+    [int] $Threshold = 90
 )
 
 $ErrorActionPreference = "Stop"

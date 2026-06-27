@@ -619,4 +619,270 @@ public sealed class CompilerStatementTests {
         }
         Assert.True(found, "Expected folded constant -3.14 in pool.");
     }
+
+    // -----------------------------------------------------------------------
+    // Assignment — SetGlobal / SetLocal emission
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Assignment_Global_EmitsSetGlobal() {
+        Chunk chunk = CompileSource("""
+            x := 0
+            x = 5
+            """);
+
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.Contains(OpCode.SetGlobal, ops);
+    }
+
+    [Fact]
+    public void Assignment_Local_EmitsSetLocal() {
+        // Assignment inside a function body targets a local slot.
+        Chunk chunk = CompileSource("""
+            fn f(): int {
+            x := 0
+            x = 5
+            }
+            """);
+
+        // Extract the function's chunk from the constant pool.
+        BytecodeFunction fn = ExtractSingleFunction(chunk);
+        List<OpCode> bodyOps = ReadFunctionOpcodes(fn.Bytecode);
+        Assert.Contains(OpCode.SetLocal, bodyOps);
+        Assert.DoesNotContain(OpCode.SetGlobal, bodyOps);
+    }
+
+    // -----------------------------------------------------------------------
+    // Compound assignment — EmitCompoundBinaryOpCode all arms
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CompoundAssignment_IntPlusAssign_EmitsAddInt() {
+        Chunk chunk = CompileSource("""
+            x := 5
+            x += 3
+            """);
+        Assert.Contains(OpCode.AddInt, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void CompoundAssignment_FloatPlusAssign_EmitsAddFloat() {
+        Chunk chunk = CompileSource("""
+            x := 1.0
+            x += 2.0
+            """);
+        Assert.Contains(OpCode.AddFloat, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void CompoundAssignment_StringPlusAssign_EmitsConcat() {
+        Chunk chunk = CompileSource("""
+            x := "a"
+            x += "b"
+            """);
+        Assert.Contains(OpCode.Concat, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void CompoundAssignment_MinusAssign_EmitsSubtractInt() {
+        Chunk chunk = CompileSource("""
+            x := 10
+            x -= 3
+            """);
+        Assert.Contains(OpCode.SubtractInt, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void CompoundAssignment_StarAssign_EmitsMultiplyInt() {
+        Chunk chunk = CompileSource("""
+            x := 5
+            x *= 2
+            """);
+        Assert.Contains(OpCode.MultiplyInt, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void CompoundAssignment_SlashAssign_Int_EmitsDivideInt() {
+        Chunk chunk = CompileSource("""
+            x := 10
+            x /= 2
+            """);
+        Assert.Contains(OpCode.DivideInt, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void CompoundAssignment_PercentAssign_EmitsModuloInt() {
+        Chunk chunk = CompileSource("""
+            x := 7
+            x %= 3
+            """);
+        Assert.Contains(OpCode.ModuloInt, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void CompoundAssignment_FloatMinusAssign_EmitsSubtractFloat() {
+        Chunk chunk = CompileSource("""
+            x := 5.0
+            x -= 1.0
+            """);
+        Assert.Contains(OpCode.SubtractFloat, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void CompoundAssignment_FloatStarAssign_EmitsMultiplyFloat() {
+        Chunk chunk = CompileSource("""
+            x := 2.0
+            x *= 3.0
+            """);
+        Assert.Contains(OpCode.MultiplyFloat, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void CompoundAssignment_FloatSlashAssign_EmitsDivideFloat() {
+        Chunk chunk = CompileSource("""
+            x := 9.0
+            x /= 3.0
+            """);
+        Assert.Contains(OpCode.DivideFloat, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void CompoundAssignment_FloatPercentAssign_EmitsModuloFloat() {
+        Chunk chunk = CompileSource("""
+            x := 5.0
+            x %= 2.0
+            """);
+        Assert.Contains(OpCode.ModuloFloat, ReadOpcodes(chunk));
+    }
+
+    [Fact]
+    public void CompoundAssignment_IntPlusFloatRhs_EmitsIntToFloatThenAddFloat() {
+        // LHS int, RHS float — the LHS is coerced to float before addition.
+        Chunk chunk = CompileSource("""
+            x := 1.0
+            x += 2
+            """);
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.Contains(OpCode.IntToFloat, ops);
+        Assert.Contains(OpCode.AddFloat, ops);
+    }
+
+    // -----------------------------------------------------------------------
+    // Increment / decrement — IncrementInt/DecrementInt (local) and
+    // GetGlobal+Add/Sub+SetGlobal (global)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Increment_Global_EmitsGetGlobalAddIntSetGlobal() {
+        Chunk chunk = CompileSource("""
+            x := 0
+            x++
+            """);
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.Contains(OpCode.GetGlobal, ops);
+        Assert.Contains(OpCode.AddInt, ops);
+        Assert.Contains(OpCode.SetGlobal, ops);
+    }
+
+    [Fact]
+    public void Decrement_Global_EmitsGetGlobalSubtractIntSetGlobal() {
+        Chunk chunk = CompileSource("""
+            x := 10
+            x--
+            """);
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.Contains(OpCode.GetGlobal, ops);
+        Assert.Contains(OpCode.SubtractInt, ops);
+        Assert.Contains(OpCode.SetGlobal, ops);
+    }
+
+    [Fact]
+    public void Increment_Local_EmitsIncrementIntWithSlot() {
+        // Inside a function body, x++ must use the IncrementInt slot opcode.
+        Chunk chunk = CompileSource("""
+            fn f(): int {
+            x := 0
+            x++
+            }
+            """);
+        BytecodeFunction fn = ExtractSingleFunction(chunk);
+        List<OpCode> bodyOps = ReadFunctionOpcodes(fn.Bytecode);
+        Assert.Contains(OpCode.IncrementInt, bodyOps);
+        Assert.DoesNotContain(OpCode.GetGlobal, bodyOps);
+    }
+
+    [Fact]
+    public void Decrement_Local_EmitsDecrementIntWithSlot() {
+        Chunk chunk = CompileSource("""
+            fn f(): int {
+            x := 5
+            x--
+            }
+            """);
+        BytecodeFunction fn = ExtractSingleFunction(chunk);
+        List<OpCode> bodyOps = ReadFunctionOpcodes(fn.Bytecode);
+        Assert.Contains(OpCode.DecrementInt, bodyOps);
+    }
+
+    [Fact]
+    public void Increment_NonIntTarget_EmitsNothing() {
+        // float++ is rejected by the type checker (E0002); the compiler must
+        // skip emission rather than crash when the type doesn't match.
+        var bag = new DiagnosticBag();
+        var tokens = Lexer.Scan("x := 1.0\nx++", bag);
+        var unit = Parser.Parse(tokens, bag);
+        new TypeChecker(bag).Check(unit);
+        // Type checker raises E0002; compiler must still run without throwing.
+        Assert.True(bag.HasErrors);
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        // No IncrementInt emitted for the invalid float++ (target type = Float).
+        List<OpCode> ops = ReadOpcodes(chunk);
+        Assert.DoesNotContain(OpCode.IncrementInt, ops);
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers for function-body extraction
+    // -----------------------------------------------------------------------
+
+    private static BytecodeFunction ExtractSingleFunction(Chunk scriptChunk) {
+        for (int i = 0; i < scriptChunk.ConstantCount; i++) {
+            GrobValue v = scriptChunk.ReadConstant(i);
+            if (v.IsFunction && v.AsFunction() is BytecodeFunction fn)
+                return fn;
+        }
+        throw new InvalidOperationException("No BytecodeFunction found in constant pool.");
+    }
+
+    private static List<OpCode> ReadFunctionOpcodes(Chunk chunk) {
+        var result = new List<OpCode>();
+        int offset = 0;
+        while (offset < chunk.Count) {
+            var op = (OpCode)chunk.ReadByte(offset++);
+            result.Add(op);
+            switch (op) {
+                case OpCode.Constant:
+                case OpCode.DefineGlobal:
+                case OpCode.GetGlobal:
+                case OpCode.SetGlobal:
+                case OpCode.GetLocal:
+                case OpCode.SetLocal:
+                case OpCode.PopN:
+                case OpCode.IncrementInt:
+                case OpCode.DecrementInt:
+                case OpCode.Call:
+                case OpCode.NewArray:
+                case OpCode.BuildString:
+                    offset += 1;
+                    break;
+                case OpCode.ConstantLong:
+                case OpCode.Jump:
+                case OpCode.JumpIfFalse:
+                case OpCode.JumpIfTrue:
+                case OpCode.Loop:
+                    offset += 2;
+                    break;
+            }
+        }
+        return result;
+    }
 }

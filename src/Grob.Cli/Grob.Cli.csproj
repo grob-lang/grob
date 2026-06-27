@@ -9,6 +9,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Allow integration tests to call internal CLI types directly (coverage of
+       DiagnosticFormatter.WriteRuntime column path, which the compiler does not
+       yet emit). -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Grob.Integration.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <!-- Grob.Cli is the only project that references all source assemblies -->
   <ItemGroup>
     <ProjectReference Include="..\Grob.Core\Grob.Core.csproj" />

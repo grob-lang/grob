@@ -77,19 +77,7 @@ public sealed partial class TypeChecker {
         // An Unknown declared return type (a deferred type) is permissive; cascade
         // suppression covers an already-errored value.
         if (expected != GrobType.Unknown && actual != GrobType.Error) {
-            bool isFunctionReturn = expected == GrobType.Function || expected == GrobType.NullableFunction;
-            bool actualIsFunction = actual == GrobType.Function || actual == GrobType.NullableFunction;
-            bool compatible;
-            if (isFunctionReturn && actualIsFunction && node.Value is not null) {
-                // Structural descriptor comparison for any function-typed return value —
-                // a direct lambda, a call result, or a bound function variable (D-326; Fix K).
-                FunctionTypeDescriptor? expectedDesc =
-                    _functionReturnDescriptors.TryPeek(out FunctionTypeDescriptor? peeked) ? peeked : null;
-                FunctionTypeDescriptor? actualDesc = ExpressionDescriptor(node.Value);
-                compatible = TypesAreAssignable(actual, expected, actualDesc, expectedDesc);
-            } else {
-                compatible = TypesAreAssignable(actual, expected);
-            }
+            bool compatible = ComputeReturnCompatibility(actual, expected, node.Value);
             if (!compatible) {
                 EmitError(ErrorCatalog.E0005,
                     node.Value is not null
@@ -99,6 +87,26 @@ public sealed partial class TypeChecker {
             }
         }
         return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="actual"/> is assignable to
+    /// <paramref name="expected"/> in the context of a return statement.
+    /// For function-typed returns the structural descriptor is compared (D-326 Fix K).
+    /// </summary>
+    private bool ComputeReturnCompatibility(
+        GrobType actual, GrobType expected, Expression? valueNode) {
+        bool isFunctionReturn = expected == GrobType.Function || expected == GrobType.NullableFunction;
+        bool actualIsFunction = actual == GrobType.Function || actual == GrobType.NullableFunction;
+        if (isFunctionReturn && actualIsFunction && valueNode is not null) {
+            // Structural descriptor comparison for any function-typed return value —
+            // a direct lambda, a call result, or a bound function variable (D-326; Fix K).
+            FunctionTypeDescriptor? expectedDesc =
+                _functionReturnDescriptors.TryPeek(out FunctionTypeDescriptor? peeked) ? peeked : null;
+            FunctionTypeDescriptor? actualDesc = ExpressionDescriptor(valueNode);
+            return TypesAreAssignable(actual, expected, actualDesc, expectedDesc);
+        }
+        return TypesAreAssignable(actual, expected);
     }
 
     /// <inheritdoc/>
