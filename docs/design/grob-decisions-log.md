@@ -327,6 +327,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-327 | June 2026                                                         | Parser / type system — array type-refs | The `[]` array suffix is a type-reference production: `ParseTypeRef` consumes a postfix `[]`/`?` suffix chain after the primary type, so `int[]`, `int[][]` (D-182), `int[]?` (nullable array) and `int?[]` (array of nullable) parse as type annotations. Closes the D-326 gap — the formalised `TypeRef` grammar omitted the `[]` production its own suffix-precedence prose assumed, so `ParseTypeRef` never consumed `[` in type position even though `int[]` is pervasive across the spec and the `T[]` stdlib signatures (`fs.list(): File[]` etc.). Array type-refs are a built-in constrained generic (D-080, same model as `map<K, V>`), not user-facing generics — no generics-sprint dependency. The checker resolves an array annotation to the existing `T[]` type it already owns; value-position `[` (index, array literal) is unchanged. Runtime-erased — no opcode/grobc/`GrobValue` impact. Malformed suffixes (`int[`, fixed-size `int[5]`) reuse existing parser-error codes via D-300 recovery; no new error code; count stays at 109. Completes D-326; relates to D-182. Sprint 5 Increment 5 |
 | D-328 | June 2026                                                         | Tooling — quality gate        | Test coverage gets a defined scope and a CI floor. A committed exclusion set (`sonar.coverage.exclusions` + annotated `[ExcludeFromCodeCoverage]`/`.runsettings`) removes CLI IO shells (the REPL read-print loop after its eval core is extracted), `tooling/` `Main` wrappers and named defensive/unreachable branches from the denominator — each exclusion carries a reason. `RunCommand`/`DiagnosticFormatter` are NOT excluded: their 0% is an instrumentation gap (validation suite and gold masters exercise them out of the collector's sight), fixed by instrumenting, not excluding. The remaining language-implementation denominator (lexer, parser, type checker, compiler, VM, runtime, stdlib) carries a mechanical 90% line+branch floor enforced in CI, red on breach — a tripwire that triggers triage, not a target to fill. Mirrors the D-313 mechanical gate and the D-316 self-relative CI drift regime; promoted to ADR-0018. The `csharpsquid:S3776` cognitive-complexity issue on the type-checker statement-visit method is closed in the same increment: cover to pin behaviour, decompose under green. No new error code; count unchanged. Sprint 5 Increment 6, before the Codex cold-read |
 | D-329 | June 2026                                                         | Tooling — versioning          | MinVer (v7.0.0) adopted as the version-management strategy: assembly and package versions are derived from semver git tags with no hardcoded version in any `.csproj`. `MinVerMinimumMajorMinor=0.5` in `Directory.Build.props` gives pre-release builds the version `0.5.0-alpha.0.{height}` until the first semver tag. `v1.0.0` is reserved for post-Sprint-12 release. `ReplCommand` and `Program.cs` banners read `AssemblyInformationalVersionAttribute` (stripping the `+hash` suffix) so the displayed version is always in sync with the assembly. Banner tests assert format only (`Grob \d+\.\d+\.\d+`), not a literal — version-proof forever. |
+| D-330 | June 2026                                                         | Type system — construction-site diagnostics | Unknown field name at a named type construction (`TypeName { notAField: v }`) gets a dedicated code **E0012** (Type category), not a fold into E1002 (undefined member, which is member *access* — `obj.field` on an existing value). Mirrors D-318's choice of dedicated call-site codes over folding into E0003: E0012 is to construction what E0011 (unknown parameter name) is to a named call, and sits in the E00xx type block beside E0103 (missing required field at construction) and E0011. Registered in Sprint 6 Increment B through its `ErrorCatalog` descriptor (D-308); error-code count 109 → 110. Resolves the §10 gap where the spec mandated the error but cited no code |
 
 ---
 
@@ -3558,6 +3559,43 @@ Banner tests assert `Grob \d+\.\d+\.\d+` (format only) — version-proof through
 
 ---
 
+### D-330 — Unknown field at construction gets a dedicated code E0012 (June 2026)
+
+Area: Type system — construction-site diagnostics
+Supersedes: none
+Superseded by: none
+
+**Context.** `grob-language-fundamentals.md` §10 states that all field names must
+match the declared type and that unknown field names are a compile error, but cites
+no error code. The nearest existing code, **E1002** (undefined member), is described
+and categorised for member *access* — `obj.field` reading a field not declared on an
+existing value's type — and lives in the Name-resolution block. A construction site
+(`TypeName { notAField: v }`) is a different surface: the type is named, the legal
+field set is known at compile time, and the user error is "this type has no such
+field", not "this value has no such member". Leaving the code unpinned is exactly the
+latent gap that produced interludes in Sprint 5 — an implementer either invents a
+code or stalls.
+
+**The decision.** Unknown-field-at-construction raises a dedicated **E0012** (Type
+category), registered in the E00xx type block immediately after E0011. This follows
+D-318's precedent: the named-argument call-site cases took dedicated codes
+(E0008–E0011) rather than folding into E0003. It makes the construction diagnostics
+symmetric with the call diagnostics — E0012 "unknown field name" is to a named
+construction what E0011 "unknown parameter name" is to a named call — and sits it
+beside E0103 (missing required field at construction). The distinction from E1002
+stays sharp: E1002 remains member access on a value; E0012 is an unknown field named
+at a construction site.
+
+Registered in **Sprint 6 Increment B** through its `ErrorCatalog` descriptor (D-308)
+— no `"E0012"` literal at any call site. The error-code count moves **109 → 110**;
+the D-316 consistency gate asserts catalog↔registry agreement and the new total on the
+registering commit. Resolves the §10 unpinned-code gap.
+
+**Relates to D-318, D-308, D-316.** Same dedicated-code rationale as D-318. Raised
+through the D-308 catalog. Counted by the D-316 gate.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -3787,6 +3825,7 @@ _decomposition under green. No error code added; count unchanged. Detail in_
 _`.claude/commands/sprint-5-increment-6-coverage-scope.md` and ADR-0018. D-329 added: MinVer_
 _7.0.0 adopted for git-tag-derived semver versioning; `MinVerMinimumMajorMinor=0.5` in_
 _`Directory.Build.props`; CLI/REPL banners read `AssemblyInformationalVersionAttribute`._
+_June 2026 — Sprint 5→6 kickoff: D-330 added (unknown field at construction → dedicated E0012; registered in Sprint 6 Increment B, count 109 → 110)_
 _Updated June 2026 — D-327: the `[]` array suffix is a type-reference production._
 _`TypeRef` is recast as a primary type plus a postfix `[]`/`?` suffix chain, so_
 _`int[]`, `int[][]` (D-182), `int[]?` (nullable array) and `int?[]` (array of_
