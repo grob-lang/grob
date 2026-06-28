@@ -3784,7 +3784,9 @@ _with matching summary index row, promoted to ADR-0018. Coverage given a committ
 _set and a CI-enforced 90% line+branch floor on the language-implementation denominator;_
 _`csharpsquid:S3776` on the type-checker statement-visit method closed by behaviour-preserving_
 _decomposition under green. No error code added; count unchanged. Detail in_
-_`.claude/commands/sprint-5-increment-6-coverage-scope.md` and ADR-0018._
+_`.claude/commands/sprint-5-increment-6-coverage-scope.md` and ADR-0018. D-329 added: MinVer_
+_7.0.0 adopted for git-tag-derived semver versioning; `MinVerMinimumMajorMinor=0.5` in_
+_`Directory.Build.props`; CLI/REPL banners read `AssemblyInformationalVersionAttribute`._
 _Updated June 2026 — D-327: the `[]` array suffix is a type-reference production._
 _`TypeRef` is recast as a primary type plus a postfix `[]`/`?` suffix chain, so_
 _`int[]`, `int[][]` (D-182), `int[]?` (nullable array) and `int?[]` (array of_

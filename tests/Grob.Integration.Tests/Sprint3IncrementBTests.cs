@@ -123,7 +123,7 @@ public sealed class Sprint3IncrementBTests {
         // ex.Column > 0 branch in DiagnosticFormatter.WriteRuntime is unreachable
         // through a compiled .grob file.  Exercise it directly with a crafted
         // GrobRuntimeException that carries a non-zero column.
-        var writer = new StringWriter(new StringBuilder());
+        using var writer = new StringWriter(new StringBuilder());
         var ex = new GrobRuntimeException("E5002", 3, 7, "integer division by zero");
 
         DiagnosticFormatter.WriteRuntime(ex, "script.grob", writer);
@@ -136,7 +136,7 @@ public sealed class Sprint3IncrementBTests {
     [Fact]
     public void WriteRuntime_WithoutColumn_OmitsColumnFromLocation() {
         // Column = 0 → location string is "file:line" with no column suffix.
-        var writer = new StringWriter(new StringBuilder());
+        using var writer = new StringWriter(new StringBuilder());
         var ex = new GrobRuntimeException("E5002", 5, "integer division by zero");
 
         DiagnosticFormatter.WriteRuntime(ex, "script.grob", writer);

@@ -7,9 +7,6 @@
 - **Relates to:** ADR-0014 (numbering scheme — mechanical-gate precedent), D-313 (two-axis
   benchmark gate), D-316 (CI-enforced corpus drift regime), D-308 (catalog-not-literal discipline)
 
-> House-style note: matched to the conventional ADR shape used through ADR-0017. Confirm
-> heading and front-matter conventions against ADR-0017 before publishing.
-
 ---
 
 ## Context

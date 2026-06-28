@@ -41,7 +41,7 @@ public sealed class ReplCommandTests {
     public void Run_BlankLine_IgnoredAndSessionContinues() {
         // An empty line is trimmed to zero length — the REPL skips it rather than
         // treating it as source to compile.
-        (string stdout, string stderr, int exitCode) = RunRepl($"{NL}exit");
+        (_, string stderr, int exitCode) = RunRepl($"{NL}exit");
         Assert.Equal(0, exitCode);
         Assert.Equal(string.Empty, stderr);
     }
@@ -165,7 +165,7 @@ public sealed class ReplCommandTests {
         (string stdout, string stderr, int exitCode) = RunRepl(input);
 
         Assert.Equal(0, exitCode);
-        Assert.NotEqual(string.Empty, stderr);
+        Assert.Contains("E0002", stderr);
         // The next entry (42) still runs and auto-prints.
         Assert.Contains("42", stdout);
     }

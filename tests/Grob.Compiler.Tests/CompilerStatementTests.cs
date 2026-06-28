@@ -825,19 +825,18 @@ public sealed class CompilerStatementTests {
     }
 
     [Fact]
-    public void Increment_NonIntTarget_EmitsNothing() {
-        // float++ is rejected by the type checker (E0002); the compiler must
-        // skip emission rather than crash when the type doesn't match.
+    public void Increment_FloatTarget_RaisesE0002() {
+        // float++ is a type error; the type checker must reject it with E0002.
+        // Compilation must not be attempted on an error-typed programme.
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan("x := 1.0\nx++", bag);
         var unit = Parser.Parse(tokens, bag);
         new TypeChecker(bag).Check(unit);
-        // Type checker raises E0002; compiler must still run without throwing.
-        Assert.True(bag.HasErrors);
-        Chunk chunk = GrobCompiler.Compile(unit, bag);
-        // No IncrementInt emitted for the invalid float++ (target type = Float).
-        List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.DoesNotContain(OpCode.IncrementInt, ops);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -845,12 +844,16 @@ public sealed class CompilerStatementTests {
     // -----------------------------------------------------------------------
 
     private static BytecodeFunction ExtractSingleFunction(Chunk scriptChunk) {
+        BytecodeFunction? found = null;
         for (int i = 0; i < scriptChunk.ConstantCount; i++) {
             GrobValue v = scriptChunk.ReadConstant(i);
-            if (v.IsFunction && v.AsFunction() is BytecodeFunction fn)
-                return fn;
+            if (!v.IsFunction || v.AsFunction() is not BytecodeFunction fn)
+                continue;
+            if (found is not null)
+                throw new InvalidOperationException("Expected exactly one BytecodeFunction in constant pool.");
+            found = fn;
         }
-        throw new InvalidOperationException("No BytecodeFunction found in constant pool.");
+        return found ?? throw new InvalidOperationException("No BytecodeFunction found in constant pool.");
     }
 
     private static List<OpCode> ReadFunctionOpcodes(Chunk chunk) {
