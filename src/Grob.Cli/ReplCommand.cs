@@ -90,11 +90,9 @@ public sealed class ReplCommand {
     /// </summary>
     /// <returns>Always returns <c>0</c>.</returns>
     public int Run() {
-        string informational = typeof(ReplCommand).Assembly
+        string version = ParseVersion(typeof(ReplCommand).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion ?? "unknown";
-        int plusIdx = informational.IndexOf('+');
-        string version = plusIdx >= 0 ? informational[..plusIdx] : informational;
+            ?.InformationalVersion);
         _stdout.WriteLine($"Grob {version}  |  type 'exit' to quit");
         _stdout.WriteLine();
 
@@ -440,6 +438,18 @@ public sealed class ReplCommand {
         sb.Append('"');
         return sb.ToString();
     }
+
+    // -----------------------------------------------------------------------
+    // Version string helpers
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns the version label to display in the REPL banner.
+    /// Strips the <c>+commitHash</c> suffix that MinVer appends to pre-release
+    /// strings, and falls back to <c>"unknown"</c> when the attribute is absent.
+    /// </summary>
+    internal static string ParseVersion(string? informational) =>
+        informational is null ? "unknown" : informational.Split('+')[0];
 
     // -----------------------------------------------------------------------
     // Help text

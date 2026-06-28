@@ -203,4 +203,15 @@ public sealed class ReplCommandTests {
         Assert.Equal(string.Empty, stderr);
         Assert.Contains("3", stdout);
     }
+
+    // -----------------------------------------------------------------------
+    // ParseVersion — version string helper
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("0.5.0-alpha.0.124+abc1234", "0.5.0-alpha.0.124")]  // strips +hash
+    [InlineData("1.0.0", "1.0.0")]                                    // no + → unchanged
+    [InlineData(null, "unknown")]                                      // null attr → fallback
+    public void ParseVersion_HandlesAllForms(string? informational, string expected) =>
+        Assert.Equal(expected, ReplCommand.ParseVersion(informational));
 }
