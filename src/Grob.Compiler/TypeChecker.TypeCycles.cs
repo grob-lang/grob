@@ -20,9 +20,12 @@ public sealed partial class TypeChecker {
     //   - GrobType.Map             (map<K,V> — empty map terminates)
     //   - Any built-in or function type
     //
-    // Back-edge detection:
-    //   - target == startType AND path has exactly one entry → E0302 (trivial self-ref)
-    //   - otherwise → E0301 (multi-type cycle, full path reported)
+    // Cycle classification:
+    //   - Back-edge target found in the path → slice the path from the first
+    //     occurrence of the target to determine the actual cycle.
+    //   - Slice length == 1 AND slice[0].TypeName == target → E0302 (trivial
+    //     self-reference: the field's own type is the cycle).
+    //   - Otherwise → E0301 (multi-type cycle; full cycle path reported).
     // -----------------------------------------------------------------------
 
     private enum TypeCycleColor { Unvisited, Visiting, Visited }
@@ -50,45 +53,61 @@ public sealed partial class TypeChecker {
         UserTypeInfo type = _userTypeRegistry.TryGet(typeName)!;
 
         foreach (ResolvedFieldInfo field in type.Fields) {
-            // Only required (no default) non-nullable struct fields participate.
-            if (!field.IsRequired) continue;
-            if (field.Kind != GrobType.Struct) continue;
-            if (field.NamedTypeName is null) continue;
-
-            string target = field.NamedTypeName;
+            // Only required (no default) non-nullable Struct fields participate.
+            if (!field.IsRequired || field.Kind != GrobType.Struct || field.NamedTypeName is null)
+                continue;
 
             // Target not registered means it had an E1001 emitted during field
             // resolution; skip to avoid a cascade.
-            if (!colors.ContainsKey(target)) continue;
+            if (!colors.TryGetValue(field.NamedTypeName, out TypeCycleColor targetColor))
+                continue;
 
             path.Add((typeName, field.Name, field.Range));
 
-            if (colors[target] == TypeCycleColor.Unvisited) {
-                WalkTypeCycle(target, colors, path);
-            } else if (colors[target] == TypeCycleColor.Visiting) {
-                // Back-edge: cycle detected.
-                if (target == typeName && path.Count == 1) {
-                    // Trivial self-reference: type A { a: A } → E0302
-                    EmitError(ErrorCatalog.E0302,
-                        $"Type '{typeName}' has a required field '{field.Name}' of its own type, "
-                      + $"which would require an infinitely large value. "
-                      + $"Use '{typeName}?' or '{typeName}[]' to break the recursion.",
-                        field.Range);
-                } else {
-                    // Multi-type cycle → E0301.  Report the full path.
-                    string cyclePath = string.Join(" → ",
-                        path.Select(p => p.TypeName).Append(target));
-                    EmitError(ErrorCatalog.E0301,
-                        $"Type cycle with no terminating field: {cyclePath}. "
-                      + "Make one of the fields nullable (T?) or a collection (T[]) to break the cycle.",
-                        path[0].FieldRange);
-                }
+            if (targetColor == TypeCycleColor.Unvisited) {
+                WalkTypeCycle(field.NamedTypeName, colors, path);
+            } else if (targetColor == TypeCycleColor.Visiting) {
+                EmitCycleError(field.NamedTypeName, path);
             }
-            // Visited: node already fully explored — no cycle through this edge.
+            // Visited: already fully explored — no cycle through this edge.
 
             path.RemoveAt(path.Count - 1);
         }
 
-        colors[typeName] = TypeCycleColor.Visited;
+        colors[typeName] = TypeCycleColor.Visited; // NOSONAR — intentional Visiting→Visited DFS completion; the first write is read by recursive sub-calls
+    }
+
+    /// <summary>
+    /// Emits E0302 (trivial self-reference) or E0301 (multi-type cycle) after a
+    /// back-edge is detected in <see cref="WalkTypeCycle"/>. The actual cycle is
+    /// determined by slicing <paramref name="path"/> from the first entry whose
+    /// <c>TypeName</c> equals <paramref name="target"/> — so a self-reference
+    /// discovered through a longer prefix (e.g. A → B → B) is correctly reported
+    /// as E0302 on B's own field, not E0301 on A's field.
+    /// </summary>
+    private void EmitCycleError(
+        string target,
+        List<(string TypeName, string FieldName, SourceRange FieldRange)> path) {
+
+        int cycleStart = path.FindIndex(e => e.TypeName == target);
+        // cycleStart is always ≥ 0: target is Visiting, so it is on the path.
+        List<(string TypeName, string FieldName, SourceRange FieldRange)> cycle =
+            path.GetRange(cycleStart, path.Count - cycleStart);
+
+        if (cycle.Count == 1) {
+            // Trivial self-reference: type T { field: T } → E0302.
+            EmitError(ErrorCatalog.E0302,
+                $"Type '{target}' has a required field '{cycle[0].FieldName}' of its own type, "
+              + $"which would require an infinitely large value. "
+              + $"Use '{target}?' or '{target}[]' to break the recursion.",
+                cycle[0].FieldRange);
+        } else {
+            // Multi-type cycle → E0301. Report the full cycle path.
+            string cyclePath = string.Join(" → ", cycle.Select(e => e.TypeName).Append(target));
+            EmitError(ErrorCatalog.E0301,
+                $"Type cycle with no terminating field: {cyclePath}. "
+              + "Make one of the fields nullable (T?) or a collection (T[]) to break the cycle.",
+                cycle[0].FieldRange);
+        }
     }
 }

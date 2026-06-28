@@ -13,7 +13,7 @@ namespace Grob.Compiler;
 ///   <see cref="GrobType.Struct"/> or <see cref="GrobType.NullableStruct"/>.</param>
 /// <param name="Range">Source range of the field declaration.</param>
 /// <param name="IsRequired"><see langword="true"/> when the field has no default value.</param>
-internal sealed record ResolvedFieldInfo(
+internal record ResolvedFieldInfo(
     string Name,
     GrobType Kind,
     string? NamedTypeName,
@@ -24,7 +24,7 @@ internal sealed record ResolvedFieldInfo(
 /// A registered user-defined type with its fully resolved field list.
 /// Populated during the pass-2 visit to <c>type</c> declarations.
 /// </summary>
-internal sealed class UserTypeInfo {
+internal class UserTypeInfo {
     public required string Name { get; init; }
     public required IReadOnlyList<ResolvedFieldInfo> Fields { get; init; }
     public required SourceRange Range { get; init; }
@@ -35,12 +35,17 @@ internal sealed class UserTypeInfo {
 /// Scoped to a single compilation unit; one instance per <see cref="TypeChecker"/>
 /// run.
 /// </summary>
-internal sealed class UserTypeRegistry {
+internal class UserTypeRegistry {
     private readonly Dictionary<string, UserTypeInfo> _types =
         new(StringComparer.Ordinal);
 
-    /// <summary>Registers <paramref name="info"/> under its <see cref="UserTypeInfo.Name"/>.</summary>
-    public void Register(UserTypeInfo info) => _types[info.Name] = info;
+    /// <summary>
+    /// Registers <paramref name="info"/> under its <see cref="UserTypeInfo.Name"/>.
+    /// When the name is already present the first registration is kept authoritative
+    /// so that duplicate-type E1102 does not displace the first definition's fields
+    /// from the phase-2.5 cycle-detection graph.
+    /// </summary>
+    public void Register(UserTypeInfo info) => _types.TryAdd(info.Name, info);
 
     /// <summary>Returns the type info for <paramref name="name"/>, or <see langword="null"/>.</summary>
     public UserTypeInfo? TryGet(string name) => _types.GetValueOrDefault(name);

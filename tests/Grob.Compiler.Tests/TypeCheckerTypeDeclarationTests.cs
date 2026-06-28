@@ -170,14 +170,13 @@ public sealed class TypeCheckerTypeDeclarationTests {
 
     [Fact]
     public void TypeDecl_DefaultedField_DoesNotParticipateInCycleWalk() {
-        // A required field without default → participates; one with default → does not.
-        // type A { b: B = ??? }  — field is optional (has default) so no cycle.
-        // We need a default that parses; use a nil literal as a placeholder.
-        // Because B is a struct type, B? would be valid; here we use B? as the type
-        // to show the optional path does not cycle.
+        // A required struct-typed field with no default participates in the cycle
+        // walk; one with a default does not. Use a self-referential struct field
+        // with a nil default to exercise the defaulted-edge path: without the
+        // isRequired guard this would fire E0302.
         DiagnosticBag bag = Check("""
-            type A {
-            x: int = 0
+            type Self {
+            me: Self = nil
             }
             """);
         Assert.False(bag.HasErrors,
@@ -189,6 +188,54 @@ public sealed class TypeCheckerTypeDeclarationTests {
     // -----------------------------------------------------------------------
 
     [Fact]
+    public void TypeDecl_ArrayFieldNestedUnknownType_EmitsE1001() {
+        // Missing[] — the array element type is unknown; E1001 must fire.
+        DiagnosticBag bag = Check("""
+            type A {
+            items: Missing[]
+            }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(8, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void TypeDecl_FunctionFieldUnknownParamType_EmitsE1001() {
+        // fn(Missing): int — the parameter type is unknown; E1001 must fire.
+        DiagnosticBag bag = Check("""
+            type A {
+            cb: fn(Missing): int
+            }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(8, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void TypeDecl_SelfRefThroughPrefix_EmitsE0302OnSelfRefType() {
+        // type A { b: B }  type B { a: B }
+        // B has a required self-ref in its own field, reached after traversing A→B.
+        // The cycle is B→B (trivial self-ref), so E0302 must fire at B's field,
+        // not E0301 at A's field.
+        DiagnosticBag bag = Check("""
+            type A {
+            b: B
+            }
+            type B {
+            a: B
+            }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0302", diag.Code);
+        Assert.Equal(5, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
+    }
+
+    [Fact]
     public void TypeDecl_FieldAnnotation_UnknownType_EmitsE1001() {
         DiagnosticBag bag = Check("""
             type X {
@@ -198,6 +245,7 @@ public sealed class TypeCheckerTypeDeclarationTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E1001", diag.Code);
         Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(4, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -214,6 +262,7 @@ public sealed class TypeCheckerTypeDeclarationTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0302", diag.Code);
         Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -232,6 +281,8 @@ public sealed class TypeCheckerTypeDeclarationTests {
             """);
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0301", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -249,6 +300,8 @@ public sealed class TypeCheckerTypeDeclarationTests {
             """);
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0301", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -262,6 +315,8 @@ public sealed class TypeCheckerTypeDeclarationTests {
             """);
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0302", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -281,6 +336,7 @@ public sealed class TypeCheckerTypeDeclarationTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E1102", diag.Code);
         Assert.Equal(4, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -296,6 +352,7 @@ public sealed class TypeCheckerTypeDeclarationTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E1102", diag.Code);
         Assert.Equal(4, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -309,6 +366,7 @@ public sealed class TypeCheckerTypeDeclarationTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E1102", diag.Code);
         Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -326,6 +384,7 @@ public sealed class TypeCheckerTypeDeclarationTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E2208", diag.Code);
         Assert.Equal(3, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -340,7 +399,12 @@ public sealed class TypeCheckerTypeDeclarationTests {
             """);
         List<Diagnostic> errors = bag.Errors.ToList();
         Assert.Equal(2, errors.Count);
-        Assert.All(errors, d => Assert.Equal("E2208", d.Code));
+        Assert.Equal("E2208", errors[0].Code);
+        Assert.Equal(4, errors[0].Range.Start.Line);
+        Assert.Equal(1, errors[0].Range.Start.Column);
+        Assert.Equal("E2208", errors[1].Code);
+        Assert.Equal(5, errors[1].Range.Start.Line);
+        Assert.Equal(1, errors[1].Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -349,17 +413,24 @@ public sealed class TypeCheckerTypeDeclarationTests {
 
     [Fact]
     public void TypeDecl_LspInvariant_IdentifierNodes_HaveNonNullDeclaration() {
+        // Use a parameter in the function body so that IdentifierExpr nodes are
+        // produced; without an identifier reference CollectIdentifiers returns an
+        // empty list and Assert.All passes vacuously.
         (CompilationUnit unit, DiagnosticBag _) = TypeCheckSource("""
             type Address {
             city: string
             country: string
             }
-            fn greet(): string {
-            return "hello"
+            fn greet(name: string): string {
+            return name
             }
             """);
         IReadOnlyList<IdentifierExpr> ids = CollectIdentifiers(unit);
-        Assert.All(ids, id => Assert.NotNull(id.Declaration));
+        Assert.NotEmpty(ids);
+        Assert.All(ids, id => {
+            Assert.NotNull(id.Declaration);
+            Assert.NotEqual(GrobType.Error, id.ResolvedType);
+        });
     }
 
     // -----------------------------------------------------------------------

@@ -134,11 +134,18 @@ public sealed partial class TypeChecker {
     /// </remarks>
     private (GrobType Kind, string? NamedTypeName) ResolveFieldAnnotationType(TypeRef typeRef) {
         // Array suffix: T[] or T[]? — cycle walk terminates at array fields (§17.1).
-        if (typeRef is ArrayTypeRef arr)
+        // Still validate the element type so that Missing[] emits E1001.
+        if (typeRef is ArrayTypeRef arr) {
+            ResolveFieldAnnotationType(arr.ElementType);
             return (arr.IsNullable ? GrobType.NullableArray : GrobType.Array, null);
+        }
 
         // Function type: fn(T…): R or (fn(T…): R)? — erased at runtime (D-326).
-        if (typeRef is FunctionTypeRef) {
+        // Validate parameter and return types so that fn(Missing): int emits E1001.
+        if (typeRef is FunctionTypeRef fnRef) {
+            foreach (TypeRef param in fnRef.ParameterTypes)
+                ResolveFieldAnnotationType(param);
+            ResolveFieldAnnotationType(fnRef.ReturnType);
             (GrobType kind, _) = ResolveTypeRefFull(typeRef);
             return (kind, null);
         }

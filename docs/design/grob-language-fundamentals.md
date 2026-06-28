@@ -1341,7 +1341,7 @@ error[E0301]: type cycle with no terminating field
   A value of type A would require a value of type B, which would
   require another value of type A, and so on without end.
 
-  To break the cycle, make one of the fields optional:
+  To break the cycle, make one of the fields nullable:
       b: B?        // nil terminates the chain
   Or use a collection type, which can be empty:
       b: B[]       // empty array terminates the chain
