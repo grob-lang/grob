@@ -53,7 +53,7 @@ before they become Sprint 6 interludes.
   reported as E0303 and a value-binding cycle must not be reported as E0301/E0302. Two
   graphs, two codes.
 - **Collision (interlude class 3).** Confirm a `type` name colliding with another
-  `type`, with an `fn`, and with a value binding is **E1102** at the **second**
+  `type`, with an `fn` and with a value binding is **E1102** at the **second**
   declaration in source order — including the **value-before-`type`** order (the D-324
   reverse-order case that was itself an interlude). Confirm **E2208** for a duplicate
   field within a declaration.
@@ -90,7 +90,7 @@ before they become Sprint 6 interludes.
 
 - **Access and assignment.** Confirm `instance.field` reads via `GetProperty`,
   `instance.field = v` writes via `SetProperty`, nested `a.b.c` resolves each step,
-  undefined field access is **E1002** at the offending step, and mutation through a
+  undefined field access is **E1002** at the offending step and mutation through a
   `readonly` binding is **E0204**.
 - **The closure-in-field escape (interlude class 4 — the deferred D-325 route). This is
   the highest-value probe in the sprint.** Confirm a closure that captures an
@@ -150,7 +150,7 @@ before they become Sprint 6 interludes.
 
 For each finding: the increment, the interlude class (1–4) or "new", the file and line,
 the observed behaviour, the expected behaviour with its corpus citation (decisions log
-wins), and severity (blocker / should-fix / note). Lead with any **D-325 closure-in-
+wins) and severity (blocker / should-fix / note). Lead with any **D-325 closure-in-
 field regression** or any **type-reference-grammar gap** — those are the two classes
 most likely to recur and most expensive if they ship. Close with an overall verdict:
 closeable, or the blocker list that must clear first.

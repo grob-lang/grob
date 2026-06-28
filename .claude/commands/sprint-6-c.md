@@ -83,7 +83,7 @@ Read, in order:
 >   references the closure** — so the struct-field route should close correctly with no
 >   new VM logic. If it does **not**, that is a D-325 regression and a finding — surface
 >   it, do not patch around it. Concerns category-4 capture only (D-296); a struct field
->   holding a top-level `fn` (no upvalues, D-321) is a separate, trivially-correct case
+>   holding a top-level `fn` (no upvalues, D-321) is a separate, trivially correct case
 >   worth a second test.
 >
 > **Sequencing note.** This is Increment C: A (declarations) → B (construction) →
@@ -134,7 +134,7 @@ D-325 closure-in-field escape verification. **No anonymous structs.**
 5. **Closure-in-field escape (D-325).** The mandatory regression: a closure stored in a
    struct field that escapes its enclosing function closes its upvalue and is callable
    through the field afterwards with no value-stack underflow. A struct field holding a
-   no-upvalue top-level `fn` as the trivially-correct companion case.
+   no-upvalue top-level `fn` as the trivially correct companion case.
 6. **Diagnostics via `ErrorCatalog` (D-308).** E1002, E0204 and the assignment-mismatch
    code raise through catalog descriptors. No literals; no invented codes.
 
@@ -173,7 +173,7 @@ Per §3.5, route each test to the project matching its kind.
   - A struct field holding a no-upvalue top-level `fn` (D-321) is callable through the
     field and is trivially correct (the companion case).
 - **Integration tests (`Grob.Integration.Tests`):**
-  - A small script constructing a value, reading and assigning its fields, and reading a
+  - A small script constructing a value, reading and assigning its fields and reading a
     nested field, runs end-to-end via `grob run`.
 
 ## Acceptance
@@ -201,7 +201,7 @@ Opus.
 Summarise: the field-access and assignment resolution and codes (E1002, E0204,
 assignment-mismatch), the `GetProperty`/`SetProperty` arms as built, the nested-access
 resolution, **the closure-in-field escape result** (closed correctly, or a surfaced
-D-325 regression), and the test files added. Note for the next chat: Increment D is
+D-325 regression) and the test files added. Note for the next chat: Increment D is
 anonymous structs — `#{ }` (`NewAnonStruct`), the internal structural type, structural
-field access, anon structs in lambdas and `.select()` projections, nested `#{ }`, and
+field access, anon structs in lambdas and `.select()` projections, nested `#{ }` and
 the `{ }` / `#{ }` / `TypeName { }` disambiguation (E2101). No `#{...}` annotation form.

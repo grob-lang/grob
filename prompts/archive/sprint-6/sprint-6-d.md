@@ -22,7 +22,7 @@ Read, in order:
    `NewAnonStruct` is present), §3.5. The §7 acceptance line names anonymous structs in
    `select()` projections specifically.
 2. `docs/design/grob-language-fundamentals.md` — the anonymous-struct literal grammar,
-   the structural-typing rule (field access is type-safe against the synthesised type),
+   the structural-typing rule (field access is type-safe against the synthesised type)
    and the brace-disambiguation rule: a bare `{ }` is **always** a block, `#{ }` is
    **always** an anonymous struct, `TypeName { }` is **always** named construction — no
    parser ambiguity.
@@ -185,9 +185,9 @@ specified machine reusing C's field-access path. No Opus carve-out.
 
 ## Hand-off
 
-Summarise: the structural-type synthesis as built, structural field resolution and its
-code, the projection path through `.select()`, the `NewAnonStruct` arm, the brace
-disambiguation and E2101, and the test files added. Note for the next chat: Increment E
+Summarise: the structural-type synthesis as built; structural field resolution and its
+code; the projection path through `.select()`; the `NewAnonStruct` arm; the brace
+disambiguation and E2101; and the test files added. Note for the next chat: Increment E
 is the sprint close — the `types.grob` smoke script exercising declarations,
 construction with defaults, nested construction, field access and assignment, a
 recursive type, a `#{ }` projection and a closure-in-field escape; the §7 acceptance;

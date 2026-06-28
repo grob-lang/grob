@@ -131,7 +131,7 @@ benchmark baseline over the settled A–D surface. No Opus carve-out.
 ## Hand-off
 
 Summarise: the `types.grob` script as built and its expected output, the §7 acceptance
-result, the earlier-gate regression check, and the fourth VM-execution baseline and its
+result, the earlier-gate regression check and the fourth VM-execution baseline and its
 gate result. Note for the next chat: Sprint 6 is closeable — the merged A–E tree is
 ready for the GPT-5.3 Codex cold-read against the Sprint 6 QA brief
 (`prompts/sprint-6/grob-sprint-6-qa.md`). Sprint 7 is error handling (`try`/`catch`,

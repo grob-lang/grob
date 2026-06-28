@@ -69,7 +69,7 @@ Read, in order:
 >   struct is value-position only (Increment D).
 > - **§17.1 required-non-nullable field-cycle detection.** A `type` declaration cannot
 >   contain a cycle of **required non-nullable named-type fields** that would produce
->   an infinitely-sized value. Walk the type-declaration graph with a standard
+>   an infinitely sized value. Walk the type-declaration graph with a standard
 >   `Unvisited`/`Visiting`/`Visited` DFS. A back-edge to a type on the DFS stack is a
 >   cycle. **What participates:** required fields whose type is a named user-defined
 >   type (including self). **What terminates (does not participate):** nullable fields
@@ -142,7 +142,7 @@ If you find yourself on `main` with edits, stop immediately and surface it.
 - **Sprint 4:** control flow and the `calculator.grob` close.
 - **Sprint 5:** functions and closures — `fn` declarations, call frames, named and
   default arguments, lambdas, natives, closures with upvalue capture, the top-level
-  initialisation state machine and narrowing, and the `functions.grob` close. All
+  initialisation state machine and narrowing and the `functions.grob` close. All
   green, QA and QA-fix landed. The post-close correctness increments and numbered
   interlude (D-320 through D-328) are merged — including the **three-pass type
   checker** (D-323, phase 1.5, E0303), **location-based upvalue closing** (D-325),
@@ -211,7 +211,7 @@ Per §3.5, route each test to the project matching its kind.
     Tree[] }` and `type Node { next: Node? }` do **not** fire (array and nullable
     terminate the walk).
   - **E1102** fires at the second declaration when a `type` name collides with another
-    `type`, with an `fn`, and with a value binding — including the value-before-`type`
+    `type`, with an `fn` and with a value binding — including the value-before-`type`
     order (the D-324 reverse-order case).
   - **E2208** fires on a duplicate field name within one declaration.
   - §3.1.1 invariant: every identifier node introduced carries a non-null
@@ -247,7 +247,7 @@ carve-out in this increment.
 
 Summarise: the registry's field representation as built, how each §9 field-annotation
 form resolves, the §17.1 DFS and its terminating rules, the E1102/E2208 checks and
-their catalog codes, the §17.1 spec-drift fix as applied, and the test files added.
+their catalog codes, the §17.1 spec-drift fix as applied and the test files added.
 Note for the next chat: Increment B is named construction and field defaults — required-
 field validation (E0103), unknown-field-at-construction at the new **E0012** (D-330,
 registered in B, count 109 → 110), the construction-site default-expression machinery

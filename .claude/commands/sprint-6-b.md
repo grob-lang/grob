@@ -117,7 +117,7 @@ If you find yourself on `main` with edits, stop immediately and surface it.
 
 - **Sprints 1–5** as in Increment A's hand-off, plus **Increment A**: the type
   registry with field types resolved through the full §9 grammar, the §17.1 cycle
-  detection (E0301/E0302), E1102 type-name collision and E2208 duplicate field, and the
+  detection (E0301/E0302), the E1102 type-name collision, the E2208 duplicate field and the
   §17.1 `E—cycle` → E0301/E0302 spec-drift fix. The registry is the surface this
   increment constructs against.
 - **Sprint 5 B's default-argument machinery** — default expressions compiled into each
@@ -216,7 +216,7 @@ in Sprint 5 B. No Opus carve-out.
 
 Summarise: the construction validation and its codes (E0103, E0012, sibling-reference),
 the E0012 registration as landed (count 110, lockstep), the default-expression emission
-as built, the `NewStruct` arm and the runtime struct value's shape, and the test files
+as built, the `NewStruct` arm, the runtime struct value's shape and the test files
 added. Note for the next chat: Increment C is field access and assignment — `.field`
 (`GetProperty`), `.field = v` (`SetProperty`), nested `a.b.c`, undefined-member (E1002),
 readonly-field mutation (E0204), **and the mandatory D-325 closure-in-field escape

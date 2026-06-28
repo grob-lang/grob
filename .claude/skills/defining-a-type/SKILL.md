@@ -6,7 +6,7 @@ description: >
   position, a new built-in type, or any feature where a value carries a type the
   checker must resolve and the VM must represent. Encodes the four failure modes that
   produced the Sprint 5 post-close interludes (type-reference-grammar gaps, conflated
-  cycle walks, non-uniform redeclaration, and lifecycle objects escaping through new
+  cycle walks, non-uniform redeclaration and lifecycle objects escaping through new
   containers) as a standing pre-flight and a closing checklist. Reuses, does not
   replace, `adding-an-opcode` and `tdd-cycle`.
 ---

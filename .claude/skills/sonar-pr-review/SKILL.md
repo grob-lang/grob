@@ -52,7 +52,7 @@ GATE=$(curl -fsS -H "Authorization: Bearer $SONAR_TOKEN" \
   "https://sonarcloud.io/api/qualitygates/project_status?projectKey=${SONAR_KEY}&pullRequest=${PR}")
 ```
 If the call fails or `.projectStatus` is absent, the PR has no analysis — **stop and say
-so** (most likely the scan has not run for this PR, or the key/PR is wrong). Otherwise
+so** (most likely the scan has not run for this PR, or the key/PR is wrong). Otherwise,
 read `.projectStatus.status` (`OK` / `ERROR`) and `.projectStatus.conditions[]`
 (`metricKey`, `actualValue`, `comparator`, `errorThreshold`, `status`).
 
@@ -126,7 +126,7 @@ issues is not done.
   analysis) stops with a one-line reason. An empty issue list from a real analysis is a
   pass; an empty issue list from a missing analysis is a bug — distinguish them via the
   Step 2 gate check.
-- **Self-hosted caveat.** On old self-hosted SonarQube Server the `pullRequest` filter on
+- **Self-hosted caveat.** On old self-hosted SonarQube Server, the `pullRequest` filter on
   `issues/search` was historically unreliable; on SonarCloud it is the supported path.
   This skill targets SonarCloud.
 - **Two tokens, do not confuse them.** A `401` here is the `SONAR_TOKEN`, which is a
