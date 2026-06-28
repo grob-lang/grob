@@ -25,10 +25,17 @@ Derive the repo once: `REPO=$(gh repo view --json nameWithOwner -q .nameWithOwne
     list.
   - **SonarCloud** (`sonarqubecloud`) posts an issue comment with the quality gate
     and a **New issues** count. The gate can pass while new issues remain — the
-    bar is **zero new issues**, not a passing gate. The comment links to
-    SonarCloud for the specifics; the same finding (for example cognitive
+    bar is **zero new issues**, not a passing gate. **Pull the specifics directly
+    with the `sonar-pr-review` skill** (it hits the SonarCloud Web API over `curl`
+    — no Docker MCP, no opening the web UI), passing it this PR number. It returns
+    each new-code issue as `severity · rule · path:line · message`, the gate
+    verdict with its failing conditions, and the new-code line/branch coverage
+    against the 90% floor (D-328). Feed each new issue into the step 2 triage; the
+    **New issues** count is the number to drive to zero. The skill **only fetches**
+    — fix-versus-push-back, including the hot-path suppression call below, stays in
+    step 2. If the skill is unavailable, the same finding (for example cognitive
     complexity over 15) is often mirrored as a CodeRabbit nitpick, which is usually
-    enough to act on without opening Sonar.
+    enough to act on; the SonarCloud comment's link is the last-resort fallback.
   - **Human reviewers** — treat their comments as higher priority than the bots.
 - **Inline review threads (with reply ids):**
   `gh api repos/$REPO/pulls/<N>/comments --jq '.[] | "\(.id)\t\(.path):\(.line // .original_line)\t\(.user.login)"'`,
@@ -38,7 +45,9 @@ Derive the repo once: `REPO=$(gh repo view --json nameWithOwner -q .nameWithOwne
 **new or still open**: threads with no reply from us, threads where a bot replied
 again after our last response, and any review posted after our last commit. Do not
 re-open or re-litigate a thread already resolved — read our prior replies and the
-commit history first.
+commit history first. Re-run `sonar-pr-review` on a follow-up too: the **New
+issues** set shrinks as fixes land, and a clean fetch (gate green, zero new issues)
+is the Sonar half of done.
 
 ## 2. Triage each finding — fix or push back
 
@@ -84,7 +93,9 @@ confirm it fails, then make it pass. Never skip the red step. Then:
 - `dotnet format whitespace Grob.slnx` before staging (the pre-commit hooks mutate
   but do not restage — running it first avoids an aborted cycle).
 - If a fix touches coverage, keep affected projects at or above the bar and note
-  any change.
+  any change. Re-run `sonar-pr-review` only after the next push has re-scanned —
+  the API reflects the **last completed analysis**, so locally-committed fixes show
+  up on the maintainer's push, not before.
 
 ## 4. Commit locally — do not push
 
@@ -106,16 +117,21 @@ Replies will post **before** the maintainer pushes, so phrase "fixed" replies as
   - pushed back: "Pushing back:" with the reason and its authority.
   - stale: "Already handled / no longer applies:" with the reason.
 - **Summary** — one top-level `gh pr comment <N> --body "..."` listing every item
-  and its disposition, plus the final build/test result.
+  and its disposition, plus the final build/test result. Include the Sonar line
+  from `sonar-pr-review`: gate verdict and **New issues** count (the target is
+  zero), so the comment records the Sonar state at the time of the pass.
 - **gh quirks:** `gh pr edit --body` fails on this repo (projectCards) — if you
   must change the PR body, use a REST `PATCH`. The token can expire mid-session; if
-  a call 401s, that is why.
+  a `gh` call 401s, that is why. A `401` from a **SonarCloud** call instead is the
+  `SONAR_TOKEN` (a different token from the `gh` one) — re-export it, do not confuse
+  the two.
 
 ## 6. Report back to Chris
 
 Give a short triage table — **fixed / pushed back / skipped-stale**, one line each —
-the local commit SHA (unpushed), and confirmation that the thread replies and the
-summary comment are posted. Remind him: the push is his, and the bots re-run on
-push, so a fresh CodeRabbit/Sonar pass will follow.
+the local commit SHA (unpushed), the Sonar state from `sonar-pr-review` (gate +
+New issues count), and confirmation that the thread replies and the summary comment
+are posted. Remind him: the push is his, and the bots re-run on push, so a fresh
+CodeRabbit/Sonar pass will follow.
 
 **Model:** Opus — this is triage and judgement, not transcription.
