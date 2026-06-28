@@ -40,9 +40,12 @@ try {
         Remove-Item $resultsDir -Recurse -Force
     }
 
-    # ExcludeByFile mirrors sonar.coverage.exclusions in
+    # Include and ExcludeByFile mirror sonar.coverage.exclusions in
     # .github/workflows/sonarcloud.yml so the local percentage tracks what
-    # SonarCloud actually measures (scaffolding entry points are excluded).
+    # SonarCloud actually measures.  Include must name the CLI assembly
+    # explicitly ('grob', OutputType=Exe) because coverlet may miss
+    # non-standard Exe assembly names without an explicit Include pattern.
+    $include = "[grob]*,[Grob.*]*"
     $excludeByFile = "**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs"
 
     $testArgs = @(
@@ -53,6 +56,7 @@ try {
         "--collect:XPlat Code Coverage",
         "--",
         "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover",
+        "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Include=$include",
         "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile=$excludeByFile"
     )
 

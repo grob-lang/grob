@@ -204,7 +204,6 @@ public sealed partial class TypeChecker {
         target.ResolvedType = symbol.Type;
         target.Declaration = symbol.DeclarationNode;
 
-        // ++/-- is int-only; float is a compile error (E0002).
         if (symbol.Type == GrobType.Float) {
             EmitError(ErrorCatalog.E0002,
                 $"Operator '{(node.Kind == IncrementKind.Increment ? "++" : "--")}' cannot be applied to type 'float'.",

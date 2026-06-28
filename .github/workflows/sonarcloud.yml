@@ -89,14 +89,17 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       # The `-- DataCollectionRunSettings...` inline arguments override the
-      # coverlet output format and apply the same file exclusions declared in
-      # sonar.coverage.exclusions above, so the Python coverage floor gate
-      # and SonarCloud measure the same in-scope denominator.
+      # coverlet output format, apply the same file exclusions declared in
+      # sonar.coverage.exclusions, and add an explicit Include so the CLI
+      # assembly (assembly name 'grob', OutputType=Exe) is instrumented.
+      # Without Include=[grob]*, coverlet's default pattern misses Exe-type
+      # assemblies with non-standard assembly names on some platforms.
       - name: Test with coverage
         run: |
           dotnet test --no-build --configuration Release \
             --collect:"XPlat Code Coverage" \
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover \
+            DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Include="[grob]*,[Grob.*]*" \
             DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile="**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs,**/bench/**"
 
       # D-328: overall in-scope line-coverage regression guard.  Aggregates

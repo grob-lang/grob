@@ -656,103 +656,21 @@ public sealed class CompilerStatementTests {
     // Compound assignment — EmitCompoundBinaryOpCode all arms
     // -----------------------------------------------------------------------
 
-    [Fact]
-    public void CompoundAssignment_IntPlusAssign_EmitsAddInt() {
-        Chunk chunk = CompileSource("""
-            x := 5
-            x += 3
-            """);
-        Assert.Contains(OpCode.AddInt, ReadOpcodes(chunk));
-    }
-
-    [Fact]
-    public void CompoundAssignment_FloatPlusAssign_EmitsAddFloat() {
-        Chunk chunk = CompileSource("""
-            x := 1.0
-            x += 2.0
-            """);
-        Assert.Contains(OpCode.AddFloat, ReadOpcodes(chunk));
-    }
-
-    [Fact]
-    public void CompoundAssignment_StringPlusAssign_EmitsConcat() {
-        Chunk chunk = CompileSource("""
-            x := "a"
-            x += "b"
-            """);
-        Assert.Contains(OpCode.Concat, ReadOpcodes(chunk));
-    }
-
-    [Fact]
-    public void CompoundAssignment_MinusAssign_EmitsSubtractInt() {
-        Chunk chunk = CompileSource("""
-            x := 10
-            x -= 3
-            """);
-        Assert.Contains(OpCode.SubtractInt, ReadOpcodes(chunk));
-    }
-
-    [Fact]
-    public void CompoundAssignment_StarAssign_EmitsMultiplyInt() {
-        Chunk chunk = CompileSource("""
-            x := 5
-            x *= 2
-            """);
-        Assert.Contains(OpCode.MultiplyInt, ReadOpcodes(chunk));
-    }
-
-    [Fact]
-    public void CompoundAssignment_SlashAssign_Int_EmitsDivideInt() {
-        Chunk chunk = CompileSource("""
-            x := 10
-            x /= 2
-            """);
-        Assert.Contains(OpCode.DivideInt, ReadOpcodes(chunk));
-    }
-
-    [Fact]
-    public void CompoundAssignment_PercentAssign_EmitsModuloInt() {
-        Chunk chunk = CompileSource("""
-            x := 7
-            x %= 3
-            """);
-        Assert.Contains(OpCode.ModuloInt, ReadOpcodes(chunk));
-    }
-
-    [Fact]
-    public void CompoundAssignment_FloatMinusAssign_EmitsSubtractFloat() {
-        Chunk chunk = CompileSource("""
-            x := 5.0
-            x -= 1.0
-            """);
-        Assert.Contains(OpCode.SubtractFloat, ReadOpcodes(chunk));
-    }
-
-    [Fact]
-    public void CompoundAssignment_FloatStarAssign_EmitsMultiplyFloat() {
-        Chunk chunk = CompileSource("""
-            x := 2.0
-            x *= 3.0
-            """);
-        Assert.Contains(OpCode.MultiplyFloat, ReadOpcodes(chunk));
-    }
-
-    [Fact]
-    public void CompoundAssignment_FloatSlashAssign_EmitsDivideFloat() {
-        Chunk chunk = CompileSource("""
-            x := 9.0
-            x /= 3.0
-            """);
-        Assert.Contains(OpCode.DivideFloat, ReadOpcodes(chunk));
-    }
-
-    [Fact]
-    public void CompoundAssignment_FloatPercentAssign_EmitsModuloFloat() {
-        Chunk chunk = CompileSource("""
-            x := 5.0
-            x %= 2.0
-            """);
-        Assert.Contains(OpCode.ModuloFloat, ReadOpcodes(chunk));
+    [Theory]
+    [InlineData("x := 5\nx += 3", OpCode.AddInt)]
+    [InlineData("x := 1.0\nx += 2.0", OpCode.AddFloat)]
+    [InlineData("x := \"a\"\nx += \"b\"", OpCode.Concat)]
+    [InlineData("x := 10\nx -= 3", OpCode.SubtractInt)]
+    [InlineData("x := 5\nx *= 2", OpCode.MultiplyInt)]
+    [InlineData("x := 10\nx /= 2", OpCode.DivideInt)]
+    [InlineData("x := 7\nx %= 3", OpCode.ModuloInt)]
+    [InlineData("x := 5.0\nx -= 1.0", OpCode.SubtractFloat)]
+    [InlineData("x := 2.0\nx *= 3.0", OpCode.MultiplyFloat)]
+    [InlineData("x := 9.0\nx /= 3.0", OpCode.DivideFloat)]
+    [InlineData("x := 5.0\nx %= 2.0", OpCode.ModuloFloat)]
+    public void CompoundAssignment_EmitsExpectedOpcode(string source, OpCode expectedOp) {
+        Chunk chunk = CompileSource(source);
+        Assert.Contains(expectedOp, ReadOpcodes(chunk));
     }
 
     [Fact]

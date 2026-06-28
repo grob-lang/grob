@@ -64,10 +64,10 @@ public sealed class RunCommand {
             _stderr.WriteLine($"error: file not found: {filePath}");
             return 1;
         } catch (UnauthorizedAccessException) {
-            WriteAccessDeniedError(filePath);
+            _stderr.WriteLine($"error: cannot read file (access denied): {filePath}");
             return 1;
         } catch (IOException ex) {
-            WriteIoError(ex.Message);
+            _stderr.WriteLine($"error: cannot read file: {ex.Message}");
             return 1;
         }
 
@@ -84,9 +84,7 @@ public sealed class RunCommand {
         Chunk chunk = GrobCompiler.Compile(unit, bag);
 
         if (bag.HasErrors) {
-            // Defensive: the compiler does not raise new errors when the type checker
-            // has already passed; this path is unreachable in practice.
-            WriteCompilerPostCheckError(bag);
+            DiagnosticFormatter.Write(bag, _stderr);
             return 1;
         }
 
@@ -123,18 +121,4 @@ public sealed class RunCommand {
         _stderr.WriteLine("Please report this as a bug at https://github.com/grob-lang/grob/issues");
     }
 
-    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(
-        Justification = "Defensive: the compiler raises no new errors after the type checker has passed; unreachable in practice.")]
-    private void WriteCompilerPostCheckError(DiagnosticBag bag) =>
-        DiagnosticFormatter.Write(bag, _stderr);
-
-    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(
-        Justification = "Requires OS file-permission manipulation to trigger; not achievable in automated tests.")]
-    private void WriteAccessDeniedError(string filePath) =>
-        _stderr.WriteLine($"error: cannot read file (access denied): {filePath}");
-
-    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(
-        Justification = "Requires an OS-level I/O fault (locked file, broken mount) to trigger; not achievable in automated tests.")]
-    private void WriteIoError(string message) =>
-        _stderr.WriteLine($"error: cannot read file: {message}");
 }
