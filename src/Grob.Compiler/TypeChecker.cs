@@ -111,6 +111,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // -----------------------------------------------------------------------
     private readonly Dictionary<string, GrobType> _narrowedTypes = new(StringComparer.Ordinal);
 
+    // -----------------------------------------------------------------------
+    // User-type registry (Sprint 6 Increment A).
+    //
+    // Populated during pass 2's visits to TypeDecl nodes (one entry per type).
+    // Read by phase 2.5's cycle-detection DFS. Scoped to the compilation unit.
+    // -----------------------------------------------------------------------
+    private readonly UserTypeRegistry _userTypeRegistry = new();
+
     /// <summary>Initialises a new <see cref="TypeChecker"/> that writes into <paramref name="diagnostics"/>.</summary>
     public TypeChecker(DiagnosticBag diagnostics) {
         ArgumentNullException.ThrowIfNull(diagnostics);
@@ -165,6 +173,10 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         foreach (AstNode item in unit.TopLevel) {
             Visit(item);
         }
+
+        // Phase 2.5 — §17.1 required-non-nullable field-cycle detection (D-287).
+        // Must run after all TypeDecl pass-2 visits so every type's fields are resolved.
+        DetectTypeCycles();
 
         _scopes.Pop();
     }
@@ -586,6 +598,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         GrobType.Function => "fn",
         GrobType.NullableFunction => "fn?",
         GrobType.NullableArray => "array?",
+        GrobType.Struct => "struct",
+        GrobType.NullableStruct => "struct?",
         _ => "unknown",
     };
 

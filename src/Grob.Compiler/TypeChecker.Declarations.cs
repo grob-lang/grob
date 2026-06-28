@@ -85,16 +85,92 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitTypeDecl(TypeDecl node) {
-        // Finalise the pass-1 provisional entry as a real binding (D-324).
+        // Finalise the pass-1 provisional entry as a real binding (D-324). Emits E1102
+        // if the name collides with any prior real binding (fn, type, value).
         FinalizeTopLevelBinding(node.Name, GrobType.Unknown, node.Range.Start, node, node.Range);
 
-        // Full type-field checking lands in Sprint 6. The one rule that applies now:
-        // a reserved identifier (formatAs, select) may not be a field name (E1103,
-        // D-320).
+        // E2208 — duplicate field name. Collect seen names; report the second occurrence.
+        HashSet<string> seenFieldNames = new(StringComparer.Ordinal);
+        List<ResolvedFieldInfo> resolvedFields = new(node.Fields.Count);
+
         foreach (TypeField field in node.Fields) {
+            // E1103 — reserved identifier may not be a field name (D-320).
             CheckReservedBindingName(field.Name, field.Range);
+
+            // E2208 — duplicate field name within this declaration.
+            if (!seenFieldNames.Add(field.Name)) {
+                EmitError(ErrorCatalog.E2208,
+                    $"Duplicate field name '{field.Name}' in type declaration '{node.Name}'.",
+                    field.Range);
+            }
+
+            // Resolve the field's type annotation through the full §9 grammar.
+            (GrobType kind, string? namedTypeName) = ResolveFieldAnnotationType(field.Type);
+            bool isRequired = field.DefaultValue is null;
+            resolvedFields.Add(new ResolvedFieldInfo(field.Name, kind, namedTypeName, field.Range, isRequired));
         }
+
+        // Register this type's resolved field list for phase 2.5 cycle detection.
+        _userTypeRegistry.Register(new UserTypeInfo {
+            Name = node.Name,
+            Fields = resolvedFields,
+            Range = node.Range,
+        });
+
         return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Resolves a field's <see cref="TypeRef"/> to a <see cref="GrobType"/> and,
+    /// when the result is a user-defined struct type, the declared type name so the
+    /// §17.1 cycle-detection DFS can follow the edge.
+    /// </summary>
+    /// <remarks>
+    /// Handles all §9 forms: array (<see cref="ArrayTypeRef"/>), function type
+    /// (<see cref="FunctionTypeRef"/>), built-in named types and user-defined named
+    /// types. For user-defined names the symbol table is consulted — valid after
+    /// pass-1 registration (D-166). An unknown name emits E1001; a name that resolves
+    /// to a non-type symbol also emits E1001.
+    /// </remarks>
+    private (GrobType Kind, string? NamedTypeName) ResolveFieldAnnotationType(TypeRef typeRef) {
+        // Array suffix: T[] or T[]? — cycle walk terminates at array fields (§17.1).
+        if (typeRef is ArrayTypeRef arr)
+            return (arr.IsNullable ? GrobType.NullableArray : GrobType.Array, null);
+
+        // Function type: fn(T…): R or (fn(T…): R)? — erased at runtime (D-326).
+        if (typeRef is FunctionTypeRef) {
+            (GrobType kind, _) = ResolveTypeRefFull(typeRef);
+            return (kind, null);
+        }
+
+        // Plain named type reference. Check built-ins first, then user-defined.
+        GrobType builtin = typeRef.Name switch {
+            "int" or "float" or "string" or "bool" or "nil" or "array" or "map" =>
+                ResolveTypeRef(typeRef),
+            _ => GrobType.Unknown,
+        };
+
+        if (builtin != GrobType.Unknown)
+            return (builtin, null);
+
+        // User-defined type: look up the symbol registered in pass 1.
+        Symbol? symbol = LookupSymbol(typeRef.Name);
+        if (symbol is null) {
+            EmitError(ErrorCatalog.E1001,
+                $"'{typeRef.Name}' is not defined.",
+                typeRef.Range);
+            return (GrobType.Error, null);
+        }
+
+        if (symbol.DeclarationNode is not TypeDecl) {
+            EmitError(ErrorCatalog.E1001,
+                $"'{typeRef.Name}' is not a type.",
+                typeRef.Range);
+            return (GrobType.Error, null);
+        }
+
+        GrobType structKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
+        return (structKind, typeRef.Name);
     }
 
     /// <inheritdoc/>
