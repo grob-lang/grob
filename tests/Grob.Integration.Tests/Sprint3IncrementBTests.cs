@@ -1,6 +1,7 @@
 using System.Text;
-using Xunit;
 using Grob.Cli;
+using Grob.Core;
+using Xunit;
 
 namespace Grob.Integration.Tests;
 
@@ -110,5 +111,39 @@ public sealed class Sprint3IncrementBTests {
         Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Equal(string.Empty, stderr);
+    }
+
+    // -----------------------------------------------------------------------
+    // DiagnosticFormatter.WriteRuntime — column path
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void WriteRuntime_WithColumn_IncludesColumnInLocation() {
+        // The compiler currently records column = 0 for all instructions, so the
+        // ex.Column > 0 branch in DiagnosticFormatter.WriteRuntime is unreachable
+        // through a compiled .grob file.  Exercise it directly with a crafted
+        // GrobRuntimeException that carries a non-zero column.
+        using var writer = new StringWriter(new StringBuilder());
+        var ex = new GrobRuntimeException("E5002", 3, 7, "integer division by zero");
+
+        DiagnosticFormatter.WriteRuntime(ex, "script.grob", writer);
+
+        string output = writer.ToString();
+        Assert.Contains("E5002", output);
+        Assert.Contains("script.grob:3:7", output);
+    }
+
+    [Fact]
+    public void WriteRuntime_WithoutColumn_OmitsColumnFromLocation() {
+        // Column = 0 → location string is "file:line" with no column suffix.
+        using var writer = new StringWriter(new StringBuilder());
+        var ex = new GrobRuntimeException("E5002", 5, "integer division by zero");
+
+        DiagnosticFormatter.WriteRuntime(ex, "script.grob", writer);
+
+        string output = writer.ToString();
+        Assert.Contains("E5002", output);
+        Assert.Contains("script.grob:5", output);
+        Assert.DoesNotContain("script.grob:5:", output);
     }
 }

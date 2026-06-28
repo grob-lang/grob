@@ -9,11 +9,11 @@
     so a developer notices a large regression before pushing. Designed for
     use as a pre-push hook (slow) — never as pre-commit (which must stay fast).
 
-    Threshold defaults to 50 — a regression floor for *overall* line coverage,
-    deliberately lower than the SonarCloud quality gate (which measures
-    *new-code* coverage at 80% and can only be computed server-side). Bump
-    the default once the overall baseline rises. Pass -Threshold 0 to emit
-    the coverage report but skip enforcement.
+    Threshold defaults to 80 — the current measured overall floor (D-328).
+    This is a regression guard on *overall* coverage; the 90% gate on *new-code*
+    coverage is enforced in CI by SonarCloud (server-side only).  Bump this
+    default as overall coverage rises.  Pass -Threshold 0 to emit the coverage
+    report but skip enforcement.
 
     Output:
       * Per-project coverage files under
@@ -23,7 +23,7 @@
 
 [CmdletBinding()]
 param(
-    [int] $Threshold = 50
+    [int] $Threshold = 80
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,9 +40,12 @@ try {
         Remove-Item $resultsDir -Recurse -Force
     }
 
-    # ExcludeByFile mirrors sonar.coverage.exclusions in
+    # Include and ExcludeByFile mirror sonar.coverage.exclusions in
     # .github/workflows/sonarcloud.yml so the local percentage tracks what
-    # SonarCloud actually measures (scaffolding entry points are excluded).
+    # SonarCloud actually measures.  Include must name the CLI assembly
+    # explicitly ('grob', OutputType=Exe) because coverlet may miss
+    # non-standard Exe assembly names without an explicit Include pattern.
+    $include = "[grob]*,[Grob.*]*"
     $excludeByFile = "**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs"
 
     $testArgs = @(
@@ -53,6 +56,7 @@ try {
         "--collect:XPlat Code Coverage",
         "--",
         "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover",
+        "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Include=$include",
         "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile=$excludeByFile"
     )
 

@@ -17,6 +17,7 @@
 - ADR-0015 — not yet allocated
 - ADR-0016 — not yet allocated
 - [ADR-0017: Error Code Stability](0017-error-code-stability.md)
+- [ADR-0018: Test-Coverage Scope and Floor](0018-coverage-scope-and-floor.md)
 
 ---
 

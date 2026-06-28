@@ -104,7 +104,7 @@ repos:
   - repo: local
     hooks:
       - id: coverage-gate
-        name: dotnet test — coverage gate (>= 50% line, ratchet up)
+        name: dotnet test — coverage gate (>= 80% overall, ratchet up)
         language: system
         entry: pwsh -NoProfile -File tooling/coverage-gate.ps1
         stages: [pre-push]

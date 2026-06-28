@@ -45,6 +45,19 @@
            Text="Security policy violation: .NET SDK $(NETCoreSdkVersion) is below the required minimum 10.0.300 (bundles runtime 10.0.8 fixing CVE-2026-32175/32177/35433/42899). Install SDK 10.0.300 or later from https://dotnet.microsoft.com/download/dotnet/10.0 ." />
   </Target>
 
+  <!-- MinVer: derive assembly/package versions from git tags (D-329).
+       MinVerMinimumMajorMinor sets the floor used when no semver tag is
+       reachable; between tags MinVer produces 0.5.0-alpha.0.{height}.
+       PrivateAssets=All keeps it out of published dependency graphs. -->
+  <PropertyGroup>
+    <MinVerMinimumMajorMinor>0.5</MinVerMinimumMajorMinor>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MinVer">
+      <PrivateAssets>All</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
   <!-- Automatically add coverlet's data collector to every test project so
        that coverage collection works without any per-project changes.
        The version is managed centrally in Directory.Packages.props. -->

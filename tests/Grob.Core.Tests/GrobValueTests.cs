@@ -509,4 +509,40 @@ public sealed class GrobValueTests {
     [Fact]
     public void FromFunction_Null_Throws() =>
         Assert.Throws<ArgumentNullException>(() => GrobValue.FromFunction(null!));
+
+    // ----- TryAccessor false paths for reference-type kinds -----
+
+    [Fact]
+    public void TryAsArray_WrongKind_ReturnsFalse() {
+        Assert.False(GrobValue.FromInt(1).TryAsArray(out _));
+    }
+
+    [Fact]
+    public void TryAsMap_WrongKind_ReturnsFalse() {
+        Assert.False(GrobValue.FromInt(1).TryAsMap(out _));
+    }
+
+    [Fact]
+    public void TryAsStruct_WrongKind_ReturnsFalse() {
+        Assert.False(GrobValue.FromInt(1).TryAsStruct(out _));
+    }
+
+    [Fact]
+    public void TryAsFunction_WrongKind_ReturnsFalse() {
+        Assert.False(GrobValue.FromInt(1).TryAsFunction(out _));
+    }
+
+    // ----- GrobArithmeticException constructors -----
+
+    [Fact]
+    public void GrobArithmeticException_TwoArgCtor_SetsColumnToZero() {
+        // The 3-argument constructor (without column) is the default-column path;
+        // verify it correctly delegates with Column = 0.
+        var ex = new GrobArithmeticException("E5002", 5, "integer division by zero");
+
+        Assert.Equal("E5002", ex.Code);
+        Assert.Equal(5, ex.Line);
+        Assert.Equal(0, ex.Column);
+        Assert.Equal("integer division by zero", ex.Message);
+    }
 }

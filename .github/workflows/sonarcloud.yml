@@ -57,6 +57,8 @@ jobs:
       # (duplications, issues, etc.).  The coverage-path glob tells Sonar
       # where coverlet will write its OpenCover XML files after the test
       # step.  GITHUB_TOKEN enables inline PR-decoration on github.com.
+      # sonar.qualitygate.wait must be passed to begin (not end) so the
+      # .NET SonarScanner honours it as an analysis property.
       - name: Begin SonarCloud scan
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -70,6 +72,7 @@ jobs:
             /d:sonar.cs.opencover.reportsPaths="**/TestResults/**/coverage.opencover.xml" \
             /d:sonar.coverage.exclusions="**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs,**/bench/**" \
             /d:sonar.test.exclusions="**/*.Tests/**" \
+            /d:sonar.qualitygate.wait=true \
             /d:sonar.issue.ignore.multicriteria="e1,e2,e3,e4" \
             /d:sonar.issue.ignore.multicriteria.e1.ruleKey="csharpsquid:S1244" \
             /d:sonar.issue.ignore.multicriteria.e1.resourceKey="src/Grob.Vm/VirtualMachine.cs" \
@@ -85,16 +88,43 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      # The `-- DataCollectionRunSettings...` inline argument overrides the
-      # coverlet output format to OpenCover XML, which is the format the
-      # SonarCloud .NET analyser understands.  Each test project emits its
-      # own coverage file under its TestResults directory; the glob above
-      # collects all of them.
+      # The `-- DataCollectionRunSettings...` inline arguments override the
+      # coverlet output format, apply the same file exclusions declared in
+      # sonar.coverage.exclusions, and add an explicit Include so the CLI
+      # assembly (assembly name 'grob', OutputType=Exe) is instrumented.
+      # Without Include=[grob]*, coverlet's default pattern misses Exe-type
+      # assemblies with non-standard assembly names on some platforms.
       - name: Test with coverage
         run: |
           dotnet test --no-build --configuration Release \
             --collect:"XPlat Code Coverage" \
-            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover \
+            DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Include="[grob]*,[Grob.*]*" \
+            DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile="**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs,**/bench/**"
+
+      # D-328: overall in-scope line-coverage regression guard.  Aggregates
+      # the OpenCover XML reports (already filtered by ExcludeByFile above)
+      # and fails the job if blended coverage drops below 80%.  This is a
+      # ratchet floor on the in-scope denominator, not the 90% new-code gate
+      # (which SonarCloud enforces server-side via sonar.qualitygate.wait).
+      - name: Check coverage floor (80%)
+        run: |
+          python3 - << 'EOF'
+          import xml.etree.ElementTree as ET, glob, sys
+          visited = total = 0
+          for f in glob.glob('**/TestResults/**/coverage.opencover.xml', recursive=True):
+              root = ET.parse(f).getroot()
+              s = root.find('Summary')
+              if s is not None:
+                  visited += int(s.get('visitedSequencePoints', 0))
+                  total   += int(s.get('numSequencePoints', 0))
+          if total == 0:
+              print('No coverage data found.', file=sys.stderr)
+              sys.exit(1)
+          pct = 100 * visited / total
+          print(f'Coverage: {pct:.1f}% ({visited}/{total} sequence points)')
+          sys.exit(0 if pct >= 80 else 1)
+          EOF
 
       # End uploads the collected analysis data to SonarCloud.  The token
       # must be supplied again because the end step authenticates

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using System.Text;
 
 using Grob.Compiler;
@@ -89,7 +90,10 @@ public sealed class ReplCommand {
     /// </summary>
     /// <returns>Always returns <c>0</c>.</returns>
     public int Run() {
-        _stdout.WriteLine("Grob 1.0.0  |  type 'exit' to quit");
+        string version = ParseVersion(typeof(ReplCommand).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion);
+        _stdout.WriteLine($"Grob {version}  |  type 'exit' to quit");
         _stdout.WriteLine();
 
         while (true) {
@@ -434,6 +438,18 @@ public sealed class ReplCommand {
         sb.Append('"');
         return sb.ToString();
     }
+
+    // -----------------------------------------------------------------------
+    // Version string helpers
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns the version label to display in the REPL banner.
+    /// Strips the <c>+commitHash</c> suffix that MinVer appends to pre-release
+    /// strings, and falls back to <c>"unknown"</c> when the attribute is absent.
+    /// </summary>
+    internal static string ParseVersion(string? informational) =>
+        informational is null ? "unknown" : informational.Split('+')[0];
 
     // -----------------------------------------------------------------------
     // Help text

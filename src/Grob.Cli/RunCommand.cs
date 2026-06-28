@@ -120,4 +120,5 @@ public sealed class RunCommand {
         _stderr.WriteLine($"error: internal error: {ex.Message}");
         _stderr.WriteLine("Please report this as a bug at https://github.com/grob-lang/grob/issues");
     }
+
 }

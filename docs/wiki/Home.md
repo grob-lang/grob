@@ -112,6 +112,7 @@ Key design decisions with full rationale.
 - [ADR-0014: Error Code Numbering Scheme](ADR/0014-error-code-numbering.md)
 - [ADR-0016: Const Means Fully Immutable](ADR/0016-const-means-fully-immutable.md) — *Superseded by D-288 and D-291*
 - [ADR-0017: Error Code Stability](ADR/0017-error-code-stability.md)
+- [ADR-0018: Test-Coverage Scope and Floor](ADR/0018-coverage-scope-and-floor.md) — Accepted, June 2026
 
 *Full set of ADRs in `docs/wiki/ADR/`. The list above tracks the published set;
 unpublished slots are reserved at the directory level.*
