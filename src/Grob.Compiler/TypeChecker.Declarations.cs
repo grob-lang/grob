@@ -172,15 +172,13 @@ public sealed partial class TypeChecker {
         // diagnostic on the assumption that the user misspelled a required field name.
         // Only the excess missing fields (beyond the unknown-field quota) are reported.
         int unknownQuota = unknownCount;
-        foreach (ResolvedFieldInfo f in typeInfo.Fields) {
-            if (f.IsRequired && !suppliedByName.ContainsKey(f.Name)) {
-                if (unknownQuota > 0) {
-                    unknownQuota--;
-                } else {
-                    EmitError(ErrorCatalog.E0103,
-                        $"Required field '{f.Name}' of type '{node.TypeName}' has no initialiser at this construction site.",
-                        node.Range);
-                }
+        foreach (ResolvedFieldInfo f in typeInfo.Fields.Where(f => f.IsRequired && !suppliedByName.ContainsKey(f.Name))) {
+            if (unknownQuota > 0) {
+                unknownQuota--;
+            } else {
+                EmitError(ErrorCatalog.E0103,
+                    $"Required field '{f.Name}' of type '{node.TypeName}' has no initialiser at this construction site.",
+                    node.Range);
             }
         }
 
@@ -212,10 +210,10 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckFieldDefaults(TypeDecl node, List<ResolvedFieldInfo> fields) {
         HashSet<string> fieldNames = fields.Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
-        foreach (TypeField field in node.Fields) {
-            if (field.DefaultValue is null) continue;
+        foreach (TypeField field in node.Fields.Where(field => field.DefaultValue is not null)) {
+            Expression defaultValue = field.DefaultValue!;
             SiblingRefWalker walker = new(fieldNames);
-            walker.Visit(field.DefaultValue);
+            walker.Visit(defaultValue);
             if (walker.SiblingRefs.Count > 0) {
                 foreach (IdentifierExpr sibRef in walker.SiblingRefs) {
                     EmitError(ErrorCatalog.E0013,
@@ -228,21 +226,21 @@ public sealed partial class TypeChecker {
                 // breaking the §3.1.1 invariant. SentinelFillWalker fills them without
                 // calling VisitIdentifier, which would emit E1001 cascade errors for the
                 // sibling field names that are not in scope at the construction site.
-                new SentinelFillWalker().Visit(field.DefaultValue);
+                new SentinelFillWalker().Visit(defaultValue);
                 continue;
             }
-            GrobType defaultType = Visit(field.DefaultValue);
+            GrobType defaultType = Visit(defaultValue);
             ResolvedFieldInfo resolved = fields.First(f => f.Name == field.Name);
             if (resolved.Kind != GrobType.Unknown && defaultType != GrobType.Error) {
                 bool isFunctionField = resolved.Kind == GrobType.Function || resolved.Kind == GrobType.NullableFunction;
-                FunctionTypeDescriptor? defaultDesc = ExpressionDescriptor(field.DefaultValue);
+                FunctionTypeDescriptor? defaultDesc = ExpressionDescriptor(defaultValue);
                 bool compatible = isFunctionField
                     ? TypesAreAssignable(defaultType, resolved.Kind, defaultDesc, resolved.FunctionDescriptor)
                     : TypesAreAssignable(defaultType, resolved.Kind);
                 if (!compatible) {
                     EmitError(ErrorCatalog.E0001,
                         $"Default value for field '{field.Name}' has type '{TypeName(defaultType)}', which is not assignable to '{TypeName(resolved.Kind)}'.",
-                        field.DefaultValue.Range);
+                        defaultValue.Range);
                 }
             }
         }
