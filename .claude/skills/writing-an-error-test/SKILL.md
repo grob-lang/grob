@@ -20,15 +20,19 @@ when a message changes.
 
 ## Step 1 — The error code
 
-Every diagnostic maps to a code in `docs/design/grob-error-codes.md` (`Exxxx`). Check
-whether a suitable code exists.
+Every diagnostic maps to a code in `docs/design/grob-error-codes.md` (`Exxxx`). This
+skill owns the gold-master pair, not the code allocation — for the code itself, defer to
+`allocating-an-error-code`, which is the single authoritative procedure.
 
-- **Reuse** an existing code if the failure is an instance of it.
-- **Register a new code** only if the failure is genuinely new. Place it in the correct
-  category range (Type `E0xxx`, Name resolution `E1xxx`, Syntax `E2xxx`, Module
-  `E3xxx`, Param/decorator `E4xxx`, Runtime `E5xxx`). Add the registry entry: code,
-  title, category, status, description, source decision. Codes are **immutable once
-  shipped** (ADR-0017) — choose carefully.
+- **Reuse** an existing code if the failure is an instance of it (the semantic-match
+  test in that skill — member access versus construction site, not surface similarity).
+- **Register a new code** only through the `allocating-an-error-code` ladder: confirm
+  nothing fits, surface the fold-versus-new judgement, get the `D-###`, then register in
+  the correct category range (Type `E0xxx`, Name resolution `E1xxx`, Syntax `E2xxx`,
+  Module `E3xxx`, Param/decorator `E4xxx`, Runtime `E5xxx`) at the next free number from
+  the live registry, in three-location lockstep with the `ErrorCatalog` descriptor. Codes
+  are **immutable once shipped** (ADR-0017) — the judgement is the slow part, the
+  mechanics are deterministic.
 
 Never emit a diagnostic with no code.
 

@@ -88,7 +88,10 @@ The sprint close. **No new language surface.**
    (D-309) and passing the two-axis gate (`Grob.BenchCheck`, D-313). Commit the JSON
    baseline.
 
-No new opcodes, no parser/AST edits, no new error codes.
+This is the close: no new language surface, no new opcodes and no new error codes. If the
+close work surfaces a genuine gap — a missing node, an opcode, a code — that is a
+stop-and-propose via `extending-the-grammar`, `adding-an-opcode` or
+`allocating-an-error-code`, not a silent edit folded into the close.
 
 ## Out of scope
 
@@ -120,7 +123,9 @@ Per §3.5, route each test to the project matching its kind.
 - The earlier close-gate scripts still run.
 - The fourth VM-execution benchmark baseline is produced from the workflow and passes
   the two-axis gate (D-313).
-- The DAG holds; error-code count unchanged at 110; the D-316 consistency gate is green.
+- The DAG holds; this increment adds no codes — confirm the error-code count is unchanged
+  against the **live** registry and the D-316 consistency gate is green, rather than
+  asserting a fixed number.
 - Coverage at or above 90% on the affected projects.
 
 ## Model

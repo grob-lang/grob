@@ -41,7 +41,12 @@ not let one's conventions leak into the other.
 - All compile-time errors collected (no cap); the VM stops on the first runtime error.
 - Error-recovering, stateless parser (D-300): `ErrorExpr`/`ErrorStmt`/`ErrorDecl`,
   cascade-suppressed via the `Error` type; every visitor handles them.
-- `OpCode` and `TokenKind` complete and defined once, never grown additively.
+- `OpCode` and `TokenKind` are closed surfaces under a wire-format stability
+  contract (ADR-0013) — grown only deliberately via `adding-an-opcode`, never
+  casually or additively-by-habit. The parser and AST carry no such contract and
+  are compiler-internal; they are closed *within an increment* as scope
+  discipline, extended via `extending-the-grammar` when a feature genuinely needs
+  a node — sanctioned and logged, never silent.
 - Typed opcodes — no runtime type checks; the type checker already proved correctness.
 - `GrobValue` is a tagged-union `readonly struct`; NaN boxing is rejected; lean on the
   .NET GC, no custom collector.
@@ -63,6 +68,7 @@ not let one's conventions leak into the other.
 ## Working procedures
 
 For repeatable jobs, follow the matching skill under `.claude/skills/`: adding an
-opcode, authoring a plugin, writing a gold-master error test, adding a stdlib function,
+opcode, extending the grammar (a parser production or AST node), authoring a plugin,
+writing a gold-master error test, allocating an error code, adding a stdlib function,
 logging a decision. For grounding .NET APIs, prefer the Microsoft Learn MCP server over
 recall.

@@ -328,6 +328,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-328 | June 2026                                                         | Tooling — quality gate        | Test coverage gets a defined scope and a CI floor. A committed exclusion set (`sonar.coverage.exclusions` + annotated `[ExcludeFromCodeCoverage]`/`.runsettings`) removes CLI IO shells (the REPL read-print loop after its eval core is extracted), `tooling/` `Main` wrappers and named defensive/unreachable branches from the denominator — each exclusion carries a reason. `RunCommand`/`DiagnosticFormatter` are NOT excluded: their 0% is an instrumentation gap (validation suite and gold masters exercise them out of the collector's sight), fixed by instrumenting, not excluding. The remaining language-implementation denominator (lexer, parser, type checker, compiler, VM, runtime, stdlib) carries a mechanical 90% line+branch floor enforced in CI, red on breach — a tripwire that triggers triage, not a target to fill. Mirrors the D-313 mechanical gate and the D-316 self-relative CI drift regime; promoted to ADR-0018. The `csharpsquid:S3776` cognitive-complexity issue on the type-checker statement-visit method is closed in the same increment: cover to pin behaviour, decompose under green. No new error code; count unchanged. Sprint 5 Increment 6, before the Codex cold-read |
 | D-329 | June 2026                                                         | Tooling — versioning          | MinVer (v7.0.0) adopted as the version-management strategy: assembly and package versions are derived from semver git tags with no hardcoded version in any `.csproj`. `MinVerMinimumMajorMinor=0.5` in `Directory.Build.props` gives pre-release builds the version `0.5.0-alpha.0.{height}` until the first semver tag. `v1.0.0` is reserved for post-Sprint-12 release. `ReplCommand` and `Program.cs` banners read `AssemblyInformationalVersionAttribute` (stripping the `+hash` suffix) so the displayed version is always in sync with the assembly. Banner tests assert format only (`Grob \d+\.\d+\.\d+`), not a literal — version-proof forever. |
 | D-330 | June 2026                                                         | Type system — construction-site diagnostics | Unknown field name at a named type construction (`TypeName { notAField: v }`) gets a dedicated code **E0012** (Type category), not a fold into E1002 (undefined member, which is member *access* — `obj.field` on an existing value). Mirrors D-318's choice of dedicated call-site codes over folding into E0003: E0012 is to construction what E0011 (unknown parameter name) is to a named call, and sits in the E00xx type block beside E0103 (missing required field at construction) and E0011. Registered in Sprint 6 Increment B through its `ErrorCatalog` descriptor (D-308); error-code count 109 → 110. Resolves the §10 gap where the spec mandated the error but cited no code |
+| D-331 | June 2026                                                         | Process / harness — closed-surface growth | Closed surfaces grow through sanctioned, logged procedures rather than hard "nevers", calibrated to whether the surface carries a stability contract. `OpCode`/`TokenKind` carry a wire-format contract (ADR-0013) — grown via `adding-an-opcode`. The parser and AST carry none (compiler-internal, never serialised) — built incrementally, closed *within an increment* as scope discipline, extended via the new `extending-the-grammar` skill; reclassified from architecture invariant to scope discipline in `AGENTS.md` and the compiler-engineer agent. Error codes carry ADR-0017 immutability — each increment declares an error-code budget, with the new `allocating-an-error-code` ladder (surface fold-vs-new, register at the next free number from the live registry, count reconciled and D-316-ratified) for the unanticipated case. Resolves the three-way harness contradiction on codes and the grammar-complete premise that Sprint 4E and 6B falsified. No new error code; count unchanged |
 
 ---
 
@@ -3595,6 +3596,65 @@ registering commit. Resolves the §10 unpinned-code gap.
 through the D-308 catalog. Counted by the D-316 gate.
 
 ---
+### D-331 — Sanctioned procedures for growing closed surfaces; the AST is not a wire-format contract (June 2026)
+
+Area: Process / harness — closed-surface growth
+Supersedes: none
+Superseded by: none
+
+**Context.** The harness asserted two hard "nevers" as settled fact: the parser and
+AST are grammar-complete from Sprint 1, and an error code is never invented (the
+increment prompt assigns it). Both assume each increment prompt has anticipated
+everything it will touch. Reality falsified both. Sprint 4E and Sprint 6B each needed a
+parser production and AST node that did not exist — the struct-construction node and its
+`ParsePostfix` hook — and Sprint 6B needed a second error code (E0013, sibling-reference)
+beyond the one (E0012) the prompt pre-assigned. With no sanctioned path for the warranted
+case, the legitimate addition surfaced as an improvised gap-fix outside any procedure.
+The three harness documents governing codes disagreed — the root `CLAUDE.md` said "stop
+for an assignment", `writing-an-error-test` said "register it yourself", `defining-a-type`
+sat between — so behaviour depended on which document was anchored to. The error-code
+count itself had drifted silently twice before (corrected 86 → 94 and 99 → 103 in the
+registry footer), confirming prompt-asserted arithmetic as the fragile part.
+
+**The decision.** Closed surfaces grow through sanctioned, logged procedures rather than
+hard "nevers", calibrated to whether the surface carries a stability contract.
+
+- The **`OpCode` enum** and **`TokenKind`** carry a real wire-format contract (ADR-0013,
+  the `.grobc` format): closed by default, grown only deliberately via `adding-an-opcode`,
+  with versioning consequences.
+- The **parser and AST** carry **no** such contract — compiler-internal, never serialised,
+  zero backward-compatibility surface. The front end is built incrementally: a feature's
+  grammar surface lands with that feature. So the parser and AST are closed *within an
+  increment* as scope discipline, extended via the new `extending-the-grammar` skill when
+  a feature genuinely needs a node. A back-filled node the spec already described is a fix
+  (commit note); a new language surface form is a `D-###`. There is no `.grobc` impact to
+  record for an AST change. The AST guardrail is reclassified from architecture invariant
+  to scope discipline in `AGENTS.md` and the compiler-engineer agent.
+- **Error codes** carry the ADR-0017 immutability contract: each increment declares an
+  **error-code budget** (the codes it expects), pre-authorising the common case. A code
+  outside the budget walks the new `allocating-an-error-code` ladder — surface the
+  fold-versus-new judgement, decide, then register at the next free number from the
+  **live** registry in three-location lockstep, the count reconciled against the live
+  total and ratified by the D-316 gate. Numbers are never taken from memory or a stale
+  prompt.
+
+Two new skills (`extending-the-grammar`, `allocating-an-error-code`) carry the procedures;
+`writing-an-error-test` defers to the latter for the code itself. The root `CLAUDE.md`
+rules, `AGENTS.md`, the compiler-engineer agent, `defining-a-type` and the unrun Sprint 6
+commands (C, D, E) are reworded from walls to paths. The merged Sprint 6 A and B prompts
+are left unchanged as the record of what was run. Throughout, the genuine judgement — new
+node versus reuse, new code versus fold — stays explicit and surfaced; only the mechanics,
+once the judgement is made, are deterministic.
+
+**Relates to ADR-0013, ADR-0017, ADR-0014, D-308, D-316, D-330, D-300.** The wire-format
+and immutability contracts are why the opcode and code surfaces keep an explicit
+allocate-and-ratify step the AST does not. D-330 (E0012 dedicated, not folded into E1002)
+is the model for the fold-versus-new judgement. The D-308 catalog and the D-316 gate carry
+code registration and the count. D-300's error-recovery contract holds for any node added
+via `extending-the-grammar`. No new error code; the count is unchanged by this decision.
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -3817,6 +3877,7 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_June 2026 — Harness remediation: D-331 added. Closed-surface growth gets sanctioned procedures calibrated to stability contracts — `OpCode`/`TokenKind` via `adding-an-opcode` (ADR-0013 wire format), parser/AST via the new `extending-the-grammar` skill (no contract, built incrementally, closed within an increment as scope discipline), error codes via the new `allocating-an-error-code` skill and a per-increment budget (ADR-0017 immutability, count reconciled against the live registry and ratified by D-316). Root `CLAUDE.md`, `AGENTS.md`, the compiler-engineer agent, `defining-a-type`, `writing-an-error-test` and the unrun Sprint 6 C/D/E commands reworded from walls to paths; merged Sprint 6 A/B left as run. No error code added; count unchanged._
 _June 2026 — Sprint 5 Increment 6 (test-coverage scope and floor): D-328 added as a full entry_
 _with matching summary index row, promoted to ADR-0018. Coverage given a committed exclusion_
 _set and a CI-enforced 90% line+branch floor on the language-implementation denominator;_

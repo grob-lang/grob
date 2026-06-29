@@ -13,12 +13,16 @@ description: >
 
 # defining-a-type
 
-Landing a type feature in Grob is type-checker, compiler-emission and VM-representation
-work over an already-parsed AST. The grammar is complete from Sprint 1 and the opcodes
-were closed in Sprint 2 — so the parser and the `OpCode` enum are never edited. What
-goes wrong is not the parts that are obviously hard; it is four specific seams that
-read as done on paper and bite at runtime. This skill is the discipline that checks
-them every time. Three of the four are lessons paid for in the Sprint 5 interludes.
+Landing a type feature in Grob is mostly type-checker, compiler-emission and
+VM-representation work over an already-parsed AST. The front end is built incrementally,
+so the parser and AST are closed *within an increment* and the `OpCode` enum is closed
+under its wire-format contract — most type increments touch neither. But a feature that
+introduces a new surface form (a construction expression, a new literal) may genuinely
+need a parser production or an AST node: that is the `extending-the-grammar` job, done
+deliberately, not a forbidden edit. What usually goes wrong is not the parts that are
+obviously hard; it is four specific seams that read as done on paper and bite at runtime.
+This skill is the discipline that checks them every time. Three of the four are lessons
+paid for in the Sprint 5 interludes.
 
 ## Before writing any code — the pre-flight
 
@@ -35,7 +39,9 @@ Before relying on the grammar:
   `T[][]`, `map<K, V>`, `fn(...): T`, grouped `(fn(): int)[]`.
 - `grep` the sample scripts and the stdlib reference for how the feature's surface is
   actually written. Every occurrence must resolve. If one does not, that is a finding —
-  surface it; do not paper over it with a special case.
+  surface it; do not paper over it with a special case. If the increment is authorised to
+  extend the grammar and the gap is a missing production or node, the route is
+  `extending-the-grammar`; if not, stop and propose first.
 - If the feature is value-position-only (an anonymous struct literal), confirm it has
   **no** annotation production and do not add one. Inferred is not annotated.
 
@@ -81,10 +87,12 @@ close, that is a D-325 regression and a finding — surface it, do not patch aro
   existing `T[]` type; a struct field of a declared type resolves to its registered
   entry. Wiring an annotation path to an existing representation introduces no new
   runtime type unless the feature genuinely is one.
-- **Opcodes are closed — wire, do not add.** The struct opcodes (`NewStruct`,
+- **Opcodes are closed — wire, do not add casually.** The struct opcodes (`NewStruct`,
   `NewAnonStruct`, `GetProperty`, `SetProperty`) and every other opcode were closed in
-  Sprint 2. Follow `adding-an-opcode`'s emit-and-dispatch-together discipline; the enum
-  step is a no-op. Reaching to add an enum case means stop and surface.
+  Sprint 2 under the wire-format contract. Follow `adding-an-opcode`'s
+  emit-and-dispatch-together discipline; for a struct feature the enum step is a no-op.
+  If a feature genuinely needs an opcode the enum lacks, that is `adding-an-opcode`'s
+  warranted path, not a casual edit — stop and surface before adding.
 - **Every value-position `[` and `{` is unchanged.** A type-annotation feature must not
   disturb value-position array literals, indexing or blocks. `{ }` is always a block,
   `#{ }` always an anonymous struct, `TypeName { }` always named construction.
@@ -92,17 +100,21 @@ close, that is a D-325 regression and a finding — surface it, do not patch aro
   node carries a non-null `ResolvedType` and a non-null `Declaration` after type
   checking — by reference (`Assert.Same`), not by value.
 
-## Diagnostics — never invent a code
+## Diagnostics — allocate through the ladder, never invent
 
 - Raise every diagnostic through its `ErrorCatalog` descriptor (D-308). The `"Exxxx"`
   string for any code appears exactly once. No literal at a call site.
-- Confirm each code against `grob-error-codes.md` before use. Most type diagnostics
-  already exist (the struct surface was specced with its codes). If a diagnostic needs a
-  code that is not listed in the increment prompt and not already registered, **stop and
-  surface** — do not invent and do not fold into an ill-fitting existing code.
-- When the increment does register a code, do it in three-location lockstep (summary
-  row, full entry, total) and cite the authorising `D-###`. The D-316 consistency gate
-  asserts catalog↔registry agreement and the count on the commit.
+- Confirm each code against the **live** `grob-error-codes.md` before use. Most type
+  diagnostics already exist (the struct surface was specced with its codes) and most are
+  in the increment's declared budget. If a diagnostic needs a code that is **not** in the
+  budget and not already registered, do not invent and do not fold into an ill-fitting
+  code: walk the `allocating-an-error-code` ladder — surface the fold-versus-new
+  judgement, get the decision, then register.
+- When the increment does register a code, do it through `allocating-an-error-code`:
+  three-location lockstep (summary row, full entry, standing total) against the live
+  registry, the `ErrorCatalog` descriptor, the count reconciled to the live total, and
+  the authorising `D-###` cited. The D-316 gate asserts catalog↔registry agreement and
+  the count on the commit.
 - When the spec prose cites a placeholder code (`E—cycle`) that the registry has since
   replaced, that is drift — correct the prose to the real code as a sanctioned mechanical
   fix, surfaced not swept.
