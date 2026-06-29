@@ -89,4 +89,19 @@ public enum GrobType {
     /// tracking awaits generics (Sprint 5); the tag is the compile-time marker only.
     /// </summary>
     NullableArray,
+
+    // ---- User-defined struct types — Sprint 6 Increment A ----
+
+    /// <summary>
+    /// A named user-defined struct type registered by a <c>type</c> declaration.
+    /// The type identity (name) is carried alongside the symbol or field entry in
+    /// the compiler; this tag is the compile-time discriminator only.
+    /// </summary>
+    Struct,
+
+    /// <summary>
+    /// Nullable named user-defined struct — the Grob <c>TypeName?</c> type.
+    /// Nil is assignable; a non-nullable <c>Struct</c> value widens to this slot.
+    /// </summary>
+    NullableStruct,
 }

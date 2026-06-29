@@ -1328,7 +1328,7 @@ a cycle. The full path is reported in the diagnostic.
 **Error message format:**
 
 ```
-error[E—cycle]: type cycle with no terminating field
+error[E0301]: type cycle with no terminating field
 
   type A {
     b: B
@@ -1341,14 +1341,15 @@ error[E—cycle]: type cycle with no terminating field
   A value of type A would require a value of type B, which would
   require another value of type A, and so on without end.
 
-  To break the cycle, make one of the fields optional:
+  To break the cycle, make one of the fields nullable:
       b: B?        // nil terminates the chain
   Or use a collection type, which can be empty:
       b: B[]       // empty array terminates the chain
 ```
 
-The error code `E—cycle` is a placeholder; a full error-code scheme is deferred
-to its own session.
+Multi-type cycles raise **E0301** (type cycle with no terminating field).
+A trivial single-type self-reference (`type A { a: A }`) raises **E0302**
+(recursive type without indirection). Both are registered in D-287.
 
 Multi-type cycle diagnostics (`A → B → C → A`) follow the same format with each
 participating field shown in declaration order and the back-edge highlighted.
