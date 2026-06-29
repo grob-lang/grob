@@ -116,6 +116,24 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>unknown field name at construction site</summary>
+    public static readonly ErrorDescriptor E0012 = new(
+        Code: "E0012",
+        Title: "unknown field name",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
+    /// <summary>field default references a sibling field of the same type</summary>
+    public static readonly ErrorDescriptor E0013 = new(
+        Code: "E0013",
+        Title: "field default references sibling field",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>nil dereference without `?.` or `??`</summary>
     public static readonly ErrorDescriptor E0101 = new(
         Code: "E0101",
@@ -1023,6 +1041,8 @@ public static class ErrorCatalog {
         E0009,
         E0010,
         E0011,
+        E0012,
+        E0013,
         E0101,
         E0102,
         E0103,

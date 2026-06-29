@@ -18,6 +18,12 @@ public sealed class Parser {
     private readonly DiagnosticBag _diagnostics;
     private int _pos;
 
+    // When false, the LeftBrace case in ParsePostfix is suppressed so that
+    // 'identifier {' is never parsed as struct construction.  Set to false
+    // in positions where '{' is unambiguously a block starter (for-in iterable,
+    // select case patterns) so those blocks are not consumed by the postfix rule.
+    private bool _allowStructLiteral = true;
+
     /// <summary>Parse a token stream into a <see cref="CompilationUnit"/>.</summary>
     /// <param name="tokens">The lexer output. Must end with an <see cref="TokenKind.Eof"/> token.</param>
     /// <param name="diagnostics">The bag every parser diagnostic is appended to.</param>
@@ -574,7 +580,12 @@ public sealed class Parser {
 
     private Expression ParseIterable() {
         SourceLocation start = Current.Location;
+        // Disable struct construction so that 'for x in xs { }' is not parsed as
+        // 'xs { }' (struct-construction expression); the '{' must open the loop body.
+        bool prevAllow = _allowStructLiteral;
+        _allowStructLiteral = false;
         Expression iter = ParseExpression();
+        _allowStructLiteral = prevAllow;
         if (Match(TokenKind.DotDot)) {
             Expression end = ParseExpression();
             Expression? step = null;
@@ -675,10 +686,15 @@ public sealed class Parser {
             }
             SourceLocation cs = Current.Location;
             Expect(TokenKind.Case, _e2001, "expected 'case' or 'default'");
+            // Disable struct construction in case patterns so that 'case y { }' is
+            // not parsed as pattern 'y { }' (struct construction) consuming the body '{}'.
+            bool prevAllow = _allowStructLiteral;
+            _allowStructLiteral = false;
             List<Expression> patterns = [ParseExpression()];
             while (Match(TokenKind.Comma)) {
                 patterns.Add(ParseExpression());
             }
+            _allowStructLiteral = prevAllow;
             BlockStmt body = ParseBlock();
             cases.Add(new CaseClause(RangeFrom(cs), patterns, body));
             SkipNewlines();
@@ -939,6 +955,31 @@ public sealed class Parser {
                         e = new SwitchExprNode(RangeBetween(e.Range.Start, rb.Location), e, arms);
                         break;
                     }
+                case TokenKind.LeftBrace when _allowStructLiteral && LooksLikeStructConstruction() && e is IdentifierExpr id: {
+                        // TypeName { field: value, … } — named struct construction.
+                        // _allowStructLiteral prevents firing in positions where '{' is
+                        // unambiguously a block starter (for-in iterable, case patterns).
+                        // LooksLikeStructConstruction() prevents firing when the content
+                        // does not match 'identifier :' or '}', catching error-recovery paths
+                        // such as 'if (a { 1 }' where '{' would otherwise steal the body.
+                        Advance(); // consume '{'
+                        SkipNewlines();
+                        List<FieldInit> fields = [];
+                        while (!Check(TokenKind.RightBrace) && !IsAtEnd) {
+                            SourceLocation fieldStart = Current.Location;
+                            Token nameToken = Expect(TokenKind.Identifier, _e2001, "expected field name");
+                            Expect(TokenKind.Colon, _e2001, "expected ':' after field name");
+                            SkipNewlines();
+                            Expression fieldValue = ParseExpression();
+                            fields.Add(new FieldInit(RangeBetween(fieldStart, fieldValue.Range.End), nameToken.Lexeme, fieldValue));
+                            if (!Match(TokenKind.Comma)) break;
+                            SkipNewlines();
+                        }
+                        SkipNewlines();
+                        Token closeBrace = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close struct construction");
+                        e = new StructConstructionExpr(RangeBetween(e.Range.Start, closeBrace.Location), id.Name, fields);
+                        break;
+                    }
                 default:
                     return e;
             }
@@ -1163,6 +1204,26 @@ public sealed class Parser {
             }
         }
         return -1;
+    }
+
+    /// <summary>
+    /// Peeks ahead from the current '{' token to decide whether it opens a
+    /// struct-construction body rather than a block. Returns <see langword="true"/>
+    /// when the tokens immediately inside look like a field initialiser
+    /// (<c>identifier ':'</c>) or an empty construction body (<c>'}'</c>).
+    /// Called only when <see cref="_allowStructLiteral"/> is already true.
+    /// </summary>
+    private bool LooksLikeStructConstruction() {
+        int i = _pos + 1; // first token inside the '{'
+        while (i < _tokens.Count && _tokens[i].Kind == TokenKind.Newline) i++;
+        if (i >= _tokens.Count) return false;
+        if (_tokens[i].Kind == TokenKind.RightBrace) return true; // empty body: T { }
+        if (_tokens[i].Kind != TokenKind.Identifier) return false;
+        // Skip optional newlines between field name and ':' (unusual but handled).
+        i++;
+        while (i < _tokens.Count && _tokens[i].Kind == TokenKind.Newline) i++;
+        if (i >= _tokens.Count) return false;
+        return _tokens[i].Kind == TokenKind.Colon;
     }
 
     private bool NextNonNewlineIs(int from, TokenKind kind) {

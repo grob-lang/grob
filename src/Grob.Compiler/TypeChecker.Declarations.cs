@@ -110,6 +110,9 @@ public sealed partial class TypeChecker {
             resolvedFields.Add(new ResolvedFieldInfo(field.Name, kind, namedTypeName, field.Range, isRequired));
         }
 
+        // Type-check field default expressions and flag sibling-field references (E0013).
+        CheckFieldDefaults(node, resolvedFields);
+
         // Register this type's resolved field list for phase 2.5 cycle detection.
         _userTypeRegistry.Register(new UserTypeInfo {
             Name = node.Name,
@@ -118,6 +121,119 @@ public sealed partial class TypeChecker {
         });
 
         return GrobType.Unknown;
+    }
+
+    // -----------------------------------------------------------------------
+    // Struct construction (§10, Sprint 6B).
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public override GrobType VisitStructConstruction(StructConstructionExpr node) {
+        Symbol? symbol = LookupSymbol(node.TypeName);
+        if (symbol is null || symbol.DeclarationNode is not TypeDecl typeDecl) {
+            // Unknown type name — visit field values so inner identifiers get §3.1.1 annotations.
+            foreach (FieldInit fi in node.Fields) Visit(fi.Value);
+            return GrobType.Error;
+        }
+
+        UserTypeInfo? typeInfo = _userTypeRegistry.TryGet(node.TypeName);
+        if (typeInfo is null) {
+            // Registered in pass 1 but not yet in the registry (cycle or ordering issue); fall back.
+            foreach (FieldInit fi in node.Fields) Visit(fi.Value);
+            return GrobType.Error;
+        }
+
+        HashSet<string> declaredNames = typeInfo.Fields.Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
+        Dictionary<string, FieldInit> suppliedByName = new(StringComparer.Ordinal);
+
+        // E0012 — unknown field name. Collect supplied names for E0103 check below.
+        int unknownCount = 0;
+        foreach (FieldInit fi in node.Fields) {
+            if (!declaredNames.Contains(fi.Name)) {
+                EmitError(ErrorCatalog.E0012,
+                    $"'{fi.Name}' is not a declared field of type '{node.TypeName}'.",
+                    fi.Range);
+                unknownCount++;
+            } else {
+                suppliedByName[fi.Name] = fi;
+            }
+        }
+
+        // E0103 — missing required field. Each unknown field absorbs one missing-field
+        // diagnostic on the assumption that the user misspelled a required field name.
+        // Only the excess missing fields (beyond the unknown-field quota) are reported.
+        int unknownQuota = unknownCount;
+        foreach (ResolvedFieldInfo f in typeInfo.Fields) {
+            if (f.IsRequired && !suppliedByName.ContainsKey(f.Name)) {
+                if (unknownQuota > 0) {
+                    unknownQuota--;
+                } else {
+                    EmitError(ErrorCatalog.E0103,
+                        $"Required field '{f.Name}' of type '{node.TypeName}' has no initialiser at this construction site.",
+                        node.Range);
+                }
+            }
+        }
+
+        // Type-check each supplied field value; set §3.1.1 annotations on inner identifiers.
+        foreach (FieldInit fi in node.Fields) {
+            GrobType valueType = Visit(fi.Value);
+            ResolvedFieldInfo? fieldInfo = typeInfo.Fields.FirstOrDefault(f => f.Name == fi.Name);
+            if (fieldInfo is not null && fieldInfo.Kind != GrobType.Unknown
+                    && valueType != GrobType.Error
+                    && !TypesAreAssignable(valueType, fieldInfo.Kind)) {
+                EmitError(ErrorCatalog.E0001,
+                    $"Cannot assign value of type '{TypeName(valueType)}' to field '{fi.Name}' of type '{TypeName(fieldInfo.Kind)}'.",
+                    fi.Value.Range);
+            }
+        }
+
+        node.ResolvedTypeDecl = typeDecl;
+        return GrobType.Struct;
+    }
+
+    /// <summary>
+    /// Type-checks each field default expression in the enclosing scope and detects
+    /// sibling-field references (E0013). Mirrors <see cref="CheckParameterDefaults"/>.
+    /// </summary>
+    private void CheckFieldDefaults(TypeDecl node, List<ResolvedFieldInfo> fields) {
+        HashSet<string> fieldNames = fields.Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
+        foreach (TypeField field in node.Fields) {
+            if (field.DefaultValue is null) continue;
+            SiblingRefWalker walker = new(fieldNames);
+            walker.Visit(field.DefaultValue);
+            if (walker.SiblingRefs.Count > 0) {
+                foreach (IdentifierExpr sibRef in walker.SiblingRefs) {
+                    EmitError(ErrorCatalog.E0013,
+                        $"Field default for '{field.Name}' may not reference sibling field '{sibRef.Name}' of type '{node.Name}'.",
+                        sibRef.Range);
+                }
+                continue; // suppress E1001 cascade for the unresolved identifier
+            }
+            GrobType defaultType = Visit(field.DefaultValue);
+            ResolvedFieldInfo resolved = fields.First(f => f.Name == field.Name);
+            if (resolved.Kind != GrobType.Unknown && defaultType != GrobType.Error
+                    && !TypesAreAssignable(defaultType, resolved.Kind)) {
+                EmitError(ErrorCatalog.E0001,
+                    $"Default value for field '{field.Name}' has type '{TypeName(defaultType)}', which is not assignable to '{TypeName(resolved.Kind)}'.",
+                    field.DefaultValue.Range);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Walks a default expression and records any <see cref="IdentifierExpr"/> nodes
+    /// whose names match a sibling field of the declaring type (E0013).
+    /// </summary>
+    private sealed class SiblingRefWalker(HashSet<string> fieldNames) : AstWalker {
+        public List<IdentifierExpr> SiblingRefs { get; } = [];
+        public override Unit VisitIdentifier(IdentifierExpr node) {
+            if (fieldNames.Contains(node.Name)) SiblingRefs.Add(node);
+            return default;
+        }
+        public override Unit VisitErrorExpr(ErrorExpr node) => default;
+        public override Unit VisitErrorStmt(ErrorStmt node) => default;
+        public override Unit VisitErrorDecl(ErrorDecl node) => default;
     }
 
     /// <summary>

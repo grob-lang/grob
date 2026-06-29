@@ -171,12 +171,13 @@ public sealed class TypeCheckerTypeDeclarationTests {
     [Fact]
     public void TypeDecl_DefaultedField_DoesNotParticipateInCycleWalk() {
         // A required struct-typed field with no default participates in the cycle
-        // walk; one with a default does not. Use a self-referential struct field
+        // walk; one with a default does not. Use a self-referential nullable field
         // with a nil default to exercise the defaulted-edge path: without the
-        // isRequired guard this would fire E0302.
+        // isRequired guard this would fire E0302. The field is nullable (Self?)
+        // so that nil is a valid default per the type rules.
         DiagnosticBag bag = Check("""
             type Self {
-            me: Self = nil
+            me: Self? = nil
             }
             """);
         Assert.False(bag.HasErrors,
