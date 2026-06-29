@@ -53,7 +53,9 @@ Read, in order:
 >   names and value types — there is no prior declaration. The compiler emits the field
 >   name/value pairs then `NewAnonStruct` with the field count; the VM builds the
 >   anonymous-struct value. `NewAnonStruct` already exists in the closed enum (Sprint
->   2 A) — wire its emission and dispatch; do not add an enum case.
+>   2 A) — wire its emission and dispatch; the enum step is a no-op. A genuinely needed
+>   new opcode would be `adding-an-opcode`'s warranted path, surfaced first — this
+>   increment needs none.
 > - **Structural type — type-safe access.** Field access on an anonymous struct resolves
 >   against the **synthesised structural type**: `p.name` is type-safe when `name` is a
 >   field of the literal; an undefined field is the structural-access code (E1002 or a
@@ -76,8 +78,11 @@ Read, in order:
 > - **No `#{...}` annotation form — do not add one.** An anonymous struct appears in
 >   **value position only** and its type is **inferred** from the literal. There is no
 >   `field: #{...}` or `x: #{...} := ...` type-reference production, and none is to be
->   added — the §9 grammar is complete (D-327). An implementer reaching to admit
->   `#{...}` as a `TypePrimary` **stops and surfaces**. (Where an anonymous-struct value
+>   added — D-327 settled the §9 type-reference grammar and deliberately excludes a
+>   `#{...}` production. This is a decision-backed prohibition, not a general
+>   completeness claim: an implementer reaching to admit `#{...}` as a `TypePrimary`
+>   **stops and surfaces** — `extending-the-grammar` does not override a settled
+>   decision. (Where an anonymous-struct value
 >   needs a name, it is bound by inference: `p := #{ ... }`.)
 >
 > **Sequencing note.** This is Increment D: A (declarations) → B (construction) →
@@ -130,13 +135,18 @@ increment.**
    raise through catalog descriptors. No literals; no invented codes; no `#{...}`
    annotation form.
 
-No new opcodes beyond wiring the closed-enum `NewAnonStruct`, no parser or AST edits.
+This increment wires the closed-enum `NewAnonStruct` and synthesises the structural type
+over already-parsed nodes; it adds no grammar. If you find it needs a parser production
+or an AST node, stop and propose via `extending-the-grammar` — but note D-327 forbids a
+`#{...}` annotation production, so that specific node is off the table.
 
 ## Out of scope
 
 The `types.grob` smoke script, the §7 acceptance run and the benchmark baseline
-(Increment E). Do not edit the parser, the AST or the `OpCode` enum. Do not add a
-`#{...}` type-annotation production.
+(Increment E). This increment touches neither the grammar nor the enum; if you find it
+needs a node or an opcode, stop and propose via `extending-the-grammar` or
+`adding-an-opcode` rather than editing silently. A `#{...}` type-annotation production is
+forbidden by D-327 — do not add one.
 
 ## Tests
 
@@ -174,7 +184,10 @@ Per §3.5, route each test to the project matching its kind.
   projections; nested `#{ }` resolves; the brace forms disambiguate with E2101 where a
   bare `{ }` was misused; no `#{...}` annotation form exists.
 - The §3.1.1 invariant holds; the DAG holds; diagnostics raise through catalog
-  descriptors; no literals, no invented codes; error-code count unchanged at 110.
+  descriptors; no literals, no invented codes. Error-code budget: this increment adds no
+  codes (E2101 and the structural-access code already exist); confirm the count is
+  unchanged against the **live** registry and the D-316 gate is green, rather than
+  asserting a fixed number.
 - Coverage at or above 90% on the affected projects.
 
 ## Model

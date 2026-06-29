@@ -36,7 +36,11 @@ These are not preferences. Breaking one is a defect even if the tests pass:
 4. **All compile-time errors collected, no cap; VM stops on first runtime error.**
 5. **Error-recovering, stateless parser** (D-300) with the exact synchronisation set
    and the three error-node kinds; every visitor handles them.
-6. **`OpCode` and `TokenKind` complete and defined once**, never grown additively.
+6. **`OpCode` and `TokenKind` are closed surfaces under a wire-format contract**
+   (ADR-0013) — grown only deliberately via `adding-an-opcode`, never casually. The
+   parser and AST carry no such contract; they are closed *within an increment* as scope
+   discipline and extended via `extending-the-grammar` when a feature genuinely needs a
+   node — sanctioned and logged, never silent.
 7. **Typed opcodes, no runtime type checks** — the type checker already proved it.
 8. **`GrobValue` is a tagged-union `readonly struct`; NaN boxing is rejected;** lean
    on the .NET GC, no custom collector.
@@ -53,6 +57,13 @@ These are not preferences. Breaking one is a defect even if the tests pass:
 - **Decide assembly ownership** for any new type before adding it. If you reach for a
   new project reference, stop — it is almost always a DAG violation; the type you want
   belongs in `Grob.Core`.
+- **Growing a closed surface is a procedure, not a wall.** Need an opcode the enum
+  lacks → `adding-an-opcode`. Need a parser production or AST node a feature genuinely
+  requires → `extending-the-grammar` (the front end is built incrementally; this is a
+  real job, not a forbidden edit). Need a diagnostic code outside the increment's budget
+  → `allocating-an-error-code`. Each keeps the design judgement explicit and surfaced; an
+  increment never grows a surface silently, and an unauthorised one stops and proposes
+  first.
 - **TDD strictly.** Red, green, refactor. Test first, watch it fail for the expected
   reason, write the minimum to pass, refactor. The only exceptions are TDD-awkward
   structural work (solution skeleton, csproj generation, directory scaffolding) — name

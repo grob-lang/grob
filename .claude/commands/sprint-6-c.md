@@ -58,9 +58,11 @@ Read, in order:
 >   preceding step: `a` has type `A`, `A.b` has type `B`, `B.c` has type `C`. Each step
 >   is its own `GetProperty`. An undefined step is **E1002** at that step. Nested
 >   assignment (`a.b.c = v`) reads `a.b` then `SetProperty` on the final field.
-> - **No new opcodes.** `GetProperty` and `SetProperty` already exist in the closed
->   enum (Sprint 2 A). This increment writes their emission and dispatch arms. If you
->   reach to add an enum case, stop and surface.
+> - **No new opcodes for this increment.** `GetProperty` and `SetProperty` already exist
+>   in the closed enum (Sprint 2 A). This increment writes their emission and dispatch
+>   arms; the enum step is a no-op. If you find a feature genuinely needs an opcode the
+>   enum lacks, that is `adding-an-opcode`'s warranted path — stop and surface before
+>   adding, do not edit casually.
 >
 > **The closure-in-field escape — mandatory regression (D-325), NOT optional.** A
 > struct field can now hold a closure value. D-325 made upvalue closing **location-
@@ -138,14 +140,18 @@ D-325 closure-in-field escape verification. **No anonymous structs.**
 6. **Diagnostics via `ErrorCatalog` (D-308).** E1002, E0204 and the assignment-mismatch
    code raise through catalog descriptors. No literals; no invented codes.
 
-No new opcodes beyond wiring the closed-enum `GetProperty`/`SetProperty`, no parser or
-AST edits, no anonymous structs.
+This increment is back-end wiring over already-parsed nodes; it wires the closed-enum
+`GetProperty`/`SetProperty` and adds no grammar. If you find it needs a parser production
+or an AST node, that is a stop-and-propose via `extending-the-grammar`, not a silent
+edit. No anonymous structs.
 
 ## Out of scope
 
 Anonymous structs, `NewAnonStruct`, structural typing and the brace-disambiguation
-diagnostic (Increment D). The smoke script and benchmark baseline (Increment E). Do not
-edit the parser, the AST or the `OpCode` enum.
+diagnostic (Increment D). The smoke script and benchmark baseline (Increment E). This
+increment touches neither the grammar nor the enum; if you find it needs a node or an
+opcode, stop and propose via `extending-the-grammar` or `adding-an-opcode` rather than
+editing silently.
 
 ## Tests
 
@@ -184,7 +190,10 @@ Per §3.5, route each test to the project matching its kind.
 - **The D-325 closure-in-field escape closes correctly with no value-stack underflow**
   and is callable through the field after the enclosing frame returns.
 - The §3.1.1 invariant holds; the DAG holds; diagnostics raise through catalog
-  descriptors; no literals, no invented codes; error-code count unchanged at 110.
+  descriptors; no literals, no invented codes. Error-code budget: this increment adds no
+  codes (it reuses E1002, E0204 and the assignment-mismatch code); confirm the count is
+  unchanged against the **live** registry and the D-316 gate is green, rather than
+  asserting a fixed number.
 - Coverage at or above 90% on the affected projects.
 
 ## Model
