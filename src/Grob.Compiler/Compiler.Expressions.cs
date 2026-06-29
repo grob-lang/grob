@@ -800,7 +800,11 @@ public sealed partial class Compiler {
             Visit(value);
         }
 
-        byte typeIndex = _chunk.AddStructType(new StructTypeDescriptor(typeDecl.Name, fieldNames));
+        // Cache per-chunk to avoid repeated registration of the same type (256-slot limit).
+        if (!_structTypeIndices.TryGetValue(typeDecl, out byte typeIndex)) {
+            typeIndex = _chunk.AddStructType(new StructTypeDescriptor(typeDecl.Name, fieldNames));
+            _structTypeIndices[typeDecl] = typeIndex;
+        }
         _chunk.WriteOpCode(OpCode.NewStruct, line);
         _chunk.WriteByte(typeIndex, line);
         return null;

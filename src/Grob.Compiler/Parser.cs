@@ -584,8 +584,12 @@ public sealed class Parser {
         // 'xs { }' (struct-construction expression); the '{' must open the loop body.
         bool prevAllow = _allowStructLiteral;
         _allowStructLiteral = false;
-        Expression iter = ParseExpression();
-        _allowStructLiteral = prevAllow;
+        Expression iter;
+        try {
+            iter = ParseExpression();
+        } finally {
+            _allowStructLiteral = prevAllow;
+        }
         if (Match(TokenKind.DotDot)) {
             Expression end = ParseExpression();
             Expression? step = null;
@@ -690,11 +694,15 @@ public sealed class Parser {
             // not parsed as pattern 'y { }' (struct construction) consuming the body '{}'.
             bool prevAllow = _allowStructLiteral;
             _allowStructLiteral = false;
-            List<Expression> patterns = [ParseExpression()];
-            while (Match(TokenKind.Comma)) {
-                patterns.Add(ParseExpression());
+            List<Expression> patterns;
+            try {
+                patterns = [ParseExpression()];
+                while (Match(TokenKind.Comma)) {
+                    patterns.Add(ParseExpression());
+                }
+            } finally {
+                _allowStructLiteral = prevAllow;
             }
-            _allowStructLiteral = prevAllow;
             BlockStmt body = ParseBlock();
             cases.Add(new CaseClause(RangeFrom(cs), patterns, body));
             SkipNewlines();
@@ -968,6 +976,7 @@ public sealed class Parser {
                         while (!Check(TokenKind.RightBrace) && !IsAtEnd) {
                             SourceLocation fieldStart = Current.Location;
                             Token nameToken = Expect(TokenKind.Identifier, _e2001, "expected field name");
+                            SkipNewlines();
                             Expect(TokenKind.Colon, _e2001, "expected ':' after field name");
                             SkipNewlines();
                             Expression fieldValue = ParseExpression();

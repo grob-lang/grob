@@ -429,7 +429,10 @@ public sealed class TypeCheckerTypeDeclarationTests {
         IReadOnlyList<IdentifierExpr> ids = CollectIdentifiers(unit);
         Assert.NotEmpty(ids);
         Assert.All(ids, id => {
+            // D-311: Declaration is never null after type-check. Error paths use
+            // UnresolvedDecl.Instance as the sentinel rather than null.
             Assert.NotNull(id.Declaration);
+            Assert.NotSame(UnresolvedDecl.Instance, id.Declaration);
             Assert.NotEqual(GrobType.Error, id.ResolvedType);
         });
     }

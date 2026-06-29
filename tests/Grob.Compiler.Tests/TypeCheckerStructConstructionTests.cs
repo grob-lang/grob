@@ -65,6 +65,7 @@ public sealed class TypeCheckerStructConstructionTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0103", diag.Code);
         Assert.Equal(5, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -109,8 +110,13 @@ public sealed class TypeCheckerStructConstructionTests {
             """);
 
         // Both unknown fields must be reported — never stops at first.
-        Assert.Equal(2, bag.Errors.Count());
-        Assert.All(bag.Errors, d => Assert.Equal("E0012", d.Code));
+        List<Diagnostic> errors = bag.Errors.ToList();
+        Assert.Equal(2, errors.Count);
+        Assert.All(errors, d => Assert.Equal("E0012", d.Code));
+        Assert.Equal(4, errors[0].Range.Start.Line);
+        Assert.Equal(24, errors[0].Range.Start.Column);  // 'typo'
+        Assert.Equal(4, errors[1].Range.Start.Line);
+        Assert.Equal(35, errors[1].Range.Start.Column);  // 'another'
     }
 
     [Fact]
@@ -123,10 +129,15 @@ public sealed class TypeCheckerStructConstructionTests {
             readonly c := Config { typo: 99 }
             """);
 
-        // E0012 for the unknown field, E0103 for the missing required field.
-        Assert.Equal(2, bag.Errors.Count());
-        Assert.Contains(bag.Errors, d => d.Code == "E0012");
-        Assert.Contains(bag.Errors, d => d.Code == "E0103");
+        // E0012 for the unknown field, E0103 for the excess missing required field.
+        List<Diagnostic> errors = bag.Errors.ToList();
+        Assert.Equal(2, errors.Count);
+        Diagnostic e0012 = Assert.Single(errors, d => d.Code == "E0012");
+        Diagnostic e0103 = Assert.Single(errors, d => d.Code == "E0103");
+        Assert.Equal(5, e0012.Range.Start.Line);
+        Assert.Equal(24, e0012.Range.Start.Column);  // 'typo' on line 5
+        Assert.Equal(5, e0103.Range.Start.Line);
+        Assert.Equal(15, e0103.Range.Start.Column);  // 'Config' construction expression
     }
 
     // -----------------------------------------------------------------------
@@ -145,6 +156,7 @@ public sealed class TypeCheckerStructConstructionTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0013", diag.Code);
         Assert.Equal(3, diag.Range.Start.Line);
+        Assert.Equal(17, diag.Range.Start.Column);  // 'host' identifier in the default expression
     }
 
     [Fact]
@@ -176,6 +188,7 @@ public sealed class TypeCheckerStructConstructionTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E2102", diag.Code);
         Assert.Equal(4, diag.Range.Start.Line);
+        Assert.Equal(7, diag.Range.Start.Column);  // 'Config' inside print(...)
     }
 
     // -----------------------------------------------------------------------
@@ -217,12 +230,73 @@ public sealed class TypeCheckerStructConstructionTests {
         collector.Visit(unit);
 
         foreach (IdentifierExpr id in collector.Identifiers) {
-            // ResolvedType must never be the default GrobType.Unknown after a successful parse.
-            // Error nodes get GrobType.Error; resolved nodes get their concrete type.
+            // ResolvedType must never be Unknown after a successful parse (§3.1.1).
+            // Resolved identifiers carry a concrete type; error paths carry GrobType.Error.
             Assert.True(id.ResolvedType != GrobType.Unknown || bag.HasErrors,
                 $"Identifier '{id.Name}' at {id.Range} has UnknownType after type-check.");
+            // D-311: Declaration is never null after type-check; error paths use the
+            // UnresolvedDecl.Instance sentinel rather than null.
+            Assert.NotSame(UnresolvedDecl.Instance, id.Declaration);
             Assert.NotNull(id.Declaration);
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Function-typed field descriptor assignability (D-326 / F8)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void TypeDecl_FunctionFieldDefault_WrongReturnType_EmitsE0001() {
+        // fn(): string default on an fn(): int field — structurally incompatible (D-326).
+        DiagnosticBag bag = Check("""
+            type X {
+            cb: fn(): int = () => "wrong"
+            }
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+    }
+
+    [Fact]
+    public void TypeDecl_FunctionFieldDefault_CorrectSignature_NoError() {
+        DiagnosticBag bag = Check("""
+            type X {
+            cb: fn(): int = () => 42
+            }
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    [Fact]
+    public void StructConstruction_FunctionFieldValue_WrongSignature_EmitsE0001() {
+        // Supplying fn(): string for an fn(): int field — structurally incompatible (D-326).
+        DiagnosticBag bag = Check("""
+            type X {
+            cb: fn(): int
+            }
+            readonly x := X { cb: () => "wrong" }
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", diag.Code);
+        Assert.Equal(4, diag.Range.Start.Line);
+    }
+
+    [Fact]
+    public void StructConstruction_FunctionFieldValue_CorrectSignature_NoError() {
+        DiagnosticBag bag = Check("""
+            type X {
+            cb: fn(): int
+            }
+            readonly x := X { cb: () => 42 }
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
     }
 
     // -----------------------------------------------------------------------

@@ -105,9 +105,9 @@ public sealed partial class TypeChecker {
             }
 
             // Resolve the field's type annotation through the full §9 grammar.
-            (GrobType kind, string? namedTypeName) = ResolveFieldAnnotationType(field.Type);
+            (GrobType kind, string? namedTypeName, FunctionTypeDescriptor? fnDesc) = ResolveFieldAnnotationType(field.Type);
             bool isRequired = field.DefaultValue is null;
-            resolvedFields.Add(new ResolvedFieldInfo(field.Name, kind, namedTypeName, field.Range, isRequired));
+            resolvedFields.Add(new ResolvedFieldInfo(field.Name, kind, namedTypeName, field.Range, isRequired, fnDesc));
         }
 
         // Type-check field default expressions and flag sibling-field references (E0013).
@@ -130,8 +130,17 @@ public sealed partial class TypeChecker {
     /// <inheritdoc/>
     public override GrobType VisitStructConstruction(StructConstructionExpr node) {
         Symbol? symbol = LookupSymbol(node.TypeName);
-        if (symbol is null || symbol.DeclarationNode is not TypeDecl typeDecl) {
-            // Unknown type name — visit field values so inner identifiers get §3.1.1 annotations.
+        if (symbol is null) {
+            EmitError(ErrorCatalog.E1001,
+                $"'{node.TypeName}' is not defined.",
+                node.Range);
+            foreach (FieldInit fi in node.Fields) Visit(fi.Value);
+            return GrobType.Error;
+        }
+        if (symbol.DeclarationNode is not TypeDecl typeDecl) {
+            EmitError(ErrorCatalog.E1001,
+                $"'{node.TypeName}' is not a type.",
+                node.Range);
             foreach (FieldInit fi in node.Fields) Visit(fi.Value);
             return GrobType.Error;
         }
@@ -179,12 +188,17 @@ public sealed partial class TypeChecker {
         foreach (FieldInit fi in node.Fields) {
             GrobType valueType = Visit(fi.Value);
             ResolvedFieldInfo? fieldInfo = typeInfo.Fields.FirstOrDefault(f => f.Name == fi.Name);
-            if (fieldInfo is not null && fieldInfo.Kind != GrobType.Unknown
-                    && valueType != GrobType.Error
-                    && !TypesAreAssignable(valueType, fieldInfo.Kind)) {
-                EmitError(ErrorCatalog.E0001,
-                    $"Cannot assign value of type '{TypeName(valueType)}' to field '{fi.Name}' of type '{TypeName(fieldInfo.Kind)}'.",
-                    fi.Value.Range);
+            if (fieldInfo is not null && fieldInfo.Kind != GrobType.Unknown && valueType != GrobType.Error) {
+                bool isFunctionField = fieldInfo.Kind == GrobType.Function || fieldInfo.Kind == GrobType.NullableFunction;
+                FunctionTypeDescriptor? valueDesc = ExpressionDescriptor(fi.Value);
+                bool compatible = isFunctionField
+                    ? TypesAreAssignable(valueType, fieldInfo.Kind, valueDesc, fieldInfo.FunctionDescriptor)
+                    : TypesAreAssignable(valueType, fieldInfo.Kind);
+                if (!compatible) {
+                    EmitError(ErrorCatalog.E0001,
+                        $"Cannot assign value of type '{TypeName(valueType)}' to field '{fi.Name}' of type '{TypeName(fieldInfo.Kind)}'.",
+                        fi.Value.Range);
+                }
             }
         }
 
@@ -208,17 +222,48 @@ public sealed partial class TypeChecker {
                         $"Field default for '{field.Name}' may not reference sibling field '{sibRef.Name}' of type '{node.Name}'.",
                         sibRef.Range);
                 }
-                continue; // suppress E1001 cascade for the unresolved identifier
+                // §3.1.1: mark all identifiers in this default expression with error
+                // sentinels rather than skipping Visit entirely. A bare `continue` here
+                // would leave identifier nodes with null ResolvedType/Declaration,
+                // breaking the §3.1.1 invariant. SentinelFillWalker fills them without
+                // calling VisitIdentifier, which would emit E1001 cascade errors for the
+                // sibling field names that are not in scope at the construction site.
+                new SentinelFillWalker().Visit(field.DefaultValue);
+                continue;
             }
             GrobType defaultType = Visit(field.DefaultValue);
             ResolvedFieldInfo resolved = fields.First(f => f.Name == field.Name);
-            if (resolved.Kind != GrobType.Unknown && defaultType != GrobType.Error
-                    && !TypesAreAssignable(defaultType, resolved.Kind)) {
-                EmitError(ErrorCatalog.E0001,
-                    $"Default value for field '{field.Name}' has type '{TypeName(defaultType)}', which is not assignable to '{TypeName(resolved.Kind)}'.",
-                    field.DefaultValue.Range);
+            if (resolved.Kind != GrobType.Unknown && defaultType != GrobType.Error) {
+                bool isFunctionField = resolved.Kind == GrobType.Function || resolved.Kind == GrobType.NullableFunction;
+                FunctionTypeDescriptor? defaultDesc = ExpressionDescriptor(field.DefaultValue);
+                bool compatible = isFunctionField
+                    ? TypesAreAssignable(defaultType, resolved.Kind, defaultDesc, resolved.FunctionDescriptor)
+                    : TypesAreAssignable(defaultType, resolved.Kind);
+                if (!compatible) {
+                    EmitError(ErrorCatalog.E0001,
+                        $"Default value for field '{field.Name}' has type '{TypeName(defaultType)}', which is not assignable to '{TypeName(resolved.Kind)}'.",
+                        field.DefaultValue.Range);
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// Stamps every <see cref="IdentifierExpr"/> in a sub-tree with the D-311 error
+    /// sentinels (<see cref="GrobType.Error"/> / <see cref="UnresolvedDecl.Instance"/>)
+    /// so the §3.1.1 invariant holds after an E0013 error path without calling
+    /// <see cref="TypeChecker.VisitIdentifier"/> (which would emit E1001 cascades for
+    /// sibling field names that are not in scope at the construction site).
+    /// </summary>
+    private sealed class SentinelFillWalker : AstWalker {
+        public override Unit VisitIdentifier(IdentifierExpr node) {
+            node.ResolvedType = GrobType.Error;
+            node.Declaration = UnresolvedDecl.Instance;
+            return default;
+        }
+        public override Unit VisitErrorExpr(ErrorExpr node) => default;
+        public override Unit VisitErrorStmt(ErrorStmt node) => default;
+        public override Unit VisitErrorDecl(ErrorDecl node) => default;
     }
 
     /// <summary>
@@ -248,22 +293,25 @@ public sealed partial class TypeChecker {
     /// pass-1 registration (D-166). An unknown name emits E1001; a name that resolves
     /// to a non-type symbol also emits E1001.
     /// </remarks>
-    private (GrobType Kind, string? NamedTypeName) ResolveFieldAnnotationType(TypeRef typeRef) {
+    private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor)
+        ResolveFieldAnnotationType(TypeRef typeRef) {
         // Array suffix: T[] or T[]? — cycle walk terminates at array fields (§17.1).
         // Still validate the element type so that Missing[] emits E1001.
         if (typeRef is ArrayTypeRef arr) {
             ResolveFieldAnnotationType(arr.ElementType);
-            return (arr.IsNullable ? GrobType.NullableArray : GrobType.Array, null);
+            return (arr.IsNullable ? GrobType.NullableArray : GrobType.Array, null, null);
         }
 
         // Function type: fn(T…): R or (fn(T…): R)? — erased at runtime (D-326).
         // Validate parameter and return types so that fn(Missing): int emits E1001.
+        // Also resolve the full structural descriptor (D-326) so CheckFieldDefaults and
+        // VisitStructConstruction can perform descriptor-aware assignability checks.
         if (typeRef is FunctionTypeRef fnRef) {
             foreach (TypeRef param in fnRef.ParameterTypes)
                 ResolveFieldAnnotationType(param);
             ResolveFieldAnnotationType(fnRef.ReturnType);
-            (GrobType kind, _) = ResolveTypeRefFull(typeRef);
-            return (kind, null);
+            (GrobType kind, FunctionTypeDescriptor? fnDesc) = ResolveTypeRefFull(typeRef);
+            return (kind, null, fnDesc);
         }
 
         // Plain named type reference. Check built-ins first, then user-defined.
@@ -274,7 +322,7 @@ public sealed partial class TypeChecker {
         };
 
         if (builtin != GrobType.Unknown)
-            return (builtin, null);
+            return (builtin, null, null);
 
         // User-defined type: look up the symbol registered in pass 1.
         Symbol? symbol = LookupSymbol(typeRef.Name);
@@ -282,18 +330,18 @@ public sealed partial class TypeChecker {
             EmitError(ErrorCatalog.E1001,
                 $"'{typeRef.Name}' is not defined.",
                 typeRef.Range);
-            return (GrobType.Error, null);
+            return (GrobType.Error, null, null);
         }
 
         if (symbol.DeclarationNode is not TypeDecl) {
             EmitError(ErrorCatalog.E1001,
                 $"'{typeRef.Name}' is not a type.",
                 typeRef.Range);
-            return (GrobType.Error, null);
+            return (GrobType.Error, null, null);
         }
 
         GrobType structKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-        return (structKind, typeRef.Name);
+        return (structKind, typeRef.Name, null);
     }
 
     /// <inheritdoc/>
