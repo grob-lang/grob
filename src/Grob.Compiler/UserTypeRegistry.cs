@@ -13,12 +13,18 @@ namespace Grob.Compiler;
 ///   <see cref="GrobType.Struct"/> or <see cref="GrobType.NullableStruct"/>.</param>
 /// <param name="Range">Source range of the field declaration.</param>
 /// <param name="IsRequired"><see langword="true"/> when the field has no default value.</param>
+/// <param name="FunctionDescriptor">Structural descriptor for the field's function type
+///   when <paramref name="Kind"/> is <see cref="GrobType.Function"/> or
+///   <see cref="GrobType.NullableFunction"/>; <see langword="null"/> otherwise.
+///   Used by the type checker to enforce structural compatibility (D-326) for function-
+///   typed field defaults and construction values.</param>
 internal record ResolvedFieldInfo(
     string Name,
     GrobType Kind,
     string? NamedTypeName,
     SourceRange Range,
-    bool IsRequired);
+    bool IsRequired,
+    FunctionTypeDescriptor? FunctionDescriptor = null);
 
 /// <summary>
 /// A registered user-defined type with its fully resolved field list.

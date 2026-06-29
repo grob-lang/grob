@@ -69,6 +69,19 @@ public sealed partial class TypeChecker {
             node.Declaration = UnresolvedDecl.Instance; // §3.1.1 invariant: Declaration is never null after type-check (D-311).
             return GrobType.Error;
         }
+        // E2102 — a type name used bare in expression position without the required
+        // '{ }' construction body (§10). The StructConstructionExpr parser handles the
+        // brace case; reaching VisitIdentifier for a TypeDecl symbol means the braces
+        // were omitted.
+        if (symbol.DeclarationNode is TypeDecl) {
+            EmitError(ErrorCatalog.E2102,
+                $"Type '{node.Name}' cannot be used as a value; did you mean '{node.Name} {{ … }}'?",
+                node.Range);
+            node.ResolvedType = GrobType.Error;
+            node.Declaration = UnresolvedDecl.Instance;
+            return GrobType.Error;
+        }
+
         // Flow-sensitive narrowing (§6): inside an `if (x != nil)` block a binding
         // is narrowed from T? to T. Use the narrowed type when one is active for
         // this name; the declaration is unchanged (§3.1.1 still holds).

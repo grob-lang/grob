@@ -113,7 +113,7 @@ public static class Disassembler {
             OpCode.NewArray => ByteOperandInstruction(opCode, chunk, offset, writer),
             OpCode.BuildString => ByteOperandInstruction(opCode, chunk, offset, writer),
             OpCode.Call => ByteOperandInstruction(opCode, chunk, offset, writer),
-            OpCode.NewStruct => ByteOperandInstruction(opCode, chunk, offset, writer),
+            OpCode.NewStruct => NewStructInstruction(chunk, offset, writer),
             OpCode.NewAnonStruct => ByteOperandInstruction(opCode, chunk, offset, writer),
 
             // 1-byte operand: slot/name index
@@ -186,6 +186,20 @@ public static class Disassembler {
 
         byte operand = chunk.ReadByte(offset + 1);
         writer.WriteLine($"{opCode,-20} {operand,4}");
+        return offset + 2;
+    }
+
+    private static int NewStructInstruction(Chunk chunk, int offset, TextWriter writer) {
+        if (offset + 1 >= chunk.Count) {
+            writer.WriteLine($"{OpCode.NewStruct} <truncated>");
+            return offset + 1;
+        }
+
+        byte typeIndex = chunk.ReadByte(offset + 1);
+        string typeName = typeIndex < chunk.StructTypeCount
+            ? chunk.GetStructType(typeIndex).TypeName
+            : "<unknown>";
+        writer.WriteLine($"{OpCode.NewStruct,-20} {typeIndex,4} ({typeName})");
         return offset + 2;
     }
 

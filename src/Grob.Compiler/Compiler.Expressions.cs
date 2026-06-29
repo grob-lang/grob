@@ -775,6 +775,42 @@ public sealed partial class Compiler {
     }
 
     // -----------------------------------------------------------------------
+    // Named struct construction (§10, Sprint 6B)
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Emits field values in declaration order (supplied values or default expressions),
+    /// then <see cref="OpCode.NewStruct"/> with the type-table index. Mirrors the
+    /// Sprint 5B call-site default pattern (<see cref="EmitReorderedArguments"/>).
+    /// </remarks>
+    public override object? VisitStructConstruction(StructConstructionExpr node) {
+        int line = node.Range.Start.Line;
+        TypeDecl typeDecl = node.ResolvedTypeDecl!;
+
+        Dictionary<string, Expression> suppliedByName = node.Fields
+            .ToDictionary(f => f.Name, f => f.Value, StringComparer.Ordinal);
+
+        List<string> fieldNames = new(typeDecl.Fields.Count);
+        foreach (TypeField field in typeDecl.Fields) {
+            fieldNames.Add(field.Name);
+            Expression value = suppliedByName.TryGetValue(field.Name, out Expression? supplied)
+                ? supplied
+                : field.DefaultValue!;
+            Visit(value);
+        }
+
+        // Cache per-chunk to avoid repeated registration of the same type (256-slot limit).
+        if (!_structTypeIndices.TryGetValue(typeDecl, out byte typeIndex)) {
+            typeIndex = _chunk.AddStructType(new StructTypeDescriptor(typeDecl.Name, fieldNames));
+            _structTypeIndices[typeDecl] = typeIndex;
+        }
+        _chunk.WriteOpCode(OpCode.NewStruct, line);
+        _chunk.WriteByte(typeIndex, line);
+        return null;
+    }
+
+    // -----------------------------------------------------------------------
     // Type helpers
     // -----------------------------------------------------------------------
 

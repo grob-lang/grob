@@ -878,6 +878,19 @@ public sealed class VirtualMachine {
                         _stack.Pop();
                         break;
 
+                    // --- Named struct construction (§10, Sprint 6B) ---
+
+                    case OpCode.NewStruct: {
+                            byte typeIndex = _activeChunk.ReadByte(_ip++);
+                            StructTypeDescriptor descriptor = _activeChunk.GetStructType(typeIndex);
+                            int fieldCount = descriptor.FieldNames.Count;
+                            var fieldPairs = new KeyValuePair<string, GrobValue>[fieldCount];
+                            for (int i = fieldCount - 1; i >= 0; i--)
+                                fieldPairs[i] = new KeyValuePair<string, GrobValue>(descriptor.FieldNames[i], _stack.Pop());
+                            _stack.Push(GrobValue.FromStruct(new GrobStruct(descriptor.TypeName, fieldPairs)), line);
+                            break;
+                        }
+
                     default:
                         throw new GrobInternalException(
                             $"opcode {(OpCode)instruction} not yet implemented (Sprint 3+)");

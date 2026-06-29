@@ -63,6 +63,8 @@ read by `grob --explain Exxxx`.
 | E0009 | named argument names a required parameter           | Type              | pre-release           |
 | E0010 | duplicate named argument                            | Type              | pre-release           |
 | E0011 | unknown parameter name                              | Type              | pre-release           |
+| E0012 | unknown field name                                  | Type              | pre-release           |
+| E0013 | field default references sibling field              | Type              | pre-release           |
 | E0101 | nil dereference without `?.` or `??`               | Type              | pre-release           |
 | E0102 | nullable interpolation                             | Type              | pre-release           |
 | E0103 | non-nullable field requires initialiser            | Type              | pre-release           |
@@ -271,6 +273,26 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** A named argument named a parameter the callee does not declare.
 - **Source decision:** D-318 (D-113).
+
+---
+
+### E0012 — unknown field name
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A construction site named a field that is not declared on the type being constructed. The construction analogue of E0011 (unknown parameter name). See §10 and D-330.
+- **Source decision:** D-330.
+
+---
+
+### E0013 — field default references sibling field
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A field's default-value expression references another field of the same type by name. Field defaults evaluate at the construction site in the construction-site scope, where the sibling fields of the type are not in scope. See §10.
+- **Source decision:** D-330.
 
 ---
 
@@ -1262,7 +1284,7 @@ None as of v1.
 
 ---
 
-**Total: 109 codes across 7 categories.** This is the canonical current count;
+**Total: 111 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count

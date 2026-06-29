@@ -157,6 +157,15 @@ public sealed partial class Compiler : AstVisitor<object?> {
 
     private readonly Stack<LoopContext> _loopContexts = new();
 
+    // -----------------------------------------------------------------------
+    // Struct type-table index cache (Sprint 6 Increment B).
+    // Maps each TypeDecl to its byte index in this chunk's struct type table so
+    // that constructing the same type multiple times does not overflow the
+    // 256-slot limit by registering duplicate entries.  Per-chunk (per-compiler
+    // instance) — sub-compilers start with an empty cache for their own chunk.
+    // -----------------------------------------------------------------------
+    private readonly Dictionary<TypeDecl, byte> _structTypeIndices = new();
+
     private bool IsGlobalScope => _localScopes.Count == 0;
 
     /// <summary>Root compiler for a compilation unit — owns a fresh const cache.</summary>

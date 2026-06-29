@@ -15,6 +15,7 @@ public sealed class Chunk {
     private readonly List<GrobValue> _constants = [];
     private readonly List<int> _lines = [];     // parallel to _code: source line per byte
     private readonly List<int> _columns = [];   // parallel to _code: source column per byte (0 = unknown)
+    private readonly List<StructTypeDescriptor> _structTypes = [];
 
     // ----- Read surface (Disassembler and VM) -----
 
@@ -88,6 +89,26 @@ public sealed class Chunk {
         _constants.Add(value);
         return _constants.Count - 1;
     }
+
+    /// <summary>
+    /// Register a struct type descriptor and return its 1-byte table index.
+    /// Called by the compiler when emitting a <c>NewStruct</c> instruction.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when more than 256 struct types are registered in a single chunk.
+    /// </exception>
+    public byte AddStructType(StructTypeDescriptor descriptor) {
+        if (_structTypes.Count >= 256)
+            throw new InvalidOperationException("Struct type table overflow: a single chunk may hold at most 256 struct type descriptors.");
+        _structTypes.Add(descriptor);
+        return (byte)(_structTypes.Count - 1);
+    }
+
+    /// <summary>The number of struct type descriptors registered in this chunk.</summary>
+    public int StructTypeCount => _structTypes.Count;
+
+    /// <summary>Read the struct type descriptor at <paramref name="index"/>.</summary>
+    public StructTypeDescriptor GetStructType(byte index) => _structTypes[index];
 
     /// <summary>
     /// Overwrite the byte at <paramref name="offset"/> with <paramref name="value"/>.

@@ -128,6 +128,14 @@ public abstract class AstWalker : AstVisitor<Unit> {
         return default;
     }
 
+    /// <inheritdoc/>
+    public override Unit VisitStructConstruction(StructConstructionExpr node) {
+        foreach (FieldInit field in node.Fields) {
+            Visit(field.Value);
+        }
+        return default;
+    }
+
     // -----------------------------------------------------------------------
     // Statements with children
     // -----------------------------------------------------------------------
