@@ -188,8 +188,9 @@ public sealed partial class Compiler {
     /// <inheritdoc/>
     public override object? VisitAssignment(AssignmentStmt node) {
         if (node.Target is MemberAccessExpr memberTarget) {
-            // '?.' as an assignment target is rejected by the type checker (E0206);
-            // a well-formed compilation never reaches here with IsOptional=true.
+            // An optional-chained member used as an assignment target is rejected by the
+            // type checker with error E0206, so a well-formed compilation never reaches
+            // this guard. It stays as defence in depth: emit nothing if one slips through.
             if (memberTarget.IsOptional) return null;
             int line = node.Range.Start.Line;
             Visit(memberTarget.Target);

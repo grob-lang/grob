@@ -117,10 +117,11 @@ public sealed class VirtualMachineStructFieldTests {
     [Fact]
     public void SetProperty_NonStructReceiver_ThrowsInternalException() {
         // Nil (or any non-struct value) as the SetProperty receiver is a VM-level bug:
-        // the type checker should have rejected the source. Both SetProperty and
-        // GetProperty throw GrobInternalException for non-struct receivers.
+        // the type checker should have rejected the source. SetProperty throws
+        // GrobInternalException for a non-struct receiver. (GetProperty differs: a nil
+        // receiver there is a runtime E5201, so the two opcodes are not symmetric.)
         var chunk = new Chunk();
-        byte typeIdx = chunk.AddStructType(new StructTypeDescriptor("Box", ["value"]));
+        chunk.AddStructType(new StructTypeDescriptor("Box", ["value"]));
         byte fieldNameIdx = (byte)chunk.AddConstant(GrobValue.FromString("value"));
         byte newVal = (byte)chunk.AddConstant(GrobValue.FromInt(99));
 

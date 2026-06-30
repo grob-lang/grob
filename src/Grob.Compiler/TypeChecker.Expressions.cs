@@ -566,21 +566,7 @@ public sealed partial class TypeChecker {
         // Resolve struct field access: look up the field in the user type registry and
         // annotate the node so the compiler can emit typed opcodes and chain nested access.
         if (targetType == GrobType.Struct || targetType == GrobType.NullableStruct) {
-            string? typeName = GetStructTypeName(node.Target);
-            if (typeName is not null) {
-                UserTypeInfo? typeInfo = _userTypeRegistry.TryGet(typeName);
-                if (typeInfo is not null) {
-                    ResolvedFieldInfo? field = typeInfo.Fields.FirstOrDefault(f => f.Name == node.Member);
-                    if (field is null) {
-                        return EmitErrorAndReturn(ErrorCatalog.E1002,
-                            $"Type '{typeName}' has no member '{node.Member}'.",
-                            node.Range);
-                    }
-                    node.ResolvedFieldType = field.Kind;
-                    node.ResolvedStructTypeName = field.NamedTypeName;
-                    return field.Kind;
-                }
-            }
+            return ResolveStructFieldAccess(node);
         }
 
         // For '?.' chains or Unknown-typed targets the result type is Unknown so
@@ -588,7 +574,30 @@ public sealed partial class TypeChecker {
         return GrobType.Unknown;
     }
 
-    private string? GetStructTypeName(Expression target) => target switch {
+    // Looks up node.Member in the user type registry and annotates the node. Written as
+    // guard clauses (rather than nested ifs) to keep VisitMemberAccess under the cognitive
+    // complexity bar. An unresolvable type name or registry miss is permissive (Unknown);
+    // a resolved type with no such member is the hard error E1002.
+    private GrobType ResolveStructFieldAccess(MemberAccessExpr node) {
+        string? typeName = GetStructTypeName(node.Target);
+        if (typeName is null) return GrobType.Unknown;
+
+        UserTypeInfo? typeInfo = _userTypeRegistry.TryGet(typeName);
+        if (typeInfo is null) return GrobType.Unknown;
+
+        ResolvedFieldInfo? field = typeInfo.Fields.FirstOrDefault(f => f.Name == node.Member);
+        if (field is null) {
+            return EmitErrorAndReturn(ErrorCatalog.E1002,
+                $"Type '{typeName}' has no member '{node.Member}'.",
+                node.Range);
+        }
+
+        node.ResolvedFieldType = field.Kind;
+        node.ResolvedStructTypeName = field.NamedTypeName;
+        return field.Kind;
+    }
+
+    private static string? GetStructTypeName(Expression target) => target switch {
         IdentifierExpr id => GetStructTypeNameFromDecl(id.Declaration),
         MemberAccessExpr ma => ma.ResolvedStructTypeName,
         _ => null
@@ -599,7 +608,7 @@ public sealed partial class TypeChecker {
     // FnDecl parameters with struct-type annotations resolve to GrobType.Unknown
     // (ResolveTypeRef maps user-defined names to Unknown) so the Struct block is
     // never entered for them; the arm is omitted until ResolveTypeRef is updated.
-    private string? GetStructTypeNameFromDecl(AstNode? decl) => decl switch {
+    private static string? GetStructTypeNameFromDecl(AstNode? decl) => decl switch {
         ReadonlyDecl ro => ExtractFromBinding(ro.AnnotatedType, ro.Value as StructConstructionExpr),
         VarDeclStmt vd => ExtractFromBinding(vd.AnnotatedType, vd.Initializer as StructConstructionExpr),
         _ => null

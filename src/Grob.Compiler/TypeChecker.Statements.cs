@@ -119,7 +119,7 @@ public sealed partial class TypeChecker {
                 return GrobType.Unknown;
             }
             GrobType fieldType = Visit(memberTarget);
-            if (FindReadonlyRoot(memberTarget) is ReadonlyDecl) {
+            if (FindReadonlyRoot(memberTarget) is not null) {
                 EmitError(ErrorCatalog.E0204,
                     "Cannot assign to field of `readonly` binding.",
                     memberTarget.Range);
