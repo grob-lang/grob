@@ -119,6 +119,18 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // -----------------------------------------------------------------------
     private readonly UserTypeRegistry _userTypeRegistry = new();
 
+    // Structural type registry (Sprint 6 Increment D).
+    //
+    // Holds synthesised UserTypeInfo entries keyed by the canonical structural
+    // signature ("fieldA:GrobType1,fieldB:GrobType2" in sorted-name order).
+    // Two #{ } literals with identical field names and value types share one entry.
+    private readonly Dictionary<string, UserTypeInfo> _structuralTypes =
+        new(StringComparer.Ordinal);
+
+    // Returns type info from either the user-type or the structural registry.
+    private UserTypeInfo? TryGetTypeInfo(string typeName) =>
+        _userTypeRegistry.TryGet(typeName) ?? _structuralTypes.GetValueOrDefault(typeName);
+
     /// <summary>Initialises a new <see cref="TypeChecker"/> that writes into <paramref name="diagnostics"/>.</summary>
     public TypeChecker(DiagnosticBag diagnostics) {
         ArgumentNullException.ThrowIfNull(diagnostics);

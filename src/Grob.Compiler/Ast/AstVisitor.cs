@@ -90,6 +90,9 @@ public abstract class AstVisitor<T> {
     /// <summary>Hook for <see cref="StructConstructionExpr"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
     public virtual T VisitStructConstruction(StructConstructionExpr node) => DefaultVisit(node);
 
+    /// <summary>Hook for <see cref="AnonStructExpr"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
+    public virtual T VisitAnonStruct(AnonStructExpr node) => DefaultVisit(node);
+
     /// <summary>
     /// Hook for <see cref="ErrorExpr"/>. Abstract by design — every visitor
     /// must handle parser error placeholders.
