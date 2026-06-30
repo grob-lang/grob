@@ -18,6 +18,19 @@ public sealed record MemberAccessExpr(
     Expression Target,
     string Member,
     bool IsOptional = false) : Expression(Range) {
+    /// <summary>
+    /// The <see cref="GrobType"/> of the accessed field, set by the type checker.
+    /// Defaults to <see cref="GrobType.Unknown"/> until type checking completes.
+    /// </summary>
+    public GrobType ResolvedFieldType { get; set; } = GrobType.Unknown;
+
+    /// <summary>
+    /// When <see cref="ResolvedFieldType"/> is <see cref="GrobType.Struct"/>,
+    /// holds the declared type name of the field so that a nested access
+    /// (<c>a.b.c</c>) can resolve the next step via the <see cref="UserTypeRegistry"/>.
+    /// </summary>
+    public string? ResolvedStructTypeName { get; set; }
+
     /// <inheritdoc/>
     public override T Accept<T>(AstVisitor<T> visitor) => visitor.VisitMemberAccess(this);
 }

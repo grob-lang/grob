@@ -555,11 +555,52 @@ public sealed partial class TypeChecker {
                 node.Range);
         }
 
-        // Member-type resolution for struct fields is deferred to Sprint 5.
-        // For '?.' chains the result type is Unknown (nullable), so downstream '??'
-        // operators treat it as a permissive Unknown and do not emit false positives.
+        // Resolve struct field access: look up the field in the user type registry and
+        // annotate the node so the compiler can emit typed opcodes and chain nested access.
+        if (targetType == GrobType.Struct || targetType == GrobType.NullableStruct) {
+            string? typeName = GetStructTypeName(node.Target);
+            if (typeName is not null) {
+                UserTypeInfo? typeInfo = _userTypeRegistry.TryGet(typeName);
+                if (typeInfo is not null) {
+                    ResolvedFieldInfo? field = typeInfo.Fields.FirstOrDefault(f => f.Name == node.Member);
+                    if (field is null) {
+                        return EmitErrorAndReturn(ErrorCatalog.E1002,
+                            $"Type '{typeName}' has no member '{node.Member}'.",
+                            node.Range);
+                    }
+                    node.ResolvedFieldType = field.Kind;
+                    node.ResolvedStructTypeName = field.NamedTypeName;
+                    return field.Kind;
+                }
+            }
+        }
+
+        // For '?.' chains or Unknown-typed targets the result type is Unknown so
+        // downstream '??' operators remain permissive and do not emit false positives.
         return GrobType.Unknown;
     }
+
+    private string? GetStructTypeName(Expression target) => target switch {
+        IdentifierExpr id => GetStructTypeNameFromDecl(id.Name, id.Declaration),
+        MemberAccessExpr ma => ma.ResolvedStructTypeName,
+        _ => null
+    };
+
+    private string? GetStructTypeNameFromDecl(string identName, AstNode? decl) => decl switch {
+        ReadonlyDecl ro => ExtractFromBinding(ro.AnnotatedType, ro.Value as StructConstructionExpr),
+        VarDeclStmt vd => ExtractFromBinding(vd.AnnotatedType, vd.Initializer as StructConstructionExpr),
+        FnDecl fn => fn.Parameters.FirstOrDefault(p => p.Name == identName)?.Type
+                         is TypeRef { } tr ? ExtractStructName(tr) : null,
+        _ => null
+    };
+
+    private static string? ExtractFromBinding(TypeRef? annotation, StructConstructionExpr? sc) =>
+        annotation is not null ? ExtractStructName(annotation) : sc?.TypeName;
+
+    private static string? ExtractStructName(TypeRef tr) =>
+        tr is not ArrayTypeRef && tr is not FunctionTypeRef
+        && tr.Name is not ("int" or "float" or "string" or "bool" or "nil" or "array" or "map")
+            ? tr.Name : null;
 
     /// <inheritdoc/>
     public override GrobType VisitIndex(IndexExpr node) {

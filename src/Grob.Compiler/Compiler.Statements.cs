@@ -187,14 +187,24 @@ public sealed partial class Compiler {
 
     /// <inheritdoc/>
     public override object? VisitAssignment(AssignmentStmt node) {
-        if (node.Target is not IdentifierExpr target) {
-            // Field/index targets — deferred (Sprint 6 / collections).
+        if (node.Target is MemberAccessExpr memberTarget) {
+            int line = node.Range.Start.Line;
+            Visit(memberTarget.Target);
+            Visit(node.Value);
+            int nameIdx = _chunk.AddConstant(GrobValue.FromString(memberTarget.Member));
+            _chunk.WriteOpCode(OpCode.SetProperty, line);
+            _chunk.WriteByte(ToByteOperand(nameIdx, "property name"), line);
             return null;
         }
 
-        int line = node.Range.Start.Line;
+        if (node.Target is not IdentifierExpr target) {
+            // Index targets are deferred (collections sprint).
+            return null;
+        }
+
+        int assignLine = node.Range.Start.Line;
         Visit(node.Value);
-        EmitStore(target.Name, line);
+        EmitStore(target.Name, assignLine);
         return null;
     }
 
