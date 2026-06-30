@@ -555,11 +555,73 @@ public sealed partial class TypeChecker {
                 node.Range);
         }
 
-        // Member-type resolution for struct fields is deferred to Sprint 5.
-        // For '?.' chains the result type is Unknown (nullable), so downstream '??'
-        // operators treat it as a permissive Unknown and do not emit false positives.
+        // '?.' on a nullable receiver: stay permissive so downstream '??' and
+        // nullable-aware operators do not see a spuriously concrete field type.
+        // Full '?.' type propagation (returning the nullable variant of the field type)
+        // is deferred until nullable-struct construction is fully wired.
+        if (node.IsOptional && GrobTypeHelpers.IsNullable(targetType)) {
+            return GrobType.Unknown;
+        }
+
+        // Resolve struct field access: look up the field in the user type registry and
+        // annotate the node so the compiler can emit typed opcodes and chain nested access.
+        if (targetType == GrobType.Struct || targetType == GrobType.NullableStruct) {
+            return ResolveStructFieldAccess(node);
+        }
+
+        // For '?.' chains or Unknown-typed targets the result type is Unknown so
+        // downstream '??' operators remain permissive and do not emit false positives.
         return GrobType.Unknown;
     }
+
+    // Looks up node.Member in the user type registry and annotates the node. Written as
+    // guard clauses (rather than nested ifs) to keep VisitMemberAccess under the cognitive
+    // complexity bar. An unresolvable type name or registry miss is permissive (Unknown);
+    // a resolved type with no such member is the hard error E1002.
+    private GrobType ResolveStructFieldAccess(MemberAccessExpr node) {
+        string? typeName = GetStructTypeName(node.Target);
+        if (typeName is null) return GrobType.Unknown;
+
+        UserTypeInfo? typeInfo = _userTypeRegistry.TryGet(typeName);
+        if (typeInfo is null) return GrobType.Unknown;
+
+        ResolvedFieldInfo? field = typeInfo.Fields.FirstOrDefault(f => f.Name == node.Member);
+        if (field is null) {
+            return EmitErrorAndReturn(ErrorCatalog.E1002,
+                $"Type '{typeName}' has no member '{node.Member}'.",
+                node.Range);
+        }
+
+        node.ResolvedFieldType = field.Kind;
+        node.ResolvedStructTypeName = field.NamedTypeName;
+        return field.Kind;
+    }
+
+    private static string? GetStructTypeName(Expression target) => target switch {
+        IdentifierExpr id => GetStructTypeNameFromDecl(id.Declaration),
+        MemberAccessExpr ma => ma.ResolvedStructTypeName,
+        _ => null
+    };
+
+    // Only reached when targetType is Struct, which requires the binding was
+    // initialised from a StructConstructionExpr or has a user-defined annotation.
+    // FnDecl parameters with struct-type annotations resolve to GrobType.Unknown
+    // (ResolveTypeRef maps user-defined names to Unknown) so the Struct block is
+    // never entered for them; the arm is omitted until ResolveTypeRef is updated.
+    private static string? GetStructTypeNameFromDecl(AstNode? decl) => decl switch {
+        ReadonlyDecl ro => ExtractFromBinding(ro.AnnotatedType, ro.Value as StructConstructionExpr),
+        VarDeclStmt vd => ExtractFromBinding(vd.AnnotatedType, vd.Initializer as StructConstructionExpr),
+        _ => null
+    };
+
+    private static string? ExtractFromBinding(TypeRef? annotation, StructConstructionExpr? sc) =>
+        annotation is not null ? ExtractStructName(annotation) : sc?.TypeName;
+
+    // Only called via the Struct/NullableStruct resolution path, where the TypeRef
+    // is always a user-defined type annotation — never Array ("[]"), Function ("fn"),
+    // or a builtin name. The downstream TryGet call handles any non-registered name
+    // by returning null and falling through to GrobType.Unknown.
+    private static string ExtractStructName(TypeRef tr) => tr.Name;
 
     /// <inheritdoc/>
     public override GrobType VisitIndex(IndexExpr node) {

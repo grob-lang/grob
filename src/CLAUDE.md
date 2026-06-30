@@ -373,6 +373,36 @@ believe a change affects performance, the benchmark harness is how you prove it,
 assertion. `[MemoryDiagnoser]` is on every benchmark; a 5% end-to-end regression
 against the committed baseline is the gate.
 
+## Static analysis (local Sonar gate)
+
+`SonarAnalyzer.CSharp` runs as part of `dotnet build` for every non-test project
+(wired in `Directory.Build.props`). It is the **same** csharpsquid analyzer
+SonarCloud runs in CI, so the recurring new-code rules fail the build **locally,
+before commit** — instead of surfacing one review round later. A `dotnet build`
+failure of the form `error S3776: …` is an analyzer finding, not a compiler error;
+`TreatWarningsAsErrors` escalates it.
+
+- **The gate is scoped** (`.editorconfig`): all analyzer diagnostics default to
+  `none`, and only the deterministic, false-positive-free repeat offenders are
+  opted back in — **S3776** (cognitive complexity > 15), **S2219** (`is T` that is
+  really a null check), **S2325/CA1822** (member can be static). Widen this list
+  deliberately, never by accident.
+- **S125 (commented-out code) is deliberately not gated.** It false-positives on the
+  explanatory comments a compiler necessarily writes (those mentioning `if (x != nil)`,
+  `T { }`, `(Unknown)`). Watch it by eye instead: keep comments from parsing as code.
+- **Fix, don't suppress.** In compile-time code (type checker, compiler) an S3776 hit
+  is a signal to extract guard-clause helpers — not to suppress. The only suppressions
+  are the genuine hot paths (VM dispatch loop, type-cycle walker), carved out per file
+  in `.editorconfig`. **That carve-out list must stay in lockstep with
+  `sonar.issue.ignore.multicriteria` in `.github/workflows/sonarcloud.yml`** — change
+  one, change the other.
+- **A review-fix commit is itself scanned new code.** When fixing review findings,
+  read every line you add as if the analyzers will scan it — they will. Watch for
+  cascades: marking a method `static` can make its caller static-eligible too; fix the
+  whole chain in one commit, not the leaf. Enumerate the actual Sonar issues with the
+  unauthenticated API (this is a public project) rather than guessing:
+  `curl -fsS "https://sonarcloud.io/api/issues/search?componentKeys=grob-lang_grob&pullRequest=<N>&resolved=false&ps=500"`.
+
 ## When to consult Microsoft Learn
 
 For .NET 10 BCL APIs (`System.Text.Json`, `Span<T>` and `Memory<T>`, `System.IO`,

@@ -111,8 +111,32 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitAssignment(AssignmentStmt node) {
+        if (node.Target is MemberAccessExpr memberTarget) {
+            if (memberTarget.IsOptional) {
+                EmitError(ErrorCatalog.E0206,
+                    "Optional chaining '?.' cannot appear in an assignment target. Use '.' for field assignment.",
+                    memberTarget.Range);
+                return GrobType.Unknown;
+            }
+            GrobType fieldType = Visit(memberTarget);
+            if (FindReadonlyRoot(memberTarget) is not null) {
+                EmitError(ErrorCatalog.E0204,
+                    "Cannot assign to field of `readonly` binding.",
+                    memberTarget.Range);
+            }
+            GrobType rhsType = Visit(node.Value);
+            if (fieldType is not (GrobType.Unknown or GrobType.Error) &&
+                rhsType is not (GrobType.Unknown or GrobType.Error) &&
+                !TypesAreAssignable(rhsType, fieldType)) {
+                _diagnostics.Add(Diagnostic.Of(PickAssignabilityError(rhsType, fieldType),
+                    node.Value.Range,
+                    $"Cannot assign '{TypeName(rhsType)}' to field of type '{TypeName(fieldType)}'."));
+            }
+            return GrobType.Unknown;
+        }
+
         if (node.Target is not IdentifierExpr target) {
-            // Field/index targets are deferred (Sprint 6 / collections).
+            // Index targets are deferred (collections sprint).
             Visit(node.Target);
             Visit(node.Value);
             return GrobType.Unknown;
@@ -262,4 +286,17 @@ public sealed partial class TypeChecker {
         CompoundAssignmentOperator.PercentAssign => BinaryOperator.Modulo,
         _ => throw new GrobInternalException($"Unknown compound assignment operator: {op}"),
     };
+
+    /// <summary>
+    /// Walks the receiver chain of a member-access expression to find the root identifier.
+    /// Returns the <see cref="ReadonlyDecl"/> if the root binding is readonly (D-291 deep
+    /// immutability); otherwise returns <see langword="null"/>.
+    /// </summary>
+    private static ReadonlyDecl? FindReadonlyRoot(MemberAccessExpr ma) {
+        Expression current = ma.Target;
+        while (current is MemberAccessExpr inner) {
+            current = inner.Target;
+        }
+        return current is IdentifierExpr { Declaration: ReadonlyDecl ro } ? ro : null;
+    }
 }

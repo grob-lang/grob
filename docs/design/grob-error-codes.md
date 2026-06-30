@@ -74,6 +74,7 @@ read by `grob --explain Exxxx`.
 | E0203 | reassignment of `param` binding                    | Type              | pre-release           |
 | E0204 | mutation of `readonly` value                       | Type              | pre-release           |
 | E0205 | non-constant expression in `const` right-hand side | Type              | pre-release           |
+| E0206 | optional chaining `?.` in assignment target        | Type              | pre-release           |
 | E0301 | type cycle with no terminating field               | Type              | pre-release           |
 | E0302 | recursive type without indirection                 | Type              | pre-release           |
 | E0303 | circular type dependency among top-level value bindings | Type         | pre-release           |
@@ -381,6 +382,16 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** The right-hand side of a `const` declaration must be a compile-time constant expression (D-289). Allowed forms are: literals, grouped literals, binary arithmetic/comparison/logical operators on constant operands, unary `-`/`!` on constant operands, and references to other `const`-bound identifiers. References to `readonly` or mutable identifiers, function calls, array/map literals, and interpolated strings with `${}` are not allowed. Change the binding to `readonly` if a runtime value is needed.
 - **Source decision:** D-288; D-289.
+
+---
+
+### E0206 — optional chaining `?.` in assignment target
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** The optional-chaining operator `?.` cannot appear in the target position of an assignment (`a?.b = v`). An optional chain may produce `nil` when the receiver is nil, making the assignment semantically undefined. Use `.` (non-optional access) for assignment targets, or restructure the code to guard the nil case before assigning.
+- **Source decision:** Sprint 6 Increment C (struct field assignment).
 
 ---
 
@@ -1284,7 +1295,7 @@ None as of v1.
 
 ---
 
-**Total: 111 codes across 7 categories.** This is the canonical current count;
+**Total: 112 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count

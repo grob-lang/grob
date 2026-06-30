@@ -20,6 +20,12 @@
           "OmniSharp.Extensions.LanguageServer.Shared": "0.19.9"
         }
       },
+      "SonarAnalyzer.CSharp": {
+        "type": "Direct",
+        "requested": "[10.27.0.140913, )",
+        "resolved": "10.27.0.140913",
+        "contentHash": "cxk12QjN9io1SjN36B1QO+9dRf+ek2CGfQGsOWtHBojE35cKchKJod48raxZwe47jHhzmAUO4AJSh7+hF0GS4g=="
+      },
       "MediatR": {
         "type": "Transitive",
         "resolved": "8.1.0",

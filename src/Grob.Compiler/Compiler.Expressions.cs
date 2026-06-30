@@ -904,6 +904,7 @@ public sealed partial class Compiler {
         // unresolved callees stay Unknown.
         CallExpr { Callee: IdentifierExpr { Declaration: FnDecl fn } }
             => TypeChecker.ResolveTypeRef(fn.ReturnType),
+        MemberAccessExpr ma => ma.ResolvedFieldType,
         _ => GrobType.Unknown
     };
 

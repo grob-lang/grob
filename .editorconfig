@@ -57,3 +57,41 @@ csharp_new_line_before_open_brace = none
 csharp_new_line_before_else = false
 csharp_new_line_before_catch = false
 csharp_new_line_before_finally = false
+
+# ---------------------------------------------------------------------------
+# Local SonarAnalyzer gate (scoped) — see Directory.Build.props.
+#
+# SonarAnalyzer.CSharp activates a large default ruleset; left unscoped, with
+# TreatWarningsAsErrors it would fail the build on a backlog of pre-existing
+# issues across the whole tree. So every analyzer diagnostic defaults to none
+# here, and only the rules that have repeatedly slipped into CI as new-code
+# issues are opted back in (as warnings → errors). Widen this list deliberately,
+# not by accident. Explicit per-rule severities (and the naming rules above)
+# override this default, so style/naming enforcement is unaffected.
+# ---------------------------------------------------------------------------
+[*.cs]
+dotnet_analyzer_diagnostic.severity = none
+
+# Production code only. CI excludes test files from issue analysis
+# (sonar.test.exclusions), so the gate matches that scope: these rules are not
+# opted in for tests/**.
+# Deterministic, false-positive-free rules only. S125 (commented-out code) is
+# deliberately NOT gated: it false-positives on the explanatory comments a
+# compiler necessarily writes (those mentioning `if (x != nil)`, `T { }`,
+# `(Unknown)` etc.), so a hard gate would force rewording legitimate prose. Watch
+# S125 by eye on new comments instead; keep them from parsing as code.
+[src/**/*.cs]
+dotnet_diagnostic.S3776.severity = warning   # cognitive complexity > 15
+dotnet_diagnostic.S2219.severity = warning   # 'is T' that is really a null check
+dotnet_diagnostic.S2325.severity = warning   # member can be static
+dotnet_diagnostic.CA1822.severity = warning  # member can be static (.NET analyzer twin)
+
+# Hot-path carve-outs — mirror sonar.issue.ignore.multicriteria (e2, e6) in
+# .github/workflows/sonarcloud.yml. The VM dispatch loop and the type-cycle
+# walker exceed S3776 by design (D-302, branch-free dispatch); see
+# complexity-vs-performance-hot-paths. Keep these two lists in lockstep.
+[src/Grob.Vm/VirtualMachine.cs]
+dotnet_diagnostic.S3776.severity = none
+
+[src/Grob.Compiler/TypeChecker.TypeCycles.cs]
+dotnet_diagnostic.S3776.severity = none

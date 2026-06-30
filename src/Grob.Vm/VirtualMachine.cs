@@ -706,6 +706,22 @@ public sealed class VirtualMachine {
                                 $"{receiver.Kind} not yet implemented.");
                         }
 
+                    case OpCode.SetProperty: {
+                            byte setNameIdx = _activeChunk.ReadByte(_ip++);
+                            string setPropertyName = _activeChunk.ReadConstant(setNameIdx).AsString();
+                            GrobValue setValue = _stack.Pop();
+                            GrobValue setReceiver = _stack.Pop();
+                            if (!setReceiver.TryAsStruct(out GrobStruct? setStruct))
+                                throw new GrobInternalException(
+                                    $"SetProperty on non-struct receiver of kind {setReceiver.Kind}");
+                            if (!setStruct!.TryGetField(setPropertyName, out _))
+                                throw new GrobInternalException(
+                                    $"SetProperty: struct '{setStruct.TypeName}' has no field '{setPropertyName}'. " +
+                                    "Type checker should have rejected this before emission.");
+                            setStruct.SetField(setPropertyName, setValue);
+                            break;
+                        }
+
                     // --- Calls and returns (Sprint 5 Increment A + C) ---
 
                     case OpCode.Call: {
