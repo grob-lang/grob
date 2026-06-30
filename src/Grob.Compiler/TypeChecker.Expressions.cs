@@ -569,6 +569,11 @@ public sealed partial class TypeChecker {
             return ResolveStructFieldAccess(node);
         }
 
+        // Anonymous struct: structural field access via the synthesised type registry.
+        if (targetType == GrobType.AnonStruct || targetType == GrobType.NullableAnonStruct) {
+            return ResolveStructFieldAccess(node);
+        }
+
         // For '?.' chains or Unknown-typed targets the result type is Unknown so
         // downstream '??' operators remain permissive and do not emit false positives.
         return GrobType.Unknown;
@@ -582,7 +587,7 @@ public sealed partial class TypeChecker {
         string? typeName = GetStructTypeName(node.Target);
         if (typeName is null) return GrobType.Unknown;
 
-        UserTypeInfo? typeInfo = _userTypeRegistry.TryGet(typeName);
+        UserTypeInfo? typeInfo = TryGetTypeInfo(typeName);
         if (typeInfo is null) return GrobType.Unknown;
 
         ResolvedFieldInfo? field = typeInfo.Fields.FirstOrDefault(f => f.Name == node.Member);
@@ -598,24 +603,31 @@ public sealed partial class TypeChecker {
     }
 
     private static string? GetStructTypeName(Expression target) => target switch {
+        AnonStructExpr anon => anon.SynthesisedTypeName,
         IdentifierExpr id => GetStructTypeNameFromDecl(id.Declaration),
         MemberAccessExpr ma => ma.ResolvedStructTypeName,
         _ => null
     };
 
-    // Only reached when targetType is Struct, which requires the binding was
-    // initialised from a StructConstructionExpr or has a user-defined annotation.
-    // FnDecl parameters with struct-type annotations resolve to GrobType.Unknown
+    // Only reached when targetType is Struct/AnonStruct, which requires the binding was
+    // initialised from a StructConstructionExpr or AnonStructExpr, or has a user-defined
+    // annotation. FnDecl parameters with struct-type annotations resolve to GrobType.Unknown
     // (ResolveTypeRef maps user-defined names to Unknown) so the Struct block is
     // never entered for them; the arm is omitted until ResolveTypeRef is updated.
     private static string? GetStructTypeNameFromDecl(AstNode? decl) => decl switch {
-        ReadonlyDecl ro => ExtractFromBinding(ro.AnnotatedType, ro.Value as StructConstructionExpr),
-        VarDeclStmt vd => ExtractFromBinding(vd.AnnotatedType, vd.Initializer as StructConstructionExpr),
+        ReadonlyDecl ro => ExtractFromBinding(ro.AnnotatedType, ro.Value),
+        VarDeclStmt vd => ExtractFromBinding(vd.AnnotatedType, vd.Initializer),
         _ => null
     };
 
-    private static string? ExtractFromBinding(TypeRef? annotation, StructConstructionExpr? sc) =>
-        annotation is not null ? ExtractStructName(annotation) : sc?.TypeName;
+    private static string? ExtractFromBinding(TypeRef? annotation, Expression? init) =>
+        annotation is not null
+            ? ExtractStructName(annotation)
+            : init switch {
+                StructConstructionExpr sc => sc.TypeName,
+                AnonStructExpr anon => anon.SynthesisedTypeName,
+                _ => null,
+            };
 
     // Only called via the Struct/NullableStruct resolution path, where the TypeRef
     // is always a user-defined type annotation — never Array ("[]"), Function ("fn"),

@@ -143,6 +143,14 @@ public sealed partial class TypeChecker {
                 // for cycles that only close through a call argument; those surface at
                 // runtime as E5902 instead (PR #92 review).
                 break;
+            case StructConstructionExpr sc:
+                foreach (FieldInit fi in sc.Fields)
+                    CollectDependencies(fi.Value, nameSet, deps);
+                break;
+            case AnonStructExpr anon:
+                foreach (FieldInit fi in anon.Fields)
+                    CollectDependencies(fi.Value, nameSet, deps);
+                break;
         }
     }
 

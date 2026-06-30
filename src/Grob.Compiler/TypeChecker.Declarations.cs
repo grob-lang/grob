@@ -124,6 +124,56 @@ public sealed partial class TypeChecker {
     }
 
     // -----------------------------------------------------------------------
+    // Anonymous struct construction (§10, Sprint 6D).
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public override GrobType VisitAnonStruct(AnonStructExpr node) {
+        List<ResolvedFieldInfo> resolvedFields = new(node.Fields.Count);
+        foreach (FieldInit fi in node.Fields) {
+            GrobType valueType = Visit(fi.Value);
+            // For struct-typed fields, record the type name so chained member access
+            // can resolve through the correct registry entry.
+            string? namedTypeName = (valueType == GrobType.Struct || valueType == GrobType.AnonStruct)
+                ? GetFieldValueStructTypeName(fi.Value)
+                : null;
+            resolvedFields.Add(new ResolvedFieldInfo(fi.Name, valueType, namedTypeName, fi.Range, IsRequired: true));
+        }
+
+        // Build the canonical structural signature: sorted field-name:GrobType pairs.
+        // An empty literal uses "<anon>" so GrobStruct (which requires non-empty TypeName)
+        // is always constructed with a valid name.
+        string sig = resolvedFields.Count == 0
+            ? "<anon>"
+            : string.Join(",",
+                resolvedFields
+                    .OrderBy(f => f.Name, StringComparer.Ordinal)
+                    .Select(f => $"{f.Name}:{f.Kind}"));
+
+        if (!_structuralTypes.ContainsKey(sig)) {
+            _structuralTypes[sig] = new UserTypeInfo {
+                Name = sig,
+                Fields = resolvedFields,
+                Range = node.Range,
+            };
+        }
+
+        node.SynthesisedTypeName = sig;
+        return GrobType.AnonStruct;
+    }
+
+    // Returns the struct or anon-struct type name for a field-value expression.
+    // GetStructTypeNameFromDecl (TypeChecker.Expressions.cs) handles both Struct
+    // and AnonStruct initialisers via ExtractFromBinding.
+    private static string? GetFieldValueStructTypeName(Expression expr) => expr switch {
+        StructConstructionExpr sc => sc.TypeName,
+        AnonStructExpr anon => anon.SynthesisedTypeName,
+        IdentifierExpr id => GetStructTypeNameFromDecl(id.Declaration),
+        MemberAccessExpr ma => ma.ResolvedStructTypeName,
+        _ => null,
+    };
+
+    // -----------------------------------------------------------------------
     // Struct construction (§10, Sprint 6B).
     // -----------------------------------------------------------------------
 
