@@ -127,6 +127,34 @@ public sealed class CompilerFieldAccessTests {
     }
 
     // -----------------------------------------------------------------------
+    // SetProperty guarded — optional target must never emit SetProperty
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void FieldAssign_OptionalTarget_WithTcErrors_EmitsNoSetProperty() {
+        // The type checker rejects 'c?.port = v' with E0206 and a well-formed
+        // compilation never reaches the compiler with IsOptional=true on an
+        // assignment target. This test compiles despite TC errors to exercise the
+        // defensive 'if (memberTarget.IsOptional) return null' guard that prevents
+        // SetProperty from being emitted even if the error is somehow bypassed.
+        const string source = """
+            type Config {
+            port: int
+            }
+            c := Config { port: 8080 }
+            c?.port = 9090
+            """;
+        DiagnosticBag bag = new();
+        IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
+        CompilationUnit unit = Parser.Parse(tokens, bag);
+        new TypeChecker(bag).Check(unit);
+        Assert.True(bag.HasErrors, "expected E0206 from type checker");
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        List<Instr> instrs = Decode(chunk);
+        Assert.DoesNotContain(instrs, i => i.Op == OpCode.SetProperty);
+    }
+
+    // -----------------------------------------------------------------------
     // SetProperty emission — field writes
     // -----------------------------------------------------------------------
 

@@ -318,4 +318,67 @@ public sealed class TypeCheckerFieldAccessTests {
         Assert.Equal(5, diag.Range.Start.Line);
         Assert.Equal(1, diag.Range.Start.Column);
     }
+
+    // -----------------------------------------------------------------------
+    // F3 guard — '?.' on any nullable receiver returns Unknown without E0101
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void FieldAccess_OptionalChainOnNullableScalar_NoError() {
+        // '?.' on a NullableString target must not emit E0101 (that fires only for
+        // plain '.') and must not attempt struct-field resolution — the F3 guard
+        // returns Unknown immediately, making the result permissive downstream.
+        DiagnosticBag bag = Check("""
+            fn maybeLabel(): string? {
+                return nil
+            }
+            x := maybeLabel()
+            y := x?.length
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"Unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Assignability short-circuit when field or RHS type is Error
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void FieldAssign_ToUndefinedField_EmitsE1002Only() {
+        // Visit(memberTarget) emits E1002 and returns GrobType.Error.
+        // The assignability guard must short-circuit on fieldType=Error so no
+        // spurious E0001 is added on top of the field-not-found diagnostic.
+        DiagnosticBag bag = Check("""
+            type Config {
+            port: int
+            }
+            c := Config { port: 8080 }
+            c.nonexistent = 5
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1002", diag.Code);
+        Assert.Equal(5, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void FieldAssign_ErrorTypedRhs_NoSpuriousAssignabilityError() {
+        // Visit(node.Value) emits E1001 (undefined identifier) and returns Error.
+        // The assignability guard must short-circuit on rhsType=Error so no
+        // spurious E0001 is stacked on top of the undefined-identifier diagnostic.
+        DiagnosticBag bag = Check("""
+            type Config {
+            port: int
+            }
+            c := Config { port: 8080 }
+            c.port = undeclaredVariable
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", diag.Code);
+        Assert.Equal(5, diag.Range.Start.Line);
+        Assert.Equal(10, diag.Range.Start.Column);
+    }
 }

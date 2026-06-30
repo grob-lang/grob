@@ -589,26 +589,30 @@ public sealed partial class TypeChecker {
     }
 
     private string? GetStructTypeName(Expression target) => target switch {
-        IdentifierExpr id => GetStructTypeNameFromDecl(id.Name, id.Declaration),
+        IdentifierExpr id => GetStructTypeNameFromDecl(id.Declaration),
         MemberAccessExpr ma => ma.ResolvedStructTypeName,
         _ => null
     };
 
-    private string? GetStructTypeNameFromDecl(string identName, AstNode? decl) => decl switch {
+    // Only reached when targetType is Struct, which requires the binding was
+    // initialised from a StructConstructionExpr or has a user-defined annotation.
+    // FnDecl parameters with struct-type annotations resolve to GrobType.Unknown
+    // (ResolveTypeRef maps user-defined names to Unknown) so the Struct block is
+    // never entered for them; the arm is omitted until ResolveTypeRef is updated.
+    private string? GetStructTypeNameFromDecl(AstNode? decl) => decl switch {
         ReadonlyDecl ro => ExtractFromBinding(ro.AnnotatedType, ro.Value as StructConstructionExpr),
         VarDeclStmt vd => ExtractFromBinding(vd.AnnotatedType, vd.Initializer as StructConstructionExpr),
-        FnDecl fn => fn.Parameters.FirstOrDefault(p => p.Name == identName)?.Type
-                         is TypeRef { } tr ? ExtractStructName(tr) : null,
         _ => null
     };
 
     private static string? ExtractFromBinding(TypeRef? annotation, StructConstructionExpr? sc) =>
         annotation is not null ? ExtractStructName(annotation) : sc?.TypeName;
 
-    private static string? ExtractStructName(TypeRef tr) =>
-        tr is not ArrayTypeRef && tr is not FunctionTypeRef
-        && tr.Name is not ("int" or "float" or "string" or "bool" or "nil" or "array" or "map")
-            ? tr.Name : null;
+    // Only called via the Struct/NullableStruct resolution path, where the TypeRef
+    // is always a user-defined type annotation — never Array ("[]"), Function ("fn"),
+    // or a builtin name. The downstream TryGet call handles any non-registered name
+    // by returning null and falling through to GrobType.Unknown.
+    private static string ExtractStructName(TypeRef tr) => tr.Name;
 
     /// <inheritdoc/>
     public override GrobType VisitIndex(IndexExpr node) {
