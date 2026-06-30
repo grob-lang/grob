@@ -522,8 +522,32 @@ public sealed partial class Compiler : AstVisitor<object?> {
         GrobValue left = EvalConstantExpr(b.Left);
         GrobValue right = EvalConstantExpr(b.Right);
 
+        // Dispatch by operator category so each fold stays well under the cognitive
+        // complexity bar; the per-operand-type arms live in the category helpers.
         return b.Operator switch {
-            // Arithmetic
+            BinaryOperator.Add or BinaryOperator.Subtract or BinaryOperator.Multiply
+                or BinaryOperator.Divide or BinaryOperator.Modulo
+                => FoldArithmeticConstant(b, left, right),
+            BinaryOperator.Equal => GrobValue.FromBool(left.Equals(right)),
+            BinaryOperator.NotEqual => GrobValue.FromBool(!left.Equals(right)),
+            BinaryOperator.Less or BinaryOperator.LessEqual
+                or BinaryOperator.Greater or BinaryOperator.GreaterEqual
+                => FoldComparisonConstant(b, left, right),
+            // Logical (no short-circuit needed for compile-time evaluation)
+            BinaryOperator.And => GrobValue.FromBool(left.AsBool() && right.AsBool()),
+            BinaryOperator.Or => GrobValue.FromBool(left.AsBool() || right.AsBool()),
+            _ => ThrowNonConstantExpression(b),
+        };
+    }
+
+    /// <summary>
+    /// Folds <c>+ - *</c> over two constant operands. <c>+</c> also covers string
+    /// concatenation. <c>/</c> and <c>%</c> are delegated to
+    /// <see cref="FoldDivisiveConstant"/> so the zero-divisor guards stay out of this
+    /// switch.
+    /// </summary>
+    private static GrobValue FoldArithmeticConstant(BinaryExpr b, GrobValue left, GrobValue right) =>
+        b.Operator switch {
             BinaryOperator.Add when left.IsInt && right.IsInt
                 => GrobValue.FromInt(checked(left.AsInt() + right.AsInt())),
             BinaryOperator.Add when left.IsFloat && right.IsFloat
@@ -538,6 +562,19 @@ public sealed partial class Compiler : AstVisitor<object?> {
                 => GrobValue.FromInt(checked(left.AsInt() * right.AsInt())),
             BinaryOperator.Multiply when left.IsFloat && right.IsFloat
                 => GrobValue.FromFloat(left.AsFloat() * right.AsFloat()),
+            BinaryOperator.Divide or BinaryOperator.Modulo
+                => FoldDivisiveConstant(b, left, right),
+            _ => ThrowNonConstantExpression(b),
+        };
+
+    /// <summary>
+    /// Folds <c>/</c> and <c>%</c> over two constant operands. A zero integer divisor
+    /// is an internal error: the type checker permits the operation, but a zero
+    /// constant divisor is a compile-time fault. Float division by zero follows IEEE
+    /// semantics (infinity/NaN) and is not guarded.
+    /// </summary>
+    private static GrobValue FoldDivisiveConstant(BinaryExpr b, GrobValue left, GrobValue right) =>
+        b.Operator switch {
             BinaryOperator.Divide when left.IsInt && right.IsInt
                 => right.AsInt() == 0
                     ? throw new GrobInternalException("Division by zero in compile-time constant expression.")
@@ -550,9 +587,16 @@ public sealed partial class Compiler : AstVisitor<object?> {
                     : GrobValue.FromInt(checked(left.AsInt() % right.AsInt())),
             BinaryOperator.Modulo when left.IsFloat && right.IsFloat
                 => GrobValue.FromFloat(left.AsFloat() % right.AsFloat()),
-            // Comparison — type-agnostic equality
-            BinaryOperator.Equal => GrobValue.FromBool(left.Equals(right)),
-            BinaryOperator.NotEqual => GrobValue.FromBool(!left.Equals(right)),
+            _ => ThrowNonConstantExpression(b),
+        };
+
+    /// <summary>
+    /// Folds the ordering comparisons (<c>&lt; &lt;= &gt; &gt;=</c>) over two constant
+    /// operands. Strings compare by ordinal; <c>==</c>/<c>!=</c> are handled by the
+    /// caller via type-agnostic equality.
+    /// </summary>
+    private static GrobValue FoldComparisonConstant(BinaryExpr b, GrobValue left, GrobValue right) =>
+        b.Operator switch {
             BinaryOperator.Less when left.IsInt && right.IsInt
                 => GrobValue.FromBool(left.AsInt() < right.AsInt()),
             BinaryOperator.Less when left.IsFloat && right.IsFloat
@@ -571,12 +615,8 @@ public sealed partial class Compiler : AstVisitor<object?> {
                 => GrobValue.FromBool(left.AsInt() >= right.AsInt()),
             BinaryOperator.GreaterEqual when left.IsFloat && right.IsFloat
                 => GrobValue.FromBool(left.AsFloat() >= right.AsFloat()),
-            // Logical (no short-circuit needed for compile-time evaluation)
-            BinaryOperator.And => GrobValue.FromBool(left.AsBool() && right.AsBool()),
-            BinaryOperator.Or => GrobValue.FromBool(left.AsBool() || right.AsBool()),
             _ => ThrowNonConstantExpression(b),
         };
-    }
 
     /// <summary>
     /// Folds a <see cref="UnaryExpr"/> whose operand is a compile-time constant.
