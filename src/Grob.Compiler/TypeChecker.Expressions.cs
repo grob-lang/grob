@@ -555,6 +555,14 @@ public sealed partial class TypeChecker {
                 node.Range);
         }
 
+        // '?.' on a nullable receiver: stay permissive so downstream '??' and
+        // nullable-aware operators do not see a spuriously concrete field type.
+        // Full '?.' type propagation (returning the nullable variant of the field type)
+        // is deferred until nullable-struct construction is fully wired.
+        if (node.IsOptional && GrobTypeHelpers.IsNullable(targetType)) {
+            return GrobType.Unknown;
+        }
+
         // Resolve struct field access: look up the field in the user type registry and
         // annotate the node so the compiler can emit typed opcodes and chain nested access.
         if (targetType == GrobType.Struct || targetType == GrobType.NullableStruct) {

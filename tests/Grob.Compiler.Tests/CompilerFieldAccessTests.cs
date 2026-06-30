@@ -108,21 +108,22 @@ public sealed class CompilerFieldAccessTests {
     }
 
     [Fact]
-    public void FieldAccess_EmitsGetProperty_GetExprType_ReflectsFieldType() {
-        // GetProperty for an int field; verify the constant pool index points to "port".
+    public void FieldAccess_UsesResolvedFieldType_ForTypedOpcodeSelection() {
+        // A member access feeding a typed parent opcode exercises GetExprType(MemberAccessExpr).
+        // c.port (int) + 1 must emit AddInt, not AddFloat, proving the compiler reads
+        // ResolvedFieldType rather than falling back to Unknown.
         Chunk chunk = CompileSource("""
             type Config {
             host: string
             port: int
             }
             readonly c := Config { host: "x", port: 8080 }
-            readonly p := c.port
+            readonly p := c.port + 1
             """);
 
         List<Instr> instrs = Decode(chunk);
-        int idx = instrs.FindIndex(i => i.Op == OpCode.GetProperty);
-        Assert.True(idx >= 0, "no GetProperty instruction found");
-        Assert.Equal("port", chunk.ReadConstant(instrs[idx].Arg).AsString());
+        Assert.Contains(instrs, i => i.Op == OpCode.GetProperty);
+        Assert.Contains(instrs, i => i.Op == OpCode.AddInt);
     }
 
     // -----------------------------------------------------------------------

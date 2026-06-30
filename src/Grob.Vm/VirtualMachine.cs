@@ -714,7 +714,11 @@ public sealed class VirtualMachine {
                             if (!setReceiver.TryAsStruct(out GrobStruct? setStruct))
                                 throw new GrobInternalException(
                                     $"SetProperty on non-struct receiver of kind {setReceiver.Kind}");
-                            setStruct!.SetField(setPropertyName, setValue);
+                            if (!setStruct!.TryGetField(setPropertyName, out _))
+                                throw new GrobInternalException(
+                                    $"SetProperty: struct '{setStruct.TypeName}' has no field '{setPropertyName}'. " +
+                                    "Type checker should have rejected this before emission.");
+                            setStruct.SetField(setPropertyName, setValue);
                             break;
                         }
 

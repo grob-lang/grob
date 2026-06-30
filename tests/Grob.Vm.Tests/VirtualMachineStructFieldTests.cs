@@ -111,6 +111,56 @@ public sealed class VirtualMachineStructFieldTests {
     }
 
     // -----------------------------------------------------------------------
+    // SetProperty negative contracts — defensive guards
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void SetProperty_NonStructReceiver_ThrowsInternalException() {
+        // Nil (or any non-struct value) as the SetProperty receiver is a VM-level bug:
+        // the type checker should have rejected the source. Both SetProperty and
+        // GetProperty throw GrobInternalException for non-struct receivers.
+        var chunk = new Chunk();
+        byte typeIdx = chunk.AddStructType(new StructTypeDescriptor("Box", ["value"]));
+        byte fieldNameIdx = (byte)chunk.AddConstant(GrobValue.FromString("value"));
+        byte newVal = (byte)chunk.AddConstant(GrobValue.FromInt(99));
+
+        // Push nil (not a struct) as the receiver, then a value, then SetProperty.
+        chunk.WriteOpCode(OpCode.Nil, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(newVal, 1);
+        chunk.WriteOpCode(OpCode.SetProperty, 1); chunk.WriteByte(fieldNameIdx, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        Assert.Throws<GrobInternalException>(() => vm.Run(chunk));
+    }
+
+    [Fact]
+    public void SetProperty_UnknownFieldName_ThrowsInternalException() {
+        // SetProperty on a field name that the struct was not initialised with
+        // is a VM-level contract violation (type checker should have rejected via E1002).
+        // The VM must mirror GetProperty's defensive guard and throw rather than
+        // silently extending the struct with a new key.
+        var chunk = new Chunk();
+        byte typeIdx = chunk.AddStructType(new StructTypeDescriptor("Box", ["value"]));
+        byte initVal = (byte)chunk.AddConstant(GrobValue.FromInt(1));
+        byte unknownFieldIdx = (byte)chunk.AddConstant(GrobValue.FromString("nonexistent"));
+        byte newVal = (byte)chunk.AddConstant(GrobValue.FromInt(99));
+
+        // slot 0 := Box { value: 1 }
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(initVal, 1);
+        chunk.WriteOpCode(OpCode.NewStruct, 1); chunk.WriteByte(typeIdx, 1);
+
+        // attempt: box.nonexistent = 99
+        chunk.WriteOpCode(OpCode.GetLocal, 1); chunk.WriteByte(0, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(newVal, 1);
+        chunk.WriteOpCode(OpCode.SetProperty, 1); chunk.WriteByte(unknownFieldIdx, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        Assert.Throws<GrobInternalException>(() => vm.Run(chunk));
+    }
+
+    // -----------------------------------------------------------------------
     // D-325 — closure stored in a struct field escapes its enclosing frame
     // -----------------------------------------------------------------------
 

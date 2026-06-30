@@ -251,4 +251,51 @@ public sealed class TypeCheckerFieldAccessTests {
         Assert.False(bag.HasErrors,
             $"Unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
     }
+
+    // -----------------------------------------------------------------------
+    // Unknown-typed RHS must not emit a spurious assignability error
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void FieldAssign_UnknownRhsType_NoSpuriousError() {
+        // An array index access returns GrobType.Unknown at the type-checker layer.
+        // Assigning that to a typed field must not emit a spurious E0001/E0104 —
+        // the field assignment path must skip assignability when RHS is Unknown,
+        // matching the behaviour of the identifier-assignment path.
+        DiagnosticBag bag = Check("""
+            type Config {
+            port: int
+            }
+            c := Config { port: 8080 }
+            arr := [1, 2, 3]
+            c.port = arr[0]
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"Unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Explicit type annotation exercises ExtractFromBinding → ExtractStructName
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void FieldAccess_WithExplicitTypeAnnotation_ResolvesCorrectly() {
+        // An explicit struct-type annotation on the binding goes through
+        // ExtractFromBinding(annotation, sc) → ExtractStructName(annotation).
+        // The result must be the same as without an annotation.
+        var (unit, bag) = TypeCheckSource("""
+            type Config {
+            port: int
+            }
+            readonly c: Config := Config { port: 8080 }
+            readonly p := c.port
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"Unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+        List<MemberAccessExpr> accesses = CollectMemberAccesses(unit);
+        MemberAccessExpr ma = Assert.Single(accesses);
+        Assert.Equal(GrobType.Int, ma.ResolvedFieldType);
+    }
 }

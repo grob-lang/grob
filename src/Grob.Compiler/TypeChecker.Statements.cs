@@ -119,12 +119,12 @@ public sealed partial class TypeChecker {
                     memberTarget.Range);
             }
             GrobType rhsType = Visit(node.Value);
-            if (fieldType is not (GrobType.Unknown or GrobType.Error) && rhsType != GrobType.Error) {
-                if (!TypesAreAssignable(rhsType, fieldType)) {
-                    _diagnostics.Add(Diagnostic.Of(PickAssignabilityError(rhsType, fieldType),
-                        node.Value.Range,
-                        $"Cannot assign '{TypeName(rhsType)}' to field of type '{TypeName(fieldType)}'."));
-                }
+            if (fieldType is not (GrobType.Unknown or GrobType.Error) &&
+                rhsType is not (GrobType.Unknown or GrobType.Error) &&
+                !TypesAreAssignable(rhsType, fieldType)) {
+                _diagnostics.Add(Diagnostic.Of(PickAssignabilityError(rhsType, fieldType),
+                    node.Value.Range,
+                    $"Cannot assign '{TypeName(rhsType)}' to field of type '{TypeName(fieldType)}'."));
             }
             return GrobType.Unknown;
         }

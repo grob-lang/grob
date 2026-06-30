@@ -188,6 +188,10 @@ public sealed partial class Compiler {
     /// <inheritdoc/>
     public override object? VisitAssignment(AssignmentStmt node) {
         if (node.Target is MemberAccessExpr memberTarget) {
+            // '?.' as an assignment target (a?.b = v) is a grammar error that the parser
+            // should reject; emit nothing defensively until a dedicated rejection path and
+            // error code are added in the grammar-conformance sprint.
+            if (memberTarget.IsOptional) return null;
             int line = node.Range.Start.Line;
             Visit(memberTarget.Target);
             Visit(node.Value);
