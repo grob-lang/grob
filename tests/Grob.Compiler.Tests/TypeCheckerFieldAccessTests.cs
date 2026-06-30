@@ -298,4 +298,24 @@ public sealed class TypeCheckerFieldAccessTests {
         MemberAccessExpr ma = Assert.Single(accesses);
         Assert.Equal(GrobType.Int, ma.ResolvedFieldType);
     }
+
+    // -----------------------------------------------------------------------
+    // E0206 — optional chaining in assignment target
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void FieldAssign_OptionalChain_EmitsE0206() {
+        DiagnosticBag bag = Check("""
+            type Config {
+            port: int
+            }
+            c := Config { port: 8080 }
+            c?.port = 9090
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0206", diag.Code);
+        Assert.Equal(5, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
+    }
 }

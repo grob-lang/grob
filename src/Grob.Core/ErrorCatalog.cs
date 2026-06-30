@@ -215,6 +215,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>optional chaining `?.` used in assignment target position</summary>
+    public static readonly ErrorDescriptor E0206 = new(
+        Code: "E0206",
+        Title: "optional chaining `?.` in assignment target",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>type cycle with no terminating field</summary>
     public static readonly ErrorDescriptor E0301 = new(
         Code: "E0301",
@@ -1052,6 +1061,7 @@ public static class ErrorCatalog {
         E0203,
         E0204,
         E0205,
+        E0206,
         E0301,
         E0302,
         E0303,

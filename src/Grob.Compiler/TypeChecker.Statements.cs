@@ -112,6 +112,12 @@ public sealed partial class TypeChecker {
     /// <inheritdoc/>
     public override GrobType VisitAssignment(AssignmentStmt node) {
         if (node.Target is MemberAccessExpr memberTarget) {
+            if (memberTarget.IsOptional) {
+                EmitError(ErrorCatalog.E0206,
+                    "Optional chaining '?.' cannot appear in an assignment target. Use '.' for field assignment.",
+                    memberTarget.Range);
+                return GrobType.Unknown;
+            }
             GrobType fieldType = Visit(memberTarget);
             if (FindReadonlyRoot(memberTarget) is ReadonlyDecl) {
                 EmitError(ErrorCatalog.E0204,

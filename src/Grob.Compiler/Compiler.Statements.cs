@@ -188,9 +188,8 @@ public sealed partial class Compiler {
     /// <inheritdoc/>
     public override object? VisitAssignment(AssignmentStmt node) {
         if (node.Target is MemberAccessExpr memberTarget) {
-            // '?.' as an assignment target (a?.b = v) is a grammar error that the parser
-            // should reject; emit nothing defensively until a dedicated rejection path and
-            // error code are added in the grammar-conformance sprint.
+            // '?.' as an assignment target is rejected by the type checker (E0206);
+            // a well-formed compilation never reaches here with IsOptional=true.
             if (memberTarget.IsOptional) return null;
             int line = node.Range.Start.Line;
             Visit(memberTarget.Target);
