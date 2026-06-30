@@ -65,4 +65,19 @@
     <PackageReference Include="coverlet.collector" />
   </ItemGroup>
 
+  <!-- Local SonarAnalyzer gate (scoped). Runs the same csharpsquid analyzer
+       SonarCloud uses, so the recurring new-code rules fail `dotnet build`
+       locally — before commit — instead of surfacing one round later in CI. The
+       ruleset is deliberately narrowed to the repeat offenders in .editorconfig
+       (all Sonar rules default to none; only the opted-in handful are warnings,
+       which TreatWarningsAsErrors escalates to errors). Excluded from test
+       projects to mirror CI's sonar.test.exclusions. PrivateAssets=all keeps the
+       analyzer out of the published dependency graph. -->
+  <ItemGroup Condition="'$(IsTestProject)' != 'true'">
+    <PackageReference Include="SonarAnalyzer.CSharp">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
 </Project>

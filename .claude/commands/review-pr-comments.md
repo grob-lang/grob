@@ -49,6 +49,15 @@ commit history first. Re-run `sonar-pr-review` on a follow-up too: the **New
 issues** set shrinks as fixes land, and a clean fetch (gate green, zero new issues)
 is the Sonar half of done.
 
+**Two gotchas when gathering.** (1) `kwakker35` is **Chris's own GitHub handle** — the
+account these triage replies and summary comments post under. Its "review comments"
+are *your own prior triage*, not a new human reviewer; do not mistake them for fresh
+feedback to action. (2) If `sonar-pr-review` can't run because `SONAR_TOKEN` is unset,
+the `sonarqubecloud` PR comment gives only **counts**, not the issue list. This is a
+**public** project, so enumerate the issues directly, unauthenticated:
+`curl -fsS "https://sonarcloud.io/api/issues/search?componentKeys=grob-lang_grob&pullRequest=<N>&resolved=false&ps=500" | jq -r '.issues[] | "\(.severity) · \(.rule) · \(.component|sub(".*:";"")):\(.line) · \(.message)"'`.
+That gives the same `severity · rule · path:line · message` lines the skill would.
+
 ## 2. Triage each finding — fix or push back
 
 For every comment decide one of: **fix**, **push back**, or **skip as stale**.
@@ -89,7 +98,17 @@ Follow the `tdd-cycle` skill — for each code fix write or adjust the test firs
 confirm it fails, then make it pass. Never skip the red step. Then:
 
 - `dotnet build Grob.slnx` and `dotnet test Grob.slnx` — zero warnings
-  (`TreatWarningsAsErrors`), zero failures.
+  (`TreatWarningsAsErrors`), zero failures. The build now runs a **scoped local
+  SonarAnalyzer gate** (`src/CLAUDE.md` → Static analysis): an `error S3776/S2219/S2325`
+  is an analyzer finding the build will not let through. That is deliberate — it catches
+  the recurring rules here instead of in the next CI round.
+- **A review-fix commit is itself scanned new code — hold it to the bar.** Before
+  committing, re-read every line you added as if Sonar/CodeQL/CodeRabbit will scan it,
+  because they will. The local gate catches S3776/S2219/S2325, but not all of it (S125
+  is ungated and FP-prone; CodeQL/CodeRabbit findings are not in the gate). Watch for
+  **analyzer cascades**: marking a method `static` can make its caller static-eligible
+  too — fix the whole chain in one commit, not the leaf. This is the discipline whose
+  absence turned PR #104 into three rounds.
 - `dotnet format whitespace Grob.slnx` before staging (the pre-commit hooks mutate
   but do not restage — running it first avoids an aborted cycle).
 - If a fix touches coverage, keep affected projects at or above the bar and note
