@@ -138,6 +138,27 @@ public sealed class TypeCheckerStructSignatureTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E1002", diag.Code);
+        Assert.Equal(5, diag.Range.Start.Line);
+        Assert.Equal(8, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallWithNonStructArgToStructParam_EmitsE0004() {
+        // A user-defined struct used as a parameter annotation resolves to a concrete
+        // struct kind, so passing a non-struct argument is now rejected by E0004
+        // (previously masked by the permissive Unknown fallback in CheckBoundArgumentType).
+        DiagnosticBag bag = Check("""
+            type Config {
+            port: int
+            }
+            fn takesConfig(c: Config): int {
+            return 0
+            }
+            readonly x := takesConfig(1)
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", diag.Code);
     }
 
     // -----------------------------------------------------------------------

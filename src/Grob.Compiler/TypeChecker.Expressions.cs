@@ -528,9 +528,13 @@ public sealed partial class TypeChecker {
         // Resolve the parameter with its structural descriptor so a function-typed
         // parameter is checked against the argument's descriptor, not merely fn-to-fn
         // (D-326; Fix J).
-        (GrobType paramType, FunctionTypeDescriptor? paramDesc) = fn.Parameters[paramIndex].Type is not null
-            ? ResolveTypeRefFull(fn.Parameters[paramIndex].Type!)
-            : (GrobType.Unknown, null);
+        // ResolveSignatureType (not ResolveTypeRefFull) so a user-defined struct parameter
+        // annotation resolves to a concrete struct kind instead of Unknown; otherwise a
+        // non-struct argument to a struct parameter (takesConfig(1)) silently bypasses E0004
+        // because the permissive Unknown short-circuits the assignability check (Sprint 6 close).
+        (GrobType paramType, _, FunctionTypeDescriptor? paramDesc) = fn.Parameters[paramIndex].Type is not null
+            ? ResolveSignatureType(fn.Parameters[paramIndex].Type!)
+            : (GrobType.Unknown, null, null);
         bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
         bool compatible;
         if (isFunctionParam) {
