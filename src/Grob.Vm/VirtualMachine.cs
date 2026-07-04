@@ -907,6 +907,31 @@ public sealed class VirtualMachine {
                             break;
                         }
 
+                    // --- Anonymous struct construction (§10, Sprint 6D) ---
+                    // Stack layout before this opcode (bottom→top):
+                    //   name₁, val₁, name₂, val₂, …, nameₙ, valₙ
+                    // Operand: field count (byte). Pop pairs in LIFO order, then push
+                    // a GrobStruct whose TypeName is the sorted field-signature string
+                    // (matching the compile-time structural type identity).
+
+                    case OpCode.NewAnonStruct: {
+                            byte fieldCount = _activeChunk.ReadByte(_ip++);
+                            var fieldPairs = new KeyValuePair<string, GrobValue>[fieldCount];
+                            for (int i = fieldCount - 1; i >= 0; i--) {
+                                GrobValue value = _stack.Pop();
+                                string name = _stack.Pop().AsString();
+                                fieldPairs[i] = new KeyValuePair<string, GrobValue>(name, value);
+                            }
+                            string typeName = fieldCount == 0
+                                ? "<anon>"
+                                : string.Join(",",
+                                    fieldPairs
+                                        .OrderBy(p => p.Key, StringComparer.Ordinal)
+                                        .Select(p => $"{p.Key}:{p.Value.Kind}"));
+                            _stack.Push(GrobValue.FromStruct(new GrobStruct(typeName, fieldPairs)), line);
+                            break;
+                        }
+
                     default:
                         throw new GrobInternalException(
                             $"opcode {(OpCode)instruction} not yet implemented (Sprint 3+)");

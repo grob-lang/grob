@@ -104,4 +104,20 @@ public enum GrobType {
     /// Nil is assignable; a non-nullable <c>Struct</c> value widens to this slot.
     /// </summary>
     NullableStruct,
+
+    // ---- Anonymous struct types — Sprint 6 Increment D ----
+
+    /// <summary>
+    /// A synthesised structural type produced from an anonymous-struct literal
+    /// <c>#{ field: value, … }</c>. The structural identity (canonical field
+    /// signature) is carried on the literal node and in the structural type registry;
+    /// this tag is the compile-time discriminator only.
+    /// </summary>
+    AnonStruct,
+
+    /// <summary>
+    /// Nullable anonymous struct — the structural variant of <c>TypeName?</c>.
+    /// Nil is assignable; a non-nullable <c>AnonStruct</c> value widens to this slot.
+    /// </summary>
+    NullableAnonStruct,
 }

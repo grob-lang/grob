@@ -974,13 +974,7 @@ public sealed class Parser {
                         SkipNewlines();
                         List<FieldInit> fields = [];
                         while (!Check(TokenKind.RightBrace) && !IsAtEnd) {
-                            SourceLocation fieldStart = Current.Location;
-                            Token nameToken = Expect(TokenKind.Identifier, _e2001, "expected field name");
-                            SkipNewlines();
-                            Expect(TokenKind.Colon, _e2001, "expected ':' after field name");
-                            SkipNewlines();
-                            Expression fieldValue = ParseExpression();
-                            fields.Add(new FieldInit(RangeBetween(fieldStart, fieldValue.Range.End), nameToken.Lexeme, fieldValue));
+                            fields.Add(ParseOneFieldInit());
                             if (!Match(TokenKind.Comma)) break;
                             SkipNewlines();
                         }
@@ -1129,6 +1123,16 @@ public sealed class Parser {
                     return new GroupingExpr(new SourceRange(t.Location, rp.Location), inner);
                 }
             case TokenKind.LeftBracket: return ParseArrayLiteral();
+            case TokenKind.HashBrace: return ParseAnonStructLiteral();
+            case TokenKind.LeftBrace:
+                // A bare '{' in expression position is always a block opener, never a
+                // struct literal. Named construction uses 'TypeName {'; anonymous
+                // construction uses '#{ }'. Raise E2101 so the user gets the
+                // brace-disambiguation hint rather than a generic "unexpected token".
+                throw Fail(ErrorCatalog.E2101,
+                    "'{' begins a block, not a struct literal. " +
+                    "Use '#{ field: value }' for an anonymous struct, " +
+                    "or 'TypeName { }' for named construction.");
             default:
                 // When line-continuation suppresses the newline after a binary
                 // operator (e.g. `a +\n}`), the cursor lands on the anchor while
@@ -1158,6 +1162,37 @@ public sealed class Parser {
         }
         Token rb = Expect(TokenKind.RightBracket, _e2001, "expected ']' to close array literal");
         return new ArrayLiteralExpr(new SourceRange(start, rb.Location), elements);
+    }
+
+    // #{ field: value, … } — anonymous-struct literal (Sprint 6D).
+    // '#{' is a single HashBrace token; the lexer already incremented _depth so
+    // the matching '}' is scanned at the correct nesting level.
+    private AnonStructExpr ParseAnonStructLiteral() {
+        SourceLocation start = Current.Location;
+        Advance(); // consume TokenKind.HashBrace
+        SkipNewlines();
+        List<FieldInit> fields = [];
+        if (!Check(TokenKind.RightBrace)) {
+            fields.Add(ParseOneFieldInit());
+            while (Match(TokenKind.Comma)) {
+                SkipNewlines();
+                if (Check(TokenKind.RightBrace)) break; // trailing comma
+                fields.Add(ParseOneFieldInit());
+            }
+            SkipNewlines();
+        }
+        Token closeBrace = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close anonymous struct literal");
+        return new AnonStructExpr(new SourceRange(start, closeBrace.Location), fields);
+    }
+
+    private FieldInit ParseOneFieldInit() {
+        SourceLocation fieldStart = Current.Location;
+        Token nameToken = Expect(TokenKind.Identifier, _e2001, "expected field name");
+        SkipNewlines();
+        Expect(TokenKind.Colon, _e2001, "expected ':' after field name");
+        SkipNewlines();
+        Expression fieldValue = ParseExpression();
+        return new FieldInit(RangeBetween(fieldStart, fieldValue.Range.End), nameToken.Lexeme, fieldValue);
     }
 
     private InterpolatedStringExpr ParseInterpolatedString() {

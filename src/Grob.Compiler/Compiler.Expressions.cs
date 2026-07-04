@@ -811,6 +811,28 @@ public sealed partial class Compiler {
     }
 
     // -----------------------------------------------------------------------
+    // Anonymous struct construction (§10, Sprint 6D).
+    //
+    // For each field in source order: emit the field-name string constant then
+    // the field-value expression. Finish with NewAnonStruct(field-count).
+    // The VM pops field-count name/value pairs from the stack in LIFO order.
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public override object? VisitAnonStruct(AnonStructExpr node) {
+        int line = node.Range.Start.Line;
+        foreach (FieldInit fi in node.Fields) {
+            int nameIdx = _chunk.AddConstant(GrobValue.FromString(fi.Name));
+            _chunk.WriteOpCode(OpCode.Constant, line);
+            _chunk.WriteByte((byte)nameIdx, line);
+            Visit(fi.Value);
+        }
+        _chunk.WriteOpCode(OpCode.NewAnonStruct, line);
+        _chunk.WriteByte((byte)node.Fields.Count, line);
+        return null;
+    }
+
+    // -----------------------------------------------------------------------
     // Type helpers
     // -----------------------------------------------------------------------
 
