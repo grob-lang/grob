@@ -84,6 +84,7 @@ public sealed class TypeCheckerAnonStructTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E1002", diag.Code);
         Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -172,6 +173,8 @@ public sealed class TypeCheckerAnonStructTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E1002", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -201,6 +204,7 @@ public sealed class TypeCheckerAnonStructTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E2101", diag.Code);
         Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -240,11 +244,53 @@ public sealed class TypeCheckerAnonStructTests {
         Assert.Null(ex);
     }
 
+    // -----------------------------------------------------------------------
+    // Nested anonymous structs with different shapes are not structural equals
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void AnonStruct_NestedWithDifferentShape_DifferentStructuralTypes() {
+        var (unit, bag) = TypeCheckSource("""
+            readonly a := #{ inner: #{ x: 1 } }
+            readonly b := #{ inner: #{ y: 1 } }
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"Unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+
+        var collector = new AnonStructCollector();
+        collector.Visit(unit);
+        Assert.Equal(2, collector.Nodes.Count);
+        Assert.NotEqual(collector.Nodes[0].SynthesisedTypeName, collector.Nodes[1].SynthesisedTypeName);
+    }
+
+    // -----------------------------------------------------------------------
+    // Inline struct-construction member access (StructConstructionExpr as target)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void StructConstruction_InlineAccess_UndefinedField_EmitsE1002() {
+        DiagnosticBag bag = Check("""
+            type Config {
+            host: string
+            port: int
+            }
+            readonly x := Config { host: "example.com", port: 8080 }.nonexistent
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1002", diag.Code);
+        Assert.Equal(5, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
+    }
+
     [Theory]
     [InlineData("#{ .bad: 1 }")]             // invalid field name syntax
     [InlineData("#{ a: missing_var }")]      // undefined value reference
     public void AnonStruct_MalformedInputs_ProducesDiagnosticsWithoutThrowing(string expr) {
-        var ex = Record.Exception(() => Check($"readonly x := {expr}"));
+        DiagnosticBag bag = null!;
+        var ex = Record.Exception(() => bag = Check($"readonly x := {expr}"));
         Assert.Null(ex);
+        Assert.True(bag.HasErrors);
     }
 }

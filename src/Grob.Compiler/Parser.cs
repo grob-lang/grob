@@ -974,13 +974,7 @@ public sealed class Parser {
                         SkipNewlines();
                         List<FieldInit> fields = [];
                         while (!Check(TokenKind.RightBrace) && !IsAtEnd) {
-                            SourceLocation fieldStart = Current.Location;
-                            Token nameToken = Expect(TokenKind.Identifier, _e2001, "expected field name");
-                            SkipNewlines();
-                            Expect(TokenKind.Colon, _e2001, "expected ':' after field name");
-                            SkipNewlines();
-                            Expression fieldValue = ParseExpression();
-                            fields.Add(new FieldInit(RangeBetween(fieldStart, fieldValue.Range.End), nameToken.Lexeme, fieldValue));
+                            fields.Add(ParseOneFieldInit());
                             if (!Match(TokenKind.Comma)) break;
                             SkipNewlines();
                         }

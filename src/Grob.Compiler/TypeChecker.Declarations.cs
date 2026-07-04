@@ -148,7 +148,9 @@ public sealed partial class TypeChecker {
             : string.Join(",",
                 resolvedFields
                     .OrderBy(f => f.Name, StringComparer.Ordinal)
-                    .Select(f => $"{f.Name}:{f.Kind}"));
+                    .Select(f => f.NamedTypeName is not null
+                        ? $"{f.Name}:{f.Kind}:{f.NamedTypeName}"
+                        : $"{f.Name}:{f.Kind}"));
 
         if (!_structuralTypes.ContainsKey(sig)) {
             _structuralTypes[sig] = new UserTypeInfo {

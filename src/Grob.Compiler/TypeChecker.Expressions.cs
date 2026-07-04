@@ -603,6 +603,7 @@ public sealed partial class TypeChecker {
     }
 
     private static string? GetStructTypeName(Expression target) => target switch {
+        StructConstructionExpr sc => sc.TypeName,
         AnonStructExpr anon => anon.SynthesisedTypeName,
         IdentifierExpr id => GetStructTypeNameFromDecl(id.Declaration),
         MemberAccessExpr ma => ma.ResolvedStructTypeName,

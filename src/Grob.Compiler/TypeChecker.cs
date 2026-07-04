@@ -612,6 +612,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         GrobType.NullableArray => "array?",
         GrobType.Struct => "struct",
         GrobType.NullableStruct => "struct?",
+        GrobType.AnonStruct => "struct",
+        GrobType.NullableAnonStruct => "struct?",
         _ => "unknown",
     };
 

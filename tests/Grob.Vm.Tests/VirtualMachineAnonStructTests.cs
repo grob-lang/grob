@@ -108,7 +108,7 @@ public sealed class VirtualMachineAnonStructTests {
         chunk.WriteOpCode(OpCode.NewAnonStruct, 1); chunk.WriteByte(1, 1);
         chunk.WriteOpCode(OpCode.Return, 1);
 
-        var writer = new StringWriter();
+        using var writer = new StringWriter();
         Disassembler.DisassembleChunk(chunk, writer, "test");
         string output = writer.ToString();
 
