@@ -34,16 +34,20 @@ public sealed partial class TypeChecker {
             // A reserved identifier (formatAs, select) may not be a parameter name
             // (E1103, D-320).
             CheckReservedBindingName(p.Name, p.Range);
-            (GrobType paramType, FunctionTypeDescriptor? paramDesc) =
-                p.Type is not null ? ResolveTypeRefFull(p.Type) : (GrobType.Unknown, null);
+            (GrobType paramType, string? paramStructName, FunctionTypeDescriptor? paramDesc) =
+                p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null);
             // Use the owning FnDecl as the declaring node — Parameter is not an AstNode.
-            RegisterSymbol(p.Name, paramType, p.Range.Start, node, functionDescriptor: paramDesc);
+            // The struct name travels on the symbol itself (not recoverable from
+            // DeclarationNode alone) so a struct-typed parameter's fields resolve
+            // inside the function body the same way a `:=`-inferred struct local does.
+            RegisterSymbol(p.Name, paramType, p.Range.Start, node,
+                functionDescriptor: paramDesc, namedStructTypeName: paramStructName);
         }
 
         // Track the declared return type so VisitReturn can check returned values
         // (E0005) and distinguish an in-function return from a top-level one (E2203).
         // _functionReturnDescriptors is pushed in lockstep for function-type returns (D-326).
-        (GrobType returnKind, FunctionTypeDescriptor? returnDesc) = ResolveTypeRefFull(node.ReturnType);
+        (GrobType returnKind, _, FunctionTypeDescriptor? returnDesc) = ResolveSignatureType(node.ReturnType);
         _functionReturnTypes.Push(returnKind);
         _functionReturnDescriptors.Push(returnDesc);
         Visit(node.Body);
@@ -68,8 +72,8 @@ public sealed partial class TypeChecker {
             // Resolve the parameter type with its structural descriptor so a function-type
             // parameter default (action: fn(): int = () => "s") is checked structurally,
             // not merely as fn-to-fn (D-326; Fix H).
-            (GrobType paramType, FunctionTypeDescriptor? paramDesc) =
-                p.Type is not null ? ResolveTypeRefFull(p.Type) : (GrobType.Unknown, null);
+            (GrobType paramType, _, FunctionTypeDescriptor? paramDesc) =
+                p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null);
             FunctionTypeDescriptor? defaultDesc = ExpressionDescriptor(p.DefaultValue);
             bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
             bool compatible = isFunctionParam
@@ -166,11 +170,13 @@ public sealed partial class TypeChecker {
 
     // Returns the struct or anon-struct type name for a field-value expression.
     // GetStructTypeNameFromDecl (TypeChecker.Expressions.cs) handles both Struct
-    // and AnonStruct initialisers via ExtractFromBinding.
-    private static string? GetFieldValueStructTypeName(Expression expr) => expr switch {
+    // and AnonStruct initialisers via ExtractFromBinding; a struct-typed parameter
+    // resolves via its symbol's NamedStructTypeName first (Sprint 6 close), same as
+    // GetStructTypeName.
+    private string? GetFieldValueStructTypeName(Expression expr) => expr switch {
         StructConstructionExpr sc => sc.TypeName,
         AnonStructExpr anon => anon.SynthesisedTypeName,
-        IdentifierExpr id => GetStructTypeNameFromDecl(id.Declaration),
+        IdentifierExpr id => LookupSymbol(id.Name)?.NamedStructTypeName ?? GetStructTypeNameFromDecl(id.Declaration),
         MemberAccessExpr ma => ma.ResolvedStructTypeName,
         _ => null,
     };
