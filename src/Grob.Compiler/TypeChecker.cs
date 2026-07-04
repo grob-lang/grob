@@ -98,6 +98,15 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly Dictionary<CallExpr, FunctionTypeDescriptor> _callResultDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
+    // _callResultStructNames mirrors _callResultDescriptors for struct-typed return
+    // values (Sprint 6 close): when a call's callee has a user-defined-type return
+    // annotation, this records the declared type name so a `:=`-inferred binding from
+    // that call (`box := makeBox()`) can resolve field access the same way a direct
+    // struct-construction initialiser already does. Keyed by reference identity,
+    // matching _callResultDescriptors.
+    private readonly Dictionary<CallExpr, string> _callResultStructNames =
+        new(ReferenceEqualityComparer.Instance);
+
     // -----------------------------------------------------------------------
     // Flow-sensitive narrowing (Sprint 5 Increment E; §6, §19.1 narrowing rule).
     //
@@ -370,6 +379,36 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     }
 
     /// <summary>
+    /// Resolves a function parameter or return-type annotation, additionally
+    /// recognising user-defined type names as struct kinds (Sprint 6) and returning
+    /// the declared name — unlike the static <see cref="ResolveTypeRef"/>, written
+    /// before the type registry existed, which maps every user-defined name to
+    /// <see cref="GrobType.Unknown"/> (the gap noted at
+    /// <see cref="GetStructTypeNameFromDecl"/>'s call site). Quiet, like
+    /// <see cref="ResolveTypeRef"/>: an unrecognised name resolves to
+    /// <see cref="GrobType.Unknown"/> with no diagnostic — the name has already been
+    /// validated (or not) wherever the annotation's owning declaration was itself
+    /// checked, so re-validating here on every reference would duplicate E1001.
+    /// </summary>
+    private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? Descriptor)
+            ResolveSignatureType(TypeRef typeRef) {
+        if (typeRef is ArrayTypeRef or FunctionTypeRef) {
+            (GrobType kind, FunctionTypeDescriptor? desc) = ResolveTypeRefFull(typeRef);
+            return (kind, null, desc);
+        }
+
+        GrobType builtin = ResolveTypeRef(typeRef);
+        if (builtin != GrobType.Unknown) return (builtin, null, null);
+
+        if (LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl) {
+            GrobType structKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
+            return (structKind, typeRef.Name, null);
+        }
+
+        return (GrobType.Unknown, null, null);
+    }
+
+    /// <summary>
     /// Returns <see langword="true"/> when a value of <paramref name="from"/> can
     /// be used where <paramref name="to"/> is expected.
     /// Rules (D-178, D-014):
@@ -537,7 +576,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     }
 
     private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode,
-                               bool provisional = false, FunctionTypeDescriptor? functionDescriptor = null) {
+                               bool provisional = false, FunctionTypeDescriptor? functionDescriptor = null,
+                               string? namedStructTypeName = null) {
         _scopes.Peek()[name] = new Symbol {
             Name = name,
             Type = type,
@@ -545,6 +585,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             DeclarationNode = declarationNode,
             Provisional = provisional,
             FunctionDescriptor = functionDescriptor,
+            NamedStructTypeName = namedStructTypeName,
         };
     }
 

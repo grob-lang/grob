@@ -305,9 +305,14 @@ public sealed partial class TypeChecker {
         CheckCall(node, fn, callArgTypes);
         // Resolve the declared return type with its structural descriptor so a call that
         // returns a function type (makeCounter(): fn(): int) flows its descriptor to the
-        // binding annotation via _callResultDescriptors (D-326; Fix I).
-        (GrobType resultKind, FunctionTypeDescriptor? resultDesc) = ResolveTypeRefFull(fn.ReturnType);
+        // binding annotation via _callResultDescriptors (D-326; Fix I). ResolveSignatureType
+        // additionally recognises a struct-typed return (Sprint 6 close) and flows the
+        // declared name via _callResultStructNames so `box := makeBox()` resolves field
+        // access the same way a direct struct-construction initialiser already does.
+        (GrobType resultKind, string? resultStructName, FunctionTypeDescriptor? resultDesc) =
+            ResolveSignatureType(fn.ReturnType);
         if (resultDesc is not null) _callResultDescriptors[node] = resultDesc;
+        if (resultStructName is not null) _callResultStructNames[node] = resultStructName;
         return resultKind;
     }
 
@@ -523,9 +528,13 @@ public sealed partial class TypeChecker {
         // Resolve the parameter with its structural descriptor so a function-typed
         // parameter is checked against the argument's descriptor, not merely fn-to-fn
         // (D-326; Fix J).
-        (GrobType paramType, FunctionTypeDescriptor? paramDesc) = fn.Parameters[paramIndex].Type is not null
-            ? ResolveTypeRefFull(fn.Parameters[paramIndex].Type!)
-            : (GrobType.Unknown, null);
+        // ResolveSignatureType (not ResolveTypeRefFull) so a user-defined struct parameter
+        // annotation resolves to a concrete struct kind instead of Unknown; otherwise a
+        // non-struct argument to a struct parameter (takesConfig(1)) silently bypasses E0004
+        // because the permissive Unknown short-circuits the assignability check (Sprint 6 close).
+        (GrobType paramType, _, FunctionTypeDescriptor? paramDesc) = fn.Parameters[paramIndex].Type is not null
+            ? ResolveSignatureType(fn.Parameters[paramIndex].Type!)
+            : (GrobType.Unknown, null, null);
         bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
         bool compatible;
         if (isFunctionParam) {
@@ -602,31 +611,37 @@ public sealed partial class TypeChecker {
         return field.Kind;
     }
 
-    private static string? GetStructTypeName(Expression target) => target switch {
+    private string? GetStructTypeName(Expression target) => target switch {
         StructConstructionExpr sc => sc.TypeName,
         AnonStructExpr anon => anon.SynthesisedTypeName,
-        IdentifierExpr id => GetStructTypeNameFromDecl(id.Declaration),
+        // A struct-typed parameter carries its name on the symbol (ResolveSignatureType,
+        // Sprint 6 close) since its DeclarationNode is the owning FnDecl, not a Parameter
+        // (Parameter is not an AstNode) — GetStructTypeNameFromDecl cannot recover it from
+        // the declaration node alone. `:=`-inferred locals still resolve via that path.
+        IdentifierExpr id => LookupSymbol(id.Name)?.NamedStructTypeName ?? GetStructTypeNameFromDecl(id.Declaration),
         MemberAccessExpr ma => ma.ResolvedStructTypeName,
         _ => null
     };
 
-    // Only reached when targetType is Struct/AnonStruct, which requires the binding was
-    // initialised from a StructConstructionExpr or AnonStructExpr, or has a user-defined
-    // annotation. FnDecl parameters with struct-type annotations resolve to GrobType.Unknown
-    // (ResolveTypeRef maps user-defined names to Unknown) so the Struct block is
-    // never entered for them; the arm is omitted until ResolveTypeRef is updated.
-    private static string? GetStructTypeNameFromDecl(AstNode? decl) => decl switch {
+    // Reached when targetType is Struct/AnonStruct and the identifier's symbol carried no
+    // NamedStructTypeName (i.e. a `:=`/`readonly` local, not a struct-typed parameter —
+    // see GetStructTypeName) — the binding was initialised from a StructConstructionExpr,
+    // an AnonStructExpr, a call returning a struct type, or has a user-defined annotation.
+    private string? GetStructTypeNameFromDecl(AstNode? decl) => decl switch {
         ReadonlyDecl ro => ExtractFromBinding(ro.AnnotatedType, ro.Value),
         VarDeclStmt vd => ExtractFromBinding(vd.AnnotatedType, vd.Initializer),
         _ => null
     };
 
-    private static string? ExtractFromBinding(TypeRef? annotation, Expression? init) =>
+    private string? ExtractFromBinding(TypeRef? annotation, Expression? init) =>
         annotation is not null
             ? ExtractStructName(annotation)
             : init switch {
                 StructConstructionExpr sc => sc.TypeName,
                 AnonStructExpr anon => anon.SynthesisedTypeName,
+                // A struct-returning call (box := makeBox()) — the name was recorded by
+                // VisitCall via ResolveSignatureType (Sprint 6 close).
+                CallExpr call => _callResultStructNames.GetValueOrDefault(call),
                 _ => null,
             };
 

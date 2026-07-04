@@ -47,4 +47,17 @@ public sealed class Symbol {
     /// the type-checker's return-type stack (D-326).
     /// </summary>
     public FunctionTypeDescriptor? FunctionDescriptor { get; init; }
+
+    /// <summary>
+    /// When <see cref="Type"/> is <see cref="GrobType.Struct"/> or
+    /// <see cref="GrobType.NullableStruct"/>, carries the declared user type name so
+    /// member access on this binding can resolve fields via the type registry
+    /// (mirrors <see cref="FunctionDescriptor"/> for function types). Set for
+    /// struct-typed parameters, whose declaration node is the owning <c>FnDecl</c>
+    /// rather than the <c>Parameter</c> itself, so the name cannot be recovered from
+    /// <see cref="DeclarationNode"/> alone. <see langword="null"/> for all other
+    /// types and for <c>:=</c>-inferred struct bindings, which resolve their type
+    /// name from the initialiser expression instead.
+    /// </summary>
+    public string? NamedStructTypeName { get; init; }
 }
