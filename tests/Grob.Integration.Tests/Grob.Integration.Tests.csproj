@@ -77,6 +77,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 6E close smoke fixture. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-6e\*.grob"
+             Link="fixtures\sprint-6e\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
