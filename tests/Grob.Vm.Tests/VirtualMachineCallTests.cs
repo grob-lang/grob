@@ -205,4 +205,86 @@ public sealed class VirtualMachineCallTests {
         Assert.Equal(1, ex.Line);    // the recursive call site's line in the hand-built chunk
         Assert.Equal(0, ex.Column);  // no column recorded for hand-built bytecode
     }
+
+    // -----------------------------------------------------------------------
+    // D-332: recursion deep enough to force a value-stack resize still
+    // computes correctly — GetLocal/SetLocal and arithmetic read the right
+    // slots through the backing-array grow-and-copy.
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// <c>fn sumDown(n): if n &lt;= 0 { return 0 } else { return n + sumDown(n - 1) }</c>,
+    /// with five padding constants pushed (and never explicitly popped — the
+    /// frame's own <see cref="OpCode.Return"/> trims them) ahead of the recursive
+    /// call in the else branch, so live operand-stack depth grows by roughly eight
+    /// slots per recursion level. At <paramref name="depth"/> = 200 (well under the
+    /// 256-deep call-frame cap, D-180) this comfortably crosses
+    /// <see cref="ValueStack.DefaultCapacity"/> before any frame returns, forcing at
+    /// least one backing-array resize mid-recursion.
+    /// </summary>
+    [Fact]
+    public void Call_DeepRecursionAcrossStackGrowth_ProducesCorrectResult() {
+        const int depth = 200;
+
+        var fnChunk = new Chunk();
+        int zero = fnChunk.AddConstant(GrobValue.FromInt(0));
+        int one = fnChunk.AddConstant(GrobValue.FromInt(1));
+        int padding = fnChunk.AddConstant(GrobValue.FromInt(-1));
+        int selfName = fnChunk.AddConstant(GrobValue.FromString("sumDown"));
+
+        fnChunk.WriteOpCode(OpCode.GetLocal, 1);
+        fnChunk.WriteByte(0, 1);                     // n
+        fnChunk.WriteOpCode(OpCode.Constant, 1);
+        fnChunk.WriteByte((byte)zero, 1);
+        fnChunk.WriteOpCode(OpCode.LessEqualInt, 1); // n <= 0
+        int elseJump = EmitJump(fnChunk, OpCode.JumpIfFalse);
+
+        // base case: return 0
+        fnChunk.WriteOpCode(OpCode.Constant, 1);
+        fnChunk.WriteByte((byte)zero, 1);
+        fnChunk.WriteOpCode(OpCode.Return, 1);
+
+        // recursive case: five padding pushes, then n + sumDown(n - 1)
+        PatchJump(fnChunk, elseJump);
+        for (int i = 0; i < 5; i++) {
+            fnChunk.WriteOpCode(OpCode.Constant, 1);
+            fnChunk.WriteByte((byte)padding, 1);
+        }
+        fnChunk.WriteOpCode(OpCode.GetLocal, 1);
+        fnChunk.WriteByte(0, 1);                     // n (left operand of +)
+        fnChunk.WriteOpCode(OpCode.GetGlobal, 1);
+        fnChunk.WriteByte((byte)selfName, 1);         // sumDown
+        fnChunk.WriteOpCode(OpCode.GetLocal, 1);
+        fnChunk.WriteByte(0, 1);                     // n
+        fnChunk.WriteOpCode(OpCode.Constant, 1);
+        fnChunk.WriteByte((byte)one, 1);
+        fnChunk.WriteOpCode(OpCode.SubtractInt, 1);   // n - 1
+        fnChunk.WriteOpCode(OpCode.Call, 1);
+        fnChunk.WriteByte(1, 1);                     // sumDown(n - 1)
+        fnChunk.WriteOpCode(OpCode.AddInt, 1);        // n + sumDown(n - 1)
+        fnChunk.WriteOpCode(OpCode.Return, 1);
+
+        var fn = new BytecodeFunction("sumDown", 1, fnChunk);
+
+        var script = new Chunk();
+        int fnConst = script.AddConstant(GrobValue.FromFunction(fn));
+        int name = script.AddConstant(GrobValue.FromString("sumDown"));
+        int start = script.AddConstant(GrobValue.FromInt(depth));
+        script.WriteOpCode(OpCode.Constant, 1);
+        script.WriteByte((byte)fnConst, 1);
+        script.WriteOpCode(OpCode.DefineGlobal, 1);
+        script.WriteByte((byte)name, 1);
+        script.WriteOpCode(OpCode.GetGlobal, 1);
+        script.WriteByte((byte)name, 1);
+        script.WriteOpCode(OpCode.Constant, 1);
+        script.WriteByte((byte)start, 1);
+        script.WriteOpCode(OpCode.Call, 1);
+        script.WriteByte(1, 1);
+        script.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(script);
+
+        Assert.Equal((long)depth * (depth + 1) / 2, vm.Stack.Peek().AsInt());
+    }
 }

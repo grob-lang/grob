@@ -666,4 +666,72 @@ public sealed class VirtualMachineTests {
             defaultMarker: 999);
         Assert.Equal($"999{Environment.NewLine}", output);
     }
+
+    // -------------------------------------------------------------------------
+    // D-332: a growth-inducing run does not leak into the next run on the
+    // same VM instance. The enlarged backing array persists (by design — the
+    // capacity is not reset, only the live region is cleared by
+    // ValueStack.Reset()) but a subsequent shallow run must behave identically
+    // to a fresh VM. Regression tripwire against any future pooling approach.
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Run_TwoSequentialRuns_FirstGrowsStack_SecondIsCorrectAndIsolated() {
+        const int iterations = 1100;
+
+        // Run 1: i := 0 (slot 0); while (i < 1100) { push a padding constant
+        // (never popped) ; i++ }; push final i; (top-level) Return leaves
+        // every pushed value on the stack — the top-level Return branch does
+        // not trim.
+        var run1 = new Chunk();
+        int zero = run1.AddConstant(GrobValue.FromInt(0));
+        int n = run1.AddConstant(GrobValue.FromInt(iterations));
+        int padding = run1.AddConstant(GrobValue.FromInt(-1));
+
+        run1.WriteOpCode(OpCode.Constant, 1); run1.WriteByte((byte)zero, 1);   // i := 0 (slot 0)
+
+        int loopStart = run1.Count;
+        run1.WriteOpCode(OpCode.GetLocal, 1); run1.WriteByte(0, 1);
+        run1.WriteOpCode(OpCode.Constant, 1); run1.WriteByte((byte)n, 1);
+        run1.WriteOpCode(OpCode.LessInt, 1);
+        run1.WriteOpCode(OpCode.JumpIfFalse, 1);
+        int loopExitSite = run1.Count;
+        run1.WriteByte(0xFF, 1); run1.WriteByte(0xFF, 1);
+
+        run1.WriteOpCode(OpCode.Constant, 1); run1.WriteByte((byte)padding, 1); // padding push
+        run1.WriteOpCode(OpCode.IncrementInt, 1); run1.WriteByte(0, 1);         // i++
+        run1.WriteOpCode(OpCode.Loop, 1);
+        int loopOffset = (run1.Count + 2) - loopStart;
+        run1.WriteByte((byte)(loopOffset >> 8), 1); run1.WriteByte((byte)(loopOffset & 0xFF), 1);
+
+        int loopEnd = run1.Count;
+        int exitOffset = loopEnd - (loopExitSite + 2);
+        run1.PatchByte(loopExitSite, (byte)(exitOffset >> 8));
+        run1.PatchByte(loopExitSite + 1, (byte)(exitOffset & 0xFF));
+
+        run1.WriteOpCode(OpCode.GetLocal, 1); run1.WriteByte(0, 1);   // push final i
+        run1.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(run1);
+        Assert.Equal((long)iterations, vm.Stack.Peek().AsInt());
+
+        // Run 2, same VM instance: a plain shallow script must produce the
+        // same result it would on a fresh VM — no leakage from run 1's
+        // leftover values or its now-enlarged backing array.
+        var run2 = new Chunk();
+        byte i2 = ConstByte(run2, GrobValue.FromInt(2));
+        byte i3 = ConstByte(run2, GrobValue.FromInt(3));
+        byte i4 = ConstByte(run2, GrobValue.FromInt(4));
+        run2.WriteOpCode(OpCode.Constant, 1); run2.WriteByte(i2, 1);
+        run2.WriteOpCode(OpCode.Constant, 1); run2.WriteByte(i3, 1);
+        run2.WriteOpCode(OpCode.Constant, 1); run2.WriteByte(i4, 1);
+        run2.WriteOpCode(OpCode.MultiplyInt, 1);
+        run2.WriteOpCode(OpCode.AddInt, 1);
+        run2.WriteOpCode(OpCode.Return, 1);
+
+        vm.Run(run2);
+        Assert.Equal(1, vm.Stack.Count);
+        Assert.Equal(14L, vm.Stack.Peek().AsInt());
+    }
 }
