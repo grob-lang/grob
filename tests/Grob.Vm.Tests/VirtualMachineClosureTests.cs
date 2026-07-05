@@ -664,4 +664,100 @@ public sealed class VirtualMachineClosureTests {
         chunk.WriteOpCode(OpCode.Exit, 1);                                           // abnormal exit
         return new BytecodeFunction("leaky", 0, chunk);
     }
+
+    // -----------------------------------------------------------------------
+    // D-332: an open upvalue survives a value-stack resize that happens
+    // while its enclosing frame is still live.
+    //
+    // Writes a 2-byte big-endian forward-jump offset, matching
+    // Compiler.EmitJump/PatchJump (see VirtualMachineLoopTests.WriteJumpOffset).
+    // -----------------------------------------------------------------------
+    private static void WriteJumpOffset(Chunk chunk, int offset, int line) {
+        chunk.WriteByte((byte)(offset >> 8), line);
+        chunk.WriteByte((byte)(offset & 0xFF), line);
+    }
+
+    /// <summary>
+    /// Writes a 2-byte big-endian backward-jump offset for <see cref="OpCode.Loop"/>.
+    /// Must be called immediately after the opcode byte, before its two operand
+    /// bytes — see VirtualMachineLoopTests.WriteLoopOffset for the formula.
+    /// </summary>
+    private static void WriteLoopOffset(Chunk chunk, int loopStart, int line) {
+        int offset = (chunk.Count + 2) - loopStart;
+        chunk.WriteByte((byte)(offset >> 8), line);
+        chunk.WriteByte((byte)(offset & 0xFF), line);
+    }
+
+    /// <summary>
+    /// enclosing fn: x := 42 (slot 0); Closure captures slot 0 (slot 1, still
+    /// OPEN — the frame has not returned); i := 0 (slot 2); while (i &lt; 1100) {
+    /// push a padding constant (never popped — trimmed by this frame's own
+    /// Return); i++ }; call the closure while this frame is still on the call
+    /// stack; return its result.
+    /// <para>
+    /// The padding loop drives the operand stack from
+    /// <see cref="ValueStack.DefaultCapacity"/> past 2048 while the upvalue
+    /// tracking slot 0 is still open, forcing at least one backing-array
+    /// resize before <see cref="OpCode.GetUpvalue"/> reads it. Proves the
+    /// D-325 open-upvalue indirection (stack object + slot index, never a
+    /// cached reference/span) survives the resize.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Closure_CapturedLocalSurvivesStackGrowth() {
+        const int iterations = 1100;
+
+        // lambda body: GetUpvalue(0); Return.
+        var lambdaChunk = new Chunk();
+        lambdaChunk.WriteOpCode(OpCode.GetUpvalue, 1); lambdaChunk.WriteByte(0, 1);
+        lambdaChunk.WriteOpCode(OpCode.Return, 1);
+        lambdaChunk.WriteOpCode(OpCode.Nil, 1);   // safety-net
+        lambdaChunk.WriteOpCode(OpCode.Return, 1);
+        var lambdaFn = new BytecodeFunction(string.Empty, 0, lambdaChunk, upvalueCount: 1);
+
+        var outerChunk = new Chunk();
+        int fortyTwo = outerChunk.AddConstant(GrobValue.FromInt(42));
+        int lambdaIdx = outerChunk.AddConstant(GrobValue.FromFunction(lambdaFn));
+        int zero = outerChunk.AddConstant(GrobValue.FromInt(0));
+        int n = outerChunk.AddConstant(GrobValue.FromInt(iterations));
+        int padding = outerChunk.AddConstant(GrobValue.FromInt(-1));
+
+        outerChunk.WriteOpCode(OpCode.Constant, 1); outerChunk.WriteByte((byte)fortyTwo, 1); // x := 42 (slot 0)
+        outerChunk.WriteOpCode(OpCode.Closure, 1); outerChunk.WriteByte((byte)lambdaIdx, 1);
+        outerChunk.WriteByte(1, 1); outerChunk.WriteByte(0, 1);                                // isLocal=1 slot=0 → slot 1
+        outerChunk.WriteOpCode(OpCode.Constant, 1); outerChunk.WriteByte((byte)zero, 1);       // i := 0 (slot 2)
+
+        int loopStart = outerChunk.Count;
+        outerChunk.WriteOpCode(OpCode.GetLocal, 1); outerChunk.WriteByte(2, 1);                // i
+        outerChunk.WriteOpCode(OpCode.Constant, 1); outerChunk.WriteByte((byte)n, 1);          // N
+        outerChunk.WriteOpCode(OpCode.LessInt, 1);                                              // i < N
+        outerChunk.WriteOpCode(OpCode.JumpIfFalse, 1);
+        int loopExitSite = outerChunk.Count;
+        outerChunk.WriteByte(0xFF, 1); outerChunk.WriteByte(0xFF, 1);                           // patched below
+
+        outerChunk.WriteOpCode(OpCode.Constant, 1); outerChunk.WriteByte((byte)padding, 1);    // padding push
+        outerChunk.WriteOpCode(OpCode.IncrementInt, 1); outerChunk.WriteByte(2, 1);            // i++
+        outerChunk.WriteOpCode(OpCode.Loop, 1);
+        WriteLoopOffset(outerChunk, loopStart, 1);
+
+        int loopEnd = outerChunk.Count;
+        outerChunk.PatchByte(loopExitSite, (byte)((loopEnd - (loopExitSite + 2)) >> 8));
+        outerChunk.PatchByte(loopExitSite + 1, (byte)((loopEnd - (loopExitSite + 2)) & 0xFF));
+
+        outerChunk.WriteOpCode(OpCode.GetLocal, 1); outerChunk.WriteByte(1, 1);                 // push closure
+        outerChunk.WriteOpCode(OpCode.Call, 1); outerChunk.WriteByte(0, 1);                 // call it (open upvalue read)
+        outerChunk.WriteOpCode(OpCode.Return, 1);
+        var outerFn = new BytecodeFunction("capture42WithGrowth", 0, outerChunk);
+
+        var script = new Chunk();
+        int fnIdx = script.AddConstant(GrobValue.FromFunction(outerFn));
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)fnIdx, 1);
+        script.WriteOpCode(OpCode.Call, 1); script.WriteByte(0, 1);
+        script.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(script);
+
+        Assert.Equal(42L, vm.Stack.Peek().AsInt());
+    }
 }

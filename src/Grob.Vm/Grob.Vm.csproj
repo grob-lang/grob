@@ -13,4 +13,11 @@
     <ProjectReference Include="..\Grob.Runtime\Grob.Runtime.csproj" />
   </ItemGroup>
 
+  <!-- Allow Grob.Vm.Tests to construct Upvalue directly (D-332 resize-survival test) -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Grob.Vm.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

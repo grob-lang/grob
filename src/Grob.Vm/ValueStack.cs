@@ -3,35 +3,55 @@ using Grob.Core;
 namespace Grob.Vm;
 
 /// <summary>
-/// The VM operand stack: a fixed-capacity array of <see cref="GrobValue"/>
-/// slots. Pushing a primitive (Bool/Int/Float) is a 24-byte struct copy with
-/// no allocation (D-303, D-304).
+/// The VM operand stack: a geometrically-growing array of <see cref="GrobValue"/>
+/// slots, capped at <see cref="Capacity"/>. Pushing a primitive (Bool/Int/Float)
+/// is a 24-byte struct copy with no heap allocation of its own (D-303, D-304).
 ///
 /// Authority: grob-vm-architecture.md — value stack section.
 /// </summary>
 public sealed class ValueStack {
     /// <summary>
-    /// Maximum simultaneous live values on the operand stack. Chosen to comfortably
-    /// exceed Sprint 2's needs (no call frames yet) while leaving headroom for
-    /// future locals and intermediate computation. The value-stack overflow
+    /// Initial backing-array size (D-332). 1,024 slots × 24 bytes = 24 KB —
+    /// comfortably under the ~85,000-byte Large Object Heap threshold, so a
+    /// fresh <see cref="ValueStack"/> (one per <c>VirtualMachine</c> instance)
+    /// no longer forces an LOH allocation on every run. Ordinary scripts never
+    /// grow past this; <see cref="Push"/> grows geometrically for the rest.
+    /// </summary>
+    public const int DefaultCapacity = 1024;
+
+    /// <summary>
+    /// Maximum simultaneous live values on the operand stack — the effective
+    /// call/expression depth cap. Unchanged from the original fixed-capacity
+    /// design; <see cref="Push"/> now grows the backing array up to this
+    /// ceiling instead of allocating it up front. The value-stack overflow
     /// path surfaces as a runtime error, not an unguarded array write.
     /// </summary>
     public const int Capacity = 16384;
 
-    private readonly GrobValue[] _values = new GrobValue[Capacity];
+    private GrobValue[] _values = new GrobValue[DefaultCapacity];
     private int _top;
 
     /// <summary>Number of values currently on the stack.</summary>
     public int Count => _top;
 
     /// <summary>
-    /// Push <paramref name="value"/> onto the top of the stack. On overflow
-    /// throws <see cref="GrobRuntimeException"/> carrying <paramref name="line"/>
-    /// rather than an unguarded array write.
+    /// Push <paramref name="value"/> onto the top of the stack. When the
+    /// backing array is full and below <see cref="Capacity"/>, it grows
+    /// geometrically (doubling, capped at <see cref="Capacity"/>) via
+    /// <see cref="Array.Resize"/> — existing values are preserved at their
+    /// indices, so open upvalues (D-325, which track a stack object plus a
+    /// slot index rather than a raw reference) observe the resize
+    /// transparently. At <see cref="Capacity"/>, overflow throws
+    /// <see cref="GrobRuntimeException"/> carrying <paramref name="line"/>
+    /// rather than an unguarded array write — the effective depth cap is
+    /// unchanged from before this array was resizable.
     /// </summary>
     public void Push(GrobValue value, int line) {
-        if (_top == _values.Length)
-            throw new GrobRuntimeException(ErrorCatalog.E5903.Code, line, "value stack overflow");
+        if (_top == _values.Length) {
+            if (_values.Length == Capacity)
+                throw new GrobRuntimeException(ErrorCatalog.E5903.Code, line, "value stack overflow");
+            Array.Resize(ref _values, Math.Min(Capacity, _values.Length * 2));
+        }
         _values[_top++] = value;
     }
 

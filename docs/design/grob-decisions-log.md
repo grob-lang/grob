@@ -329,6 +329,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-329 | June 2026                                                         | Tooling — versioning          | MinVer (v7.0.0) adopted as the version-management strategy: assembly and package versions are derived from semver git tags with no hardcoded version in any `.csproj`. `MinVerMinimumMajorMinor=0.5` in `Directory.Build.props` gives pre-release builds the version `0.5.0-alpha.0.{height}` until the first semver tag. `v1.0.0` is reserved for post-Sprint-12 release. `ReplCommand` and `Program.cs` banners read `AssemblyInformationalVersionAttribute` (stripping the `+hash` suffix) so the displayed version is always in sync with the assembly. Banner tests assert format only (`Grob \d+\.\d+\.\d+`), not a literal — version-proof forever. |
 | D-330 | June 2026                                                         | Type system — construction-site diagnostics | Unknown field name at a named type construction (`TypeName { notAField: v }`) gets a dedicated code **E0012** (Type category), not a fold into E1002 (undefined member, which is member *access* — `obj.field` on an existing value). Mirrors D-318's choice of dedicated call-site codes over folding into E0003: E0012 is to construction what E0011 (unknown parameter name) is to a named call, and sits in the E00xx type block beside E0103 (missing required field at construction) and E0011. Registered in Sprint 6 Increment B through its `ErrorCatalog` descriptor (D-308); error-code count 109 → 110. Resolves the §10 gap where the spec mandated the error but cited no code |
 | D-331 | June 2026                                                         | Process / harness — closed-surface growth | Closed surfaces grow through sanctioned, logged procedures rather than hard "nevers", calibrated to whether the surface carries a stability contract. `OpCode`/`TokenKind` carry a wire-format contract (ADR-0013) — grown via `adding-an-opcode`. The parser and AST carry none (compiler-internal, never serialised) — built incrementally, closed *within an increment* as scope discipline, extended via the new `extending-the-grammar` skill; reclassified from architecture invariant to scope discipline in `AGENTS.md` and the compiler-engineer agent. Error codes carry ADR-0017 immutability — each increment declares an error-code budget, with the new `allocating-an-error-code` ladder (surface fold-vs-new, register at the next free number from the live registry, count reconciled and D-316-ratified) for the unanticipated case. Resolves the three-way harness contradiction on codes and the grammar-complete premise that Sprint 4E and 6B falsified. No new error code; count unchanged |
+| D-332 | June 2026                                                         | VM — operand-stack allocation | `ValueStack`'s backing array right-sized from a fixed 16,384-slot (393 KB) allocation to a 1,024-slot (24 KB) default that grows geometrically (doubling, capped at the unchanged 16,384-slot ceiling) via `Array.Resize` on `Push`. Fixes the Sprint 6 benchmark finding — all three VM benchmarks showed `Gen0 == Gen1 == Gen2` (a full compacting GC every op) because the fixed array cleared the ~85,000-byte LOH threshold and a fresh `VirtualMachine`/`ValueStack` is constructed per run. Overflow guard (E5903) and effective depth cap unchanged; D-325 open upvalues (stack object + slot index, never a raw reference/span) survive the resize transparently — the sole `Span<GrobValue>` in `Grob.Vm` is the `#if DEBUG` trace hook's per-iteration, never-cached snapshot. No new error code; count unchanged. Baseline recapture on `windows-latest` via `benchmark.yml` pending — not performed in this local session (D-309 forbids a locally-produced committed baseline) |
 
 ---
 
@@ -3655,6 +3656,81 @@ via `extending-the-grammar`. No new error code; the count is unchanged by this d
 
 ---
 
+### D-332 — Operand-stack right-sizing off the Large Object Heap (June 2026)
+
+Area: VM — operand-stack allocation
+Supersedes: none
+Superseded by: none
+
+**Context.** The Sprint 6 VM benchmark run (`windows-latest`, AMD EPYC 7763, .NET
+10.0.9) showed all three VM benchmarks (`Run_DeclAndArith`, `Run_Interpolation`,
+`Run_ControlFlow`) with `Gen0 == Gen1 == Gen2` collections and near-constant
+~405,000–415,000 bytes allocated per operation regardless of workload size — the
+signature of a single allocation clearing the Large Object Heap (LOH) threshold
+(~85,000 bytes) and forcing a full compacting GC on every run. `ValueStack`'s backing
+array was `new GrobValue[16384]` — `GrobValue` is a locked 24-byte tagged union
+(D-303), so 16,384 × 24 = 393,216 bytes, comfortably over the LOH line — allocated
+once per `ValueStack` instance via a field initialiser, and `VirtualMachine` (which
+holds one `ValueStack`) is constructed fresh per benchmark operation
+(`VmBenchmarks.RunSource`), so every operation paid the full array allocation. The
+256-entry `CallFrame[]` (~8 KB) was confirmed not the culprit.
+
+**The decision.** `ValueStack`'s backing array right-sizes to `DefaultCapacity = 1024`
+slots (24 KB, comfortably under the LOH line) and grows geometrically — doubling, via
+`Array.Resize` — on `Push` when full, capped at the unchanged `Capacity = 16384`
+ceiling. At the cap, `Push` throws the existing `GrobRuntimeException` carrying
+`ErrorCatalog.E5903` exactly as before; the effective maximum operand-stack depth is
+unchanged. Rejected: pooling the backing array across `Run()` calls — it revisits the
+VM's fresh-per-run construction and the D-319 per-instance step-budget counter for a
+second-order win (per-run _young-gen_ array churn) that only matters once the LOH
+pressure is gone, so it is left for a future interlude if the recaptured baseline still
+shows it as material.
+
+**Safety argument.** A resize (`Array.Resize`, which grows-and-copies existing values
+at their indices) is transparent to the rest of the VM because nothing caches a raw
+`ref`/`Span<GrobValue>` into the backing array across a `Push`: the sole
+`Span<GrobValue>` in `Grob.Vm` is `ValueStack.AsSpan()`, consumed immediately by the
+`#if DEBUG` per-instruction trace hook and never held across an instruction boundary.
+D-325's open upvalues survive by construction — `Upvalue` holds a `ValueStack`
+_object_ reference plus an integer slot index, never a raw pointer, so `Read()`/
+`Write()` always dereference the instance's current `_values` field. No change to
+`GrobValue`'s layout, the `OpCode` enum, the `.grobc` format or any dispatch-loop
+semantics — the fix is confined to `ValueStack` storage and lifecycle.
+
+**Verification.** New `Grob.Vm.Tests` coverage: the default-capacity array stays under
+the LOH threshold (structural assertion, not a GC-count assertion — the latter risks
+flaking under parallel test execution, so the LOH proof proper is deferred to the
+benchmark re-run); `Push` across the 1024/16384 growth boundaries preserves LIFO
+values; the E5903 overflow guard fires at exactly the unchanged cap; an open
+`Upvalue` reads/writes correctly across a forced resize; a recursive computation whose
+padding drives the stack past `DefaultCapacity` mid-recursion still computes
+correctly; a closure's captured local survives a resize forced while its enclosing
+frame is still open; two sequential `Run()` calls on one VM (first growth-inducing)
+remain correct and isolated. `Grob.Vm.Tests` gained `InternalsVisibleTo` (previously
+absent, though documented as the project convention in `src/CLAUDE.md`) so the
+resize-survival test can construct `Upvalue` directly. No new error code; count
+unchanged. Coverage floor (ADR-0018) unaffected — the new `Push` branches are
+100%-covered; project coverage is unchanged from the pre-fix baseline.
+
+**Baseline recapture pending.** Per D-309, a committed benchmark baseline is never
+locally produced — it must come from `benchmark.yml` on `windows-latest`. This
+session's local run confirms the fix (a shallow structural check plus behavioural
+tests) but does **not** update the committed `bench/Grob.Benchmarks/baseline/vm.json`,
+which still reflects the pre-fix LOH defect until the CI benchmark run lands on this
+branch's PR and the rolling VM baseline (and the VM origin, as a sanctioned re-freeze
+per D-313 — the origin was frozen against the buggy first capture) are updated in a
+follow-up commit.
+
+**Relates to D-303, D-304, D-325, D-313, D-309, D-319.** D-303/D-304 fix `GrobValue`'s
+locked representation and the lean-on-the-GC policy that make this a storage-sizing
+fix rather than a representation change. D-325 is the correctness invariant this fix
+must not violate. D-313's two-axis regression policy and D-309's CI-only baseline
+convention govern how the fix is proved and recorded once benchmarked. D-319's
+per-VM-instance step counter is the lifecycle detail a pooling approach (rejected
+here) would have had to reconcile with.
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -3877,6 +3953,16 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_June 2026 — Pre-Sprint 7 Interlude 1 (VM operand-stack allocation): D-332 added._
+_`ValueStack`'s backing array right-sized from a fixed 16,384-slot (393 KB, over the_
+_LOH threshold) allocation to a 1,024-slot (24 KB) default that grows geometrically_
+_via `Array.Resize` on `Push`, capped at the unchanged 16,384-slot ceiling — fixes the_
+_Sprint 6 benchmark finding (`Gen0 == Gen1 == Gen2` on all three VM benchmarks). D-325_
+_open upvalues (stack object + slot index, never a raw reference/span) survive the_
+_resize by construction; overflow guard (E5903) and effective depth cap unchanged; no_
+_GrobValue/opcode/.grobc change. No new error code; count unchanged. Baseline_
+_recapture on windows-latest via benchmark.yml pending (D-309: never a locally-produced_
+_committed baseline) — bench/Grob.Benchmarks/baseline/vm.json not yet updated._
 _June 2026 — Harness remediation: D-331 added. Closed-surface growth gets sanctioned procedures calibrated to stability contracts — `OpCode`/`TokenKind` via `adding-an-opcode` (ADR-0013 wire format), parser/AST via the new `extending-the-grammar` skill (no contract, built incrementally, closed within an increment as scope discipline), error codes via the new `allocating-an-error-code` skill and a per-increment budget (ADR-0017 immutability, count reconciled against the live registry and ratified by D-316). Root `CLAUDE.md`, `AGENTS.md`, the compiler-engineer agent, `defining-a-type`, `writing-an-error-test` and the unrun Sprint 6 C/D/E commands reworded from walls to paths; merged Sprint 6 A/B left as run. No error code added; count unchanged._
 _June 2026 — Sprint 5 Increment 6 (test-coverage scope and floor): D-328 added as a full entry_
 _with matching summary index row, promoted to ADR-0018. Coverage given a committed exclusion_
