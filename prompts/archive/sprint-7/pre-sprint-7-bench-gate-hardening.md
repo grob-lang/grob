@@ -174,5 +174,5 @@ axis. Test tooling: xUnit, FsCheck where a property fits. No FluentAssertions.
 Full files, never patches. One branch, one PR, main protected, Husky.NET pre-push gate green
 before push. Ship a single zip: the changed `Grob.BenchCheck` source and tests, the updated
 `policy.json`, the recaptured baseline JSON, the updated `grob-benchmarking-strategy.md`, the
-`grob-decisions-log.md` update, and this executed command archived under
+`grob-decisions-log.md` update and this executed command archived under
 `prompts/archive/sprint-7/`. British English, no Oxford comma.

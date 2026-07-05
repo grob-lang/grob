@@ -665,18 +665,6 @@ public sealed class VirtualMachineClosureTests {
         return new BytecodeFunction("leaky", 0, chunk);
     }
 
-    // -----------------------------------------------------------------------
-    // D-332: an open upvalue survives a value-stack resize that happens
-    // while its enclosing frame is still live.
-    //
-    // Writes a 2-byte big-endian forward-jump offset, matching
-    // Compiler.EmitJump/PatchJump (see VirtualMachineLoopTests.WriteJumpOffset).
-    // -----------------------------------------------------------------------
-    private static void WriteJumpOffset(Chunk chunk, int offset, int line) {
-        chunk.WriteByte((byte)(offset >> 8), line);
-        chunk.WriteByte((byte)(offset & 0xFF), line);
-    }
-
     /// <summary>
     /// Writes a 2-byte big-endian backward-jump offset for <see cref="OpCode.Loop"/>.
     /// Must be called immediately after the opcode byte, before its two operand

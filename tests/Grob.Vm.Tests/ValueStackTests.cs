@@ -109,6 +109,7 @@ public sealed class ValueStackTests {
             () => stack.Push(GrobValue.FromInt(0), 7));
         Assert.Equal(ErrorCatalog.E5903.Code, ex.Code);
         Assert.Equal(7, ex.Line);
+        Assert.Equal(0, ex.Column);
         Assert.Contains("value stack overflow", ex.Message);
     }
 
