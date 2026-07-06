@@ -35,7 +35,7 @@ jobs:
       # On push to main: scan the entire git history for verified secrets.
       - name: TruffleHog scan (full history – push to main)
         if: github.event_name == 'push'
-        uses: trufflesecurity/trufflehog@30d5bb91af1a771378349dbbb0c82129392acf70 # v3.95.6
+        uses: trufflesecurity/trufflehog@00155c9dc586f34d189adc83d3ac2698c2ec551f # v3.95.8
         with:
           extra_args: --only-verified
 
@@ -43,7 +43,7 @@ jobs:
       # commits only, keeping CI fast and avoiding re-flagging old history.
       - name: TruffleHog scan (PR diff only)
         if: github.event_name == 'pull_request'
-        uses: trufflesecurity/trufflehog@30d5bb91af1a771378349dbbb0c82129392acf70 # v3.95.6
+        uses: trufflesecurity/trufflehog@00155c9dc586f34d189adc83d3ac2698c2ec551f # v3.95.8
         with:
           base: ${{ github.event.pull_request.base.sha }}
           head: ${{ github.event.pull_request.head.sha }}
