@@ -59,7 +59,7 @@ Corpus-first. Read live source, the live policy data and the live log tail.
      `HostEnvironmentInfo`. Confirm the current guard keys on runner *type* (OS + runtime)
      and **not** on `ProcessorName` — the post-Interlude-1 run proved this passes an
      EPYC-baseline vs Xeon-run comparison that D-309 declares invalid. Read the
-     `HostEnvironmentInfo` fields available (`ProcessorName`, `PhysicalCoreCount`,
+     `HostEnvironmentInfo` fields available (`OsVersion`, `ProcessorName`,
      `RuntimeVersion`) so the CPU-identity guard in (C) reads real data.
    - `bench/Grob.Benchmarks/baseline/policy.json` — the current schema: `perSprintPercent`,
      `cumulativePercent`, and the per-category `{ name, namespacePrefix, baseline, gating }`

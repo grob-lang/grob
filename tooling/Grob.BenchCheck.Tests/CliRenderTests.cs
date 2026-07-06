@@ -1,3 +1,4 @@
+using System.Globalization;
 using Grob.BenchCheck;
 using Xunit;
 
@@ -101,6 +102,22 @@ public sealed class CliRenderTests {
     public void Alloc_bytes_render_with_thousands_separator() {
         var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Regression, [AllocDelta(AllocClass.LohTripwireBreach, bytes: 50265)], []));
         Assert.Contains("50,265 B", rendered);
+    }
+
+    [Fact]
+    public void Thresholds_line_uses_invariant_culture_regardless_of_locale() {
+        // The threshold summary must format numbers with the same InvariantCulture
+        // as the table body, so separators stay consistent regardless of the runner
+        // locale. de-DE swaps '.' and ',' — a locale-sensitive format would render
+        // "85.000 B" here.
+        var original = CultureInfo.CurrentCulture;
+        try {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Pass, [], []));
+            Assert.Contains("LOH tripwire 85,000 B", rendered);
+        } finally {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 
     // --- notes ---

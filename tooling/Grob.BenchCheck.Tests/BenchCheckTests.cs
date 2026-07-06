@@ -67,6 +67,10 @@ public class BenchCheckTests {
     public void SameCpu_placeholder_unknown_processor_never_matches_a_real_cpu()
         => Assert.False(BenchCheck.SameCpu(_unknownCpu, _epyc));
 
+    [Fact]
+    public void SameCpu_placeholder_unknown_processor_never_matches_itself()
+        => Assert.False(BenchCheck.SameCpu(_unknownCpu, _unknownCpu));
+
     // --- the gate: time axis, CPU-matched ---
 
     [Fact]
@@ -144,6 +148,24 @@ public class BenchCheckTests {
 
         Assert.Equal(Outcome.Pass, report.Outcome);
         Assert.Contains(report.Deltas, d => d.TimeClass == TimeClass.NewBenchmark && d.AllocClass == AllocClass.NewBenchmark);
+    }
+
+    [Fact]
+    public void New_benchmark_exceeding_loh_tripwire_still_fails_the_gate() {
+        // A fresh-only benchmark (absent from the rolling baseline) must not bypass
+        // the absolute LOH tripwire — the contract is "any benchmark, gating or not"
+        // (D-333). Otherwise a newly added, over-allocating benchmark would silently
+        // pass and be frozen into the next baseline (the D-332 class of defect).
+        var fresh = new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> {
+            [Bench] = M(100),
+            ["Grob.Benchmarks.Compile.CompileBenchmarks.Compile_BrandNew"] = M(999, bytes: 90000),
+        });
+        var rolling = Side(_epyc, M(100));
+
+        var report = BenchCheck.Evaluate(PolicyWith(compileGating: true, lohTripwireBytes: 85000), fresh, Loader(rolling, rolling));
+
+        Assert.Equal(Outcome.Regression, report.Outcome);
+        Assert.Contains(report.Deltas, d => d.FullName.Contains("BrandNew") && d.AllocClass == AllocClass.LohTripwireBreach);
     }
 
     [Fact]

@@ -62,10 +62,9 @@ internal static class Cli {
         sb.AppendLine($"## Benchmark regression gate — {verdict}");
         sb.AppendLine();
         sb.AppendLine($"Runner: {fresh.Host?.OsVersion ?? "unknown OS"} · {fresh.Host?.ProcessorName ?? "unknown CPU"} · {fresh.Host?.RuntimeVersion ?? "unknown runtime"}");
-        sb.AppendLine(
-            $"Thresholds: per-sprint {policy.PerSprintPercent:0.#}% (vs rolling, noise floor ×{policy.TimeSignificanceK:0.#}σ) · " +
-            $"cumulative {policy.CumulativePercent:0.#}% (vs origin) · allocation {policy.AllocPercent:0.#}% · " +
-            $"LOH tripwire {policy.LohTripwireBytes:N0} B");
+        sb.AppendLine(string.Create(
+            CultureInfo.InvariantCulture,
+            $"Thresholds: per-sprint {policy.PerSprintPercent:0.#}% (vs rolling, noise floor ×{policy.TimeSignificanceK:0.#}σ) · cumulative {policy.CumulativePercent:0.#}% (vs origin) · allocation {policy.AllocPercent:0.#}% · LOH tripwire {policy.LohTripwireBytes:N0} B"));
         sb.AppendLine();
         sb.AppendLine("| Category | Benchmark | Δ time (rolling) | Δ time (origin) | Time | Δ alloc | Alloc | Alloc status |");
         sb.AppendLine("| --- | --- | ---: | ---: | --- | ---: | ---: | --- |");

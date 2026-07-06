@@ -302,7 +302,13 @@ public static class BenchCheck {
 
             foreach (var (name, freshM) in freshInCategory) {
                 if (!rolling.Measurements.TryGetValue(name, out var rollingM)) {
-                    deltas.Add(new BenchmarkDelta(category.Name, name, null, null, TimeClass.NewBenchmark, null, freshM.AllocatedBytes, AllocClass.NewBenchmark));
+                    // A fresh-only benchmark has no rolling counterpart to delta against,
+                    // but the absolute LOH tripwire is unconditional (D-333): apply it here
+                    // too so a newly added over-allocating benchmark fails on day one rather
+                    // than being frozen into the next baseline.
+                    var newAllocClass = BreachesLohTripwire(freshM, policy) ? AllocClass.LohTripwireBreach : AllocClass.NewBenchmark;
+                    if (newAllocClass is AllocClass.LohTripwireBreach) regression = true;
+                    deltas.Add(new BenchmarkDelta(category.Name, name, null, null, TimeClass.NewBenchmark, null, freshM.AllocatedBytes, newAllocClass));
                     continue;
                 }
 
@@ -360,7 +366,7 @@ public static class BenchCheck {
         BenchmarkMeasurement rolling,
         bool gating,
         Policy policy) {
-        if (fresh.AllocatedBytes is { } freshBytes && freshBytes >= policy.LohTripwireBytes)
+        if (BreachesLohTripwire(fresh, policy))
             return (null, AllocClass.LohTripwireBreach);
 
         if (fresh.AllocatedBytes is null || rolling.AllocatedBytes is null)
@@ -371,6 +377,15 @@ public static class BenchCheck {
             return (percent, AllocClass.Informational);
         return percent > policy.AllocPercent ? (percent, AllocClass.PerSprintBreach) : (percent, AllocClass.Ok);
     }
+
+    /// <summary>
+    /// Whether a fresh measurement meets or exceeds the absolute LOH tripwire
+    /// (<see cref="Policy.LohTripwireBytes"/>, D-333). The single source of truth for
+    /// the unconditional allocation ceiling, applied both to benchmarks that have a
+    /// rolling counterpart and to fresh-only ones with none.
+    /// </summary>
+    private static bool BreachesLohTripwire(BenchmarkMeasurement fresh, Policy policy)
+        => fresh.AllocatedBytes is { } bytes && bytes >= policy.LohTripwireBytes;
 
     /// <summary>
     /// A benchmark's standard deviation as a percentage of its own mean —
@@ -418,9 +433,18 @@ public static class BenchCheck {
     /// <param name="a">First host, or <see langword="null"/> if unavailable.</param>
     /// <param name="b">Second host, or <see langword="null"/> if unavailable.</param>
     public static bool SameCpu(BdnHostEnvironmentInfo? a, BdnHostEnvironmentInfo? b)
-        => a?.ProcessorName is { Length: > 0 } an
-           && b?.ProcessorName is { Length: > 0 } bn
+        => a?.ProcessorName is { Length: > 0 } an && !IsUnknownProcessor(an)
+           && b?.ProcessorName is { Length: > 0 } bn && !IsUnknownProcessor(bn)
            && string.Equals(an, bn, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether a processor name is BenchmarkDotNet's <c>CpuInfo.Unknown</c> fallback
+    /// (<c>"Unknown processor"</c>), emitted when hardware detection fails. Two hosts
+    /// that both failed detection are not verified equal, so this placeholder never
+    /// counts as a CPU match (D-333).
+    /// </summary>
+    private static bool IsUnknownProcessor(string name)
+        => string.Equals(name, "Unknown processor", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// The CPU model name for report/note rendering, or a fallback label when unrecorded.
