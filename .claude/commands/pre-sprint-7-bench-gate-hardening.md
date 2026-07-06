@@ -33,6 +33,15 @@ that tightening the time gate "has a precondition — a quieter measurement firs
 2. **The time gate must be significance-aware** so a delta inside a benchmark's own
    measurement noise does not trip a flat percentage.
 
+**Proven cross-CPU case (the post-Interlude-1 run).** The verification run landed on an
+**Intel Xeon Platinum 8370C**; the baseline was captured on an **AMD EPYC 7763**. Both are
+labelled `windows-latest`; the silicon differs. The gate flagged compile +37%/+25% as a
+per-sprint breach — yet compile allocation was **byte-identical across both runs** (7.68 KB
+and 14.14 KB, unchanged), and Interlude 1 never touched the compiler. The time delta was
+pure CPU swing, not a regression. This is exactly the cross-hardware comparison D-309 already
+calls invalid, and the existing guard missed it because it keys on runner *type*
+(OS + runtime), not on the CPU. The hardening below closes that gap.
+
 ---
 
 ## 2. Verify-first — do this before proposing anything
@@ -47,7 +56,11 @@ Corpus-first. Read live source, the live policy data and the live log tail.
 3. **Current gate mechanics.** Read the live:
    - `tooling/Grob.BenchCheck` — how it reads `-report-full.json`, computes vs-rolling and
      vs-origin deltas, and applies thresholds; how it guards the runner from
-     `HostEnvironmentInfo` (D-313 refuses a cross-runner comparison).
+     `HostEnvironmentInfo`. Confirm the current guard keys on runner *type* (OS + runtime)
+     and **not** on `ProcessorName` — the post-Interlude-1 run proved this passes an
+     EPYC-baseline vs Xeon-run comparison that D-309 declares invalid. Read the
+     `HostEnvironmentInfo` fields available (`ProcessorName`, `PhysicalCoreCount`,
+     `RuntimeVersion`) so the CPU-identity guard in (C) reads real data.
    - `bench/Grob.Benchmarks/baseline/policy.json` — the current schema: `perSprintPercent`,
      `cumulativePercent`, and the per-category `{ name, namespacePrefix, baseline, gating }`
      rows.
@@ -82,10 +95,26 @@ genuine acute regression (a value boxed onto the dispatch hot path jumping 30%) 
 red. Optionally require **N consecutive breaches** across runs before failing, to filter a
 one-off noisy runner. State the chosen `k` and defend it.
 
-**(C) Baseline and runner hygiene.** Reinforce in the strategy doc that cross-runner
-baselines are invalid (D-309 already mandates windows-latest; the tool already refuses a
-cross-runner compare). Recapture rolling+origin for affected categories against the
-Interlude-1 code on windows-latest so both axes start from a clean, fixed anchor.
+**(C) CPU-identity guard and axis-gating by hardware.** The `windows-latest` label is not a
+hardware pin — the hosted pool serves different CPUs, and the post-Interlude-1 run proved a
+25–37% time swing between EPYC and Xeon with allocation unchanged. So:
+
+- The guard keys on the **CPU identity** (`ProcessorName` from `HostEnvironmentInfo`), not the
+  runner label. A run whose CPU differs from the baseline's CPU is a cross-hardware time
+  comparison.
+- **Refusing on CPU mismatch is wrong** — hosted runners cannot be CPU-pinned, so a hard
+  refuse would make the gate refuse constantly. The rule is axis-split by hardware:
+  **allocation gates always** (it is CPU-independent — 49 KB is 49 KB on any silicon), and
+  **the time axis gates only when the run CPU matches the baseline CPU; on a CPU mismatch the
+  time comparison drops to informational** and the report says so explicitly. This is the
+  concrete mechanism behind "treat hosted-runner time as directional, allocation as the hard
+  gate".
+- Baseline recapture is still on `windows-latest` (D-309), and each baseline records the CPU
+  it was captured on so the guard can compare. Recapture affected categories against the
+  Interlude-1 code. The **VM allocation** anchor (≈49/51.6/57.1 KB) can be frozen now — it is
+  CPU-independent and verified. A **time** baseline captured on a one-off hosted CPU is only
+  meaningful under the CPU-match rule above, so do not let this run's Xeon time overwrite an
+  EPYC-anchored compile baseline.
 
 ---
 
@@ -106,6 +135,10 @@ is approved. The plan must specify:
   categories that gate time today (compile during build-out), and additionally run the LOH
   tripwire across **all** categories including informational ones — an informational category
   should still be forbidden from silently going onto the LOH.
+- The **CPU-identity rule** — where the baseline's captured CPU is stored (baseline JSON
+  `HostEnvironmentInfo` or a sidecar field in `policy.json`), how `ProcessorName` is compared,
+  and the exact report wording when time drops to informational on a CPU mismatch. Allocation
+  and the LOH tripwire are unaffected by CPU and continue to gate.
 
 ---
 
@@ -130,12 +163,15 @@ is approved. The plan must specify:
 | 3 | LOH tripwire fires | A benchmark reporting a single-allocation footprint ≥ `lohTripwireBytes` → gate red, even on an informational category. |
 | 4 | Time delta inside noise passes | A time delta above the flat `perSprintPercent` but **below** `k · relativeStdDev` → gate green (this is the TenPrints case). |
 | 5 | Time delta clearing noise trips | A time delta above both the flat percentage and the noise band → gate red (the genuine acute regression). |
-| 6 | Runner mismatch refused | A report whose `HostEnvironmentInfo` runner differs from the baseline → refused, not a false green (pin the existing D-313 behaviour). |
+| 6 | CPU match → time gates | Report and baseline share a `ProcessorName` → the time axis is evaluated normally (red on a real regression, green otherwise). |
+| 7 | CPU mismatch → time informational, allocation still gates | Report CPU ≠ baseline CPU → the time comparison is reported informational (never red), while the allocation axis and LOH tripwire are still evaluated and can go red. |
+| 8 | Proven cross-CPU fixture | The real post-Interlude-1 pair — EPYC-anchored compile baseline vs a Xeon run with identical 7.68/14.14 KB allocation and +25–37% time — must yield: compile time **informational** (not a breach), compile allocation **green** (unchanged). Locks the exact false-positive this run produced. |
 
 Dry-run acceptance (not a unit test, a gate check): run the hardened `Grob.BenchCheck`
-against the **Interlude-1 post-fix reports** and confirm (i) Compile_TenPrints noise no
-longer reads red, and (ii) the now-healthy VM allocation reads green under the allocation
-axis. Test tooling: xUnit, FsCheck where a property fits. No FluentAssertions.
+against the **Interlude-1 post-fix reports** and confirm (i) the compile time breach is
+suppressed to informational under the CPU-mismatch rule, (ii) compile allocation reads green
+(unchanged), and (iii) the now-healthy VM allocation reads green under the allocation axis.
+Test tooling: xUnit, FsCheck where a property fits. No FluentAssertions.
 
 ---
 
@@ -155,13 +191,17 @@ axis. Test tooling: xUnit, FsCheck where a property fits. No FluentAssertions.
 
 ## 8. Definition of done
 
-- `Grob.BenchCheck` tests 1–6 green; the dry-run acceptance passes (TenPrints noise green,
-  healthy VM allocation green).
-- `policy.json` carries the allocation axis and significance parameters as data.
-- `grob-benchmarking-strategy.md` §8–9 updated: the allocation axis, the LOH tripwire and the
-  significance-aware time gate documented, each citing the new `D-###`. The §9 prose that
-  currently says a tighter time gate "has a precondition — a quieter measurement first" is
-  updated to record that the precondition is now met (allocation gate + significance).
+- `Grob.BenchCheck` tests 1–8 green; the dry-run acceptance passes (compile time
+  informational under CPU mismatch, compile allocation green, healthy VM allocation green).
+- `policy.json` carries the allocation axis, the significance parameters and the
+  CPU-identity rule as data.
+- `grob-benchmarking-strategy.md` §8–9 updated: the allocation axis, the LOH tripwire, the
+  significance-aware time gate and the **CPU-identity axis rule** (allocation always gates;
+  time gates only on CPU match, else informational) documented, each citing the new `D-###`.
+  The §9 prose that currently says a tighter time gate "has a precondition — a quieter
+  measurement first" is updated to record that the precondition is now met. The D-309
+  "same runner type" wording is refined to "same CPU identity", with the axis-split rule
+  cited as how the hosted-pool CPU churn is handled without the gate refusing constantly.
 - **Decision logged, three-location lockstep:** summary index row, full ADR-style entry
   (Area: Tooling — benchmarking; Supersedes: none; note "refines D-302 / D-309 / D-313"),
   footer changelog. Add a "refined by D-###" note to D-313's entry in lockstep.
@@ -174,5 +214,5 @@ axis. Test tooling: xUnit, FsCheck where a property fits. No FluentAssertions.
 Full files, never patches. One branch, one PR, main protected, Husky.NET pre-push gate green
 before push. Ship a single zip: the changed `Grob.BenchCheck` source and tests, the updated
 `policy.json`, the recaptured baseline JSON, the updated `grob-benchmarking-strategy.md`, the
-`grob-decisions-log.md` update and this executed command archived under
+`grob-decisions-log.md` update, and this executed command archived under
 `prompts/archive/sprint-7/`. British English, no Oxford comma.

@@ -330,6 +330,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-330 | June 2026                                                         | Type system — construction-site diagnostics | Unknown field name at a named type construction (`TypeName { notAField: v }`) gets a dedicated code **E0012** (Type category), not a fold into E1002 (undefined member, which is member *access* — `obj.field` on an existing value). Mirrors D-318's choice of dedicated call-site codes over folding into E0003: E0012 is to construction what E0011 (unknown parameter name) is to a named call, and sits in the E00xx type block beside E0103 (missing required field at construction) and E0011. Registered in Sprint 6 Increment B through its `ErrorCatalog` descriptor (D-308); error-code count 109 → 110. Resolves the §10 gap where the spec mandated the error but cited no code |
 | D-331 | June 2026                                                         | Process / harness — closed-surface growth | Closed surfaces grow through sanctioned, logged procedures rather than hard "nevers", calibrated to whether the surface carries a stability contract. `OpCode`/`TokenKind` carry a wire-format contract (ADR-0013) — grown via `adding-an-opcode`. The parser and AST carry none (compiler-internal, never serialised) — built incrementally, closed *within an increment* as scope discipline, extended via the new `extending-the-grammar` skill; reclassified from architecture invariant to scope discipline in `AGENTS.md` and the compiler-engineer agent. Error codes carry ADR-0017 immutability — each increment declares an error-code budget, with the new `allocating-an-error-code` ladder (surface fold-vs-new, register at the next free number from the live registry, count reconciled and D-316-ratified) for the unanticipated case. Resolves the three-way harness contradiction on codes and the grammar-complete premise that Sprint 4E and 6B falsified. No new error code; count unchanged |
 | D-332 | June 2026                                                         | VM — operand-stack allocation | `ValueStack`'s backing array right-sized from a fixed 16,384-slot (393 KB) allocation to a 1,024-slot (24 KB) default that grows geometrically (doubling, capped at the unchanged 16,384-slot ceiling) via `Array.Resize` on `Push`. Fixes the Sprint 6 benchmark finding — all three VM benchmarks showed `Gen0 == Gen1 == Gen2` (a full compacting GC every op) because the fixed array cleared the ~85,000-byte LOH threshold and a fresh `VirtualMachine`/`ValueStack` is constructed per run. Overflow guard (E5903) and effective depth cap unchanged; D-325 open upvalues (stack object + slot index, never a raw reference/span) survive the resize transparently — the sole `Span<GrobValue>` in `Grob.Vm` is the `#if DEBUG` trace hook's per-iteration, never-cached snapshot. No new error code; count unchanged. Baseline recapture on `windows-latest` via `benchmark.yml` pending — not performed in this local session (D-309 forbids a locally-produced committed baseline) |
+| D-333 | July 2026                                                         | Tooling — benchmarking | Benchmark gate hardened on three fronts. A hard **allocation axis** reads `[MemoryDiagnoser]`'s already-committed `BytesAllocatedPerOperation`: a percent-vs-rolling threshold (`allocPercent`, 10%) on gating categories, plus an absolute **LOH tripwire** (`lohTripwireBytes`, 85,000 B) that fails outright on any category regardless of gating — the check that would have caught D-332 on day one instead of reading "info". The per-sprint **time axis is significance-aware**: a breach now requires the delta to exceed `max(perSprintPercent, timeSignificanceK × relativeStdDev)`, `timeSignificanceK = 3` (three-sigma), so a delta inside a benchmark's own measurement noise (the Sprint 6 `Compile_TenPrints` false positive) no longer trips it; the cumulative axis is unchanged. `SameRunnerType`/`RunnerMismatch`/`CannotCompare` are replaced by a **CPU-identity guard** (`BenchCheck.SameCpu`, keyed on `HostEnvironmentInfo.ProcessorName`, checked independently against the rolling and origin baseline) after the post-Interlude-1 verification run proved an EPYC-baseline-vs-Xeon-run comparison passed the old OS-family-only guard with a false +25–37% time breach despite byte-identical allocation. Allocation always gates regardless of CPU; time gates only on a CPU match, else informational — refines D-309's "same runner type" to "same CPU identity". `vm.json`/`vm.origin.json` recaptured post-fix (50,265/52,841/58,473 B, off the LOH); `compile.json` (rolling) refreshed to the same Xeon capture after discovering it was three sprints stale; `compile.origin.json` deliberately left with its pre-provenance `"Unknown processor"` host, so the compile cumulative axis reads informational until a separate, logged re-freeze. No new error code; count unchanged |
 
 ---
 
@@ -2930,6 +2931,13 @@ The `-report-full.json` (not `-report-brief.json`) is the committed baseline —
 
 **Local invocation — retained as secondary path.** `dotnet run -c Release --project bench/Grob.Benchmarks` continues to work and is documented in the strategy doc and README. It is the right tool for investigating a benchmark crash, a JIT anomaly, or a one-off exploratory measurement. It is not the right tool for producing committed baselines.
 
+**Refined by D-333** (July 2026): "same runner type" is refined to "same CPU
+identity" — the `windows-latest` label is not a hardware pin, and a same-label,
+different-CPU pair (AMD EPYC 7763 vs Intel Xeon Platinum 8370C) produced a false
+regression the OS-family-only guard missed. The gate now keys on
+`HostEnvironmentInfo.ProcessorName` directly, with allocation gating regardless of
+CPU and time gating only on a CPU match rather than refusing the comparison outright.
+
 ---
 
 ### D-310 — C# 14 / .NET 10 SDK pinning correction (May 2026)
@@ -3010,6 +3018,11 @@ Refines: D-302, D-309
 **The mechanism and ownership.** A committed tool, `tooling/Grob.BenchCheck`, performs the comparison: it reads the rolling and origin baselines and the fresh `-report-full.json`, matches benchmarks by `FullName`, computes the per-benchmark delta on `Statistics.Mean`, guards that the fresh run and the baseline share a runner (`HostEnvironmentInfo`) and exits non-zero on a breach. The `benchmark.yml` workflow runs it after the benchmark run, so the **workflow is the gate** — the run goes red on a regression rather than relying on an eyeball. The maintainer adjudicates: a flagged regression is either fixed before the sprint closes, or accepted as a deliberate trade-off with a baseline update and a decisions-log entry. Thresholds and gating categories live in `bench/Grob.Benchmarks/baseline/policy.json` as data, so the cumulative budget is a number the maintainer edits, not code.
 
 Detail in `grob-benchmarking-strategy.md` §8 (storage, the frozen origin, `policy.json`) and §9 (the two-axis policy and the gate).
+
+**Refined by D-333** (July 2026): adds a third, allocation axis alongside the two time
+axes; makes the per-sprint time axis significance-aware against measurement noise;
+replaces the OS-family runner guard with a CPU-identity guard, axis-split so
+allocation always gates while time gates only on a CPU match.
 
 ---
 
@@ -3731,6 +3744,104 @@ here) would have had to reconcile with.
 
 ---
 
+### D-333 — Benchmark gate hardening: allocation axis, significance-aware time gate, CPU-identity guard (July 2026)
+
+Area: Tooling — benchmarking
+Supersedes: none
+Superseded by: none
+Refines: D-302, D-309, D-313
+
+**Context.** The Sprint 6 benchmark run demonstrated the gate flagging the wrong
+things. `Compile_TenPrints` moved +8.7% against a rolling baseline whose own
+measurement noise (`StandardDeviation` ≈3.2% of a 6.55 μs mean) already explains the
+swing — the per-sprint gate fired on infrastructure noise. Meanwhile all three VM
+benchmarks moved by an identical +33.8%, the signature of a whole-baseline shift
+(D-332's Large Object Heap defect) rather than three coincident regressions — it read
+as merely "info" because the VM category is `gating: false` during build-out, so the
+one genuinely broken thing sailed through informationally while noise went red. The
+post-Interlude-1 (D-332) verification run then proved a second, distinct gap: it
+landed on an Intel Xeon Platinum 8370C against an AMD EPYC 7763 baseline, both
+labelled `windows-latest`, and the gate flagged compile time as a +25–37% per-sprint
+breach — yet compile allocation was byte-identical across both runs (7,864 B /
+14,480 B, unchanged) and Interlude 1 never touched the compiler. The existing guard
+(`SameRunnerType`) keyed on OS family, not CPU, so it passed a comparison D-309
+already declares invalid.
+
+**The decision — three changes to `tooling/Grob.BenchCheck` and `policy.json`.**
+
+1. **A hard allocation axis.** `[MemoryDiagnoser]` already records
+   `Memory.BytesAllocatedPerOperation` into every committed baseline (D-302 body); the
+   gate simply never read it. Two sub-checks, both data in `policy.json`: a
+   percent-vs-rolling-baseline threshold (`allocPercent`, **10%**) that gates on the
+   same categories time gates today, and an absolute **LOH tripwire**
+   (`lohTripwireBytes`, **85,000**, the CLR's actual threshold) that fails outright on
+   _any_ category — gating or informational — the instant a benchmark's fresh
+   allocation clears it. The tripwire is what would have caught D-332 on day one; the
+   percent axis catches ordinary creep. Allocation is deterministic, so its threshold
+   is tight where time's cannot be.
+2. **A significance-aware time gate.** The per-sprint axis now requires a delta to
+   exceed `max(perSprintPercent, timeSignificanceK × relativeStdDev)` before it
+   breaches — the flat 5% remains a floor, but a delta inside the benchmark's own
+   measurement noise no longer trips it. `relativeStdDev` is the larger of the fresh
+   and baseline run's `StandardDeviation` as a percentage of `Mean` (the noisier side,
+   conservatively). `timeSignificanceK = 3` (three-sigma): checked against
+   `Compile_TenPrints`'s ~8.7%-delta/~3.2%-relative-StdDev case (`3 × 3.2% ≈ 9.6%`,
+   comfortably absorbing it) while a genuine acute regression (30%-class) stays far
+   outside even a noisy benchmark's band. This was D-313's own stated precondition for
+   tightening the gate — "a quieter measurement first" — now met by measuring the
+   noise rather than assuming a flat floor. The cumulative axis is unchanged by this —
+   it already smooths single-run noise by design over the whole v1 arc, and the
+   evidence motivating significance was specifically a per-sprint false positive.
+   Consecutive-breach filtering (N breaches across runs before failing) was considered
+   and deferred: it needs cross-run history the tool doesn't retain, and the
+   significance filter alone already resolves the demonstrated case.
+3. **A CPU-identity guard, axis-split by hardware.** `SameRunnerType`,
+   `DeltaClass.RunnerMismatch` and `Outcome.CannotCompare` are removed outright and
+   replaced by a `ProcessorName`-keyed comparison (`BenchCheck.SameCpu`), checked
+   independently against the rolling and origin baseline's own recorded host — a
+   category's per-sprint and cumulative time axes can therefore differ in whether they
+   are CPU-verified. Missing or placeholder CPU data (including a pre-D-333 baseline's
+   `"Unknown processor"`) is never treated as a match. **Allocation always gates**,
+   regardless of CPU — it is hardware-independent. **Time gates only when the fresh
+   run's CPU matches the relevant baseline's**; on a mismatch that axis reports
+   informational rather than refusing outright, since hosted `windows-latest` runners
+   cannot be CPU-pinned and a hard refusal would make the gate refuse constantly. D-309's
+   "same runner type" rule is refined to "same CPU identity" by this mechanism.
+
+**Baseline recapture, same session.** `vm.json` and `vm.origin.json` are both replaced
+with the D-332 post-fix Intel Xeon capture (50,265 / 52,841 / 58,473 B — comfortably
+under the LOH line), matching D-332's own note that the origin, frozen against the
+buggy first capture, needed a sanctioned re-freeze. `compile.json` (rolling) is also
+refreshed to the same Xeon capture: it had last been captured in June (pre-Sprint-3)
+and, compared against current `HEAD`, showed genuine allocation growth from three
+sprints of real feature work (closures/upvalues, the type registry, struct
+construction) that nothing had measured before the allocation axis existed — refreshing
+now avoids shipping a gate that reads a per-sprint allocation breach on its very first
+live run for reasons unrelated to this change. `compile.origin.json` is deliberately
+**not** touched: its `HostEnvironmentInfo.ProcessorName` predates CPU provenance
+entirely (`"Unknown processor"`, a stale BenchmarkDotNet 0.14.0 capture), and
+fabricating a plausible CPU name for historical data would misrepresent its
+provenance. The honest consequence, accepted here rather than hidden: the compile
+category's **cumulative** time axis reads informational (never gates) until someone
+deliberately re-freezes `compile.origin.json` with a real capture — a separate,
+logged act, not performed in this session.
+
+**Rejected.** Keeping the OS-family guard alongside the new CPU check (two
+overlapping, confusing guards — the CPU check subsumes the OS-family case in
+practice, since a cross-OS run will essentially never share a `ProcessorName` string
+with the baseline either). Applying the significance filter to the cumulative axis
+too (the evidence motivating it was a per-sprint false positive specifically; the
+cumulative axis's 12%-over-the-arc threshold already absorbs single-run noise by
+construction). Re-freezing `compile.origin.json` in this same session to give it real
+CPU provenance (a bigger, separate baseline-policy act than hardening the gate
+itself, and this run's Xeon numbers must not silently become the EPYC-arc's origin
+anchor).
+
+Detail in `grob-benchmarking-strategy.md` §8 (`policy.json` schema) and §9 (the
+allocation axis, the significance-aware time gate, and the CPU-identity rule).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -3953,6 +4064,17 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_July 2026 — Pre-Sprint 7 Interlude 2 (benchmark gate hardening): D-333 added._
+_A hard allocation axis (percent-vs-baseline plus an absolute LOH tripwire that_
+_gates regardless of category), a significance-aware per-sprint time gate_
+_(breach requires clearing both the flat percentage and 3× the relative_
+_measurement noise), and a CPU-identity guard replacing the OS-family-only_
+_runner check (`D-309` refined "same runner type" to "same CPU identity";_
+_allocation always gates, time gates only on a CPU match). `vm.json`/_
+_`vm.origin.json` recaptured post-D-332-fix; `compile.json` refreshed after_
+_found three sprints stale; `compile.origin.json` left on its pre-provenance_
+_host, so compile's cumulative axis is informational until a separate,_
+_logged re-freeze. No new error code; count unchanged._
 _June 2026 — Pre-Sprint 7 Interlude 1 (VM operand-stack allocation): D-332 added._
 _`ValueStack`'s backing array right-sized from a fixed 16,384-slot (393 KB, over the_
 _LOH threshold) allocation to a 1,024-slot (24 KB) default that grows geometrically_

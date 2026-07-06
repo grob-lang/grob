@@ -19,7 +19,7 @@ public sealed record BdnReport(
 /// Machine and runtime metadata from a BenchmarkDotNet report.
 /// </summary>
 /// <param name="OsVersion">Operating-system version string (e.g. <c>Windows 10.0.22621</c>).</param>
-/// <param name="ProcessorName">CPU model name.</param>
+/// <param name="ProcessorName">CPU model name. The CPU-identity source of record (D-333).</param>
 /// <param name="RuntimeVersion">.NET runtime version string.</param>
 public sealed record BdnHostEnvironmentInfo(
     [property: JsonPropertyName("OsVersion")] string? OsVersion,
@@ -31,22 +31,35 @@ public sealed record BdnHostEnvironmentInfo(
 /// </summary>
 /// <param name="FullName">Fully qualified benchmark method name (namespace + class + method).</param>
 /// <param name="Statistics">Timing statistics for this benchmark.</param>
+/// <param name="Memory">Allocation statistics for this benchmark, or <see langword="null"/> if <c>[MemoryDiagnoser]</c> was not attached.</param>
 public sealed record BdnBenchmark(
     [property: JsonPropertyName("FullName")] string? FullName,
-    [property: JsonPropertyName("Statistics")] BdnStatistics? Statistics);
+    [property: JsonPropertyName("Statistics")] BdnStatistics? Statistics,
+    [property: JsonPropertyName("Memory")] BdnMemory? Memory);
 
 /// <summary>
 /// Timing statistics for a single benchmark from a BenchmarkDotNet report.
 /// </summary>
 /// <param name="Mean">Arithmetic mean execution time in nanoseconds.</param>
+/// <param name="StandardDeviation">Standard deviation of execution time in nanoseconds, used as the measurement-noise signal for the significance-aware time gate (D-333).</param>
 public sealed record BdnStatistics(
-    [property: JsonPropertyName("Mean")] double Mean);
+    [property: JsonPropertyName("Mean")] double Mean,
+    [property: JsonPropertyName("StandardDeviation")] double StandardDeviation);
+
+/// <summary>
+/// Allocation statistics for a single benchmark from a BenchmarkDotNet report
+/// (<c>[MemoryDiagnoser]</c> output).
+/// </summary>
+/// <param name="BytesAllocatedPerOperation">Managed bytes allocated per operation.</param>
+public sealed record BdnMemory(
+    [property: JsonPropertyName("BytesAllocatedPerOperation")] double? BytesAllocatedPerOperation);
 
 // --- policy.json ---
 
 /// <summary>
 /// Benchmark regression policy loaded from <c>policy.json</c>. Defines the
-/// per-sprint and cumulative thresholds and the list of benchmark categories.
+/// per-sprint, cumulative and allocation thresholds, the time-significance
+/// factor and the list of benchmark categories.
 /// </summary>
 /// <param name="PerSprintPercent">
 /// Maximum allowed percentage increase in mean execution time relative to the
@@ -56,10 +69,29 @@ public sealed record BdnStatistics(
 /// Maximum allowed percentage increase relative to the frozen origin baseline
 /// across all sprints.
 /// </param>
+/// <param name="AllocPercent">
+/// Maximum allowed percentage increase in bytes allocated per operation
+/// relative to the rolling baseline before a gating category is declared a
+/// breach (D-333).
+/// </param>
+/// <param name="LohTripwireBytes">
+/// Absolute bytes-allocated-per-operation ceiling. Any benchmark, gating or
+/// not, whose fresh allocation meets or exceeds this fails the gate outright —
+/// the deterministic signal that would have caught the D-332 defect on day
+/// one (D-333).
+/// </param>
+/// <param name="TimeSignificanceK">
+/// Multiplier applied to a benchmark's relative standard deviation; the
+/// per-sprint time breach requires the delta to exceed
+/// <c>max(PerSprintPercent, TimeSignificanceK * relativeStdDev)</c> (D-333).
+/// </param>
 /// <param name="Categories">The benchmark categories to evaluate.</param>
 public sealed record Policy(
     [property: JsonPropertyName("perSprintPercent")] double PerSprintPercent,
     [property: JsonPropertyName("cumulativePercent")] double CumulativePercent,
+    [property: JsonPropertyName("allocPercent")] double AllocPercent,
+    [property: JsonPropertyName("lohTripwireBytes")] double LohTripwireBytes,
+    [property: JsonPropertyName("timeSignificanceK")] double TimeSignificanceK,
     [property: JsonPropertyName("categories")] IReadOnlyList<PolicyCategory> Categories);
 
 /// <summary>
@@ -75,8 +107,10 @@ public sealed record Policy(
 /// directory, e.g. <c>compile.json</c>).
 /// </param>
 /// <param name="Gating">
-/// When <see langword="true"/>, a breach in this category fails the gate.
-/// When <see langword="false"/>, results are reported but never fail.
+/// When <see langword="true"/>, a time or allocation percentage breach in
+/// this category fails the gate. When <see langword="false"/>, both
+/// percentage axes are reported but never fail. The LOH tripwire (D-333)
+/// ignores this flag and can fail either way.
 /// </param>
 public sealed record PolicyCategory(
     [property: JsonPropertyName("name")] string Name,
@@ -87,82 +121,122 @@ public sealed record PolicyCategory(
 // --- evaluation model ---
 
 /// <summary>
-/// Classification of a single benchmark's comparison result.
+/// Classification of a single benchmark's time-axis comparison (D-333).
 /// </summary>
-public enum DeltaClass {
-    /// <summary>Within both thresholds; no action needed.</summary>
+public enum TimeClass {
+    /// <summary>Within threshold on a CPU-matched comparison; no action needed.</summary>
     Ok,
     /// <summary>Non-gating category — reported for information, never fails the gate.</summary>
+    Informational,
+    /// <summary>
+    /// Fresh run's CPU differs from the baseline's CPU on at least one of the
+    /// rolling/origin sides, or either host is unrecorded — a genuine
+    /// hardware-driven time swing is indistinguishable from a regression, so
+    /// the comparison is reported but never fails the gate.
+    /// </summary>
+    CpuMismatch,
+    /// <summary>Present in the fresh run but absent from the rolling baseline; treated as informational.</summary>
+    NewBenchmark,
+    /// <summary>The rolling baseline file for this category does not exist yet; establishing.</summary>
+    NoBaseline,
+    /// <summary>Fresh mean exceeds the rolling baseline by more than a noise-adjusted <see cref="Policy.PerSprintPercent"/> (D-333).</summary>
+    PerSprintBreach,
+    /// <summary>Fresh mean exceeds the origin baseline by more than <see cref="Policy.CumulativePercent"/>.</summary>
+    CumulativeBreach,
+}
+
+/// <summary>
+/// Classification of a single benchmark's allocation-axis comparison (D-333).
+/// Allocation is deterministic and CPU-independent, so unlike <see cref="TimeClass"/>
+/// it is never suppressed by a CPU mismatch.
+/// </summary>
+public enum AllocClass {
+    /// <summary>Within <see cref="Policy.AllocPercent"/> of the rolling baseline; no action needed.</summary>
+    Ok,
+    /// <summary>Non-gating category — percentage creep reported for information, never fails the gate.</summary>
     Informational,
     /// <summary>Present in the fresh run but absent from the rolling baseline; treated as informational.</summary>
     NewBenchmark,
     /// <summary>The rolling baseline file for this category does not exist yet; establishing.</summary>
     NoBaseline,
-    /// <summary>Fresh mean exceeds the rolling baseline by more than <see cref="Policy.PerSprintPercent"/>.</summary>
+    /// <summary>Fresh allocation exceeds the rolling baseline by more than <see cref="Policy.AllocPercent"/> on a gating category.</summary>
     PerSprintBreach,
-    /// <summary>Fresh mean exceeds the origin baseline by more than <see cref="Policy.CumulativePercent"/>.</summary>
-    CumulativeBreach,
-    /// <summary>Fresh run and baseline were measured on different OS families; comparison refused.</summary>
-    RunnerMismatch,
+    /// <summary>
+    /// Fresh allocation meets or exceeds <see cref="Policy.LohTripwireBytes"/> — the absolute
+    /// Large Object Heap tripwire. Fires regardless of the category's <see cref="PolicyCategory.Gating"/>
+    /// flag; this is what would have caught the D-332 defect on day one.
+    /// </summary>
+    LohTripwireBreach,
 }
 
 /// <summary>
-/// Comparison result for a single benchmark against both baseline axes.
+/// Comparison result for a single benchmark against both the time and
+/// allocation axes (D-333). The two axes are classified independently: a
+/// benchmark can read time-informational under a CPU mismatch while its
+/// allocation axis still gates.
 /// </summary>
 /// <param name="Category">Name of the policy category this benchmark belongs to.</param>
 /// <param name="FullName">Fully qualified benchmark method name.</param>
-/// <param name="PerSprintPercent">
-/// Percentage change relative to the rolling baseline, or <see langword="null"/>
-/// when the benchmark is new (not present in the rolling baseline).
-/// </param>
-/// <param name="CumulativePercent">
-/// Percentage change relative to the frozen origin baseline, or <see langword="null"/>
-/// when the origin baseline is absent.
-/// </param>
-/// <param name="Class">Classification of this result.</param>
+/// <param name="TimePerSprintPercent">Percentage change relative to the rolling baseline, or <see langword="null"/> when unavailable.</param>
+/// <param name="TimeCumulativePercent">Percentage change relative to the frozen origin baseline, or <see langword="null"/> when unavailable.</param>
+/// <param name="TimeClass">Classification of the time-axis result.</param>
+/// <param name="AllocPercent">Percentage change in bytes allocated per operation relative to the rolling baseline, or <see langword="null"/> when unavailable.</param>
+/// <param name="AllocBytes">Fresh bytes allocated per operation, or <see langword="null"/> when unavailable.</param>
+/// <param name="AllocClass">Classification of the allocation-axis result.</param>
 public sealed record BenchmarkDelta(
     string Category,
     string FullName,
-    double? PerSprintPercent,
-    double? CumulativePercent,
-    DeltaClass Class);
+    double? TimePerSprintPercent,
+    double? TimeCumulativePercent,
+    TimeClass TimeClass,
+    double? AllocPercent,
+    double? AllocBytes,
+    AllocClass AllocClass);
 
 /// <summary>
 /// Overall outcome of a benchmark gate evaluation run.
 /// </summary>
 public enum Outcome {
-    /// <summary>All gating benchmarks are within threshold.</summary>
+    /// <summary>Every gating benchmark is within threshold on both axes.</summary>
     Pass,
-    /// <summary>At least one gating benchmark exceeds a threshold.</summary>
+    /// <summary>At least one gating benchmark exceeds a threshold on either axis, or the LOH tripwire fired.</summary>
     Regression,
-    /// <summary>Runner type mismatch made comparison impossible.</summary>
-    CannotCompare,
 }
 
 /// <summary>
 /// Full result of a gate evaluation: the outcome, per-benchmark deltas, and
 /// informational notes.
 /// </summary>
-/// <param name="Outcome">Overall pass/regression/cannot-compare verdict.</param>
+/// <param name="Outcome">Overall pass/regression verdict.</param>
 /// <param name="Deltas">Per-benchmark comparison results.</param>
-/// <param name="Notes">Informational messages (missing baselines, runner info, etc.).</param>
+/// <param name="Notes">Informational messages (missing baselines, CPU mismatches, etc.).</param>
 public sealed record EvaluationReport(
     Outcome Outcome,
     IReadOnlyList<BenchmarkDelta> Deltas,
     IReadOnlyList<string> Notes);
 
 /// <summary>
-/// A single side of a comparison: the per-benchmark means and the host they were measured on.
+/// A single benchmark's measured mean, standard deviation and allocation, as
+/// read from either a fresh run or a committed baseline.
 /// </summary>
-/// <param name="Host">Machine and runtime metadata, or <see langword="null"/> if not available.</param>
-/// <param name="Means">Map of fully qualified benchmark name to mean nanoseconds.</param>
-public sealed record BaselineSide(
-    BdnHostEnvironmentInfo? Host,
-    IReadOnlyDictionary<string, double> Means);
+/// <param name="Mean">Mean execution time in nanoseconds.</param>
+/// <param name="StandardDeviation">Standard deviation of execution time in nanoseconds.</param>
+/// <param name="AllocatedBytes">Bytes allocated per operation, or <see langword="null"/> if unavailable.</param>
+public sealed record BenchmarkMeasurement(double Mean, double StandardDeviation, double? AllocatedBytes);
 
 /// <summary>
-/// Core logic for the benchmark regression gate (D-313). All methods are pure
-/// or thin file-IO wrappers so the gate logic is unit-testable with in-memory inputs.
+/// A single side of a comparison: the per-benchmark measurements and the host they were measured on.
+/// </summary>
+/// <param name="Host">Machine and runtime metadata, or <see langword="null"/> if not available.</param>
+/// <param name="Measurements">Map of fully qualified benchmark name to its measurement.</param>
+public sealed record BaselineSide(
+    BdnHostEnvironmentInfo? Host,
+    IReadOnlyDictionary<string, BenchmarkMeasurement> Measurements);
+
+/// <summary>
+/// Core logic for the benchmark regression gate (D-313, hardened by D-333). All
+/// methods are pure or thin file-IO wrappers so the gate logic is unit-testable
+/// with in-memory inputs.
 /// </summary>
 public static class BenchCheck {
     /// <summary>
@@ -194,10 +268,9 @@ public static class BenchCheck {
         var deltas = new List<BenchmarkDelta>();
         var notes = new List<string>();
         var regression = false;
-        var cannotCompare = false;
 
         foreach (var category in policy.Categories) {
-            var freshInCategory = fresh.Means
+            var freshInCategory = fresh.Measurements
                 .Where(kv => kv.Key.StartsWith(category.NamespacePrefix, StringComparison.Ordinal))
                 .OrderBy(kv => kv.Key, StringComparer.Ordinal)
                 .ToList();
@@ -209,21 +282,9 @@ public static class BenchCheck {
 
             var rolling = loadBaseline(category.Baseline);
             if (rolling is null) {
-                foreach (var (name, _) in freshInCategory)
-                    deltas.Add(new BenchmarkDelta(category.Name, name, null, null, DeltaClass.NoBaseline));
+                foreach (var (name, freshM) in freshInCategory)
+                    deltas.Add(new BenchmarkDelta(category.Name, name, null, null, TimeClass.NoBaseline, null, freshM.AllocatedBytes, AllocClass.NoBaseline));
                 notes.Add($"{category.Name}: rolling baseline '{category.Baseline}' not found — establishing, no comparison.");
-                continue;
-            }
-
-            // Runner guard. A cross-runner comparison is meaningless (D-309 / §9); on a
-            // gating category that is a hard "cannot compare", not a silent green.
-            if (category.Gating && !SameRunnerType(fresh.Host, rolling.Host)) {
-                foreach (var (name, _) in freshInCategory)
-                    deltas.Add(new BenchmarkDelta(category.Name, name, null, null, DeltaClass.RunnerMismatch));
-                notes.Add(
-                    $"{category.Name}: runner mismatch — fresh '{PlatformOf(fresh.Host)}' vs baseline " +
-                    $"'{PlatformOf(rolling.Host)}'. Cross-runner comparison refused.");
-                cannotCompare = true;
                 continue;
             }
 
@@ -231,57 +292,104 @@ public static class BenchCheck {
             if (origin is null)
                 notes.Add($"{category.Name}: origin baseline '{OriginName(category.Baseline)}' not found — cumulative axis skipped.");
 
-            foreach (var (name, freshMean) in freshInCategory) {
-                double? perSprint = rolling.Means.TryGetValue(name, out var rMean) ? Percent(freshMean, rMean) : null;
-                double? cumulative = origin is not null && origin.Means.TryGetValue(name, out var oMean) ? Percent(freshMean, oMean) : null;
+            var sameCpuRolling = SameCpu(fresh.Host, rolling.Host);
+            var sameCpuOrigin = origin is not null && SameCpu(fresh.Host, origin.Host);
+            if (!sameCpuRolling) {
+                notes.Add(
+                    $"{category.Name}: CPU mismatch — fresh '{CpuOf(fresh.Host)}' vs rolling baseline " +
+                    $"'{CpuOf(rolling.Host)}'. Time comparison is informational; allocation still gates.");
+            }
 
-                var (cls, isRegression) = ClassifyDelta(
-                    perSprint, cumulative, category.Gating,
-                    policy.PerSprintPercent, policy.CumulativePercent);
-                if (isRegression) regression = true;
+            foreach (var (name, freshM) in freshInCategory) {
+                if (!rolling.Measurements.TryGetValue(name, out var rollingM)) {
+                    deltas.Add(new BenchmarkDelta(category.Name, name, null, null, TimeClass.NewBenchmark, null, freshM.AllocatedBytes, AllocClass.NewBenchmark));
+                    continue;
+                }
 
-                deltas.Add(new BenchmarkDelta(category.Name, name, perSprint, cumulative, cls));
+                var (timePerSprint, timeCumulative, timeClass) = ClassifyTime(
+                    freshM, rollingM,
+                    origin is not null && origin.Measurements.TryGetValue(name, out var originM) ? originM : null,
+                    category.Gating, sameCpuRolling, sameCpuOrigin, policy);
+
+                var (allocPercent, allocClass) = ClassifyAlloc(freshM, rollingM, category.Gating, policy);
+
+                if (timeClass is TimeClass.PerSprintBreach or TimeClass.CumulativeBreach) regression = true;
+                if (allocClass is AllocClass.PerSprintBreach or AllocClass.LohTripwireBreach) regression = true;
+
+                deltas.Add(new BenchmarkDelta(category.Name, name, timePerSprint, timeCumulative, timeClass, allocPercent, freshM.AllocatedBytes, allocClass));
             }
         }
 
-        Outcome outcome;
-        if (cannotCompare)
-            outcome = Outcome.CannotCompare;
-        else if (regression)
-            outcome = Outcome.Regression;
-        else
-            outcome = Outcome.Pass;
-
-        return new EvaluationReport(outcome, deltas, notes);
+        return new EvaluationReport(regression ? Outcome.Regression : Outcome.Pass, deltas, notes);
     }
 
-    private static (DeltaClass Class, bool IsRegression) ClassifyDelta(
-        double? perSprint,
-        double? cumulative,
+    private static (double? PerSprint, double? Cumulative, TimeClass Class) ClassifyTime(
+        BenchmarkMeasurement fresh,
+        BenchmarkMeasurement rolling,
+        BenchmarkMeasurement? origin,
         bool gating,
-        double perSprintThreshold,
-        double cumulativeThreshold) {
-        if (perSprint is null)
-            return (DeltaClass.NewBenchmark, false);
+        bool sameCpuRolling,
+        bool sameCpuOrigin,
+        Policy policy) {
+        var perSprint = Percent(fresh.Mean, rolling.Mean);
+        double? cumulative = origin is not null ? Percent(fresh.Mean, origin.Mean) : null;
+
         if (!gating)
-            return (DeltaClass.Informational, false);
-        if (perSprint.Value > perSprintThreshold)
-            return (DeltaClass.PerSprintBreach, true);
-        if (cumulative is not null && cumulative.Value > cumulativeThreshold)
-            return (DeltaClass.CumulativeBreach, true);
-        return (DeltaClass.Ok, false);
+            return (perSprint, cumulative, TimeClass.Informational);
+
+        if (sameCpuRolling) {
+            var relativeStdDev = Math.Max(RelativePercent(fresh), RelativePercent(rolling));
+            var threshold = Math.Max(policy.PerSprintPercent, policy.TimeSignificanceK * relativeStdDev);
+            if (perSprint > threshold)
+                return (perSprint, cumulative, TimeClass.PerSprintBreach);
+        }
+
+        var canCheckCumulative = cumulative is not null && sameCpuOrigin;
+        if (canCheckCumulative && cumulative!.Value > policy.CumulativePercent)
+            return (perSprint, cumulative, TimeClass.CumulativeBreach);
+
+        // "Blocked" means an axis that actually has baseline data to compare against
+        // was withheld from gating by a CPU mismatch — not merely that the axis has
+        // no data at all (a missing origin, say, is reported Ok if per-sprint is fine).
+        var cpuBlocked = !sameCpuRolling || (cumulative is not null && !sameCpuOrigin);
+        return (perSprint, cumulative, cpuBlocked ? TimeClass.CpuMismatch : TimeClass.Ok);
     }
+
+    private static (double? Percent, AllocClass Class) ClassifyAlloc(
+        BenchmarkMeasurement fresh,
+        BenchmarkMeasurement rolling,
+        bool gating,
+        Policy policy) {
+        if (fresh.AllocatedBytes is { } freshBytes && freshBytes >= policy.LohTripwireBytes)
+            return (null, AllocClass.LohTripwireBreach);
+
+        if (fresh.AllocatedBytes is null || rolling.AllocatedBytes is null)
+            return (null, AllocClass.Ok);
+
+        var percent = Percent(fresh.AllocatedBytes.Value, rolling.AllocatedBytes.Value);
+        if (!gating)
+            return (percent, AllocClass.Informational);
+        return percent > policy.AllocPercent ? (percent, AllocClass.PerSprintBreach) : (percent, AllocClass.Ok);
+    }
+
+    /// <summary>
+    /// A benchmark's standard deviation as a percentage of its own mean —
+    /// the noise-relative signal the significance-aware time gate (D-333)
+    /// compares against <see cref="Policy.TimeSignificanceK"/>.
+    /// </summary>
+    private static double RelativePercent(BenchmarkMeasurement m)
+        => Math.Abs(m.Mean) < 1e-3 ? 0 : m.StandardDeviation / m.Mean * 100.0;
 
     /// <summary>
     /// Computes the percentage change of <paramref name="fresh"/> relative to
     /// <paramref name="baseline"/>. A positive value means the fresh run is slower.
     /// Returns <c>0</c> when <paramref name="baseline"/> is zero to avoid division by zero.
     /// </summary>
-    /// <param name="fresh">The new mean nanoseconds.</param>
-    /// <param name="baseline">The reference mean nanoseconds.</param>
-    /// <returns>Signed percentage change, e.g. <c>+5.0</c> for 5% slower.
+    /// <param name="fresh">The new value.</param>
+    /// <param name="baseline">The reference value.</param>
+    /// <returns>Signed percentage change, e.g. <c>+5.0</c> for 5% higher.
     /// Returns <c>0</c> when <paramref name="baseline"/> is effectively zero
-    /// (below 1 picosecond) to avoid division by zero.</returns>
+    /// (below 1 picosecond/byte) to avoid division by zero.</returns>
     public static double Percent(double fresh, double baseline)
         => Math.Abs(baseline) < 1e-3 ? 0 : (fresh - baseline) / baseline * 100.0;
 
@@ -300,29 +408,26 @@ public static class BenchCheck {
 
     /// <summary>
     /// Returns <see langword="true"/> when <paramref name="a"/> and <paramref name="b"/>
-    /// ran on the same OS family (windows / macos / linux). GitHub-hosted runners vary
-    /// CPU generation run-to-run; the per-sprint gate absorbs that variance. This guard
-    /// exists solely to refuse windows-vs-linux comparisons.
+    /// report the same CPU model (D-333). Hosted runners cannot be CPU-pinned — the
+    /// same <c>windows-latest</c> label can serve different silicon run to run — so this
+    /// keys on <see cref="BdnHostEnvironmentInfo.ProcessorName"/> rather than the runner
+    /// label. Either side missing or empty (including a placeholder such as
+    /// <c>"Unknown processor"</c>) is never treated as a match — an unrecorded CPU can't
+    /// be verified equal to anything.
     /// </summary>
     /// <param name="a">First host, or <see langword="null"/> if unavailable.</param>
     /// <param name="b">Second host, or <see langword="null"/> if unavailable.</param>
-    public static bool SameRunnerType(BdnHostEnvironmentInfo? a, BdnHostEnvironmentInfo? b)
-        => PlatformOf(a) == PlatformOf(b) && PlatformOf(a) != "unknown";
+    public static bool SameCpu(BdnHostEnvironmentInfo? a, BdnHostEnvironmentInfo? b)
+        => a?.ProcessorName is { Length: > 0 } an
+           && b?.ProcessorName is { Length: > 0 } bn
+           && string.Equals(an, bn, StringComparison.Ordinal);
 
     /// <summary>
-    /// Classifies a host into one of three OS family strings: <c>"windows"</c>,
-    /// <c>"macos"</c>, <c>"linux"</c>, or <c>"unknown"</c> when the OS string is
-    /// absent or unrecognised.
+    /// The CPU model name for report/note rendering, or a fallback label when unrecorded.
     /// </summary>
     /// <param name="host">Host environment info, or <see langword="null"/>.</param>
-    /// <returns>Lowercase OS family string.</returns>
-    public static string PlatformOf(BdnHostEnvironmentInfo? host) {
-        var os = host?.OsVersion?.ToLowerInvariant() ?? string.Empty;
-        if (os.Contains("windows")) return "windows";
-        if (os.Contains("macos") || os.Contains("os x") || os.Contains("darwin")) return "macos";
-        if (os.Contains("ubuntu") || os.Contains("linux") || os.Contains("unix")) return "linux";
-        return "unknown";
-    }
+    public static string CpuOf(BdnHostEnvironmentInfo? host)
+        => host?.ProcessorName is { Length: > 0 } name ? name : "unknown CPU";
 
     // --- file IO wrappers (thin; the logic above is the tested part) ---
 
@@ -348,27 +453,27 @@ public static class BenchCheck {
 
     /// <summary>
     /// Converts a <see cref="BdnReport"/> to a <see cref="BaselineSide"/> by extracting
-    /// the mean nanoseconds for each benchmark.
+    /// the mean, standard deviation and allocation for each benchmark.
     /// </summary>
     /// <param name="report">The report to convert.</param>
     /// <returns>
-    /// A <see cref="BaselineSide"/> whose <see cref="BaselineSide.Means"/> map contains
-    /// every benchmark with a non-empty name and non-null statistics.
+    /// A <see cref="BaselineSide"/> whose <see cref="BaselineSide.Measurements"/> map
+    /// contains every benchmark with a non-empty name and non-null statistics.
     /// </returns>
     public static BaselineSide ToSide(BdnReport report) {
-        var means = new Dictionary<string, double>(StringComparer.Ordinal);
+        var measurements = new Dictionary<string, BenchmarkMeasurement>(StringComparer.Ordinal);
         foreach (var b in report.Benchmarks ?? []) {
             if (b.FullName is { Length: > 0 } name && b.Statistics is { } stats)
-                means[name] = stats.Mean;
+                measurements[name] = new BenchmarkMeasurement(stats.Mean, stats.StandardDeviation, b.Memory?.BytesAllocatedPerOperation);
         }
-        return new BaselineSide(report.HostEnvironmentInfo, means);
+        return new BaselineSide(report.HostEnvironmentInfo, measurements);
     }
 
     /// <summary>
     /// Merges every <c>*-report-full.json</c> found (recursively) under
     /// <paramref name="resultsDir"/> into a single <see cref="BaselineSide"/>.
-    /// The host is taken from the first file; later files' benchmark means overwrite
-    /// earlier ones if names collide.
+    /// The host is taken from the first file; later files' benchmark measurements
+    /// overwrite earlier ones if names collide.
     /// </summary>
     /// <param name="resultsDir">Directory containing BenchmarkDotNet result files.</param>
     /// <returns>The merged fresh side.</returns>
@@ -380,15 +485,15 @@ public static class BenchCheck {
         if (files.Count == 0)
             throw new FileNotFoundException($"No '*-report-full.json' found under '{resultsDir}'.");
 
-        var means = new Dictionary<string, double>(StringComparer.Ordinal);
+        var measurements = new Dictionary<string, BenchmarkMeasurement>(StringComparer.Ordinal);
         BdnHostEnvironmentInfo? host = null;
         foreach (var file in files) {
             var report = LoadReport(file);
             host ??= report.HostEnvironmentInfo;
-            foreach (var (k, v) in ToSide(report).Means)
-                means[k] = v;
+            foreach (var (k, v) in ToSide(report).Measurements)
+                measurements[k] = v;
         }
-        return new BaselineSide(host, means);
+        return new BaselineSide(host, measurements);
     }
 
     /// <summary>

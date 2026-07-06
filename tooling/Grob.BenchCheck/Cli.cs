@@ -21,8 +21,7 @@ internal static class Cli {
 
             return report.Outcome switch {
                 Outcome.Pass => 0,
-                Outcome.Regression => 1,
-                _ => 2,
+                _ => 1,
             };
         } catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException or DirectoryNotFoundException) {
             Console.Error.WriteLine($"BenchCheck: {ex.Message}");
@@ -32,37 +31,48 @@ internal static class Cli {
 
     internal static string Render(Policy policy, BaselineSide fresh, EvaluationReport report) {
         static string Pct(double? v) => v is null ? "—" : v.Value.ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture) + "%";
+        static string Bytes(double? v) => v is null ? "—" : v.Value.ToString("N0", CultureInfo.InvariantCulture) + " B";
         static string Short(string fullName) {
             var lastDot = fullName.LastIndexOf('.');
             return lastDot >= 0 ? fullName[(lastDot + 1)..] : fullName;
         }
-
-        var verdict = report.Outcome switch {
-            Outcome.Pass => "PASS",
-            Outcome.Regression => "REGRESSION",
-            _ => "CANNOT COMPARE",
+        static string TimeStatus(TimeClass cls) => cls switch {
+            TimeClass.Ok => "ok",
+            TimeClass.Informational => "info",
+            TimeClass.CpuMismatch => "cpu mismatch",
+            TimeClass.NewBenchmark => "new",
+            TimeClass.NoBaseline => "establishing",
+            TimeClass.PerSprintBreach => "**per-sprint breach**",
+            TimeClass.CumulativeBreach => "**cumulative breach**",
+            _ => cls.ToString(),
         };
+        static string AllocStatus(AllocClass cls) => cls switch {
+            AllocClass.Ok => "ok",
+            AllocClass.Informational => "info",
+            AllocClass.NewBenchmark => "new",
+            AllocClass.NoBaseline => "establishing",
+            AllocClass.PerSprintBreach => "**per-sprint breach**",
+            AllocClass.LohTripwireBreach => "**LOH tripwire**",
+            _ => cls.ToString(),
+        };
+
+        var verdict = report.Outcome == Outcome.Pass ? "PASS" : "REGRESSION";
 
         var sb = new StringBuilder();
         sb.AppendLine($"## Benchmark regression gate — {verdict}");
         sb.AppendLine();
-        sb.AppendLine($"Runner: {BenchCheck.PlatformOf(fresh.Host)} · {fresh.Host?.ProcessorName ?? "unknown CPU"} · {fresh.Host?.RuntimeVersion ?? "unknown runtime"}");
-        sb.AppendLine($"Thresholds: per-sprint {policy.PerSprintPercent:0.#}% (vs rolling) · cumulative {policy.CumulativePercent:0.#}% (vs origin)");
+        sb.AppendLine($"Runner: {fresh.Host?.OsVersion ?? "unknown OS"} · {fresh.Host?.ProcessorName ?? "unknown CPU"} · {fresh.Host?.RuntimeVersion ?? "unknown runtime"}");
+        sb.AppendLine(
+            $"Thresholds: per-sprint {policy.PerSprintPercent:0.#}% (vs rolling, noise floor ×{policy.TimeSignificanceK:0.#}σ) · " +
+            $"cumulative {policy.CumulativePercent:0.#}% (vs origin) · allocation {policy.AllocPercent:0.#}% · " +
+            $"LOH tripwire {policy.LohTripwireBytes:N0} B");
         sb.AppendLine();
-        sb.AppendLine("| Category | Benchmark | vs rolling | vs origin | Status |");
-        sb.AppendLine("| --- | --- | ---: | ---: | --- |");
+        sb.AppendLine("| Category | Benchmark | Δ time (rolling) | Δ time (origin) | Time | Δ alloc | Alloc | Alloc status |");
+        sb.AppendLine("| --- | --- | ---: | ---: | --- | ---: | ---: | --- |");
         foreach (var d in report.Deltas) {
-            var status = d.Class switch {
-                DeltaClass.Ok => "ok",
-                DeltaClass.Informational => "info",
-                DeltaClass.NewBenchmark => "new",
-                DeltaClass.NoBaseline => "establishing",
-                DeltaClass.PerSprintBreach => "**per-sprint breach**",
-                DeltaClass.CumulativeBreach => "**cumulative breach**",
-                DeltaClass.RunnerMismatch => "**runner mismatch**",
-                _ => d.Class.ToString(),
-            };
-            sb.AppendLine($"| {d.Category} | {Short(d.FullName)} | {Pct(d.PerSprintPercent)} | {Pct(d.CumulativePercent)} | {status} |");
+            sb.AppendLine(
+                $"| {d.Category} | {Short(d.FullName)} | {Pct(d.TimePerSprintPercent)} | {Pct(d.TimeCumulativePercent)} | {TimeStatus(d.TimeClass)} | " +
+                $"{Pct(d.AllocPercent)} | {Bytes(d.AllocBytes)} | {AllocStatus(d.AllocClass)} |");
         }
 
         if (report.Notes.Count > 0) {

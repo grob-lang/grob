@@ -192,6 +192,6 @@ Halt and report rather than pressing on if:
 
 Full files, never patches. One branch, one PR for this interlude, main protected, Husky.NET
 pre-push gate green before push. Ship the session outputs as a single zip: the changed VM
-source, the new tests, the recaptured baseline JSON, the `grob-decisions-log.md` update and
+source, the new tests, the recaptured baseline JSON, the `grob-decisions-log.md` update, and
 this executed command archived under `prompts/archive/sprint-7/`. British English, no Oxford
 comma.
