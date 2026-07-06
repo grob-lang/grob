@@ -1,6 +1,9 @@
 {
   "perSprintPercent": 5.0,
   "cumulativePercent": 12.0,
+  "allocPercent": 10.0,
+  "lohTripwireBytes": 85000,
+  "timeSignificanceK": 3.0,
   "categories": [
     { "name": "compile",  "namespacePrefix": "Grob.Benchmarks.Compile",  "baseline": "compile.json",  "gating": true  },
     { "name": "vm",       "namespacePrefix": "Grob.Benchmarks.Vm",       "baseline": "vm.json",       "gating": false },

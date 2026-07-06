@@ -474,15 +474,20 @@ rationale in the commit message and a decisions-log entry. The
 regression gate (§9) never updates a baseline on its own — it reads,
 compares and reports; the human commits the update.
 
-`policy.json` holds the per-sprint threshold, the cumulative threshold
-and the list of categories with their gating flags. It is data so the
-cumulative budget is a number the maintainer edits, not a constant
-recompiled into the tool. Its shape:
+`policy.json` holds the per-sprint threshold, the cumulative threshold,
+the allocation thresholds, the time-significance factor and the list of
+categories with their gating flags. It is data so the cumulative budget
+is a number the maintainer edits, not a constant recompiled into the
+tool. Its shape (D-333 added `allocPercent`, `lohTripwireBytes` and
+`timeSignificanceK`):
 
 ```json
 {
   "perSprintPercent": 5.0,
   "cumulativePercent": 12.0,
+  "allocPercent": 10.0,
+  "lohTripwireBytes": 85000,
+  "timeSignificanceK": 3.0,
   "categories": [
     { "name": "compile",  "namespacePrefix": "Grob.Benchmarks.Compile",  "baseline": "compile.json",  "gating": true  },
     { "name": "vm",       "namespacePrefix": "Grob.Benchmarks.Vm",       "baseline": "vm.json",       "gating": false },
@@ -490,6 +495,13 @@ recompiled into the tool. Its shape:
   ]
 }
 ```
+
+`allocPercent` and `lohTripwireBytes` govern the allocation axis, and
+`timeSignificanceK` the significance-aware time gate — both described in
+§9. The committed baseline JSON already carries the data both need
+(`Memory.BytesAllocatedPerOperation` and `Statistics.StandardDeviation`,
+BenchmarkDotNet's native output), so neither required a benchmark-workload
+change to add.
 
 ### 8.1 Canonical Production Path — GitHub Actions Workflow
 
@@ -518,19 +530,27 @@ This anchors the file to a specific, reproducible origin.
 
 **Runner consistency.** The canonical runner is `windows-latest` (D-309).
 All future baseline production and regression-check runs must use the same
-runner type. Cross-runner comparisons are not valid — the absolute numbers
-are not comparable across runner types.
+runner type. `windows-latest` is a label, not a hardware pin — the hosted
+pool serves more than one CPU generation, so two runs sharing the label can
+still land on different silicon (D-333 confirmed an AMD EPYC 7763 baseline
+against an Intel Xeon Platinum 8370C verification run, both labelled
+`windows-latest`). The gate's CPU-identity guard (§9) handles that gap by
+keying on the CPU itself, not the label.
 
-**The regression gate runs inside this workflow (D-313).** After the
-benchmark run, the workflow invokes `tooling/Grob.BenchCheck` against the
-committed baselines and the fresh `-report-full.json`. The tool computes
-the two-axis comparison (§9), writes a per-benchmark delta table to the job
-summary and exits non-zero on a breach — so the workflow run itself goes
-red when a gating category regresses. The check reads only; it never
-commits a baseline. Committing an updated baseline remains the deliberate
-manual step above. A run triggered on a non-canonical runner
-(`ubuntu-latest`) fails the gate by design — the runner guard refuses a
-cross-runner comparison rather than producing a meaningless green.
+**The regression gate runs inside this workflow (D-313, hardened by
+D-333).** After the benchmark run, the workflow invokes
+`tooling/Grob.BenchCheck` against the committed baselines and the fresh
+`-report-full.json`. The tool computes the time and allocation comparisons
+(§9), writes a per-benchmark delta table to the job summary and exits
+non-zero on a breach — so the workflow run itself goes red when a gating
+category regresses on either axis, or when any category's allocation clears
+the LOH tripwire. The check reads only; it never commits a baseline.
+Committing an updated baseline remains the deliberate manual step above.
+Allocation gates regardless of which CPU produced the run; the time axis
+gates only when the fresh run's CPU matches the baseline's — on a CPU
+mismatch the time comparison is reported informational rather than refused,
+since hosted runners cannot be CPU-pinned and a hard refusal would make the
+gate unusable in practice.
 
 ### 8.2 Local Invocation — Debugging and One-Off Exploration
 
@@ -564,33 +584,89 @@ benchmark run belongs **after** the sprint's correctness QA loop has
 landed and the code is final — measuring a state that is about to change
 wastes the run.
 
-The policy has **two comparison axes** (D-313). A single axis — comparing
-only against the immediately prior baseline and then updating it — ratchets:
-a regression below the gate passes, becomes the new normal and a steady
-few-percent-per-sprint creep compounds invisibly. The two axes close that.
+The policy has **two time comparison axes** (D-313) plus, since D-333, an
+**allocation axis** evaluated alongside them. A single axis — comparing only
+against the immediately prior baseline and then updating it — ratchets: a
+regression below the gate passes, becomes the new normal and a steady
+few-percent-per-sprint creep compounds invisibly. The two time axes close
+that; the allocation axis closes a different gap the Sprint 6 run exposed —
+a deterministic, CPU-independent signal (`[MemoryDiagnoser]`'s
+`BytesAllocatedPerOperation`) that the gate previously recorded into every
+baseline but never acted on, so a defect like D-332's Large Object Heap
+allocation read as merely informational instead of failing outright.
 
-**Axis 1 — per-sprint gate (noise filter).** New results compared against
-the **rolling** baseline (`<category>.json`). Threshold **5%** on a gating
-category. This catches an acute regression — the sprint that boxes a value
-on the dispatch hot path and jumps 30%. 5% is a noise floor, not a budget:
-most sprints touch no hot path and should read near 0%. It is set at 5%
-because run-to-run variance on the shared `windows-latest` runner is
-genuinely a few percent; a tighter gate fires on infrastructure noise, and
-tightening it has a precondition — a quieter measurement first.
+**Axis 1 — per-sprint gate (noise filter), now significance-aware
+(D-333).** New results compared against the **rolling** baseline
+(`<category>.json`). A breach requires the delta to exceed
+`max(perSprintPercent, timeSignificanceK × relativeStdDev)` — the flat 5%
+remains a floor, but a delta inside the benchmark's own measurement noise no
+longer trips it. `relativeStdDev` is the larger of the fresh and baseline
+run's `StandardDeviation` as a percentage of their own `Mean` (the noisier
+side is the conservative choice), and `timeSignificanceK` is **3** — the
+standard three-sigma convention. Checked against the case that motivated it:
+Sprint 6's `Compile_TenPrints` breach had an ~8.7% delta against a ~3.2%
+relative StdDev; `3 × 3.2% ≈ 9.6%` absorbs it, while a genuine acute
+regression (the sprint that boxes a value on the dispatch hot path and jumps
+30%) stays far outside even a noisy (~5%) benchmark's 15% band. This was the
+gate's originally-stated precondition for tightening — "a quieter
+measurement first" — now met by measuring the noise itself rather than
+assuming a flat floor. Consecutive-breach filtering (requiring N breaches
+across runs before failing) was considered and deferred: it needs cross-run
+history the tool doesn't retain today, and the significance filter alone
+already resolves the demonstrated false positive.
 
 **Axis 2 — cumulative ceiling (anti-ratchet).** New results compared
 against the **frozen origin** baseline (`<category>.origin.json`).
-Threshold **12%** total drift to v1. A slow creep trips this within a few
-sprints even when every individual step is inside the 5% per-sprint gate.
-Read it against the arc: Grob lands benchmarking before optimisation, so
-features add real, correct overhead (checked arithmetic, nil checks, the
-extra type-checker passes) through the build sprints, and the dedicated
-optimisation pass claws it back. The 12% is sized for "necessary trades
-through features, recovered at optimisation", not "never regress".
+Threshold **12%** total drift to v1, evaluated at the flat percentage (the
+significance filter above applies to axis 1 only — the cumulative ceiling
+already smooths over single-run noise by design, across the whole v1 arc).
+A slow creep trips this within a few sprints even when every individual step
+is inside the 5% per-sprint gate. Read it against the arc: Grob lands
+benchmarking before optimisation, so features add real, correct overhead
+(checked arithmetic, nil checks, the extra type-checker passes) through the
+build sprints, and the dedicated optimisation pass claws it back. The 12% is
+sized for "necessary trades through features, recovered at optimisation",
+not "never regress".
 
-**Comparison validity.** Both axes are only valid between runs on the same
-runner type (`windows-latest` per D-309 / §8.1). The gate tool guards this
-from `HostEnvironmentInfo` and refuses a cross-runner comparison.
+**Axis 3 — allocation (D-333).** New results compared against the
+**rolling** baseline's `Memory.BytesAllocatedPerOperation` on two
+sub-checks:
+
+- **Percent-vs-baseline** (`allocPercent`, **10%**): a gating category's
+  allocation growing by more than this fails the gate, mirroring axis 1 but
+  tighter — allocation is deterministic (the same code path allocates the
+  same bytes run to run), so it only needs to absorb legitimate minor
+  variance, not hardware noise. On a non-gating category the percentage is
+  reported, never failing.
+- **The LOH tripwire** (`lohTripwireBytes`, **85,000**, the CLR's actual
+  Large Object Heap threshold): any benchmark, gating or not, whose fresh
+  allocation meets or exceeds this fails the gate outright. This is the
+  check that would have caught D-332 on day one instead of filing it under
+  "info" — an informational category is still forbidden from silently
+  landing on the LOH.
+
+**CPU identity, and which axis it governs (D-333, refining D-309's "same
+runner type" to "same CPU identity").** `windows-latest` is a label, not a
+hardware pin — the post-Interlude-1 verification run proved a 25–37% time
+swing between an AMD EPYC 7763 baseline and an Intel Xeon Platinum 8370C
+run sharing that label, with allocation byte-identical across both. The
+gate's guard keys on `HostEnvironmentInfo.ProcessorName`, not the runner
+label, comparing the fresh run's CPU against the CPU each baseline file
+(rolling and origin independently) was captured on. **Allocation gates
+regardless of CPU** — it is deterministic hardware-independent data.
+**Time gates only when the fresh run's CPU matches the baseline's**; on a
+mismatch the time comparison (per-sprint or cumulative, whichever baseline's
+CPU differs) is reported informational, never a breach, rather than
+refused outright — hosted runners cannot be CPU-pinned, so a hard refusal
+would make the gate refuse constantly. A missing or placeholder CPU
+recording (for example a pre-D-333 baseline that predates this provenance
+discipline) is never treated as a match — an unrecorded CPU can't be
+verified equal to anything, so it also falls to informational rather than
+silently comparing. `compile.origin.json`'s frozen host predates CPU
+provenance entirely (`"Unknown processor"`, a stale BenchmarkDotNet 0.14.0
+capture); until it is deliberately re-frozen with a real capture, the
+compile category's cumulative axis reads informational rather than gating —
+a known, logged gap (D-333), not a silent one.
 
 **Which category gates.** The end-to-end script benchmarks are the primary
 gate — they measure the thing that matters. Compile-time and VM execution
