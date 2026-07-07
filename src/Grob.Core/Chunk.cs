@@ -16,6 +16,7 @@ public sealed class Chunk {
     private readonly List<int> _lines = [];     // parallel to _code: source line per byte
     private readonly List<int> _columns = [];   // parallel to _code: source column per byte (0 = unknown)
     private readonly List<StructTypeDescriptor> _structTypes = [];
+    private readonly List<TryRegion> _tryRegions = [];
 
     // ----- Read surface (Disassembler and VM) -----
 
@@ -109,6 +110,39 @@ public sealed class Chunk {
 
     /// <summary>Read the struct type descriptor at <paramref name="index"/>.</summary>
     public StructTypeDescriptor GetStructType(byte index) => _structTypes[index];
+
+    // ----- Handler table (Sprint 7 Increment B) -----
+
+    /// <summary>
+    /// Reserve a <see cref="TryRegion"/> table slot and return its index. The
+    /// region's bounds and handlers are not yet known when <see cref="OpCode.TryBegin"/>
+    /// is emitted (the compiler is only starting to compile the try body), so the
+    /// index is reserved first and the entry filled in later via <see cref="SetTryRegion"/> —
+    /// the same two-phase reserve-then-patch shape the compiler uses for forward jump
+    /// targets. The placeholder entry has no handlers.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when more than 256 try regions are registered in a single chunk —
+    /// <see cref="OpCode.TryBegin"/>'s operand is a single byte.
+    /// </exception>
+    public int AddTryRegion() {
+        if (_tryRegions.Count >= 256)
+            throw new InvalidOperationException("Try region table overflow: a single chunk may hold at most 256 try regions.");
+        _tryRegions.Add(new TryRegion(0, 0, []));
+        return _tryRegions.Count - 1;
+    }
+
+    /// <summary>Overwrite the reserved try-region entry at <paramref name="index"/> with its resolved bounds and handlers.</summary>
+    public void SetTryRegion(int index, TryRegion region) {
+        ArgumentNullException.ThrowIfNull(region);
+        _tryRegions[index] = region;
+    }
+
+    /// <summary>The number of try regions registered in this chunk.</summary>
+    public int TryRegionCount => _tryRegions.Count;
+
+    /// <summary>Read the try region at <paramref name="index"/>.</summary>
+    public TryRegion GetTryRegion(int index) => _tryRegions[index];
 
     /// <summary>
     /// Overwrite the byte at <paramref name="offset"/> with <paramref name="value"/>.

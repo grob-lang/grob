@@ -241,10 +241,67 @@ public sealed partial class TypeChecker {
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Sprint 7 Increment B. A <c>try</c> with neither a catch nor a finally is
+    /// E2204. Catches are walked in source order: any clause after a catch-all is
+    /// E2205 (D-083); a typed clause naming a non-<c>GrobError</c> type is E0015;
+    /// a typed clause repeating an already-seen type is E2213. Every clause still
+    /// gets its binding declared and its body visited — even an erroring one — for
+    /// cascade suppression (§29). No can-throw analysis (§27 permissiveness): a
+    /// catch type is never checked against what the try body can actually throw.
+    /// <c>finally</c> is visited but not otherwise checked here (Increment C).
+    /// </remarks>
     public override GrobType VisitTry(TryStmt node) {
         Visit(node.Body);
-        foreach (CatchClause c in node.Catches) Visit(c.Body);
+
+        if (node.Catches.Count == 0 && node.Finally is null) {
+            EmitError(ErrorCatalog.E2204,
+                "'try' must be followed by at least one 'catch' or a 'finally'.",
+                node.Range);
+        }
+
+        bool catchAllSeen = false;
+        HashSet<string> seenTypes = new(StringComparer.Ordinal);
+        foreach (CatchClause c in node.Catches) {
+            if (catchAllSeen) {
+                EmitError(ErrorCatalog.E2205,
+                    "A 'catch' cannot appear after the catch-all clause.",
+                    c.Range);
+            } else if (c.ExceptionType is null) {
+                catchAllSeen = true;
+            } else if (!ExceptionHierarchy.IsSubtypeOf(c.ExceptionType.Name, ExceptionHierarchy.Root)) {
+                EmitError(ErrorCatalog.E0015,
+                    $"'catch' type must be '{ExceptionHierarchy.Root}' or a subtype; " +
+                    $"found '{c.ExceptionType.Name}'.",
+                    c.ExceptionType.Range);
+            } else if (!seenTypes.Add(c.ExceptionType.Name)) {
+                EmitError(ErrorCatalog.E2213,
+                    $"A 'catch' for type '{c.ExceptionType.Name}' is already declared on this 'try'.",
+                    c.ExceptionType.Range);
+            }
+
+            VisitCatchClause(c);
+        }
+
         if (node.Finally is not null) Visit(node.Finally);
         return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Declares the catch binding as a fresh immutable local (D-274) — a synthetic
+    /// <see cref="ReadonlyDecl"/>, never itself visited, so the existing
+    /// <c>symbol.DeclarationNode is ReadonlyDecl</c> reassignment checks (E0202) fire
+    /// with no changes to that machinery — then visits the clause body in that scope.
+    /// </summary>
+    private void VisitCatchClause(CatchClause c) {
+        _scopes.Push(new Dictionary<string, Symbol>());
+        if (c.ExceptionVariable is not null) {
+            string boundTypeName = c.ExceptionType?.Name ?? ExceptionHierarchy.Root;
+            ReadonlyDecl syntheticDecl = new(c.Range, c.ExceptionVariable, c.ExceptionType, new NilLiteralExpr(c.Range));
+            RegisterSymbol(c.ExceptionVariable, GrobType.Struct, c.Range.Start, syntheticDecl,
+                namedStructTypeName: boundTypeName);
+        }
+        Visit(c.Body);
+        _scopes.Pop();
     }
 }

@@ -167,11 +167,24 @@ public class ParserStatementTests {
 
     [Fact]
     public void Try_CatchAll_NoParens() {
-        CompilationUnit unit = ParseOk("try { 1 } catch { 2 }\n");
+        // D-274/§27: the catch-all form is 'catch <name> { }' — the identifier
+        // is required (it binds the caught GrobError). No-parens, no-name is
+        // not a form the grammar supports.
+        CompilationUnit unit = ParseOk("try { 1 } catch e { 2 }\n");
         TryStmt t = Single<TryStmt>(unit);
         CatchClause c = Assert.Single(t.Catches);
         Assert.Null(c.ExceptionType);
-        Assert.Null(c.ExceptionVariable);
+        Assert.Equal("e", c.ExceptionVariable);
+    }
+
+    [Theory]
+    [InlineData("try { 1 } catch (e) { 2 }\n")]     // D-274: parens + identifier, no type — not a silent "type-only catch"
+    [InlineData("try { 1 } catch () { 2 }\n")]      // empty parens header
+    [InlineData("try { 1 } catch { 2 }\n")]         // no-parens catch-all with no bound identifier
+    public void Catch_MalformedHeader_IsError(string source) {
+        (_, DiagnosticBag bag) = Parse(source);
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
     }
 
     [Fact]

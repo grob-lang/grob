@@ -47,7 +47,7 @@ public sealed class ErrorCodeCountTests {
     }
 
     [Fact]
-    public void Corpus_HasTheExpectedLiveCountOf114() {
+    public void Corpus_HasTheExpectedLiveCountOf116() {
         // A standing anchor: if the count legitimately changes, this and the
         // canonical footer line move together, by intent, in the same change.
         // D-320 added E1103 (reserved identifier used as a binding name): 107 -> 108.
@@ -56,8 +56,10 @@ public sealed class ErrorCodeCountTests {
         // Sprint 6C added E0206 (optional chaining in assignment target): 111 -> 112.
         // Sprint 7 Increment A added E0014 (throw operand is not a GrobError subtype)
         // and E5904 (unhandled exception reached the top level): 112 -> 114.
-        Assert.Equal(114, ConsistencyChecks.ActualErrorCatalogCount());
-        Assert.Equal(114, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
-        Assert.Equal(114, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
+        // Sprint 7 Increment B added E0015 (catch type is not a GrobError subtype)
+        // and E2213 (duplicate catch for the same type): 114 -> 116.
+        Assert.Equal(116, ConsistencyChecks.ActualErrorCatalogCount());
+        Assert.Equal(116, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
+        Assert.Equal(116, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
     }
 }

@@ -417,7 +417,7 @@ public sealed class TypeCheckerTests {
     /// <summary>A <c>try/catch</c> block type-checks without error.</summary>
     [Fact]
     public void ControlFlow_TryCatch_NoError() {
-        (_, DiagnosticBag bag) = TypeCheckSource("try { x := 1 } catch { y := 2 }\n");
+        (_, DiagnosticBag bag) = TypeCheckSource("try { x := 1 } catch e { y := 2 }\n");
         Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
     }
 

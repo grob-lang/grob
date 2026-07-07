@@ -66,6 +66,7 @@ read by `grob --explain Exxxx`.
 | E0012 | unknown field name                                  | Type              | pre-release           |
 | E0013 | field default references sibling field              | Type              | pre-release           |
 | E0014 | throw operand is not a GrobError subtype             | Type              | pre-release           |
+| E0015 | catch type is not a GrobError subtype              | Type              | pre-release           |
 | E0101 | nil dereference without `?.` or `??`               | Type              | pre-release           |
 | E0102 | nullable interpolation                             | Type              | pre-release           |
 | E0103 | non-nullable field requires initialiser            | Type              | pre-release           |
@@ -122,6 +123,7 @@ read by `grob --explain Exxxx`.
 | E2210 | line continuation rule violation                   | Syntax            | pre-release           |
 | E2211 | `break` inside `select`                            | Syntax            | pre-release           |
 | E2212 | `break` / `continue` outside a loop                | Syntax            | pre-release           |
+| E2213 | duplicate `catch` for the same type                | Syntax            | pre-release           |
 | E3001 | unknown plugin                                     | Module            | pre-release           |
 | E3002 | plugin not installed                               | Module            | pre-release           |
 | E3003 | circular import                                    | Module            | pre-release           |
@@ -306,6 +308,16 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** The operand of a `throw` statement did not resolve to `GrobError` or one of its ten leaves (D-284). `throw 42`, `throw "oops"` and throwing any other non-`GrobError` value are rejected here. Dedicated over folding into E0001 (general type mismatch) — the construction-site/throw-operand family already carries its own dedicated codes (E0011–E0013), per D-318/D-330's precedent of a distinct surface earning a distinct code.
 - **Source:** `grob-language-fundamentals.md` §27; D-274; D-284.
+
+---
+
+### E0015 — catch type is not a GrobError subtype
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A typed `catch (<n>: <Type>)` clause named a type that is not `GrobError` or one of its ten leaves (D-284). `catch (e: int)` and similar are rejected here. Dedicated over folding into E0001 (general type mismatch), matching E0014's precedent for the throw-operand family — the catch-type surface is distinct and more actionable with its own code.
+- **Source:** `grob-language-fundamentals.md` §27; D-274.
 
 ---
 
@@ -852,6 +864,16 @@ read by `grob --explain Exxxx`.
 
 ---
 
+### E2213 — duplicate `catch` for the same type
+
+- **Category:** Syntax
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** Two typed `catch (<n>: <Type>)` clauses on the same `try` name the same exception type. Dedicated over folding into E2205 (`catch` after catch-all, D-083) — "catch for `IoError` already declared" is a distinct and more actionable diagnostic than the catch-all-ordering failure, per the `allocating-an-error-code` fold-vs-new precedent.
+- **Source:** `grob-language-fundamentals.md` §27; D-274.
+
+---
+
 ### E3001 — unknown plugin
 
 - **Category:** Module
@@ -1318,7 +1340,7 @@ None as of v1.
 
 ---
 
-**Total: 114 codes across 7 categories.** This is the canonical current count;
+**Total: 116 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
@@ -1341,3 +1363,5 @@ _Updated June 2026 — Sprint 5 Increment B added the four named-argument call-s
 _Updated June 2026 — Sprint 5 correctness increment added E1103 (reserved identifier used as a binding name) in the E11xx sub-block of the Name resolution category, bringing the total to 108 codes. The code covers both `select` (D-320) and `formatAs` (D-282) — D-282's reserved-identifier rule had shipped with no code. Source decision D-320._
 
 _Updated July 2026 — Sprint 7 Increment A added two codes: E0014 (`throw` operand is not a `GrobError` subtype) in the E00xx sub-block of the Type category, and E5904 (unhandled exception reached the top level) in the E59xx sub-block of the Runtime category, bringing the total from 112 to 114. E5904's `Throws` leaf is `GrobError` (a new `GrobErrorLeaf` member) rather than one of the ten typed leaves — the code re-raises whatever the script itself threw, so it carries no single fixed leaf the way every other Runtime code does. Allocated per `allocating-an-error-code` (D-330/D-318 precedent for a dedicated construction/throw-site code over folding into an ill-fitting existing one)._
+
+_Updated July 2026 — Sprint 7 Increment B added two codes: E0015 (catch type is not a `GrobError` subtype) in the E00xx sub-block of the Type category, and E2213 (duplicate `catch` for the same type) in the E22xx sub-block of the Syntax category, bringing the total from 114 to 116. Both dedicated over folding into an existing code (E0001 and E2205 respectively), per the E0014/E0011–E0013 precedent. The increment's own hand-off had said the prior count was "112 → 113" — the live registry and `ErrorCatalog` both showed 114 (Increment A added two codes, not one); this edit reconciles to the live total rather than the stale prompt arithmetic._
