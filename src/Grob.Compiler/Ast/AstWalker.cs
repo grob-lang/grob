@@ -247,6 +247,12 @@ public abstract class AstWalker : AstVisitor<Unit> {
         return default;
     }
 
+    /// <inheritdoc/>
+    public override Unit VisitThrow(ThrowStmt node) {
+        Visit(node.Value);
+        return default;
+    }
+
     // -----------------------------------------------------------------------
     // Declarations with children
     // -----------------------------------------------------------------------

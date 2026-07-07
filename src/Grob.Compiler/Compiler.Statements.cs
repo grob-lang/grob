@@ -145,6 +145,19 @@ public sealed partial class Compiler {
         return null;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Compiles the operand (typically a <see cref="StructConstructionExpr"/>,
+    /// reusing the Sprint 6B <see cref="OpCode.NewStruct"/> emission verbatim — no
+    /// second construction path) then emits <see cref="OpCode.Throw"/>.
+    /// </remarks>
+    public override object? VisitThrow(ThrowStmt node) {
+        int line = node.Range.Start.Line;
+        Visit(node.Value);
+        _chunk.WriteOpCode(OpCode.Throw, line);
+        return null;
+    }
+
     // -----------------------------------------------------------------------
     // Expression statements (print, exit, and other calls)
     // -----------------------------------------------------------------------

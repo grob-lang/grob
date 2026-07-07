@@ -109,6 +109,27 @@ public sealed partial class TypeChecker {
         return TypesAreAssignable(actual, expected);
     }
 
+    /// <summary>
+    /// Type-checks a <c>throw</c> statement's operand (Sprint 7 Increment A,
+    /// D-274). The operand must resolve to <c>GrobError</c> or one of its ten
+    /// leaves (D-284); anything else is E0014. Reuses the existing struct-type-name
+    /// machinery (<see cref="GetFieldValueStructTypeName"/>) that field-value
+    /// struct identity already relies on — no new resolution path.
+    /// </summary>
+    public override GrobType VisitThrow(ThrowStmt node) {
+        GrobType operandType = Visit(node.Value);
+        if (operandType == GrobType.Error) return GrobType.Unknown; // cascade suppression
+
+        string? typeName = GetFieldValueStructTypeName(node.Value);
+        if (typeName is null || !ExceptionHierarchy.IsSubtypeOf(typeName, ExceptionHierarchy.Root)) {
+            EmitError(ErrorCatalog.E0014,
+                $"'throw' operand must be a '{ExceptionHierarchy.Root}' or a subtype; " +
+                $"found '{typeName ?? TypeName(operandType)}'.",
+                node.Value.Range);
+        }
+        return GrobType.Unknown;
+    }
+
     /// <inheritdoc/>
     public override GrobType VisitAssignment(AssignmentStmt node) {
         if (node.Target is MemberAccessExpr memberTarget) {

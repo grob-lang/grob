@@ -143,6 +143,15 @@ public sealed class VirtualMachine {
     public IReadOnlyDictionary<string, GrobValue> Globals => _globals;
 
     /// <summary>
+    /// Test-only visibility into the active call-frame depth (Sprint 7 Increment A).
+    /// Lets <c>Grob.Vm.Tests</c> assert that an unhandled <see cref="OpCode.Throw"/>
+    /// actually unwinds every frame — rather than merely raising the diagnostic with
+    /// stale frame state left behind — mirroring the existing <see cref="Stack"/>
+    /// test-visibility precedent.
+    /// </summary>
+    internal int FrameCount => _frameCount;
+
+    /// <summary>
     /// Register a native C# function under <paramref name="name"/> in the global
     /// variables table so that Grob scripts can call it by that name.
     /// Overwrites any previous binding with the same name (last write wins).
@@ -930,6 +939,43 @@ public sealed class VirtualMachine {
                                         .Select(p => $"{p.Key}:{p.Value.Kind}"));
                             _stack.Push(GrobValue.FromStruct(new GrobStruct(typeName, fieldPairs)), line);
                             break;
+                        }
+
+                    // --- throw / unhandled top-level path (Sprint 7 Increment A) ---
+
+                    case OpCode.Throw: {
+                            GrobValue exceptionValue = _stack.Pop();
+                            if (!exceptionValue.TryAsStruct(out GrobStruct? exceptionStruct))
+                                throw new GrobInternalException(
+                                    $"Throw operand is not a struct (kind {exceptionValue.Kind}). " +
+                                    "The type checker should have rejected a non-GrobError throw operand before emission.");
+
+                            // D-322-style line-only stamp — the VM has no source-file
+                            // identifier (Chunk debug info is line-keyed only; the file name
+                            // lives only at the CLI layer). "<unknown>" fills the file slot
+                            // exactly as SourceLocation.Unknown already does elsewhere in the
+                            // compiler. This is the one and only place 'location' is ever set;
+                            // a future catch (Increment B) reads it back already correct.
+                            exceptionStruct!.SetField("location", GrobValue.FromString($"<unknown>:{line}"));
+
+                            // No handler exists in this increment — unwind every frame to the
+                            // top level, closing upvalues by location exactly as OP_RETURN does
+                            // per frame (D-325), then hand off through the existing
+                            // GrobRuntimeException path so the CLI's top-level catch/format/
+                            // exit-1 diagnostic handles presentation (no second formatter here).
+                            while (_frameCount > 0) {
+                                CloseUpvaluesFrom(_stackBase);
+                                CallFrame frame = _frames[--_frameCount];
+                                _activeChunk = frame.ReturnChunk;
+                                _ip = frame.ReturnInstructionPointer;
+                                _stackBase = frame.ReturnStackBase;
+                            }
+
+                            string messageText = exceptionStruct.TryGetField("message", out GrobValue msgValue) && msgValue.IsString
+                                ? msgValue.AsString()
+                                : "<no message>";
+                            throw new GrobRuntimeException(ErrorCatalog.E5904.Code, line,
+                                $"{exceptionStruct.TypeName}: {messageText}");
                         }
 
                     default:

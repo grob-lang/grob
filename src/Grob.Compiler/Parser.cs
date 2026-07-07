@@ -520,6 +520,7 @@ public sealed class Parser {
                     return new ContinueStmt(RangeFrom(s));
                 }
             case TokenKind.Try: return ParseTry();
+            case TokenKind.Throw: return ParseThrow();
             case TokenKind.Const: return ParseConstDeclAsStatement();
             default: return ParseExpressionOrAssignmentStatement();
         }
@@ -609,6 +610,14 @@ public sealed class Parser {
             value = ExpressionOrError();
         }
         return new ReturnStmt(RangeFrom(start), value);
+    }
+
+    private ThrowStmt ParseThrow() {
+        SourceLocation start = Current.Location;
+        Expect(TokenKind.Throw, _e2001, "expected 'throw'");
+        // Unlike 'return', the operand is mandatory (D-274) — no bare-throw form.
+        Expression value = ExpressionOrError();
+        return new ThrowStmt(RangeFrom(start), value);
     }
 
     private TryStmt ParseTry() {
