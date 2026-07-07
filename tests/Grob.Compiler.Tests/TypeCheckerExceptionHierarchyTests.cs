@@ -67,6 +67,8 @@ public sealed class TypeCheckerExceptionHierarchyTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0103", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(15, d.Range.Start.Column);
     }
 
     [Fact]
@@ -77,6 +79,8 @@ public sealed class TypeCheckerExceptionHierarchyTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0012", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(39, d.Range.Start.Column);
     }
 
     [Fact]
@@ -142,5 +146,7 @@ public sealed class TypeCheckerExceptionHierarchyTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E1102", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
     }
 }

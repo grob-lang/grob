@@ -28,7 +28,7 @@ public sealed class VirtualMachineThrowTests {
 
         script.WriteOpCode(OpCode.Constant, 3); script.WriteByte((byte)msgConst, 3);
         script.WriteOpCode(OpCode.NewStruct, 3); script.WriteByte(typeIdx, 3);
-        script.WriteOpCode(OpCode.Throw, 3);
+        script.WriteOpCode(OpCode.Throw, 3, 7);
         script.WriteOpCode(OpCode.Return, 3);
 
         var (vm, _) = NewVm();
@@ -36,6 +36,7 @@ public sealed class VirtualMachineThrowTests {
 
         Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
         Assert.Equal(3, ex.Line);
+        Assert.Equal(7, ex.Column);
         Assert.Contains("IoError", ex.Message);
         Assert.Contains("file not found: x.txt", ex.Message);
         Assert.Equal(0, vm.FrameCount);

@@ -195,6 +195,8 @@ public class ParserStatementTests {
         (_, DiagnosticBag bag) = Parse("throw\n");
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(6, d.Range.Start.Column);
     }
 
     [Fact]

@@ -68,6 +68,7 @@ public sealed class TypeCheckerThrowTests {
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0014", d.Code);
         Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(7, d.Range.Start.Column);
     }
 
     [Fact]
@@ -78,6 +79,8 @@ public sealed class TypeCheckerThrowTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0014", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(7, d.Range.Start.Column);
     }
 
     [Fact]
@@ -90,6 +93,7 @@ public sealed class TypeCheckerThrowTests {
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0014", d.Code);
         Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(7, d.Range.Start.Column);
     }
 
     [Fact]
@@ -103,6 +107,8 @@ public sealed class TypeCheckerThrowTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0014", d.Code);
+        Assert.Equal(4, d.Range.Start.Line);
+        Assert.Equal(7, d.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -115,6 +121,8 @@ public sealed class TypeCheckerThrowTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E1001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(7, d.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -127,6 +135,8 @@ public sealed class TypeCheckerThrowTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0103", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(7, d.Range.Start.Column);
     }
 
     [Fact]
@@ -137,6 +147,8 @@ public sealed class TypeCheckerThrowTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0012", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(31, d.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------

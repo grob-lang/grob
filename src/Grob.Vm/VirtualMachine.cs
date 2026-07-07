@@ -974,7 +974,7 @@ public sealed class VirtualMachine {
                             string messageText = exceptionStruct.TryGetField("message", out GrobValue msgValue) && msgValue.IsString
                                 ? msgValue.AsString()
                                 : "<no message>";
-                            throw new GrobRuntimeException(ErrorCatalog.E5904.Code, line,
+                            throw new GrobRuntimeException(ErrorCatalog.E5904.Code, line, column,
                                 $"{exceptionStruct.TypeName}: {messageText}");
                         }
 
