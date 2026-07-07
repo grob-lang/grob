@@ -162,6 +162,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // at the top-level scope, and so that call sites do not get E1001.
         RegisterBuiltins();
 
+        // Seed the global scope with the Sprint 7 GrobError hierarchy (D-284) as
+        // built-in nominal types — not user 'type' declarations, so they carry no
+        // pass-1/pass-2 registration of their own. Must also run before Pass 1,
+        // for the same reason as RegisterBuiltins: so a colliding user 'type'
+        // declaration (e.g. 'type IoError { ... }') is detected as a real E1102
+        // redeclaration rather than silently shadowing the hierarchy leaf.
+        RegisterExceptionHierarchy();
+
         // Pass 1 — register top-level fn, type, and value-binding declarations with
         // provisional GrobType.Unknown placeholders (D-166, D-321, D-324). This lets any
         // top-level item reference any other top-level name without an E1001.
@@ -173,7 +181,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
                     RegisterSymbol(fn.Name, GrobType.Unknown, fn.Range.Start, fn, provisional: true);
                     break;
                 case TypeDecl td:
-                    RegisterSymbol(td.Name, GrobType.Unknown, td.Range.Start, td, provisional: true);
+                    RegisterProvisionalTypeBinding(td.Name, td.Range.Start, td);
                     break;
                 case ReadonlyDecl ro:
                     RegisterProvisionalValueBinding(ro.Name, ro.Range.Start, ro);
@@ -235,6 +243,29 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         RegisterBuiltinFn("print");
         RegisterBuiltinFn("exit");
         RegisterBuiltinFn("input");
+    }
+
+    /// <summary>
+    /// Seeds the global scope and the user-type registry with the Sprint 7
+    /// <c>GrobError</c> hierarchy (D-284) as built-in nominal types. Synthesises a
+    /// sentinel-range <see cref="TypeDecl"/> and <see cref="UserTypeInfo"/> per
+    /// hierarchy member so the existing Sprint 6B construction path
+    /// (<see cref="ResolveConstructionTypeName"/>, <see cref="TypeCheckFieldValues"/>,
+    /// <see cref="CollectSuppliedFields"/>, <see cref="EmitMissingFieldErrors"/>)
+    /// resolves and constructs <c>throw IoError { ... }</c> completely unmodified
+    /// (D-043). These are not user <c>type</c> declarations and carry no pass-1/
+    /// pass-2 registration of their own.
+    /// </summary>
+    private void RegisterExceptionHierarchy() {
+        foreach (string name in ExceptionHierarchy.AllNames) {
+            TypeDecl decl = new(SourceRange.Unknown, name, ExceptionHierarchy.TypeFieldsFor(name));
+            RegisterSymbol(name, GrobType.Unknown, SourceLocation.Unknown, decl);
+            _userTypeRegistry.Register(new UserTypeInfo {
+                Name = name,
+                Fields = ExceptionHierarchy.FieldsFor(name),
+                Range = SourceRange.Unknown,
+            });
+        }
     }
 
     private void RegisterBuiltinFn(string name) {
@@ -572,6 +603,26 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// </summary>
     private void RegisterProvisionalValueBinding(string name, SourceLocation declaredAt, AstNode declarationNode) {
         if (_scopes.Peek().ContainsKey(name)) return;
+        RegisterSymbol(name, GrobType.Unknown, declaredAt, declarationNode, provisional: true);
+    }
+
+    /// <summary>
+    /// Pass-1 registration of a top-level <c>type</c> declaration as a provisional
+    /// placeholder (D-324), mirroring <see cref="RegisterProvisionalValueBinding"/>.
+    /// Skips when the name already carries a REAL (non-provisional) symbol — a
+    /// Sprint 7 exception-hierarchy type (<see cref="RegisterExceptionHierarchy"/>)
+    /// — so pass 2's <see cref="FinalizeTopLevelBinding"/> still sees that real
+    /// entry and reports E1102 at the user's declaration, exactly as it already
+    /// does for two colliding user <c>type</c> declarations. Without this guard
+    /// this loop would unconditionally overwrite the real symbol with a
+    /// provisional one referencing the user's node, and the collision would never
+    /// be reported — confirmed empirically: prior to this guard, the equivalent
+    /// unconditional overwrite already let a user <c>fn print() { }</c> silently
+    /// shadow the built-in with zero diagnostics (a pre-existing gap this guard
+    /// does not extend to <c>FnDecl</c>; that is a separate, unrelated fix).
+    /// </summary>
+    private void RegisterProvisionalTypeBinding(string name, SourceLocation declaredAt, AstNode declarationNode) {
+        if (_scopes.Peek().TryGetValue(name, out Symbol? existing) && !existing.Provisional) return;
         RegisterSymbol(name, GrobType.Unknown, declaredAt, declarationNode, provisional: true);
     }
 

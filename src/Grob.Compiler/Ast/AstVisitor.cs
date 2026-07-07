@@ -145,6 +145,9 @@ public abstract class AstVisitor<T> {
     /// <summary>Hook for <see cref="TryStmt"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
     public virtual T VisitTry(TryStmt node) => DefaultVisit(node);
 
+    /// <summary>Hook for <see cref="ThrowStmt"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
+    public virtual T VisitThrow(ThrowStmt node) => DefaultVisit(node);
+
     /// <summary>
     /// Hook for <see cref="ErrorStmt"/>. Abstract by design — every visitor
     /// must handle parser error placeholders.

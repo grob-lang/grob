@@ -65,6 +65,7 @@ read by `grob --explain Exxxx`.
 | E0011 | unknown parameter name                              | Type              | pre-release           |
 | E0012 | unknown field name                                  | Type              | pre-release           |
 | E0013 | field default references sibling field              | Type              | pre-release           |
+| E0014 | throw operand is not a GrobError subtype             | Type              | pre-release           |
 | E0101 | nil dereference without `?.` or `??`               | Type              | pre-release           |
 | E0102 | nullable interpolation                             | Type              | pre-release           |
 | E0103 | non-nullable field requires initialiser            | Type              | pre-release           |
@@ -163,6 +164,7 @@ read by `grob --explain Exxxx`.
 | E5901 | call stack overflow                                | Runtime           | pre-release           |
 | E5902 | circular initialisation                            | Runtime           | pre-release           |
 | E5903 | runtime failure (residual catch-all)               | Runtime           | pre-release           |
+| E5904 | unhandled exception reached the top level          | Runtime           | pre-release           |
 | E9001 | internal compiler error — please report            | Internal          | pre-release           |
 
 ---
@@ -294,6 +296,16 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** A field's default-value expression references another field of the same type by name. Field defaults evaluate at the construction site in the construction-site scope, where the sibling fields of the type are not in scope. See §10.
 - **Source decision:** D-330.
+
+---
+
+### E0014 — throw operand is not a GrobError subtype
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** The operand of a `throw` statement did not resolve to `GrobError` or one of its ten leaves (D-284). `throw 42`, `throw "oops"` and throwing any other non-`GrobError` value are rejected here. Dedicated over folding into E0001 (general type mismatch) — the construction-site/throw-operand family already carries its own dedicated codes (E0011–E0013), per D-318/D-330's precedent of a distinct surface earning a distinct code.
+- **Source:** `grob-language-fundamentals.md` §27; D-274; D-284.
 
 ---
 
@@ -1274,6 +1286,17 @@ read by `grob --explain Exxxx`.
 
 ---
 
+### E5904 — unhandled exception reached the top level
+
+- **Category:** Runtime
+- **Introduced:** v1
+- **Status:** pre-release
+- **Throws:** the thrown value's own type (always a `GrobError` subtype) — this code re-raises rather than detects one specific failure domain, so it carries no single fixed leaf the way every other Runtime code does.
+- **Description:** A user-authored `throw` propagated past every call frame with no `catch` in the chain to handle it (Sprint 7 Increment A — no handler table exists yet; Increment B adds `try`/`catch`). The VM unwinds every frame, closing upvalues by location (D-325), and raises this code carrying the thrown exception's type name and `message` field. Distinct from the existing E53xx–E59xx codes, each of which is scoped to one specific detected VM-level failure (file not found, stack overflow, …) — none of those fit "a user-authored throw reached the top level", so a dedicated code was registered rather than folding into an ill-fitting one.
+- **Source:** `grob-language-fundamentals.md` §27 (unhandled-exception behaviour); D-322 (`file:line` runtime diagnostic shape).
+
+---
+
 ### E9001 — internal compiler error — please report
 
 - **Category:** Internal
@@ -1295,7 +1318,7 @@ None as of v1.
 
 ---
 
-**Total: 112 codes across 7 categories.** This is the canonical current count;
+**Total: 114 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
@@ -1316,3 +1339,5 @@ _Updated June 2026 (interlude A, D-316) — canonical total corrected from a sta
 _Updated June 2026 — Sprint 5 Increment B added the four named-argument call-site diagnostics E0008–E0011 (named-before-positional, naming a required parameter, duplicate named argument, unknown parameter name) in the E00xx sub-block of the Type category, bringing the total to 107 codes. Source decision D-318 (D-113)._
 
 _Updated June 2026 — Sprint 5 correctness increment added E1103 (reserved identifier used as a binding name) in the E11xx sub-block of the Name resolution category, bringing the total to 108 codes. The code covers both `select` (D-320) and `formatAs` (D-282) — D-282's reserved-identifier rule had shipped with no code. Source decision D-320._
+
+_Updated July 2026 — Sprint 7 Increment A added two codes: E0014 (`throw` operand is not a `GrobError` subtype) in the E00xx sub-block of the Type category, and E5904 (unhandled exception reached the top level) in the E59xx sub-block of the Runtime category, bringing the total from 112 to 114. E5904's `Throws` leaf is `GrobError` (a new `GrobErrorLeaf` member) rather than one of the ten typed leaves — the code re-raises whatever the script itself threw, so it carries no single fixed leaf the way every other Runtime code does. Allocated per `allocating-an-error-code` (D-330/D-318 precedent for a dedicated construction/throw-site code over folding into an ill-fitting existing one)._

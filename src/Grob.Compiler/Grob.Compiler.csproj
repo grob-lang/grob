@@ -12,4 +12,13 @@
     <ProjectReference Include="..\Grob.Runtime\Grob.Runtime.csproj" />
   </ItemGroup>
 
+  <!-- Allow Grob.Compiler.Tests to unit-test internal helpers directly (e.g.
+       ExceptionHierarchy's subtype walk, Sprint 7 Increment A) rather than only
+       indirectly through the public TypeChecker/Compiler surface. -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Grob.Compiler.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

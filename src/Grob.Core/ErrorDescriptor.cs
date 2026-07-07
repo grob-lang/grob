@@ -91,6 +91,15 @@ public enum GrobErrorLeaf {
 
     /// <summary>Residual catch-all runtime failure.</summary>
     RuntimeError,
+
+    /// <summary>
+    /// The exact leaf is whatever the script itself threw — always some
+    /// <c>GrobError</c> subtype, but not a single fixed leaf the way every other
+    /// member of this enum is. Used only by E5904 (an unhandled <c>throw</c>
+    /// reaching the top level), which re-raises the thrown value's own type
+    /// rather than detecting one specific failure domain.
+    /// </summary>
+    GrobError,
 }
 
 /// <summary>

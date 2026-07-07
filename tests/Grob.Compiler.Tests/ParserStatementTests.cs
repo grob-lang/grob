@@ -175,6 +175,31 @@ public class ParserStatementTests {
     }
 
     [Fact]
+    public void Throw_ConstructedException_Parses() {
+        CompilationUnit unit = ParseOk("throw IoError { message: \"x\" }\n");
+        ThrowStmt t = Single<ThrowStmt>(unit);
+        StructConstructionExpr sc = Assert.IsType<StructConstructionExpr>(t.Value);
+        Assert.Equal("IoError", sc.TypeName);
+    }
+
+    [Fact]
+    public void Throw_BoundIdentifier_Parses() {
+        CompilationUnit unit = ParseOk("throw e\n");
+        ThrowStmt t = Single<ThrowStmt>(unit);
+        Assert.IsType<IdentifierExpr>(t.Value);
+    }
+
+    [Fact]
+    public void Throw_MissingOperand_IsError() {
+        // The operand is mandatory (D-274) — unlike 'return', there is no bare-throw form.
+        (_, DiagnosticBag bag) = Parse("throw\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(6, d.Range.Start.Column);
+    }
+
+    [Fact]
     public void Select_With_Cases_And_Default() {
         CompilationUnit unit = ParseOk(
             "select (x) {\ncase 1 { a }\ncase 2, 3 { b }\ndefault { c }\n}\n");

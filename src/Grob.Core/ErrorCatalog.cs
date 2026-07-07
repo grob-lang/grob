@@ -134,6 +134,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>`throw` operand is not a `GrobError` subtype</summary>
+    public static readonly ErrorDescriptor E0014 = new(
+        Code: "E0014",
+        Title: "throw operand is not a GrobError subtype",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>nil dereference without `?.` or `??`</summary>
     public static readonly ErrorDescriptor E0101 = new(
         Code: "E0101",
@@ -1026,6 +1035,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: GrobErrorLeaf.RuntimeError);
 
+    /// <summary>unhandled exception reached the top level</summary>
+    public static readonly ErrorDescriptor E5904 = new(
+        Code: "E5904",
+        Title: "unhandled exception reached the top level",
+        Category: ErrorCategory.Runtime,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: GrobErrorLeaf.GrobError);
+
     // ---- Internal compiler error — E9001–E9999 ----
 
     /// <summary>internal compiler error — please report</summary>
@@ -1052,6 +1070,7 @@ public static class ErrorCatalog {
         E0011,
         E0012,
         E0013,
+        E0014,
         E0101,
         E0102,
         E0103,
@@ -1150,6 +1169,7 @@ public static class ErrorCatalog {
         E5901,
         E5902,
         E5903,
+        E5904,
         E9001,
     };
 }
