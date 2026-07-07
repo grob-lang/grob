@@ -30,6 +30,8 @@ public sealed class TypeCheckerTryCatchTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E2204", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
     }
 
     [Fact]
@@ -53,6 +55,8 @@ public sealed class TypeCheckerTryCatchTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E2205", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(35, d.Range.Start.Column);
     }
 
     [Fact]
@@ -63,6 +67,8 @@ public sealed class TypeCheckerTryCatchTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E2205", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(35, d.Range.Start.Column);
     }
 
     [Fact]
@@ -84,6 +90,8 @@ public sealed class TypeCheckerTryCatchTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0015", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(26, d.Range.Start.Column);
     }
 
     [Fact]
@@ -112,6 +120,8 @@ public sealed class TypeCheckerTryCatchTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E2213", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(56, d.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -138,6 +148,8 @@ public sealed class TypeCheckerTryCatchTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0202", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(37, d.Range.Start.Column);
     }
 
     [Fact]
@@ -148,6 +160,8 @@ public sealed class TypeCheckerTryCatchTests {
 
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0202", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(26, d.Range.Start.Column);
     }
 
     [Fact]

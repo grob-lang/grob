@@ -103,6 +103,10 @@ public sealed class VirtualMachineTryCatchTests {
 
         Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
         Assert.Contains("IoError", ex.Message);
+        // The throw site was seeded at (2, 5); the unwind/report path must carry
+        // those exact coordinates through to the top-level diagnostic.
+        Assert.Equal(2, ex.Line);
+        Assert.Equal(5, ex.Column);
         Assert.Equal(0, vm.FrameCount);
     }
 

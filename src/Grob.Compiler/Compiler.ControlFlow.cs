@@ -529,14 +529,21 @@ public sealed partial class Compiler {
         Visit(node.Body);
         int endOffset = _chunk.Count;
 
-        int skipCatches = node.Catches.Count > 0 ? EmitJump(OpCode.Jump, line) : -1;
+        // Every exit from the try/catch converges on TryEnd: the try body's
+        // normal completion (skip all catches) and each matched catch body's
+        // normal completion (skip the *remaining* catches). Without the per-body
+        // exit jumps, a matched non-last catch would fall straight into the next
+        // catch's bytecode. Same "N bodies, one exit" shape as VisitSelect.
+        var exitJumps = new List<int>();
+        if (node.Catches.Count > 0) exitJumps.Add(EmitJump(OpCode.Jump, line));
 
         var handlers = new List<CatchHandler>(node.Catches.Count);
-        foreach (CatchClause c in node.Catches) {
-            handlers.Add(CompileCatchClause(c));
+        for (int i = 0; i < node.Catches.Count; i++) {
+            handlers.Add(CompileCatchClause(node.Catches[i]));
+            if (i < node.Catches.Count - 1) exitJumps.Add(EmitJump(OpCode.Jump, line));
         }
 
-        if (skipCatches >= 0) PatchJump(skipCatches);
+        foreach (int site in exitJumps) PatchJump(site);
         _chunk.WriteOpCode(OpCode.TryEnd, node.Range.End.Line);
 
         _chunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, handlers));

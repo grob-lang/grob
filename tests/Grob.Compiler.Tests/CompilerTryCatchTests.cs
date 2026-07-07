@@ -164,6 +164,27 @@ public sealed class CompilerTryCatchTests {
     }
 
     [Fact]
+    public void TryCatch_NonLastCatchBody_EndsWithJumpPastRemainingHandlers() {
+        // A matched non-last catch must not fall through into the next catch's
+        // bytecode on normal completion — every catch body but the last needs an
+        // exit Jump past its siblings (the VisitSelect 'endJumps' shape).
+        Chunk chunk = CompileSource("""
+            try { x := 1 } catch (e: IoError) { y := 2 } catch f { z := 3 }
+            """);
+
+        List<Instr> instrs = Decode(chunk);
+        Instr tryBegin = instrs.Single(i => i.Op == OpCode.TryBegin);
+        TryRegion region = chunk.GetTryRegion(tryBegin.Arg);
+        int firstBody = region.Handlers[0].HandlerOffset;
+        int secondBody = region.Handlers[1].HandlerOffset;
+
+        // Handler 0's body (firstBody .. secondBody) must contain a Jump that
+        // carries control past handler 1 on normal completion.
+        Assert.Contains(instrs,
+            i => i.Op == OpCode.Jump && i.Offset >= firstBody && i.Offset < secondBody);
+    }
+
+    [Fact]
     public void TryCatch_SiblingHandlers_ShareTheSameBindingSlot() {
         // Exactly one handler ever runs per throw, so reusing the slot across
         // sibling catch clauses on the same region is correct, not a collision.

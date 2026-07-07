@@ -178,13 +178,15 @@ public class ParserStatementTests {
     }
 
     [Theory]
-    [InlineData("try { 1 } catch (e) { 2 }\n")]     // D-274: parens + identifier, no type — not a silent "type-only catch"
-    [InlineData("try { 1 } catch () { 2 }\n")]      // empty parens header
-    [InlineData("try { 1 } catch { 2 }\n")]         // no-parens catch-all with no bound identifier
-    public void Catch_MalformedHeader_IsError(string source) {
+    [InlineData("try { 1 } catch (e) { 2 }\n", 1, 18)]  // D-274: parens + identifier, no type — reported at the binding 'e'
+    [InlineData("try { 1 } catch () { 2 }\n", 1, 18)]   // empty parens header — reported at the ')'
+    [InlineData("try { 1 } catch { 2 }\n", 1, 17)]      // no-parens catch-all with no bound identifier — at the '{'
+    public void Catch_MalformedHeader_IsError(string source, int line, int column) {
         (_, DiagnosticBag bag) = Parse(source);
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", d.Code);
+        Assert.Equal(line, d.Range.Start.Line);
+        Assert.Equal(column, d.Range.Start.Column);
     }
 
     [Fact]
