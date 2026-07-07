@@ -143,6 +143,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>catch type is not a `GrobError` subtype</summary>
+    public static readonly ErrorDescriptor E0015 = new(
+        Code: "E0015",
+        Title: "catch type is not a GrobError subtype",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>nil dereference without `?.` or `??`</summary>
     public static readonly ErrorDescriptor E0101 = new(
         Code: "E0101",
@@ -651,6 +660,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>duplicate `catch` for the same type</summary>
+    public static readonly ErrorDescriptor E2213 = new(
+        Code: "E2213",
+        Title: "duplicate `catch` for the same type",
+        Category: ErrorCategory.Syntax,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     // ---- Module / import — E3001–E3999 ----
 
     /// <summary>unknown plugin</summary>
@@ -1071,6 +1089,7 @@ public static class ErrorCatalog {
         E0012,
         E0013,
         E0014,
+        E0015,
         E0101,
         E0102,
         E0103,
@@ -1127,6 +1146,7 @@ public static class ErrorCatalog {
         E2210,
         E2211,
         E2212,
+        E2213,
         E3001,
         E3002,
         E3003,

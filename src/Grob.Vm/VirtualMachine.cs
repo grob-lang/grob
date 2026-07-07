@@ -941,7 +941,18 @@ public sealed class VirtualMachine {
                             break;
                         }
 
-                    // --- throw / unhandled top-level path (Sprint 7 Increment A) ---
+                    // --- try / catch / throw (Sprint 7 Increment B; A: throw + top-level) ---
+
+                    // Structural markers only — the handler table (built by the
+                    // compiler, read by the Throw arm below via (chunk, ip)) carries
+                    // all the matching logic. Neither opcode does anything at runtime
+                    // beyond stepping past its own bytes.
+                    case OpCode.TryBegin:
+                        _ip++; // 1-byte operand: handler-table index, unused here.
+                        break;
+
+                    case OpCode.TryEnd:
+                        break;
 
                     case OpCode.Throw: {
                             GrobValue exceptionValue = _stack.Pop();
@@ -955,21 +966,34 @@ public sealed class VirtualMachine {
                             // lives only at the CLI layer). "<unknown>" fills the file slot
                             // exactly as SourceLocation.Unknown already does elsewhere in the
                             // compiler. This is the one and only place 'location' is ever set;
-                            // a future catch (Increment B) reads it back already correct.
+                            // a catch handler reads it back already correct.
                             exceptionStruct!.SetField("location", GrobValue.FromString($"<unknown>:{line}"));
 
-                            // No handler exists in this increment — unwind every frame to the
-                            // top level, closing upvalues by location exactly as OP_RETURN does
-                            // per frame (D-325), then hand off through the existing
-                            // GrobRuntimeException path so the CLI's top-level catch/format/
-                            // exit-1 diagnostic handles presentation (no second formatter here).
-                            while (_frameCount > 0) {
+                            // Walk protected regions from the innermost enclosing frame
+                            // outward (D-274): try the current chunk's regions containing
+                            // the current ip, innermost first; if none match, unwind one
+                            // frame (closing its upvalues, D-325) and repeat against the
+                            // caller's chunk at its resume point. Falls through to A's
+                            // top-level path when no frame has a match anywhere.
+                            bool handled = false;
+                            while (true) {
+                                if (TryFindHandler(_activeChunk, _ip, exceptionStruct.TypeName, out CatchHandler handler)) {
+                                    int bindingSlot = _stackBase + handler.BindingSlot;
+                                    CloseUpvaluesFrom(bindingSlot);
+                                    _stack.TrimToCount(bindingSlot);
+                                    _stack.Push(exceptionValue, line);
+                                    _ip = handler.HandlerOffset;
+                                    handled = true;
+                                    break;
+                                }
+                                if (_frameCount == 0) break;
                                 CloseUpvaluesFrom(_stackBase);
                                 CallFrame frame = _frames[--_frameCount];
                                 _activeChunk = frame.ReturnChunk;
                                 _ip = frame.ReturnInstructionPointer;
                                 _stackBase = frame.ReturnStackBase;
                             }
+                            if (handled) break;
 
                             string messageText = exceptionStruct.TryGetField("message", out GrobValue msgValue) && msgValue.IsString
                                 ? msgValue.AsString()
@@ -1257,6 +1281,59 @@ public sealed class VirtualMachine {
                 _openUpvalues.RemoveAt(i);
             }
         }
+    }
+
+    /// <summary>
+    /// Finds the nearest matching catch handler for a thrown value of type
+    /// <paramref name="thrownTypeName"/> at <paramref name="ip"/> in <paramref name="chunk"/>
+    /// (Sprint 7 Increment B). Considers every <see cref="TryRegion"/> in the chunk whose
+    /// bounds contain <paramref name="ip"/>, tried innermost first (largest
+    /// <see cref="TryRegion.StartOffset"/>); within a region, handlers are tried in
+    /// source order — the catch-all matches unconditionally, a typed handler matches
+    /// when <paramref name="thrownTypeName"/> is one of its resolved
+    /// <see cref="CatchHandler.MatchTypeNames"/> (already flattened over the subtype
+    /// relationship at compile time, D-274). If the nearest containing region has no
+    /// match, the next-less-nested containing region in the same chunk is tried next —
+    /// the caller unwinds a frame and calls again only once every region in this chunk
+    /// is exhausted.
+    /// </summary>
+    /// <remarks>
+    /// The upper bound is inclusive (<c>ip &lt;= EndOffset</c>), not exclusive. <paramref name="ip"/>
+    /// is always a post-fetch position — the dispatch loop's <c>_ip++</c> has already
+    /// run, so it is "the next byte to execute", not the throwing/calling instruction's
+    /// own start. When that instruction is the last one in the try body (a bare <c>throw</c>
+    /// as the whole body, or a call site flush against the body's end), this position
+    /// equals <see cref="TryRegion.EndOffset"/> exactly — it is still inside the body, an
+    /// exclusive bound would silently miss it.
+    /// </remarks>
+    private static bool TryFindHandler(Chunk chunk, int ip, string thrownTypeName, out CatchHandler handler) {
+        TryRegion? current = null;
+        for (int i = 0; i < chunk.TryRegionCount; i++) {
+            TryRegion region = chunk.GetTryRegion(i);
+            if (region.StartOffset > ip || ip > region.EndOffset) continue;
+            if (current is null || region.StartOffset > current.StartOffset) current = region;
+        }
+
+        while (current is not null) {
+            foreach (CatchHandler h in current.Handlers) {
+                if (h.IsCatchAll || h.MatchTypeNames.Contains(thrownTypeName)) {
+                    handler = h;
+                    return true;
+                }
+            }
+
+            TryRegion? next = null;
+            for (int i = 0; i < chunk.TryRegionCount; i++) {
+                TryRegion region = chunk.GetTryRegion(i);
+                if (region.StartOffset > ip || ip > region.EndOffset) continue;
+                if (region.StartOffset >= current.StartOffset) continue;
+                if (next is null || region.StartOffset > next.StartOffset) next = region;
+            }
+            current = next;
+        }
+
+        handler = null!;
+        return false;
     }
 
     /// <summary>

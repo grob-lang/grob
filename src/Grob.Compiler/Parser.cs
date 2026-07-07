@@ -653,11 +653,22 @@ public sealed class Parser {
                 exceptionVar = name.Lexeme;
                 Advance(); // colon
                 exceptionType = ParseTypeRef();
-            } else if (Check(TokenKind.Identifier)) {
-                // (Type) — type-only catch
-                exceptionType = ParseTypeRef();
+                Expect(TokenKind.RightParen, _e2001, "expected ')' to close catch clause header");
+            } else {
+                // 'catch (e)' (identifier, no type) and 'catch ()' (empty) are
+                // both a syntax error (D-274) — the parenthesised form always
+                // requires a typed binding 'catch (<name>: <Type>)'.
+                throw Fail(_e2001,
+                    "'catch (...)' requires a typed binding 'catch (<name>: <Type>)'; "
+                  + "'catch (e)' with no type is not valid. Use 'catch <name> { }' for "
+                  + "the catch-all form.");
             }
-            Expect(TokenKind.RightParen, _e2001, "expected ')' to close catch clause header");
+        } else {
+            // No-parens catch-all form: 'catch <name> { }' — the identifier is
+            // mandatory (D-274); it binds the caught value, typed as GrobError.
+            Token name = Expect(TokenKind.Identifier, _e2001,
+                "expected an identifier after 'catch' (the catch-all form is 'catch <name> { }')");
+            exceptionVar = name.Lexeme;
         }
         BlockStmt body = ParseBlock();
         return new CatchClause(RangeFrom(start), exceptionType, exceptionVar, body);

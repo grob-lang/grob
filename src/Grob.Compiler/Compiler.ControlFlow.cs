@@ -498,4 +498,83 @@ public sealed partial class Compiler {
 
         return null;
     }
+
+    // -----------------------------------------------------------------------
+    // try / catch (Sprint 7 Increment B). No finally — that is Increment C;
+    // node.Finally is not visited here, so nothing is emitted for it yet.
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Emits the try body between <see cref="OpCode.TryBegin"/> (operand: handler-table
+    /// index) and a backpatched <see cref="OpCode.Jump"/> that skips the catch bodies on
+    /// normal completion, then each catch body in source order, then
+    /// <see cref="OpCode.TryEnd"/>. The handler-table entry recording the region's bounds
+    /// and ordered handlers is filled in once every offset is known — two-phase, like a
+    /// forward jump. <see cref="OpCode.TryBegin"/>/<see cref="OpCode.TryEnd"/> are
+    /// structural markers only; the VM's <see cref="OpCode.Throw"/> arm does all the
+    /// matching, driven entirely by the handler table. The program is already
+    /// type-checked by the time the compiler sees it, so every catch type here is
+    /// guaranteed to be a valid, non-duplicate <c>GrobError</c> hierarchy member in
+    /// legal source-order position — E2204/E2205/E0015/E2213 never reach emission.
+    /// </remarks>
+    public override object? VisitTry(TryStmt node) {
+        int line = node.Range.Start.Line;
+
+        int regionIndex = _chunk.AddTryRegion();
+        _chunk.WriteOpCode(OpCode.TryBegin, line);
+        _chunk.WriteByte(ToByteOperand(regionIndex, "try region index"), line);
+
+        int startOffset = _chunk.Count;
+        Visit(node.Body);
+        int endOffset = _chunk.Count;
+
+        // Every exit from the try/catch converges on TryEnd: the try body's
+        // normal completion (skip all catches) and each matched catch body's
+        // normal completion (skip the *remaining* catches). Without the per-body
+        // exit jumps, a matched non-last catch would fall straight into the next
+        // catch's bytecode. Same "N bodies, one exit" shape as VisitSelect.
+        var exitJumps = new List<int>();
+        if (node.Catches.Count > 0) exitJumps.Add(EmitJump(OpCode.Jump, line));
+
+        var handlers = new List<CatchHandler>(node.Catches.Count);
+        for (int i = 0; i < node.Catches.Count; i++) {
+            handlers.Add(CompileCatchClause(node.Catches[i]));
+            if (i < node.Catches.Count - 1) exitJumps.Add(EmitJump(OpCode.Jump, line));
+        }
+
+        foreach (int site in exitJumps) PatchJump(site);
+        _chunk.WriteOpCode(OpCode.TryEnd, node.Range.End.Line);
+
+        _chunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, handlers));
+        return null;
+    }
+
+    /// <summary>
+    /// Compiles one catch clause body and returns its resolved <see cref="CatchHandler"/>.
+    /// The binding occupies a scope of its own — mirroring a lambda parameter scope —
+    /// so its slot is freed on this clause's own exit; every catch clause on the same
+    /// region therefore reuses the same slot number, which is correct because exactly
+    /// one handler ever runs per throw (D-274). No value is pushed for the binding at
+    /// compile time: the VM writes the thrown value into the slot directly before
+    /// jumping to <see cref="CatchHandler.HandlerOffset"/> — the binding is "declared"
+    /// by the runtime unwind, not by executed bytecode.
+    /// </summary>
+    private CatchHandler CompileCatchClause(CatchClause c) {
+        _localScopes.Push([]);
+        int bindingSlot = DeclareLocalSlot(c.ExceptionVariable!);
+
+        int handlerOffset = _chunk.Count;
+        Visit(c.Body);
+
+        List<LocalVar> scope = _localScopes.Pop();
+        EmitScopeCleanup(scope, c.Range.End.Line);
+        _nextSlot -= scope.Count;
+
+        IReadOnlyList<string> matchTypeNames = c.ExceptionType is null
+            ? []
+            : ExceptionHierarchy.AllNames.Where(n => ExceptionHierarchy.IsSubtypeOf(n, c.ExceptionType.Name)).ToArray();
+
+        return new CatchHandler(matchTypeNames, IsCatchAll: c.ExceptionType is null, handlerOffset, bindingSlot);
+    }
 }
