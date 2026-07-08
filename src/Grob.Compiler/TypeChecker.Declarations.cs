@@ -50,7 +50,9 @@ public sealed partial class TypeChecker {
         (GrobType returnKind, _, FunctionTypeDescriptor? returnDesc) = ResolveSignatureType(node.ReturnType);
         _functionReturnTypes.Push(returnKind);
         _functionReturnDescriptors.Push(returnDesc);
+        _controlFrameFloors.Push(_controlFrames.Count);
         Visit(node.Body);
+        _controlFrameFloors.Pop();
         _functionReturnTypes.Pop();
         _functionReturnDescriptors.Pop();
 

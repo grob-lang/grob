@@ -14,4 +14,11 @@ namespace Grob.Core;
 /// catch bodies, so a throw from inside a handler is not re-caught by the same region.
 /// </param>
 /// <param name="Handlers">The region's catch handlers, in source order.</param>
-public sealed record TryRegion(int StartOffset, int EndOffset, IReadOnlyList<CatchHandler> Handlers);
+/// <param name="FinallyOffset">
+/// Bytecode offset of the region's compiled <c>finally</c> body (Sprint 7 Increment C,
+/// D-275), or <c>-1</c> when the <c>try</c> has no <c>finally</c> — the codebase's
+/// established "absent" sentinel for a small-int table field (see
+/// <c>Compiler.FindLocalSlot</c>/<c>ResolveUpvalue</c>).
+/// </param>
+public sealed record TryRegion(
+    int StartOffset, int EndOffset, IReadOnlyList<CatchHandler> Handlers, int FinallyOffset = -1);

@@ -636,6 +636,15 @@ public sealed class Parser {
             }
             if (Match(TokenKind.Finally)) {
                 @finally = ParseBlock();
+                // 'finally' must be the last clause (D-275). A further catch or
+                // finally after it is E2206 — the AST has nowhere to put it, so
+                // this is a parse-time diagnostic, not a type-checker one.
+                int savedAfterFinally = _pos;
+                SkipNewlines();
+                if (Check(TokenKind.Catch) || Check(TokenKind.Finally)) {
+                    throw Fail(ErrorCatalog.E2206, "'finally' must be the last clause of a 'try'.");
+                }
+                _pos = savedAfterFinally;
                 break;
             }
             _pos = saved;

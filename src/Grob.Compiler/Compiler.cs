@@ -158,6 +158,45 @@ public sealed partial class Compiler : AstVisitor<object?> {
     private readonly Stack<LoopContext> _loopContexts = new();
 
     // -----------------------------------------------------------------------
+    // Try-finally context stack (Sprint 7 Increment C — D-275 / D-332).
+    //
+    // A TryFinallyContext is pushed when compiling a try that has a finally, and
+    // popped once its guarded region (the try body plus every catch body) has
+    // been compiled. Because the OpCode enum is closed (no Leave/EndFinally), a
+    // control transfer that leaves one or more of these regions — return, break,
+    // continue — re-visits (recompiles) each crossed context's finally body inline
+    // at the transfer site, innermost to outermost, so the finally runs before the
+    // transfer. The normal-completion copy is emitted separately at VisitTry's
+    // convergence point; the exceptional path is driven VM-side by
+    // TryRegion.FinallyOffset.
+    //
+    // Like _loopContexts this is scoped per function/lambda for free: each function
+    // body compiles in a fresh sub-Compiler instance, so a return only ever sees the
+    // finally contexts of its own function.
+    // -----------------------------------------------------------------------
+    private sealed class TryFinallyContext {
+        /// <summary>The <c>finally</c> block AST, re-visited at each crossing site.</summary>
+        public BlockStmt FinallyBody { get; }
+
+        /// <summary>
+        /// Value of <c>_loopContexts.Count</c> when this context was pushed. A
+        /// <c>break</c>/<c>continue</c> targeting the innermost loop crosses — and so
+        /// must run — exactly the finally contexts pushed while that loop was already
+        /// on the stack, i.e. those whose <see cref="LoopDepthAtPush"/> is at least the
+        /// current loop depth. A context pushed before the target loop (the loop nested
+        /// inside the finally) is not crossed and must not run.
+        /// </summary>
+        public int LoopDepthAtPush { get; }
+
+        public TryFinallyContext(BlockStmt finallyBody, int loopDepthAtPush) {
+            FinallyBody = finallyBody;
+            LoopDepthAtPush = loopDepthAtPush;
+        }
+    }
+
+    private readonly Stack<TryFinallyContext> _tryFinallyContexts = new();
+
+    // -----------------------------------------------------------------------
     // Struct type-table index cache (Sprint 6 Increment B).
     // Maps each TypeDecl to its byte index in this chunk's struct type table so
     // that constructing the same type multiple times does not overflow the

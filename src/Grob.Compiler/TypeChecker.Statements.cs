@@ -66,6 +66,12 @@ public sealed partial class TypeChecker {
             return GrobType.Unknown;
         }
 
+        if (IsInsideOwnFunctionsFinally()) {
+            EmitError(ErrorCatalog.E2207, "'return' is not permitted inside a 'finally' block.", node.Range);
+            if (node.Value is not null) Visit(node.Value);
+            return GrobType.Unknown;
+        }
+
         GrobType expected = _functionReturnTypes.Peek();
 
         // A bare 'return' yields nil. Since 'void' is not a user-declarable return
@@ -76,17 +82,34 @@ public sealed partial class TypeChecker {
 
         // An Unknown declared return type (a deferred type) is permissive; cascade
         // suppression covers an already-errored value.
-        if (expected != GrobType.Unknown && actual != GrobType.Error) {
-            bool compatible = ComputeReturnCompatibility(actual, expected, node.Value);
-            if (!compatible) {
-                EmitError(ErrorCatalog.E0005,
-                    node.Value is not null
-                        ? $"Cannot return a value of type '{TypeName(actual)}' from a function declared to return '{TypeName(expected)}'."
-                        : $"A bare 'return' yields 'nil', which is not assignable to the declared return type '{TypeName(expected)}'.",
-                    node.Value is not null ? node.Value.Range : node.Range);
-            }
+        if (expected != GrobType.Unknown && actual != GrobType.Error
+            && !ComputeReturnCompatibility(actual, expected, node.Value)) {
+            EmitReturnTypeMismatch(node, actual, expected);
         }
         return GrobType.Unknown;
+    }
+
+    /// <summary>Emits E0005 for a return value or bare return incompatible with the
+    /// enclosing function's declared return type.</summary>
+    private void EmitReturnTypeMismatch(ReturnStmt node, GrobType actual, GrobType expected) {
+        EmitError(ErrorCatalog.E0005,
+            node.Value is not null
+                ? $"Cannot return a value of type '{TypeName(actual)}' from a function declared to return '{TypeName(expected)}'."
+                : $"A bare 'return' yields 'nil', which is not assignable to the declared return type '{TypeName(expected)}'.",
+            node.Value is not null ? node.Value.Range : node.Range);
+    }
+
+    /// <summary>
+    /// True when the current <c>return</c> site has a <see cref="ControlFrame.Finally"/>
+    /// frame pushed since the enclosing function/lambda body began (Sprint 7
+    /// Increment C, D-275/E2207). Bounded by <see cref="_controlFrameFloors"/> so a
+    /// <c>finally</c> belonging to an <em>outer</em> function does not leak in — the
+    /// D-276 carve-out for a nested block-body lambda.
+    /// </summary>
+    private bool IsInsideOwnFunctionsFinally() {
+        int floor = _controlFrameFloors.Count > 0 ? _controlFrameFloors.Peek() : 0;
+        return _controlFrames.Count > floor
+            && _controlFrames.Take(_controlFrames.Count - floor).Contains(ControlFrame.Finally);
     }
 
     /// <summary>

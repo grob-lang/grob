@@ -141,6 +141,23 @@ public sealed partial class Compiler {
             Visit(node.Value);
         else
             _chunk.WriteOpCode(OpCode.Nil, line);
+
+        // A return crosses every enclosing try/finally up to the function boundary,
+        // so run each one's finally — innermost to outermost — before Return (D-275).
+        // The return value is already on top of the operand stack; reserve its slot
+        // (a single _nextSlot bump) so a finally body's own locals are allocated
+        // above it and cannot collide with the parked value. The VM's Return bulk-
+        // discards the frame, so no explicit local cleanup is needed here — only the
+        // finally bodies must run. (_tryFinallyContexts is per-function, so every
+        // entry is legitimately crossed by this return.)
+        if (_tryFinallyContexts.Count > 0) {
+            int savedSlot = _nextSlot;
+            _nextSlot++; // park the return value below any finally-body locals
+            foreach (TryFinallyContext tf in _tryFinallyContexts) // innermost first
+                Visit(tf.FinallyBody);
+            _nextSlot = savedSlot;
+        }
+
         _chunk.WriteOpCode(OpCode.Return, line);
         return null;
     }

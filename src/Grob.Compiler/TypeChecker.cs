@@ -43,10 +43,30 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     //               an enclosing loop). A LOOP frame on top -> valid. Empty -> E2212.
     //   - continue: skip SELECT frames, target the nearest LOOP frame. None -> E2212.
     // select is therefore NOT loop-control-transparent (D-315).
+    //
+    // Sprint 7 Increment C adds a FINALLY frame, pushed around a try's finally
+    // block when present. break/continue resolve it the same way as Select —
+    // Peek()==Finally (break) or hitting Finally before any Loop while skipping
+    // Select (continue) is E2207, "control flow inside finally" (D-275).
     // -----------------------------------------------------------------------
-    private enum ControlFrame { Loop, Select }
+    private enum ControlFrame { Loop, Select, Finally }
 
     private readonly Stack<ControlFrame> _controlFrames = new();
+
+    // -----------------------------------------------------------------------
+    // Control-frame floor stack (Sprint 7 Increment C).
+    //
+    // Pushed in lockstep with _functionReturnTypes (VisitFnDecl, VisitLambda)
+    // with the current _controlFrames.Count, so VisitReturn's E2207 check can
+    // ask "is there a Finally frame pushed since MY function/lambda body
+    // began" rather than seeing an enclosing function's frames. return exits
+    // the enclosing function, not a loop, so — unlike break/continue, which
+    // resolve via nearest-frame order and so are naturally shielded by any
+    // construct nested inside the finally — it needs this floor to implement
+    // the D-276 carve-out (return inside a nested block-body lambda inside a
+    // finally exits only the lambda).
+    // -----------------------------------------------------------------------
+    private readonly Stack<int> _controlFrameFloors = new();
 
     // -----------------------------------------------------------------------
     // Function return-type stack (Sprint 5 Increment A).
