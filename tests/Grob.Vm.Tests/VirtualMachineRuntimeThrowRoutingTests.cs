@@ -417,7 +417,79 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
 
         Assert.Equal(ErrorCatalog.E5002.Code, ex.Code);
         Assert.Equal(3, ex.Line);
+        Assert.Equal(0, ex.Column);
         Assert.Equal(1L, vm.Globals["ran"].AsInt());
+    }
+
+    // Regression: PR #115 review — a routed fault occurring INSIDE a finally
+    // body (running on the exceptional-unwind path via the bounded RunDispatch
+    // in RunFinallyExceptional) was not routed with the bounded-finally context
+    // TryRaiseRuntimeGrobError needs. Unbounded, PropagateThrow could match an
+    // outer region directly instead of raising FinallyEscapeException, letting
+    // the bounded dispatch run arbitrary outer code (with real side effects)
+    // before RunFinallyExceptional's own ip/chunk restoration silently discarded
+    // that progress — and the ORIGINAL in-flight exception then surfaced as
+    // if the finally had never thrown at all, violating D-275.
+    [Fact]
+    public void RoutedFaultInsideFinally_ReplacesInFlightException_OuterCatchCatchesIt() {
+        // try {                            // outer: catch (e: ArithmeticError)
+        //   try { nil[0] }                 // inner: no catch, has finally — routed NilError
+        //   finally { 10 / 0 }             // routed ArithmeticError inside the bounded finally
+        // } catch (e: ArithmeticError) { caught := true }
+        // after := true
+        var script = new Chunk();
+        int caughtName = script.AddConstant(GrobValue.FromString("caught"));
+        int afterName = script.AddConstant(GrobValue.FromString("after"));
+        int idx0 = script.AddConstant(GrobValue.FromInt(0));
+        int ten = script.AddConstant(GrobValue.FromInt(10));
+        int zero = script.AddConstant(GrobValue.FromInt(0));
+
+        int outerRegion = script.AddTryRegion();
+        int innerRegion = script.AddTryRegion();
+
+        script.WriteOpCode(OpCode.TryBegin, 1); script.WriteByte((byte)outerRegion, 1);
+        int outerStart = script.Count;
+
+        script.WriteOpCode(OpCode.TryBegin, 2); script.WriteByte((byte)innerRegion, 2);
+        int innerStart = script.Count;
+        script.WriteOpCode(OpCode.Nil, 2);
+        script.WriteOpCode(OpCode.Constant, 2); script.WriteByte((byte)idx0, 2);
+        script.WriteOpCode(OpCode.GetIndex, 2);
+        int innerEnd = script.Count;
+
+        int innerFinally = script.Count;
+        script.WriteOpCode(OpCode.Constant, 3); script.WriteByte((byte)ten, 3);
+        script.WriteOpCode(OpCode.Constant, 3); script.WriteByte((byte)zero, 3);
+        script.WriteOpCode(OpCode.DivideInt, 3);
+        script.WriteOpCode(OpCode.TryEnd, 3);
+
+        int outerEnd = script.Count;
+        script.WriteOpCode(OpCode.Jump, 4);
+        int jumpSite = script.Count;
+        script.WriteByte(0xFF, 4); script.WriteByte(0xFF, 4);
+
+        int outerCatch = script.Count;
+        script.WriteOpCode(OpCode.True, 4);
+        script.WriteOpCode(OpCode.DefineGlobal, 4); script.WriteByte((byte)caughtName, 4);
+
+        PatchJump16(script, jumpSite);
+        script.WriteOpCode(OpCode.TryEnd, 5);
+        script.WriteOpCode(OpCode.True, 6);
+        script.WriteOpCode(OpCode.DefineGlobal, 6); script.WriteByte((byte)afterName, 6);
+        script.WriteOpCode(OpCode.Return, 6);
+
+        script.SetTryRegion(innerRegion, new TryRegion(innerStart, innerEnd, [], innerFinally));
+        script.SetTryRegion(outerRegion, new TryRegion(outerStart, outerEnd,
+            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, outerCatch, BindingSlot: 0)]));
+
+        var (vm, _) = NewVm();
+        vm.Run(script);
+
+        Assert.True(vm.Globals.TryGetValue("caught", out GrobValue caught) && caught.AsBool(),
+            "the outer catch(ArithmeticError) should catch the exception the finally replaced the original NilError with");
+        Assert.True(vm.Globals.TryGetValue("after", out GrobValue after) && after.AsBool(),
+            "execution should resume after the outer try, not surface either exception unhandled");
+        Assert.Equal(0, vm.FrameCount);
     }
 
     // -----------------------------------------------------------------------
