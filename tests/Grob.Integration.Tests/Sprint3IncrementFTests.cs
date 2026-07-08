@@ -113,9 +113,12 @@ public sealed class Sprint3IncrementFTests {
         // print(42) should output "42" exactly once, not "42\n42".
         (string stdout, string _, int _) = RunRepl("print(42)\nexit");
 
+        // Anchored on the prompt prefix, not a bare "42" substring search: the
+        // REPL banner embeds MinVer's build height (e.g. "0.5.0-alpha.0.142"),
+        // which can itself contain "42" and produce a false second match.
         int count = 0;
         int pos = 0;
-        while ((pos = stdout.IndexOf("42", pos, StringComparison.Ordinal)) >= 0) {
+        while ((pos = stdout.IndexOf("G> 42", pos, StringComparison.Ordinal)) >= 0) {
             count++;
             pos++;
         }

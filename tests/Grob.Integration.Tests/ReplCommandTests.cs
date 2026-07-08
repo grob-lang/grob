@@ -70,10 +70,12 @@ public sealed class ReplCommandTests {
         // print(x) is a side-effecting built-in — it must NOT be auto-printed again.
         (string stdout, _, _) = RunRepl($"print(42){NL}exit");
 
-        // stdout should contain exactly one "42", not two.
+        // Anchored on the prompt prefix, not a bare "42" substring search: the
+        // REPL banner embeds MinVer's build height (e.g. "0.5.0-alpha.0.142"),
+        // which can itself contain "42" and produce a false second match.
         int count = 0;
         int idx = -1;
-        while ((idx = stdout.IndexOf("42", idx + 1, StringComparison.Ordinal)) >= 0)
+        while ((idx = stdout.IndexOf("G> 42", idx + 1, StringComparison.Ordinal)) >= 0)
             count++;
         Assert.Equal(1, count);
     }
