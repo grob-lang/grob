@@ -738,10 +738,11 @@ public sealed class VirtualMachine {
                                 // Capture the token at property-access time so the bound native
                                 // carries the live token through to InvokeCallable.
                                 CancellationToken ct = _cancellationToken;
+                                var finallyContext = new FinallyContext(
+                                    boundedFinally, finallyBoundaryFloor, finallyBoundaryStart);
                                 NativeFunction? method = ArrayNatives.GetMethod(
                                     propertyName, array!,
-                                    (callable, args) => InvokeCallable(callable, args, line, column, ct,
-                                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart));
+                                    (callable, args) => InvokeCallable(callable, args, line, column, ct, finallyContext));
                                 if (method is not null) {
                                     _stack.Push(GrobValue.FromFunction(method), line);
                                     break;
@@ -817,9 +818,10 @@ public sealed class VirtualMachine {
 
                                 // Build the VmInvoker that threads back through this VM instance.
                                 CancellationToken ct = _cancellationToken;
+                                var finallyContext = new FinallyContext(
+                                    boundedFinally, finallyBoundaryFloor, finallyBoundaryStart);
                                 VmInvoker invoker = (callable, args) =>
-                                    InvokeCallable(callable, args, line, column, ct,
-                                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart);
+                                    InvokeCallable(callable, args, line, column, ct, finallyContext);
 
                                 GrobValue nativeResult = native.Implementation(callArgs, invoker);
                                 _stack.Push(nativeResult, line);
@@ -1097,6 +1099,16 @@ public sealed class VirtualMachine {
     // -----------------------------------------------------------------------
 
     /// <summary>
+    /// The enclosing <see cref="RunDispatch"/> invocation's bounded-finally state
+    /// (Sprint 7 Increment D review fix), bundled so <see cref="InvokeCallable"/> can
+    /// thread it through to <see cref="TryRaiseRuntimeGrobError"/> without exceeding
+    /// SonarCloud's S107 parameter-count bar. The three fields are always passed
+    /// together — they are <see cref="RunDispatch"/>'s own three parameters of the
+    /// same names, read at the call site and carried unchanged.
+    /// </summary>
+    private readonly record struct FinallyContext(bool Bounded, int BoundaryFloor, int BoundaryStart);
+
+    /// <summary>
     /// Invoke a Grob callable (typically a lambda argument received by a
     /// <see cref="NativeFunction"/>) and return its result.  This is the
     /// re-entrant bridge: it saves the current dispatch state to a call frame,
@@ -1111,7 +1123,7 @@ public sealed class VirtualMachine {
     private GrobValue InvokeCallable(
             GrobValue callable, GrobValue[] args,
             int line, int column, CancellationToken ct,
-            bool boundedFinally, int finallyBoundaryFloor, int finallyBoundaryStart) {
+            FinallyContext finallyContext) {
         if (!callable.TryAsFunction(out GrobFunction? fn))
             throw new GrobInternalException(
                 $"InvokeCallable: value of kind {callable.Kind} is not callable. " +
@@ -1119,8 +1131,7 @@ public sealed class VirtualMachine {
 
         // Nested native: call the C# delegate directly without entering bytecode dispatch.
         if (fn is NativeFunction nativeFn) {
-            VmInvoker nestedInvoker = (c, a) => InvokeCallable(
-                c, a, line, column, ct, boundedFinally, finallyBoundaryFloor, finallyBoundaryStart);
+            VmInvoker nestedInvoker = (c, a) => InvokeCallable(c, a, line, column, ct, finallyContext);
             return nativeFn.Implementation(args, nestedInvoker);
         }
 
@@ -1140,7 +1151,7 @@ public sealed class VirtualMachine {
         if (_frameCount == MaxFrames) {
             const string message = "Stack overflow — maximum call depth (256) exceeded";
             if (!TryRaiseRuntimeGrobError(RuntimeErrorLeaf, message, line,
-                    boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                    finallyContext.Bounded, finallyContext.BoundaryFloor, finallyContext.BoundaryStart))
                 throw new GrobRuntimeException(ErrorCatalog.E5901.Code, line, column, message);
 
             // Handled: PropagateThrow has already moved _ip/_stackBase/the value stack
