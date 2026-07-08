@@ -38,7 +38,8 @@ not let one's conventions leak into the other.
   `Grob.Core`; `Chunk` is the boundary. The dependency graph is a DAG.
 - Source location on every AST node and every instruction, day one.
 - Type checker sets `ResolvedType` and `Declaration` on every identifier node.
-- All compile-time errors collected (no cap); the VM stops on the first runtime error.
+- All compile-time errors collected (no cap); the VM stops on the first unhandled
+  runtime error (a caught one resumes the script, D-039 clarification).
 - Error-recovering, stateless parser (D-300): `ErrorExpr`/`ErrorStmt`/`ErrorDecl`,
   cascade-suppressed via the `Error` type; every visitor handles them.
 - `OpCode` and `TokenKind` are closed surfaces under a wire-format stability

@@ -37,6 +37,14 @@ public sealed class VirtualMachine {
     /// </summary>
     private const long BudgetMask = 0xFF;
 
+    // GrobError leaf type names for TryRaiseRuntimeGrobError's routed-fault sites
+    // (Sprint 7 Increment D) — named constants rather than repeated literals
+    // (SonarCloud S1192; ArithmeticError alone appears at 5 call sites).
+    private const string ArithmeticErrorLeaf = "ArithmeticError";
+    private const string IndexErrorLeaf = "IndexError";
+    private const string NilErrorLeaf = "NilError";
+    private const string RuntimeErrorLeaf = "RuntimeError";
+
     private readonly ValueStack _stack = new();
     private readonly TextWriter _out;
     private readonly Dictionary<string, GrobValue> _globals = new(StringComparer.Ordinal);
@@ -262,26 +270,26 @@ public sealed class VirtualMachine {
         int column = 0;
         int finallyDepth = 0;
 
-        try {
-            while (true) {
-                // D-319: cooperative cancellation check every BudgetMask+1 steps.
-                if ((++_steps & BudgetMask) == 0)
-                    _cancellationToken.ThrowIfCancellationRequested();
+        while (true) {
+            // D-319: cooperative cancellation check every BudgetMask+1 steps.
+            if ((++_steps & BudgetMask) == 0)
+                _cancellationToken.ThrowIfCancellationRequested();
 
-                if (_ip >= _activeChunk.Count)
-                    throw new GrobInternalException(
-                        "execution ran past end of chunk without Return");
+            if (_ip >= _activeChunk.Count)
+                throw new GrobInternalException(
+                    "execution ran past end of chunk without Return");
 
-                line = _activeChunk.GetLine(_ip);
-                column = _activeChunk.GetColumn(_ip);
+            line = _activeChunk.GetLine(_ip);
+            column = _activeChunk.GetColumn(_ip);
 
 #if DEBUG
-                TraceInstruction(_activeChunk, _ip);
+            TraceInstruction(_activeChunk, _ip);
 #endif
 
-                byte instruction = _activeChunk.ReadByte(_ip);
-                _ip++;
+            byte instruction = _activeChunk.ReadByte(_ip);
+            _ip++;
 
+            try {
                 switch ((OpCode)instruction) {
                     // --- Constants and singletons ---
                     case OpCode.Constant: {
@@ -398,8 +406,13 @@ public sealed class VirtualMachine {
                     case OpCode.DivideInt: {
                             long b = _stack.Pop().AsInt();
                             long a = _stack.Pop().AsInt();
-                            if (b == 0L)
-                                throw new GrobArithmeticException(ErrorCatalog.E5002.Code, line, column, "integer division by zero");
+                            if (b == 0L) {
+                                const string message = "integer division by zero";
+                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line,
+                                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                    throw new GrobArithmeticException(ErrorCatalog.E5002.Code, line, column, message);
+                                break;
+                            }
                             // long.MinValue / -1 overflows: caught below as E5001.
                             _stack.Push(GrobValue.FromInt(checked(a / b)), line);
                             break;
@@ -407,8 +420,13 @@ public sealed class VirtualMachine {
                     case OpCode.ModuloInt: {
                             long b = _stack.Pop().AsInt();
                             long a = _stack.Pop().AsInt();
-                            if (b == 0L)
-                                throw new GrobArithmeticException(ErrorCatalog.E5003.Code, line, column, "integer modulo by zero");
+                            if (b == 0L) {
+                                const string message = "integer modulo by zero";
+                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line,
+                                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                    throw new GrobArithmeticException(ErrorCatalog.E5003.Code, line, column, message);
+                                break;
+                            }
                             _stack.Push(GrobValue.FromInt(checked(a % b)), line);
                             break;
                         }
@@ -443,8 +461,13 @@ public sealed class VirtualMachine {
                             // Exact-zero check is intentional per D-273: +0.0/-0.0 both caught,
                             // NaN propagates as NaN. SonarCloud suppresses S1244 for this file
                             // in .github/workflows/sonarcloud.yml.
-                            if (b == 0.0)
-                                throw new GrobArithmeticException(ErrorCatalog.E5004.Code, line, column, "float division by zero");
+                            if (b == 0.0) {
+                                const string message = "float division by zero";
+                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line,
+                                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                    throw new GrobArithmeticException(ErrorCatalog.E5004.Code, line, column, message);
+                                break;
+                            }
                             _stack.Push(GrobValue.FromFloat(a / b), line);
                             break;
                         }
@@ -452,8 +475,13 @@ public sealed class VirtualMachine {
                             double b = _stack.Pop().AsFloat();
                             double a = _stack.Pop().AsFloat();
                             // See S1244 note above on DivideFloat — intentional exact-zero check (D-273).
-                            if (b == 0.0)
-                                throw new GrobArithmeticException(ErrorCatalog.E5005.Code, line, column, "float modulo by zero");
+                            if (b == 0.0) {
+                                const string message = "float modulo by zero";
+                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line,
+                                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                    throw new GrobArithmeticException(ErrorCatalog.E5005.Code, line, column, message);
+                                break;
+                            }
                             _stack.Push(GrobValue.FromFloat(a % b), line);
                             break;
                         }
@@ -661,17 +689,25 @@ public sealed class VirtualMachine {
                             GrobValue receiver = _stack.Pop();
                             if (receiver.TryAsArray(out GrobArray? array)) {
                                 long i = index.AsInt();
-                                if (i < 0 || i >= array!.Count)
-                                    throw new GrobRuntimeException(ErrorCatalog.E5101.Code, line, column,
-                                        $"array index {i} is out of range for an array of length {array!.Count}");
+                                if (i < 0 || i >= array!.Count) {
+                                    string message =
+                                        $"array index {i} is out of range for an array of length {array!.Count}";
+                                    if (!TryRaiseRuntimeGrobError(IndexErrorLeaf, message, line,
+                                            boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                        throw new GrobRuntimeException(ErrorCatalog.E5101.Code, line, column, message);
+                                    break;
+                                }
                                 _stack.Push(array[(int)i], line);
                             } else if (receiver.TryAsMap(out GrobMap? map)) {
                                 _stack.Push(
                                     map!.TryGetValue(index.AsString(), out GrobValue value) ? value : GrobValue.Nil,
                                     line);
                             } else if (receiver.IsNil) {
-                                throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column,
-                                    "nil dereference: cannot index nil value");
+                                const string message = "nil dereference: cannot index nil value";
+                                if (!TryRaiseRuntimeGrobError(NilErrorLeaf, message, line,
+                                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                    throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column, message);
+                                break;
                             } else {
                                 throw new GrobInternalException(
                                     $"GetIndex on receiver of kind {receiver.Kind} is not supported.");
@@ -686,9 +722,13 @@ public sealed class VirtualMachine {
                             string propertyName = _activeChunk.ReadConstant(nameIdx).AsString();
                             GrobValue receiver = _stack.Pop();
                             // Nil receiver raises E5201 (nil dereference at runtime).
-                            if (receiver.IsNil)
-                                throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column,
-                                    "nil dereference: cannot access member on nil value");
+                            if (receiver.IsNil) {
+                                const string message = "nil dereference: cannot access member on nil value";
+                                if (!TryRaiseRuntimeGrobError(NilErrorLeaf, message, line,
+                                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                    throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column, message);
+                                break;
+                            }
                             if (receiver.TryAsArray(out GrobArray? array)) {
                                 if (propertyName == "length") {
                                     _stack.Push(GrobValue.FromInt(array!.Count), line);
@@ -698,9 +738,11 @@ public sealed class VirtualMachine {
                                 // Capture the token at property-access time so the bound native
                                 // carries the live token through to InvokeCallable.
                                 CancellationToken ct = _cancellationToken;
+                                var finallyContext = new FinallyContext(
+                                    boundedFinally, finallyBoundaryFloor, finallyBoundaryStart);
                                 NativeFunction? method = ArrayNatives.GetMethod(
                                     propertyName, array!,
-                                    (callable, args) => InvokeCallable(callable, args, line, column, ct));
+                                    (callable, args) => InvokeCallable(callable, args, line, column, ct, finallyContext));
                                 if (method is not null) {
                                     _stack.Push(GrobValue.FromFunction(method), line);
                                     break;
@@ -753,9 +795,13 @@ public sealed class VirtualMachine {
                             // argCount slots below the top. Its arguments become the
                             // callee's first locals over a new frame base.
                             int argCount = _activeChunk.ReadByte(_ip++);
-                            if (_frameCount == MaxFrames)
-                                throw new GrobRuntimeException(ErrorCatalog.E5901.Code, line, column,
-                                    "Stack overflow — maximum call depth (256) exceeded");
+                            if (_frameCount == MaxFrames) {
+                                const string message = "Stack overflow — maximum call depth (256) exceeded";
+                                if (!TryRaiseRuntimeGrobError(RuntimeErrorLeaf, message, line,
+                                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                    throw new GrobRuntimeException(ErrorCatalog.E5901.Code, line, column, message);
+                                break;
+                            }
 
                             GrobValue calleeValue = _stack.Peek(argCount);
                             if (!calleeValue.TryAsFunction(out GrobFunction? callee))
@@ -772,8 +818,10 @@ public sealed class VirtualMachine {
 
                                 // Build the VmInvoker that threads back through this VM instance.
                                 CancellationToken ct = _cancellationToken;
+                                var finallyContext = new FinallyContext(
+                                    boundedFinally, finallyBoundaryFloor, finallyBoundaryStart);
                                 VmInvoker invoker = (callable, args) =>
-                                    InvokeCallable(callable, args, line, column, ct);
+                                    InvokeCallable(callable, args, line, column, ct, finallyContext);
 
                                 GrobValue nativeResult = native.Implementation(callArgs, invoker);
                                 _stack.Push(nativeResult, line);
@@ -1017,11 +1065,30 @@ public sealed class VirtualMachine {
                         throw new GrobInternalException(
                             $"opcode {(OpCode)instruction} not yet implemented (Sprint 3+)");
                 }
+            } catch (OverflowException) {
+                // Any checked(...) int op that overflows surfaces as E5001 carrying
+                // the failing line — routed (Sprint 7 Increment D) through the same
+                // handler-table walk a user throw uses; falls back to the pre-routing
+                // diagnostic unchanged when nothing catches it.
+                const string message = "integer overflow";
+                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line,
+                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                    throw new GrobArithmeticException(ErrorCatalog.E5001.Code, line, column, message);
+            } catch (GrobRuntimeException ex) when (ex.Code == ErrorCatalog.E5903.Code) {
+                // ValueStack.Push raises E5903 from dozens of call sites across the
+                // switch — intercepted here rather than at each one. The original
+                // exception already carries the exact code/line/message the unhandled
+                // diagnostic needs, so the fallback rethrows it as-is (no reconstruction,
+                // unlike OverflowException which carries no Grob-specific data).
+                if (!TryRaiseRuntimeGrobError(RuntimeErrorLeaf, ex.Message, ex.Line,
+                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                    throw;
+            } catch (RoutedThrowHandledException) {
+                // Raised by InvokeCallable (Sprint 7 Increment D) when its own
+                // frame-depth check is caught: PropagateThrow already moved
+                // _ip/_stackBase/the value stack to the matching handler, so there is
+                // nothing further to do here beyond unwinding back to this switch.
             }
-        } catch (OverflowException) {
-            // Centralised handler for `checked(...)` arithmetic: any int op
-            // that overflows surfaces as E5001 carrying the failing line.
-            throw new GrobArithmeticException(ErrorCatalog.E5001.Code, line, column, "integer overflow");
         }
         // Note: OperationCanceledException from ThrowIfCancellationRequested() is NOT
         // caught here — it propagates to the caller of Run() as required by D-319.
@@ -1030,6 +1097,16 @@ public sealed class VirtualMachine {
     // -----------------------------------------------------------------------
     // Re-entrant call-back bridge (D-319 load-bearing sub-problem)
     // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// The enclosing <see cref="RunDispatch"/> invocation's bounded-finally state
+    /// (Sprint 7 Increment D review fix), bundled so <see cref="InvokeCallable"/> can
+    /// thread it through to <see cref="TryRaiseRuntimeGrobError"/> without exceeding
+    /// SonarCloud's S107 parameter-count bar. The three fields are always passed
+    /// together — they are <see cref="RunDispatch"/>'s own three parameters of the
+    /// same names, read at the call site and carried unchanged.
+    /// </summary>
+    private readonly record struct FinallyContext(bool Bounded, int BoundaryFloor, int BoundaryStart);
 
     /// <summary>
     /// Invoke a Grob callable (typically a lambda argument received by a
@@ -1045,7 +1122,8 @@ public sealed class VirtualMachine {
     /// </summary>
     private GrobValue InvokeCallable(
             GrobValue callable, GrobValue[] args,
-            int line, int column, CancellationToken ct) {
+            int line, int column, CancellationToken ct,
+            FinallyContext finallyContext) {
         if (!callable.TryAsFunction(out GrobFunction? fn))
             throw new GrobInternalException(
                 $"InvokeCallable: value of kind {callable.Kind} is not callable. " +
@@ -1053,7 +1131,7 @@ public sealed class VirtualMachine {
 
         // Nested native: call the C# delegate directly without entering bytecode dispatch.
         if (fn is NativeFunction nativeFn) {
-            VmInvoker nestedInvoker = (c, a) => InvokeCallable(c, a, line, column, ct);
+            VmInvoker nestedInvoker = (c, a) => InvokeCallable(c, a, line, column, ct, finallyContext);
             return nativeFn.Implementation(args, nestedInvoker);
         }
 
@@ -1070,9 +1148,22 @@ public sealed class VirtualMachine {
                 $"InvokeCallable: unknown GrobFunction subtype {fn!.GetType().Name}.");
         }
 
-        if (_frameCount == MaxFrames)
-            throw new GrobRuntimeException(ErrorCatalog.E5901.Code, line, column,
-                "Stack overflow — maximum call depth (256) exceeded");
+        if (_frameCount == MaxFrames) {
+            const string message = "Stack overflow — maximum call depth (256) exceeded";
+            if (!TryRaiseRuntimeGrobError(RuntimeErrorLeaf, message, line,
+                    finallyContext.Bounded, finallyContext.BoundaryFloor, finallyContext.BoundaryStart))
+                throw new GrobRuntimeException(ErrorCatalog.E5901.Code, line, column, message);
+
+            // Handled: PropagateThrow has already moved _ip/_stackBase/the value stack
+            // to the matching handler — but that handler lives in the enclosing
+            // RunDispatch's own switch, several real C# frames below this one (through
+            // the native's own loop, e.g. array.each, and this method). Returning a
+            // GrobValue here would let that native's loop keep running past the point
+            // the try/catch already aborted it at — wrong for anything but a
+            // single-element receiver. Unwind those C# frames with the same signal
+            // shape FinallyEscapeException already uses, caught once at the switch.
+            throw new RoutedThrowHandledException();
+        }
 
         // Remember the frame depth before pushing; RunDispatch stops when the callee
         // frame pops back to this floor.
@@ -1295,6 +1386,49 @@ public sealed class VirtualMachine {
     }
 
     /// <summary>
+    /// Routes a VM-detected runtime fault (Sprint 7 Increment D) through the same
+    /// handler-table walk <see cref="OpCode.Throw"/> uses, instead of halting the VM
+    /// directly. Builds the <paramref name="leafTypeName"/> <c>GrobError</c> leaf as a
+    /// <see cref="GrobStruct"/> — the same shape a user-authored <c>throw</c> constructs
+    /// via <c>NewStruct</c> — stamps <c>location</c> the same way <see cref="OpCode.Throw"/>
+    /// does, and drives it through <see cref="PropagateThrow"/>. Returns <see langword="true"/>
+    /// when a matching handler was found (the VM has already jumped to it, so the caller
+    /// should resume dispatch normally rather than throw); <see langword="false"/> when
+    /// unhandled, so the caller raises the pre-existing top-level diagnostic unchanged —
+    /// routing does not re-diagnose, so no <c>E5904</c> here, unlike an unhandled user throw.
+    /// </summary>
+    /// <param name="leafTypeName">The <c>GrobError</c> leaf to construct (e.g. <c>"ArithmeticError"</c>).</param>
+    /// <param name="message">The fault message, stored on the constructed struct's <c>message</c> field.</param>
+    /// <param name="line">The failing instruction's source line, stamped into <c>location</c>.</param>
+    /// <param name="boundedFinally">
+    /// <see langword="true"/> when the calling <see cref="RunDispatch"/> invocation is
+    /// itself running a <c>finally</c> body on the exceptional-unwind path — the fault
+    /// site's own three <see cref="RunDispatch"/> parameters, passed straight through so
+    /// this call mirrors <see cref="OpCode.Throw"/>'s identical branch exactly (D-275). A
+    /// fault occurring inside a finally body must confine its search to that body and, if
+    /// unhandled there, raise <see cref="FinallyEscapeException"/> to replace the in-flight
+    /// exception — never search past the finally's boundary directly, which would let this
+    /// (still-executing, bounded) dispatch loop run arbitrary outer code with real side
+    /// effects before its own state is discarded on return.
+    /// </param>
+    /// <param name="finallyBoundaryFloor">Passed straight through to <see cref="PropagateThrow"/> when
+    /// <paramref name="boundedFinally"/> is <see langword="true"/>; ignored otherwise.</param>
+    /// <param name="finallyBoundaryStart">Passed straight through to <see cref="PropagateThrow"/> when
+    /// <paramref name="boundedFinally"/> is <see langword="true"/>; ignored otherwise.</param>
+    private bool TryRaiseRuntimeGrobError(
+            string leafTypeName, string message, int line,
+            bool boundedFinally, int finallyBoundaryFloor, int finallyBoundaryStart) {
+        var errStruct = new GrobStruct(leafTypeName,
+            [new KeyValuePair<string, GrobValue>("message", GrobValue.FromString(message))]);
+        errStruct.SetField("location", GrobValue.FromString($"<unknown>:{line}"));
+        GrobValue exceptionValue = GrobValue.FromStruct(errStruct);
+        GrobStruct thrown = errStruct;
+        return boundedFinally
+            ? PropagateThrow(ref exceptionValue, ref thrown, line, finallyBoundaryFloor, finallyBoundaryStart)
+            : PropagateThrow(ref exceptionValue, ref thrown, line, -1, -1);
+    }
+
+    /// <summary>
     /// Drives the outward exceptional unwind for a thrown exception (Sprint 7 Increment C,
     /// D-275, extending the Increment B nearest-handler walk). Walks protected regions from
     /// the throw point outward, innermost first; for every finally-bearing region passed over
@@ -1440,6 +1574,19 @@ public sealed class VirtualMachine {
             ExceptionStruct = exceptionStruct;
         }
     }
+
+    /// <summary>
+    /// Internal control-flow signal raised by <see cref="InvokeCallable"/> (Sprint 7
+    /// Increment D) when its own frame-depth check (<see cref="ErrorCatalog.E5901"/>)
+    /// is caught by a Grob <c>try</c>/<c>catch</c>. <see cref="PropagateThrow"/> has
+    /// already moved <c>_ip</c>/<c>_stackBase</c>/the value stack to the matching
+    /// handler by the time this is thrown; it carries no payload, only unwinds the
+    /// real C# frames between the throw site (inside a native's own call-back loop,
+    /// e.g. <c>array.each</c>) and the switch statement of the <c>RunDispatch</c> that
+    /// will resume from the handler. Never leaves that switch's own catch — the same
+    /// same-class-only pattern as <see cref="FinallyEscapeException"/>.
+    /// </summary>
+    private sealed class RoutedThrowHandledException : Exception;
 
     /// <summary>
     /// Returns the upvalue array of the closure currently executing in the topmost

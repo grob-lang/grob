@@ -120,7 +120,8 @@ Named arguments are idiomatic for optional or boolean parameters: `recursive: tr
 - `try` / `catch` / `finally`. Typed catches; a bare `catch e` is the catch-all and
   must come last (D-274).
 - `throw` only on subtypes of `GrobError`.
-- The VM stops on the first runtime error.
+- The VM stops on the first unhandled runtime error — one caught by `try`/`catch`
+  resumes the script instead.
 
 ## Built-ins and stdlib
 
