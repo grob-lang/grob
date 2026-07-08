@@ -2,11 +2,12 @@ namespace Grob.Core;
 
 /// <summary>
 /// Base type for Grob runtime errors raised by the VM. The two-mode error
-/// model (D-284): the compiler/checker collect all errors; the VM stops on
-/// the first runtime error. Carries the error code from grob-error-codes.md
-/// and the source position (line + column) from the chunk's per-instruction
-/// position arrays. <see cref="Column"/> is <c>0</c> when no column was
-/// recorded for the failing instruction.
+/// model (D-039): the compiler/checker collect all errors; the VM stops on
+/// the first unhandled runtime error — one caught by a <c>try</c>/<c>catch</c>
+/// (Sprint 7) resumes the script instead. Carries the error code from
+/// grob-error-codes.md and the source position (line + column) from the
+/// chunk's per-instruction position arrays. <see cref="Column"/> is <c>0</c>
+/// when no column was recorded for the failing instruction.
 /// </summary>
 public class GrobRuntimeException : Exception {
     /// <summary>The grob-error-codes.md identifier (e.g. <c>E5001</c>).</summary>

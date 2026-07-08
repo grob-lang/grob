@@ -119,7 +119,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-036 | Apr 2026                                                          | grob.json shape               | npm-influenced; semantic versioning; `^` for compatible                                                                                                          |
 | D-037 | Apr 2026                                                          | AST pattern                   | Visitor pattern for three-pass AST                                                                                                                               |
 | D-038 | Apr 2026                                                          | Scope                         | `:=` declares in current scope; `=` walks parent chain                                                                                                           |
-| D-039 | Apr 2026                                                          | Error strategy                | Compiler collects all errors; VM stops on first runtime error                                                                                                    |
+| D-039 | Apr 2026                                                          | Error strategy                | Compiler collects all errors; VM stops on first unhandled runtime error                                                                                          |
 | D-040 | Apr 2026                                                          | Compiler tests                | Test compiler outputs exhaustively                                                                                                                               |
 | D-041 | Apr 2026                                                          | Partial classes               | Compiler as `partial class` files                                                                                                                                |
 | D-042 | Apr 2026                                                          | Real program target           | Real-program target required before implementation begins                                                                                                        |
@@ -728,6 +728,14 @@ Supersedes: none
 Superseded by: none
 
 Two-mode: compiler/type checker collects ALL errors before execution (never stops at first). VM stops on FIRST runtime error. A program with type errors never reaches the VM.
+
+**Clarification (Sprint 7 Increment D):** this decision predates `try`/`catch`.
+"The VM stops on the first runtime error" now reads "the first **unhandled**
+runtime error" — a runtime error caught by a `catch` is handled by the script and
+execution resumes normally; only one that reaches the top level uncaught halts
+the VM. This is a reading clarification of the existing decision, not a new
+design — no new decision number. See `grob-language-fundamentals.md` §27 and
+E5904 in `grob-error-codes.md` for the unhandled-exception path this clarifies.
 
 ---
 

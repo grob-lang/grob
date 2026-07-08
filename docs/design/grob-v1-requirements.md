@@ -115,7 +115,7 @@ Grob Script (.grob)
   Compiler ───── Bytecode chunk (flat instruction stream + constant pool)
     |
     v
-  VM ─────────── Fetch-decode-execute loop (stops on FIRST runtime error)
+  VM ─────────── Fetch-decode-execute loop (stops on first UNHANDLED runtime error)
     |
     +── Value Stack (int/float/bool live here directly)
     +── Call Frames (CallFrame[256], fixed array)

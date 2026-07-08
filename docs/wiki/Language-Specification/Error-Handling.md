@@ -8,7 +8,8 @@ Grob uses a two-mode error strategy:
 execution. They never stop at the first error. A program with type errors never
 reaches the VM.
 
-**Runtime** — the VM stops on the first runtime error. An unhandled exception
+**Runtime** — the VM stops on the first unhandled runtime error. A runtime error
+caught by a `try`/`catch` resumes the script normally; an unhandled exception
 produces a Grob-quality diagnostic and halts the script.
 
 ## Exceptions

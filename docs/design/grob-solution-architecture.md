@@ -128,7 +128,9 @@ for physical separation of concerns within the same namespace.
 It does not reference `Grob.Vm`. The compiler's job ends at `Chunk` production.
 
 **Error strategy:** Compiler and type checker collect ALL errors before execution.
-A program with type errors never reaches the VM. The VM stops on the FIRST runtime error.
+A program with type errors never reaches the VM. The VM stops on the first
+UNHANDLED runtime error — one caught by a `try`/`catch` resumes the script instead
+(D-039 clarification, Sprint 7 Increment D).
 
 **LSP dependency:** `Grob.Lsp` is a consumer of `Grob.Compiler`. Every AST node
 must carry a `SourceLocation` and every identifier node must carry a `Declaration`

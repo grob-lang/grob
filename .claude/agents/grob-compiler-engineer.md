@@ -33,7 +33,8 @@ These are not preferences. Breaking one is a defect even if the tests pass:
 2. **Source location on every AST node; line number on every instruction.** Day one.
 3. **`ResolvedType` and `Declaration` set on every identifier node** by the type
    checker, asserted non-null in tests.
-4. **All compile-time errors collected, no cap; VM stops on first runtime error.**
+4. **All compile-time errors collected, no cap; VM stops on first unhandled runtime
+   error** (a caught one resumes the script, D-039 clarification).
 5. **Error-recovering, stateless parser** (D-300) with the exact synchronisation set
    and the three error-node kinds; every visitor handles them.
 6. **`OpCode` and `TokenKind` are closed surfaces under a wire-format contract**
