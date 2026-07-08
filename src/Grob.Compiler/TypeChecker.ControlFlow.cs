@@ -87,6 +87,10 @@ public sealed partial class TypeChecker {
     /// frame being a <see cref="ControlFrame.Select"/> is E2211 (<c>break</c> has no
     /// meaning in a <c>select</c> and is not retargeted at an enclosing loop); a
     /// <see cref="ControlFrame.Loop"/> on top is valid; an empty stack is E2212.
+    /// The nearest frame being <see cref="ControlFrame.Finally"/> is E2207
+    /// (Sprint 7 Increment C, D-275) — a loop nested inside the finally becomes
+    /// the nearest frame before reaching that loop's own break/continue, so this
+    /// only fires when the break would exit the finally itself.
     /// </remarks>
     public override GrobType VisitBreak(BreakStmt node) {
         if (_controlFrames.Count == 0)
@@ -96,6 +100,8 @@ public sealed partial class TypeChecker {
                 "'break' is not permitted inside a 'select'. " +
                 "To exit an enclosing loop from inside a 'select', restructure into a function and use 'return', or use a flag variable.",
                 node.Range);
+        else if (_controlFrames.Peek() == ControlFrame.Finally)
+            EmitError(ErrorCatalog.E2207, "'break' is not permitted inside a 'finally' block.", node.Range);
         return GrobType.Unknown;
     }
 
@@ -104,10 +110,23 @@ public sealed partial class TypeChecker {
     /// Resolves <c>continue</c> against the control-frame stack (D-315): it skips any
     /// <see cref="ControlFrame.Select"/> frames and targets the nearest enclosing
     /// <see cref="ControlFrame.Loop"/>. When the stack contains no loop at all, it is
-    /// E2212.
+    /// E2212. Sprint 7 Increment C (D-275): if a <see cref="ControlFrame.Finally"/>
+    /// frame is reached before any <see cref="ControlFrame.Loop"/> — the continue
+    /// would have to exit the finally to reach its target — it is E2207 instead. A
+    /// loop nested inside the finally is reached first and shields its own
+    /// continue.
     /// </remarks>
     public override GrobType VisitContinue(ContinueStmt node) {
-        if (!_controlFrames.Contains(ControlFrame.Loop))
+        bool foundLoop = false;
+        bool foundFinally = false;
+        foreach (ControlFrame frame in _controlFrames) {
+            if (frame == ControlFrame.Loop) { foundLoop = true; break; }
+            if (frame == ControlFrame.Finally) { foundFinally = true; break; }
+        }
+
+        if (foundFinally)
+            EmitError(ErrorCatalog.E2207, "'continue' is not permitted inside a 'finally' block.", node.Range);
+        else if (!foundLoop)
             EmitError(ErrorCatalog.E2212, "'continue' used outside a loop.", node.Range);
         return GrobType.Unknown;
     }
@@ -249,7 +268,13 @@ public sealed partial class TypeChecker {
     /// gets its binding declared and its body visited — even an erroring one — for
     /// cascade suppression (§29). No can-throw analysis (§27 permissiveness): a
     /// catch type is never checked against what the try body can actually throw.
-    /// <c>finally</c> is visited but not otherwise checked here (Increment C).
+    /// <c>finally</c>, when present, is visited with a
+    /// <see cref="ControlFrame.Finally"/> frame pushed (Sprint 7 Increment C) so
+    /// <c>return</c>/<c>break</c>/<c>continue</c> resolve E2207 correctly.
+    /// "finally not last" is E2206, but it is raised by the parser, not here —
+    /// <see cref="TryStmt"/>'s shape (a Catches list plus one optional Finally
+    /// field) cannot represent a clause after the finally, so by the time an
+    /// AST reaches the checker the ordering already holds.
     /// </remarks>
     public override GrobType VisitTry(TryStmt node) {
         Visit(node.Body);
@@ -283,7 +308,11 @@ public sealed partial class TypeChecker {
             VisitCatchClause(c);
         }
 
-        if (node.Finally is not null) Visit(node.Finally);
+        if (node.Finally is not null) {
+            _controlFrames.Push(ControlFrame.Finally);
+            Visit(node.Finally);
+            _controlFrames.Pop();
+        }
         return GrobType.Unknown;
     }
 

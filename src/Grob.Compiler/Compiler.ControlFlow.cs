@@ -75,6 +75,10 @@ public sealed partial class Compiler {
         LoopContext ctx = _loopContexts.Peek();
         int line = node.Range.Start.Line;
 
+        // Run the finally of every try/finally nested inside the loop being broken
+        // out of, innermost first, before the loop-scope cleanup and jump (D-275).
+        EmitCrossedFinallies();
+
         // Pop locals declared inside the loop above this break — they are not
         // cleaned up by VisitBlock because the break jumps past the block exit.
         // Closing captured upvalues here too keeps a break-with-capture correct.
@@ -102,6 +106,10 @@ public sealed partial class Compiler {
 
         LoopContext ctx = _loopContexts.Peek();
         int line = node.Range.Start.Line;
+
+        // Run the finally of every try/finally nested inside the loop being
+        // continued, innermost first, before the loop-scope cleanup and jump (D-275).
+        EmitCrossedFinallies();
 
         // Pop locals declared inside the loop above this continue — they are not
         // cleaned up by VisitBlock because the continue jumps past the block exit.
@@ -344,6 +352,23 @@ public sealed partial class Compiler {
         return leaving;
     }
 
+    /// <summary>
+    /// Re-emits the finally body of every enclosing try/finally that a
+    /// <c>break</c> or <c>continue</c> to the innermost loop crosses — those pushed
+    /// while the target loop was already on the stack — innermost to outermost
+    /// (D-275). A try/finally the loop is nested inside (pushed before the loop) is
+    /// not crossed and is skipped. The finally bodies run while the try-body locals
+    /// are still live, before the loop-scope cleanup pops them.
+    /// </summary>
+    private void EmitCrossedFinallies() {
+        int loopDepth = _loopContexts.Count;
+        // Stack enumeration is top-first, i.e. innermost try/finally first.
+        foreach (TryFinallyContext tf in _tryFinallyContexts) {
+            if (tf.LoopDepthAtPush < loopDepth) break; // outside the loop — stop
+            Visit(tf.FinallyBody);
+        }
+    }
+
     private void EmitGetLocal(int slot, int line) {
         _chunk.WriteOpCode(OpCode.GetLocal, line);
         _chunk.WriteByte(ToByteOperand(slot, "local slot"), line);
@@ -500,23 +525,35 @@ public sealed partial class Compiler {
     }
 
     // -----------------------------------------------------------------------
-    // try / catch (Sprint 7 Increment B). No finally — that is Increment C;
-    // node.Finally is not visited here, so nothing is emitted for it yet.
+    // try / catch / finally (Sprint 7 Increments B and C).
+    //
+    // Finally (D-275/D-332-provisional): the OpCode enum is closed (no
+    // Leave/EndFinally), so a finally body's bytecode is genuinely recompiled
+    // — Visit(node.Finally) is called again — at every site that leaves the
+    // region, rather than shared as a single jump target. This method emits
+    // ONE such copy: at the normal-completion convergence point below (the
+    // existing exitJumps target), which already covers both normal try
+    // completion and normal catch completion (§27 "when it runs", items 1 and
+    // 3) since both already land there. The return/break/continue emission
+    // chains (each a separate re-visit of node.Finally at its own site) and
+    // the VM's finallyOffset exceptional-path arm are not this method's job.
     // -----------------------------------------------------------------------
 
     /// <inheritdoc/>
     /// <remarks>
     /// Emits the try body between <see cref="OpCode.TryBegin"/> (operand: handler-table
     /// index) and a backpatched <see cref="OpCode.Jump"/> that skips the catch bodies on
-    /// normal completion, then each catch body in source order, then
-    /// <see cref="OpCode.TryEnd"/>. The handler-table entry recording the region's bounds
-    /// and ordered handlers is filled in once every offset is known — two-phase, like a
-    /// forward jump. <see cref="OpCode.TryBegin"/>/<see cref="OpCode.TryEnd"/> are
-    /// structural markers only; the VM's <see cref="OpCode.Throw"/> arm does all the
-    /// matching, driven entirely by the handler table. The program is already
-    /// type-checked by the time the compiler sees it, so every catch type here is
-    /// guaranteed to be a valid, non-duplicate <c>GrobError</c> hierarchy member in
-    /// legal source-order position — E2204/E2205/E0015/E2213 never reach emission.
+    /// normal completion, then each catch body in source order, then — when a
+    /// <c>finally</c> is present — its compiled copy at the convergence point, then
+    /// <see cref="OpCode.TryEnd"/>. The handler-table entry recording the region's bounds,
+    /// ordered handlers and <see cref="TryRegion.FinallyOffset"/> is filled in once every
+    /// offset is known — two-phase, like a forward jump. <see cref="OpCode.TryBegin"/>/
+    /// <see cref="OpCode.TryEnd"/> are structural markers only; the VM's
+    /// <see cref="OpCode.Throw"/> arm does all the matching, driven entirely by the
+    /// handler table. The program is already type-checked by the time the compiler sees
+    /// it, so every catch type here is guaranteed to be a valid, non-duplicate
+    /// <c>GrobError</c> hierarchy member in legal source-order position —
+    /// E2204/E2205/E0015/E2213/E2206/E2207 never reach emission.
     /// </remarks>
     public override object? VisitTry(TryStmt node) {
         int line = node.Range.Start.Line;
@@ -524,6 +561,14 @@ public sealed partial class Compiler {
         int regionIndex = _chunk.AddTryRegion();
         _chunk.WriteOpCode(OpCode.TryBegin, line);
         _chunk.WriteByte(ToByteOperand(regionIndex, "try region index"), line);
+
+        // Push the finally context (if any) so that a return/break/continue inside
+        // the try body OR a catch body re-emits this finally before it transfers
+        // (D-275). It guards both — a return from a catch runs the finally too — so
+        // the context is popped only after the catch bodies are compiled, just
+        // before the normal-completion convergence copy below.
+        if (node.Finally is not null)
+            _tryFinallyContexts.Push(new TryFinallyContext(node.Finally, _loopContexts.Count));
 
         int startOffset = _chunk.Count;
         Visit(node.Body);
@@ -544,9 +589,19 @@ public sealed partial class Compiler {
         }
 
         foreach (int site in exitJumps) PatchJump(site);
+
+        int finallyOffset = -1;
+        if (node.Finally is not null) {
+            // The guarded region ends here; a transfer from within the finally body
+            // itself is banned (E2207), so pop before emitting the convergence copy.
+            _tryFinallyContexts.Pop();
+            finallyOffset = _chunk.Count;
+            Visit(node.Finally);
+        }
+
         _chunk.WriteOpCode(OpCode.TryEnd, node.Range.End.Line);
 
-        _chunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, handlers));
+        _chunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, handlers, finallyOffset));
         return null;
     }
 

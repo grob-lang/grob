@@ -243,9 +243,24 @@ public sealed class VirtualMachine {
     /// <paramref name="floorFrameCount"/>, so the dispatch ends when that frame's
     /// <c>Return</c> pops <see cref="_frameCount"/> back down to the floor.
     /// </param>
-    private void RunDispatch(int floorFrameCount, bool isReentrant) {
+    /// <param name="boundedFinally">
+    /// <see langword="true"/> when this dispatch is running a single <c>finally</c> body on
+    /// the exceptional unwind path (Sprint 7 Increment C, D-275). In that mode the run ends
+    /// when it reaches its own region's closing <see cref="OpCode.TryEnd"/> — tracked by
+    /// <c>finallyDepth</c> counting the TryBegin/TryEnd of any nested try inside the finally,
+    /// so only the unbalanced closing TryEnd stops it — rather than at a <c>Return</c>. A
+    /// throw that escapes the body raises <see cref="FinallyEscapeException"/> via
+    /// <see cref="PropagateThrow"/>.
+    /// </param>
+    /// <param name="finallyBoundaryStart">Start offset of the bounded finally body (the
+    /// floor below which regions are ineligible at the finally's own frame), or −1.</param>
+    /// <param name="finallyBoundaryFloor">Frame count the bounded finally runs at, or −1.</param>
+    private void RunDispatch(
+            int floorFrameCount, bool isReentrant,
+            bool boundedFinally = false, int finallyBoundaryStart = -1, int finallyBoundaryFloor = -1) {
         int line = 0;
         int column = 0;
+        int finallyDepth = 0;
 
         try {
             while (true) {
@@ -805,10 +820,11 @@ public sealed class VirtualMachine {
                             // already 0 (nothing to pop) and ends the dispatch.  A function
                             // call that returns to frame 0 pops a frame (handled below) and
                             // the script continues — so this guard is top-level only.
-                            if (!isReentrant && _frameCount == 0) {
+                            if (!isReentrant && !boundedFinally && _frameCount == 0) {
                                 // Top-level code has finished; every top-level binding is now
                                 // Initialised. Subsequent global reads skip the tag check
-                                // (§19.1, D-294).
+                                // (§19.1, D-294). A bounded finally run at frame 0 never ends
+                                // here — it ends at its own closing TryEnd — so it is excluded.
                                 _startupComplete = true;
                                 return;
                             }
@@ -948,10 +964,19 @@ public sealed class VirtualMachine {
                     // all the matching logic. Neither opcode does anything at runtime
                     // beyond stepping past its own bytes.
                     case OpCode.TryBegin:
+                        // Track nested-try depth so a bounded finally run does not stop at a
+                        // nested try's TryEnd (only at its own region's closing TryEnd).
+                        if (boundedFinally) finallyDepth++;
                         _ip++; // 1-byte operand: handler-table index, unused here.
                         break;
 
                     case OpCode.TryEnd:
+                        if (boundedFinally) {
+                            // finallyDepth 0 means this is the bounded finally body's own
+                            // closing TryEnd — the body is done, hand control back to the walk.
+                            if (finallyDepth == 0) return;
+                            finallyDepth--;
+                        }
                         break;
 
                     case OpCode.Throw: {
@@ -970,36 +995,22 @@ public sealed class VirtualMachine {
                             exceptionStruct!.SetField("location", GrobValue.FromString($"<unknown>:{line}"));
 
                             // Walk protected regions from the innermost enclosing frame
-                            // outward (D-274): try the current chunk's regions containing
-                            // the current ip, innermost first; if none match, unwind one
-                            // frame (closing its upvalues, D-325) and repeat against the
-                            // caller's chunk at its resume point. Falls through to A's
-                            // top-level path when no frame has a match anywhere.
-                            bool handled = false;
-                            while (true) {
-                                if (TryFindHandler(_activeChunk, _ip, exceptionStruct.TypeName, out CatchHandler handler)) {
-                                    int bindingSlot = _stackBase + handler.BindingSlot;
-                                    CloseUpvaluesFrom(bindingSlot);
-                                    _stack.TrimToCount(bindingSlot);
-                                    _stack.Push(exceptionValue, line);
-                                    _ip = handler.HandlerOffset;
-                                    handled = true;
-                                    break;
-                                }
-                                if (_frameCount == 0) break;
-                                CloseUpvaluesFrom(_stackBase);
-                                CallFrame frame = _frames[--_frameCount];
-                                _activeChunk = frame.ReturnChunk;
-                                _ip = frame.ReturnInstructionPointer;
-                                _stackBase = frame.ReturnStackBase;
-                            }
+                            // outward (D-274), running the finally of every finally-bearing
+                            // region passed over without a match, innermost first (D-275).
+                            // When this throw itself occurs inside a bounded finally body,
+                            // the boundary confines the walk so an uncaught throw escapes to
+                            // the enclosing driver instead of propagating past the finally.
+                            GrobStruct thrown = exceptionStruct;
+                            bool handled = boundedFinally
+                                ? PropagateThrow(ref exceptionValue, ref thrown, line, finallyBoundaryFloor, finallyBoundaryStart)
+                                : PropagateThrow(ref exceptionValue, ref thrown, line, -1, -1);
                             if (handled) break;
 
-                            string messageText = exceptionStruct.TryGetField("message", out GrobValue msgValue) && msgValue.IsString
+                            string messageText = thrown.TryGetField("message", out GrobValue msgValue) && msgValue.IsString
                                 ? msgValue.AsString()
                                 : "<no message>";
                             throw new GrobRuntimeException(ErrorCatalog.E5904.Code, line, column,
-                                $"{exceptionStruct.TypeName}: {messageText}");
+                                $"{thrown.TypeName}: {messageText}");
                         }
 
                     default:
@@ -1284,56 +1295,150 @@ public sealed class VirtualMachine {
     }
 
     /// <summary>
-    /// Finds the nearest matching catch handler for a thrown value of type
-    /// <paramref name="thrownTypeName"/> at <paramref name="ip"/> in <paramref name="chunk"/>
-    /// (Sprint 7 Increment B). Considers every <see cref="TryRegion"/> in the chunk whose
-    /// bounds contain <paramref name="ip"/>, tried innermost first (largest
-    /// <see cref="TryRegion.StartOffset"/>); within a region, handlers are tried in
-    /// source order — the catch-all matches unconditionally, a typed handler matches
-    /// when <paramref name="thrownTypeName"/> is one of its resolved
-    /// <see cref="CatchHandler.MatchTypeNames"/> (already flattened over the subtype
-    /// relationship at compile time, D-274). If the nearest containing region has no
-    /// match, the next-less-nested containing region in the same chunk is tried next —
-    /// the caller unwinds a frame and calls again only once every region in this chunk
-    /// is exhausted.
+    /// Drives the outward exceptional unwind for a thrown exception (Sprint 7 Increment C,
+    /// D-275, extending the Increment B nearest-handler walk). Walks protected regions from
+    /// the throw point outward, innermost first; for every finally-bearing region passed over
+    /// without a matching handler — including one whose own catch body threw — it runs that
+    /// region's finally exactly once, before continuing outward. A finally that itself throws
+    /// replaces the in-flight <paramref name="exceptionValue"/>/<paramref name="exceptionStruct"/>
+    /// (D-275) and the walk resumes from the next-outer region.
     /// </summary>
     /// <remarks>
-    /// The upper bound is inclusive (<c>ip &lt;= EndOffset</c>), not exclusive. <paramref name="ip"/>
-    /// is always a post-fetch position — the dispatch loop's <c>_ip++</c> has already
-    /// run, so it is "the next byte to execute", not the throwing/calling instruction's
-    /// own start. When that instruction is the last one in the try body (a bare <c>throw</c>
-    /// as the whole body, or a call site flush against the body's end), this position
-    /// equals <see cref="TryRegion.EndOffset"/> exactly — it is still inside the body, an
-    /// exclusive bound would silently miss it.
+    /// The construct-containment upper bound is a region's <see cref="TryRegion.FinallyOffset"/>
+    /// when it has a finally — so the try body and every catch body count as "within the
+    /// construct" for running the finally — else its catch-matching <see cref="TryRegion.EndOffset"/>.
+    /// Handler matching still uses the inclusive <c>ip &lt;= EndOffset</c> bound (a throw from a
+    /// catch body, <c>ip &gt; EndOffset</c>, cannot be re-caught by its own region but still runs
+    /// its finally). The throw <c>ip</c> is a post-fetch position (as in Increment B).
+    /// <para>
+    /// Returns <see langword="true"/> when a matching handler is found (<see cref="_ip"/> and the
+    /// value stack are set to enter it) and <see langword="false"/> when every frame is exhausted
+    /// (the caller raises E5904). When <paramref name="boundaryFloor"/> ≥ 0 the walk is confined
+    /// to a bounded finally body: at that frame only regions inside the body
+    /// (start ≥ <paramref name="boundaryStart"/>) are eligible, and an uncaught throw raises
+    /// <see cref="FinallyEscapeException"/> so the enclosing driver replaces its in-flight exception.
+    /// </para>
     /// </remarks>
-    private static bool TryFindHandler(Chunk chunk, int ip, string thrownTypeName, out CatchHandler handler) {
-        TryRegion? current = null;
-        for (int i = 0; i < chunk.TryRegionCount; i++) {
-            TryRegion region = chunk.GetTryRegion(i);
-            if (region.StartOffset > ip || ip > region.EndOffset) continue;
-            if (current is null || region.StartOffset > current.StartOffset) current = region;
-        }
+    private bool PropagateThrow(
+            ref GrobValue exceptionValue, ref GrobStruct exceptionStruct, int line,
+            int boundaryFloor, int boundaryStart) {
+        int ip = _ip;
+        while (true) {
+            // At the bounded-finally boundary frame, ignore regions below the finally body.
+            int lowerStart = boundaryFloor >= 0 && _frameCount == boundaryFloor ? boundaryStart : -1;
 
-        while (current is not null) {
-            foreach (CatchHandler h in current.Handlers) {
-                if (h.IsCatchAll || h.MatchTypeNames.Contains(thrownTypeName)) {
-                    handler = h;
-                    return true;
+            int cursorStart = int.MaxValue;
+            while (true) {
+                TryRegion? region = InnermostRegionBelow(_activeChunk, ip, cursorStart, lowerStart);
+                if (region is null) break;
+                cursorStart = region.StartOffset;
+
+                // A handler matches only when the throw is in the try body (ip <= EndOffset);
+                // a throw from a catch body cannot be re-caught by the same region (D-274).
+                if (ip <= region.EndOffset) {
+                    foreach (CatchHandler h in region.Handlers) {
+                        if (h.IsCatchAll || h.MatchTypeNames.Contains(exceptionStruct.TypeName)) {
+                            int bindingSlot = _stackBase + h.BindingSlot;
+                            CloseUpvaluesFrom(bindingSlot);
+                            _stack.TrimToCount(bindingSlot);
+                            _stack.Push(exceptionValue, line);
+                            _ip = h.HandlerOffset;
+                            return true;
+                        }
+                    }
                 }
+
+                // No handler here — run this region's finally before moving outward. If it
+                // throws, the in-flight exception is replaced and the walk simply continues
+                // from the next-outer region (cursorStart has already advanced past it).
+                if (region.FinallyOffset >= 0)
+                    RunFinallyExceptional(region, ref exceptionValue, ref exceptionStruct);
             }
 
-            TryRegion? next = null;
-            for (int i = 0; i < chunk.TryRegionCount; i++) {
-                TryRegion region = chunk.GetTryRegion(i);
-                if (region.StartOffset > ip || ip > region.EndOffset) continue;
-                if (region.StartOffset >= current.StartOffset) continue;
-                if (next is null || region.StartOffset > next.StartOffset) next = region;
-            }
-            current = next;
+            // No handler in this chunk. A bounded finally body's uncaught throw escapes to
+            // its enclosing driver rather than propagating past the finally.
+            if (boundaryFloor >= 0 && _frameCount == boundaryFloor)
+                throw new FinallyEscapeException(exceptionValue, exceptionStruct);
+
+            if (_frameCount == 0) return false;
+
+            // Unwind one frame (closing its upvalues, D-325) and continue in the caller.
+            CloseUpvaluesFrom(_stackBase);
+            CallFrame frame = _frames[--_frameCount];
+            _activeChunk = frame.ReturnChunk;
+            _ip = frame.ReturnInstructionPointer;
+            _stackBase = frame.ReturnStackBase;
+            ip = _ip;
         }
+    }
 
-        handler = null!;
-        return false;
+    /// <summary>
+    /// Runs <paramref name="region"/>'s finally body on the exceptional unwind path, in the
+    /// current frame (unchanged <see cref="_stackBase"/>, so the finally reads the enclosing
+    /// function's locals directly — matching the compiler's inline copies). The body runs via
+    /// a bounded <see cref="RunDispatch"/> that stops at the region's own closing
+    /// <see cref="OpCode.TryEnd"/>. When the finally throws and the throw escapes its own body,
+    /// the in-flight exception is replaced with the new one via the <see langword="ref"/>
+    /// parameters (D-275) — the caller does not need to know whether that happened, only that
+    /// <paramref name="exceptionValue"/>/<paramref name="exceptionStruct"/> are current on
+    /// return, so this method reports nothing further. The escaping walk has already unwound
+    /// back to this frame by the time the escape is caught.
+    /// </summary>
+    private void RunFinallyExceptional(
+            TryRegion region, ref GrobValue exceptionValue, ref GrobStruct exceptionStruct) {
+        int savedIp = _ip;
+        Chunk savedChunk = _activeChunk;
+        int floor = _frameCount;
+        _ip = region.FinallyOffset;
+        try {
+            RunDispatch(floorFrameCount: floor, isReentrant: false,
+                boundedFinally: true, finallyBoundaryStart: region.FinallyOffset, finallyBoundaryFloor: floor);
+        } catch (FinallyEscapeException escape) {
+            exceptionValue = escape.Value;
+            exceptionStruct = escape.ExceptionStruct;
+        } finally {
+            _ip = savedIp;
+            _activeChunk = savedChunk;
+        }
+    }
+
+    /// <summary>
+    /// Returns the innermost protected region of <paramref name="chunk"/> that contains
+    /// <paramref name="ip"/> and whose start offset is strictly below
+    /// <paramref name="cursorStart"/> (and, when <paramref name="lowerStart"/> ≥ 0, at or
+    /// above it — the bounded-finally floor), or null when none remain. Containment upper
+    /// bound is the finally offset when the region has a finally, else the catch-matching end
+    /// offset. Ordered by descending start offset so the caller walks innermost to outermost.
+    /// </summary>
+    private static TryRegion? InnermostRegionBelow(Chunk chunk, int ip, int cursorStart, int lowerStart) {
+        TryRegion? best = null;
+        for (int i = 0; i < chunk.TryRegionCount; i++) {
+            TryRegion r = chunk.GetTryRegion(i);
+            int upper = r.FinallyOffset >= 0 ? r.FinallyOffset : r.EndOffset;
+            if (r.StartOffset > ip || ip > upper) continue;              // not within the construct
+            if (r.StartOffset >= cursorStart) continue;                  // not strictly inner to cursor
+            if (lowerStart >= 0 && r.StartOffset < lowerStart) continue; // below the finally boundary
+            if (best is null || r.StartOffset > best.StartOffset) best = r;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Internal control-flow signal raised when a finally body running on the exceptional
+    /// unwind path throws an exception it does not catch itself. Carries the replacement
+    /// exception back to the enclosing <see cref="PropagateThrow"/> driver (D-275). Never
+    /// leaves <see cref="RunFinallyExceptional"/> — deliberately <see langword="private"/>,
+    /// the same pattern as <c>Parser.ParseFailedException</c>: a same-class-only control-flow
+    /// signal, not a reportable error, so it stays out of the public API surface.
+    /// </summary>
+    private sealed class FinallyEscapeException : Exception {
+        public GrobValue Value { get; }
+        public GrobStruct ExceptionStruct { get; }
+
+        public FinallyEscapeException(GrobValue value, GrobStruct exceptionStruct) {
+            Value = value;
+            ExceptionStruct = exceptionStruct;
+        }
     }
 
     /// <summary>

@@ -923,6 +923,7 @@ public sealed partial class TypeChecker {
         // inside a block-body lambda (E0005) and distinguish them from top-level
         // returns (E2203).
         _functionReturnTypes.Push(GrobType.Unknown);
+        _controlFrameFloors.Push(_controlFrames.Count);
 
         // Infer the body type and store it for callers (e.g. ValidateArrayMethodCall).
         GrobType bodyType = node.Body switch {
@@ -937,6 +938,7 @@ public sealed partial class TypeChecker {
         List<GrobType> lambdaParamTypes = node.Parameters.Select(_ => GrobType.Unknown).ToList();
         _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, bodyType);
 
+        _controlFrameFloors.Pop();
         _functionReturnTypes.Pop();
         _scopes.Pop();
 

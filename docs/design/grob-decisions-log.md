@@ -331,6 +331,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-331 | June 2026                                                         | Process / harness — closed-surface growth | Closed surfaces grow through sanctioned, logged procedures rather than hard "nevers", calibrated to whether the surface carries a stability contract. `OpCode`/`TokenKind` carry a wire-format contract (ADR-0013) — grown via `adding-an-opcode`. The parser and AST carry none (compiler-internal, never serialised) — built incrementally, closed *within an increment* as scope discipline, extended via the new `extending-the-grammar` skill; reclassified from architecture invariant to scope discipline in `AGENTS.md` and the compiler-engineer agent. Error codes carry ADR-0017 immutability — each increment declares an error-code budget, with the new `allocating-an-error-code` ladder (surface fold-vs-new, register at the next free number from the live registry, count reconciled and D-316-ratified) for the unanticipated case. Resolves the three-way harness contradiction on codes and the grammar-complete premise that Sprint 4E and 6B falsified. No new error code; count unchanged |
 | D-332 | June 2026                                                         | VM — operand-stack allocation | `ValueStack`'s backing array right-sized from a fixed 16,384-slot (393 KB) allocation to a 1,024-slot (24 KB) default that grows geometrically (doubling, capped at the unchanged 16,384-slot ceiling) via `Array.Resize` on `Push`. Fixes the Sprint 6 benchmark finding — all three VM benchmarks showed `Gen0 == Gen1 == Gen2` (a full compacting GC every op) because the fixed array cleared the ~85,000-byte LOH threshold and a fresh `VirtualMachine`/`ValueStack` is constructed per run. Overflow guard (E5903) and effective depth cap unchanged; D-325 open upvalues (stack object + slot index, never a raw reference/span) survive the resize transparently — the sole `Span<GrobValue>` in `Grob.Vm` is the `#if DEBUG` trace hook's per-iteration, never-cached snapshot. No new error code; count unchanged. Baseline recapture on `windows-latest` via `benchmark.yml` pending — not performed in this local session (D-309 forbids a locally-produced committed baseline) |
 | D-333 | July 2026                                                         | Tooling — benchmarking | Benchmark gate hardened on three fronts. A hard **allocation axis** reads `[MemoryDiagnoser]`'s already-committed `BytesAllocatedPerOperation`: a percent-vs-rolling threshold (`allocPercent`, 10%) on gating categories, plus an absolute **LOH tripwire** (`lohTripwireBytes`, 85,000 B) that fails outright on any category regardless of gating — the check that would have caught D-332 on day one instead of reading "info". The per-sprint **time axis is significance-aware**: a breach now requires the delta to exceed `max(perSprintPercent, timeSignificanceK × relativeStdDev)`, `timeSignificanceK = 3` (three-sigma), so a delta inside a benchmark's own measurement noise (the Sprint 6 `Compile_TenPrints` false positive) no longer trips it; the cumulative axis is unchanged. `SameRunnerType`/`RunnerMismatch`/`CannotCompare` are replaced by a **CPU-identity guard** (`BenchCheck.SameCpu`, keyed on `HostEnvironmentInfo.ProcessorName`, checked independently against the rolling and origin baseline) after the post-Interlude-1 verification run proved an EPYC-baseline-vs-Xeon-run comparison passed the old OS-family-only guard with a false +25–37% time breach despite byte-identical allocation. Allocation always gates regardless of CPU; time gates only on a CPU match, else informational — refines D-309's "same runner type" to "same CPU identity". `vm.json`/`vm.origin.json` recaptured post-fix (50,265/52,841/58,473 B, off the LOH); `compile.json` (rolling) refreshed to the same Xeon capture after discovering it was three sprints stale; `compile.origin.json` deliberately left with its pre-provenance `"Unknown processor"` host, so the compile cumulative axis reads informational until a separate, logged re-freeze. No new error code; count unchanged |
+| D-334 | July 2026                                                         | Exception handling — finally compilation model | `finally` splits on one axis: the exceptional path (an exception unwinding through a region) is VM-run via handler-table `TryRegion.FinallyOffset`; every non-exceptional path (normal try/catch completion, early `return`/`break`/`continue`) is compiler-emitted, re-visiting `node.Finally`'s AST at each crossing site (duplication expected — the closed `OpCode` enum has no `Leave`/`EndFinally`). Compiler: a `TryFinallyContext` stack mirroring `LoopContext`, popped only after catch bodies compile; `return` crosses every context, `break`/`continue` cross only contexts pushed after the target loop (`LoopDepthAtPush`); a `_nextSlot` reservation parks a `return`'s value below the finally bodies' own locals. VM: the construct span for triggering a finally is bounded by `FinallyOffset` (covers catch bodies too, not just `EndOffset`); `PropagateThrow` drives the outward walk, running each region's finally via `RunFinallyExceptional` — a new bounded mode of the existing `RunDispatch` that runs in the current frame (no call, no upvalues) and stops at the region's own closing `TryEnd`; a throw escaping it raises an internal `FinallyEscape` that replaces the in-flight exception. Rejected: a closure-based exceptional-path invocation via the existing reentrant call machinery (needs no new VM primitive but forces upvalue capture for every referenced local, and doesn't unify with the inline copies anyway). Folds in a mechanical fix making E2206 reachable (`ParseTry` previously broke unconditionally on a matched `finally`, so a trailing catch/finally was structurally unrepresentable and undetectable) — not a new decision. No new error code; count unchanged at 116 |
 
 ---
 
@@ -3842,6 +3843,112 @@ allocation axis, the significance-aware time gate, and the CPU-identity rule).
 
 ---
 
+### D-334 — `finally` compilation model: VM-run exceptional path, compiler-emitted everywhere else (July 2026)
+
+Area: Exception handling — finally compilation model
+Supersedes: none (extends D-275)
+Superseded by: none
+
+**The decision.** The closed `OpCode` enum has no `Leave`/`EndFinally`, so `finally`
+splits on exactly one axis: the **exceptional** path (an exception unwinding through
+a region) is **VM-run**, driven by the handler-table `TryRegion.FinallyOffset`
+(`-1` sentinel, the established "absent" small-int convention); every
+**non-exceptional** path — normal try/catch completion, an early `return`/`break`/
+`continue` — is **compiler-emitted**: the compiler genuinely re-visits (recompiles)
+`node.Finally`'s AST at each site that leaves the region, rather than sharing one
+copy of bytecode. A finally body's compiled bytecode therefore appears at several
+sites in the chunk — the classic javac-pre-inlining duplication — which is expected
+and correct, not a defect.
+
+**Compiler side — the enclosing-region stack.** `Compiler.cs` gains a
+`TryFinallyContext` stack (`_tryFinallyContexts`), structurally mirroring
+`LoopContext`/`_loopContexts`: pushed in `VisitTry` when a `finally` is present, and
+popped only after the try body **and every catch body** have compiled — a `return`
+from inside a catch must also run the enclosing try's finally, so the context stays
+live for the whole guarded region, not just the try body. `VisitReturn` crosses
+**every** context on the stack (a return exits the whole function); `VisitBreak`/
+`VisitContinue` cross only contexts pushed **after** the target `LoopContext` —
+recorded per context as `LoopDepthAtPush`, the `_loopContexts.Count` at push time —
+so a `finally` the loop is nested _inside_ is correctly not crossed. Each crossing
+re-visits the crossed contexts' finally bodies innermost-to-outermost before the
+existing scope-cleanup-and-jump/return. Because each function/lambda body already
+compiles in its own fresh sub-`Compiler` instance (the existing pattern
+`_loopContexts` already relies on), this stack is scoped per function for free — no
+extra boundary bookkeeping needed for a nested lambda.
+
+**The return-value-preservation mechanism.** A `return`'s value is already on the
+operand stack by the time the crossed finally bodies are re-visited; a single
+`_nextSlot` reservation (bumped, then restored) parks that value below whatever
+slots the finally bodies' own locals allocate, so their compile-time slot numbering
+never collides with it — no new opcode or stack-shape trick needed, since the VM's
+`Return` still bulk-discards the whole frame in one step regardless of how many
+finally bodies ran first.
+
+**The normal-completion copy is unconditional.** `VisitTry`'s existing `exitJumps`
+convergence point (already the landing site for both normal try completion and
+normal catch completion, §27 "when it runs" items 1 and 3) always emits one finally
+copy, regardless of whether the try body's own bytecode can statically reach it —
+this compiler performs no reachability/dead-code analysis anywhere, so a try body
+whose only statement is an early exit still gets this copy, as dead bytes.
+
+**VM side — the exceptional-path arm.** `TryRegion` gains `FinallyOffset`; a
+region's _construct span_ for finally-triggering purposes is now bounded by
+`FinallyOffset` (covering the try body **and** every catch body) rather than the
+narrower catch-matching `EndOffset` alone — a throw from inside a region's own
+catch body must also trigger that region's finally, which the catch-matching bound
+alone cannot express. `VirtualMachine.Throw`'s outward walk is now driven by
+`PropagateThrow`, which for every region passed over without a match runs its
+finally via `RunFinallyExceptional` before continuing outward. That method runs the
+finally **in the current frame** (unchanged `_stackBase`) via a new bounded mode of
+the existing `RunDispatch` (`boundedFinally: true`), stopping at the region's own
+closing `TryEnd` (nested trys inside the finally are skipped over via a
+`finallyDepth` counter, not mistaken for the boundary). Running in the same frame
+means the finally reads enclosing locals by direct slot access, exactly like the
+compiler-emitted copies — no call frame, no upvalue capture needed for this path.
+A throw escaping the bounded finally raises an internal `FinallyEscape` exception,
+caught by `RunFinallyExceptional`, which **replaces** the in-flight exception and
+lets `PropagateThrow` resume the outward walk from the next-outer region (D-275).
+`exit()`/`GrobExitException` needs no change: it unwinds the .NET call stack past
+the bytecode dispatch loop entirely and never reaches `PropagateThrow`, so it
+already skips every `FinallyOffset` by construction. D-325 holds unchanged — the
+existing `CloseUpvaluesFrom` calls in the outward frame-pop walk are untouched;
+running a finally in-frame introduces no new frame boundary to close upvalues at.
+
+**Rejected: closure-based exceptional-path invocation.** Compiling the
+exceptional-path finally copy as a genuine closure (capturing referenced enclosing
+locals as upvalues, reusing D-296/D-325's machinery) and invoking it via the
+existing reentrant `RunDispatch`/`InvokeCallable` call-frame path was considered.
+It needs no new VM control-flow primitive — it would just be another call — but it
+forces every finally-referenced enclosing local through upvalue capture even in the
+common single-region case, and only applies to this one copy: the compiler-emitted
+inline copies for the non-exceptional paths still need direct slot access, so
+nothing is unified by the extra closure machinery. The bounded-`RunDispatch`
+mechanism above was chosen instead.
+
+**Folds in a small, pre-existing reachability gap: E2206.** `ParseTry`'s
+catch/finally loop broke unconditionally the instant it matched a `finally`, and
+`TryStmt`'s AST shape (a `Catches` list plus one optional `Finally` field) has
+nowhere to put a clause that follows the finally — so **E2206** ("`finally` not
+last in `try`") was structurally unreachable since Increment B; the AST could not
+represent the violation for a type-checker pass to ever see. `ParseTry` now keeps
+scanning past a matched `finally` for a further `catch`/`finally` token and raises
+E2206 directly — a parser diagnostic, not a type-checker one, since by the time an
+AST exists the ordering already holds — before recovering via the existing D-300
+synchronisation path. No AST shape change; this is a mechanical correction to
+existing grammar handling within the increment, not a new grammar production and
+not a decision in its own right.
+
+**No new error code.** E2206 and E2207 were both already registered
+`ErrorDescriptor`s (pre-declared, unused, from an earlier budget) — count stays at
+116.
+
+**Relates to D-274, D-275, D-296, D-325, D-300.** D-274/D-275 are the grammar and
+semantics this increment implements. D-296 is the four-category capture model the
+rejected closure alternative would have leaned on. D-325 is the upvalue-closing
+invariant this change must not violate (and does not, since it adds no new frame
+boundary). D-300 is the parser-recovery model the E2206 fix follows.
+
+---
 
 ## Post-MVP Decisions
 
@@ -4064,6 +4171,24 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_July 2026 — Sprint 7 Increment C (`finally`): D-334 added. The exceptional path_
+_(an exception unwinding through a region) is VM-run via handler-table_
+_`TryRegion.FinallyOffset`; every non-exceptional path (normal try/catch_
+_completion, early `return`/`break`/`continue`) is compiler-emitted by_
+_re-visiting `node.Finally`'s AST at each crossing site — duplication expected,_
+_the closed `OpCode` enum has no `Leave`/`EndFinally`. Compiler: a_
+_`TryFinallyContext` stack mirroring `LoopContext`; `return` crosses every_
+_context, `break`/`continue` cross only those pushed after the target loop_
+_(`LoopDepthAtPush`); a `_nextSlot` reservation parks a `return`'s value under_
+_the finally bodies' own locals. VM: `PropagateThrow` runs each region's_
+_finally via `RunFinallyExceptional`, a bounded mode of the existing_
+_`RunDispatch` that runs in the current frame and stops at the region's own_
+_closing `TryEnd`; an internal `FinallyEscape` carries a throw-in-finally_
+_replacement back to the outward walk (D-275). Rejected a closure-based_
+_exceptional-path invocation (forces upvalue capture per referenced local,_
+_doesn't unify with the compiler-emitted copies). Folds in a mechanical fix_
+_making E2206 reachable (`ParseTry` previously broke unconditionally on a_
+_matched `finally`). No new error code; count unchanged at 116._
 _July 2026 — Pre-Sprint 7 Interlude 2 (benchmark gate hardening): D-333 added._
 _A hard allocation axis (percent-vs-baseline plus an absolute LOH tripwire that_
 _gates regardless of category), a significance-aware per-sprint time gate_
