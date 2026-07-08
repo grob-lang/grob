@@ -159,8 +159,11 @@ public sealed class VirtualMachineFinallyTests {
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset));
 
         var (vm, output) = NewVm();
-        Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
 
+        Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
+        Assert.Equal(2, ex.Line);
+        Assert.Equal(0, ex.Column);
         Assert.Equal(1L, vm.Globals["ran"].AsInt());
         _ = output;
     }
@@ -209,8 +212,11 @@ public sealed class VirtualMachineFinallyTests {
         script.SetTryRegion(outerRegionIndex, new TryRegion(outerStart, outerEnd, [], outerFinallyOffset));
 
         var (vm, _) = NewVm();
-        Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
 
+        Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
+        Assert.Equal(4, ex.Line);
+        Assert.Equal(0, ex.Column);
         Assert.Equal(1L, vm.Globals["innerRan"].AsInt());
         Assert.Equal(1L, vm.Globals["outerRan"].AsInt());
     }
@@ -261,6 +267,9 @@ public sealed class VirtualMachineFinallyTests {
         var (vm, _) = NewVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
 
+        Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
+        Assert.Equal(3, ex.Line);
+        Assert.Equal(0, ex.Column);
         Assert.Contains("NetworkError", ex.Message);
         Assert.DoesNotContain("IoError", ex.Message);
         Assert.Equal(1L, vm.Globals["ran"].AsInt());
@@ -388,8 +397,11 @@ public sealed class VirtualMachineFinallyTests {
         throwerChunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset));
 
         var (vm, _) = NewVm();
-        Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
 
+        Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
+        Assert.Equal(2, ex.Line);
+        Assert.Equal(0, ex.Column);
         Assert.Equal(1L, vm.Globals["finallyRan"].AsInt());
 
         var readBack = new Chunk();

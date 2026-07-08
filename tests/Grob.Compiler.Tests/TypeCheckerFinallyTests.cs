@@ -32,7 +32,9 @@ public sealed class TypeCheckerFinallyTests {
             try { x := 1 } finally { y := 2 } catch (e: IoError) { z := 3 }
             """);
 
-        Assert.Contains(bag.Errors, d => d.Code == "E2206");
+        Diagnostic error = Assert.Single(bag.Errors, d => d.Code == "E2206");
+        Assert.Equal(1, error.Range.Start.Line);
+        Assert.Equal(35, error.Range.Start.Column);
     }
 
     [Fact]
@@ -41,7 +43,9 @@ public sealed class TypeCheckerFinallyTests {
             try { x := 1 } finally { y := 2 } finally { z := 3 }
             """);
 
-        Assert.Contains(bag.Errors, d => d.Code == "E2206");
+        Diagnostic error = Assert.Single(bag.Errors, d => d.Code == "E2206");
+        Assert.Equal(1, error.Range.Start.Line);
+        Assert.Equal(35, error.Range.Start.Column);
     }
 
     [Fact]
@@ -73,7 +77,9 @@ public sealed class TypeCheckerFinallyTests {
             }
             """);
 
-        Assert.Contains(bag.Errors, d => d.Code == "E2207");
+        Diagnostic error = Assert.Single(bag.Errors, d => d.Code == "E2207");
+        Assert.Equal(2, error.Range.Start.Line);
+        Assert.Equal(30, error.Range.Start.Column);
     }
 
     [Fact]
@@ -84,7 +90,9 @@ public sealed class TypeCheckerFinallyTests {
             }
             """);
 
-        Assert.Contains(bag.Errors, d => d.Code == "E2207");
+        Diagnostic error = Assert.Single(bag.Errors, d => d.Code == "E2207");
+        Assert.Equal(2, error.Range.Start.Line);
+        Assert.Equal(30, error.Range.Start.Column);
     }
 
     [Fact]
@@ -95,7 +103,9 @@ public sealed class TypeCheckerFinallyTests {
             }
             """);
 
-        Assert.Contains(bag.Errors, d => d.Code == "E2207");
+        Diagnostic error = Assert.Single(bag.Errors, d => d.Code == "E2207");
+        Assert.Equal(2, error.Range.Start.Line);
+        Assert.Equal(30, error.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------

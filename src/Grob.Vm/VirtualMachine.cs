@@ -249,7 +249,7 @@ public sealed class VirtualMachine {
     /// when it reaches its own region's closing <see cref="OpCode.TryEnd"/> — tracked by
     /// <c>finallyDepth</c> counting the TryBegin/TryEnd of any nested try inside the finally,
     /// so only the unbalanced closing TryEnd stops it — rather than at a <c>Return</c>. A
-    /// throw that escapes the body raises <see cref="FinallyEscape"/> via
+    /// throw that escapes the body raises <see cref="FinallyEscapeException"/> via
     /// <see cref="PropagateThrow"/>.
     /// </param>
     /// <param name="finallyBoundaryStart">Start offset of the bounded finally body (the
@@ -1316,7 +1316,7 @@ public sealed class VirtualMachine {
     /// (the caller raises E5904). When <paramref name="boundaryFloor"/> ≥ 0 the walk is confined
     /// to a bounded finally body: at that frame only regions inside the body
     /// (start ≥ <paramref name="boundaryStart"/>) are eligible, and an uncaught throw raises
-    /// <see cref="FinallyEscape"/> so the enclosing driver replaces its in-flight exception.
+    /// <see cref="FinallyEscapeException"/> so the enclosing driver replaces its in-flight exception.
     /// </para>
     /// </remarks>
     private bool PropagateThrow(
@@ -1358,7 +1358,7 @@ public sealed class VirtualMachine {
             // No handler in this chunk. A bounded finally body's uncaught throw escapes to
             // its enclosing driver rather than propagating past the finally.
             if (boundaryFloor >= 0 && _frameCount == boundaryFloor)
-                throw new FinallyEscape(exceptionValue, exceptionStruct);
+                throw new FinallyEscapeException(exceptionValue, exceptionStruct);
 
             if (_frameCount == 0) return false;
 
@@ -1377,12 +1377,14 @@ public sealed class VirtualMachine {
     /// current frame (unchanged <see cref="_stackBase"/>, so the finally reads the enclosing
     /// function's locals directly — matching the compiler's inline copies). The body runs via
     /// a bounded <see cref="RunDispatch"/> that stops at the region's own closing
-    /// <see cref="OpCode.TryEnd"/>. Returns <see langword="false"/> when the finally completes
-    /// normally and <see langword="true"/> when it threw and the throw escaped its own body —
-    /// in which case the in-flight exception is replaced with the new one (D-275). The
-    /// escaping walk has already unwound back to this frame by the time the escape is caught.
+    /// <see cref="OpCode.TryEnd"/>. When the finally throws and the throw escapes its own body,
+    /// the in-flight exception is replaced with the new one via the <see langword="ref"/>
+    /// parameters (D-275) — the caller does not need to know whether that happened, only that
+    /// <paramref name="exceptionValue"/>/<paramref name="exceptionStruct"/> are current on
+    /// return, so this method reports nothing further. The escaping walk has already unwound
+    /// back to this frame by the time the escape is caught.
     /// </summary>
-    private bool RunFinallyExceptional(
+    private void RunFinallyExceptional(
             TryRegion region, ref GrobValue exceptionValue, ref GrobStruct exceptionStruct) {
         int savedIp = _ip;
         Chunk savedChunk = _activeChunk;
@@ -1391,15 +1393,12 @@ public sealed class VirtualMachine {
         try {
             RunDispatch(floorFrameCount: floor, isReentrant: false,
                 boundedFinally: true, finallyBoundaryStart: region.FinallyOffset, finallyBoundaryFloor: floor);
-            _ip = savedIp;
-            _activeChunk = savedChunk;
-            return false;
-        } catch (FinallyEscape escape) {
+        } catch (FinallyEscapeException escape) {
             exceptionValue = escape.Value;
             exceptionStruct = escape.ExceptionStruct;
+        } finally {
             _ip = savedIp;
             _activeChunk = savedChunk;
-            return true;
         }
     }
 
@@ -1428,13 +1427,15 @@ public sealed class VirtualMachine {
     /// Internal control-flow signal raised when a finally body running on the exceptional
     /// unwind path throws an exception it does not catch itself. Carries the replacement
     /// exception back to the enclosing <see cref="PropagateThrow"/> driver (D-275). Never
-    /// leaves <see cref="RunFinallyExceptional"/>.
+    /// leaves <see cref="RunFinallyExceptional"/> — deliberately <see langword="private"/>,
+    /// the same pattern as <c>Parser.ParseFailedException</c>: a same-class-only control-flow
+    /// signal, not a reportable error, so it stays out of the public API surface.
     /// </summary>
-    private sealed class FinallyEscape : Exception {
+    private sealed class FinallyEscapeException : Exception {
         public GrobValue Value { get; }
         public GrobStruct ExceptionStruct { get; }
 
-        public FinallyEscape(GrobValue value, GrobStruct exceptionStruct) {
+        public FinallyEscapeException(GrobValue value, GrobStruct exceptionStruct) {
             Value = value;
             ExceptionStruct = exceptionStruct;
         }

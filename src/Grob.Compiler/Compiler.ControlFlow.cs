@@ -77,7 +77,7 @@ public sealed partial class Compiler {
 
         // Run the finally of every try/finally nested inside the loop being broken
         // out of, innermost first, before the loop-scope cleanup and jump (D-275).
-        EmitCrossedFinallies(line);
+        EmitCrossedFinallies();
 
         // Pop locals declared inside the loop above this break — they are not
         // cleaned up by VisitBlock because the break jumps past the block exit.
@@ -109,7 +109,7 @@ public sealed partial class Compiler {
 
         // Run the finally of every try/finally nested inside the loop being
         // continued, innermost first, before the loop-scope cleanup and jump (D-275).
-        EmitCrossedFinallies(line);
+        EmitCrossedFinallies();
 
         // Pop locals declared inside the loop above this continue — they are not
         // cleaned up by VisitBlock because the continue jumps past the block exit.
@@ -360,7 +360,7 @@ public sealed partial class Compiler {
     /// not crossed and is skipped. The finally bodies run while the try-body locals
     /// are still live, before the loop-scope cleanup pops them.
     /// </summary>
-    private void EmitCrossedFinallies(int line) {
+    private void EmitCrossedFinallies() {
         int loopDepth = _loopContexts.Count;
         // Stack enumeration is top-first, i.e. innermost try/finally first.
         foreach (TryFinallyContext tf in _tryFinallyContexts) {
