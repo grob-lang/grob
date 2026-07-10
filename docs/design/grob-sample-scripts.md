@@ -1,5 +1,15 @@
 # Grob — Sample Scripts & API Surface Validation
 
+> **Scope.** This document holds the **thirteen release-gate validation scripts**.
+> All thirteen must compile and run correctly before v1 ships. They are implemented
+> as integration tests in `tests/Grob.Integration.Tests`.
+>
+> They are **not** the sprint-close smoke scripts (`hello.grob`, `calculator.grob`,
+> `functions.grob`, `types.grob`, `errors.grob`), which are a separate, cumulative
+> per-sprint gate documented in `grob-v1-requirements.md` § Sprint-Close Smoke
+> Scripts (D-337). The two families were conflated in the Sprint 7 Increment E
+> prompt; the smoke scripts have never lived in this document.
+
 > This document is the living bible for Grob’s MVP API surface.
 > Each entry shows a real script from PS, bash, or Go — then the Grob equivalent.
 > Grob scripts use the language and stdlib as currently designed.
