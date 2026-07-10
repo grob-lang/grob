@@ -111,20 +111,40 @@ jobs:
       # and fails the job if blended coverage drops below 80%.  This is a
       # ratchet floor on the in-scope denominator, not the 90% new-code gate
       # (which SonarCloud enforces server-side via sonar.qualitygate.wait).
+      #
+      # Test projects share transitive references (every project pulls in
+      # Grob.Core; Grob.Integration.Tests pulls in the whole src/ graph via
+      # Grob.Cli), so the same assembly is instrumented afresh in more than
+      # one report. Summing each report's own Summary totals therefore
+      # double- and triple-counts shared modules' denominators and blends in
+      # each incidental, partial view of the same code. Deduplicating per
+      # sequence point — keyed on module/file/source-span, visited if *any*
+      # report visited it — mirrors tooling/coverage-gate.ps1's local gate.
       - name: Check coverage floor (80%)
         run: |
           python3 - << 'EOF'
           import xml.etree.ElementTree as ET, glob, sys
-          visited = total = 0
+          seen = {}
           for f in glob.glob('**/TestResults/**/coverage.opencover.xml', recursive=True):
               root = ET.parse(f).getroot()
-              s = root.find('Summary')
-              if s is not None:
-                  visited += int(s.get('visitedSequencePoints', 0))
-                  total   += int(s.get('numSequencePoints', 0))
-          if total == 0:
+              for module in root.iter('Module'):
+                  name_el = module.find('ModulePath')
+                  module_path = name_el.text if name_el is not None else '?'
+                  files = {}
+                  files_el = module.find('Files')
+                  if files_el is not None:
+                      for file_el in files_el.findall('File'):
+                          files[file_el.get('uid')] = file_el.get('fullPath')
+                  for sp in module.iter('SequencePoint'):
+                      file_path = files.get(sp.get('fileid'), '?')
+                      key = (module_path, file_path, sp.get('sl'), sp.get('sc'), sp.get('el'), sp.get('ec'))
+                      visited = int(sp.get('vc', 0)) > 0
+                      seen[key] = seen.get(key, False) or visited
+          if not seen:
               print('No coverage data found.', file=sys.stderr)
               sys.exit(1)
+          total = len(seen)
+          visited = sum(1 for v in seen.values() if v)
           pct = 100 * visited / total
           print(f'Coverage: {pct:.1f}% ({visited}/{total} sequence points)')
           sys.exit(0 if pct >= 80 else 1)

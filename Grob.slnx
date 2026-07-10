@@ -19,6 +19,7 @@
     <Project Path="tests\Grob.Vm.Tests\Grob.Vm.Tests.csproj" />
     <Project Path="tests\Grob.Stdlib.Tests\Grob.Stdlib.Tests.csproj" />
     <Project Path="tests\Grob.Consistency.Tests\Grob.Consistency.Tests.csproj" />
+    <Project Path="tests\Grob.Integration.Tests\Grob.Integration.Tests.csproj" />
   </Folder>
   <Folder Name="/bench/">
     <Project Path="bench\Grob.Benchmarks\Grob.Benchmarks.csproj" />

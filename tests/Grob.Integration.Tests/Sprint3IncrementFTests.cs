@@ -113,9 +113,14 @@ public sealed class Sprint3IncrementFTests {
         // print(42) should output "42" exactly once, not "42\n42".
         (string stdout, string _, int _) = RunRepl("print(42)\nexit");
 
+        // Strip the banner line to avoid false matches from MinVer's build
+        // height (e.g. "0.5.0-alpha.0.142"), then count "42" occurrences in
+        // the remaining output. If print(42) were auto-printed, "42" would
+        // appear twice (once from print, once from auto-print).
+        string outputAfterBanner = stdout[(stdout.IndexOf(NL) + NL.Length)..];
         int count = 0;
         int pos = 0;
-        while ((pos = stdout.IndexOf("42", pos, StringComparison.Ordinal)) >= 0) {
+        while ((pos = outputAfterBanner.IndexOf("42", pos, StringComparison.Ordinal)) >= 0) {
             count++;
             pos++;
         }

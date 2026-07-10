@@ -46,10 +46,14 @@ public sealed class Sprint6IncrementBTests {
             }
             readonly c := Config { host: "example.com", port: 8080 }
             print(c)
+            print(c.host)
+            print(c.port)
             """);
 
-        // The runtime representation includes the type name and field values.
-        Assert.Contains("Config", stdout);
+        // print() on the struct itself is the opaque "[TypeName]" placeholder
+        // (GrobValue.ToString(), same convention as arrays/maps) — field
+        // values are observed via field access, not the struct's own print().
+        Assert.Contains("[Config]", stdout);
         Assert.Contains("example.com", stdout);
         Assert.Contains("8080", stdout);
     }
@@ -66,7 +70,7 @@ public sealed class Sprint6IncrementBTests {
             port: int = 80
             }
             readonly c := Config { host: "localhost" }
-            print(c)
+            print(c.port)
             """);
 
         Assert.Contains("80", stdout);
@@ -80,7 +84,7 @@ public sealed class Sprint6IncrementBTests {
             port: int = 80
             }
             readonly c := Config { host: "localhost", port: 443 }
-            print(c)
+            print(c.port)
             """);
 
         Assert.Contains("443", stdout);
@@ -103,7 +107,8 @@ public sealed class Sprint6IncrementBTests {
             address: Address
             }
             readonly p := Person { name: "Alice", address: Address { city: "London" } }
-            print(p)
+            print(p.name)
+            print(p.address.city)
             """);
 
         Assert.Contains("Alice", stdout);

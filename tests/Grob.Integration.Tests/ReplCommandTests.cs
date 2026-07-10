@@ -70,10 +70,14 @@ public sealed class ReplCommandTests {
         // print(x) is a side-effecting built-in — it must NOT be auto-printed again.
         (string stdout, _, _) = RunRepl($"print(42){NL}exit");
 
-        // stdout should contain exactly one "42", not two.
+        // Strip the banner line to avoid false matches from MinVer's build
+        // height (e.g. "0.5.0-alpha.0.142"), then count "42" occurrences in
+        // the remaining output. If print(42) were auto-printed, "42" would
+        // appear twice (once from print, once from auto-print).
+        string outputAfterBanner = stdout[(stdout.IndexOf(NL) + NL.Length)..];
         int count = 0;
         int idx = -1;
-        while ((idx = stdout.IndexOf("42", idx + 1, StringComparison.Ordinal)) >= 0)
+        while ((idx = outputAfterBanner.IndexOf("42", idx + 1, StringComparison.Ordinal)) >= 0)
             count++;
         Assert.Equal(1, count);
     }

@@ -64,25 +64,56 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "dotnet test failed ($LASTEXITCODE)" }
 
     # Aggregate line-coverage across all OpenCover reports for *this* run.
+    #
+    # Test projects share transitive references (every project pulls in
+    # Grob.Core; Grob.Integration.Tests pulls in the whole src/ graph via
+    # Grob.Cli), so the same assembly is instrumented afresh in more than one
+    # report — each report's own Summary reflects only *that* project's
+    # narrower exercise of the shared code. Summing Summary totals per report
+    # (the previous approach) therefore double- and triple-counts shared
+    # modules' denominators and blends in each incidental, partial view,
+    # dragging the aggregate below what any single project's dedicated suite
+    # actually achieves. Deduplicating per sequence point — keyed on the
+    # module/file/source-span identity, visited if *any* report visited it —
+    # is the correct merge: a line is either covered by the test suite as a
+    # whole or it is not, regardless of how many reports happen to mention it.
     $reports = Get-ChildItem -Path $resultsDir -Filter "coverage.opencover.xml" -Recurse -ErrorAction SilentlyContinue
     if (-not $reports) {
         throw "No coverage reports found under $resultsDir. Did 'dotnet test' actually run?"
     }
 
-    $totalVisited = 0
-    $totalSequencePoints = 0
+    $seen = @{}
     foreach ($r in $reports) {
         [xml]$xml = Get-Content $r.FullName
-        $summary = $xml.CoverageSession.Summary
-        if ($summary) {
-            $totalVisited        += [int]$summary.visitedSequencePoints
-            $totalSequencePoints += [int]$summary.numSequencePoints
+        foreach ($module in $xml.CoverageSession.Modules.Module) {
+            $modulePath = $module.ModulePath
+
+            $files = @{}
+            if ($module.Files -and $module.Files.File) {
+                foreach ($f in $module.Files.File) {
+                    $files[$f.uid] = $f.fullPath
+                }
+            }
+
+            foreach ($sp in $module.SelectNodes(".//SequencePoint")) {
+                $filePath = if ($files.ContainsKey($sp.fileid)) { $files[$sp.fileid] } else { "?" }
+                $key = "$modulePath|$filePath|$($sp.sl)|$($sp.sc)|$($sp.el)|$($sp.ec)"
+                $visited = ([int]$sp.vc) -gt 0
+                if (-not $seen.ContainsKey($key)) {
+                    $seen[$key] = $visited
+                } elseif ($visited) {
+                    $seen[$key] = $true
+                }
+            }
         }
     }
 
-    if ($totalSequencePoints -eq 0) {
+    if ($seen.Count -eq 0) {
         throw "Coverage reports contained no sequence points."
     }
+
+    $totalSequencePoints = $seen.Count
+    $totalVisited = ($seen.Values | Where-Object { $_ }).Count
 
     $pct = [math]::Round(100.0 * $totalVisited / $totalSequencePoints, 2)
     Write-Host ""
