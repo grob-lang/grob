@@ -1282,6 +1282,34 @@ Long-form documentation for each code (cause, example, fix) is read by
 - Edge cases and failure paths are tested as thoroughly as the happy path.
 - The thirteen sample scripts are integration tests in `Grob.Integration.Tests`.
 
+### Sprint-Close Smoke Scripts
+
+> **Authority:** D-337. Distinct from the thirteen release-gate validation scripts
+> of `grob-sample-scripts.md`. The validation suite is a **v1 gate**; the smoke
+> family is a **per-sprint gate**. Both live in `Grob.Integration.Tests`.
+
+Each sprint close adds one end-to-end smoke script, gold-mastered against its exact
+stdout, stderr and exit code. The family is **cumulative** — every prior script must
+still pass at every subsequent close.
+
+|Script          |Added at |Exercises                                                   |Exit|
+|----------------|---------|------------------------------------------------------------|----|
+|`hello.grob`    |Sprint 3 |Lexer → parser → compiler → VM, `print()`                    |0   |
+|`calculator.grob`|Sprint 4|Arithmetic, control flow, checked overflow                   |0   |
+|`functions.grob`|Sprint 5 |Functions, closures, upvalue capture                          |0   |
+|`types.grob`    |Sprint 6 |Struct types, construction, field access                      |0   |
+|`errors.grob`   |Sprint 7 |`throw`, typed `catch`, source-order first-match, catch-all, `finally` on normal and exceptional paths, nested finally with early `return` (D-334), runtime `ArithmeticError` catchability, `exit()` uncatchability|42  |
+
+**The contract is stdout, stderr and exit code.** Not exit 0. `errors.grob` exits
+**42** by design: `exit(42)` is the final statement inside a `try`/`catch`/`finally`,
+and neither the catch nor the finally runs. Any harness assuming a uniform exit 0
+across the family is incorrect as of Sprint 7.
+
+**Solution membership is gated.** `Grob.Integration.Tests` was silently dropped from
+`Grob.slnx` between Sprint 5 and Sprint 7, during which none of these scripts ran under
+`dotnet test` or CI (D-335). `Grob.Consistency.Tests` now asserts that every
+`**/*.Tests.csproj` under `tests/` is referenced by `Grob.slnx`; drift fails the build.
+
 ### Benchmarking — Per-Sprint Regression Gate
 
 > **Authority:** `grob-benchmarking-strategy.md` (D-302). This section

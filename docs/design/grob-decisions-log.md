@@ -332,6 +332,9 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-332 | June 2026                                                         | VM — operand-stack allocation | `ValueStack`'s backing array right-sized from a fixed 16,384-slot (393 KB) allocation to a 1,024-slot (24 KB) default that grows geometrically (doubling, capped at the unchanged 16,384-slot ceiling) via `Array.Resize` on `Push`. Fixes the Sprint 6 benchmark finding — all three VM benchmarks showed `Gen0 == Gen1 == Gen2` (a full compacting GC every op) because the fixed array cleared the ~85,000-byte LOH threshold and a fresh `VirtualMachine`/`ValueStack` is constructed per run. Overflow guard (E5903) and effective depth cap unchanged; D-325 open upvalues (stack object + slot index, never a raw reference/span) survive the resize transparently — the sole `Span<GrobValue>` in `Grob.Vm` is the `#if DEBUG` trace hook's per-iteration, never-cached snapshot. No new error code; count unchanged. Baseline recapture on `windows-latest` via `benchmark.yml` pending — not performed in this local session (D-309 forbids a locally-produced committed baseline) |
 | D-333 | July 2026                                                         | Tooling — benchmarking | Benchmark gate hardened on three fronts. A hard **allocation axis** reads `[MemoryDiagnoser]`'s already-committed `BytesAllocatedPerOperation`: a percent-vs-rolling threshold (`allocPercent`, 10%) on gating categories, plus an absolute **LOH tripwire** (`lohTripwireBytes`, 85,000 B) that fails outright on any category regardless of gating — the check that would have caught D-332 on day one instead of reading "info". The per-sprint **time axis is significance-aware**: a breach now requires the delta to exceed `max(perSprintPercent, timeSignificanceK × relativeStdDev)`, `timeSignificanceK = 3` (three-sigma), so a delta inside a benchmark's own measurement noise (the Sprint 6 `Compile_TenPrints` false positive) no longer trips it; the cumulative axis is unchanged. `SameRunnerType`/`RunnerMismatch`/`CannotCompare` are replaced by a **CPU-identity guard** (`BenchCheck.SameCpu`, keyed on `HostEnvironmentInfo.ProcessorName`, checked independently against the rolling and origin baseline) after the post-Interlude-1 verification run proved an EPYC-baseline-vs-Xeon-run comparison passed the old OS-family-only guard with a false +25–37% time breach despite byte-identical allocation. Allocation always gates regardless of CPU; time gates only on a CPU match, else informational — refines D-309's "same runner type" to "same CPU identity". `vm.json`/`vm.origin.json` recaptured post-fix (50,265/52,841/58,473 B, off the LOH); `compile.json` (rolling) refreshed to the same Xeon capture after discovering it was three sprints stale; `compile.origin.json` deliberately left with its pre-provenance `"Unknown processor"` host, so the compile cumulative axis reads informational until a separate, logged re-freeze. No new error code; count unchanged |
 | D-334 | July 2026                                                         | Exception handling — finally compilation model | `finally` splits on one axis: the exceptional path (an exception unwinding through a region) is VM-run via handler-table `TryRegion.FinallyOffset`; every non-exceptional path (normal try/catch completion, early `return`/`break`/`continue`) is compiler-emitted, re-visiting `node.Finally`'s AST at each crossing site (duplication expected — the closed `OpCode` enum has no `Leave`/`EndFinally`). Compiler: a `TryFinallyContext` stack mirroring `LoopContext`, popped only after catch bodies compile; `return` crosses every context, `break`/`continue` cross only contexts pushed after the target loop (`LoopDepthAtPush`); a `_nextSlot` reservation parks a `return`'s value below the finally bodies' own locals. VM: the construct span for triggering a finally is bounded by `FinallyOffset` (covers catch bodies too, not just `EndOffset`); `PropagateThrow` drives the outward walk, running each region's finally via `RunFinallyExceptional` — a new bounded mode of the existing `RunDispatch` that runs in the current frame (no call, no upvalues) and stops at the region's own closing `TryEnd`; a throw escaping it raises an internal `FinallyEscape` that replaces the in-flight exception. Rejected: a closure-based exceptional-path invocation via the existing reentrant call machinery (needs no new VM primitive but forces upvalue capture for every referenced local, and doesn't unify with the inline copies anyway). Folds in a mechanical fix making E2206 reachable (`ParseTry` previously broke unconditionally on a matched `finally`, so a trailing catch/finally was structurally unrepresentable and undetectable) — not a new decision. No new error code; count unchanged at 116 |
+| D-335 | July 2026                                                         | Process / CI — solution membership | `tests/Grob.Integration.Tests` restored to `Grob.slnx`, having been silently dropped by PR #94 (`28eb753`, 2026-06-26) incidental to an unrelated change and never logged. For two sprints neither `dotnet test Grob.slnx` nor CI's bare `dotnet test` executed the project, so the Sprint 5 (`functions.grob`) and Sprint 6 (`types.grob`) close-gate smoke masters were unverified by CI, and `Sprint6IncrementBTests` was authored and merged against behaviour the VM never implemented (see D-336). Root cause is not the dropped line but the absence of any mechanical owner: an unreferenced test project fails no gate and contradicts no document. Durable fix is a **test-project membership check** in `tests/Grob.Consistency.Tests` — enumerate `**/*.Tests.csproj` under `tests/`, assert each is referenced by `Grob.slnx`, drift is a build failure. Generalises D-316's mechanical-agreement regime to project membership. No new error code; count unchanged at 116 |
+| D-336 | July 2026                                                         | Runtime — value display protocol | `print()` and string interpolation render composite values through a single `ValueDisplay` service in `Grob.Runtime`, resolving a three-way divergence. §13 mandated "reference types call `.toString()`"; user struct types had no `.toString()` (D-179 gave one to every *built-in* type only); and `OpCode.Print`'s single-arg fast path dispatched through a hardcoded C# switch that called no `.toString()` at all. `GrobValue.ToString()`'s `[TypeName]` fall-through was never a decision — the bracket-tag precedent (D-159 `AuthHeader`) is a deliberate per-type opacity mechanism for credentials, not a display default, and D-101 (`@secure`) is Grob's actual do-not-echo instruction. Two internal entry points: **`Display(v)`** (top-level — strings unquoted, per D-179 identity) and **`Inspect(v)`** (nested — strings quoted, so `"8080"` is distinguishable from `8080`); `toString()` remains the sole public method. Rendering mirrors source syntax: `Config { host: "example.com", port: 8080 }`, `#{ host: "example.com" }` (D-114), `[1, 2, 3]`, `{ "a": 1 }`. Cycles are reachable at runtime because E0301/E0302 reject only *non-terminating* type cycles, so `Inspect` carries reference-identity cycle detection (`<cycle>`) plus a depth cap (`...`). Dispatch is a **numbered precedence**, not a type switch: `nil` → registered `toString()` (terminal) → scalars → position-dependent `string` → structural composite. Step 2 precedes step 5 for a security reason: all plugin types and user `type`s share the `Struct` discriminator (D-297), so `[AuthHeader]`'s credential opacity (D-159) is today produced *accidentally* by the same fall-through arm that emits `[Config]`, and a structural renderer wired ahead of the registry lookup would leak bearer tokens. `Function` values render as their type (`fn(int): int`) — never an address, which would make gold-mastered smoke scripts non-deterministic. `float` always renders round-trippable with a decimal point or exponent (`1.0`, not `1`) under pinned `InvariantCulture`, with pinned `NaN`/`Infinity`/`-Infinity` — an unpinned culture emits `1,5` on a `de-DE` host, silently breaking every gold master and `formatAs.csv`. Supersedes the implicit `[TypeName]`/`[array(N)]`/`[map]` behaviour. The four `Sprint6IncrementBTests` assertions were rewritten mid-interlude to expect `[Config]`; that commit is not a decision and D-336 rewrites them to assert the exact rendered form. Reconciles `print` with `formatAs` (D-282) ahead of Sprint 8. No new error code; count unchanged at 116 |
+| D-337 | July 2026                                                         | Process — sprint-close smoke scripts | The sprint-close smoke-script family gets a documented home in `grob-v1-requirements.md`. Five exist (`hello.grob` Sprint 3, `calculator.grob` Sprint 4, `functions.grob` Sprint 5, `types.grob` Sprint 6, `errors.grob` Sprint 7), each added at a sprint close, each gold-mastered under `tests/Grob.Integration.Tests`. Until now the family appeared in no design document, had no Definition-of-Done row and was named by no decision — the ownership vacuum that let D-335's CI gap persist undetected. Distinct from the thirteen release-gate validation scripts of `grob-sample-scripts.md`: the smoke family is per-sprint and cumulative, the validation suite is a v1 release gate. `errors.grob` departs from the prior four by asserting exit code 42 (`exit()` inside `try`/`catch`/`finally`, neither handler running), so the family's contract is stdout, stderr **and** exit code, not exit 0. No new error code; count unchanged at 116 |
 
 ---
 
@@ -3958,6 +3961,228 @@ boundary). D-300 is the parser-recovery model the E2206 fix follows.
 
 ---
 
+### D-335 — `Grob.Integration.Tests` restored to `Grob.slnx`; test-project membership is a mechanical gate (July 2026)
+
+Area: Process / CI — solution membership
+Supersedes: none (generalises D-316)
+Superseded by: none
+
+**What happened.** PR #94 (`28eb753`, "Enhance VM upvalue handling and add first-class
+function types", merged 2026-06-26) removed the `tests/Grob.Integration.Tests` line from
+`Grob.slnx` while adding `tests/Grob.Consistency.Tests`. The removal was incidental to the
+change, was not a decision, and was not logged. From that commit until this interlude,
+neither `dotnet test Grob.slnx` nor CI's bare `dotnet test` in `ci.yml` (no project
+argument) executed the project.
+
+**The consequences, both of which are worse than the trigger.** First, the Sprint 5
+(`functions.grob`) and Sprint 6 (`types.grob`) close-gate smoke masters were never verified
+by CI after they were written — two sprints closed on a gate that was not running. Second,
+`Sprint6IncrementBTests` was authored, reviewed and merged asserting that `print()` on a
+struct value emits field values, an expectation the VM has never met (D-336). The test could
+not fail because nothing ran it. This is the "never merge known-wrong code" invariant
+breached without anyone being in a position to notice.
+
+**The root cause is not the dropped line.** A `.slnx` edit that drops a project is an
+ordinary mistake, and ordinary mistakes are caught by gates. The reason this one survived
+two sprints is that the artefact it gated had **no mechanical owner**: an unreferenced test
+project fails no build, trips no assertion and contradicts no document. Nothing in the
+repository was in a position to be wrong about it. Fixing only the trigger leaves the class
+intact — the next accidental drop is equally invisible.
+
+**The decision.** `tests/Grob.Integration.Tests` is restored to `Grob.slnx`. A
+**test-project membership check** is added to `tests/Grob.Consistency.Tests`: enumerate
+`**/*.Tests.csproj` on disk under `tests/`, assert that each is referenced by `Grob.slnx`,
+fail the build on drift. Membership is thereby self-relative and frozen-baseline-free, in
+the same shape as D-316's error-code count agreement and D-308's `ErrorCatalog` agreement —
+a project cannot go green while orphaned.
+
+**Relates to D-316, D-308, D-336, D-337.** D-316 established the mechanical-agreement regime
+and this extends it from documents to project membership. D-336 is the defect this gap
+concealed. D-337 documents the smoke-script family whose ownership vacuum is the deeper
+cause. No error code added; count unchanged at 116.
+
+---
+
+### D-336 — Value display protocol: `Display`/`Inspect`, and `print()` renders composite values (July 2026)
+
+Area: Runtime — value display protocol
+Supersedes: none (corrects §13; supersedes the undocumented `[TypeName]` fall-through)
+Superseded by: none
+
+**The divergence.** Three artefacts disagreed, and none of them was wrong on its own terms:
+
+1. `grob-language-fundamentals.md` §13 specifies that `print()` converts value types to
+   their string representations and that **reference types call `.toString()`**.
+2. User-defined struct types have no `.toString()`. D-179 added the method to every
+   *built-in* type ("every built-in type now has `toString()`"); user types were never in
+   scope, and v1 has no user-defined methods.
+3. `OpCode.Print`'s single-arg fast path is a hardcoded C# switch over `GrobValue.Kind` and
+   calls no Grob-level `.toString()` at all. Its fall-through arm renders a struct as
+   `[TypeName]`, an array as `[array(N)]`, a map as `[map]`.
+
+The spec was therefore unimplementable as written, and the implementation's behaviour was
+never chosen.
+
+**`[TypeName]` was not a convention.** The corpus's only bracket-tag precedents are
+deliberate, per-type and security-motivated: D-159 gives `AuthHeader.toString()` the value
+`"[AuthHeader]"` explicitly so it *never exposes the credential, including under `--verbose`*.
+D-160 gives `ProcessResult.toString()` the value of `stdout` because that is "the most useful
+default for interpolation and print" — when the corpus reasons about defaults it optimises
+for usefulness. And D-101 establishes `@secure` as Grob's do-not-echo instruction, a handling
+instruction rather than a type. Universal struct opacity is therefore not a security posture;
+it is a debug formatter's fall-through arm resembling one. Grob currently offers **no way at
+all** to inspect a struct's contents: `print` is opaque and `formatAs` does not land until
+Sprint 8.
+
+**The decision — two entry points, one public method.** A `ValueDisplay` service in
+`Grob.Runtime` becomes the single renderer, consulted by `print()`, by string interpolation,
+and by `formatAs` when Sprint 8 lands:
+
+- **`Display(v)`** — the top-level position. Strings render unquoted, preserving D-179's
+  `string.toString()` identity: `print("hi")` emits `hi`.
+- **`Inspect(v)`** — the nested position, inside a struct, array or map. Strings render
+  quoted, so `"8080"` is distinguishable from `8080`. This is Python's `str`/`repr` and
+  Rust's `Display`/`Debug`; a statically typed language that cannot show the difference
+  between a string and an int in its own debug output defeats its own purpose.
+
+`toString()` remains the sole public surface. `Inspect` is internal to `Grob.Runtime`.
+`print()`'s fast path dispatches through `ValueDisplay` rather than switching inline; types
+carrying a registered `toString()` (`AuthHeader`, `ProcessResult`, `json.Node`, `guid`) are
+consulted through it, so D-159's opacity survives unchanged.
+
+**Dispatch is a numbered precedence, not a type switch.** The order is load-bearing and
+step 2 is security-critical:
+
+1. `nil` → `nil`.
+2. **The value's type has a registered `toString()` → call it. Terminal.**
+3. Scalars (`int`, `float`, `bool`) → their representation.
+4. `string` → position-dependent: unquoted under `Display`, quoted and escaped under `Inspect`.
+5. Composites (`Struct`, `Array`, `Map`) → structural rendering, recursing via `Inspect`.
+
+**Why step 2 must precede step 5.** Per D-297, `GrobValueKind` has nine variants and
+**plugin types and user-declared `type`s all share the `Struct` discriminator** — `date`,
+`guid`, `File`, `ProcessResult`, `json.Node`, `Regex`, `Match`, `csv.Table`, `CsvRow`,
+`Response`, `AuthHeader` and `ZipEntry` alongside every user `type`. Runtime discrimination
+happens at the type-registry level via the boxed reference. Consequently the fall-through arm
+that renders `[Config]` is *the same arm* that renders `[AuthHeader]`, and `print`'s fast path
+calls no Grob-level `toString()`. D-159's guarantee — that `AuthHeader` never exposes the
+credential, including under `--verbose` — therefore holds today **by accident**, produced by
+the generic opaque fall-through rather than by the registered method D-159 specifies. A
+structural renderer wired ahead of the registry lookup emits the bearer token. Acceptance
+criterion: **no type carrying a registered `toString()` is ever structurally rendered**, with a
+test asserting `print(auth.bearer(secret))` never contains `secret`.
+
+**`Function` values render as their type.** `print(makeCounter())` emits `fn(): int`;
+`fn(int): int` for a parameterised type. D-326 made function types first-class and returnable,
+so function values are printable Grob today with no specified rendering. An identity or address
+(Python's `<function f at 0x…>`, Go's pointer) is rejected outright: the sprint-close smoke
+scripts are gold-mastered against exact stdout, and a non-deterministic rendering makes the
+release gate unrunnable. Closures expose no captures.
+
+**`float` renders round-trippable, with a decimal point, under invariant culture.**
+`print(1.0)` emits `1.0`, not `1` — .NET's `double.ToString()` drops the fractional part, which
+would make `float` and `int` indistinguishable in the output of a statically typed language, the
+same defect class the `Inspect` quoting rule exists to prevent. `print(0.1 + 0.2)` emits
+`0.30000000000000004`, as Go and Python do. Every numeric conversion in `ValueDisplay` pins
+`CultureInfo.InvariantCulture`; `NaN`, `Infinity` and `-Infinity` carry pinned spellings.
+Unpinned, a `de-DE` or `fr-FR` host — squarely inside Grob's Windows sysadmin audience — emits
+`1,5`, breaking every gold master and writing commas into `formatAs.csv` fields, reproducible
+only on machines the maintainer does not own.
+
+**Rendering mirrors source syntax.** A printed value reads back as the literal that would
+construct it — a free property, and the reason to prefer named fields over Go's positional
+`%v`:
+
+```
+Config { host: "example.com", port: 8080 }     // named struct type
+#{ host: "example.com", port: 8080 }           // anonymous struct literal (D-114)
+[1, 2, 3]                                      // array
+{ "a": 1, "b": 2 }                             // map
+nil                                            // nil, in any position
+```
+
+**Cycles are reachable and must be handled.** E0301 and E0302 reject type cycles with *no
+terminating field*, which means `type Node { value: int, next: Node? }` is legal and
+`a.next = b; b.next = a` is constructible at runtime. `Inspect` therefore carries
+reference-identity cycle detection, rendering a revisited object as `<cycle>`, with a depth
+cap rendering `...` as a backstop. The visited set is allocated only when a composite is
+nested — the scalar and flat-struct paths allocate nothing.
+
+**Consequences for `Sprint6IncrementBTests`, and a warning to future archaeology.** The four
+assertions originally required field values in `print()` output (`Assert.Contains("example.com",
+stdout)` and siblings). That expectation was **correct**; the implementation was absent. During
+the Sprint 7E interlude they were instead rewritten to expect `[Config]`, before this decision
+was taken. Under D-336 they are rewritten again — this time asserting the exact rendered form,
+`Config { host: "example.com", port: 8080 }`, rather than substring containment, a stronger
+assertion than either prior version.
+
+**The interlude commit that rewrote them to expect `[Config]` does not represent a decision**
+and must not be read as one. This matters because the defect was originally mis-diagnosed by
+exactly that method: reading `git log`, observing that `GrobValue.ToString()` had never emitted
+anything but `[TypeName]`, and inferring the behaviour was therefore intentional. It was not —
+it was a debug formatter's fall-through arm, resembling D-159's deliberate per-type credential
+opacity by coincidence. A commit message asserting the tests were corrected to match intended
+output now exists in the history and will read as confirmation to anyone repeating that query.
+It is not confirmation. This entry is the record; the commit is not.
+
+Rewriting the assertions to expect `[Config]` was the wrong remedy for a further reason: it
+ratifies an undecided language surface inside a test file with no decision entry, freezes it into
+a gold master, and destroys the only artefact in the repository signalling that the spec and the
+implementation disagreed. §13 of `grob-language-fundamentals.md` is corrected in the same change
+so it describes dispatch that actually occurs.
+
+**Rejected alternatives.** *Positional rendering* (`{example.com 8080}`, Go's `%v`) — loses
+field names, and Grob has no `%+v` escape hatch since it has no format verbs. *Leaving
+collections opaque and fixing only structs* — `[array(N)]` violates §13 identically, and
+`formatAs.table`/`csv` (D-282) is a **presentation** surface (tables, CSV) not an
+**inspection** one; the two coexist as `fmt.Println` and `text/tabwriter` do in Go.
+*Unbounded element counts* retained deliberately — a script author printing an array wants
+the array; only nesting depth is capped.
+
+**Relates to D-179, D-159, D-160, D-101, D-114, D-169, D-282, D-297, E0301/E0302.**
+No error code added; count unchanged at 116.
+
+---
+
+### D-337 — The sprint-close smoke-script family is documented (July 2026)
+
+Area: Process — sprint-close smoke scripts
+Supersedes: none
+Superseded by: none
+
+**The gap.** Five smoke scripts exist and none of them appears in any design document:
+`hello.grob` (Sprint 3), `calculator.grob` (Sprint 4), `functions.grob` (Sprint 5),
+`types.grob` (Sprint 6), `errors.grob` (Sprint 7). Each was added at a sprint close as an
+end-to-end gold master. No decision named them, no document listed them, no Definition-of-Done
+row required them. A search of the corpus for any of the five filenames returns nothing.
+
+**Why this matters more than it looks.** D-335 records a test project silently dropped from
+`Grob.slnx` and unnoticed for two sprints. The proximate cause was an editing accident; the
+reason it survived is that the scripts it gated were owned by no document. An artefact that
+appears in no specification cannot make a specification wrong by ceasing to run. Documenting
+the family is the other half of D-335's fix — the membership check makes the project's absence
+mechanically loud, and this entry makes the scripts' purpose legible to a reader who did not
+write them.
+
+**The decision.** `grob-v1-requirements.md` gains a **Sprint-Close Smoke Scripts** section
+recording the family, its growth rule (one script per sprint close, cumulative — every prior
+script must still pass), its location (`tests/Grob.Integration.Tests`, gold-mastered) and its
+contract: **stdout, stderr and exit code**. The exit-code clause is not decoration —
+`errors.grob` exits 42 by design, exercising `exit()` as the final statement inside
+`try`/`catch`/`finally` where neither the catch nor the finally runs. Any harness assuming
+"all smoke scripts exit 0" is wrong as of Sprint 7.
+
+**Distinct from the validation suite.** `grob-sample-scripts.md` holds thirteen release-gate
+validation scripts, all of which must compile and run correctly before v1 ships. That suite is
+a **v1 gate**; the smoke family is a **per-sprint gate**. Both live in
+`tests/Grob.Integration.Tests`. The two were conflated in the Sprint 7 Increment E prompt,
+which asserted the smoke scripts live in `grob-sample-scripts.md`; they never did.
+`grob-sample-scripts.md` gains a cross-reference so the distinction cannot be lost again.
+
+**Relates to D-335, D-336.** No error code added; count unchanged at 116.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -4179,6 +4404,37 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_July 2026 — Pre-Sprint-8 / pre-QA interlude (Sprint 7E hand-off findings): D-335,_
+_D-336 and D-337 added. D-335 restores `tests/Grob.Integration.Tests` to `Grob.slnx`,_
+_silently dropped by PR #94 (`28eb753`, 2026-06-26) and unrun by CI for two sprints,_
+_and adds a test-project membership check to `Grob.Consistency.Tests` (enumerate_
+_`**/*.Tests.csproj`, assert each is referenced, drift fails the build) — generalising_
+_D-316 from documents to project membership. D-336 resolves the value display protocol:_
+_a `ValueDisplay` service in `Grob.Runtime` with `Display(v)` (top-level, strings_
+_unquoted per D-179) and `Inspect(v)` (nested, strings quoted), `toString()` remaining_
+_the sole public method; `print()` and interpolation dispatch through it; structs, arrays_
+_and maps render as source-shaped literals (`Config { host: "example.com", port: 8080 }`,_
+_`[1, 2, 3]`, `{ "a": 1 }`); reference-identity cycle detection (`<cycle>`) plus a depth_
+_cap, since E0301/E0302 reject only non-terminating type cycles. The `[TypeName]`_
+_fall-through was never a decision — D-159's `[AuthHeader]` is deliberate per-type_
+_credential opacity and D-101's `@secure` is the do-not-echo instruction. §13 of_
+_`grob-language-fundamentals.md` corrected to describe dispatch that occurs. Dispatch is a_
+_numbered precedence — nil, then a registered `toString()` (terminal), then scalars, then_
+_position-dependent `string`, then structural composite. Step 2 before step 5 is_
+_security-critical: plugin types and user `type`s share the `Struct` discriminator (D-297),_
+_so `[AuthHeader]`'s credential opacity (D-159) holds today by accident, via the same_
+_fall-through arm that emits `[Config]`; a structural renderer wired first leaks bearer tokens._
+_`Function` values render as their type (`fn(int): int`), never an address — gold masters_
+_require deterministic output. `float` renders round-trippable with a decimal point (`1.0`,_
+_not `1`) under pinned `InvariantCulture`, with pinned `NaN`/`Infinity` — unpinned, a `de-DE`_
+_host emits `1,5` and breaks every gold master and `formatAs.csv`. The four_
+_`Sprint6IncrementBTests` assertions were rewritten mid-interlude to expect `[Config]`; that_
+_commit is not a decision and must not be read as one — the defect was first mis-diagnosed by_
+_inferring intent from `git log`. D-336 rewrites them to assert the exact rendered form._
+_D-337 documents the five sprint-close smoke scripts_
+_(`hello`, `calculator`, `functions`, `types`, `errors`), their cumulative growth rule and_
+_their stdout/stderr/exit-code contract — `errors.grob` exits 42 by design. No error codes_
+_added; count unchanged at 116._
 _July 2026 — Sprint 7 Increment C (`finally`): D-334 added. The exceptional path_
 _(an exception unwinding through a region) is VM-run via handler-table_
 _`TryRegion.FinallyOffset`; every non-exceptional path (normal try/catch_

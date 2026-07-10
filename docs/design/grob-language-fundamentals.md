@@ -1132,9 +1132,9 @@ print()                     // no args — prints empty line
 
 **Specification:**
 
-- Accepts any type. Value types (`int`, `float`, `bool`) are converted to their
-  string representations. Reference types call `.toString()`. `nil` prints as
-  the string `"nil"`.
+- Accepts any type. Every value is rendered by the `ValueDisplay` service in the
+  top-level (`Display`) position — see **Value Display** below (D-336). `nil`
+  prints as the string `"nil"`.
 - Variadic — any number of arguments. Multiple values separated by a single space.
 - A newline is appended after the last value.
 - Output goes to **stdout**.
@@ -1151,6 +1151,75 @@ construction. The two sites have different rules because the intent behind
 them differs.
 
 ---
+
+### Value Display
+
+> **Authority:** D-336. `print()`, string interpolation and (from Sprint 8)
+> `formatAs` all render through one service, `ValueDisplay`, in `Grob.Runtime`.
+
+**Dispatch precedence.** Rendering resolves in order. Step 2 is security-critical and must
+never be reordered below step 5:
+
+1. `nil` → `nil`
+2. **Type has a registered `toString()` → call it. Terminal.**
+3. Scalars (`int`, `float`, `bool`)
+4. `string` → position-dependent (see below)
+5. Composites (`Struct`, `Array`, `Map`) → structural, recursing via `Inspect`
+
+Plugin types and user `type`s share the `Struct` discriminator, so a structural renderer
+placed ahead of step 2 would print an `AuthHeader`'s credential (D-159, D-297). No type
+carrying a registered `toString()` is ever structurally rendered.
+
+Rendering depends on **position**, not only on type. A value at the top level of a
+`print()` call is in the *display* position; a value nested inside a struct, array
+or map is in the *inspect* position.
+
+|Position |Entry point  |Strings          |Used by                                  |
+|---------|-------------|-----------------|-----------------------------------------|
+|Top-level|`Display(v)` |Unquoted         |`print(x)`, `"${x}"`                     |
+|Nested   |`Inspect(v)` |Quoted, escaped  |Fields, array elements, map keys & values|
+
+`print("hi")` emits `hi` — `string.toString()` is the identity (D-179).
+`print(#{ host: "hi" })` emits `#{ host: "hi" }` — the quotes are what distinguish
+the string `"8080"` from the int `8080`. `toString()` is the only public method;
+`Inspect` is internal to `Grob.Runtime`.
+
+**Rendering mirrors source syntax.** A printed value reads back as the literal that
+would construct it:
+
+```grob
+Config { host: "example.com", port: 8080 }     // named struct type
+#{ host: "example.com", port: 8080 }           // anonymous struct literal
+[1, 2, 3]                                      // array
+{ "a": 1, "b": 2 }                             // map
+nil                                            // nil, in any position
+```
+
+**Registered `toString()` wins.** Types that define their own `toString()` are
+rendered through it in both positions. `AuthHeader` renders `[AuthHeader]` and
+never exposes the credential (D-159); `ProcessResult` renders its `stdout` (D-160).
+Opacity in Grob is per-type and deliberate — it is never a default.
+
+**Scalars.** `float` always renders round-trippable and always carries a decimal point or
+exponent — `print(1.0)` emits `1.0`, never `1`, so `float` stays distinguishable from `int`.
+`print(0.1 + 0.2)` emits `0.30000000000000004`. All numeric conversion uses
+`InvariantCulture`; `NaN`, `Infinity` and `-Infinity` have pinned spellings. A
+locale-sensitive conversion would emit `1,5` on a `de-DE` host and corrupt both gold masters
+and `formatAs.csv` output.
+
+**Function values.** A function value renders as its type: `fn(): int`, `fn(int): int`.
+Never an identity or address — output must be deterministic for gold-mastered tests.
+Closures expose no captures.
+
+**Cycles and depth.** `E0301`/`E0302` reject type cycles with no terminating field,
+so `type Node { value: int, next: Node? }` is legal and a runtime cycle is
+constructible. `Inspect` tracks reference identity and renders a revisited object as
+`<cycle>`; a depth cap renders `...` as a backstop. Element counts are **not**
+capped — a script author printing an array wants the array.
+
+**`print()` is inspection, not presentation.** `formatAs.table()`, `formatAs.list()`
+and `formatAs.csv()` (D-282) are the presentation surface. The two coexist and do
+not overlap.
 
 ## 14. Line Continuation
 
