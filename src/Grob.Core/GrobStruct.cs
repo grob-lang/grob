@@ -15,6 +15,10 @@ public sealed class GrobStruct : IEquatable<GrobStruct> {
     // Ordered field storage. _fields is the source-order list the display service
     // reads; _index maps a field name to its position for O(1) lookup and update.
     private readonly List<KeyValuePair<string, GrobValue>> _fields;
+    // A cached read-only view over _fields, exposed through Fields so a host caller
+    // cannot cast the result back to the backing list and mutate it (which would
+    // leave _index stale). The view is live: later SetField appends remain visible.
+    private readonly IReadOnlyList<KeyValuePair<string, GrobValue>> _fieldsView;
     private readonly Dictionary<string, int> _index;
 
     /// <summary>The declared type name, e.g. <c>"Point"</c>.</summary>
@@ -43,6 +47,7 @@ public sealed class GrobStruct : IEquatable<GrobStruct> {
         TypeName = typeName;
         IsAnonymous = isAnonymous;
         _fields = [];
+        _fieldsView = _fields.AsReadOnly();
         _index = new Dictionary<string, int>(StringComparer.Ordinal);
         if (fields is not null) {
             foreach (var (key, value) in fields)
@@ -55,7 +60,7 @@ public sealed class GrobStruct : IEquatable<GrobStruct> {
     /// supplied at construction, with any later-added field appended. Reflects the
     /// current value of every field. Read-only; never mutated by callers.
     /// </summary>
-    public IReadOnlyList<KeyValuePair<string, GrobValue>> Fields => _fields;
+    public IReadOnlyList<KeyValuePair<string, GrobValue>> Fields => _fieldsView;
 
     /// <summary>
     /// Returns the value of the field named <paramref name="name"/>.

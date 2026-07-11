@@ -305,6 +305,23 @@ public sealed class RuntimeTypesTests {
     }
 
     [Fact]
+    public void GrobFunction_Signature_MismatchedParameterCount_Throws() =>
+        Assert.Throws<ArgumentException>(() => new BytecodeFunction(
+            "add", 2, new Chunk(),
+            parameterTypes: new[] { GrobType.Int }));
+
+    [Fact]
+    public void GrobFunction_Signature_IsDefensivelyCopied() {
+        var source = new List<GrobType> { GrobType.Int, GrobType.String };
+        var fn = new BytecodeFunction("add", 2, new Chunk(), parameterTypes: source);
+
+        source[0] = GrobType.Bool;
+        source.Add(GrobType.Float);
+
+        Assert.Equal(new[] { GrobType.Int, GrobType.String }, fn.ParameterTypes);
+    }
+
+    [Fact]
     public void GrobFunction_EmptyName_IsAllowed_ForAnonymousLambdas() {
         var fn = new BytecodeFunction("", 0, new Chunk());
         Assert.Equal("", fn.Name);
@@ -348,6 +365,16 @@ public sealed class RuntimeTypesTests {
     public void GrobStruct_TryGetField_Miss_ReturnsFalse() {
         var s = new GrobStruct("T");
         Assert.False(s.TryGetField("nope", out _));
+    }
+
+    [Fact]
+    public void GrobStruct_Fields_IsReadOnly_NotBackingList() {
+        var s = new GrobStruct("T");
+        s.SetField("x", GrobValue.FromInt(1));
+
+        Assert.IsNotType<List<KeyValuePair<string, GrobValue>>>(s.Fields);
+        Assert.Throws<NotSupportedException>(
+            () => ((IList<KeyValuePair<string, GrobValue>>)s.Fields).Clear());
     }
 
     // ----- NativeFunction -----

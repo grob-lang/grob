@@ -45,9 +45,19 @@ public abstract class GrobFunction {
         GrobType returnType = GrobType.Unknown) {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentOutOfRangeException.ThrowIfNegative(arity);
+        // A supplied signature must have one type per parameter — a count that
+        // disagrees with the arity is contradictory display metadata (D-336).
+        if (parameterTypes is not null && parameterTypes.Count != arity)
+            throw new ArgumentException(
+                "Parameter type count must match the function arity.",
+                nameof(parameterTypes));
         Name = name;
         Arity = arity;
-        ParameterTypes = parameterTypes ?? [];
+        // Defensively copy so a caller holding the source list cannot mutate the
+        // displayed signature after construction; expose a read-only wrapper.
+        ParameterTypes = parameterTypes is null
+            ? []
+            : new List<GrobType>(parameterTypes).AsReadOnly();
         ReturnType = returnType;
     }
 }

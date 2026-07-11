@@ -259,8 +259,9 @@ public sealed class ValueDisplay {
         if (nests) EnsureVisited(state).Add(s);
 
         var parts = new List<string>(s.Fields.Count);
+        var inner = new StringBuilder();
         foreach (var field in s.Fields) {
-            var inner = new StringBuilder();
+            inner.Clear();
             inner.Append(field.Key).Append(": ");
             Render(field.Value, quoteStrings: true, inner, state, depth + 1);
             parts.Add(inner.ToString());
@@ -310,8 +311,9 @@ public sealed class ValueDisplay {
         if (nests) EnsureVisited(state).Add(map);
 
         var parts = new List<string>(keys.Count);
+        var inner = new StringBuilder();
         foreach (string key in keys) {
-            var inner = new StringBuilder();
+            inner.Clear();
             RenderString(key, quoteStrings: true, inner);
             inner.Append(": ");
             Render(map[key], quoteStrings: true, inner, state, depth + 1);
