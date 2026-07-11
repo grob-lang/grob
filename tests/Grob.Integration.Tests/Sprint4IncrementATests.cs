@@ -201,8 +201,8 @@ public sealed class Sprint4IncrementATests {
     /// mismatch when consumed by <c>+ 1.0</c> (AddFloat over an int value).
     /// </summary>
     [Theory]
-    [InlineData("true", "3")]    // then-arm 2 (→ 2.0) + 1.0 = 3.0
-    [InlineData("false", "4")]   // else-arm 3.0 + 1.0 = 4.0
+    [InlineData("true", "3.0")]    // then-arm 2 (→ 2.0) + 1.0 = 3.0
+    [InlineData("false", "4.0")]   // else-arm 3.0 + 1.0 = 4.0
     public void Ternary_MixedArms_CoercesToFloatAtRuntime(string cond, string expected) {
         string stdout = Run($"""
             x := ({cond} ? 2 : 3.0) + 1.0

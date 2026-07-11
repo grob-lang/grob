@@ -50,12 +50,9 @@ public sealed class Sprint6IncrementBTests {
             print(c.port)
             """);
 
-        // print() on the struct itself is the opaque "[TypeName]" placeholder
-        // (GrobValue.ToString(), same convention as arrays/maps) — field
-        // values are observed via field access, not the struct's own print().
-        Assert.Contains("[Config]", stdout);
-        Assert.Contains("example.com", stdout);
-        Assert.Contains("8080", stdout);
+        // print() on the struct renders the full ValueDisplay form (D-336) —
+        // named fields, mirroring the construction syntax.
+        Assert.Equal($"Config {{ host: \"example.com\", port: 8080 }}{NL}example.com{NL}8080{NL}", stdout);
     }
 
     // -----------------------------------------------------------------------
@@ -73,7 +70,7 @@ public sealed class Sprint6IncrementBTests {
             print(c.port)
             """);
 
-        Assert.Contains("80", stdout);
+        Assert.Equal($"80{NL}", stdout);
     }
 
     [Fact]
@@ -87,9 +84,7 @@ public sealed class Sprint6IncrementBTests {
             print(c.port)
             """);
 
-        Assert.Contains("443", stdout);
-        // Default value 80 should not appear when the field is supplied.
-        Assert.DoesNotContain("80", stdout);
+        Assert.Equal($"443{NL}", stdout);
     }
 
     // -----------------------------------------------------------------------
@@ -111,7 +106,6 @@ public sealed class Sprint6IncrementBTests {
             print(p.address.city)
             """);
 
-        Assert.Contains("Alice", stdout);
-        Assert.Contains("London", stdout);
+        Assert.Equal($"Alice{NL}London{NL}", stdout);
     }
 }

@@ -95,7 +95,7 @@ public sealed class Sprint2EndToEndTests {
     [Fact]
     public void PrintFloatAdd_OutputsFloat() {
         string stdout = Run("print(1.5 + 2.5)");
-        Assert.Equal($"4{Environment.NewLine}", stdout);
+        Assert.Equal($"4.0{Environment.NewLine}", stdout);
     }
 
     [Fact]

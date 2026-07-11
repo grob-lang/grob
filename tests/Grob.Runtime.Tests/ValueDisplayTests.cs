@@ -98,6 +98,34 @@ public sealed class ValueDisplayTests {
         Assert.Equal("Credential { secret: \"hunter2\" }", rendered);
     }
 
+    /// <summary>
+    /// A test-only registry standing in for D-159's <c>AuthHeader.toString()</c> —
+    /// <c>Grob.Http</c> has no compiled source yet, so this is the closest honest proxy
+    /// for "the runtime type registered a toString()" without inventing plugin code.
+    /// </summary>
+    private sealed class AuthHeaderRegistry : IValueToStringRegistry {
+        public bool TryToString(GrobValue value, [NotNullWhen(true)] out string? rendered) {
+            if (value.Kind == GrobValueKind.Struct && value.AsStruct().TypeName == "AuthHeader") {
+                rendered = "[AuthHeader]";
+                return true;
+            }
+            rendered = null;
+            return false;
+        }
+    }
+
+    [Fact]
+    public void Display_AuthHeaderWithRegisteredToString_NeverExposesToken() {
+        var s = new GrobStruct("AuthHeader");
+        s.SetField("token", GrobValue.FromString("bearer-secret-token"));
+        var display = new ValueDisplay(new AuthHeaderRegistry());
+
+        string rendered = display.Display(GrobValue.FromStruct(s));
+
+        Assert.Equal("[AuthHeader]", rendered);
+        Assert.DoesNotContain("bearer-secret-token", rendered);
+    }
+
     // ----- Arm 3: bool / int -----
 
     [Theory]

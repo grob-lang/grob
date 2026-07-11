@@ -339,7 +339,7 @@ public sealed class Sprint3IncrementATests {
             f %= 3.0
             print(f)
             """);
-        Assert.Equal($"1{NL}", stdout);
+        Assert.Equal($"1.0{NL}", stdout);
     }
 
     [Fact]
@@ -350,7 +350,7 @@ public sealed class Sprint3IncrementATests {
             f += 2
             print(f)
             """);
-        Assert.Equal($"3{NL}", stdout);
+        Assert.Equal($"3.0{NL}", stdout);
     }
 
     // -----------------------------------------------------------------------
