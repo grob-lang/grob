@@ -1,5 +1,6 @@
 using System.Threading;
 using Grob.Core;
+using Grob.Runtime;
 
 namespace Grob.Vm;
 
@@ -130,6 +131,13 @@ public sealed class VirtualMachine {
     /// <c>.github/workflows/sonarcloud.yml</c>.
     /// </summary>
     private readonly TextWriter _trace;
+
+    /// <summary>
+    /// Renders values for <see cref="OpCode.Print"/> and <see cref="OpCode.BuildString"/>
+    /// (D-336). No registry is wired in yet — real built-in/plugin <c>toString()</c>
+    /// registration is a later increment's job (see <c>IValueToStringRegistry</c>).
+    /// </summary>
+    private readonly ValueDisplay _valueDisplay = new();
 
     /// <summary>
     /// Construct a VM whose <see cref="OpCode.Print"/> output goes to
@@ -502,12 +510,13 @@ public sealed class VirtualMachine {
                             // Sprint 3E: concatenate N string fragments from the stack.
                             // The 1-byte operand is the fragment count. Fragments are popped
                             // LIFO so we reverse-fill the parts array to restore source order.
-                            // Each fragment is converted to string via ToString() — this is the
-                            // display/toString rule for interpolation slots (D-279).
+                            // Each fragment is rendered via ValueDisplay.Display — the D-336
+                            // display rule for interpolation slots (supersedes D-279's
+                            // ToString()-based wording).
                             byte count = _activeChunk.ReadByte(_ip++);
                             var parts = new string[count];
                             for (int i = count - 1; i >= 0; i--) {
-                                parts[i] = _stack.Pop().ToString();
+                                parts[i] = _valueDisplay.Display(_stack.Pop());
                             }
                             _stack.Push(GrobValue.FromString(string.Concat(parts)), line);
                             break;
@@ -522,7 +531,7 @@ public sealed class VirtualMachine {
 
                     // --- I/O ---
                     case OpCode.Print:
-                        _out.WriteLine(_stack.Pop().ToString());
+                        _out.WriteLine(_valueDisplay.Display(_stack.Pop()));
                         break;
 
                     case OpCode.Exit: {

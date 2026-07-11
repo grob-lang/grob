@@ -241,7 +241,11 @@ public readonly struct GrobValue : IEquatable<GrobValue> {
     // ----- Display -----
 
     /// <summary>
-    /// Human-readable representation used by the disassembler and <c>print()</c>.
+    /// Developer-facing representation used by the disassembler's constant-pool dump
+    /// and the VM's <c>#if DEBUG</c> instruction trace. <c>Grob.Core</c> may reference
+    /// nothing Grob-internal, so this stays a self-contained C# debugging convenience —
+    /// it is no longer the <c>print()</c>/interpolation renderer (D-336). That role
+    /// belongs to <c>ValueDisplay</c> in <c>Grob.Runtime</c>.
     /// </summary>
     public override string ToString() => _kind switch {
         GrobValueKind.Nil => "nil",
