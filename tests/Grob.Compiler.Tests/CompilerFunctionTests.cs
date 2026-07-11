@@ -116,6 +116,45 @@ public sealed class CompilerFunctionTests {
     }
 
     [Fact]
+    public void FnDecl_CarriesErasedSignature_ForDisplay() {
+        Chunk chunk = CompileSource("""
+            fn tag(n: int, s: string): bool {
+            return true
+            }
+            """);
+
+        BytecodeFunction fn = SingleFunctionConstant(chunk);
+        Assert.Equal(new[] { GrobType.Int, GrobType.String }, fn.ParameterTypes);
+        Assert.Equal(GrobType.Bool, fn.ReturnType);
+    }
+
+    [Fact]
+    public void FnDecl_NoParameters_CarriesEmptyParamsAndReturnType() {
+        Chunk chunk = CompileSource("""
+            fn answer(): int {
+            return 42
+            }
+            """);
+
+        BytecodeFunction fn = SingleFunctionConstant(chunk);
+        Assert.Empty(fn.ParameterTypes);
+        Assert.Equal(GrobType.Int, fn.ReturnType);
+    }
+
+    [Fact]
+    public void FnDecl_NullableAndCollectionParams_CarryNullableAndCollectionKinds() {
+        Chunk chunk = CompileSource("""
+            fn f(a: int?, b: string[]): float {
+            return 1.0
+            }
+            """);
+
+        BytecodeFunction fn = SingleFunctionConstant(chunk);
+        Assert.Equal(new[] { GrobType.NullableInt, GrobType.Array }, fn.ParameterTypes);
+        Assert.Equal(GrobType.Float, fn.ReturnType);
+    }
+
+    [Fact]
     public void FnBody_ParametersOccupyFirstSlots_AndEndsWithReturn() {
         Chunk chunk = CompileSource("""
             fn add(a: int, b: int): int {

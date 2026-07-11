@@ -255,7 +255,13 @@ public sealed partial class Compiler {
         sub._chunk.WriteOpCode(OpCode.Return, line);
 
         int uvCount = sub._upvalues.Count;
-        var fn = new BytecodeFunction(string.Empty, node.Parameters.Count, sub._chunk, uvCount);
+        // Lambda parameter types are inferred (untyped in v1) and the inferred return
+        // type lives in the type checker, not reachable here — so the display signature
+        // carries Unknown kinds rather than a synthesised placeholder (D-336).
+        var fn = new BytecodeFunction(
+            string.Empty, node.Parameters.Count, sub._chunk, uvCount,
+            parameterTypes: SignatureTypes(node.Parameters),
+            returnType: GrobType.Unknown);
 
         if (uvCount == 0) {
             // No captures — the cheaper non-closure path (categories 1–3).

@@ -48,6 +48,53 @@ public sealed class VirtualMachineAnonStructTests {
         Assert.Equal(30L, s.GetField("age").AsInt());
     }
 
+    [Fact]
+    public void NewAnonStruct_SetsIsAnonymousAndPreservesSourceFieldOrder() {
+        var chunk = new Chunk();
+
+        // Source order: host then port (bottom→top).
+        byte hostName = (byte)chunk.AddConstant(GrobValue.FromString("host"));
+        byte hostVal = (byte)chunk.AddConstant(GrobValue.FromString("example.com"));
+        byte portName = (byte)chunk.AddConstant(GrobValue.FromString("port"));
+        byte portVal = (byte)chunk.AddConstant(GrobValue.FromInt(8080));
+
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(hostName, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(hostVal, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(portName, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(portVal, 1);
+        chunk.WriteOpCode(OpCode.NewAnonStruct, 1); chunk.WriteByte(2, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        GrobStruct s = vm.Stack.Peek().AsStruct();
+        Assert.True(s.IsAnonymous, "anonymous-struct construction must set IsAnonymous");
+        Assert.Equal(new[] { "host", "port" }, s.Fields.Select(f => f.Key));
+    }
+
+    [Fact]
+    public void NewStruct_NamedType_IsNotAnonymous_AndKeepsDeclarationOrder() {
+        var chunk = new Chunk();
+        byte typeIdx = chunk.AddStructType(new StructTypeDescriptor("Config", ["host", "port"]));
+        byte hostVal = (byte)chunk.AddConstant(GrobValue.FromString("example.com"));
+        byte portVal = (byte)chunk.AddConstant(GrobValue.FromInt(8080));
+
+        // Field values pushed in declaration order (host, port).
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(hostVal, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(portVal, 1);
+        chunk.WriteOpCode(OpCode.NewStruct, 1); chunk.WriteByte(typeIdx, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        GrobStruct s = vm.Stack.Peek().AsStruct();
+        Assert.False(s.IsAnonymous, "named-type construction must not set IsAnonymous");
+        Assert.Equal("Config", s.TypeName);
+        Assert.Equal(new[] { "host", "port" }, s.Fields.Select(f => f.Key));
+    }
+
     // -----------------------------------------------------------------------
     // Zero-field anonymous struct
     // -----------------------------------------------------------------------
