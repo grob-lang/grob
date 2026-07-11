@@ -11,4 +11,12 @@
     <ProjectReference Include="..\Grob.Core\Grob.Core.csproj" />
   </ItemGroup>
 
+  <!-- Allow Grob.Runtime.Tests to reach ValueDisplay's internal Inspect entry point
+       and the registry seam without growing the public surface (D-336). -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Grob.Runtime.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

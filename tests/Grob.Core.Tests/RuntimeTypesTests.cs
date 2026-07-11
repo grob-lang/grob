@@ -191,6 +191,60 @@ public sealed class RuntimeTypesTests {
         Assert.True(a.Equals(b));
     }
 
+    [Fact]
+    public void GrobStruct_Fields_PreservesConstructionOrder() {
+        var s = new GrobStruct("Config", new[] {
+            new KeyValuePair<string, GrobValue>("host", GrobValue.FromString("example.com")),
+            new KeyValuePair<string, GrobValue>("port", GrobValue.FromInt(8080)),
+        });
+
+        Assert.Equal(new[] { "host", "port" }, s.Fields.Select(f => f.Key));
+        Assert.Equal(GrobValue.FromString("example.com"), s.Fields[0].Value);
+        Assert.Equal(GrobValue.FromInt(8080), s.Fields[1].Value);
+    }
+
+    [Fact]
+    public void GrobStruct_Fields_AppendsNewFieldsInSetOrder() {
+        var s = new GrobStruct("T");
+        s.SetField("b", GrobValue.FromInt(2));
+        s.SetField("a", GrobValue.FromInt(1));
+        s.SetField("c", GrobValue.FromInt(3));
+
+        Assert.Equal(new[] { "b", "a", "c" }, s.Fields.Select(f => f.Key));
+    }
+
+    [Fact]
+    public void GrobStruct_Fields_ReflectsUpdatedValue_WithoutReordering() {
+        var s = new GrobStruct("T");
+        s.SetField("x", GrobValue.FromInt(1));
+        s.SetField("y", GrobValue.FromInt(2));
+        s.SetField("x", GrobValue.FromInt(9));   // update, not insert
+
+        Assert.Equal(new[] { "x", "y" }, s.Fields.Select(f => f.Key));
+        Assert.Equal(GrobValue.FromInt(9), s.Fields[0].Value);
+    }
+
+    [Fact]
+    public void GrobStruct_Fields_EmptyStruct_IsEmpty() {
+        var s = new GrobStruct("Empty");
+
+        Assert.Empty(s.Fields);
+    }
+
+    [Fact]
+    public void GrobStruct_IsAnonymous_DefaultsFalse() {
+        var s = new GrobStruct("Named");
+
+        Assert.False(s.IsAnonymous);
+    }
+
+    [Fact]
+    public void GrobStruct_IsAnonymous_SetTrue_IsCarried() {
+        var s = new GrobStruct("<anon>", null, isAnonymous: true);
+
+        Assert.True(s.IsAnonymous);
+    }
+
     // ----- GrobFunction (via its concrete BytecodeFunction subclass) -----
 
     [Fact]
@@ -229,6 +283,42 @@ public sealed class RuntimeTypesTests {
         var chunk = new Chunk();
         var fn = new BytecodeFunction("f", 0, chunk);
         Assert.Same(chunk, fn.Bytecode);
+    }
+
+    [Fact]
+    public void GrobFunction_Signature_DefaultsToEmptyParamsAndUnknownReturn() {
+        var fn = new BytecodeFunction("f", 0, new Chunk());
+
+        Assert.Empty(fn.ParameterTypes);
+        Assert.Equal(GrobType.Unknown, fn.ReturnType);
+    }
+
+    [Fact]
+    public void GrobFunction_Signature_StoresParameterAndReturnTypes() {
+        var fn = new BytecodeFunction(
+            "add", 2, new Chunk(),
+            parameterTypes: new[] { GrobType.Int, GrobType.String },
+            returnType: GrobType.Bool);
+
+        Assert.Equal(new[] { GrobType.Int, GrobType.String }, fn.ParameterTypes);
+        Assert.Equal(GrobType.Bool, fn.ReturnType);
+    }
+
+    [Fact]
+    public void GrobFunction_Signature_MismatchedParameterCount_Throws() =>
+        Assert.Throws<ArgumentException>(() => new BytecodeFunction(
+            "add", 2, new Chunk(),
+            parameterTypes: new[] { GrobType.Int }));
+
+    [Fact]
+    public void GrobFunction_Signature_IsDefensivelyCopied() {
+        var source = new List<GrobType> { GrobType.Int, GrobType.String };
+        var fn = new BytecodeFunction("add", 2, new Chunk(), parameterTypes: source);
+
+        source[0] = GrobType.Bool;
+        source.Add(GrobType.Float);
+
+        Assert.Equal(new[] { GrobType.Int, GrobType.String }, fn.ParameterTypes);
     }
 
     [Fact]
@@ -275,6 +365,16 @@ public sealed class RuntimeTypesTests {
     public void GrobStruct_TryGetField_Miss_ReturnsFalse() {
         var s = new GrobStruct("T");
         Assert.False(s.TryGetField("nope", out _));
+    }
+
+    [Fact]
+    public void GrobStruct_Fields_IsReadOnly_NotBackingList() {
+        var s = new GrobStruct("T");
+        s.SetField("x", GrobValue.FromInt(1));
+
+        Assert.IsNotType<List<KeyValuePair<string, GrobValue>>>(s.Fields);
+        Assert.Throws<NotSupportedException>(
+            () => ((IList<KeyValuePair<string, GrobValue>>)s.Fields).Clear());
     }
 
     // ----- NativeFunction -----

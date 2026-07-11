@@ -27,10 +27,18 @@ public sealed class BytecodeFunction : GrobFunction {
     /// Initialises a new <see cref="BytecodeFunction"/> with the given
     /// <paramref name="name"/>, <paramref name="arity"/> and compiled
     /// <paramref name="bytecode"/>. <paramref name="upvalueCount"/> is the number
-    /// of captured upvalues (default 0 for non-capturing functions).
+    /// of captured upvalues (default 0 for non-capturing functions);
+    /// <paramref name="parameterTypes"/> and <paramref name="returnType"/> carry
+    /// the erased signature for display (D-336).
     /// </summary>
-    public BytecodeFunction(string name, int arity, Chunk bytecode, int upvalueCount = 0)
-        : base(name, arity) {
+    public BytecodeFunction(
+        string name,
+        int arity,
+        Chunk bytecode,
+        int upvalueCount = 0,
+        IReadOnlyList<GrobType>? parameterTypes = null,
+        GrobType returnType = GrobType.Unknown)
+        : base(name, arity, parameterTypes, returnType) {
         ArgumentNullException.ThrowIfNull(bytecode);
         // The VM allocates the upvalue array and reads that many descriptor pairs
         // from the Closure instruction, so a negative count is a malformed function.

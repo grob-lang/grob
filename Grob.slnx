@@ -15,6 +15,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests\Grob.Core.Tests\Grob.Core.Tests.csproj" />
+    <Project Path="tests\Grob.Runtime.Tests\Grob.Runtime.Tests.csproj" />
     <Project Path="tests\Grob.Compiler.Tests\Grob.Compiler.Tests.csproj" />
     <Project Path="tests\Grob.Vm.Tests\Grob.Vm.Tests.csproj" />
     <Project Path="tests\Grob.Stdlib.Tests\Grob.Stdlib.Tests.csproj" />

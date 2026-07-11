@@ -125,8 +125,48 @@ public sealed partial class Compiler {
         sub._chunk.WriteOpCode(OpCode.Nil, endLine);
         sub._chunk.WriteOpCode(OpCode.Return, endLine);
 
-        return new BytecodeFunction(node.Name, node.Parameters.Count, sub._chunk);
+        return new BytecodeFunction(
+            node.Name, node.Parameters.Count, sub._chunk,
+            parameterTypes: SignatureTypes(node.Parameters),
+            returnType: SignatureType(node.ReturnType));
     }
+
+    /// <summary>
+    /// Maps a parameter list to the erased <see cref="GrobType"/> kinds carried on the
+    /// <see cref="BytecodeFunction"/> for display (D-336). A parameter with no type
+    /// annotation (a lambda parameter — inferred, untyped in v1) maps to
+    /// <see cref="GrobType.Unknown"/>.
+    /// </summary>
+    private static IReadOnlyList<GrobType> SignatureTypes(IReadOnlyList<Parameter> parameters) =>
+        parameters.Select(p => SignatureType(p.Type)).ToList();
+
+    /// <summary>
+    /// Maps a syntactic <see cref="TypeRef"/> to the erased <see cref="GrobType"/> kind
+    /// used for a function value's display signature (D-336). This is display metadata
+    /// only — the runtime function type is erased (D-326) — so a user-defined named type
+    /// collapses to <see cref="GrobType.Struct"/> and the nested structural shape of a
+    /// function-typed position is not carried here.
+    /// </summary>
+    private static GrobType SignatureType(TypeRef? typeRef) {
+        if (typeRef is null) return GrobType.Unknown;
+        GrobType baseType = typeRef switch {
+            FunctionTypeRef => GrobType.Function,
+            ArrayTypeRef => GrobType.Array,
+            _ => NamedSignatureType(typeRef.Name),
+        };
+        return typeRef.IsNullable ? GrobTypeHelpers.ToNullable(baseType) : baseType;
+    }
+
+    private static GrobType NamedSignatureType(string name) => name switch {
+        "int" => GrobType.Int,
+        "float" => GrobType.Float,
+        "string" => GrobType.String,
+        "bool" => GrobType.Bool,
+        "nil" => GrobType.Nil,
+        "array" => GrobType.Array,
+        "map" => GrobType.Map,
+        _ => GrobType.Struct,   // a user-defined named type
+    };
 
     /// <inheritdoc/>
     /// <remarks>

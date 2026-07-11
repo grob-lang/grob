@@ -995,13 +995,18 @@ public sealed class VirtualMachine {
                                 string name = _stack.Pop().AsString();
                                 fieldPairs[i] = new KeyValuePair<string, GrobValue>(name, value);
                             }
+                            // The sorted signature string is the structural type
+                            // identity (Sprint 6D) — two anonymous structs with the same
+                            // fields in any order share it and so compare equal. Field
+                            // order for display is carried separately by GrobStruct.Fields,
+                            // which preserves the source order of fieldPairs (D-336).
                             string typeName = fieldCount == 0
                                 ? "<anon>"
                                 : string.Join(",",
                                     fieldPairs
                                         .OrderBy(p => p.Key, StringComparer.Ordinal)
                                         .Select(p => $"{p.Key}:{p.Value.Kind}"));
-                            _stack.Push(GrobValue.FromStruct(new GrobStruct(typeName, fieldPairs)), line);
+                            _stack.Push(GrobValue.FromStruct(new GrobStruct(typeName, fieldPairs, isAnonymous: true)), line);
                             break;
                         }
 
