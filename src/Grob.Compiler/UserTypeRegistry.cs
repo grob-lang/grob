@@ -42,8 +42,14 @@ internal class UserTypeInfo {
 /// run.
 /// </summary>
 internal class UserTypeRegistry {
+    // Pre-sized for the Sprint 7 GrobError hierarchy (ExceptionHierarchy.AllNames),
+    // registered into every compile's registry unconditionally regardless of
+    // source content — see TypeChecker.RegisterExceptionHierarchy. Growing further
+    // for user-declared types still resizes normally; this only removes the
+    // resize-and-copy cost that would otherwise be paid by every compile just for
+    // the fixed built-in set.
     private readonly Dictionary<string, UserTypeInfo> _types =
-        new(StringComparer.Ordinal);
+        new(ExceptionHierarchy.AllNames.Count, StringComparer.Ordinal);
 
     /// <summary>
     /// Registers <paramref name="info"/> under its <see cref="UserTypeInfo.Name"/>.

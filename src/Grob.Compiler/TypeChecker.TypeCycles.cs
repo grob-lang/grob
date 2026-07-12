@@ -31,14 +31,25 @@ public sealed partial class TypeChecker {
     private enum TypeCycleColor { Unvisited, Visiting, Visited }
 
     private void DetectTypeCycles() {
+        // The Sprint 7 GrobError hierarchy (D-284) is excluded from this walk: every
+        // hierarchy member's fields are message/location/statusCode (D-274) — never a
+        // required GrobType.Struct field — so a hierarchy type can never be the source
+        // of a required-field cycle edge. TypeChecker.RegisterExceptionHierarchy seeds
+        // all 11 into _userTypeRegistry unconditionally on every compile regardless of
+        // whether the source declares any types at all, so without this filter the DFS
+        // below pays a fixed, source-independent allocation cost every single compile
+        // for types that can provably never participate.
+        IEnumerable<UserTypeInfo> userDeclaredTypes =
+            _userTypeRegistry.AllTypes.Where(t => !ExceptionHierarchy.IsHierarchyMember(t.Name));
+
         Dictionary<string, TypeCycleColor> colors = new(StringComparer.Ordinal);
-        foreach (UserTypeInfo t in _userTypeRegistry.AllTypes)
+        foreach (UserTypeInfo t in userDeclaredTypes)
             colors[t.Name] = TypeCycleColor.Unvisited;
 
         // Path stack carries (typeName, fieldName, fieldRange) for diagnostic messages.
         List<(string TypeName, string FieldName, SourceRange FieldRange)> path = [];
 
-        foreach (UserTypeInfo t in _userTypeRegistry.AllTypes) {
+        foreach (UserTypeInfo t in userDeclaredTypes) {
             if (colors[t.Name] == TypeCycleColor.Unvisited)
                 WalkTypeCycle(t.Name, colors, path);
         }
@@ -55,6 +66,14 @@ public sealed partial class TypeChecker {
         foreach (ResolvedFieldInfo field in type.Fields) {
             // Only required (no default) non-nullable Struct fields participate.
             if (!field.IsRequired || field.Kind != GrobType.Struct || field.NamedTypeName is null)
+                continue;
+
+            // A required field typed to a GrobError hierarchy member (e.g. 'err: IoError')
+            // always terminates — the hierarchy is excluded from 'colors' above, so it is
+            // never a cycle target either. Checked explicitly, ahead of and independent of
+            // the "unregistered" branch below, so this legitimate termination is never
+            // confused with the E1001 cascade-suppression case.
+            if (ExceptionHierarchy.IsHierarchyMember(field.NamedTypeName))
                 continue;
 
             // Target not registered means it had an E1001 emitted during field

@@ -39,6 +39,9 @@ internal static class ExceptionHierarchy {
     /// <summary>Every hierarchy type name: the root, then the ten leaves.</summary>
     internal static IReadOnlyCollection<string> AllNames => _parents.Keys;
 
+    /// <summary><see langword="true"/> when <paramref name="name"/> is a hierarchy member (the root or a leaf).</summary>
+    internal static bool IsHierarchyMember(string name) => _parents.ContainsKey(name);
+
     /// <summary>
     /// Returns <see langword="true"/> when <paramref name="from"/> is
     /// <paramref name="to"/> or a (transitive) subtype of it — walked
@@ -124,4 +127,57 @@ internal static class ExceptionHierarchy {
     /// </summary>
     internal static IReadOnlyList<TypeField> TypeFieldsFor(string name) =>
         name == "NetworkError" ? _networkErrorTypeFields : _defaultTypeFields;
+
+    // -----------------------------------------------------------------------
+    // Per-name TypeChecker.RegisterExceptionHierarchy registration objects,
+    // built once and shared across every compile. The sentinel TypeDecl and
+    // UserTypeInfo are immutable (a record with no settable members; init-only
+    // properties) and carry identical content on every run — TypeChecker.Check()
+    // runs RegisterExceptionHierarchy unconditionally on every compile, so
+    // re-synthesising these 11+11 objects from scratch each time was a fixed
+    // per-compile allocation regardless of whether the source uses exceptions
+    // at all. Declared last in the file so the static initialisers below run
+    // after _defaultFields/_networkErrorFields/_defaultTypeFields/
+    // _networkErrorTypeFields, which TypeFieldsFor/FieldsFor read.
+    // -----------------------------------------------------------------------
+    private static readonly IReadOnlyDictionary<string, TypeDecl> _typeDecls =
+        _parents.Keys.ToDictionary(
+            name => name,
+            name => new TypeDecl(SourceRange.Unknown, name, TypeFieldsFor(name)),
+            StringComparer.Ordinal);
+
+    private static readonly IReadOnlyDictionary<string, UserTypeInfo> _userTypeInfos =
+        _parents.Keys.ToDictionary(
+            name => name,
+            name => new UserTypeInfo { Name = name, Fields = FieldsFor(name), Range = SourceRange.Unknown },
+            StringComparer.Ordinal);
+
+    // Symbol carries the same content on every compile for a hierarchy member —
+    // Type is always GrobType.Unknown, DeclaredAt is always SourceLocation.Unknown,
+    // DeclarationNode is the shared TypeDecl above, and every other field is left
+    // at its default (not provisional, no function descriptor, no named struct
+    // type). Cached for the same reason as _typeDecls/_userTypeInfos: nothing
+    // compile-specific lives on it, so TypeChecker.RegisterExceptionHierarchy
+    // reuses the shared instance instead of allocating a new one — bypassing the
+    // general-purpose RegisterSymbol helper, whose job (build a fresh Symbol from
+    // per-call arguments) has nothing to do here since every argument is constant.
+    private static readonly IReadOnlyDictionary<string, Symbol> _symbols =
+        _parents.Keys.ToDictionary(
+            name => name,
+            name => new Symbol {
+                Name = name,
+                Type = GrobType.Unknown,
+                DeclaredAt = SourceLocation.Unknown,
+                DeclarationNode = _typeDecls[name],
+            },
+            StringComparer.Ordinal);
+
+    /// <summary>The shared sentinel <see cref="TypeDecl"/> for <paramref name="name"/>.</summary>
+    internal static TypeDecl TypeDeclFor(string name) => _typeDecls[name];
+
+    /// <summary>The shared <see cref="UserTypeInfo"/> for <paramref name="name"/>.</summary>
+    internal static UserTypeInfo UserTypeInfoFor(string name) => _userTypeInfos[name];
+
+    /// <summary>The shared <see cref="Symbol"/> for <paramref name="name"/>.</summary>
+    internal static Symbol SymbolFor(string name) => _symbols[name];
 }
