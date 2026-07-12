@@ -13,6 +13,12 @@
 > brief is a list of where error handling breaks after it looks done, not a list of
 > things that are probably fine. Report findings against the acceptance and the risk
 > classes; do not fix, do not open PRs.
+>
+> The merged branch also carries the pre-Sprint-8 interlude (D-335, D-336, D-337 — the
+> `ValueDisplay` service, the `Grob.slnx` membership gate and the corrected
+> `Sprint6IncrementBTests`). Treat that surface as known context, not as unexplained
+> Sprint 7 additions — but do probe the one security-critical seam it introduces (see
+> Cross-cutting).
 
 ## Why this brief is shaped the way it is
 
@@ -23,7 +29,7 @@ evenly — they cluster in a small number of places where the stack, the handler
 and the emitted finally chains meet. Stripped to causes, the sprint's risk falls into
 seven classes; the first two are where a shipped bug would be most expensive:
 
-1. **Non-local control flow through `finally` (D-332).** The emitted finally chain on
+1. **Non-local control flow through `finally` (D-334).** The emitted finally chain on
    early `return`/`break`/`continue` through nested `try`/`finally` regions — run each
    pending finally exactly once, innermost-to-outermost, and get `break`/`continue`
    targeting an **outer** loop right. This is the sprint's headline risk, the analogue
@@ -40,7 +46,7 @@ seven classes; the first two are where a shipped bug would be most expensive:
 6. **Runtime-throw catchability and the D-039 clarification.** The existing runtime
    sites catchable, an unhandled one unchanged, a caught one resuming.
 7. **Closed-surface and error-code integrity.** No `Leave`/`EndFinally`, the enum
-   untouched, the two or three new codes in lockstep, D-316 green.
+   untouched, the four new codes (E0014, E5904, E0015, E2213) in lockstep, D-316 green.
 
 ## Per-increment adversarial probes
 
@@ -57,8 +63,8 @@ seven classes; the first two are where a shipped bug would be most expensive:
   Grep for any `== GrobError`-style exact-type comparison standing in for a subtype
   check — that is the latent gap that breaks post-MVP user exceptions.
 - **`throw` operand (class 4).** Confirm `throw IoError { message: "x" }` type-checks;
-  `throw 42`, `throw "oops"` and `throw someInt` are the new throw-operand code (the
-  provisional E0014 — confirm the real number) with a source location, not a crash.
+  `throw 42`, `throw "oops"` and `throw someInt` are E0014 (throw
+  operand is not a `GrobError` subtype) with a source location, not a crash.
 - **Construction reuse (class 4).** Confirm `throw Leaf { … }` disassembles to the
   field values then `NewStruct` then `Throw` — verified through the disassembler, not
   only the VM's answer — and obeys E0103 (missing required field) and E0012 (unknown
@@ -68,10 +74,14 @@ seven classes; the first two are where a shipped bug would be most expensive:
 - **Unhandled path (class 2).** Confirm an unhandled `throw`, including from a nested
   call frame, unwinds every frame, closes open upvalues by location (D-325) with no
   value-stack underflow, and produces the quality diagnostic (`file:line`, D-322;
-  error type; message; suggestion) with exit code 1.
+  error type; message; suggestion) with exit code 1. Confirm this unhandled path is
+  the **E5904** site (unhandled exception reached the top level) and that E5904
+  re-raises the script's own thrown leaf rather than carrying a fixed leaf — it takes
+  `GrobError` as its `Throws` leaf by design (registry note, Sprint 7 A).
 - **Scope discipline.** Confirm A emitted **only** `Throw` — no `TryBegin`/`TryEnd`,
   no handler table, no catch, no finally. The enum is unchanged. The count moved 112 →
-  113 for the one new code, in three-location lockstep.
+  114 for the **two** new codes (E0014 throw-operand, E5904 unhandled-top-level), in
+  three-location lockstep.
 
 ### Increment B — `try` / `catch`
 
@@ -89,15 +99,15 @@ seven classes; the first two are where a shipped bug would be most expensive:
   try body. Confirm upvalues close by location on the torn-down frames (D-325).
 - **Compile errors (class 7).** Confirm **E2204** (`try` with neither catch nor
   finally), **E2205** (`catch` after catch-all, D-083), the catch-type code
-  (provisional E0015, `catch (e: int)`) and the duplicate-catch code (provisional
-  E2213, two `catch (e: IoError)`). Confirm `catch (e)` (parens, no type) is a clean
+  E0015 (`catch (e: int)`) and the duplicate-catch code E2213 (two
+  `catch (e: IoError)`). Confirm `catch (e)` (parens, no type) is a clean
   syntax diagnostic through recovery (D-300), not a crash. Confirm the catch binding
   is **immutable** — reassignment is a compile error.
 - **Permissiveness.** Confirm `catch (e: IoError)` on a try that cannot throw `IoError`
   type-checks (the C# model, no can-throw analysis).
-- **Code integrity (class 7).** Confirm the two new codes registered in lockstep at
-  their real next-free numbers, no `"Exxxx"` literal at a call site, D-316 green, and
-  the duplicate-catch fold-vs-new call recorded (dedicated or folded into E2205).
+- **Code integrity (class 7).** Confirm the two new codes (E0015, E2213) registered in lockstep, 114 → 116, no
+  `"Exxxx"` literal at a call site, D-316 green, and the duplicate-catch recorded as
+  **dedicated** (E2213, over folding into E2205 — registry note, Sprint 7 B).
 
 ### Increment C — `finally` (the load-bearing increment)
 
@@ -113,7 +123,7 @@ seven classes; the first two are where a shipped bug would be most expensive:
   regions runs each intervening finally exactly once then transfers. Any miss here —
   a finally run twice, zero times, or out of order — is the headline finding.
 - **The partition (class 1).** Confirm the exceptional path is **VM-run**
-  (`finallyOffset`) and the non-exceptional paths are **compiler-emitted** (D-332).
+  (`finallyOffset`) and the non-exceptional paths are **compiler-emitted** (D-334).
   Confirm **no `Leave`/`EndFinally` opcode** was added — grep the enum; if one appears
   it is a closed-surface breach and a blocker regardless of correctness.
 - **Throw-in-finally (class 1).** Confirm a `throw` inside a `finally` replaces the
@@ -126,7 +136,7 @@ seven classes; the first two are where a shipped bug would be most expensive:
   `return` inside a **block-body lambda** inside a `finally` is **not** E2207.
 - **D-325 on the finally path (class 2).** Confirm a closure captured before a `throw`
   and reached after the finally runs sees its captured value with no underflow.
-- **Decision log.** Confirm the D-332 entry is present, at a real next-free number, in
+- **Decision log.** Confirm the D-334 entry is present, at a real next-free number, in
   three-location lockstep, extending D-275; no new error code this increment.
 
 ### Increment D — runtime-throw catchability and uncatchable `exit()`
@@ -172,13 +182,22 @@ Increment C (D-336) has landed. No caveat is needed here beyond this pointer to 
   grep for a second bespoke unwind for runtime errors that bypasses the handler table
   or the `finallyOffset`. A parallel path is the latent gap that lets `finally` be
   skipped for one class of failure.
+- **ValueDisplay security ordering (interlude, D-336 — not an error-handling class).**
+  The merged branch introduces `ValueDisplay`, whose dispatch places a registered
+  `toString()` (step 2) ahead of structural rendering (step 5). That ordering is the
+  only thing preventing `print` of a plugin type from emitting its fields — all plugin
+  types and user `type`s share the `Struct` discriminator (D-297), so `AuthHeader`'s
+  credential opacity depends on it. Confirm no type carrying a registered `toString()`
+  is ever structurally rendered; confirm `print(auth.bearer(secret))` and
+  `"${auth.bearer(secret)}"` never contain the secret through the real print and
+  interpolation paths; confirm a `de-DE` ambient culture does not alter float rendering
+  (`1.5`, not `1,5`). A leak here is a **blocker**.
 - **OpCode enum untouched.** Confirm `TryBegin`, `TryEnd`, `Throw` are the **same**
   enum members closed in Sprint 2 — no case added, **no `Leave`/`EndFinally`**, the
   enum unchanged (ADR-0013). Confirm no increment edited the parser or the AST beyond
   what D-274/D-275 already mandated (verified, not grown — D-331).
-- **Error-code integrity.** Confirm the final count reconciles from 112 through the two
-  or three additions (throw-operand, catch-type, and the duplicate-catch code if taken
-  dedicated); catalog↔registry agreement holds; no `"Exxxx"` literal anywhere an
+- **Error-code integrity.** Confirm the final count reconciles from 112 through **four** additions to **116**
+  (E0014, E5904 in A; E0015, E2213 in B); catalog↔registry agreement holds; no `"Exxxx"` literal anywhere an
   `ErrorCatalog` descriptor should be. Confirm E2204–E2207 are wired to live
   diagnostics for the first time and each fires.
 - **§3.1.1 invariant.** Spot-check that identifier and member nodes across the new
