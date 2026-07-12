@@ -174,8 +174,13 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     public void Check(CompilationUnit unit) {
         ArgumentNullException.ThrowIfNull(unit);
 
-        // Global scope lives for the whole compilation unit.
-        _scopes.Push(new Dictionary<string, Symbol>());
+        // Global scope lives for the whole compilation unit. Pre-sized for the
+        // built-in functions (RegisterBuiltins, 3 names) and the Sprint 7
+        // GrobError hierarchy (RegisterExceptionHierarchy) registered into it
+        // below — both run unconditionally on every compile, so without a
+        // capacity hint the dictionary pays for repeated resize-and-copy growth
+        // on every single compile regardless of source size.
+        _scopes.Push(new Dictionary<string, Symbol>(3 + ExceptionHierarchy.AllNames.Count));
 
         // Seed the global scope with built-in functions (D-270). Must run
         // before Pass 1 so that user-defined names cannot shadow built-ins
@@ -267,9 +272,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
     /// <summary>
     /// Seeds the global scope and the user-type registry with the Sprint 7
-    /// <c>GrobError</c> hierarchy (D-284) as built-in nominal types. Synthesises a
-    /// sentinel-range <see cref="TypeDecl"/> and <see cref="UserTypeInfo"/> per
-    /// hierarchy member so the existing Sprint 6B construction path
+    /// <c>GrobError</c> hierarchy (D-284) as built-in nominal types, registering the
+    /// shared, pre-built sentinel <see cref="Symbol"/>, <see cref="TypeDecl"/> and
+    /// <see cref="UserTypeInfo"/> <see cref="ExceptionHierarchy"/> caches per hierarchy
+    /// member (all content-identical on every compile, so built once rather than
+    /// re-synthesised per <see cref="Check"/> call — direct dictionary assignment here
+    /// bypasses <see cref="RegisterSymbol"/>, whose job is building a fresh <c>Symbol</c>
+    /// from per-call arguments that are constant in this case) so the existing Sprint 6B
+    /// construction path
     /// (<see cref="ResolveConstructionTypeName"/>, <see cref="TypeCheckFieldValues"/>,
     /// <see cref="CollectSuppliedFields"/>, <see cref="EmitMissingFieldErrors"/>)
     /// resolves and constructs <c>throw IoError { ... }</c> completely unmodified
@@ -278,13 +288,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// </summary>
     private void RegisterExceptionHierarchy() {
         foreach (string name in ExceptionHierarchy.AllNames) {
-            TypeDecl decl = new(SourceRange.Unknown, name, ExceptionHierarchy.TypeFieldsFor(name));
-            RegisterSymbol(name, GrobType.Unknown, SourceLocation.Unknown, decl);
-            _userTypeRegistry.Register(new UserTypeInfo {
-                Name = name,
-                Fields = ExceptionHierarchy.FieldsFor(name),
-                Range = SourceRange.Unknown,
-            });
+            _scopes.Peek()[name] = ExceptionHierarchy.SymbolFor(name);
+            _userTypeRegistry.Register(ExceptionHierarchy.UserTypeInfoFor(name));
         }
     }
 

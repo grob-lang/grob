@@ -335,6 +335,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-335 | July 2026                                                         | Process / CI — solution membership | `tests/Grob.Integration.Tests` restored to `Grob.slnx`, having been silently dropped by PR #94 (`28eb753`, 2026-06-26) incidental to an unrelated change and never logged. For two sprints neither `dotnet test Grob.slnx` nor CI's bare `dotnet test` executed the project, so the Sprint 5 (`functions.grob`) and Sprint 6 (`types.grob`) close-gate smoke masters were unverified by CI, and `Sprint6IncrementBTests` was authored and merged against behaviour the VM never implemented (see D-336). Root cause is not the dropped line but the absence of any mechanical owner: an unreferenced test project fails no gate and contradicts no document. Durable fix is a **test-project membership check** in `tests/Grob.Consistency.Tests` — enumerate `**/*.Tests.csproj` under `tests/`, assert each is referenced by `Grob.slnx`, drift is a build failure. Generalises D-316's mechanical-agreement regime to project membership. No new error code; count unchanged at 116 |
 | D-336 | July 2026                                                         | Runtime — value display protocol | `print()` and string interpolation render composite values through a single `ValueDisplay` service in `Grob.Runtime`, resolving a three-way divergence. §13 mandated "reference types call `.toString()`"; user struct types had no `.toString()` (D-179 gave one to every *built-in* type only); and `OpCode.Print`'s single-arg fast path dispatched through a hardcoded C# switch that called no `.toString()` at all. `GrobValue.ToString()`'s `[TypeName]` fall-through was never a decision — the bracket-tag precedent (D-159 `AuthHeader`) is a deliberate per-type opacity mechanism for credentials, not a display default, and D-101 (`@secure`) is Grob's actual do-not-echo instruction. Two internal entry points: **`Display(v)`** (top-level — strings unquoted, per D-179 identity) and **`Inspect(v)`** (nested — strings quoted, so `"8080"` is distinguishable from `8080`); `toString()` remains the sole public method. Rendering mirrors source syntax: `Config { host: "example.com", port: 8080 }`, `#{ host: "example.com" }` (D-114), `[1, 2, 3]`, `{ "a": 1 }`. Cycles are reachable at runtime because E0301/E0302 reject only *non-terminating* type cycles, so `Inspect` carries reference-identity cycle detection (`<cycle>`) plus a depth cap (`...`). Dispatch is a **numbered precedence**, not a type switch: `nil` → registered `toString()` (terminal) → scalars → position-dependent `string` → structural composite. Step 2 precedes step 5 for a security reason: all plugin types and user `type`s share the `Struct` discriminator (D-297), so `[AuthHeader]`'s credential opacity (D-159) is today produced *accidentally* by the same fall-through arm that emits `[Config]`, and a structural renderer wired ahead of the registry lookup would leak bearer tokens. `Function` values render as their type (`fn(int): int`) — never an address, which would make gold-mastered smoke scripts non-deterministic. `float` always renders round-trippable with a decimal point or exponent (`1.0`, not `1`) under pinned `InvariantCulture`, with pinned `NaN`/`Infinity`/`-Infinity` — an unpinned culture emits `1,5` on a `de-DE` host, silently breaking every gold master and `formatAs.csv`. Supersedes the implicit `[TypeName]`/`[array(N)]`/`[map]` behaviour. The four `Sprint6IncrementBTests` assertions were rewritten mid-interlude to expect `[Config]`; that commit is not a decision and D-336 rewrites them to assert the exact rendered form. Reconciles `print` with `formatAs` (D-282) ahead of Sprint 8. No new error code; count unchanged at 116 |
 | D-337 | July 2026                                                         | Process — sprint-close smoke scripts | The sprint-close smoke-script family gets a documented home in `grob-v1-requirements.md`. Five exist (`hello.grob` Sprint 3, `calculator.grob` Sprint 4, `functions.grob` Sprint 5, `types.grob` Sprint 6, `errors.grob` Sprint 7), each added at a sprint close, each gold-mastered under `tests/Grob.Integration.Tests`. Until now the family appeared in no design document, had no Definition-of-Done row and was named by no decision — the ownership vacuum that let D-335's CI gap persist undetected. Distinct from the thirteen release-gate validation scripts of `grob-sample-scripts.md`: the smoke family is per-sprint and cumulative, the validation suite is a v1 release gate. `errors.grob` departs from the prior four by asserting exit code 42 (`exit()` inside `try`/`catch`/`finally`, neither handler running), so the family's contract is stdout, stderr **and** exit code, not exit 0. No new error code; count unchanged at 116 |
+| D-338 | July 2026                                                         | Tooling — benchmarking / Compiler — exception hierarchy registration | The Sprint 7-close compile-allocation regression (`Compile_TwoExpressions` +68.6%, `Compile_TenPrints` +37.2% bytes/op, both against the D-333 rolling baseline) is traced to `TypeChecker.RegisterExceptionHierarchy` (introduced in #112): every compile re-synthesised 11 `TypeDecl`/`UserTypeInfo`/`Symbol` objects with content identical on every run, grew the global-scope and `UserTypeRegistry` dictionaries from empty via repeated resize-and-copy, and fed all 11 into `DetectTypeCycles`'s §17.1 DFS even though no hierarchy member carries a required `GrobType.Struct` field and so can never participate in a cycle. Four behaviour-preserving fixes (cache the three object kinds as `static readonly`; pre-size the global-scope dictionary to its known fixed load; pre-size the `UserTypeRegistry` dictionary likewise; exclude hierarchy names from the cycle-detection walk) cut the regression to +14.0%/+7.6%, all tests and gold masters unchanged. The residual ~1,104 B fixed cost is accepted as load-bearing: D-284 requires all 11 `GrobError` hierarchy names resolvable in every compile's global scope, so a permanently larger built-in symbol table (14 entries against the pre-Sprint-7 baseline's 3) costs real bytes with no further avoidable churn to remove — closing it fully would mean lazily registering hierarchy names only when referenced, changing the timing of built-in name resolution, rejected here as a materially bigger redesign out of scope for a behaviour-preserving perf fix. `Compile_TwoExpressions` (+14.0%) therefore remains outside the axis-3 `allocPercent` 10% gate (D-333) by deliberate acceptance, not oversight; the rolling `compile.json` baseline is left un-updated by this entry — D-309 requires baseline production via the `benchmark.yml` workflow on the canonical runner, not a local run, so the recapture is a separate, subsequent act. No new error code; count unchanged at 116 |
 
 ---
 
@@ -4180,6 +4181,90 @@ which asserted the smoke scripts live in `grob-sample-scripts.md`; they never di
 `grob-sample-scripts.md` gains a cross-reference so the distinction cannot be lost again.
 
 **Relates to D-335, D-336.** No error code added; count unchanged at 116.
+
+---
+
+### D-338 — Compile-allocation regression from the Sprint 7 exception hierarchy: fixed, residual accepted (July 2026)
+
+Area: Tooling — benchmarking / Compiler — exception hierarchy registration
+Supersedes: none
+Superseded by: none
+
+**The regression.** At Sprint 7 close, `bench/Grob.Benchmarks`'s compile category showed
+`Compile_TwoExpressions` at +68.6% (7,864 B → 13,256 B) and `Compile_TenPrints` at +37.2%
+(14,480 B → 19,872 B) bytes/op against the D-333 rolling baseline — a hard breach of the
+axis-3 `allocPercent` 10% gate. The identical _absolute_ delta on both fixtures (5,392 B)
+was the signature of a fixed per-compile cost rather than one scaling with program size.
+
+**Root cause.** `TypeChecker.RegisterExceptionHierarchy` (introduced in #112, Sprint 7
+Increment A, D-284) runs unconditionally in `Check()` on every compile, seeding the 11
+`GrobError` hierarchy names (the root plus ten leaves) into the global scope and the
+user-type registry regardless of whether the source uses exceptions at all. Three
+compounding causes, found in sequence by profiling an isolated reflection harness against
+the built assemblies:
+
+1. It re-synthesised a fresh `TypeDecl`, `UserTypeInfo` and `Symbol` per name on every
+   single compile, even though all three are immutable and carry identical content run to
+   run.
+2. The global-scope `Dictionary<string, Symbol>` and `UserTypeRegistry`'s internal
+   dictionary both started empty and grew via repeated resize-and-copy as the fixed
+   builtin-plus-hierarchy set (14 entries) was inserted.
+3. `TypeChecker.TypeCycles.cs`'s §17.1/D-287 required-field cycle-detection DFS
+   (`DetectTypeCycles`) walks every registered type on every compile; the 11 new entries
+   were walked despite none of them ever carrying a required `GrobType.Struct` field
+   (D-274's shape is `message: string`, `location` (erased), and `NetworkError`'s
+   `statusCode: int?`), so they can never participate in a cycle.
+
+**The fix — four behaviour-preserving changes, no observable output change.**
+
+1. `ExceptionHierarchy` gains `static readonly` caches of the 11 `TypeDecl`, `UserTypeInfo`
+   and `Symbol` instances, built once; `RegisterExceptionHierarchy` registers the shared
+   instances instead of allocating new ones (direct `_scopes.Peek()[name] = ...`
+   assignment for the `Symbol`, bypassing `RegisterSymbol`, whose per-call-argument
+   construction has nothing to do when every argument is constant).
+2. The global-scope dictionary is pre-sized to `3 + ExceptionHierarchy.AllNames.Count`
+   (builtins plus hierarchy). It still grows normally for further user-declared names;
+   only the resize-and-copy cost for the known fixed load is removed.
+3. `UserTypeRegistry`'s dictionary is pre-sized to `ExceptionHierarchy.AllNames.Count`,
+   likewise growing normally afterwards and removing only the resize-and-copy cost for
+   the known fixed load.
+4. `DetectTypeCycles` filters `_userTypeRegistry.AllTypes` to exclude
+   `ExceptionHierarchy.IsHierarchyMember` names (a new predicate) before seeding `colors`
+   and walking; `WalkTypeCycle`'s field loop separately and explicitly skips a hierarchy-
+   typed target ahead of, and independent from, the pre-existing "unregistered — E1001
+   cascade" branch, so the two distinct reasons for termination are never conflated in one
+   reader's mind.
+
+All existing compiler, type-checker and integration tests (2,175 total) pass unchanged,
+including the gold-master error examples — the fix changes only what is allocated, never
+diagnostics, emitted bytecode or exit behaviour.
+
+**Result.** `Compile_TwoExpressions` +14.0% (8,968 B), `Compile_TenPrints` +7.6% (15,584 B)
+— a reduction of the regression from +68.6%/+37.2% to +14.0%/+7.6%.
+
+**The residual — accepted as load-bearing, not fixed further.** After the three causes
+above are eliminated, ~1,104 B of fixed per-compile cost remains, verified by isolating
+`TypeChecker.Check()` on a fully empty program (1,528 B, deterministic, checker/unit
+construction excluded from the timing window). This is the actual cost of a global scope
+that must now hold 14 built-in entries instead of 3 — D-284 requires all 11 `GrobError`
+hierarchy names resolvable in every compile regardless of source content, so a bigger
+symbol table is a real, permanent, per-compile cost with no further re-allocated-content
+churn left to remove. Closing this fully would mean lazily registering hierarchy names
+only when a compile actually references them (`throw`/`catch`/construction) rather than
+unconditionally up front — a materially different and larger change to the timing of
+built-in name resolution, rejected here as out of scope for a behaviour-preserving perf
+fix and not attempted.
+
+**Consequence for the gate.** `Compile_TwoExpressions` (+14.0%) remains outside the axis-3
+`allocPercent` 10% gate (D-333) by deliberate acceptance under this entry, per D-313's
+anti-ratchet rule that a regression is either fixed or accepted with a logged decision —
+never silently absorbed into an updated baseline. The rolling `compile.json` baseline is
+**not** updated by this entry: D-309 requires baseline production via the `benchmark.yml`
+workflow on the canonical CPU-tracked runner, never a local invocation, so recapturing
+`compile.json` (and, if the maintainer judges it warranted, `compile.origin.json`) against
+these accepted figures is a separate, subsequent, logged act.
+
+No error code added; count unchanged at 116.
 
 ---
 
