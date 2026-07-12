@@ -43,8 +43,8 @@ moving on.
 Allocation is deterministic, so the CI figures must reproduce exactly on your
 machine. Run the compile category only:
 
-```
-dotnet run -c Release --project bench/Grob.Benchmarks -- --filter *CompileBenchmarks* --memory
+```bash
+dotnet run -c Release --project bench/Grob.Benchmarks -- --filter '*CompileBenchmarks*' --memory
 ```
 
 Adjust the filter to the real benchmark type name. Confirm bytes/op for
