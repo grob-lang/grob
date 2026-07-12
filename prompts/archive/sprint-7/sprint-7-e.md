@@ -6,6 +6,21 @@ model: sonnet
 
 # Sprint 7 · Increment E — sprint close
 
+> **Correction (2026-07-12).** This archived prompt carries two false citations,
+> discovered during the D-335–337 capture. The corpus is correct; only this prompt was
+> wrong.
+>
+> 1. **`finally` model citation.** Below, the `finally` compilation model is cited as
+>    D-332. It is **D-334**. D-332 is the `ValueStack` LOH right-sizing / benchmark fix,
+>    unrelated.
+> 2. **Smoke-script location.** Below, the four prior smoke scripts are said to live in
+>    `grob-sample-scripts.md`. They live in `tests/Grob.Integration.Tests` and never
+>    lived in that document (D-337). `grob-sample-scripts.md` holds the thirteen
+>    release-gate validation scripts, a different family.
+>
+> The body below is preserved as originally written; read the citations below with
+> these corrections in mind.
+
 Increments A–D built error handling end-to-end: raise, recover, clean up, and make
 the existing runtime failures catchable. This increment closes the sprint the way
 Sprint 6 closed on `types.grob` — a planning-defined smoke script, `errors.grob`,

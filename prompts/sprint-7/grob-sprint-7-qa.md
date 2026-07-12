@@ -159,6 +159,12 @@ seven classes; the first two are where a shipped bug would be most expensive:
 - Confirm the **fifth** VM-execution benchmark baseline was produced from the workflow
   (D-309) and passes the two-axis gate (D-313).
 
+### Note — `Sprint6IncrementBTests` state
+
+The four `Sprint6IncrementBTests` assert the exact rendered struct form
+(`Config { host: "example.com", port: 8080 }`) and pass — the pre-Sprint-8 interlude's
+Increment C (D-336) has landed. No caveat is needed here beyond this pointer to D-336.
+
 ## Cross-cutting probes
 
 - **The unwind is one mechanism, not several (class 1/2).** Confirm user `throw`,
