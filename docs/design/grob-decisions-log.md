@@ -336,6 +336,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-336 | July 2026                                                         | Runtime — value display protocol | `print()` and string interpolation render composite values through a single `ValueDisplay` service in `Grob.Runtime`, resolving a three-way divergence. §13 mandated "reference types call `.toString()`"; user struct types had no `.toString()` (D-179 gave one to every *built-in* type only); and `OpCode.Print`'s single-arg fast path dispatched through a hardcoded C# switch that called no `.toString()` at all. `GrobValue.ToString()`'s `[TypeName]` fall-through was never a decision — the bracket-tag precedent (D-159 `AuthHeader`) is a deliberate per-type opacity mechanism for credentials, not a display default, and D-101 (`@secure`) is Grob's actual do-not-echo instruction. Two internal entry points: **`Display(v)`** (top-level — strings unquoted, per D-179 identity) and **`Inspect(v)`** (nested — strings quoted, so `"8080"` is distinguishable from `8080`); `toString()` remains the sole public method. Rendering mirrors source syntax: `Config { host: "example.com", port: 8080 }`, `#{ host: "example.com" }` (D-114), `[1, 2, 3]`, `{ "a": 1 }`. Cycles are reachable at runtime because E0301/E0302 reject only *non-terminating* type cycles, so `Inspect` carries reference-identity cycle detection (`<cycle>`) plus a depth cap (`...`). Dispatch is a **numbered precedence**, not a type switch: `nil` → registered `toString()` (terminal) → scalars → position-dependent `string` → structural composite. Step 2 precedes step 5 for a security reason: all plugin types and user `type`s share the `Struct` discriminator (D-297), so `[AuthHeader]`'s credential opacity (D-159) is today produced *accidentally* by the same fall-through arm that emits `[Config]`, and a structural renderer wired ahead of the registry lookup would leak bearer tokens. `Function` values render as their type (`fn(int): int`) — never an address, which would make gold-mastered smoke scripts non-deterministic. `float` always renders round-trippable with a decimal point or exponent (`1.0`, not `1`) under pinned `InvariantCulture`, with pinned `NaN`/`Infinity`/`-Infinity` — an unpinned culture emits `1,5` on a `de-DE` host, silently breaking every gold master and `formatAs.csv`. Supersedes the implicit `[TypeName]`/`[array(N)]`/`[map]` behaviour. The four `Sprint6IncrementBTests` assertions were rewritten mid-interlude to expect `[Config]`; that commit is not a decision and D-336 rewrites them to assert the exact rendered form. Reconciles `print` with `formatAs` (D-282) ahead of Sprint 8. No new error code; count unchanged at 116 |
 | D-337 | July 2026                                                         | Process — sprint-close smoke scripts | The sprint-close smoke-script family gets a documented home in `grob-v1-requirements.md`. Five exist (`hello.grob` Sprint 3, `calculator.grob` Sprint 4, `functions.grob` Sprint 5, `types.grob` Sprint 6, `errors.grob` Sprint 7), each added at a sprint close, each gold-mastered under `tests/Grob.Integration.Tests`. Until now the family appeared in no design document, had no Definition-of-Done row and was named by no decision — the ownership vacuum that let D-335's CI gap persist undetected. Distinct from the thirteen release-gate validation scripts of `grob-sample-scripts.md`: the smoke family is per-sprint and cumulative, the validation suite is a v1 release gate. `errors.grob` departs from the prior four by asserting exit code 42 (`exit()` inside `try`/`catch`/`finally`, neither handler running), so the family's contract is stdout, stderr **and** exit code, not exit 0. No new error code; count unchanged at 116 |
 | D-338 | July 2026                                                         | Tooling — benchmarking / Compiler — exception hierarchy registration | The Sprint 7-close compile-allocation regression (`Compile_TwoExpressions` +68.6%, `Compile_TenPrints` +37.2% bytes/op, both against the D-333 rolling baseline) is traced to `TypeChecker.RegisterExceptionHierarchy` (introduced in #112): every compile re-synthesised 11 `TypeDecl`/`UserTypeInfo`/`Symbol` objects with content identical on every run, grew the global-scope and `UserTypeRegistry` dictionaries from empty via repeated resize-and-copy, and fed all 11 into `DetectTypeCycles`'s §17.1 DFS even though no hierarchy member carries a required `GrobType.Struct` field and so can never participate in a cycle. Four behaviour-preserving fixes (cache the three object kinds as `static readonly`; pre-size the global-scope dictionary to its known fixed load; pre-size the `UserTypeRegistry` dictionary likewise; exclude hierarchy names from the cycle-detection walk) cut the regression to +14.0%/+7.6%, all tests and gold masters unchanged. The residual ~1,104 B fixed cost is accepted as load-bearing: D-284 requires all 11 `GrobError` hierarchy names resolvable in every compile's global scope, so a permanently larger built-in symbol table (14 entries against the pre-Sprint-7 baseline's 3) costs real bytes with no further avoidable churn to remove — closing it fully would mean lazily registering hierarchy names only when referenced, changing the timing of built-in name resolution, rejected here as a materially bigger redesign out of scope for a behaviour-preserving perf fix. `Compile_TwoExpressions` (+14.0%) therefore remains outside the axis-3 `allocPercent` 10% gate (D-333) by deliberate acceptance, not oversight; the rolling `compile.json` baseline is left un-updated by this entry — D-309 requires baseline production via the `benchmark.yml` workflow on the canonical runner, not a local run, so the recapture is a separate, subsequent act. No new error code; count unchanged at 116 |
+| D-341 | July 2026                                                         | Tooling — benchmarking | D-338's deferred baseline recapture is performed: the rolling `compile.json` baseline is replaced with the `-report-full.json` from `benchmark.yml` run 29207744217 (`windows-latest`, AMD EPYC 7763, 2026-07-12), folding in the accepted +14.0%/+7.6% (8,968 B / 15,584 B) figures per D-309's canonical-workflow production requirement. `BenchCheck` now reads 0.0% delta on both compile benchmarks against the recaptured baseline. `compile.origin.json` is deliberately left untouched — the cumulative axis reads informational only under D-333's CPU-identity guard (fresh AMD EPYC 7763 vs origin's Intel Xeon Platinum 8370C), so the now-larger origin drift (+47.1%/+32.8%) does not gate, and an origin re-freeze remains a separate maintainer-judged act. `vm.json`/`endToEnd.json` untouched — vm deltas stay informational (non-gating, D-313) and no fresh end-to-end benchmarks exist yet. No new error code; count unchanged at 116 |
 
 ---
 
@@ -4268,6 +4269,59 @@ No error code added; count unchanged at 116.
 
 ---
 
+### D-341 — Compile-allocation baseline recapture: D-338's accepted residual folded into the rolling baseline (July 2026)
+
+Area: Tooling — benchmarking
+Supersedes: none
+Superseded by: none
+Refines: D-338
+
+**The decision.** The rolling `compile.json` baseline is recaptured, performing the
+"separate, subsequent, logged act" D-338 deferred. The `-report-full.json` from
+`benchmark.yml` run [29207744217](https://github.com/grob-lang/grob/actions/runs/29207744217)
+(`windows-latest`, host CPU `AMD EPYC 7763`, 2026-07-12) replaces `bench/Grob.Benchmarks/baseline/compile.json`
+wholesale, per D-309's canonical-workflow production requirement — no local run is ever
+committed as a baseline. The figures are byte-identical to D-338's own measurement:
+`Compile_TwoExpressions` 8,968 B, `Compile_TenPrints` 15,584 B. Run locally against the
+recaptured baseline, `tooling/Grob.BenchCheck` now reads `0.0%` allocation delta on both
+compile benchmarks and the gate passes — the CI run that had gone red immediately after
+D-338 merged (comparing the accepted-but-not-yet-recaptured figures against the pre-fix
+baseline) was the expected, anticipated consequence of that deferral, not a new defect.
+
+**Why this needed its own entry, not an amendment to D-338.** D-313's mechanism ties a
+baseline update to a decisions-log entry as one act that closes out an accepted
+regression; D-338 explicitly named the recapture as a distinct future act rather than
+performing it. Recording it as a new entry keeps D-338's narrative (the investigation,
+the fix, the acceptance rationale) intact and gives the recapture itself a dated,
+citable record — consistent with the log's append/supersede discipline rather than
+editing a closed entry's body.
+
+**`compile.origin.json` deliberately untouched.** The fresh run's host, `AMD EPYC 7763`,
+does not match the frozen origin baseline's `Intel Xeon Platinum 8370C` — a CPU mismatch
+that, per D-333's CPU-identity guard, makes the _time_ comparison informational only on
+both axes (rolling and origin) while allocation continues to gate regardless of CPU. The
+origin comparison now reads `+47.1%`/`+32.8%` cumulative time drift, but this is not a
+gate breach because it is informational under the mismatch, not because it was hidden.
+Re-freezing `compile.origin.json` is left for a separate, deliberate, maintainer-judged
+event, mirroring D-333's own precedent of leaving `compile.origin.json` on its
+pre-provenance host rather than folding a re-freeze into an unrelated fix.
+
+**Scope.** `vm.json` and `endToEnd.json` are untouched. The `vm` category's deltas
+remain non-gating/informational (D-313) and were not part of the flagged regression;
+`endToEnd` still has no fresh benchmarks to compare (the validation-suite scripts are not
+yet runnable per D-313's build-out note).
+
+**Companion fix.** D-338's full entry was logged without a matching footer-changelog
+line, leaving the "three things in lockstep" rule (index row, full entry, changelog)
+two-thirds satisfied. This entry's changelog addition backfills that gap alongside its
+own note, since the mechanical drift gate (`Grob.Consistency.Tests`) checks the index↔entry
+bijection and supersession links but not the free-text changelog, so the gap was invisible
+to CI.
+
+No error code added; count unchanged at 116.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -4489,7 +4543,32 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Pre-Sprint-8 / pre-QA interlude (Sprint 7E hand-off findings): D-335,_
+_July 2026 — Compile-allocation baseline recapture: D-341 added. Performs the "separate,_
+_subsequent, logged act" D-338 deferred — the rolling `compile.json` baseline is_
+_replaced with the `benchmark.yml` run 29207744217 report (`windows-latest`, AMD EPYC_
+_7763), folding in D-338's accepted +14.0%/+7.6% (8,968 B / 15,584 B) figures; `BenchCheck`_
+_now reads 0.0% delta on both compile benchmarks. `compile.origin.json` deliberately left_
+_untouched — the CPU mismatch against the frozen origin host makes the now-larger_
+_+47.1%/+32.8% cumulative time drift informational only under D-333's CPU-identity guard,_
+_never a gate breach; an origin re-freeze remains a separate maintainer-judged act._
+_`vm.json`/`endToEnd.json` untouched (non-gating / no fresh benchmarks). Also backfills_
+_this changelog with the D-338 entry, which was logged in PR #123 without a matching_
+_changelog line — the mechanical drift gate checks index↔entry lockstep, not the_
+_free-text changelog, so the gap was invisible to CI. No error code added; count_
+_unchanged at 116._
+_Previous: July 2026 — Compile-allocation regression from the Sprint 7 exception_
+_hierarchy: D-338 added. `TypeChecker.RegisterExceptionHierarchy` re-synthesised 11_
+_immutable `TypeDecl`/`UserTypeInfo`/`Symbol` objects, grew two dictionaries from empty_
+_via repeated resize, and fed all 11 into the type-cycle DFS on every compile regardless_
+_of source content. Four behaviour-preserving fixes (shared static caches, two_
+_dictionary pre-sizings, cycle-detection exclusion) cut the Sprint-7-close regression_
+_from +68.6%/+37.2% to +14.0%/+7.6% bytes/op, all tests and gold masters unchanged. The_
+_residual ~1,104 B is accepted as load-bearing — D-284 requires all 11 `GrobError`_
+_hierarchy names resolvable in every compile's global scope, so a permanently larger_
+_built-in symbol table is a real, unavoidable per-compile cost. Rolling baseline_
+_deliberately left un-updated pending a separate recapture (see D-341, above). No error_
+_code added; count unchanged at 116._
+_Previous: July 2026 — Pre-Sprint-8 / pre-QA interlude (Sprint 7E hand-off findings): D-335,_
 _D-336 and D-337 added. D-335 restores `tests/Grob.Integration.Tests` to `Grob.slnx`,_
 _silently dropped by PR #94 (`28eb753`, 2026-06-26) and unrun by CI for two sprints,_
 _and adds a test-project membership check to `Grob.Consistency.Tests` (enumerate_
