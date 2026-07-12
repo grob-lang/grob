@@ -91,6 +91,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 8 Increment A — math.pi/math.sqrt proving-vertical fixtures. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-8a\*.grob"
+             Link="fixtures\sprint-8a\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>

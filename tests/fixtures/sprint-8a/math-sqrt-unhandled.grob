@@ -1,0 +1,5 @@
+// Sprint 8 Increment A — an unhandled native-throw domain error (D-342)
+// produces the same top-level diagnostic quality as any other unhandled
+// runtime error, and exits 1.
+
+print(math.sqrt(-1.0))

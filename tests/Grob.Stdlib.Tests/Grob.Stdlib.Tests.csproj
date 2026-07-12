@@ -16,6 +16,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Grob.Core\Grob.Core.csproj" />
+    <ProjectReference Include="..\..\src\Grob.Runtime\Grob.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\Grob.Vm\Grob.Vm.csproj" />
     <ProjectReference Include="..\..\src\Grob.Stdlib\Grob.Stdlib.csproj" />
   </ItemGroup>
 

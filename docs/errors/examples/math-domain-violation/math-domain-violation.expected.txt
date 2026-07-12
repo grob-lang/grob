@@ -1,0 +1,9 @@
+error[E5006]: math domain violation
+  --> math-domain-violation.grob:3:7
+   |
+ 3 | print(math.sqrt(-4.0))
+   |       ^^^^^^^^^^^^^^^
+   |
+   = note: math.sqrt: argument -4.0 is negative
+   = note: square root of a negative number is undefined for float
+   = throws: ArithmeticError

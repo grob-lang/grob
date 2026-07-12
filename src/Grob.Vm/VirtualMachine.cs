@@ -21,7 +21,7 @@ namespace Grob.Vm;
 /// Authority: grob-vm-architecture.md (dispatch loop, value stack, developer
 /// diagnostics) and grob-v1-requirements.md §3.3 (the OpCode set).
 /// </summary>
-public sealed class VirtualMachine {
+public sealed class VirtualMachine : IPluginRegistrar {
     /// <summary>
     /// Maximum call depth (D-180). The frames array holds call frames only — the
     /// top-level script is not a frame — so a 257th nested call has no slot and
@@ -47,7 +47,7 @@ public sealed class VirtualMachine {
     private const string RuntimeErrorLeaf = "RuntimeError";
 
     private readonly ValueStack _stack = new();
-    private readonly TextWriter _out;
+    private readonly IStandardStreams _streams;
     private readonly Dictionary<string, GrobValue> _globals = new(StringComparer.Ordinal);
 
     // -----------------------------------------------------------------------
@@ -146,9 +146,27 @@ public sealed class VirtualMachine {
     /// <see cref="TextWriter.Null"/>, which is also the only meaningful value
     /// in Release where the trace call is compiled out entirely).
     /// </summary>
-    public VirtualMachine(TextWriter output, TextWriter? trace = null) {
-        ArgumentNullException.ThrowIfNull(output);
-        _out = output;
+    /// <remarks>
+    /// Wraps <paramref name="output"/> in a minimal internal
+    /// <see cref="IStandardStreams"/> (D-343) — kept alongside the
+    /// <see cref="VirtualMachine(IStandardStreams, TextWriter?)"/> overload so the
+    /// existing single-<see cref="TextWriter"/> call sites across the test suite and
+    /// <c>Grob.Cli</c> need no change.
+    /// </remarks>
+    public VirtualMachine(TextWriter output, TextWriter? trace = null)
+        : this(new SingleWriterStreams(output ?? throw new ArgumentNullException(nameof(output))), trace) { }
+
+    /// <summary>
+    /// Construct a VM whose <see cref="OpCode.Print"/> output and future
+    /// stderr-routed diagnostics go through <paramref name="streams"/> (D-343, the
+    /// capability-injection seam) — the overload <c>Grob.Cli</c>'s composition root
+    /// uses, passing an OS-backed implementation wrapping <see cref="Console.Out"/>/
+    /// <see cref="Console.Error"/>. <paramref name="trace"/> is as in the
+    /// <see cref="VirtualMachine(TextWriter, TextWriter?)"/> overload.
+    /// </summary>
+    public VirtualMachine(IStandardStreams streams, TextWriter? trace = null) {
+        ArgumentNullException.ThrowIfNull(streams);
+        _streams = streams;
         _trace = trace ?? TextWriter.Null;
     }
 
@@ -176,6 +194,18 @@ public sealed class VirtualMachine {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(fn);
         _globals[name] = GrobValue.FromFunction(fn);
+    }
+
+    /// <summary>
+    /// Register a constant value under <paramref name="name"/> in the global variables
+    /// table (D-343) — the runtime counterpart of a namespace constant such as
+    /// <c>math.pi</c>, which has no callable behaviour to dispatch through
+    /// <see cref="RegisterNative"/>. Overwrites any previous binding with the same name
+    /// (last write wins).
+    /// </summary>
+    public void RegisterConstant(string name, GrobValue value) {
+        ArgumentNullException.ThrowIfNull(name);
+        _globals[name] = value;
     }
 
     /// <summary>
@@ -531,7 +561,7 @@ public sealed class VirtualMachine {
 
                     // --- I/O ---
                     case OpCode.Print:
-                        _out.WriteLine(_valueDisplay.Display(_stack.Pop()));
+                        _streams.Out.WriteLine(_valueDisplay.Display(_stack.Pop()));
                         break;
 
                     case OpCode.Exit: {
@@ -832,7 +862,21 @@ public sealed class VirtualMachine {
                                 VmInvoker invoker = (callable, args) =>
                                     InvokeCallable(callable, args, line, column, ct, finallyContext);
 
-                                GrobValue nativeResult = native.Implementation(callArgs, invoker);
+                                // The native-throw seam (D-342): a native signals a domain
+                                // error by throwing NativeFaultException rather than
+                                // returning a value. Routed through the SAME
+                                // TryRaiseRuntimeGrobError handler-table walk every
+                                // VM-internal fault site already uses (D-334) — no bespoke
+                                // native-error path.
+                                GrobValue nativeResult;
+                                try {
+                                    nativeResult = native.Implementation(callArgs, invoker);
+                                } catch (NativeFaultException fault) {
+                                    if (!TryRaiseRuntimeGrobError(fault.LeafTypeName, fault.Message, line,
+                                            boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                        throw new GrobRuntimeException(fault.Code, line, column, fault.Message);
+                                    break;
+                                }
                                 _stack.Push(nativeResult, line);
                                 break;
                             }

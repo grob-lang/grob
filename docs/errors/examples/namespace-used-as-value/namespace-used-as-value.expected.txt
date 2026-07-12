@@ -1,0 +1,8 @@
+error[E1004]: namespace used as a value
+  --> namespace-used-as-value.grob:3:11
+   |
+ 3 | result := math
+   |           ^^^^
+   |
+   = note: 'math' is a core-module namespace, not a value
+   = note: access a member instead, e.g. 'math.pi' or 'math.sqrt(x)'

@@ -361,6 +361,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>namespace used as a value</summary>
+    public static readonly ErrorDescriptor E1004 = new(
+        Code: "E1004",
+        Title: "namespace used as a value",
+        Category: ErrorCategory.NameResolution,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>shadowed declaration</summary>
     public static readonly ErrorDescriptor E1101 = new(
         Code: "E1101",
@@ -1113,6 +1122,7 @@ public static class ErrorCatalog {
         E1001,
         E1002,
         E1003,
+        E1004,
         E1101,
         E1102,
         E1103,

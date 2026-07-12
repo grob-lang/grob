@@ -90,6 +90,7 @@ read by `grob --explain Exxxx`.
 | E1001 | undefined identifier                               | Name resolution   | pre-release           |
 | E1002 | undefined member                                   | Name resolution   | pre-release           |
 | E1003 | undefined module                                   | Name resolution   | pre-release           |
+| E1004 | namespace used as a value                          | Name resolution   | pre-release           |
 | E1101 | shadowed declaration                               | Name resolution   | pre-release (warning) |
 | E1102 | name already declared in this scope                | Name resolution   | pre-release           |
 | E1103 | reserved identifier used as a binding name         | Name resolution   | pre-release           |
@@ -543,6 +544,16 @@ read by `grob --explain Exxxx`.
 - **Introduced:** v1
 - **Status:** pre-release
 - **Description:** A module-qualified call (`module.fn`) referenced a function not declared on the imported module.
+
+---
+
+### E1004 — namespace used as a value
+
+- **Category:** Name resolution
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A core-module namespace (e.g. `math`) was referenced in value position — bound to a variable (`x := math`), passed as an argument (`print(math)`), or otherwise used where a value is expected. A namespace is a compile-time name category, not a runtime value; only `namespace.member` member access is legal. Rename the binding target or remove the bare reference.
+- **Source decision:** D-342.
 
 ---
 
@@ -1340,7 +1351,7 @@ None as of v1.
 
 ---
 
-**Total: 116 codes across 7 categories.** This is the canonical current count;
+**Total: 117 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
@@ -1365,3 +1376,5 @@ _Updated June 2026 — Sprint 5 correctness increment added E1103 (reserved iden
 _Updated July 2026 — Sprint 7 Increment A added two codes: E0014 (`throw` operand is not a `GrobError` subtype) in the E00xx sub-block of the Type category, and E5904 (unhandled exception reached the top level) in the E59xx sub-block of the Runtime category, bringing the total from 112 to 114. E5904's `Throws` leaf is `GrobError` (a new `GrobErrorLeaf` member) rather than one of the ten typed leaves — the code re-raises whatever the script itself threw, so it carries no single fixed leaf the way every other Runtime code does. Allocated per `allocating-an-error-code` (D-330/D-318 precedent for a dedicated construction/throw-site code over folding into an ill-fitting existing one)._
 
 _Updated July 2026 — Sprint 7 Increment B added two codes: E0015 (catch type is not a `GrobError` subtype) in the E00xx sub-block of the Type category, and E2213 (duplicate `catch` for the same type) in the E22xx sub-block of the Syntax category, bringing the total from 114 to 116. Both dedicated over folding into an existing code (E0001 and E2205 respectively), per the E0014/E0011–E0013 precedent. The increment's own hand-off had said the prior count was "112 → 113" — the live registry and `ErrorCatalog` both showed 114 (Increment A added two codes, not one); this edit reconciles to the live total rather than the stale prompt arithmetic._
+
+_Updated July 2026 — Sprint 8 Increment A added one code: E1004 (namespace used as a value) in the E10xx sub-block of the Name resolution category, bringing the total from 116 to 117. The increment's other new-diagnostic arm (`math.nope()`, unknown namespace member) folds into the pre-existing, previously-unused E1003 ("undefined module") rather than allocating a new code — confirmed against `allocating-an-error-code`'s Step 1 before minting E1004. Source decision D-342._
