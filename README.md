@@ -4,6 +4,7 @@
 [![Release](https://github.com/grob-lang/grob/actions/workflows/release.yml/badge.svg)](https://github.com/grob-lang/grob/actions/workflows/release.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=grob-lang_grob&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=grob-lang_grob)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=grob-lang_grob&metric=coverage)](https://sonarcloud.io/summary/new_code?id=grob-lang_grob)
+[![Benchmarks](https://github.com/grob-lang/grob/actions/workflows/benchmark.yml/badge.svg)](https://github.com/grob-lang/grob/actions/workflows/benchmark.yml)
 ![Status](https://img.shields.io/badge/status-pre--release-orange)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
