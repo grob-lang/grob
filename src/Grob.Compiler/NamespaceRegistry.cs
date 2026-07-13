@@ -72,6 +72,20 @@ internal static class NamespaceRegistry {
             ["strings"] = new Dictionary<string, object>(StringComparer.Ordinal) {
                 ["join"] = new NativeMember([GrobType.Array, GrobType.String], GrobType.String),
             },
+            ["env"] = new Dictionary<string, object>(StringComparer.Ordinal) {
+                ["get"] = new NativeMember([GrobType.String], GrobType.NullableString),
+                ["require"] = new NativeMember([GrobType.String], GrobType.String),
+                ["has"] = new NativeMember([GrobType.String], GrobType.Bool),
+                ["set"] = new NativeMember([GrobType.String, GrobType.String], GrobType.Nil),
+                ["all"] = new NativeMember([], GrobType.Map),
+            },
+            ["log"] = new Dictionary<string, object>(StringComparer.Ordinal) {
+                ["debug"] = new NativeMember([GrobType.String], GrobType.Nil),
+                ["info"] = new NativeMember([GrobType.String], GrobType.Nil),
+                ["warning"] = new NativeMember([GrobType.String], GrobType.Nil),
+                ["error"] = new NativeMember([GrobType.String], GrobType.Nil),
+                ["setLevel"] = new NativeMember([GrobType.String], GrobType.Nil),
+            },
         };
 
     /// <summary>Every registered namespace name.</summary>

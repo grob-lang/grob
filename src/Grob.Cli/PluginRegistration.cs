@@ -7,23 +7,36 @@ namespace Grob.Cli;
 /// The composition root's stdlib plugin list (Sprint 8 Increment A). Given the small,
 /// fixed set of plugins at this point in the build, auto-registration is an explicit
 /// list here rather than reflection-based assembly scanning — later Sprint 8 increments
-/// append further plugins (<c>env</c>/<c>log</c> in C, <c>guid</c> in D, <c>formatAs</c>
-/// in E). <see cref="RegisterAll"/> takes an <see cref="IRandomSource"/> (Increment B)
-/// because <see cref="MathPlugin"/>'s <c>random</c>/<c>randomInt</c>/<c>randomSeed</c>
-/// natives need one per VM run — the composition root constructs a fresh
-/// <see cref="SystemRandomSource"/> per run/session (D-343) rather than this list holding
-/// a single shared instance across the process lifetime.
+/// append further plugins (<c>guid</c> in D, <c>formatAs</c> in E). <see cref="RegisterAll"/>
+/// takes an <see cref="IRandomSource"/> (Increment B) because <see cref="MathPlugin"/>'s
+/// <c>random</c>/<c>randomInt</c>/<c>randomSeed</c> natives need one per VM run — the
+/// composition root constructs a fresh <see cref="SystemRandomSource"/> per run/session
+/// (D-343) rather than this list holding a single shared instance across the process
+/// lifetime. Increment C adds <see cref="IEnvironment"/> (<c>env.*</c>), the injected
+/// <see cref="IStandardStreams"/> (<c>log.*</c>'s stderr sink and <c>input()</c>'s
+/// stdout/stdin — <see cref="IoPlugin"/> now gives <c>input()</c> a real native
+/// registration where it was previously an empty placeholder) and a <c>verbose</c> flag
+/// (<c>--verbose</c>, which selects <see cref="LogPlugin"/>'s initial threshold).
 /// </summary>
 internal static class PluginRegistration {
     /// <summary>Registers every stdlib plugin against <paramref name="registrar"/>, in a fixed order.</summary>
-    internal static void RegisterAll(IPluginRegistrar registrar, IRandomSource randomSource) {
+    internal static void RegisterAll(
+            IPluginRegistrar registrar,
+            IRandomSource randomSource,
+            IEnvironment environment,
+            IStandardStreams streams,
+            bool verbose) {
         ArgumentNullException.ThrowIfNull(randomSource);
+        ArgumentNullException.ThrowIfNull(environment);
+        ArgumentNullException.ThrowIfNull(streams);
 
         IReadOnlyList<IGrobPlugin> plugins = [
             new MathPlugin(randomSource),
             new PathPlugin(),
             new StringsPlugin(),
-            new IoPlugin(),
+            new EnvPlugin(environment),
+            new LogPlugin(streams, verbose ? LogLevel.Debug : LogLevel.Info),
+            new IoPlugin(streams),
         ];
         foreach (IGrobPlugin plugin in plugins) plugin.Register(registrar);
     }

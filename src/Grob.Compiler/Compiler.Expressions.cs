@@ -669,6 +669,22 @@ public sealed partial class Compiler {
         int line = node.Range.Start.Line;
         Visit(node.Callee);
 
+        // Sprint 8 Increment C: input() is the one no-namespace native needing a
+        // default-argument fill (D-342) — the runtime native's own arity is always 1
+        // (Grob.Stdlib.IoPlugin), so a 0-argument script-level call has its missing
+        // prompt filled with the constant "" here, at the call site, before the ordinary
+        // GetGlobal-then-Call shape below. A 1-argument call needs no special handling —
+        // it already takes the plain positional path unchanged. Deliberately a one-off
+        // arm, not a general defaulted-native mechanism: input() is the only case that
+        // needs it in v1.
+        if (node.Callee is IdentifierExpr { Name: "input", Declaration: BuiltinDecl } &&
+                node.Arguments.Count == 0) {
+            EmitConstant(GrobValue.FromString(string.Empty), line);
+            _chunk.WriteOpCode(OpCode.Call, line);
+            _chunk.WriteByte(1, line);
+            return null;
+        }
+
         // Named arguments, or a positional call that omits a defaulted parameter,
         // need reorder-and-fill so the callee receives a fully-bound positional list
         // in parameter declaration order. A pure positional call that supplies every

@@ -31,16 +31,34 @@ namespace Grob.Cli;
 public sealed class RunCommand {
     private readonly TextWriter _stdout;
     private readonly TextWriter _stderr;
+    private readonly TextReader _stdin;
+    private readonly bool _verbose;
 
     /// <summary>
     /// Initialises a <see cref="RunCommand"/> that writes program output to
-    /// <paramref name="stdout"/> and diagnostics to <paramref name="stderr"/>.
+    /// <paramref name="stdout"/>, diagnostics to <paramref name="stderr"/>, and reads
+    /// <c>input()</c> (Sprint 8 Increment C) from <paramref name="stdin"/>.
     /// </summary>
-    public RunCommand(TextWriter stdout, TextWriter stderr) {
+    /// <param name="stdout">Writer for programme output (<c>print()</c>).</param>
+    /// <param name="stderr">Writer for diagnostics and error messages.</param>
+    /// <param name="stdin">
+    /// Source for <c>input()</c>. Optional and defaults to <see cref="TextReader.Null"/>
+    /// (a closed stream — <c>ReadLine()</c> returns <see langword="null"/> immediately,
+    /// raising the catchable <c>IoError</c>) so the many existing two-argument call sites
+    /// across the test suite, none of which exercise <c>input()</c>, need no change —
+    /// mirrors D-343's same call-site-preserving default for <c>SingleWriterStreams</c>.
+    /// </param>
+    /// <param name="verbose">
+    /// Selects <c>log.*</c>'s initial threshold (<c>--verbose</c> on the CLI): <c>true</c>
+    /// starts at <c>LogLevel.Debug</c>, <c>false</c> (the default) at <c>LogLevel.Info</c>.
+    /// </param>
+    public RunCommand(TextWriter stdout, TextWriter stderr, TextReader? stdin = null, bool verbose = false) {
         ArgumentNullException.ThrowIfNull(stdout);
         ArgumentNullException.ThrowIfNull(stderr);
         _stdout = stdout;
         _stderr = stderr;
+        _stdin = stdin ?? TextReader.Null;
+        _verbose = verbose;
     }
 
     /// <summary>
@@ -89,8 +107,9 @@ public sealed class RunCommand {
         }
 
         try {
-            var vm = new VirtualMachine(new TwoWriterStreams(_stdout, _stderr));
-            PluginRegistration.RegisterAll(vm, new SystemRandomSource());
+            var streams = new TwoWriterStreams(_stdout, _stderr, _stdin);
+            var vm = new VirtualMachine(streams);
+            PluginRegistration.RegisterAll(vm, new SystemRandomSource(), new SystemEnvironment(), streams, _verbose);
             vm.Run(chunk);
             return 0;
         } catch (GrobExitException exitEx) {

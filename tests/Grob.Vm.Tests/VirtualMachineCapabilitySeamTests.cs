@@ -16,6 +16,7 @@ public sealed class VirtualMachineCapabilitySeamTests {
     private sealed class FakeStreams : IStandardStreams {
         public TextWriter Out { get; } = new StringWriter();
         public TextWriter Error { get; } = new StringWriter();
+        public TextReader In { get; } = TextReader.Null;
     }
 
     private static Chunk BuildPrintChunk(GrobValue value) {
@@ -90,5 +91,15 @@ public sealed class VirtualMachineCapabilitySeamTests {
     public void SingleWriterStreams_Error_IsTextWriterNull() {
         var streams = new SingleWriterStreams(new StringWriter());
         Assert.Same(TextWriter.Null, streams.Error);
+    }
+
+    [Fact]
+    public void SingleWriterStreams_In_IsClosedReader_ReadLineReturnsNullImmediately() {
+        // Sprint 8 Increment C: the ~39 legacy `new VirtualMachine(writer)` call sites
+        // have no real stdin — TextReader.Null.ReadLine() returning null immediately is
+        // the correct "closed stream" behaviour input() must translate into IoError.
+        var streams = new SingleWriterStreams(new StringWriter());
+        Assert.Same(TextReader.Null, streams.In);
+        Assert.Null(streams.In.ReadLine());
     }
 }
