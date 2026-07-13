@@ -19,14 +19,17 @@ internal sealed class TestRandomSource : IRandomSource {
 
     public long NextInt(long min, long max) {
         // Mirrors production SystemRandomSource's overflow fix (CodeRabbit review, PR
-        // #130): max + 1 overflows when max is long.MaxValue.
-        if (min == long.MinValue && max == long.MaxValue) {
+        // #130): max + 1 overflows when max is long.MaxValue. The min == long.MinValue
+        // check is its own plain branch, not folded into a compound condition, so
+        // min - 1 below is visibly guarded by "min != long.MinValue" (Sonar S3949 on
+        // the production twin, PR #130 CI).
+        if (max != long.MaxValue) return _random.NextInt64(min, max + 1);
+        if (min == long.MinValue) {
             Span<byte> buffer = stackalloc byte[8];
             _random.NextBytes(buffer);
             return BitConverter.ToInt64(buffer);
         }
-        if (max == long.MaxValue) return _random.NextInt64(min - 1, max) + 1;
-        return _random.NextInt64(min, max + 1);
+        return _random.NextInt64(min - 1, max) + 1;
     }
 
     // XOR-folds the seed's upper/lower 32 bits, mirroring production's Reseed so the
