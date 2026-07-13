@@ -631,14 +631,25 @@ public sealed partial class TypeChecker {
     /// hazard D-342 exists to close. The identifier resolves to its <see cref="NamespaceDecl"/>
     /// (a namespace is not a value, so its type stays <see cref="GrobType.Unknown"/>).
     /// </summary>
+    /// <remarks>
+    /// Resolves through <see cref="LookupSymbol"/> — not a bare
+    /// <see cref="NamespaceRegistry.IsNamespace"/> name check — so a local variable or
+    /// parameter that happens to share a namespace's name (e.g. a <c>Config</c>-typed
+    /// parameter called <c>math</c>) correctly shadows the global namespace and falls
+    /// through to ordinary member-access resolution instead of always winning (PR #127
+    /// review). Only the closest-scoped symbol resolving to an actual
+    /// <see cref="NamespaceDecl"/> takes the namespace branch.
+    /// </remarks>
     private bool TryAnnotateNamespaceReceiver(Expression target, out string namespaceName) {
         namespaceName = string.Empty;
-        if (target is not IdentifierExpr id || !NamespaceRegistry.IsNamespace(id.Name)) {
-            return false;
-        }
+        if (target is not IdentifierExpr id) return false;
+
+        Symbol? symbol = LookupSymbol(id.Name);
+        if (symbol?.DeclarationNode is not NamespaceDecl namespaceDecl) return false;
+
         namespaceName = id.Name;
         id.ResolvedType = GrobType.Unknown;
-        id.Declaration = LookupSymbol(id.Name)?.DeclarationNode ?? UnresolvedDecl.Instance;
+        id.Declaration = namespaceDecl;
         return true;
     }
 

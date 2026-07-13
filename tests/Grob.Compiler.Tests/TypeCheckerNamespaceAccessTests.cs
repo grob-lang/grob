@@ -124,6 +124,8 @@ public sealed class TypeCheckerNamespaceAccessTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -132,6 +134,8 @@ public sealed class TypeCheckerNamespaceAccessTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -157,6 +161,8 @@ public sealed class TypeCheckerNamespaceAccessTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1003.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -245,5 +251,51 @@ public sealed class TypeCheckerNamespaceAccessTests {
 
         Assert.False(bag.HasErrors,
             $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Regression: lexical shadowing of a namespace name (PR #127 review —
+    // CodeRabbit). TryAnnotateNamespaceReceiver/VisitMemberAccess's fast path
+    // must resolve the receiver identifier through LookupSymbol (respecting
+    // scope) rather than the bare NamespaceRegistry.IsNamespace(id.Name) string
+    // check, so a local parameter named 'math' correctly shadows the global
+    // namespace instead of always winning.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void LocalParameterNamedMath_ShadowsNamespace_ResolvesStructFieldNotNamespaceMember() {
+        var (unit, bag) = TypeCheckSource("""
+            type Config {
+                pi: string
+            }
+            fn describe(math: Config): string {
+                return math.pi
+            }
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+        MemberAccessExpr ma = Assert.Single(CollectMemberAccesses(unit));
+        // The receiver is the Config-typed parameter, not the math namespace: the
+        // field is Config.pi (string), not the namespace constant math.pi (float).
+        Assert.Equal(GrobType.String, ma.ResolvedFieldType);
+    }
+
+    [Fact]
+    public void LocalParameterNamedMath_ShadowsNamespace_UnknownFieldReportsE1002NotE1003() {
+        // If the namespace path incorrectly won, an unknown member would be E1003
+        // ("undefined module"); the correct struct-field path reports E1002
+        // ("undefined member") instead — the two codes distinguish which arm ran.
+        DiagnosticBag bag = Check("""
+            type Config {
+                host: string
+            }
+            fn describe(math: Config): string {
+                return math.nope
+            }
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E1002.Code, diag.Code);
     }
 }

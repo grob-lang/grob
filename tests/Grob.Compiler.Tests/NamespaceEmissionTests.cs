@@ -1,4 +1,5 @@
 using Grob.Compiler.Ast;
+using Grob.Compiler.Ast.Declarations;
 using Grob.Compiler.Ast.Expressions;
 using Grob.Compiler.Ast.Statements;
 using Grob.Core;
@@ -10,11 +11,15 @@ namespace Grob.Compiler.Tests;
 
 /// <summary>
 /// Sprint 8 Increment A — qualified-native emission (D-342). Hand-built AST, bypassing
-/// the parser and type checker entirely: the compiler's namespace-member emission branch
-/// (<c>Compiler.Expressions.cs VisitMemberAccess</c>) reads only the AST's structural
-/// shape (a bare-identifier target registered in <c>NamespaceRegistry</c>), never a
-/// checker-set annotation, so it is testable in isolation from the checker's dispatch-
-/// precedence work. <c>math.sqrt(9.0)</c> compiles to the arg <c>Constant</c>, then
+/// the parser and type checker: the compiler's namespace-member emission branch
+/// (<c>Compiler.Expressions.cs VisitMemberAccess</c>) reads the type checker's own
+/// resolution — <c>node.Target.Declaration is NamespaceDecl</c> — rather than
+/// re-deriving "is this a namespace" from the bare identifier name, so a shadowed local
+/// with the same name as a namespace is not misidentified (PR #127 review). These
+/// fixtures set <see cref="IdentifierExpr.Declaration"/> by hand via
+/// <see cref="NamespaceIdent"/> to stand in for that checker annotation, so the
+/// emission shape is still testable in isolation from the checker's dispatch-precedence
+/// work. <c>math.sqrt(9.0)</c> compiles to the arg <c>Constant</c>, then
 /// <c>GetGlobal</c> against the qualified name <c>"math.sqrt"</c>, then the existing
 /// <c>Call</c> — not a second embedded function <c>Constant</c>, since
 /// <c>Grob.Compiler</c> has no reference to <c>Grob.Stdlib</c> and so cannot know a
@@ -23,6 +28,11 @@ namespace Grob.Compiler.Tests;
 /// </summary>
 public sealed class NamespaceEmissionTests {
     private static IdentifierExpr Ident(string name) => new(SourceRange.Unknown, name);
+
+    /// <summary>An identifier annotated as a genuine namespace receiver, mirroring what
+    /// <c>TryAnnotateNamespaceReceiver</c> sets during type-checking.</summary>
+    private static IdentifierExpr NamespaceIdent(string name) =>
+        new(SourceRange.Unknown, name) { Declaration = new NamespaceDecl(name) };
 
     private readonly record struct Instr(OpCode Op, int Arg);
 
@@ -39,6 +49,7 @@ public sealed class NamespaceEmissionTests {
                 case OpCode.SetGlobal:
                 case OpCode.DefineGlobal:
                 case OpCode.Call:
+                case OpCode.GetProperty:
                     arg = chunk.ReadByte(offset);
                     offset += 1;
                     break;
@@ -56,7 +67,7 @@ public sealed class NamespaceEmissionTests {
 
     [Fact]
     public void MathPi_CompilesToBareGetGlobalAgainstQualifiedName() {
-        var target = new MemberAccessExpr(SourceRange.Unknown, Ident("math"), "pi");
+        var target = new MemberAccessExpr(SourceRange.Unknown, NamespaceIdent("math"), "pi");
         var unit = new CompilationUnit(SourceRange.Unknown,
             [new ExpressionStmt(SourceRange.Unknown, target)]);
 
@@ -73,7 +84,7 @@ public sealed class NamespaceEmissionTests {
 
     [Fact]
     public void MathSqrt_Call_DisassemblesToArgConstant_GetGlobal_Call() {
-        var callee = new MemberAccessExpr(SourceRange.Unknown, Ident("math"), "sqrt");
+        var callee = new MemberAccessExpr(SourceRange.Unknown, NamespaceIdent("math"), "sqrt");
         var call = new CallExpr(SourceRange.Unknown, callee,
             [new CallArgument(SourceRange.Unknown, null, new FloatLiteralExpr(SourceRange.Unknown, 9.0))]);
         var unit = new CompilationUnit(SourceRange.Unknown,
@@ -131,5 +142,28 @@ public sealed class NamespaceEmissionTests {
             };
         }
         Assert.Contains(OpCode.GetProperty, op);
+    }
+
+    [Fact]
+    public void ShadowedNamespaceName_Declaration_IsNotNamespaceDecl_EmitsGetPropertyNotGetGlobal() {
+        // Regression (PR #127 review): a local/parameter named "math" that the type
+        // checker resolved to something other than the namespace (Declaration is not
+        // NamespaceDecl — simulated here via the plain Ident helper, whose Declaration
+        // is left null) must still emit GetProperty, not a GetGlobal against a
+        // "math.pi"-shaped qualified name. Before the fix this branch matched on the
+        // bare identifier name alone and would have emitted the wrong bytecode even
+        // though the type checker had already resolved the receiver correctly.
+        var target = new MemberAccessExpr(SourceRange.Unknown, Ident("math"), "pi");
+        var unit = new CompilationUnit(SourceRange.Unknown,
+            [new ExpressionStmt(SourceRange.Unknown, target)]);
+
+        var bag = new DiagnosticBag();
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        Assert.False(bag.HasErrors);
+
+        List<Instr> instrs = Decode(chunk);
+        Assert.Contains(instrs, i => i.Op == OpCode.GetProperty);
+        Assert.DoesNotContain(instrs, i =>
+            i.Op == OpCode.GetGlobal && chunk.ReadConstant(i.Arg).AsString() == "math.pi");
     }
 }

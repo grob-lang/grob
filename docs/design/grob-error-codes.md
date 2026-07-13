@@ -543,7 +543,7 @@ read by `grob --explain Exxxx`.
 - **Category:** Name resolution
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A module-qualified call (`module.fn`) referenced a function not declared on the imported module.
+- **Description:** A module-qualified call (`module.fn`) referenced a function not declared on the imported module. Also covers an unknown member on a core-module namespace (e.g. `math.nope()`, `math.nope`) — the namespace resolves, but it has no such member (D-342).
 
 ---
 

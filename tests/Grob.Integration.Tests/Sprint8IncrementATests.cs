@@ -27,7 +27,12 @@ public sealed class Sprint8IncrementATests {
     }
 
     private static (string Stdout, string Stderr, int ExitCode) RunSource(string source) {
-        string path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.grob");
+        // Path.ChangeExtension(Path.GetTempFileName(), ...) rather than
+        // Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.grob") — CodeQL flags
+        // the latter's rooted-segment pitfall (a later Path.Combine argument that
+        // looks absolute silently drops earlier ones); this form has no second
+        // segment to misinterpret.
+        string path = Path.ChangeExtension(Path.GetTempFileName(), ".grob");
         File.WriteAllText(path, source);
         try {
             var stdout = new StringWriter(new StringBuilder());
@@ -68,25 +73,28 @@ public sealed class Sprint8IncrementATests {
 
     [Fact]
     public void NamespaceUsedAsValue_BindingTarget_IsCompileErrorE1004() {
-        (string _, string stderr, int exitCode) = RunSource("result := math\nprint(result)\n");
+        (string stdout, string stderr, int exitCode) = RunSource("result := math\nprint(result)\n");
 
         Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, stdout);
         Assert.Contains("E1004", stderr);
     }
 
     [Fact]
     public void NamespaceUsedAsValue_CallArgument_IsCompileErrorE1004() {
-        (string _, string stderr, int exitCode) = RunSource("print(math)\n");
+        (string stdout, string stderr, int exitCode) = RunSource("print(math)\n");
 
         Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, stdout);
         Assert.Contains("E1004", stderr);
     }
 
     [Fact]
     public void UnknownNamespaceMember_IsCompileErrorE1003() {
-        (string _, string stderr, int exitCode) = RunSource("print(math.nope())\n");
+        (string stdout, string stderr, int exitCode) = RunSource("print(math.nope())\n");
 
         Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, stdout);
         Assert.Contains("E1003", stderr);
     }
 }

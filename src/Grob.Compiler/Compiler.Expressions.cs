@@ -763,8 +763,18 @@ public sealed partial class Compiler {
         // Visit(node.Target) — visiting the bare namespace identifier generically
         // would emit a meaningless GetGlobal against the namespace's own name,
         // which nothing registers a value under.
-        if (node.Target is IdentifierExpr { Name: var namespaceName } &&
-                NamespaceRegistry.IsNamespace(namespaceName)) {
+        //
+        // Reads the type checker's own resolution (node.Target.Declaration is
+        // NamespaceDecl) rather than re-deriving "is this a namespace" from the bare
+        // identifier name via NamespaceRegistry.IsNamespace — the checker's
+        // TryAnnotateNamespaceReceiver already resolves the receiver through
+        // LookupSymbol, so a local variable or parameter that shadows a namespace
+        // name (e.g. a Config-typed parameter called 'math') carries its own real
+        // Declaration here, not NamespaceDecl, and correctly falls through to the
+        // ordinary GetProperty path below (PR #127 review — the previous name-only
+        // check emitted GetGlobal for a shadowed local too).
+        if (node.Target is IdentifierExpr { Declaration: NamespaceDecl } id) {
+            string namespaceName = id.Name;
             string qualifiedName = $"{namespaceName}.{node.Member}";
             int qualifiedIdx = _chunk.AddConstant(GrobValue.FromString(qualifiedName));
             _chunk.WriteOpCode(OpCode.GetGlobal, line);

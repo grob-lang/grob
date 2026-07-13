@@ -58,6 +58,7 @@ public sealed class VirtualMachineNativeThrowTests {
 
         Assert.Equal(ErrorCatalog.E5006.Code, ex.Code);
         Assert.Equal(1, ex.Line);
+        Assert.Equal(0, ex.Column);
         Assert.Contains("sqrt of a negative number", ex.Message);
     }
 
