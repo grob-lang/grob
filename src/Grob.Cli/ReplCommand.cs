@@ -83,7 +83,7 @@ public sealed class ReplCommand {
         _stdout = stdout;
         _stderr = stderr;
         _vm = new VirtualMachine(new TwoWriterStreams(stdout, stderr));
-        PluginRegistration.RegisterAll(_vm);
+        PluginRegistration.RegisterAll(_vm, new SystemRandomSource());
     }
 
     /// <summary>

@@ -22,14 +22,55 @@ internal static class NamespaceRegistry {
     /// v1 core-module natives take no named or defaulted arguments, so arity/type
     /// validation is a straight positional check — the smaller counterpart of the
     /// named-argument binding machinery <c>CheckCall</c> uses for user-defined <c>fn</c>s.
+    /// <paramref name="VariadicElementType"/> is non-null for the one native that needs a
+    /// variable-length tail (<c>path.join</c>, Sprint 8 Increment B): when set, at least one
+    /// argument beyond <see cref="ParameterTypes"/>'s fixed prefix is required, and every
+    /// argument from that point on is checked against this type instead of a fixed slot.
     /// </summary>
-    internal sealed record NativeMember(IReadOnlyList<GrobType> ParameterTypes, GrobType ReturnType);
+    internal sealed record NativeMember(
+        IReadOnlyList<GrobType> ParameterTypes,
+        GrobType ReturnType,
+        GrobType? VariadicElementType = null);
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, object>> _namespaces =
         new Dictionary<string, IReadOnlyDictionary<string, object>>(StringComparer.Ordinal) {
             ["math"] = new Dictionary<string, object>(StringComparer.Ordinal) {
                 ["pi"] = new ConstantMember(GrobType.Float),
+                ["e"] = new ConstantMember(GrobType.Float),
+                ["tau"] = new ConstantMember(GrobType.Float),
                 ["sqrt"] = new NativeMember([GrobType.Float], GrobType.Float),
+                ["pow"] = new NativeMember([GrobType.Float, GrobType.Float], GrobType.Float),
+                ["log"] = new NativeMember([GrobType.Float], GrobType.Float),
+                ["log10"] = new NativeMember([GrobType.Float], GrobType.Float),
+                ["sin"] = new NativeMember([GrobType.Float], GrobType.Float),
+                ["cos"] = new NativeMember([GrobType.Float], GrobType.Float),
+                ["tan"] = new NativeMember([GrobType.Float], GrobType.Float),
+                ["asin"] = new NativeMember([GrobType.Float], GrobType.Float),
+                ["acos"] = new NativeMember([GrobType.Float], GrobType.Float),
+                ["atan"] = new NativeMember([GrobType.Float], GrobType.Float),
+                ["atan2"] = new NativeMember([GrobType.Float, GrobType.Float], GrobType.Float),
+                ["toRadians"] = new NativeMember([GrobType.Float], GrobType.Float),
+                ["toDegrees"] = new NativeMember([GrobType.Float], GrobType.Float),
+                ["random"] = new NativeMember([], GrobType.Float),
+                ["randomInt"] = new NativeMember([GrobType.Int, GrobType.Int], GrobType.Int),
+                ["randomSeed"] = new NativeMember([GrobType.Int], GrobType.Nil),
+            },
+            ["path"] = new Dictionary<string, object>(StringComparer.Ordinal) {
+                ["separator"] = new ConstantMember(GrobType.String),
+                ["join"] = new NativeMember([], GrobType.String, GrobType.String),
+                ["joinAll"] = new NativeMember([GrobType.Array], GrobType.String),
+                ["extension"] = new NativeMember([GrobType.String], GrobType.String),
+                ["filename"] = new NativeMember([GrobType.String], GrobType.String),
+                ["stem"] = new NativeMember([GrobType.String], GrobType.String),
+                ["directory"] = new NativeMember([GrobType.String], GrobType.String),
+                ["resolve"] = new NativeMember([GrobType.String], GrobType.String),
+                ["normalise"] = new NativeMember([GrobType.String], GrobType.String),
+                ["isAbsolute"] = new NativeMember([GrobType.String], GrobType.Bool),
+                ["isRelative"] = new NativeMember([GrobType.String], GrobType.Bool),
+                ["changeExtension"] = new NativeMember([GrobType.String, GrobType.String], GrobType.String),
+            },
+            ["strings"] = new Dictionary<string, object>(StringComparer.Ordinal) {
+                ["join"] = new NativeMember([GrobType.Array, GrobType.String], GrobType.String),
             },
         };
 

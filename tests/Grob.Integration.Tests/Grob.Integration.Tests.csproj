@@ -98,6 +98,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 8 Increment B — completed math, path, strings.join fixtures. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-8b\*.grob"
+             Link="fixtures\sprint-8b\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>

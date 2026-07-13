@@ -711,6 +711,11 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckNativeCall(CallExpr node, string namespaceName, string memberName,
             NamespaceRegistry.NativeMember member, GrobType[] argTypes) {
+        if (member.VariadicElementType is GrobType variadicType) {
+            CheckVariadicNativeCall(node, namespaceName, memberName, member, variadicType, argTypes);
+            return;
+        }
+
         int expected = member.ParameterTypes.Count;
         if (argTypes.Length != expected) {
             string argWord = expected == 1 ? "argument" : "arguments";
@@ -721,13 +726,51 @@ public sealed partial class TypeChecker {
             return;
         }
 
-        for (int i = 0; i < expected; i++) {
-            if (argTypes[i] == GrobType.Error) continue; // cascade suppression
-            if (!TypesAreAssignable(argTypes[i], member.ParameterTypes[i])) {
-                EmitError(ErrorCatalog.E0004,
-                    $"Argument {i + 1} to '{namespaceName}.{memberName}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{TypeName(member.ParameterTypes[i])}'.",
-                    node.Arguments[i].Value.Range);
-            }
+        for (int i = 0; i < expected; i++)
+            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, member.ParameterTypes[i]);
+    }
+
+    /// <summary>
+    /// Validates a native member call whose tail is variadic (<c>path.join</c>, the one
+    /// consumer of <see cref="NamespaceRegistry.NativeMember.VariadicElementType"/>): the
+    /// fixed prefix is checked exactly as <see cref="CheckNativeCall"/> does, then at least
+    /// one further argument is required and every one of them is checked against
+    /// <paramref name="variadicType"/> instead of a fixed per-slot type.
+    /// </summary>
+    private void CheckVariadicNativeCall(CallExpr node, string namespaceName, string memberName,
+            NamespaceRegistry.NativeMember member, GrobType variadicType, GrobType[] argTypes) {
+        int fixedCount = member.ParameterTypes.Count;
+        int minimum = fixedCount + 1;
+        if (argTypes.Length < minimum) {
+            string argWord = minimum == 1 ? "argument" : "arguments";
+            string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
+            EmitError(ErrorCatalog.E0003,
+                $"'{namespaceName}.{memberName}' expects at least {minimum} {argWord}, but {argTypes.Length} {suppliedVerb} supplied.",
+                node.Range);
+            return;
+        }
+
+        for (int i = 0; i < fixedCount; i++)
+            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, member.ParameterTypes[i]);
+
+        for (int i = fixedCount; i < argTypes.Length; i++)
+            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, variadicType);
+    }
+
+    /// <summary>
+    /// Checks one native-call argument against <paramref name="targetType"/> (E0004, at
+    /// the argument's own location), with cascade suppression for an already-errored
+    /// argument. Shared by <see cref="CheckNativeCall"/>'s fixed-arity loop and
+    /// <see cref="CheckVariadicNativeCall"/>'s fixed-prefix and variadic-tail loops, so
+    /// the assignability check, cascade suppression and error format stay in one place.
+    /// </summary>
+    private void CheckNativeArgumentType(CallExpr node, string namespaceName, string memberName,
+            GrobType[] argTypes, int index, GrobType targetType) {
+        if (argTypes[index] == GrobType.Error) return; // cascade suppression
+        if (!TypesAreAssignable(argTypes[index], targetType)) {
+            EmitError(ErrorCatalog.E0004,
+                $"Argument {index + 1} to '{namespaceName}.{memberName}' has type '{TypeName(argTypes[index])}', which is not assignable to parameter of type '{TypeName(targetType)}'.",
+                node.Arguments[index].Value.Range);
         }
     }
 

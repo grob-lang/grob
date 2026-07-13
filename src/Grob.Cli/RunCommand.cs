@@ -90,7 +90,7 @@ public sealed class RunCommand {
 
         try {
             var vm = new VirtualMachine(new TwoWriterStreams(_stdout, _stderr));
-            PluginRegistration.RegisterAll(vm);
+            PluginRegistration.RegisterAll(vm, new SystemRandomSource());
             vm.Run(chunk);
             return 0;
         } catch (GrobExitException exitEx) {
