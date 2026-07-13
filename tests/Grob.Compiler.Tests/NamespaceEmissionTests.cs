@@ -131,17 +131,8 @@ public sealed class NamespaceEmissionTests {
         Chunk chunk = GrobCompiler.Compile(unit, bag);
         Assert.False(bag.HasErrors);
 
-        var op = new List<OpCode>();
-        int offset = 0;
-        while (offset < chunk.Count) {
-            var o = (OpCode)chunk.ReadByte(offset++);
-            op.Add(o);
-            offset += o switch {
-                OpCode.GetGlobal or OpCode.GetProperty or OpCode.Constant => 1,
-                _ => 0,
-            };
-        }
-        Assert.Contains(OpCode.GetProperty, op);
+        List<Instr> instrs = Decode(chunk);
+        Assert.Contains(instrs, i => i.Op == OpCode.GetProperty);
     }
 
     [Fact]
