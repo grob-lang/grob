@@ -1,0 +1,33 @@
+// Sprint 8 Increment B — the completed math module, path, and strings.join
+// end to end through the full pipeline: lex -> parse -> type-check ->
+// compile -> VM, with the stdlib plugin auto-registered at startup
+// (D-342, D-343). Exercises pow/log/trig, the ArithmeticError domain-throw
+// reuse, seeded-random reproducibility, path decompose/join/normalise, and
+// strings.join.
+
+print(math.pow(2.0, 10.0))
+print(math.log(math.e))
+print(math.sin(math.pi / 2.0))
+print(math.toDegrees(math.pi))
+
+math.randomSeed(42)
+first := math.randomInt(1, 6)
+math.randomSeed(42)
+second := math.randomInt(1, 6)
+print(first == second)
+
+try {
+    math.log(0.0)
+}
+catch (e: ArithmeticError) {
+    print("caught domain error: ${e.message}")
+}
+
+print(path.join(`C:\Reports`, "2026", "Q1", "summary.xlsx"))
+print(path.extension(`C:\Reports\2026\summary.XLSX`))
+print(path.normalise(`C:/Users\chris/./documents/../downloads`))
+
+names := ["Alice", "Bob", "Charlie"]
+print(strings.join(names, ", "))
+
+print("done")
