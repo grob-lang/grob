@@ -726,14 +726,8 @@ public sealed partial class TypeChecker {
             return;
         }
 
-        for (int i = 0; i < expected; i++) {
-            if (argTypes[i] == GrobType.Error) continue; // cascade suppression
-            if (!TypesAreAssignable(argTypes[i], member.ParameterTypes[i])) {
-                EmitError(ErrorCatalog.E0004,
-                    $"Argument {i + 1} to '{namespaceName}.{memberName}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{TypeName(member.ParameterTypes[i])}'.",
-                    node.Arguments[i].Value.Range);
-            }
-        }
+        for (int i = 0; i < expected; i++)
+            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, member.ParameterTypes[i]);
     }
 
     /// <summary>
@@ -756,22 +750,27 @@ public sealed partial class TypeChecker {
             return;
         }
 
-        for (int i = 0; i < fixedCount; i++) {
-            if (argTypes[i] == GrobType.Error) continue; // cascade suppression
-            if (!TypesAreAssignable(argTypes[i], member.ParameterTypes[i])) {
-                EmitError(ErrorCatalog.E0004,
-                    $"Argument {i + 1} to '{namespaceName}.{memberName}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{TypeName(member.ParameterTypes[i])}'.",
-                    node.Arguments[i].Value.Range);
-            }
-        }
+        for (int i = 0; i < fixedCount; i++)
+            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, member.ParameterTypes[i]);
 
-        for (int i = fixedCount; i < argTypes.Length; i++) {
-            if (argTypes[i] == GrobType.Error) continue; // cascade suppression
-            if (!TypesAreAssignable(argTypes[i], variadicType)) {
-                EmitError(ErrorCatalog.E0004,
-                    $"Argument {i + 1} to '{namespaceName}.{memberName}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{TypeName(variadicType)}'.",
-                    node.Arguments[i].Value.Range);
-            }
+        for (int i = fixedCount; i < argTypes.Length; i++)
+            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, variadicType);
+    }
+
+    /// <summary>
+    /// Checks one native-call argument against <paramref name="targetType"/> (E0004, at
+    /// the argument's own location), with cascade suppression for an already-errored
+    /// argument. Shared by <see cref="CheckNativeCall"/>'s fixed-arity loop and
+    /// <see cref="CheckVariadicNativeCall"/>'s fixed-prefix and variadic-tail loops, so
+    /// the assignability check, cascade suppression and error format stay in one place.
+    /// </summary>
+    private void CheckNativeArgumentType(CallExpr node, string namespaceName, string memberName,
+            GrobType[] argTypes, int index, GrobType targetType) {
+        if (argTypes[index] == GrobType.Error) return; // cascade suppression
+        if (!TypesAreAssignable(argTypes[index], targetType)) {
+            EmitError(ErrorCatalog.E0004,
+                $"Argument {index + 1} to '{namespaceName}.{memberName}' has type '{TypeName(argTypes[index])}', which is not assignable to parameter of type '{TypeName(targetType)}'.",
+                node.Arguments[index].Value.Range);
         }
     }
 

@@ -41,8 +41,13 @@ public sealed class PathPlugin : IGrobPlugin {
         registrar.RegisterNative("path.directory", new NativeFunction("path.directory", 1, (args, _) =>
             GrobValue.FromString(Path.GetDirectoryName(args[0].AsString()) ?? string.Empty)));
 
-        registrar.RegisterNative("path.resolve", new NativeFunction("path.resolve", 1, (args, _) =>
-            GrobValue.FromString(Path.GetFullPath(args[0].AsString()))));
+        registrar.RegisterNative("path.resolve", new NativeFunction("path.resolve", 1, (args, _) => {
+            // Path.GetFullPath("") throws ArgumentException — treat an empty input as
+            // "." (the current directory) rather than letting a raw .NET exception
+            // escape the native-call boundary (CodeRabbit review, PR #130).
+            string p = args[0].AsString();
+            return GrobValue.FromString(Path.GetFullPath(p.Length == 0 ? "." : p));
+        }));
 
         registrar.RegisterNative("path.normalise", new NativeFunction("path.normalise", 1, (args, _) =>
             GrobValue.FromString(Normalise(args[0].AsString()))));
@@ -69,8 +74,7 @@ public sealed class PathPlugin : IGrobPlugin {
         string[] segments = remainder.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
 
         var collapsed = new List<string>();
-        foreach (string segment in segments) {
-            if (segment == ".") continue;
+        foreach (string segment in segments.Where(segment => segment != ".")) {
             if (segment == ".." && collapsed.Count > 0 && collapsed[^1] != "..") {
                 collapsed.RemoveAt(collapsed.Count - 1);
                 continue;

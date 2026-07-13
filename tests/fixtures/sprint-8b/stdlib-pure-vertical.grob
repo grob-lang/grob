@@ -3,7 +3,11 @@
 // compile -> VM, with the stdlib plugin auto-registered at startup
 // (D-342, D-343). Exercises pow/log/trig, the ArithmeticError domain-throw
 // reuse, seeded-random reproducibility, path decompose/join/normalise, and
-// strings.join.
+// strings.join. Path inputs are relative, not drive-letter absolute, so the
+// expected output is the same shape on every CI platform this test runs on
+// (ADR-0007 — path is platform-aware at runtime, not fixed to Windows
+// separators; the corresponding C# test computes the platform separator
+// dynamically rather than asserting a hardcoded Windows literal).
 
 print(math.pow(2.0, 10.0))
 print(math.log(math.e))
@@ -23,9 +27,9 @@ catch (e: ArithmeticError) {
     print("caught domain error: ${e.message}")
 }
 
-print(path.join(`C:\Reports`, "2026", "Q1", "summary.xlsx"))
-print(path.extension(`C:\Reports\2026\summary.XLSX`))
-print(path.normalise(`C:/Users\chris/./documents/../downloads`))
+print(path.join("Reports", "2026", "Q1", "summary.xlsx"))
+print(path.extension("Reports/2026/summary.XLSX"))
+print(path.normalise("a/./b/../c"))
 
 names := ["Alice", "Bob", "Charlie"]
 print(strings.join(names, ", "))

@@ -2,6 +2,8 @@ using Grob.Core;
 using Grob.Vm;
 using Xunit;
 
+using static Grob.Stdlib.Tests.ChunkBuilders;
+
 namespace Grob.Stdlib.Tests;
 
 /// <summary>
@@ -16,31 +18,6 @@ public sealed class MathPluginTests {
         var vm = new VirtualMachine(new StringWriter());
         new MathPlugin(randomSource ?? new TestRandomSource(12345)).Register(vm);
         return vm;
-    }
-
-    private static Chunk BuildCallChunk(string calleeName, params GrobValue[] args) {
-        var chunk = new Chunk();
-        int calleeIdx = chunk.AddConstant(GrobValue.FromString(calleeName));
-        chunk.WriteOpCode(OpCode.GetGlobal, 1);
-        chunk.WriteByte((byte)calleeIdx, 1);
-        foreach (GrobValue arg in args) {
-            int argIdx = chunk.AddConstant(arg);
-            chunk.WriteOpCode(OpCode.Constant, 1);
-            chunk.WriteByte((byte)argIdx, 1);
-        }
-        chunk.WriteOpCode(OpCode.Call, 1);
-        chunk.WriteByte((byte)args.Length, 1);
-        chunk.WriteOpCode(OpCode.Return, 1);
-        return chunk;
-    }
-
-    private static Chunk BuildGetGlobalChunk(string name) {
-        var chunk = new Chunk();
-        int idx = chunk.AddConstant(GrobValue.FromString(name));
-        chunk.WriteOpCode(OpCode.GetGlobal, 1);
-        chunk.WriteByte((byte)idx, 1);
-        chunk.WriteOpCode(OpCode.Return, 1);
-        return chunk;
     }
 
     [Fact]

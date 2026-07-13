@@ -17,7 +17,19 @@ internal sealed class TestRandomSource : IRandomSource {
 
     public double NextDouble() => _random.NextDouble();
 
-    public long NextInt(long min, long max) => _random.NextInt64(min, max + 1);
+    public long NextInt(long min, long max) {
+        // Mirrors production SystemRandomSource's overflow fix (CodeRabbit review, PR
+        // #130): max + 1 overflows when max is long.MaxValue.
+        if (min == long.MinValue && max == long.MaxValue) {
+            Span<byte> buffer = stackalloc byte[8];
+            _random.NextBytes(buffer);
+            return BitConverter.ToInt64(buffer);
+        }
+        if (max == long.MaxValue) return _random.NextInt64(min - 1, max) + 1;
+        return _random.NextInt64(min, max + 1);
+    }
 
-    public void Reseed(long seed) => _random = new Random((int)seed);
+    // XOR-folds the seed's upper/lower 32 bits, mirroring production's Reseed so the
+    // two stay behaviourally identical (CodeRabbit review, PR #130).
+    public void Reseed(long seed) => _random = new Random(unchecked((int)(seed ^ (seed >> 32))));
 }

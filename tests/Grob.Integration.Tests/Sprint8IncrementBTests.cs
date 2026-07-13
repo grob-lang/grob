@@ -33,6 +33,13 @@ public sealed class Sprint8IncrementBTests {
     public void StdlibPureVertical_RunFile_PrintsExpectedOutputAndExitsZero() {
         (string stdout, string stderr, int exitCode) = RunFile("stdlib-pure-vertical.grob");
 
+        // The fixture's path.join/path.normalise inputs are relative (not drive-letter
+        // absolute) precisely so the expected output can be computed via Path.Combine
+        // here, matching whatever separator the platform this test runs on actually
+        // uses (ADR-0007 — path is platform-aware at runtime; a hardcoded Windows
+        // literal only ever holds on the windows-latest CI leg).
+        string joined = Path.Combine("Reports", "2026", "Q1", "summary.xlsx");
+        string normalised = Path.Combine("a", "c");
         string expected =
             $"1024.0{NL}" +
             $"1.0{NL}" +
@@ -40,9 +47,9 @@ public sealed class Sprint8IncrementBTests {
             $"180.0{NL}" +
             $"true{NL}" +
             $"caught domain error: math.log: domain error — argument 0 is not positive{NL}" +
-            $"C:\\Reports\\2026\\Q1\\summary.xlsx{NL}" +
+            $"{joined}{NL}" +
             $".xlsx{NL}" +
-            $"C:\\Users\\chris\\downloads{NL}" +
+            $"{normalised}{NL}" +
             $"Alice, Bob, Charlie{NL}" +
             $"done{NL}";
 
