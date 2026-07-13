@@ -82,6 +82,20 @@ public sealed partial class TypeChecker {
             return GrobType.Error;
         }
 
+        // E1004 — a namespace name (math, path, …; D-342) used bare in value position.
+        // Reaching VisitIdentifier for a NamespaceDecl symbol means the name was not the
+        // receiver of a member access (VisitMemberAccess/VisitCall peek at the receiver
+        // without visiting it, precisely so a valid `math.pi` never trips this arm). Same
+        // shape as the TypeDecl arm above: Error type, UnresolvedDecl on the §3.1.1 path.
+        if (symbol.DeclarationNode is NamespaceDecl) {
+            EmitError(ErrorCatalog.E1004,
+                $"Namespace '{node.Name}' cannot be used as a value; access a member such as '{node.Name}.…'.",
+                node.Range);
+            node.ResolvedType = GrobType.Error;
+            node.Declaration = UnresolvedDecl.Instance;
+            return GrobType.Error;
+        }
+
         // Flow-sensitive narrowing (§6): inside an `if (x != nil)` block a binding
         // is narrowed from T? to T. Use the narrowed type when one is active for
         // this name; the declaration is unchanged (§3.1.1 still holds).
@@ -278,6 +292,14 @@ public sealed partial class TypeChecker {
         // directly (not the whole MemberAccessExpr) so we can branch on the receiver type
         // without a double-visit.
         if (node.Callee is MemberAccessExpr memberAccess) {
+            // Precedence (D-342): a namespace receiver (math.sqrt(...)) is resolved by
+            // peeking at the receiver — never visiting it, which would emit E1004 on the
+            // namespace itself — BEFORE the array higher-order-method arm and the generic
+            // fallback below.
+            if (TryAnnotateNamespaceReceiver(memberAccess.Target, out string namespaceName)) {
+                return ResolveNamespaceMemberCall(node, memberAccess, namespaceName);
+            }
+
             GrobType receiverType = Visit(memberAccess.Target);
             // Visit argument values to satisfy §3.1.1 on any identifiers inside them.
             var argTypes = new GrobType[node.Arguments.Count];
@@ -552,6 +574,14 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitMemberAccess(MemberAccessExpr node) {
+        // Precedence (D-342): a namespace receiver (math.pi) is resolved by peeking at the
+        // receiver — never visiting it, which would emit E1004 on the namespace itself —
+        // BEFORE the struct/anon-struct field-access fall-through below. Every non-namespace
+        // receiver falls through to the existing arms unchanged.
+        if (TryAnnotateNamespaceReceiver(node.Target, out string namespaceName)) {
+            return ResolveNamespaceMemberAccess(node, namespaceName);
+        }
+
         GrobType targetType = Visit(node.Target);
 
         // Cascade suppression: if the target already errored, don't pile on.
@@ -586,6 +616,119 @@ public sealed partial class TypeChecker {
         // For '?.' chains or Unknown-typed targets the result type is Unknown so
         // downstream '??' operators remain permissive and do not emit false positives.
         return GrobType.Unknown;
+    }
+
+    // -----------------------------------------------------------------------
+    // Namespace member access (D-342) — the shared precedence rule for the three
+    // call sites (VisitIdentifier E1004, VisitCall, VisitMemberAccess).
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Reports whether <paramref name="target"/> is a registered-namespace receiver, and
+    /// if so annotates the receiver identifier for the §3.1.1 invariant WITHOUT visiting
+    /// it. Visiting the receiver would route it through <see cref="VisitIdentifier"/> and
+    /// emit E1004 (namespace-as-value) on a perfectly valid <c>math.pi</c> — the ordering
+    /// hazard D-342 exists to close. The identifier resolves to its <see cref="NamespaceDecl"/>
+    /// (a namespace is not a value, so its type stays <see cref="GrobType.Unknown"/>).
+    /// </summary>
+    /// <remarks>
+    /// Resolves through <see cref="LookupSymbol"/> — not a bare
+    /// <see cref="NamespaceRegistry.IsNamespace"/> name check — so a local variable or
+    /// parameter that happens to share a namespace's name (e.g. a <c>Config</c>-typed
+    /// parameter called <c>math</c>) correctly shadows the global namespace and falls
+    /// through to ordinary member-access resolution instead of always winning (PR #127
+    /// review). Only the closest-scoped symbol resolving to an actual
+    /// <see cref="NamespaceDecl"/> takes the namespace branch.
+    /// </remarks>
+    private bool TryAnnotateNamespaceReceiver(Expression target, out string namespaceName) {
+        namespaceName = string.Empty;
+        if (target is not IdentifierExpr id) return false;
+
+        Symbol? symbol = LookupSymbol(id.Name);
+        if (symbol?.DeclarationNode is not NamespaceDecl namespaceDecl) return false;
+
+        namespaceName = id.Name;
+        id.ResolvedType = GrobType.Unknown;
+        id.Declaration = namespaceDecl;
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves a bare namespace member access (<c>math.pi</c>). A constant member returns
+    /// its declared type; a native member accessed without a call is a callable member typed
+    /// as <see cref="GrobType.Function"/> (mirroring a bare user-fn reference); an unknown
+    /// member is <see cref="ErrorCatalog.E1003"/>.
+    /// </summary>
+    private GrobType ResolveNamespaceMemberAccess(MemberAccessExpr node, string namespaceName) {
+        object? member = NamespaceRegistry.TryGetMember(namespaceName, node.Member);
+        switch (member) {
+            case NamespaceRegistry.ConstantMember constant:
+                node.ResolvedFieldType = constant.Type;
+                return constant.Type;
+            case NamespaceRegistry.NativeMember:
+                node.ResolvedFieldType = GrobType.Function;
+                return GrobType.Function;
+            default:
+                node.ResolvedFieldType = GrobType.Error;
+                return EmitErrorAndReturn(ErrorCatalog.E1003,
+                    $"Namespace '{namespaceName}' has no member '{node.Member}'.",
+                    node.Range);
+        }
+    }
+
+    /// <summary>
+    /// Resolves a namespace member CALL (<c>math.sqrt(9.0)</c>). A native member is validated
+    /// positionally (arity E0003, per-argument type E0004) and resolves to its declared return
+    /// type; a constant member or an unknown member is <see cref="ErrorCatalog.E1003"/>. Arguments
+    /// are visited regardless so the §3.1.1 invariant holds for any identifier inside them.
+    /// </summary>
+    private GrobType ResolveNamespaceMemberCall(CallExpr node, MemberAccessExpr memberAccess, string namespaceName) {
+        var argTypes = new GrobType[node.Arguments.Count];
+        for (int i = 0; i < node.Arguments.Count; i++)
+            argTypes[i] = Visit(node.Arguments[i].Value);
+
+        object? member = NamespaceRegistry.TryGetMember(namespaceName, memberAccess.Member);
+        if (member is NamespaceRegistry.NativeMember native) {
+            memberAccess.ResolvedFieldType = native.ReturnType;
+            CheckNativeCall(node, namespaceName, memberAccess.Member, native, argTypes);
+            return native.ReturnType;
+        }
+
+        // A constant member cannot be called, and an unknown member does not exist — both
+        // are E1003 (no such callable member). No error code distinguishes "not callable"
+        // from "unknown" in v1; the message covers both.
+        memberAccess.ResolvedFieldType = GrobType.Error;
+        return EmitErrorAndReturn(ErrorCatalog.E1003,
+            $"Namespace '{namespaceName}' has no member '{memberAccess.Member}'.",
+            memberAccess.Range);
+    }
+
+    /// <summary>
+    /// Validates a native member call positionally: arity (E0003) then per-argument
+    /// assignability (E0004, at the argument's location). A native has no named or defaulted
+    /// parameters, so a straight index-by-index check suffices; an already-errored argument
+    /// is suppressed to keep one diagnostic per root cause.
+    /// </summary>
+    private void CheckNativeCall(CallExpr node, string namespaceName, string memberName,
+            NamespaceRegistry.NativeMember member, GrobType[] argTypes) {
+        int expected = member.ParameterTypes.Count;
+        if (argTypes.Length != expected) {
+            string argWord = expected == 1 ? "argument" : "arguments";
+            string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
+            EmitError(ErrorCatalog.E0003,
+                $"'{namespaceName}.{memberName}' expects {expected} {argWord}, but {argTypes.Length} {suppliedVerb} supplied.",
+                node.Range);
+            return;
+        }
+
+        for (int i = 0; i < expected; i++) {
+            if (argTypes[i] == GrobType.Error) continue; // cascade suppression
+            if (!TypesAreAssignable(argTypes[i], member.ParameterTypes[i])) {
+                EmitError(ErrorCatalog.E0004,
+                    $"Argument {i + 1} to '{namespaceName}.{memberName}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{TypeName(member.ParameterTypes[i])}'.",
+                    node.Arguments[i].Value.Range);
+            }
+        }
     }
 
     // Looks up node.Member in the user type registry and annotates the node. Written as

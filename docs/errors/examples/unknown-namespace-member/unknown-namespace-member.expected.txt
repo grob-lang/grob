@@ -1,0 +1,8 @@
+error[E1003]: undefined module
+  --> unknown-namespace-member.grob:3:7
+   |
+ 3 | print(math.nope())
+   |       ^^^^^^^^^^^
+   |
+   = note: namespace 'math' has no member 'nope'
+   = note: 'math' declares: pi, sqrt

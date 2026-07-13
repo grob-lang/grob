@@ -175,12 +175,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         ArgumentNullException.ThrowIfNull(unit);
 
         // Global scope lives for the whole compilation unit. Pre-sized for the
-        // built-in functions (RegisterBuiltins, 3 names) and the Sprint 7
-        // GrobError hierarchy (RegisterExceptionHierarchy) registered into it
-        // below — both run unconditionally on every compile, so without a
-        // capacity hint the dictionary pays for repeated resize-and-copy growth
-        // on every single compile regardless of source size.
-        _scopes.Push(new Dictionary<string, Symbol>(3 + ExceptionHierarchy.AllNames.Count));
+        // built-in functions (RegisterBuiltins, 3 names), the Sprint 7 GrobError
+        // hierarchy (RegisterExceptionHierarchy) and the Sprint 8 namespace
+        // registry (RegisterNamespaces) registered into it below — all three run
+        // unconditionally on every compile, so without a capacity hint the
+        // dictionary pays for repeated resize-and-copy growth on every single
+        // compile regardless of source size (D-338).
+        _scopes.Push(new Dictionary<string, Symbol>(
+            3 + ExceptionHierarchy.AllNames.Count + NamespaceRegistry.Count));
 
         // Seed the global scope with built-in functions (D-270). Must run
         // before Pass 1 so that user-defined names cannot shadow built-ins
@@ -194,6 +196,12 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // declaration (e.g. 'type IoError { ... }') is detected as a real E1102
         // redeclaration rather than silently shadowing the hierarchy leaf.
         RegisterExceptionHierarchy();
+
+        // Seed the global scope with the Sprint 8 core-module namespaces (D-342) —
+        // a third name category alongside value and type bindings. Must also run
+        // before Pass 1, for the same shadowing reason as the two registrations
+        // above.
+        RegisterNamespaces();
 
         // Pass 1 — register top-level fn, type, and value-binding declarations with
         // provisional GrobType.Unknown placeholders (D-166, D-321, D-324). This lets any
@@ -290,6 +298,20 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         foreach (string name in ExceptionHierarchy.AllNames) {
             _scopes.Peek()[name] = ExceptionHierarchy.SymbolFor(name);
             _userTypeRegistry.Register(ExceptionHierarchy.UserTypeInfoFor(name));
+        }
+    }
+
+    /// <summary>
+    /// Seeds the global scope with a <see cref="NamespaceDecl"/> sentinel symbol per
+    /// registered <see cref="NamespaceRegistry"/> namespace (D-342) — a name category
+    /// that is neither a value nor a type binding. Mirrors
+    /// <see cref="RegisterExceptionHierarchy"/>'s registration shape; unlike that
+    /// registration, a namespace has no <see cref="UserTypeRegistry"/> entry, since it is
+    /// never constructed as a struct value.
+    /// </summary>
+    private void RegisterNamespaces() {
+        foreach (string name in NamespaceRegistry.NamespaceNames) {
+            RegisterSymbol(name, GrobType.Unknown, SourceLocation.Unknown, new NamespaceDecl(name));
         }
     }
 

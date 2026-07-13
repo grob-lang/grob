@@ -362,4 +362,39 @@ public sealed class Sprint3IncrementFTests {
         Assert.Equal(string.Empty, stderr);
         Assert.Contains("exit", stdout);
     }
+
+    // -----------------------------------------------------------------------
+    // Regression: Sprint 8 Increment A plugin auto-registration (D-342/D-343)
+    // pre-populates the REPL's persistent VM globals with qualified stdlib
+    // names ("math.pi", "math.sqrt") before any user entry runs. The preamble
+    // synthesiser (BuildPreamble) originally re-declared EVERY global
+    // unconditionally, emitting invalid syntax ("math.pi := 3.14...") on the
+    // very first entry and poisoning every entry after it with E2001. Fixed
+    // by skipping any global whose name contains '.' — never a valid bare
+    // identifier a user's `:=`/`readonly` could have declared.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Repl_WithPluginGlobalsRegistered_UserBindingStillPersistsAcrossEntries() {
+        const string input = "x := 5\nprint(x + 1)\nexit";
+        (string stdout, string stderr, int exitCode) = RunRepl(input);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Contains("6", stdout);
+    }
+
+    [Fact]
+    public void Repl_MathNamespaceGlobal_DoesNotAppearInSynthesisedPreamble() {
+        // Two entries is enough to force BuildPreamble to run at least once
+        // (the second entry's preamble is synthesised from the first entry's
+        // resulting globals, which already include the plugin-registered
+        // "math.pi"/"math.sqrt" from VM construction) — if the qualified name
+        // leaked into the preamble, this would fail with an E2001 on stderr.
+        const string input = "x := 1\nx = 2\nexit";
+        (string _, string stderr, int exitCode) = RunRepl(input);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+    }
 }

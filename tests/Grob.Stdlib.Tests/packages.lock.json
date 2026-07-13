@@ -120,6 +120,13 @@
           "Grob.Core": "[1.0.0, )",
           "Grob.Runtime": "[1.0.0, )"
         }
+      },
+      "grob.vm": {
+        "type": "Project",
+        "dependencies": {
+          "Grob.Core": "[1.0.0, )",
+          "Grob.Runtime": "[1.0.0, )"
+        }
       }
     }
   }

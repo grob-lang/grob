@@ -82,7 +82,8 @@ public sealed class ReplCommand {
         _input = input;
         _stdout = stdout;
         _stderr = stderr;
-        _vm = new VirtualMachine(stdout);
+        _vm = new VirtualMachine(new TwoWriterStreams(stdout, stderr));
+        PluginRegistration.RegisterAll(_vm);
     }
 
     /// <summary>
@@ -293,6 +294,13 @@ public sealed class ReplCommand {
         foreach (KeyValuePair<string, GrobValue> kv in _vm.Globals) {
             string name = kv.Key;
             GrobValue value = kv.Value;
+
+            // Sprint 8 Increment A: qualified stdlib-plugin names (e.g. "math.pi",
+            // "math.sqrt") sit in the same globals table as session bindings, but a
+            // dotted name is never a valid bare identifier a user's `:=`/`readonly`
+            // could have declared — re-declaring it here would emit invalid syntax
+            // ("math.pi := 3.14...") and break every later entry in the session.
+            if (name.Contains('.', StringComparison.Ordinal)) continue;
 
             if (value.IsNil) {
                 // Need a type annotation so the type checker accepts the nil.

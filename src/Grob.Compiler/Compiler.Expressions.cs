@@ -750,6 +750,38 @@ public sealed partial class Compiler {
     /// </remarks>
     public override object? VisitMemberAccess(MemberAccessExpr node) {
         int line = node.Range.Start.Line;
+
+        // Namespace-qualified access (D-342): a namespace constant (math.pi) or a
+        // namespace-qualified native's callee (math.sqrt, reached here because
+        // VisitCall's generic Visit(node.Callee) routes a MemberAccessExpr callee
+        // through this method) — no runtime module value, no GetProperty, no new
+        // opcode. Compiles to a bare GetGlobal against the qualified name; the
+        // corresponding NativeFunction/constant was registered into VM globals by
+        // the stdlib plugin's Register(vm) call before any script bytecode runs
+        // (the same _globals[name] write path RegisterNative already uses for every
+        // other native — no DefineGlobal ordering hazard). Checked BEFORE
+        // Visit(node.Target) — visiting the bare namespace identifier generically
+        // would emit a meaningless GetGlobal against the namespace's own name,
+        // which nothing registers a value under.
+        //
+        // Reads the type checker's own resolution (node.Target.Declaration is
+        // NamespaceDecl) rather than re-deriving "is this a namespace" from the bare
+        // identifier name via NamespaceRegistry.IsNamespace — the checker's
+        // TryAnnotateNamespaceReceiver already resolves the receiver through
+        // LookupSymbol, so a local variable or parameter that shadows a namespace
+        // name (e.g. a Config-typed parameter called 'math') carries its own real
+        // Declaration here, not NamespaceDecl, and correctly falls through to the
+        // ordinary GetProperty path below (PR #127 review — the previous name-only
+        // check emitted GetGlobal for a shadowed local too).
+        if (node.Target is IdentifierExpr { Declaration: NamespaceDecl } id) {
+            string namespaceName = id.Name;
+            string qualifiedName = $"{namespaceName}.{node.Member}";
+            int qualifiedIdx = _chunk.AddConstant(GrobValue.FromString(qualifiedName));
+            _chunk.WriteOpCode(OpCode.GetGlobal, line);
+            _chunk.WriteByte(ToByteOperand(qualifiedIdx, "namespace member name"), line);
+            return null;
+        }
+
         Visit(node.Target);
 
         int nameIdx = _chunk.AddConstant(GrobValue.FromString(node.Member));

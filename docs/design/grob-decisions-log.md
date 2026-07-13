@@ -337,6 +337,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-337 | July 2026                                                         | Process — sprint-close smoke scripts | The sprint-close smoke-script family gets a documented home in `grob-v1-requirements.md`. Five exist (`hello.grob` Sprint 3, `calculator.grob` Sprint 4, `functions.grob` Sprint 5, `types.grob` Sprint 6, `errors.grob` Sprint 7), each added at a sprint close, each gold-mastered under `tests/Grob.Integration.Tests`. Until now the family appeared in no design document, had no Definition-of-Done row and was named by no decision — the ownership vacuum that let D-335's CI gap persist undetected. Distinct from the thirteen release-gate validation scripts of `grob-sample-scripts.md`: the smoke family is per-sprint and cumulative, the validation suite is a v1 release gate. `errors.grob` departs from the prior four by asserting exit code 42 (`exit()` inside `try`/`catch`/`finally`, neither handler running), so the family's contract is stdout, stderr **and** exit code, not exit 0. No new error code; count unchanged at 116 |
 | D-338 | July 2026                                                         | Tooling — benchmarking / Compiler — exception hierarchy registration | The Sprint 7-close compile-allocation regression (`Compile_TwoExpressions` +68.6%, `Compile_TenPrints` +37.2% bytes/op, both against the D-333 rolling baseline) is traced to `TypeChecker.RegisterExceptionHierarchy` (introduced in #112): every compile re-synthesised 11 `TypeDecl`/`UserTypeInfo`/`Symbol` objects with content identical on every run, grew the global-scope and `UserTypeRegistry` dictionaries from empty via repeated resize-and-copy, and fed all 11 into `DetectTypeCycles`'s §17.1 DFS even though no hierarchy member carries a required `GrobType.Struct` field and so can never participate in a cycle. Four behaviour-preserving fixes (cache the three object kinds as `static readonly`; pre-size the global-scope dictionary to its known fixed load; pre-size the `UserTypeRegistry` dictionary likewise; exclude hierarchy names from the cycle-detection walk) cut the regression to +14.0%/+7.6%, all tests and gold masters unchanged. The residual ~1,104 B fixed cost is accepted as load-bearing: D-284 requires all 11 `GrobError` hierarchy names resolvable in every compile's global scope, so a permanently larger built-in symbol table (14 entries against the pre-Sprint-7 baseline's 3) costs real bytes with no further avoidable churn to remove — closing it fully would mean lazily registering hierarchy names only when referenced, changing the timing of built-in name resolution, rejected here as a materially bigger redesign out of scope for a behaviour-preserving perf fix. `Compile_TwoExpressions` (+14.0%) therefore remains outside the axis-3 `allocPercent` 10% gate (D-333) by deliberate acceptance, not oversight; the rolling `compile.json` baseline is left un-updated by this entry — D-309 requires baseline production via the `benchmark.yml` workflow on the canonical runner, not a local run, so the recapture is a separate, subsequent act. No new error code; count unchanged at 116 |
 | D-341 | July 2026                                                         | Tooling — benchmarking | D-338's deferred baseline recapture is performed: the rolling `compile.json` baseline is replaced with the `-report-full.json` from `benchmark.yml` run 29207744217 (`windows-latest`, AMD EPYC 7763, 2026-07-12), folding in the accepted +14.0%/+7.6% (8,968 B / 15,584 B) figures per D-309's canonical-workflow production requirement. `BenchCheck` now reads 0.0% delta on both compile benchmarks against the recaptured baseline. `compile.origin.json` is deliberately left untouched — the cumulative axis reads informational only under D-333's CPU-identity guard (fresh AMD EPYC 7763 vs origin's Intel Xeon Platinum 8370C), so the now-larger origin drift (+47.1%/+32.8%) does not gate, and an origin re-freeze remains a separate maintainer-judged act. `vm.json`/`endToEnd.json` untouched — vm deltas stay informational (non-gating, D-313) and no fresh end-to-end benchmarks exist yet. No new error code; count unchanged at 116 |
+| D-342 | July 2026                                                         | Compiler — module-namespace resolution | Core stdlib modules (`math`, and in later increments `path`/`env`/`log`/`guid`/`formatAs`) are compile-time namespaces — a name category in the global scope that is neither a value nor a type binding. `TypeChecker.RegisterNamespaces` seeds each as a `NamespaceDecl` sentinel (mirroring `BuiltinDecl`); a hand-authored `NamespaceRegistry` table (compile-time twin of the runtime `IGrobPlugin` registration, agreement-tested per the D-308 pattern) maps each namespace's members to a constant type or a native signature. Dispatch precedence at a member-access node is fixed: namespace receiver resolves against `NamespaceRegistry` (unknown member → E1003 "undefined module", reused rather than duplicated); value receiver falls through unchanged to the pre-existing struct-field and array-higher-order-method arms. A namespace referenced in value position (`x := math`, `print(math)`) is E1004 "namespace used as a value" (new), the namespace analogue of the existing `TypeDecl`-as-value arm (E2102). No runtime module object and no new opcode: a namespace constant (`math.pi`) compiles to `GetGlobal`; a namespace-qualified native (`math.sqrt`) compiles to its argument(s) then `GetGlobal` then the existing `Call` — the same `GetGlobal`-by-qualified-name shape a plain top-level function call already uses (D-321's `DefineGlobal` prologue), not a literal embedded function constant, since `Grob.Compiler` cannot reference `Grob.Stdlib` to know a native's C# delegate at compile time. One new error code (E1004); count 116 → 117 |
+| D-343 | July 2026                                                         | Runtime — capability-injection seam | Refines D-319's provisional capability-interface sketch into a landed seam. `IGrobPlugin` (`Register(IPluginRegistrar)`) and `IPluginRegistrar` (`RegisterNative`/`RegisterConstant`) are declared in `Grob.Runtime`; `IPluginRegistrar` exists as a narrow interface distinct from the concrete `VirtualMachine` specifically so `Grob.Runtime` never references `Grob.Vm` (the DAG already has `Grob.Vm` → `Grob.Runtime`; the reverse edge would cycle) — `VirtualMachine` implements `IPluginRegistrar` in `Grob.Vm`. `IStandardStreams` (`Out`/`Error`) is the first capability consumed: `OpCode.Print`'s VM handler reads an injected `IStandardStreams` instead of touching `Console` or a bare `TextWriter` field directly; `Grob.Cli`'s composition root constructs the OS-backed default and passes it to `VirtualMachine` via a new constructor overload (the pre-existing single-`TextWriter` constructor is kept unchanged, wrapping its argument in a minimal default, so none of the ~39 existing call sites across the test suite need to change). `print`/`exit` stay on their existing dedicated opcodes (`OpCode.Print`/`OpCode.Exit`) — they are not converted into `Call`-dispatched `NativeFunction`s; a `Grob.Stdlib.IoPlugin : IGrobPlugin` exists to give the I/O seam a uniform place in the plugin-registration pass, but registers no callable, since print/exit are formalised, not rebuilt. `IEnvironment`, `IClock`, `IRandomSource` are declared in `Grob.Runtime` alongside `IStandardStreams` per D-319's sketch, with no consumer yet — Increment B (`math.random*`), C (`env`/`log`) and D (`guid`) are their first real consumers. `IFileSystem`/`IProcessRunner` are not declared; they arrive with `fs`/`process` in Sprint 9. No new error code; count unchanged at 117 |
 
 ---
 
@@ -4322,6 +4324,139 @@ No error code added; count unchanged at 116.
 
 ---
 
+### D-342 — Module-namespace resolution: a compile-time name category, no runtime module object (July 2026)
+
+Area: Compiler — module-namespace resolution
+Supersedes: none
+Superseded by: none
+Extends: D-282, D-320
+
+**The decision.** Core stdlib modules (`math` this increment; `path`, `env`, `log`,
+`guid`, `formatAs` in later Sprint 8 increments) are **compile-time namespaces** — a
+third name category in the global scope alongside value bindings and type bindings.
+`TypeChecker.RegisterNamespaces` seeds each namespace as a `NamespaceDecl` sentinel
+(mirroring the existing `BuiltinDecl` pattern used for `print`/`exit`/`input`, and the
+`ExceptionHierarchy` static-table registration pattern used for the ten `GrobError`
+leaves) into the global scope before pass 1 runs. A hand-authored `NamespaceRegistry`
+static table maps each namespace's members to either a constant's declared type or a
+native's signature — the compile-time twin of what the corresponding `IGrobPlugin`
+registers at runtime, following the same "two hand-maintained mirrors plus an agreement
+test" shape D-308 already established for `ErrorCatalog` against
+`grob-error-codes.md`.
+
+**Dispatch precedence.** At a member-access node `x.y`, the checker's precedence is
+fixed: a **namespace** receiver resolves `y` against `NamespaceRegistry` — a known
+constant (`math.pi`) resolves to its declared type; a known native (`math.sqrt`)
+validates argument arity/types positionally and resolves to its declared return type;
+an unknown member (`math.nope`) is **E1003** ("undefined module") — a pre-existing,
+previously-unused code from the initial 94-code allocation, reused rather than
+duplicated after confirming the fit against the live registry
+(`allocating-an-error-code` Step 1). A **value** receiver falls through unchanged to
+the pre-existing arms: struct/anonymous-struct field access, and the Sprint 5C array
+higher-order methods (`select`/`filter`/`sort`/`each`). A namespace name in **value
+position** — `x := math`, `print(math)`, or any other non-member use — is **E1004**
+("namespace used as a value"), the direct namespace analogue of the existing
+`TypeDecl`-as-value arm (E2102): both are "a name that resolves, but not to a value."
+Every node touched sets non-null `ResolvedType`/`Declaration` on both the success and
+error paths (§3.1.1), matching the existing E2102 arm's `UnresolvedDecl.Instance`
+convention on failure.
+
+**No runtime module object, no new opcode.** A namespace constant (`math.pi`) compiles
+to a bare `OpCode.GetGlobal` against the qualified name; a namespace-qualified native
+call (`math.sqrt(9.0)`) compiles to its argument(s), then `GetGlobal` against the
+qualified name, then the existing `OpCode.Call` — exactly the shape a plain top-level
+function call already uses (D-321's `DefineGlobal` prologue binds every top-level `fn`
+before any statement runs; a call site does `GetGlobal` then args then `Call`). This is
+**not** a literal function constant embedded in the chunk at compile time, despite that
+being one way to read "function constant" informally: `Grob.Compiler` never references
+`Grob.Stdlib` (the DAG forbids it), so the compiler cannot know a native's actual C#
+delegate at compile time. `_globals["math.sqrt"]`/`_globals["math.pi"]` are populated
+by the stdlib plugin's registration pass before any script bytecode runs — the same
+`_globals[name] = …` write path `RegisterNative` already uses for every other native,
+with no `DefineGlobal`-ordering hazard since the write happens at VM startup, not from
+compiled bytecode. There is no module value on the operand stack, no `GetProperty`
+against a namespace, and no `OpCode.Import` for a core module (`Import` remains
+reserved for the plugin/import system, Sprint 11).
+
+**One new error code.** E1004 ("namespace used as a value") is allocated in the E10xx
+general-name-resolution sub-block of the Name Resolution category (E1001–E1003
+already in use), the next free number in that range. Count 116 → 117. E1003 is
+activated for its first real use by this increment but needed no new registration —
+it was already a full `ErrorDescriptor` from the initial allocation, unused until now.
+
+Full detail: `grob-v1-requirements.md` §2 (solution architecture, DAG), §3.1.1 (the
+LSP-enabling properties this decision's error paths must uphold), and
+`grob-stdlib-reference.md`'s Core Modules table and `math` section.
+
+---
+
+### D-343 — Capability-injection seam: `IPluginRegistrar` inversion, `IStandardStreams` landed (July 2026)
+
+Area: Runtime — capability-injection seam
+Supersedes: none
+Superseded by: none
+Refines: D-319
+
+**The decision.** D-319 provisionally sketched six capability interfaces
+(`IFileSystem`, `IEnvironment`, `IProcessRunner`, `IStandardStreams`, `IClock`,
+`IRandomSource`) "sitting alongside `IGrobPlugin` in `Grob.Runtime`." This entry lands
+the injection **mechanism** and the two interfaces Sprint 8 Increment A itself needs.
+
+**`IGrobPlugin`/`IPluginRegistrar` — a narrower registration surface than the VM
+itself.** `IGrobPlugin { string Name; void Register(IPluginRegistrar registrar); }`
+and `IPluginRegistrar { void RegisterNative(string, NativeFunction); void
+RegisterConstant(string, GrobValue); }` both live in `Grob.Runtime`. `IPluginRegistrar`
+is a distinct interface from the concrete VM type — not `IGrobPlugin.Register(VirtualMachine
+vm)` as the architecture doc's illustrative sketch shows — because `Grob.Runtime` must
+never reference `Grob.Vm`: the DAG already has `Grob.Vm` → `Grob.Core` + `Grob.Runtime`,
+and the reverse edge would cycle. `VirtualMachine` implements `IPluginRegistrar` in
+`Grob.Vm`; a plugin author writing against the published `Grob.Runtime` NuGet surface
+never needs to see the VM's concrete type. `RegisterConstant` is new (alongside the
+pre-existing `RegisterNative`) because a namespace constant such as `math.pi` has no
+callable behaviour to dispatch — it is a plain value written into the globals table.
+
+**`IStandardStreams` — the first capability landed.** `IStandardStreams { TextWriter
+Out; TextWriter Error; }`. `OpCode.Print`'s VM handler reads an injected
+`IStandardStreams.Out` instead of a bare `TextWriter` field or `Console` directly, so
+`Grob.Vm` and `Grob.Stdlib` stay OS-free — matching D-319's "no OS call may leak below
+the host layer" principle. `VirtualMachine` gains a new constructor overload taking
+`IStandardStreams`; the pre-existing single-`TextWriter` constructor is kept unchanged
+and wraps its argument in a minimal internal default (`Out` = the given writer, `Error`
+= `TextWriter.Null`) — deliberately, so none of the roughly 39 existing
+`new VirtualMachine(writer)` call sites across the test suite and `Grob.Cli` need to
+change for this increment. `Grob.Cli`'s composition root (`RunCommand`/`ReplCommand`)
+constructs the OS-backed default (`Console.Out`/`Console.Error`) and passes it through
+the new overload.
+
+**`print`/`exit` are formalised, not rebuilt.** They stay on their existing dedicated
+`OpCode.Print`/`OpCode.Exit` opcodes, compiled by the existing identifier-name special
+case in `Compiler.Statements.cs` — they are **not** converted into ordinary
+`Call`-dispatched `NativeFunction`s. Converting them would be a real behavioural-risk
+architecture change (removing a working, closed-opcode-respecting path) for no required
+benefit, and the increment's own instruction is explicit: "do not change what print or
+exit do." Instead, a `Grob.Stdlib.IoPlugin : IGrobPlugin` exists purely to give the I/O
+capability seam a uniform place in the plugin auto-registration pass — it registers no
+callable, since print/exit are not natives.
+
+**Declared but not yet consumed.** `IEnvironment` (`Get`/`Set`/`Has`/`All`), `IClock`
+(`UtcNow`), and `IRandomSource` (`NextDouble`/`NextInt`/`Reseed`) are declared in
+`Grob.Runtime` alongside `IStandardStreams`, per D-319's sketch — their real consumers
+are `env`/`log` (Increment C), `math.random*` (Increment B) and `guid` (Increment D).
+No default OS-backed implementation is wired into `Grob.Cli` for these three this
+increment; that wiring lands with their first real consumer, to avoid unconsumed,
+untested implementation code (the `forward-scaffolding-yagni` discipline — the
+interface _shapes_ are the requested seam; their _implementations_ are not). `IFileSystem`
+and `IProcessRunner` are not declared at all — they arrive with `fs`/`process` in
+Sprint 9, out of Sprint 8's scope entirely.
+
+No new error code; count unchanged at 117.
+
+Full detail: `grob-decisions-log.md` D-319 (the original sketch and rationale),
+`grob-vm-architecture.md` "Plugins and Native Functions" (the `IGrobPlugin`
+illustrative sketch this entry corrects against the live DAG).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -4543,7 +4678,28 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Compile-allocation baseline recapture: D-341 added. Performs the "separate,_
+_July 2026 — Sprint 8 Increment A kickoff: D-342 and D-343 added. D-342 makes core_
+_stdlib modules (`math` this increment) compile-time namespaces — a third name_
+_category alongside value and type bindings, resolved via a `NamespaceRegistry`_
+_table and a fixed member-access dispatch precedence (namespace receiver resolves_
+_against the registry; value receiver falls through unchanged to the pre-existing_
+_struct-field and array-higher-order-method arms). Namespace-in-value-position is_
+_new code E1004; unknown-namespace-member reuses the pre-existing, previously-unused_
+_E1003 rather than duplicating it. No runtime module object, no new opcode — a_
+_namespace constant or a namespace-qualified native both compile to `GetGlobal`_
+_against the qualified name, the same shape a plain top-level function call already_
+_uses, since `Grob.Compiler` cannot reference `Grob.Stdlib` to embed a native's_
+_actual delegate as a compile-time constant. D-343 refines D-319's provisional_
+_capability-interface sketch: `IGrobPlugin`/`IPluginRegistrar` land in `Grob.Runtime`_
+_with `IPluginRegistrar` deliberately distinct from the concrete VM type (the DAG_
+_forbids `Grob.Runtime` → `Grob.Vm`); `IStandardStreams` is the first capability_
+_consumed, by `OpCode.Print`, via a new `VirtualMachine` constructor overload that_
+_leaves the existing single-`TextWriter` constructor and its ~39 call sites_
+_unchanged; `print`/`exit` keep their existing dedicated opcodes rather than_
+_becoming `Call`-dispatched natives. `IEnvironment`/`IClock`/`IRandomSource` are_
+_declared for Increments B/C/D, un-implemented until consumed. One new error code_
+_(E1004); count 116 → 117._
+_Previous: July 2026 — Compile-allocation baseline recapture: D-341 added. Performs the "separate,_
 _subsequent, logged act" D-338 deferred — the rolling `compile.json` baseline is_
 _replaced with the `benchmark.yml` run 29207744217 report (`windows-latest`, AMD EPYC_
 _7763), folding in D-338's accepted +14.0%/+7.6% (8,968 B / 15,584 B) figures; `BenchCheck`_

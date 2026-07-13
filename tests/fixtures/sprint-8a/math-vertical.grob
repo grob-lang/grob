@@ -1,0 +1,18 @@
+// Sprint 8 Increment A proving vertical — math.pi and math.sqrt end to end
+// through the full pipeline: lex -> parse -> type-check -> compile -> VM,
+// with the stdlib plugin auto-registered at startup (D-342, D-343).
+// Exercises the namespace-constant path (math.pi), the qualified-native
+// call path (math.sqrt), and the native-throw seam catching a domain
+// error through an ordinary try/catch.
+
+print(math.pi)
+print(math.sqrt(9.0))
+
+try {
+    math.sqrt(-4.0)
+}
+catch (e: ArithmeticError) {
+    print("caught domain error: ${e.message}")
+}
+
+print("done")

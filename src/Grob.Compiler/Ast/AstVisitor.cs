@@ -179,6 +179,9 @@ public abstract class AstVisitor<T> {
     /// <summary>Hook for <see cref="BuiltinDecl"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
     public virtual T VisitBuiltinDecl(BuiltinDecl node) => DefaultVisit(node);
 
+    /// <summary>Hook for <see cref="NamespaceDecl"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
+    public virtual T VisitNamespaceDecl(NamespaceDecl node) => DefaultVisit(node);
+
     /// <summary>Hook for <see cref="UnresolvedDecl"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
     public virtual T VisitUnresolvedDecl(UnresolvedDecl node) => DefaultVisit(node);
 
