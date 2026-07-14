@@ -16,7 +16,10 @@ namespace Grob.Integration.Tests;
 /// </summary>
 public sealed class Sprint8IncrementETests {
     private static (string Stdout, string Stderr, int ExitCode) RunSource(string source) {
-        string path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.grob");
+        // Path.Join, not Path.Combine (CodeQL cs/path-combine-with-later-rooted-arg):
+        // the second segment is a GUID-hex string, never rooted, so behaviour is
+        // identical here, but Join has no rooted-segment pitfall to reason about at all.
+        string path = Path.Join(Path.GetTempPath(), $"{Guid.NewGuid():N}.grob");
         File.WriteAllText(path, source);
         try {
             var stdout = new StringWriter(new StringBuilder());

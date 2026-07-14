@@ -723,18 +723,30 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         RegisterSymbol(name, GrobType.Unknown, declaredAt, declarationNode, provisional: true);
     }
 
+    /// <summary>
+    /// Bundles a symbol's optional type-identity metadata — the function-type descriptor
+    /// and/or named-struct-type name(s) that travel alongside a symbol's bare <see
+    /// cref="GrobType"/> tag — into a single <see cref="RegisterSymbol"/> parameter. Keeps
+    /// the parameter count under the analyser bar (S107) as the set of identity channels
+    /// has grown (D-326 function descriptors, Sprint 6 struct names, Sprint 8 Increment
+    /// E's array-element struct name).
+    /// </summary>
+    private readonly record struct SymbolTypeIdentity(
+        FunctionTypeDescriptor? FunctionDescriptor = null,
+        string? NamedStructTypeName = null,
+        string? ArrayElementStructTypeName = null);
+
     private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode,
-                               bool provisional = false, FunctionTypeDescriptor? functionDescriptor = null,
-                               string? namedStructTypeName = null, string? arrayElementStructTypeName = null) {
+                               bool provisional = false, SymbolTypeIdentity typeIdentity = default) {
         _scopes.Peek()[name] = new Symbol {
             Name = name,
             Type = type,
             DeclaredAt = declaredAt,
             DeclarationNode = declarationNode,
             Provisional = provisional,
-            FunctionDescriptor = functionDescriptor,
-            NamedStructTypeName = namedStructTypeName,
-            ArrayElementStructTypeName = arrayElementStructTypeName,
+            FunctionDescriptor = typeIdentity.FunctionDescriptor,
+            NamedStructTypeName = typeIdentity.NamedStructTypeName,
+            ArrayElementStructTypeName = typeIdentity.ArrayElementStructTypeName,
         };
     }
 
@@ -778,7 +790,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
                 range);
             return;
         }
-        RegisterSymbol(name, type, declaredAt, declarationNode, functionDescriptor: functionDescriptor);
+        RegisterSymbol(name, type, declaredAt, declarationNode, typeIdentity: new(FunctionDescriptor: functionDescriptor));
     }
 
     /// <summary>
@@ -794,7 +806,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         if (!_scopes.Peek().TryGetValue(name, out Symbol? existing)) return;
         if (!existing.Provisional) return;
         RegisterSymbol(name, type, existing.DeclaredAt, existing.DeclarationNode,
-            provisional: true, functionDescriptor: functionDescriptor);
+            provisional: true, typeIdentity: new(FunctionDescriptor: functionDescriptor));
     }
 
     /// <summary>Emits an error diagnostic and returns <see cref="GrobType.Error"/>.</summary>

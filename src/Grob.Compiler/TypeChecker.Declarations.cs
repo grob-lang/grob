@@ -47,8 +47,7 @@ public sealed partial class TypeChecker {
             // DeclarationNode alone) so a struct-typed parameter's fields resolve
             // inside the function body the same way a `:=`-inferred struct local does.
             RegisterSymbol(p.Name, paramType, p.Range.Start, node,
-                functionDescriptor: paramDesc, namedStructTypeName: paramStructName,
-                arrayElementStructTypeName: paramArrayElementStructName);
+                typeIdentity: new(paramDesc, paramStructName, paramArrayElementStructName));
         }
 
         // Track the declared return type so VisitReturn can check returned values

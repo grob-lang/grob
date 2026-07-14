@@ -1047,9 +1047,15 @@ public sealed partial class TypeChecker {
     private IReadOnlyList<string>? ResolveExplicitColumns(CallArgument columnsArg, IReadOnlyList<string>? fullFields) {
         if (columnsArg.Value is not ArrayLiteralExpr arrayLit) return fullFields;
 
+        // Explicit .Where filter over the literal elements that actually resolve to a
+        // compile-time string (CodeQL cs/linq/missed-where — the prior foreach's leading
+        // 'if (...) continue;' was an implicit filter).
+        var literalNames = arrayLit.Elements
+            .Select(element => (Element: element, Ok: TryGetGuidParseLiteralValue(element, out string name, out _), Name: name))
+            .Where(entry => entry.Ok);
+
         var selected = new List<string>(arrayLit.Elements.Count);
-        foreach (Expression element in arrayLit.Elements) {
-            if (!TryGetGuidParseLiteralValue(element, out string name, out _)) continue;
+        foreach ((Expression element, _, string name) in literalNames) {
             if (fullFields is not null && !fullFields.Contains(name)) {
                 EmitError(ErrorCatalog.E0004,
                     $"'columns' names '{name}', which is not a field of the table's element type.",
@@ -1128,7 +1134,7 @@ public sealed partial class TypeChecker {
     /// </summary>
     private IReadOnlyList<string>? GetArrayElementFieldNamesFromDecl(AstNode? decl) {
         (TypeRef? annotation, Expression? init) = decl switch {
-            ReadonlyDecl ro => (ro.AnnotatedType, (Expression?)ro.Value),
+            ReadonlyDecl ro => (ro.AnnotatedType, ro.Value),
             VarDeclStmt vd => (vd.AnnotatedType, vd.Initializer),
             _ => (null, null),
         };

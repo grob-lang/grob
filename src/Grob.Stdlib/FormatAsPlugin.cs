@@ -47,8 +47,7 @@ public sealed class FormatAsPlugin : IGrobPlugin {
 
     private static string Table(GrobArray items, IReadOnlyList<string> columns, Func<GrobValue, string> render) {
         var rows = new List<string[]>(items.Count);
-        foreach (GrobValue item in items.Elements) {
-            GrobStruct row = item.AsStruct();
+        foreach (GrobStruct row in items.Elements.Select(static item => item.AsStruct())) {
             rows.Add([.. columns.Select(c => render(row.GetField(c)))]);
         }
 
@@ -88,8 +87,7 @@ public sealed class FormatAsPlugin : IGrobPlugin {
 
     private static string Csv(GrobArray items, IReadOnlyList<string> columns, Func<GrobValue, string> render) {
         var lines = new List<string>(items.Count + 1) { string.Join(",", columns.Select(CsvField)) };
-        foreach (GrobValue item in items.Elements) {
-            GrobStruct row = item.AsStruct();
+        foreach (GrobStruct row in items.Elements.Select(static item => item.AsStruct())) {
             lines.Add(string.Join(",", columns.Select(c => CsvField(render(row.GetField(c))))));
         }
         return string.Join("\n", lines);

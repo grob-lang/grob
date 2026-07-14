@@ -328,7 +328,7 @@ public sealed partial class TypeChecker {
             string boundTypeName = c.ExceptionType?.Name ?? ExceptionHierarchy.Root;
             ReadonlyDecl syntheticDecl = new(c.Range, c.ExceptionVariable, c.ExceptionType, new NilLiteralExpr(c.Range));
             RegisterSymbol(c.ExceptionVariable, GrobType.Struct, c.Range.Start, syntheticDecl,
-                namedStructTypeName: boundTypeName);
+                typeIdentity: new(NamedStructTypeName: boundTypeName));
         }
         Visit(c.Body);
         _scopes.Pop();

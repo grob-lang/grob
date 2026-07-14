@@ -33,8 +33,7 @@ public sealed class CompilerFormatAsTests {
     private static BytecodeFunction SingleFunctionConstant(Chunk chunk) {
         var functions = new List<BytecodeFunction>();
         List<Instr> instrs = Decode(chunk);
-        foreach (Instr instr in instrs) {
-            if (instr.Op != OpCode.Constant) continue;
+        foreach (Instr instr in instrs.Where(i => i.Op == OpCode.Constant)) {
             GrobValue v = chunk.ReadConstant(instr.Arg);
             if (v.IsFunction && v.AsFunction() is BytecodeFunction bf) functions.Add(bf);
         }
