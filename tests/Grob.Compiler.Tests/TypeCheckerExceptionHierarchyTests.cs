@@ -149,4 +149,114 @@ public sealed class TypeCheckerExceptionHierarchyTests {
         Assert.Equal(1, d.Range.Start.Line);
         Assert.Equal(1, d.Range.Start.Column);
     }
+
+    // -----------------------------------------------------------------------
+    // Nominal identity — a hierarchy subtype (a leaf, or the root itself) is
+    // assignable to any of its ancestors (fix/compiler-struct-nominal-identity),
+    // mirroring the throw/catch subtype-matching semantics (D-284) that
+    // TypeChecker.Statements.cs's throw check and TypeChecker.ControlFlow.cs's
+    // catch check already implement directly via ExceptionHierarchy.IsSubtypeOf.
+    // Nominal identity (IsStructNominalMismatch) must not reject this — it
+    // applies only *across* the hierarchy (an unrelated struct), never *within*
+    // it (a leaf assigned to its own root, or to itself).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Parameter_LeafAssignedToGrobErrorRoot_NoError() {
+        DiagnosticBag bag = Check("""
+            fn take(e: GrobError): void {}
+            take(IoError { message: "x" })
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    [Fact]
+    public void Binding_LeafAssignedToGrobErrorRoot_NoError() {
+        DiagnosticBag bag = Check("""
+            e: GrobError := IoError { message: "x" }
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    [Fact]
+    public void Return_LeafAssignedToGrobErrorRoot_NoError() {
+        DiagnosticBag bag = Check("""
+            fn f(): GrobError { return IoError { message: "x" } }
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    [Fact]
+    public void FieldValue_LeafAssignedToGrobErrorRootField_NoError() {
+        DiagnosticBag bag = Check("""
+            type Wrapper { err: GrobError }
+            readonly w := Wrapper { err: IoError { message: "x" } }
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    [Fact]
+    public void Parameter_RootAssignedToItself_NoError() {
+        // Reflexive case — a GrobError value assigned to a GrobError-typed slot is
+        // the exact-name path, not the subtype path, but exercised here alongside
+        // the subtype cases for completeness.
+        DiagnosticBag bag = Check("""
+            fn take(e: GrobError): void {}
+            take(GrobError { message: "x" })
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    [Fact]
+    public void Parameter_SiblingLeaf_NotSubtype_EmitsE0004() {
+        // NetworkError and JsonError are both direct children of GrobError, not of
+        // each other — sibling leaves, not root-vs-leaf. Must still be rejected;
+        // hierarchy membership alone must not short-circuit the nominal check.
+        DiagnosticBag bag = Check("""
+            fn take(e: JsonError): void {}
+            take(NetworkError { message: "x" })
+            """);
+
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+    }
+
+    [Fact]
+    public void Parameter_GrobErrorRootAssignedUnrelatedStruct_EmitsE0004() {
+        // 'GrobError' is a hierarchy member but 'Config' is not — hierarchy
+        // membership on only one side must not accidentally short-circuit the
+        // mismatch check.
+        DiagnosticBag bag = Check("""
+            type Config { host: string }
+            fn take(e: GrobError): void {}
+            take(Config { host: "example.com" })
+            """);
+
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+    }
+
+    [Fact]
+    public void Parameter_LeafParameterAssignedRoot_EmitsE0004() {
+        // The relationship is directional: the root is NOT a subtype of a leaf,
+        // so a GrobError value may not be passed where a specific leaf (IoError)
+        // is declared — only the reverse (leaf-to-root) is permitted.
+        DiagnosticBag bag = Check("""
+            fn take(e: IoError): void {}
+            take(GrobError { message: "x" })
+            """);
+
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+    }
 }

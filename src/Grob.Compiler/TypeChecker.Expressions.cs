@@ -641,6 +641,15 @@ public sealed partial class TypeChecker {
     /// Either side missing a resolvable name (a struct-typed value the checker cannot name,
     /// or a non-struct target) is left alone — this only rejects a definite mismatch between
     /// two known names, one of which may be <c>"guid"</c>.
+    /// <para>
+    /// The <c>GrobError</c> hierarchy (D-284) is an exception to plain name equality: a
+    /// subtype (a leaf, or the root itself) is assignable to any of its ancestors, mirroring
+    /// <c>catch</c>'s subtype-matching semantics (the <c>throw</c> check in
+    /// <c>TypeChecker.Statements.cs</c> and the <c>catch</c> check in
+    /// <c>TypeChecker.ControlFlow.cs</c>, both of which already consult
+    /// <see cref="ExceptionHierarchy.IsSubtypeOf"/> directly). Nominal identity applies
+    /// only across the hierarchy (an unrelated struct is still rejected), never within it.
+    /// </para>
     /// </summary>
     private bool IsStructNominalMismatch(GrobType paramType, string? paramNamedTypeName, Expression argExpr) {
         if (paramType is not (GrobType.Struct or GrobType.NullableStruct)) return false;
@@ -649,7 +658,19 @@ public sealed partial class TypeChecker {
         string? argNamedTypeName = GetStructTypeName(argExpr);
         if (argNamedTypeName is null) return false;
 
-        return paramNamedTypeName != argNamedTypeName;
+        if (paramNamedTypeName == argNamedTypeName) return false;
+
+        // A supplied value's type that is a hierarchy subtype of the declared type is
+        // assignable regardless of the differing name (leaf-to-root, or leaf-to-leaf via a
+        // shared ancestor — the root has no leaf descendants other than itself under
+        // IsSubtypeOf's reflexive walk, so this only ever admits leaf-to-root or root-to-root).
+        if (ExceptionHierarchy.IsHierarchyMember(paramNamedTypeName)
+                && ExceptionHierarchy.IsHierarchyMember(argNamedTypeName)
+                && ExceptionHierarchy.IsSubtypeOf(argNamedTypeName, paramNamedTypeName)) {
+            return false;
+        }
+
+        return true;
     }
 
     /// <inheritdoc/>
