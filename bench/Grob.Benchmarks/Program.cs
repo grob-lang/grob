@@ -20,8 +20,10 @@ if (args.Length > 0 && args[0] == "--stability") {
 BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
 return;
 
+// The frozen script copies the stability loop reads from (§7.3's decoupling rationale).
 static string StabilityFixturesDir() => Path.Join(AppContext.BaseDirectory, "Fixtures", "Stability");
 
+// The six Sprint-8-runnable scripts and each one's expected exit code, in fixed order.
 static IReadOnlyList<StabilityScript> StabilityScripts() {
     string dir = StabilityFixturesDir();
     // Fixed, deliberate order — not directory-enumeration order — so calibration and
@@ -38,6 +40,7 @@ static IReadOnlyList<StabilityScript> StabilityScripts() {
     return [.. scripts.Select(s => new StabilityScript(Path.Join(dir, s.Name), s.ExpectedExitCode))];
 }
 
+// Runs the --calibrate characterisation pass and prints its raw numbers.
 static void RunCalibration() {
     IReadOnlyList<StabilityScript> scripts = StabilityScripts();
     CalibrationResult result = StabilityRunner.Calibrate(scripts);
@@ -51,6 +54,7 @@ static void RunCalibration() {
     }
 }
 
+// Runs the --calibrate-long checkpoint sweep and prints the heap-by-iteration table.
 static void RunLongCalibration() {
     IReadOnlyList<StabilityScript> scripts = StabilityScripts();
     int[] checkpoints = [10, 50, 100, 250, 500, 1000, 2000, 5000, 10000];
@@ -62,6 +66,8 @@ static void RunLongCalibration() {
     }
 }
 
+// Runs the --stability locked test against the committed stability.json and returns
+// the process exit code (0 pass, 1 fail).
 static int RunStability() {
     string baselinePath = Path.Join(AppContext.BaseDirectory, "..", "..", "..", "baseline", "stability.json");
     baselinePath = Path.GetFullPath(baselinePath);

@@ -144,6 +144,7 @@ public static class StabilityRunner {
             Passed: withinOwnTolerance && withinBaseline);
     }
 
+    /// <summary>True if <paramref name="value"/> is within <paramref name="tolerancePercent"/> of <paramref name="reference"/>.</summary>
     private static bool WithinTolerance(long value, long reference, double tolerancePercent) {
         if (reference <= 0) return true;
         double deltaPercent = Math.Abs(value - reference) / (double)reference * 100.0;
