@@ -34,6 +34,8 @@ public sealed class TypeCheckerEnvAccessTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(23, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -66,6 +68,8 @@ public sealed class TypeCheckerEnvAccessTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -82,6 +86,8 @@ public sealed class TypeCheckerEnvAccessTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -90,5 +96,7 @@ public sealed class TypeCheckerEnvAccessTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1003.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 }

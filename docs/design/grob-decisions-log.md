@@ -4469,10 +4469,16 @@ Refines: D-342, D-343
 "D-340" and "D-334 clarification" as governing decisions. None of the first two exist in
 this log (D-338 is immediately followed by D-341 — no gap-filling entries were ever
 logged as D-339/D-340), and D-334 is the `finally`-compilation-model entry, unrelated to
-this work. The decisions that actually govern Increment C are **D-342** (the
-native-throw seam and module-namespace resolution) and **D-343** (the
-capability-injection seam, `IPluginRegistrar`/`IStandardStreams`/`IEnvironment`). This
-entry records the citation error so a future reader searching for "D-339" in this
+this work. The decisions that actually govern Increment C are **D-342** (module-namespace
+resolution) and **D-343** (the capability-injection seam,
+`IPluginRegistrar`/`IStandardStreams`/`IEnvironment`). Increment C's throwing natives
+(`env.require`, `input()`) also ride the **native-throw seam**
+(`Grob.Core.NativeFaultException`), which the VM's `Call` dispatch routes through the same
+handler-table walk a VM-detected fault uses. That seam shipped in Increment A and its
+implementation cites D-342, but note that the D-342 _entry_ itself is scoped to the
+namespace mechanism and does not document the seam — the seam was landed under D-342's
+Increment A work without its own decision entry, so it has no separate D-number to cite.
+This entry records the citation error so a future reader searching for "D-339" in this
 context does not conclude one was silently dropped.
 
 **`IStandardStreams` gains `In`.** A third member, `TextReader In { get; }`, is added
@@ -4519,7 +4525,8 @@ already established; `env.require`'s missing-variable fault reuses `ErrorCatalog
 `ErrorCatalog.E5305` (`IoError`) — no more specific existing code covers "stdin closed",
 and the residual code's normally-high bar is accepted here as the pragmatic v1 choice
 rather than allocating a new leaf for a single call site. Both are ordinary consumers of
-the D-342 native-throw seam; nothing new is decided by their presence.
+the native-throw seam Increment A landed (`NativeFaultException`, above); nothing new is
+decided by their presence.
 
 **`log.setLevel`'s string-level design.** The four levels (`Debug < Info < Warning <
 Error`) are a plain internal `LogLevel` enum with no Grob-visible representation — a

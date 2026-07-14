@@ -15,13 +15,17 @@ namespace Grob.Integration.Tests;
 /// new signature).
 /// </summary>
 public sealed class Sprint8IncrementCTests {
-    private static (string Stdout, string Stderr, int ExitCode) RunSource(string source, TextReader? stdin = null) {
-        string path = Path.ChangeExtension(Path.GetTempFileName(), ".grob");
+    private static (string Stdout, string Stderr, int ExitCode) RunSource(
+            string source, TextReader? stdin = null, bool verbose = false) {
+        // Build the temp path directly with the .grob extension: Path.GetTempFileName
+        // creates (and leaves) a real 0-byte .tmp file on disk, and Path.ChangeExtension
+        // only rewrites the string — so the .tmp would leak on every run.
+        string path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.grob");
         File.WriteAllText(path, source);
         try {
             var stdout = new StringWriter(new StringBuilder());
             var stderr = new StringWriter(new StringBuilder());
-            int exitCode = new RunCommand(stdout, stderr, stdin).Run(path);
+            int exitCode = new RunCommand(stdout, stderr, stdin, verbose).Run(path);
             return (stdout.ToString(), stderr.ToString(), exitCode);
         } finally {
             File.Delete(path);
@@ -97,36 +101,22 @@ public sealed class Sprint8IncrementCTests {
 
     [Fact]
     public void LogDebug_WithoutVerbose_WritesNothingToStderr() {
-        string path = Path.ChangeExtension(Path.GetTempFileName(), ".grob");
-        File.WriteAllText(path, "log.debug(\"hidden\")\nprint(\"done\")\n");
-        try {
-            var stdout = new StringWriter(new StringBuilder());
-            var stderr = new StringWriter(new StringBuilder());
-            int exitCode = new RunCommand(stdout, stderr, verbose: false).Run(path);
+        (string stdout, string stderr, int exitCode) =
+            RunSource("log.debug(\"hidden\")\nprint(\"done\")\n", verbose: false);
 
-            Assert.Equal(0, exitCode);
-            Assert.Equal("done" + Environment.NewLine, stdout.ToString());
-            Assert.Equal(string.Empty, stderr.ToString());
-        } finally {
-            File.Delete(path);
-        }
+        Assert.Equal(0, exitCode);
+        Assert.Equal("done" + Environment.NewLine, stdout);
+        Assert.Equal(string.Empty, stderr);
     }
 
     [Fact]
     public void LogDebug_WithVerbose_WritesToStderr_StdoutUnaffected() {
-        string path = Path.ChangeExtension(Path.GetTempFileName(), ".grob");
-        File.WriteAllText(path, "log.debug(\"visible\")\nprint(\"done\")\n");
-        try {
-            var stdout = new StringWriter(new StringBuilder());
-            var stderr = new StringWriter(new StringBuilder());
-            int exitCode = new RunCommand(stdout, stderr, verbose: true).Run(path);
+        (string stdout, string stderr, int exitCode) =
+            RunSource("log.debug(\"visible\")\nprint(\"done\")\n", verbose: true);
 
-            Assert.Equal(0, exitCode);
-            Assert.Equal("done" + Environment.NewLine, stdout.ToString());
-            Assert.Equal("visible" + Environment.NewLine, stderr.ToString());
-        } finally {
-            File.Delete(path);
-        }
+        Assert.Equal(0, exitCode);
+        Assert.Equal("done" + Environment.NewLine, stdout);
+        Assert.Equal("visible" + Environment.NewLine, stderr);
     }
 
     // -----------------------------------------------------------------------

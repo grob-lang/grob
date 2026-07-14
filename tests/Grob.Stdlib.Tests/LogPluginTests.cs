@@ -1,3 +1,4 @@
+using Grob.Core;
 using Grob.Vm;
 using Xunit;
 
@@ -53,7 +54,7 @@ public sealed class LogPluginTests {
         var streams = new FakeStandardStreams();
         var vm = NewRegisteredVm(streams, LogLevel.Info);
 
-        vm.Run(BuildCallChunk(native, Grob.Core.GrobValue.FromString(message)));
+        vm.Run(BuildCallChunk(native, GrobValue.FromString(message)));
 
         Assert.Equal(message + Environment.NewLine, streams.Error.ToString());
     }
@@ -63,7 +64,7 @@ public sealed class LogPluginTests {
         var streams = new FakeStandardStreams();
         var vm = NewRegisteredVm(streams, LogLevel.Info);
 
-        vm.Run(BuildCallChunk("log.debug", Grob.Core.GrobValue.FromString("hidden")));
+        vm.Run(BuildCallChunk("log.debug", GrobValue.FromString("hidden")));
 
         Assert.Equal(string.Empty, streams.Error.ToString());
     }
@@ -73,7 +74,7 @@ public sealed class LogPluginTests {
         var streams = new FakeStandardStreams();
         var vm = NewRegisteredVm(streams, LogLevel.Debug);
 
-        vm.Run(BuildCallChunk("log.debug", Grob.Core.GrobValue.FromString("visible")));
+        vm.Run(BuildCallChunk("log.debug", GrobValue.FromString("visible")));
 
         Assert.Equal("visible" + Environment.NewLine, streams.Error.ToString());
     }
@@ -83,7 +84,7 @@ public sealed class LogPluginTests {
         var streams = new FakeStandardStreams();
         var vm = NewRegisteredVm(streams, LogLevel.Debug);
 
-        vm.Run(BuildCallChunk("log.error", Grob.Core.GrobValue.FromString("x")));
+        vm.Run(BuildCallChunk("log.error", GrobValue.FromString("x")));
 
         Assert.Equal(string.Empty, streams.Out.ToString());
     }
@@ -97,8 +98,8 @@ public sealed class LogPluginTests {
         var streams = new FakeStandardStreams();
         var vm = NewRegisteredVm(streams, LogLevel.Info);
 
-        vm.Run(BuildCallChunk("log.setLevel", Grob.Core.GrobValue.FromString("debug")));
-        vm.Run(BuildCallChunk("log.debug", Grob.Core.GrobValue.FromString("now visible")));
+        vm.Run(BuildCallChunk("log.setLevel", GrobValue.FromString("debug")));
+        vm.Run(BuildCallChunk("log.debug", GrobValue.FromString("now visible")));
 
         Assert.Equal("now visible" + Environment.NewLine, streams.Error.ToString());
     }
@@ -108,8 +109,8 @@ public sealed class LogPluginTests {
         var streams = new FakeStandardStreams();
         var vm = NewRegisteredVm(streams, LogLevel.Info);
 
-        vm.Run(BuildCallChunk("log.setLevel", Grob.Core.GrobValue.FromString("error")));
-        vm.Run(BuildCallChunk("log.warning", Grob.Core.GrobValue.FromString("dropped")));
+        vm.Run(BuildCallChunk("log.setLevel", GrobValue.FromString("error")));
+        vm.Run(BuildCallChunk("log.warning", GrobValue.FromString("dropped")));
 
         Assert.Equal(string.Empty, streams.Error.ToString());
     }
@@ -121,8 +122,8 @@ public sealed class LogPluginTests {
         var streams = new FakeStandardStreams();
         var vm = NewRegisteredVm(streams, LogLevel.Debug);
 
-        vm.Run(BuildCallChunk("log.setLevel", Grob.Core.GrobValue.FromString(levelName)));
-        vm.Run(BuildCallChunk("log.debug", Grob.Core.GrobValue.FromString("dropped")));
+        vm.Run(BuildCallChunk("log.setLevel", GrobValue.FromString(levelName)));
+        vm.Run(BuildCallChunk("log.debug", GrobValue.FromString("dropped")));
 
         // Both "info" and "warning" sit above "debug", so a debug call is now dropped —
         // proves setLevel actually parsed and applied the named level, not just accepted
@@ -136,14 +137,14 @@ public sealed class LogPluginTests {
         var vm = NewRegisteredVm(streams, LogLevel.Info);
 
         Exception? ex = Record.Exception(() =>
-            vm.Run(BuildCallChunk("log.setLevel", Grob.Core.GrobValue.FromString("bogus"))));
+            vm.Run(BuildCallChunk("log.setLevel", GrobValue.FromString("bogus"))));
         Assert.Null(ex);
 
         // Threshold is still Info: debug stays dropped, info still emits.
-        vm.Run(BuildCallChunk("log.debug", Grob.Core.GrobValue.FromString("still hidden")));
+        vm.Run(BuildCallChunk("log.debug", GrobValue.FromString("still hidden")));
         Assert.Equal(string.Empty, streams.Error.ToString());
 
-        vm.Run(BuildCallChunk("log.info", Grob.Core.GrobValue.FromString("still visible")));
+        vm.Run(BuildCallChunk("log.info", GrobValue.FromString("still visible")));
         Assert.Equal("still visible" + Environment.NewLine, streams.Error.ToString());
     }
 
@@ -152,7 +153,7 @@ public sealed class LogPluginTests {
         var streams = new FakeStandardStreams();
         var vm = NewRegisteredVm(streams, LogLevel.Info);
 
-        vm.Run(BuildCallChunk("log.setLevel", Grob.Core.GrobValue.FromString("debug")));
+        vm.Run(BuildCallChunk("log.setLevel", GrobValue.FromString("debug")));
 
         Assert.True(vm.Stack.Peek().IsNil);
     }
@@ -162,7 +163,7 @@ public sealed class LogPluginTests {
         var streams = new FakeStandardStreams();
         var vm = NewRegisteredVm(streams, LogLevel.Debug);
 
-        vm.Run(BuildCallChunk("log.info", Grob.Core.GrobValue.FromString("x")));
+        vm.Run(BuildCallChunk("log.info", GrobValue.FromString("x")));
 
         Assert.True(vm.Stack.Peek().IsNil);
     }
