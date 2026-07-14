@@ -300,6 +300,71 @@ public sealed class TypeCheckerStructConstructionTests {
     }
 
     // -----------------------------------------------------------------------
+    // Struct nominal identity — field values and field defaults
+    // (fix/compiler-struct-nominal-identity)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void StructConstruction_FieldValue_WrongNamedStructKind_EmitsE0001() {
+        // 'field' is declared Other; supplying a Third construction is a nominal
+        // mismatch even though both are the same flat GrobType.Struct tag.
+        DiagnosticBag bag = Check("""
+            type Other {
+            name: string
+            }
+            type Third {
+            label: string
+            }
+            type Config {
+            field: Other
+            }
+            readonly c := Config { field: Third { label: "x" } }
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", diag.Code);
+        Assert.Equal(10, diag.Range.Start.Line);
+        Assert.Equal(31, diag.Range.Start.Column);  // 'Third { label: "x" }' field value
+    }
+
+    [Fact]
+    public void StructConstruction_FieldValue_MatchingNamedStructKind_NoError() {
+        DiagnosticBag bag = Check("""
+            type Other {
+            name: string
+            }
+            type Config {
+            field: Other
+            }
+            readonly c := Config { field: Other { name: "x" } }
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    [Fact]
+    public void TypeDecl_FieldDefault_WrongNamedStructKind_EmitsE0001() {
+        // 'field' is declared Other; the default is a Third construction — the same
+        // nominal mismatch as the field-value case, but on CheckSingleFieldDefault's path.
+        DiagnosticBag bag = Check("""
+            type Other {
+            name: string
+            }
+            type Third {
+            label: string
+            }
+            type Config {
+            field: Other = Third { label: "x" }
+            }
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", diag.Code);
+        Assert.Equal(8, diag.Range.Start.Line);
+    }
+
+    // -----------------------------------------------------------------------
     // Layer-invariant — pathological but parseable inputs never throw
     // -----------------------------------------------------------------------
 

@@ -287,6 +287,9 @@ public sealed partial class TypeChecker {
                 bool compatible = isFunctionField
                     ? TypesAreAssignable(valueType, fieldInfo.Kind, valueDesc, fieldInfo.FunctionDescriptor)
                     : TypesAreAssignable(valueType, fieldInfo.Kind);
+                if (compatible && IsStructNominalMismatch(fieldInfo.Kind, fieldInfo.NamedTypeName, fi.Value)) {
+                    compatible = false;
+                }
                 if (!compatible) {
                     EmitError(ErrorCatalog.E0001,
                         $"Cannot assign value of type '{TypeName(valueType)}' to field '{fi.Name}' of type '{TypeName(fieldInfo.Kind)}'.",
@@ -337,6 +340,9 @@ public sealed partial class TypeChecker {
             bool compatible = isFunctionField
                 ? TypesAreAssignable(defaultType, resolved.Kind, defaultDesc, resolved.FunctionDescriptor)
                 : TypesAreAssignable(defaultType, resolved.Kind);
+            if (compatible && IsStructNominalMismatch(resolved.Kind, resolved.NamedTypeName, defaultValue)) {
+                compatible = false;
+            }
             if (!compatible) {
                 EmitError(ErrorCatalog.E0001,
                     $"Default value for field '{field.Name}' has type '{TypeName(defaultType)}', which is not assignable to '{TypeName(resolved.Kind)}'.",
