@@ -223,6 +223,66 @@ public sealed class TypeCheckerFunctionTests {
     }
 
     // -----------------------------------------------------------------------
+    // E0005 — struct nominal identity on return values
+    // (fix/compiler-struct-nominal-identity, Site C). The flat GrobType.Struct
+    // tag alone does not distinguish a function's declared struct return type
+    // from an unrelated struct returned in its place.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Return_WrongNamedStructKind_RaisesE0005() {
+        DiagnosticBag bag = Check("""
+            type Config {
+            host: string
+            }
+            type Other {
+            name: string
+            }
+            fn f(): Config {
+            return Other { name: "x" }
+            }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0005.Code, diag.Code);
+        Assert.Equal(8, diag.Range.Start.Line);
+        Assert.Equal(8, diag.Range.Start.Column); // the 'Other { name: "x" }' return value
+    }
+
+    [Fact]
+    public void Return_MatchingNamedStructKind_NoError() {
+        DiagnosticBag bag = Check("""
+            type Config {
+            host: string
+            }
+            fn f(): Config {
+            return Config { host: "example.com" }
+            }
+            """);
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    [Fact]
+    public void Lambda_ReturningDifferentlyNamedStruct_Unaffected() {
+        // A lambda's return type is inferred, not annotated (_functionReturnTypes gets
+        // GrobType.Unknown, so VisitReturn's expected != Unknown guard short-circuits
+        // before the nominal-identity stack is even consulted) — the new
+        // _functionReturnStructNames stack must not be pushed here, and a lambda
+        // returning a struct must type-check clean regardless of which struct it is.
+        DiagnosticBag bag = Check("""
+            type Config {
+            host: string
+            }
+            type Other {
+            name: string
+            }
+            make := () => Other { name: "x" }
+            """);
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    // -----------------------------------------------------------------------
     // E2203 — top-level return
     // -----------------------------------------------------------------------
 

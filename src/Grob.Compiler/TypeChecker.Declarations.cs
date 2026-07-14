@@ -47,14 +47,20 @@ public sealed partial class TypeChecker {
         // Track the declared return type so VisitReturn can check returned values
         // (E0005) and distinguish an in-function return from a top-level one (E2203).
         // _functionReturnDescriptors is pushed in lockstep for function-type returns (D-326).
-        (GrobType returnKind, _, FunctionTypeDescriptor? returnDesc) = ResolveSignatureType(node.ReturnType);
+        // _functionReturnStructNames is pushed in lockstep for named-struct returns
+        // (fix/compiler-struct-nominal-identity, Site C) — never pushed for a lambda, see
+        // that stack's declaration comment.
+        (GrobType returnKind, string? returnStructName, FunctionTypeDescriptor? returnDesc) =
+            ResolveSignatureType(node.ReturnType);
         _functionReturnTypes.Push(returnKind);
         _functionReturnDescriptors.Push(returnDesc);
+        _functionReturnStructNames.Push(returnStructName);
         _controlFrameFloors.Push(_controlFrames.Count);
         Visit(node.Body);
         _controlFrameFloors.Pop();
         _functionReturnTypes.Pop();
         _functionReturnDescriptors.Pop();
+        _functionReturnStructNames.Pop();
 
         _scopes.Pop();
         return GrobType.Unknown;
@@ -287,6 +293,9 @@ public sealed partial class TypeChecker {
                 bool compatible = isFunctionField
                     ? TypesAreAssignable(valueType, fieldInfo.Kind, valueDesc, fieldInfo.FunctionDescriptor)
                     : TypesAreAssignable(valueType, fieldInfo.Kind);
+                if (compatible && IsStructNominalMismatch(fieldInfo.Kind, fieldInfo.NamedTypeName, fi.Value)) {
+                    compatible = false;
+                }
                 if (!compatible) {
                     EmitError(ErrorCatalog.E0001,
                         $"Cannot assign value of type '{TypeName(valueType)}' to field '{fi.Name}' of type '{TypeName(fieldInfo.Kind)}'.",
@@ -337,6 +346,9 @@ public sealed partial class TypeChecker {
             bool compatible = isFunctionField
                 ? TypesAreAssignable(defaultType, resolved.Kind, defaultDesc, resolved.FunctionDescriptor)
                 : TypesAreAssignable(defaultType, resolved.Kind);
+            if (compatible && IsStructNominalMismatch(resolved.Kind, resolved.NamedTypeName, defaultValue)) {
+                compatible = false;
+            }
             if (!compatible) {
                 EmitError(ErrorCatalog.E0001,
                     $"Default value for field '{field.Name}' has type '{TypeName(defaultType)}', which is not assignable to '{TypeName(resolved.Kind)}'.",
@@ -512,7 +524,7 @@ public sealed partial class TypeChecker {
         // structurally and the descriptor is stored on the symbol (D-326; Fixes G and I).
         FunctionTypeDescriptor? initDesc = InitialiserDescriptor(node.Value);
         (GrobType symbolType, FunctionTypeDescriptor? symbolDesc) =
-            ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Value.Range);
+            ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Value.Range, node.Value);
         // Finalise the pass-1 provisional entry (D-324). Detects collisions with prior
         // real bindings and registers as real when free.
         FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range, symbolDesc);

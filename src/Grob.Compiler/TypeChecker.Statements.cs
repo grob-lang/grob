@@ -42,7 +42,7 @@ public sealed partial class TypeChecker {
         GrobType initType = Visit(node.Initializer);
         FunctionTypeDescriptor? initDesc = InitialiserDescriptor(node.Initializer);
         (GrobType symbolType, FunctionTypeDescriptor? symbolDesc) =
-            ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Initializer.Range);
+            ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Initializer.Range, node.Initializer);
         RegisterSymbol(node.Name, symbolType, node.Range.Start, node, functionDescriptor: symbolDesc);
         return GrobType.Unknown;
     }
@@ -129,7 +129,16 @@ public sealed partial class TypeChecker {
             FunctionTypeDescriptor? actualDesc = ExpressionDescriptor(valueNode);
             return TypesAreAssignable(actual, expected, actualDesc, expectedDesc);
         }
-        return TypesAreAssignable(actual, expected);
+        bool compatible = TypesAreAssignable(actual, expected);
+        if (compatible && valueNode is not null) {
+            // Struct nominal identity (fix/compiler-struct-nominal-identity, Site C): the
+            // flat GrobType.Struct tag alone does not distinguish the declared return
+            // type's struct name from a differently-named struct actually returned.
+            string? expectedNamedTypeName =
+                _functionReturnStructNames.TryPeek(out string? name) ? name : null;
+            if (IsStructNominalMismatch(expected, expectedNamedTypeName, valueNode)) compatible = false;
+        }
+        return compatible;
     }
 
     /// <summary>

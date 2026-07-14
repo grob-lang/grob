@@ -107,6 +107,21 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // -----------------------------------------------------------------------
     private readonly Stack<FunctionTypeDescriptor?> _functionReturnDescriptors = new();
 
+    // -----------------------------------------------------------------------
+    // Function return-type struct name (fix/compiler-struct-nominal-identity,
+    // Site C).
+    //
+    // Parallel to _functionReturnDescriptors: pushed and popped in lockstep with
+    // it inside VisitFnDecl only — never for a lambda, which pushes GrobType.Unknown
+    // to _functionReturnTypes so VisitReturn's expected != Unknown guard short-circuits
+    // before this stack (or _functionReturnDescriptors) is ever consulted. Non-null
+    // when the enclosing fn's declared return type is a named struct; null otherwise.
+    // Read by ComputeReturnCompatibility so a returned value's own struct name can be
+    // compared against the declared return type's name (IsStructNominalMismatch),
+    // mirroring how a struct-typed parameter, field or binding annotation is checked.
+    // -----------------------------------------------------------------------
+    private readonly Stack<string?> _functionReturnStructNames = new();
+
     private readonly Dictionary<LambdaExpr, FunctionTypeDescriptor> _lambdaDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
@@ -333,11 +348,26 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// (D-326). <see langword="null"/> for non-lambda initialisers.
     /// </param>
     /// <param name="initRange">The source range of the initializer, used for diagnostic placement.</param>
+    /// <param name="initExpr">
+    /// The initializer expression itself, when one exists and may hold a resolvable struct
+    /// nominal identity (a struct/anon-struct construction, or an identifier/member access
+    /// carrying one). <see langword="null"/> for a const binding, which cannot hold a
+    /// struct-construction initialiser (<see cref="IsConstantExpr"/>). Used only to reject a
+    /// struct-annotated binding whose initialiser is a differently-named struct — see
+    /// <see cref="IsStructNominalMismatch"/>.
+    /// </param>
     private (GrobType Type, FunctionTypeDescriptor? Descriptor) ResolveBindingFull(
-        TypeRef? annotation, GrobType initType, FunctionTypeDescriptor? initDescriptor, SourceRange initRange) {
+        TypeRef? annotation, GrobType initType, FunctionTypeDescriptor? initDescriptor, SourceRange initRange,
+        Expression? initExpr) {
         if (annotation is null) return (initType, initDescriptor);
 
-        (GrobType annotated, FunctionTypeDescriptor? annotatedDesc) = ResolveTypeRefFull(annotation);
+        // ResolveSignatureType (not ResolveTypeRefFull) so a user-defined struct annotation
+        // resolves to a concrete struct kind and carries its declared name — otherwise every
+        // struct-typed binding annotation resolves to Unknown and is never checked against
+        // its initialiser at all, flatly or nominally (fix/compiler-struct-nominal-identity,
+        // Site B; mirrors the parameter/field/native-argument sites, Sprint 6 close onward).
+        (GrobType annotated, string? annotatedNamedTypeName, FunctionTypeDescriptor? annotatedDesc) =
+            ResolveSignatureType(annotation);
         if (annotated == GrobType.Unknown) return (initType, initDescriptor); // unrecognised — permissive
 
         if (initType == GrobType.Error) return (GrobType.Error, null); // cascade suppression
@@ -346,6 +376,10 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         bool compatible = isFunctionAnnotation
             ? TypesAreAssignable(initType, annotated, initDescriptor, annotatedDesc)
             : TypesAreAssignable(initType, annotated);
+
+        if (compatible && initExpr is not null && IsStructNominalMismatch(annotated, annotatedNamedTypeName, initExpr)) {
+            compatible = false;
+        }
 
         if (!compatible) {
             EmitError(PickAssignabilityError(initType, annotated),
@@ -362,10 +396,12 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// Resolves a binding's final type from its optional annotation and its
     /// initializer's inferred type. Emits E0104 when a nullable value targets a
     /// non-nullable annotation, otherwise E0001 when annotation and initializer
-    /// are incompatible.
+    /// are incompatible. Used by <c>const</c>, which cannot hold a struct-construction
+    /// initialiser (<see cref="IsConstantExpr"/>), so no initialiser expression is
+    /// threaded through for the nominal-identity check.
     /// </summary>
     private GrobType ResolveBinding(TypeRef? annotation, GrobType initType, SourceRange initRange) =>
-        ResolveBindingFull(annotation, initType, null, initRange).Type;
+        ResolveBindingFull(annotation, initType, null, initRange, null).Type;
 
     /// <summary>
     /// Returns the structural function descriptor of a binding initialiser, when the

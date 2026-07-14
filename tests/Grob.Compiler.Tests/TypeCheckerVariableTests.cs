@@ -677,4 +677,70 @@ public sealed class TypeCheckerVariableTests {
         DiagnosticBag bag = Check("const X := -5");
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
     }
+
+    // -----------------------------------------------------------------------
+    // Struct nominal identity on annotated bindings
+    // (fix/compiler-struct-nominal-identity, Site B). Previously
+    // ResolveBindingFull resolved a struct-typed annotation via the static
+    // ResolveTypeRefFull, which has no NamedTypeName channel and returns
+    // GrobType.Unknown for every user-defined type name — so a struct-annotated
+    // binding was never checked against its annotation at all, flatly or
+    // nominally. Switching to ResolveSignatureType restores both.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void VarDecl_StructAnnotation_WrongNamedStructKind_EmitsE0001() {
+        DiagnosticBag bag = Check("""
+            type Config {
+            host: string
+            }
+            type Other {
+            name: string
+            }
+            c: Config := Other { name: "x" }
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", diag.Code);
+        Assert.Equal(7, diag.Range.Start.Line);
+        Assert.Equal(14, diag.Range.Start.Column);  // 'Other { name: "x" }' initializer
+    }
+
+    [Fact]
+    public void ReadonlyDecl_StructAnnotation_WrongNamedStructKind_EmitsE0001() {
+        DiagnosticBag bag = Check("""
+            type Config {
+            host: string
+            }
+            type Other {
+            name: string
+            }
+            readonly c: Config := Other { name: "x" }
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", diag.Code);
+        Assert.Equal(7, diag.Range.Start.Line);
+        Assert.Equal(23, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void VarDecl_StructAnnotation_MatchingNamedStructKind_NoError() {
+        DiagnosticBag bag = Check("""
+            type Config {
+            host: string
+            }
+            c: Config := Config { host: "example.com" }
+            """);
+
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void VarDecl_StructAnnotation_UndeclaredTypeName_RemainsPermissive() {
+        // An annotation naming a type that was never declared resolves to Unknown
+        // under both the old and new resolution path — permissive, no diagnostic.
+        DiagnosticBag bag = Check("c: Bogus := 5");
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
 }

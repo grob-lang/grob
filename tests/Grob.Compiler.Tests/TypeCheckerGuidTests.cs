@@ -54,6 +54,29 @@ public sealed class TypeCheckerGuidTests {
     }
 
     [Fact]
+    public void GuidAnnotatedBinding_AssignedString_ReportsSingleE0001() {
+        // fix/compiler-struct-nominal-identity, Site B: a guid-annotated binding
+        // previously resolved its annotation via the static ResolveTypeRefFull, which
+        // has no guid-specific arm and returns Unknown for 'guid' in annotation
+        // position — so this was never checked at all before the ResolveSignatureType
+        // switch. It is a direct consequence of that switch, not the nominal-mismatch
+        // check itself (guid vs string is a flat type mismatch, not a struct-vs-struct
+        // nominal one).
+        DiagnosticBag bag = Check("""id: guid := "not-a-guid" """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0001.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(13, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void GuidAnnotatedBinding_AssignedGuidValue_NoDiagnostics() {
+        DiagnosticBag bag = Check("id: guid := guid.newV4()");
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+    }
+
+    [Fact]
     public void GuidParameter_AssignedString_ReportsSingleE0004() {
         DiagnosticBag bag = Check("""
             fn take(id: guid): void {}
@@ -103,6 +126,30 @@ public sealed class TypeCheckerGuidTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
         Assert.Equal(6, diag.Range.Start.Line);
+        Assert.Equal(6, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void StructParameter_AssignedDifferentlyNamedStruct_ReportsSingleE0004() {
+        // The general case behind guid's own distinctness: two unrelated named
+        // structs (neither is guid) sharing the flat GrobType.Struct tag must still
+        // be rejected at a parameter call site — this is the motivating bug
+        // (fn take(c: Config) silently accepting an Other-typed argument).
+        DiagnosticBag bag = Check("""
+            type Config {
+                host: string
+            }
+            type Other {
+                name: string
+            }
+            fn take(c: Config): void {}
+            o := Other { name: "x" }
+            take(o)
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(9, diag.Range.Start.Line);
         Assert.Equal(6, diag.Range.Start.Column);
     }
 
