@@ -107,6 +107,21 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // -----------------------------------------------------------------------
     private readonly Stack<FunctionTypeDescriptor?> _functionReturnDescriptors = new();
 
+    // -----------------------------------------------------------------------
+    // Function return-type struct name (fix/compiler-struct-nominal-identity,
+    // Site C).
+    //
+    // Parallel to _functionReturnDescriptors: pushed and popped in lockstep with
+    // it inside VisitFnDecl only — never for a lambda, which pushes GrobType.Unknown
+    // to _functionReturnTypes so VisitReturn's expected != Unknown guard short-circuits
+    // before this stack (or _functionReturnDescriptors) is ever consulted. Non-null
+    // when the enclosing fn's declared return type is a named struct; null otherwise.
+    // Read by ComputeReturnCompatibility so a returned value's own struct name can be
+    // compared against the declared return type's name (IsStructNominalMismatch),
+    // mirroring how a struct-typed parameter, field or binding annotation is checked.
+    // -----------------------------------------------------------------------
+    private readonly Stack<string?> _functionReturnStructNames = new();
+
     private readonly Dictionary<LambdaExpr, FunctionTypeDescriptor> _lambdaDescriptors =
         new(ReferenceEqualityComparer.Instance);
 

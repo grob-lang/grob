@@ -47,14 +47,20 @@ public sealed partial class TypeChecker {
         // Track the declared return type so VisitReturn can check returned values
         // (E0005) and distinguish an in-function return from a top-level one (E2203).
         // _functionReturnDescriptors is pushed in lockstep for function-type returns (D-326).
-        (GrobType returnKind, _, FunctionTypeDescriptor? returnDesc) = ResolveSignatureType(node.ReturnType);
+        // _functionReturnStructNames is pushed in lockstep for named-struct returns
+        // (fix/compiler-struct-nominal-identity, Site C) — never pushed for a lambda, see
+        // that stack's declaration comment.
+        (GrobType returnKind, string? returnStructName, FunctionTypeDescriptor? returnDesc) =
+            ResolveSignatureType(node.ReturnType);
         _functionReturnTypes.Push(returnKind);
         _functionReturnDescriptors.Push(returnDesc);
+        _functionReturnStructNames.Push(returnStructName);
         _controlFrameFloors.Push(_controlFrames.Count);
         Visit(node.Body);
         _controlFrameFloors.Pop();
         _functionReturnTypes.Pop();
         _functionReturnDescriptors.Pop();
+        _functionReturnStructNames.Pop();
 
         _scopes.Pop();
         return GrobType.Unknown;
