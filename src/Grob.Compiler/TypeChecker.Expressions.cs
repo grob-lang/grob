@@ -617,13 +617,12 @@ public sealed partial class TypeChecker {
         } else {
             compatible = TypesAreAssignable(argType, paramType);
         }
-        // guid nominal identity (CodeRabbit review, PR #133): the flat GrobType.Struct
-        // tag alone does not distinguish guid from an unrelated named struct. Scoped to
-        // guid specifically — general struct-vs-struct nominal identity (e.g. passing a
-        // Config where an Other struct is expected) is a pre-existing, wider gap across
-        // the whole checker (parameters, returns, bindings, field construction all share
-        // it), out of scope for this fix and surfaced separately.
-        if (compatible && argExpr is not null && IsGuidNominalMismatch(paramType, paramNamedTypeName, argExpr)) {
+        // Struct nominal identity (originally CodeRabbit review, PR #133, scoped to guid;
+        // generalised to all named structs — fix/compiler-struct-nominal-identity): the
+        // flat GrobType.Struct tag alone does not distinguish one named struct from
+        // another, so an argument constructed as a different struct than the parameter
+        // declares (Config vs Other, or guid vs a user struct) must still be rejected.
+        if (compatible && argExpr is not null && IsStructNominalMismatch(paramType, paramNamedTypeName, argExpr)) {
             compatible = false;
         }
         if (paramType != GrobType.Unknown && argType != GrobType.Error && !compatible) {
@@ -634,25 +633,23 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Reports whether exactly one of <paramref name="paramNamedTypeName"/> (the
-    /// declared parameter's struct name, when <paramref name="paramType"/> is
-    /// <see cref="GrobType.Struct"/> or <see cref="GrobType.NullableStruct"/>) and the
-    /// argument expression's own struct name is <c>"guid"</c> — i.e. a guid value handed
-    /// to a differently-named struct parameter, or vice versa. Both sides being the same
-    /// name (guid-to-guid, or Config-to-Config) and both sides being unrelated non-guid
-    /// names are left alone — this is guid's own distinctness guarantee, not a general
-    /// struct-nominal-identity check.
+    /// Reports whether a struct-typed target (a parameter, field or return position with
+    /// <paramref name="paramType"/> <see cref="GrobType.Struct"/> or
+    /// <see cref="GrobType.NullableStruct"/> and declared name <paramref name="paramNamedTypeName"/>)
+    /// and <paramref name="argExpr"/>'s own struct name disagree — nominal identity, not
+    /// merely the flat <see cref="GrobType.Struct"/> tag, which every named struct shares.
+    /// Either side missing a resolvable name (a struct-typed value the checker cannot name,
+    /// or a non-struct target) is left alone — this only rejects a definite mismatch between
+    /// two known names, one of which may be <c>"guid"</c>.
     /// </summary>
-    private bool IsGuidNominalMismatch(GrobType paramType, string? paramNamedTypeName, Expression argExpr) {
+    private bool IsStructNominalMismatch(GrobType paramType, string? paramNamedTypeName, Expression argExpr) {
         if (paramType is not (GrobType.Struct or GrobType.NullableStruct)) return false;
         if (paramNamedTypeName is null) return false;
 
         string? argNamedTypeName = GetStructTypeName(argExpr);
         if (argNamedTypeName is null) return false;
 
-        bool paramIsGuid = paramNamedTypeName == "guid";
-        bool argIsGuid = argNamedTypeName == "guid";
-        return paramIsGuid != argIsGuid;
+        return paramNamedTypeName != argNamedTypeName;
     }
 
     /// <inheritdoc/>
@@ -949,12 +946,11 @@ public sealed partial class TypeChecker {
         if (argTypes[index] == GrobType.Error) return; // cascade suppression
         Expression argExpr = node.Arguments[index].Value;
         bool compatible = TypesAreAssignable(argTypes[index], targetType);
-        // guid nominal identity (CodeRabbit review, PR #133) — see IsGuidNominalMismatch's
-        // doc comment for the scoping rationale (guid-specific, not general struct nominal
-        // identity). guid.newV5's namespace parameter is the one native argument this
-        // applies to today.
+        // Struct nominal identity — see IsStructNominalMismatch's doc comment. guid.newV5's
+        // namespace parameter is the native argument this most commonly guards today, but
+        // the check is general across any named struct target.
         if (compatible && targetNamedTypeName is not null &&
-                IsGuidNominalMismatch(targetType, targetNamedTypeName, argExpr)) {
+                IsStructNominalMismatch(targetType, targetNamedTypeName, argExpr)) {
             compatible = false;
         }
         if (!compatible) {

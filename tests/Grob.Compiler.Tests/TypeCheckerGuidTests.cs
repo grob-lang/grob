@@ -107,6 +107,30 @@ public sealed class TypeCheckerGuidTests {
     }
 
     [Fact]
+    public void StructParameter_AssignedDifferentlyNamedStruct_ReportsSingleE0004() {
+        // The general case behind guid's own distinctness: two unrelated named
+        // structs (neither is guid) sharing the flat GrobType.Struct tag must still
+        // be rejected at a parameter call site — this is the motivating bug
+        // (fn take(c: Config) silently accepting an Other-typed argument).
+        DiagnosticBag bag = Check("""
+            type Config {
+                host: string
+            }
+            type Other {
+                name: string
+            }
+            fn take(c: Config): void {}
+            o := Other { name: "x" }
+            take(o)
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(9, diag.Range.Start.Line);
+        Assert.Equal(6, diag.Range.Start.Column);
+    }
+
+    [Fact]
     public void GuidParameter_AssignedGuid_NoDiagnostics() {
         DiagnosticBag bag = Check("""
             fn take(id: guid): void {}
