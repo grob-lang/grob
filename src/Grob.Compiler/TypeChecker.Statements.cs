@@ -42,7 +42,7 @@ public sealed partial class TypeChecker {
         GrobType initType = Visit(node.Initializer);
         FunctionTypeDescriptor? initDesc = InitialiserDescriptor(node.Initializer);
         (GrobType symbolType, FunctionTypeDescriptor? symbolDesc) =
-            ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Initializer.Range);
+            ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Initializer.Range, node.Initializer);
         RegisterSymbol(node.Name, symbolType, node.Range.Start, node, functionDescriptor: symbolDesc);
         return GrobType.Unknown;
     }

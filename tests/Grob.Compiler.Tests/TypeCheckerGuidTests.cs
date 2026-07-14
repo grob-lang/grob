@@ -54,6 +54,28 @@ public sealed class TypeCheckerGuidTests {
     }
 
     [Fact]
+    public void GuidAnnotatedBinding_AssignedString_ReportsSingleE0001() {
+        // fix/compiler-struct-nominal-identity, Site B: a guid-annotated binding
+        // previously resolved its annotation via the static ResolveTypeRefFull, which
+        // has no guid-specific arm and returns Unknown for 'guid' in annotation
+        // position — so this was never checked at all before the ResolveSignatureType
+        // switch. It is a direct consequence of that switch, not the nominal-mismatch
+        // check itself (guid vs string is a flat type mismatch, not a struct-vs-struct
+        // nominal one).
+        DiagnosticBag bag = Check("""id: guid := "not-a-guid" """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0001.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+    }
+
+    [Fact]
+    public void GuidAnnotatedBinding_AssignedGuidValue_NoDiagnostics() {
+        DiagnosticBag bag = Check("id: guid := guid.newV4()");
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+    }
+
+    [Fact]
     public void GuidParameter_AssignedString_ReportsSingleE0004() {
         DiagnosticBag bag = Check("""
             fn take(id: guid): void {}

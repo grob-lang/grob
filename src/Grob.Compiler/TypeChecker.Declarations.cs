@@ -518,7 +518,7 @@ public sealed partial class TypeChecker {
         // structurally and the descriptor is stored on the symbol (D-326; Fixes G and I).
         FunctionTypeDescriptor? initDesc = InitialiserDescriptor(node.Value);
         (GrobType symbolType, FunctionTypeDescriptor? symbolDesc) =
-            ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Value.Range);
+            ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Value.Range, node.Value);
         // Finalise the pass-1 provisional entry (D-324). Detects collisions with prior
         // real bindings and registers as real when free.
         FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range, symbolDesc);
