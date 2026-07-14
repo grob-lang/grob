@@ -364,6 +364,21 @@ public sealed class TypeCheckerStructConstructionTests {
         Assert.Equal(8, diag.Range.Start.Line);
     }
 
+    [Fact]
+    public void TypeDecl_FieldDefault_MatchingNamedStructKind_NoError() {
+        DiagnosticBag bag = Check("""
+            type Other {
+            name: string
+            }
+            type Config {
+            field: Other = Other { name: "x" }
+            }
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
     // -----------------------------------------------------------------------
     // Layer-invariant — pathological but parseable inputs never throw
     // -----------------------------------------------------------------------
