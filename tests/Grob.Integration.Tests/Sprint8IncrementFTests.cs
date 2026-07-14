@@ -11,7 +11,7 @@ namespace Grob.Integration.Tests;
 /// family) that exercises the Sprint-8 stdlib surface with no Sprint-9 module:
 /// <c>math</c>, <c>path.join</c>, an <c>env.require</c> caught as <c>LookupError</c>,
 /// <c>log.info</c>/<c>log.error</c> to stderr, a <c>guid</c> generation/parse
-/// round-trip through interpolation, and <c>formatAs.table()</c> over a small struct
+/// round-trip through interpolation and <c>formatAs.table()</c> over a small struct
 /// array.
 /// </summary>
 public sealed class Sprint8IncrementFTests {
@@ -31,9 +31,14 @@ public sealed class Sprint8IncrementFTests {
     public void StdlibSmoke_RunsAndProducesExpectedOutput() {
         (string stdout, string stderr, int exitCode) = RunFile("stdlib.grob");
 
+        // path.join follows Path.Combine (PathPlugin.cs), so the joined form uses
+        // whichever separator the host OS gives Path.Combine — not a hard-coded
+        // backslash, which only matched on Windows and failed this gold master on
+        // the Linux CI runner.
+        string joined = Path.Combine("a", "b", "c");
         Assert.Equal(
             "math.sqrt(16.0) = 4.0" + NL +
-            "path.join: a\\b\\c" + NL +
+            $"path.join: {joined}" + NL +
             "caught: Required environment variable 'GROB_STDLIB_SMOKE_UNSET' is not set" + NL +
             "guid roundtrip: true" + NL +
             "name   value\nalpha      1\nbeta       2" + NL,

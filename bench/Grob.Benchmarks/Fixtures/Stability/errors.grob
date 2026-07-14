@@ -5,7 +5,7 @@
 // completion, a nested try/finally with an early return running both
 // finallys inner-then-outer (the D-334 compilation model), a caught runtime
 // error (int division by zero as ArithmeticError) proving the script
-// resumes, and an uncatchable exit() inside try/catch/finally.
+// resumes and an uncatchable exit() inside try/catch/finally.
 
 // --- 1. throw a constructed exception, typed catch matches ---
 try {

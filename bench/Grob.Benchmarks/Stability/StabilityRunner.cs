@@ -14,6 +14,15 @@ public sealed record CalibrationResult(
 /// <summary>One (iteration index, forced-GC heap bytes) checkpoint from a long calibration pass.</summary>
 public sealed record HeapCheckpoint(int Iteration, long HeapBytes);
 
+/// <summary>
+/// One stability-loop script and the exit code it is expected to produce on every
+/// run. Five of the six Sprint-8-runnable scripts exit 0; <c>errors.grob</c> exits 42
+/// by design (D-337 — <c>exit(42)</c> inside try/catch/finally, neither handler runs).
+/// A script producing any other exit code is a genuine failure, not the expected
+/// contract, and aborts the run rather than silently reporting a falsely-flat heap.
+/// </summary>
+public sealed record StabilityScript(string Path, int ExpectedExitCode);
+
 /// <summary>Result of a locked stability run against a <see cref="StabilityConfig"/>.</summary>
 public sealed record StabilityResult(
     long PostWarmupHeapBytes,
@@ -34,12 +43,20 @@ public sealed record StabilityResult(
 /// </summary>
 public static class StabilityRunner {
     /// <summary>
-    /// Runs one iteration of every script in <paramref name="scriptPaths"/>, discarding
+    /// Runs one iteration of every script in <paramref name="scripts"/>, discarding
     /// their stdout/stderr (the stability test cares about heap behaviour, not output).
+    /// Throws if a script's exit code does not match its
+    /// <see cref="StabilityScript.ExpectedExitCode"/> — a failed or crashed script
+    /// allocates nothing, which would otherwise read as a falsely-flat, falsely-passing
+    /// heap measurement rather than the broken run it actually is.
     /// </summary>
-    private static void RunOneIteration(IReadOnlyList<string> scriptPaths) {
-        foreach (string path in scriptPaths) {
-            _ = new RunCommand(TextWriter.Null, TextWriter.Null).Run(path);
+    private static void RunOneIteration(IReadOnlyList<StabilityScript> scripts) {
+        foreach (StabilityScript script in scripts) {
+            int exitCode = new RunCommand(TextWriter.Null, TextWriter.Null).Run(script.Path);
+            if (exitCode != script.ExpectedExitCode) {
+                throw new InvalidOperationException(
+                    $"Stability script '{script.Path}' exited {exitCode}, expected {script.ExpectedExitCode}.");
+            }
         }
     }
 
@@ -53,19 +70,19 @@ public static class StabilityRunner {
     /// <c>stability.json</c>. Prints nothing and asserts nothing — a characterisation
     /// tool, not a test.
     /// </summary>
-    public static CalibrationResult Calibrate(IReadOnlyList<string> scriptPaths, int sampleCount = 10) {
+    public static CalibrationResult Calibrate(IReadOnlyList<StabilityScript> scripts, int sampleCount = 10) {
         var stopwatch = Stopwatch.StartNew();
-        RunOneIteration(scriptPaths);
+        RunOneIteration(scripts);
         stopwatch.Stop();
         double msPerIteration = stopwatch.Elapsed.TotalMilliseconds;
 
-        for (int i = 0; i < 9; i++) RunOneIteration(scriptPaths);
+        for (int i = 0; i < 9; i++) RunOneIteration(scripts);
         long heapAfterTen = GC.GetTotalMemory(forceFullCollection: true);
 
         var samples = new List<long>(sampleCount);
         var sampleStopwatch = Stopwatch.StartNew();
         for (int i = 0; i < sampleCount; i++) {
-            RunOneIteration(scriptPaths);
+            RunOneIteration(scripts);
             samples.Add(GC.GetTotalMemory(forceFullCollection: true));
         }
         sampleStopwatch.Stop();
@@ -83,11 +100,11 @@ public static class StabilityRunner {
     /// retention leak) before locking a tolerance.
     /// </summary>
     public static IReadOnlyList<HeapCheckpoint> CalibrateCheckpoints(
-            IReadOnlyList<string> scriptPaths, IReadOnlyList<int> checkpoints) {
+            IReadOnlyList<StabilityScript> scripts, IReadOnlyList<int> checkpoints) {
         var results = new List<HeapCheckpoint>(checkpoints.Count);
         int lastCheckpoint = 0;
         foreach (int checkpoint in checkpoints) {
-            for (int i = lastCheckpoint; i < checkpoint; i++) RunOneIteration(scriptPaths);
+            for (int i = lastCheckpoint; i < checkpoint; i++) RunOneIteration(scripts);
             results.Add(new HeapCheckpoint(checkpoint, GC.GetTotalMemory(forceFullCollection: true)));
             lastCheckpoint = checkpoint;
         }
@@ -104,10 +121,10 @@ public static class StabilityRunner {
     /// too, so slow cross-release growth shows up even when each individual run is
     /// within its own tolerance (§7.6).
     /// </summary>
-    public static StabilityResult RunStability(IReadOnlyList<string> scriptPaths, StabilityConfig config) {
+    public static StabilityResult RunStability(IReadOnlyList<StabilityScript> scripts, StabilityConfig config) {
         long postWarmupHeap = 0;
         for (int iteration = 1; iteration <= config.Iterations; iteration++) {
-            RunOneIteration(scriptPaths);
+            RunOneIteration(scripts);
             if (iteration == config.Warmup) {
                 postWarmupHeap = GC.GetTotalMemory(forceFullCollection: true);
             }
