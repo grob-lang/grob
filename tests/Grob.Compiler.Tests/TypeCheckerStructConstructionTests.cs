@@ -362,6 +362,7 @@ public sealed class TypeCheckerStructConstructionTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0001", diag.Code);
         Assert.Equal(8, diag.Range.Start.Line);
+        Assert.Equal(16, diag.Range.Start.Column);
     }
 
     [Fact]

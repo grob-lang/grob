@@ -721,6 +721,7 @@ public sealed class TypeCheckerVariableTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0001", diag.Code);
         Assert.Equal(7, diag.Range.Start.Line);
+        Assert.Equal(23, diag.Range.Start.Column);
     }
 
     [Fact]

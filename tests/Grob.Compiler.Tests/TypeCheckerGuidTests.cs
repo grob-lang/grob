@@ -67,6 +67,7 @@ public sealed class TypeCheckerGuidTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0001.Code, diag.Code);
         Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(13, diag.Range.Start.Column);
     }
 
     [Fact]
