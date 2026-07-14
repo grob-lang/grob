@@ -6,9 +6,9 @@ namespace Grob.Cli;
 /// <summary>
 /// The composition root's stdlib plugin list (Sprint 8 Increment A). Given the small,
 /// fixed set of plugins at this point in the build, auto-registration is an explicit
-/// list here rather than reflection-based assembly scanning — later Sprint 8 increments
-/// append further plugins (<c>guid</c> in D, <c>formatAs</c> in E). <see cref="RegisterAll"/>
-/// takes an <see cref="IRandomSource"/> (Increment B) because <see cref="MathPlugin"/>'s
+/// list here rather than reflection-based assembly scanning — <c>formatAs</c> (Increment
+/// E) is the one still to come. <see cref="RegisterAll"/> takes an
+/// <see cref="IRandomSource"/> (Increment B) because <see cref="MathPlugin"/>'s
 /// <c>random</c>/<c>randomInt</c>/<c>randomSeed</c> natives need one per VM run — the
 /// composition root constructs a fresh <see cref="SystemRandomSource"/> per run/session
 /// (D-343) rather than this list holding a single shared instance across the process
@@ -17,6 +17,9 @@ namespace Grob.Cli;
 /// stdout/stdin — <see cref="IoPlugin"/> now gives <c>input()</c> a real native
 /// registration where it was previously an empty placeholder) and a <c>verbose</c> flag
 /// (<c>--verbose</c>, which selects <see cref="LogPlugin"/>'s initial threshold).
+/// Increment D adds <see cref="GuidPlugin"/>, reusing the same <see cref="IRandomSource"/>
+/// and a fresh <see cref="SystemClock"/> (D-343's first real <see cref="IClock"/>
+/// consumer, per-run like <see cref="SystemRandomSource"/>).
 /// </summary>
 internal static class PluginRegistration {
     /// <summary>Registers every stdlib plugin against <paramref name="registrar"/>, in a fixed order.</summary>
@@ -37,6 +40,7 @@ internal static class PluginRegistration {
             new EnvPlugin(environment),
             new LogPlugin(streams, verbose ? LogLevel.Debug : LogLevel.Info),
             new IoPlugin(streams),
+            new GuidPlugin(randomSource, new SystemClock()),
         ];
         foreach (IGrobPlugin plugin in plugins) plugin.Register(registrar);
     }

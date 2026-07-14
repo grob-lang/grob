@@ -798,6 +798,24 @@ public sealed partial class Compiler {
             return null;
         }
 
+        // Sprint 8 Increment D: the two-level namespace chain guid.namespaces.dns.
+        // Mirrors the checker's TryFlattenNestedNamespaceMember (TypeChecker.Expressions.cs)
+        // — node.Target is itself a namespace-rooted MemberAccessExpr (guid.namespaces),
+        // so the whole three-segment chain compiles to one GetGlobal against the fully
+        // qualified name, exactly as GuidPlugin registers it ("guid.namespaces.dns"). The
+        // registered-key gate is what distinguishes this from an ordinary instance-member
+        // access on a namespace constant's value (guid.empty.isEmpty — "empty.isEmpty" is
+        // not a registered key, so it correctly falls through to the ordinary
+        // Visit(node.Target)+GetProperty path below instead of a meaningless GetGlobal).
+        if (node.Target is MemberAccessExpr { Target: IdentifierExpr { Declaration: NamespaceDecl } innerId } inner &&
+                NamespaceRegistry.TryGetMember(innerId.Name, $"{inner.Member}.{node.Member}") is not null) {
+            string qualifiedName = $"{innerId.Name}.{inner.Member}.{node.Member}";
+            int qualifiedIdx = _chunk.AddConstant(GrobValue.FromString(qualifiedName));
+            _chunk.WriteOpCode(OpCode.GetGlobal, line);
+            _chunk.WriteByte(ToByteOperand(qualifiedIdx, "namespace member name"), line);
+            return null;
+        }
+
         Visit(node.Target);
 
         int nameIdx = _chunk.AddConstant(GrobValue.FromString(node.Member));

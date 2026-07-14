@@ -133,11 +133,18 @@ public sealed class VirtualMachine : IPluginRegistrar {
     private readonly TextWriter _trace;
 
     /// <summary>
-    /// Renders values for <see cref="OpCode.Print"/> and <see cref="OpCode.BuildString"/>
-    /// (D-336). No registry is wired in yet — real built-in/plugin <c>toString()</c>
-    /// registration is a later increment's job (see <c>IValueToStringRegistry</c>).
+    /// Backs <see cref="RegisterToString"/> — the real (non-<c>NullRegistry</c>)
+    /// <see cref="IValueToStringRegistry"/> implementation, populated by plugin
+    /// registration (<c>guid</c>, Sprint 8 Increment D).
     /// </summary>
-    private readonly ValueDisplay _valueDisplay = new();
+    private readonly PluginToStringRegistry _toStringRegistry = new();
+
+    /// <summary>
+    /// Renders values for <see cref="OpCode.Print"/> and <see cref="OpCode.BuildString"/>
+    /// (D-336), consulting <see cref="_toStringRegistry"/> for any plugin-registered
+    /// <c>toString()</c> ahead of scalar/structural rendering.
+    /// </summary>
+    private readonly ValueDisplay _valueDisplay;
 
     /// <summary>
     /// Construct a VM whose <see cref="OpCode.Print"/> output goes to
@@ -168,6 +175,7 @@ public sealed class VirtualMachine : IPluginRegistrar {
         ArgumentNullException.ThrowIfNull(streams);
         _streams = streams;
         _trace = trace ?? TextWriter.Null;
+        _valueDisplay = new ValueDisplay(_toStringRegistry);
     }
 
     /// <summary>The operand stack, exposed for tests to inspect post-run state.</summary>
@@ -206,6 +214,18 @@ public sealed class VirtualMachine : IPluginRegistrar {
     public void RegisterConstant(string name, GrobValue value) {
         ArgumentNullException.ThrowIfNull(name);
         _globals[name] = value;
+    }
+
+    /// <summary>
+    /// Registers <paramref name="toString"/> as the <c>ValueDisplay</c> renderer for
+    /// every <c>Struct</c>-kind value named <paramref name="typeName"/> (D-336). Backed
+    /// by <see cref="_toStringRegistry"/>, consulted by <see cref="_valueDisplay"/>
+    /// ahead of scalar/structural rendering.
+    /// </summary>
+    public void RegisterToString(string typeName, Func<GrobValue, string> toString) {
+        ArgumentNullException.ThrowIfNull(typeName);
+        ArgumentNullException.ThrowIfNull(toString);
+        _toStringRegistry.Register(typeName, toString);
     }
 
     /// <summary>
@@ -798,7 +818,31 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                 break;
                             }
                             if (receiver.TryAsStruct(out GrobStruct? grobStruct)) {
-                                if (grobStruct!.TryGetField(propertyName, out GrobValue fieldValue)) {
+                                // Sprint 8 Increment D: guid instance properties/methods — checked
+                                // before the ordinary TryGetField fall-through below, since guid has
+                                // no user-visible fields at all (its one field is the hidden
+                                // canonical-string payload, GuidNatives.ValueFieldName).
+                                if (grobStruct!.TypeName == GuidNatives.TypeName) {
+                                    switch (propertyName) {
+                                        case "version":
+                                            _stack.Push(GuidNatives.GetVersion(grobStruct), line);
+                                            break;
+                                        case "isEmpty":
+                                            _stack.Push(GuidNatives.GetIsEmpty(grobStruct), line);
+                                            break;
+                                        default:
+                                            NativeFunction? guidMethod = GuidNatives.GetMethod(propertyName, grobStruct);
+                                            if (guidMethod is null) {
+                                                throw new GrobInternalException(
+                                                    $"GetProperty: guid has no member '{propertyName}'. " +
+                                                    "Type checker should have rejected this before emission.");
+                                            }
+                                            _stack.Push(GrobValue.FromFunction(guidMethod), line);
+                                            break;
+                                    }
+                                    break;
+                                }
+                                if (grobStruct.TryGetField(propertyName, out GrobValue fieldValue)) {
                                     _stack.Push(fieldValue, line);
                                     break;
                                 }

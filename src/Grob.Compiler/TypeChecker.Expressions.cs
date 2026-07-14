@@ -292,24 +292,7 @@ public sealed partial class TypeChecker {
         // directly (not the whole MemberAccessExpr) so we can branch on the receiver type
         // without a double-visit.
         if (node.Callee is MemberAccessExpr memberAccess) {
-            // Precedence (D-342): a namespace receiver (math.sqrt(...)) is resolved by
-            // peeking at the receiver — never visiting it, which would emit E1004 on the
-            // namespace itself — BEFORE the array higher-order-method arm and the generic
-            // fallback below.
-            if (TryAnnotateNamespaceReceiver(memberAccess.Target, out string namespaceName)) {
-                return ResolveNamespaceMemberCall(node, memberAccess, namespaceName);
-            }
-
-            GrobType receiverType = Visit(memberAccess.Target);
-            // Visit argument values to satisfy §3.1.1 on any identifiers inside them.
-            var argTypes = new GrobType[node.Arguments.Count];
-            for (int i = 0; i < node.Arguments.Count; i++)
-                argTypes[i] = Visit(node.Arguments[i].Value);
-
-            if (receiverType == GrobType.Array && IsArrayHigherOrderMethod(memberAccess.Member)) {
-                return ValidateArrayMethodCall(node, memberAccess.Member, argTypes);
-            }
-            return GrobType.Unknown;
+            return ResolveMemberAccessCall(node, memberAccess);
         }
 
         Visit(node.Callee);
@@ -344,6 +327,42 @@ public sealed partial class TypeChecker {
         if (resultDesc is not null) _callResultDescriptors[node] = resultDesc;
         if (resultStructName is not null) _callResultStructNames[node] = resultStructName;
         return resultKind;
+    }
+
+    /// <summary>
+    /// Resolves a call whose callee is a member access — a namespace-qualified native
+    /// (<c>math.sqrt(...)</c>, D-342), an array higher-order method (Sprint 5C), a
+    /// <c>guid</c> instance method (Sprint 8 Increment D), or an unresolved member (stays
+    /// permissive). Extracted from <see cref="VisitCall"/> to keep its cognitive
+    /// complexity under the analyser bar.
+    /// </summary>
+    private GrobType ResolveMemberAccessCall(CallExpr node, MemberAccessExpr memberAccess) {
+        // Precedence (D-342): a namespace receiver (math.sqrt(...)) is resolved by
+        // peeking at the receiver — never visiting it, which would emit E1004 on the
+        // namespace itself — BEFORE the array higher-order-method arm and the generic
+        // fallback below.
+        if (TryAnnotateNamespaceReceiver(memberAccess.Target, out string namespaceName)) {
+            return ResolveNamespaceMemberCall(node, memberAccess, namespaceName);
+        }
+
+        GrobType receiverType = Visit(memberAccess.Target);
+        // Visit argument values to satisfy §3.1.1 on any identifiers inside them.
+        var argTypes = new GrobType[node.Arguments.Count];
+        for (int i = 0; i < node.Arguments.Count; i++)
+            argTypes[i] = Visit(node.Arguments[i].Value);
+
+        if (receiverType == GrobType.Array && IsArrayHigherOrderMethod(memberAccess.Member)) {
+            return ValidateArrayMethodCall(node, memberAccess.Member, argTypes);
+        }
+
+        // Sprint 8 Increment D: guid instance methods (toString/toUpperString/
+        // toCompactString) — mirrors the array higher-order-method arm above, since
+        // guid has no UserTypeInfo/declared fields for ResolveStructFieldAccess to
+        // consult (it is never constructed via '{ }' braces).
+        if (receiverType == GrobType.Struct && GetStructTypeName(memberAccess.Target) == "guid") {
+            return ValidateGuidMethodCall(node, memberAccess, argTypes);
+        }
+        return GrobType.Unknown;
     }
 
     private static bool IsArrayHigherOrderMethod(string name) =>
@@ -387,6 +406,32 @@ public sealed partial class TypeChecker {
                 return GrobType.Unknown; // void
             default:
                 return GrobType.Unknown;
+        }
+    }
+
+    /// <summary>
+    /// Validates a <c>guid</c> instance-method call (<c>toString</c>/<c>toUpperString</c>/
+    /// <c>toCompactString</c>, Sprint 8 Increment D) — all three are zero-arg, returning
+    /// <c>string</c>. An unrecognised member on a <c>guid</c> receiver is E1002 (undefined
+    /// member), matching how an unrecognised field on a user struct is rejected.
+    /// </summary>
+    private GrobType ValidateGuidMethodCall(CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
+        switch (memberAccess.Member) {
+            case "toString":
+            case "toUpperString":
+            case "toCompactString":
+                if (argTypes.Length != 0) {
+                    string argWord = argTypes.Length == 1 ? "argument" : "arguments";
+                    string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
+                    EmitError(ErrorCatalog.E0003,
+                        $"'{memberAccess.Member}' expects 0 arguments, but {argTypes.Length} {suppliedVerb} supplied.",
+                        node.Range);
+                }
+                return GrobType.String;
+            default:
+                return EmitErrorAndReturn(ErrorCatalog.E1002,
+                    $"Type 'guid' has no member '{memberAccess.Member}'.",
+                    memberAccess.Range);
         }
     }
 
@@ -590,6 +635,17 @@ public sealed partial class TypeChecker {
             return ResolveNamespaceMemberAccess(node, namespaceName);
         }
 
+        // Sprint 8 Increment D: the two-level namespace chain guid.namespaces.dns.
+        // TryAnnotateNamespaceReceiver only recognises a bare identifier receiver, so a
+        // chain this deep (node.Target is itself guid.namespaces, a MemberAccessExpr, not
+        // an IdentifierExpr) falls through the check above. Rather than generalise
+        // namespace-receiver resolution to arbitrary dotted depth, this flattens the
+        // specific two-level shape into one lookup key ("namespaces.dns") registered as a
+        // flat member of the "guid" namespace (D-149) — see NamespaceRegistry.
+        if (TryFlattenNestedNamespaceMember(node, out string flatNamespaceName, out string flatMemberName)) {
+            return ResolveNamespaceMemberAccess(node, flatNamespaceName, flatMemberName);
+        }
+
         GrobType targetType = Visit(node.Target);
 
         // Cascade suppression: if the target already errored, don't pile on.
@@ -608,6 +664,13 @@ public sealed partial class TypeChecker {
         // is deferred until nullable-struct construction is fully wired.
         if (node.IsOptional && GrobTypeHelpers.IsNullable(targetType)) {
             return GrobType.Unknown;
+        }
+
+        // Sprint 8 Increment D: guid instance properties (version/isEmpty) — mirrors the
+        // struct-field arm below, but guid has no UserTypeInfo/declared fields (it is
+        // never constructed via '{ }' braces) for ResolveStructFieldAccess to consult.
+        if (targetType == GrobType.Struct && GetStructTypeName(node.Target) == "guid") {
+            return ResolveGuidPropertyAccess(node);
         }
 
         // Resolve struct field access: look up the field in the user type registry and
@@ -662,16 +725,51 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
+    /// Reports whether <paramref name="node"/> is the outer step of a two-level namespace
+    /// member chain (<c>guid.namespaces.dns</c>, Sprint 8 Increment D) — <paramref
+    /// name="node"/>'s own target is itself a <see cref="MemberAccessExpr"/> whose target
+    /// is a namespace identifier, AND the flattened two-segment key
+    /// (<c>"namespaces.dns"</c>) is an actually-registered member. That last check is
+    /// what distinguishes a genuine nested-namespace chain from an ordinary instance-member
+    /// access on a namespace CONSTANT's value (<c>guid.empty.isEmpty</c> — <c>guid.empty</c>
+    /// is one namespace-qualified segment, and <c>.isEmpty</c> is a plain instance property
+    /// on the resulting guid value, not a second namespace segment); without the registry
+    /// gate the flattening would misfire on that shape, looking up the nonsensical key
+    /// <c>"empty.isEmpty"</c>. Flattens rather than generalising namespace-receiver
+    /// resolution to arbitrary dotted depth (D-149; see <see cref="NamespaceRegistry"/>'s
+    /// flat-keyed registration). Annotates the innermost identifier for §3.1.1, exactly as
+    /// <see cref="TryAnnotateNamespaceReceiver"/> does for the one-level case.
+    /// </summary>
+    private bool TryFlattenNestedNamespaceMember(MemberAccessExpr node, out string namespaceName, out string memberName) {
+        namespaceName = string.Empty;
+        memberName = string.Empty;
+        if (node.Target is not MemberAccessExpr inner) return false;
+        if (!TryAnnotateNamespaceReceiver(inner.Target, out string innerNamespaceName)) return false;
+
+        string candidateMemberName = $"{inner.Member}.{node.Member}";
+        if (NamespaceRegistry.TryGetMember(innerNamespaceName, candidateMemberName) is null) return false;
+
+        namespaceName = innerNamespaceName;
+        memberName = candidateMemberName;
+        return true;
+    }
+
+    /// <summary>
     /// Resolves a bare namespace member access (<c>math.pi</c>). A constant member returns
     /// its declared type; a native member accessed without a call is a callable member typed
     /// as <see cref="GrobType.Function"/> (mirroring a bare user-fn reference); an unknown
-    /// member is <see cref="ErrorCatalog.E1003"/>.
+    /// member is <see cref="ErrorCatalog.E1003"/>. <paramref name="memberNameOverride"/> is
+    /// supplied by <see cref="TryFlattenNestedNamespaceMember"/> for the two-level chain,
+    /// where the lookup key is not <paramref name="node"/>'s own <c>Member</c> alone.
     /// </summary>
-    private GrobType ResolveNamespaceMemberAccess(MemberAccessExpr node, string namespaceName) {
-        object? member = NamespaceRegistry.TryGetMember(namespaceName, node.Member);
+    private GrobType ResolveNamespaceMemberAccess(
+            MemberAccessExpr node, string namespaceName, string? memberNameOverride = null) {
+        string memberName = memberNameOverride ?? node.Member;
+        object? member = NamespaceRegistry.TryGetMember(namespaceName, memberName);
         switch (member) {
             case NamespaceRegistry.ConstantMember constant:
                 node.ResolvedFieldType = constant.Type;
+                node.ResolvedStructTypeName = constant.NamedTypeName;
                 return constant.Type;
             case NamespaceRegistry.NativeMember:
                 node.ResolvedFieldType = GrobType.Function;
@@ -679,7 +777,7 @@ public sealed partial class TypeChecker {
             default:
                 node.ResolvedFieldType = GrobType.Error;
                 return EmitErrorAndReturn(ErrorCatalog.E1003,
-                    $"Namespace '{namespaceName}' has no member '{node.Member}'.",
+                    $"Namespace '{namespaceName}' has no member '{memberName}'.",
                     node.Range);
         }
     }
@@ -699,6 +797,12 @@ public sealed partial class TypeChecker {
         if (member is NamespaceRegistry.NativeMember native) {
             memberAccess.ResolvedFieldType = native.ReturnType;
             CheckNativeCall(node, namespaceName, memberAccess.Member, native, argTypes);
+            // Sprint 8 Increment D: mirrors the user-fn struct-return threading a few
+            // lines up in VisitCall — a `:=`-inferred binding from a struct-returning
+            // native call (id := guid.newV4()) resolves field/instance-member access the
+            // same way a direct struct-construction initialiser already does.
+            if (native.NamedTypeName is not null) _callResultStructNames[node] = native.NamedTypeName;
+            CheckGuidParseLiteral(node, namespaceName, memberAccess.Member);
             return native.ReturnType;
         }
 
@@ -812,6 +916,32 @@ public sealed partial class TypeChecker {
         }
     }
 
+    /// <summary>
+    /// Compile-time literal validation for <c>guid.parse(s)</c> (D-149): when the sole
+    /// argument is a plain string literal — an <see cref="InterpolatedStringExpr"/> with
+    /// no <c>${ }</c> holes, the same "is this actually a literal" test the constant
+    /// folder (<c>Compiler.cs</c>) uses — and its value is not a parseable GUID, emits
+    /// <see cref="ErrorCatalog.E0601"/> instead of leaving the malformed literal to fail
+    /// at runtime. A non-literal argument (a variable, a call result, a genuinely
+    /// interpolated string, …) is unaffected — it stays on the ordinary runtime
+    /// <c>ParseError</c> (E5701) path, since its value cannot be known at compile time.
+    /// </summary>
+    private void CheckGuidParseLiteral(CallExpr node, string namespaceName, string memberName) {
+        if (namespaceName != "guid" || memberName != "parse") return;
+        if (node.Arguments.Count != 1) return; // arity mismatch already reported by CheckNativeCall
+        if (node.Arguments[0].Value is not InterpolatedStringExpr { Parts: var parts } literal ||
+                !parts.All(p => p is StringTextPart)) {
+            return;
+        }
+
+        string value = string.Concat(parts.OfType<StringTextPart>().Select(p => p.Text));
+        if (Guid.TryParse(value, out _)) return;
+
+        EmitError(ErrorCatalog.E0601,
+            $"'{value}' is not a valid guid literal.",
+            literal.Range);
+    }
+
     // Looks up node.Member in the user type registry and annotates the node. Written as
     // guard clauses (rather than nested ifs) to keep VisitMemberAccess under the cognitive
     // complexity bar. An unresolvable type name or registry miss is permissive (Unknown);
@@ -833,6 +963,27 @@ public sealed partial class TypeChecker {
         node.ResolvedFieldType = field.Kind;
         node.ResolvedStructTypeName = field.NamedTypeName;
         return field.Kind;
+    }
+
+    /// <summary>
+    /// Resolves a bare <c>guid</c> instance-property access (<c>id.version</c>,
+    /// <c>id.isEmpty</c>, Sprint 8 Increment D). The three <c>toString</c>-family methods
+    /// are resolved only via a call (<see cref="ValidateGuidMethodCall"/>), mirroring how
+    /// a bare array higher-order-method reference (<c>arr.filter</c>, no call) is not
+    /// specially resolved here either — an unrecognised bare member on a guid receiver
+    /// stays permissively <see cref="GrobType.Unknown"/>, the same gap that arm already has.
+    /// </summary>
+    private static GrobType ResolveGuidPropertyAccess(MemberAccessExpr node) {
+        switch (node.Member) {
+            case "version":
+                node.ResolvedFieldType = GrobType.Int;
+                return GrobType.Int;
+            case "isEmpty":
+                node.ResolvedFieldType = GrobType.Bool;
+                return GrobType.Bool;
+            default:
+                return GrobType.Unknown;
+        }
     }
 
     private string? GetStructTypeName(Expression target) => target switch {

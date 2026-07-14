@@ -332,6 +332,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>invalid `guid` string literal</summary>
+    public static readonly ErrorDescriptor E0601 = new(
+        Code: "E0601",
+        Title: "invalid `guid` string literal",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     // ---- Name resolution — E1001–E1999 ----
 
     /// <summary>undefined identifier</summary>
@@ -1119,6 +1128,7 @@ public static class ErrorCatalog {
         E0503,
         E0504,
         E0505,
+        E0601,
         E1001,
         E1002,
         E1003,

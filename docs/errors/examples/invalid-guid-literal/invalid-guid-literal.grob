@@ -1,0 +1,5 @@
+// E0601 — a guid.parse() string-literal argument that is not a valid guid
+// Eventual path: docs/errors/examples/invalid-guid-literal/invalid-guid-literal.grob
+readonly id := guid.parse("not-a-guid")
+
+print(id)

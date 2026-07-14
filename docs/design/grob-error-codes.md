@@ -87,6 +87,7 @@ read by `grob --explain Exxxx`.
 | E0503 | descending range without explicit negative `step`  | Type              | pre-release           |
 | E0504 | reassignment of `for...in` iterator variable       | Type              | pre-release           |
 | E0505 | non-exhaustive switch expression                   | Type              | pre-release           |
+| E0601 | invalid `guid` string literal                      | Type              | pre-release           |
 | E1001 | undefined identifier                               | Name resolution   | pre-release           |
 | E1002 | undefined member                                   | Name resolution   | pre-release           |
 | E1003 | undefined module                                   | Name resolution   | pre-release           |
@@ -517,6 +518,16 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** A switch expression must cover every possible value of its scrutinee (§3.1). Coverage is proven by a `_` catch-all arm, by matching both `true` and `false` for a `bool` scrutinee, or by matching `nil` and otherwise covering the element type for a nullable scrutinee. Relational patterns never contribute to exhaustiveness. Add a `_` arm or cover the remaining cases. This is the deliberate counterpart to the non-exhaustive `select` statement (D-301).
 - **Source decision:** Sprint 4 Increment E.
+
+---
+
+### E0601 — invalid `guid` string literal
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** `guid.parse(s)` with a **string-literal** argument is validated at compile time: a malformed literal (not a parseable GUID) is a compile error, not a runtime `ParseError`. `guid.parse(someVariable)` (a non-literal argument) is unaffected and stays a runtime `E5701` path. Dedicated rather than folded into `E5701` — that code is `Runtime` category and ADR-0014's category scheme forbids reusing a runtime code for a compile-time diagnostic.
+- **Source decision:** D-149 (Sprint 8 Increment D).
 
 ---
 
@@ -1351,7 +1362,7 @@ None as of v1.
 
 ---
 
-**Total: 117 codes across 7 categories.** This is the canonical current count;
+**Total: 118 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
@@ -1378,3 +1389,5 @@ _Updated July 2026 — Sprint 7 Increment A added two codes: E0014 (`throw` oper
 _Updated July 2026 — Sprint 7 Increment B added two codes: E0015 (catch type is not a `GrobError` subtype) in the E00xx sub-block of the Type category, and E2213 (duplicate `catch` for the same type) in the E22xx sub-block of the Syntax category, bringing the total from 114 to 116. Both dedicated over folding into an existing code (E0001 and E2205 respectively), per the E0014/E0011–E0013 precedent. The increment's own hand-off had said the prior count was "112 → 113" — the live registry and `ErrorCatalog` both showed 114 (Increment A added two codes, not one); this edit reconciles to the live total rather than the stale prompt arithmetic._
 
 _Updated July 2026 — Sprint 8 Increment A added one code: E1004 (namespace used as a value) in the E10xx sub-block of the Name resolution category, bringing the total from 116 to 117. The increment's other new-diagnostic arm (`math.nope()`, unknown namespace member) folds into the pre-existing, previously-unused E1003 ("undefined module") rather than allocating a new code — confirmed against `allocating-an-error-code`'s Step 1 before minting E1004. Source decision D-342._
+
+_Updated July 2026 — Sprint 8 Increment D added one code: E0601 (invalid `guid` string literal) — the first entry in the previously empty E06xx sub-block of the Type category, bringing the total from 117 to 118. Dedicated rather than folded into E5701 (the existing `guid.parse` runtime `ParseError` code): E5701 is `Runtime` category and ADR-0014's category scheme forbids reusing a runtime code for a compile-time diagnostic — the fold-versus-new judgement the increment's own kickoff prompt surfaced and leaned dedicated on. Source decision D-149._

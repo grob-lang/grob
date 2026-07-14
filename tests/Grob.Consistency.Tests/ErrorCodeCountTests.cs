@@ -47,7 +47,7 @@ public sealed class ErrorCodeCountTests {
     }
 
     [Fact]
-    public void Corpus_HasTheExpectedLiveCountOf117() {
+    public void Corpus_HasTheExpectedLiveCountOf118() {
         // A standing anchor: if the count legitimately changes, this and the
         // canonical footer line move together, by intent, in the same change.
         // D-320 added E1103 (reserved identifier used as a binding name): 107 -> 108.
@@ -59,8 +59,9 @@ public sealed class ErrorCodeCountTests {
         // Sprint 7 Increment B added E0015 (catch type is not a GrobError subtype)
         // and E2213 (duplicate catch for the same type): 114 -> 116.
         // D-342 (Sprint 8 Increment A) added E1004 (namespace used as a value): 116 -> 117.
-        Assert.Equal(117, ConsistencyChecks.ActualErrorCatalogCount());
-        Assert.Equal(117, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
-        Assert.Equal(117, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
+        // D-149 (Sprint 8 Increment D) added E0601 (invalid guid string literal): 117 -> 118.
+        Assert.Equal(118, ConsistencyChecks.ActualErrorCatalogCount());
+        Assert.Equal(118, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
+        Assert.Equal(118, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
     }
 }

@@ -12,10 +12,18 @@
   </ItemGroup>
 
   <!-- Allow Grob.Runtime.Tests to reach ValueDisplay's internal Inspect entry point
-       and the registry seam without growing the public surface (D-336). -->
+       and the registry seam without growing the public surface (D-336). Grob.Vm gets
+       the same visibility so it can implement IValueToStringRegistry and construct
+       ValueDisplay against a real (non-Null) registry — the "later increment" the D-336
+       doc comments named, landing in Sprint 8 Increment D (guid's toString()). Grob.Vm
+       already references Grob.Runtime per the DAG, so this widens internal visibility
+       on an existing edge rather than adding a new project reference. -->
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Grob.Runtime.Tests</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Grob.Vm</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
 
