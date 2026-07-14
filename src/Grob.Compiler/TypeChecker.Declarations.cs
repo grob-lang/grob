@@ -36,12 +36,19 @@ public sealed partial class TypeChecker {
             CheckReservedBindingName(p.Name, p.Range);
             (GrobType paramType, string? paramStructName, FunctionTypeDescriptor? paramDesc) =
                 p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null);
+            // Sprint 8 Increment E: a T[]-annotated parameter's element struct name, for
+            // formatAs's compile-time column derivation — ResolveSignatureType's ArrayTypeRef
+            // arm does not carry it (see Symbol.ArrayElementStructTypeName).
+            string? paramArrayElementStructName = p.Type is ArrayTypeRef arrayParamType
+                ? TryGetNamedStructTypeName(arrayParamType.ElementType)
+                : null;
             // Use the owning FnDecl as the declaring node — Parameter is not an AstNode.
             // The struct name travels on the symbol itself (not recoverable from
             // DeclarationNode alone) so a struct-typed parameter's fields resolve
             // inside the function body the same way a `:=`-inferred struct local does.
             RegisterSymbol(p.Name, paramType, p.Range.Start, node,
-                functionDescriptor: paramDesc, namedStructTypeName: paramStructName);
+                functionDescriptor: paramDesc, namedStructTypeName: paramStructName,
+                arrayElementStructTypeName: paramArrayElementStructName);
         }
 
         // Track the declared return type so VisitReturn can check returned values

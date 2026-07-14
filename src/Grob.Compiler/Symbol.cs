@@ -60,4 +60,20 @@ public sealed class Symbol {
     /// name from the initialiser expression instead.
     /// </summary>
     public string? NamedStructTypeName { get; init; }
+
+    /// <summary>
+    /// When <see cref="Type"/> is <see cref="GrobType.Array"/> (or its nullable variant)
+    /// and the array's declared element type is a named user <c>type</c>, carries that
+    /// element type's name — the array analogue of <see cref="NamedStructTypeName"/>,
+    /// which <c>ResolveSignatureType</c>'s <c>ArrayTypeRef</c> arm otherwise discards
+    /// (Sprint 8 Increment E, <c>formatAs</c>'s compile-time column derivation). Set only
+    /// for a <c>T[]</c>-annotated parameter, whose declaration node is the owning
+    /// <c>FnDecl</c> rather than the <c>Parameter</c> itself — mirrors why
+    /// <see cref="NamedStructTypeName"/> is threaded onto the symbol rather than recovered
+    /// from <see cref="DeclarationNode"/>. <see langword="null"/> for a <c>:=</c>-inferred
+    /// array local, whose element shape is instead resolved by peeking the initialiser
+    /// expression directly (an array literal, a struct-array-returning call, or an
+    /// explicit <c>T[]</c> annotation on the binding itself).
+    /// </summary>
+    public string? ArrayElementStructTypeName { get; init; }
 }

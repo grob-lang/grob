@@ -337,6 +337,18 @@ public sealed partial class TypeChecker {
     /// complexity under the analyser bar.
     /// </summary>
     private GrobType ResolveMemberAccessCall(CallExpr node, MemberAccessExpr memberAccess) {
+        // Sprint 8 Increment E: the chained form '<expr>.formatAs.table(...)' — checked
+        // before the namespace-receiver peek below (mutually exclusive by AST shape: the
+        // function form 'formatAs.table(...)' has an IdentifierExpr callee target, which
+        // TryDetectFormatAsChainReceiver's MemberAccessExpr pattern never matches). Handles
+        // both the valid-method and unknown-method cases itself, so neither
+        // memberAccess.Target (the inner '.formatAs' node) nor the outer node is ever
+        // separately visited via the generic fall-through below — avoiding a duplicate
+        // bare-access diagnostic on the inner node.
+        if (TryDetectFormatAsChainReceiver(memberAccess, out Expression formatAsReceiver)) {
+            return ResolveFormatAsCall(node, memberAccess.Member, memberAccess.Range, formatAsReceiver, node.Arguments);
+        }
+
         // Precedence (D-342): a namespace receiver (math.sqrt(...)) is resolved by
         // peeking at the receiver — never visiting it, which would emit E1004 on the
         // namespace itself — BEFORE the array higher-order-method arm and the generic
@@ -699,6 +711,19 @@ public sealed partial class TypeChecker {
         // Cascade suppression: if the target already errored, don't pile on.
         if (targetType == GrobType.Error) return GrobType.Error;
 
+        // Sprint 8 Increment E: a bare '<expr>.formatAs' (D-282/D-320's reserved
+        // identifier), not consumed by ResolveFormatAsCall's chain detection — which
+        // handles '<expr>.formatAs.table()' etc. without ever visiting this node — means
+        // the source wrote '.formatAs' with no valid method chained after it. 'formatAs'
+        // can never be a real field/namespace member (E1103 blocks any user binding named
+        // it), so this check is unconditional on node.Target's type.
+        if (node.Member == "formatAs") {
+            node.ResolvedFieldType = GrobType.Error;
+            return EmitErrorAndReturn(ErrorCatalog.E1004,
+                "formatAs is a compiler-namespace, not a property. Use .formatAs.table(), .formatAs.list(), or .formatAs.csv().",
+                node.Range);
+        }
+
         // Using '.' (non-optional) on a nullable receiver is a compile-time error (E0101).
         if (!node.IsOptional && GrobTypeHelpers.IsNullable(targetType)) {
             return EmitErrorAndReturn(ErrorCatalog.E0101,
@@ -837,6 +862,17 @@ public sealed partial class TypeChecker {
     /// are visited regardless so the §3.1.1 invariant holds for any identifier inside them.
     /// </summary>
     private GrobType ResolveNamespaceMemberCall(CallExpr node, MemberAccessExpr memberAccess, string namespaceName) {
+        // Sprint 8 Increment E: the function form 'formatAs.table(items, ...)' — bespoke
+        // resolution (ResolveFormatAsCall), not the generic ConstantMember/NativeMember
+        // dispatch below. Here the receiver is the call's own first argument (unlike the
+        // chained form, where it is synthesised from the AST shape); a 0-argument call has
+        // no receiver to hand over, so ResolveFormatAsCall reports the arity error itself.
+        if (namespaceName == "formatAs") {
+            return ResolveFormatAsCall(node, memberAccess.Member, memberAccess.Range,
+                node.Arguments.Count > 0 ? node.Arguments[0].Value : null,
+                node.Arguments.Count > 0 ? node.Arguments.Skip(1).ToList() : node.Arguments);
+        }
+
         var argTypes = new GrobType[node.Arguments.Count];
         for (int i = 0; i < node.Arguments.Count; i++)
             argTypes[i] = Visit(node.Arguments[i].Value);
@@ -862,6 +898,263 @@ public sealed partial class TypeChecker {
             $"Namespace '{namespaceName}' has no member '{memberAccess.Member}'.",
             memberAccess.Range);
     }
+
+    // -----------------------------------------------------------------------
+    // formatAs (Sprint 8 Increment E) — the collection-to-string terminators.
+    // Not modelled as ordinary NamespaceRegistry ConstantMember/NativeMember entries
+    // (see NamespaceRegistry's "formatAs" entry): compile-time column derivation from
+    // the Sprint 6 field registry, and the chained-form receiver rewrite, need bespoke
+    // resolution the generic positional NativeMember model does not fit. Both call
+    // shapes route into the one resolution core below, ResolveFormatAsCall:
+    //   function form  formatAs.table(items)   — via ResolveNamespaceMemberCall
+    //   chained form   items.formatAs.table()  — via ResolveMemberAccessCall
+    // logically one compile-time rewrite (D-282/D-320), implemented as shared
+    // resolution rather than a literal AST substitution (CallExpr/MemberAccessExpr are
+    // immutable records with no settable Callee/Target).
+    // -----------------------------------------------------------------------
+
+    private enum FormatAsShape { Array, Scalar }
+
+    private static readonly IReadOnlyDictionary<string, FormatAsShape> FormatAsMethods =
+        new Dictionary<string, FormatAsShape>(StringComparer.Ordinal) {
+            ["table"] = FormatAsShape.Array,
+            ["csv"] = FormatAsShape.Array,
+            ["list"] = FormatAsShape.Scalar,
+        };
+
+    /// <summary>
+    /// Detects the chained form's inner receiver: <c>items.formatAs.table(...)</c> parses
+    /// as <c>CallExpr(Callee: MemberAccessExpr(Member: methodName, Target:
+    /// MemberAccessExpr(Member: "formatAs", Target: items)))</c>. <c>formatAs</c> is a
+    /// reserved identifier (D-282/D-320), so no struct field, namespace member or declared
+    /// binding can ever be named <c>formatAs</c> — any <see cref="MemberAccessExpr"/> whose
+    /// <c>Member</c> is <c>"formatAs"</c> is unambiguously this mechanism, regardless of
+    /// what its own <c>Target</c> resolves to (including the degenerate
+    /// <c>formatAs.formatAs.table()</c>, which simply fails later when the receiver
+    /// — the bare namespace identifier — is visited as an ordinary value and trips the
+    /// existing E1004 namespace-as-value arm).
+    /// </summary>
+    private static bool TryDetectFormatAsChainReceiver(MemberAccessExpr callee, out Expression receiverExpr) {
+        if (callee.Target is MemberAccessExpr { Member: "formatAs" } inner) {
+            receiverExpr = inner.Target;
+            return true;
+        }
+        receiverExpr = null!;
+        return false;
+    }
+
+    /// <summary>
+    /// Resolves a <c>formatAs</c> call, unifying the function form
+    /// (<paramref name="receiverExpr"/> is the call's own first argument, <see
+    /// langword="null"/> when none was supplied) and the chained form (<paramref
+    /// name="receiverExpr"/> is the chain's inner receiver, always present). Validates the
+    /// method name (E1003), the receiver's shape (E0004 — array for <c>table</c>/<c>csv</c>,
+    /// a struct value for <c>list</c>), derives the ordered column list from the Sprint 6
+    /// field registry, and stores it on <paramref name="node"/> for the compiler.
+    /// </summary>
+    private GrobType ResolveFormatAsCall(
+            CallExpr node, string methodName, SourceRange methodNameRange,
+            Expression? receiverExpr, IReadOnlyList<CallArgument> extraArgs) {
+        if (!FormatAsMethods.TryGetValue(methodName, out FormatAsShape shape)) {
+            if (receiverExpr is not null) Visit(receiverExpr);
+            foreach (CallArgument arg in extraArgs) Visit(arg.Value);
+            return EmitErrorAndReturn(ErrorCatalog.E1003,
+                $"formatAs has no method '{methodName}'. Valid methods are .table(), .list(), and .csv().",
+                methodNameRange);
+        }
+
+        if (receiverExpr is null) {
+            foreach (CallArgument arg in extraArgs) Visit(arg.Value);
+            return EmitErrorAndReturn(ErrorCatalog.E0003,
+                $"'formatAs.{methodName}' expects at least 1 argument, but 0 were supplied.",
+                node.Range);
+        }
+
+        GrobType receiverType = Visit(receiverExpr);
+        bool receiverShapeOk = IsFormatAsReceiverShapeValid(methodName, shape, receiverType, receiverExpr);
+        CallArgument? columnsArg = BindFormatAsExtraArgs(methodName, extraArgs);
+
+        IReadOnlyList<string>? fullFields = shape == FormatAsShape.Array
+            ? GetArrayElementFieldNames(receiverExpr)
+            : GetStructFieldNames(receiverExpr);
+
+        IReadOnlyList<string>? finalColumns = fullFields;
+        if (columnsArg is not null) {
+            finalColumns = ResolveExplicitColumns(columnsArg, fullFields);
+        } else if (receiverShapeOk && fullFields is null) {
+            EmitError(ErrorCatalog.E0004,
+                $"'formatAs.{methodName}' cannot determine its columns at compile time from this argument. " +
+                "Use a directly-typed array/struct value, or select 'columns:' explicitly.",
+                receiverExpr.Range);
+        }
+
+        node.ResolvedFormatAsColumns = finalColumns ?? [];
+        return GrobType.String;
+    }
+
+    /// <summary>
+    /// Validates an explicit <c>columns: [...]</c> selection against the receiver's full
+    /// derived field list, in the order written. A non-literal array (a variable, a call
+    /// result) stays permissive and keeps the full list — v1 only validates the literal
+    /// case, since that is the only one knowable at this call site. An unrecognised name
+    /// reuses E0004 (the selection cannot be satisfied by the receiver's actual shape).
+    /// </summary>
+    /// <summary>
+    /// Validates a <c>formatAs</c> receiver's shape (argument-type-mismatch, E0004) — an
+    /// array for <c>table</c>/<c>csv</c>, a struct/anon-struct value for <c>list</c>.
+    /// <see cref="GrobType.Error"/>/<see cref="GrobType.Unknown"/> stay permissive. Extracted
+    /// from <see cref="ResolveFormatAsCall"/> to keep its cognitive complexity under the
+    /// analyser bar.
+    /// </summary>
+    private bool IsFormatAsReceiverShapeValid(
+            string methodName, FormatAsShape shape, GrobType receiverType, Expression receiverExpr) {
+        bool ok = receiverType is GrobType.Error or GrobType.Unknown ||
+            (shape == FormatAsShape.Array
+                ? receiverType == GrobType.Array
+                : receiverType is GrobType.Struct or GrobType.AnonStruct);
+        if (!ok) {
+            string expected = shape == FormatAsShape.Array ? "an array" : "a struct value";
+            EmitError(ErrorCatalog.E0004,
+                $"'formatAs.{methodName}' expects {expected}, but the argument has type '{TypeName(receiverType)}'.",
+                receiverExpr.Range);
+        }
+        return ok;
+    }
+
+    /// <summary>
+    /// Visits and binds a <c>formatAs</c> call's arguments beyond the receiver: <c>columns:</c>
+    /// (<c>table</c> only) selects/reorders the derived field list; any other extra
+    /// argument is a call-shape error (E0011). Extracted from <see cref="ResolveFormatAsCall"/>
+    /// to keep its cognitive complexity under the analyser bar.
+    /// </summary>
+    private CallArgument? BindFormatAsExtraArgs(string methodName, IReadOnlyList<CallArgument> extraArgs) {
+        CallArgument? columnsArg = null;
+        foreach (CallArgument arg in extraArgs) {
+            Visit(arg.Value);
+            if (arg.Name == "columns" && methodName == "table") {
+                columnsArg = arg;
+            } else {
+                EmitError(ErrorCatalog.E0011,
+                    arg.Name is not null
+                        ? $"'formatAs.{methodName}' has no argument named '{arg.Name}'."
+                        : $"'formatAs.{methodName}' does not accept a second positional argument.",
+                    arg.Range);
+            }
+        }
+        return columnsArg;
+    }
+
+    private IReadOnlyList<string>? ResolveExplicitColumns(CallArgument columnsArg, IReadOnlyList<string>? fullFields) {
+        if (columnsArg.Value is not ArrayLiteralExpr arrayLit) return fullFields;
+
+        var selected = new List<string>(arrayLit.Elements.Count);
+        foreach (Expression element in arrayLit.Elements) {
+            if (!TryGetGuidParseLiteralValue(element, out string name, out _)) continue;
+            if (fullFields is not null && !fullFields.Contains(name)) {
+                EmitError(ErrorCatalog.E0004,
+                    $"'columns' names '{name}', which is not a field of the table's element type.",
+                    element.Range);
+                continue;
+            }
+            selected.Add(name);
+        }
+        return selected;
+    }
+
+    /// <summary>
+    /// Derives the ordered field-name list for a <c>formatAs.list</c> single-item receiver:
+    /// a literal anonymous-struct's own field order, or a named struct's registered field
+    /// order (via <see cref="GetStructTypeName"/>, reused unchanged from the existing
+    /// scalar struct-field-access machinery). <see langword="null"/> when the shape cannot
+    /// be determined statically.
+    /// </summary>
+    private IReadOnlyList<string>? GetStructFieldNames(Expression scalarExpr) {
+        if (TryGetAnonStructLiteral(scalarExpr) is AnonStructExpr anon) {
+            return anon.Fields.Select(f => f.Name).ToList();
+        }
+        // An indexed array element (items[0].formatAs.list()) shares its array's element
+        // shape — peek the array itself via GetArrayElementFieldNames rather than the
+        // (non-existent) type name of an IndexExpr.
+        if (scalarExpr is IndexExpr index) {
+            return GetArrayElementFieldNames(index.Target);
+        }
+        string? typeName = GetStructTypeName(scalarExpr);
+        return typeName is not null ? TryGetTypeInfo(typeName)?.Fields.Select(f => f.Name).ToList() : null;
+    }
+
+    /// <summary>
+    /// Derives the ordered field-name list for a <c>formatAs.table</c>/<c>csv</c> array
+    /// receiver by pattern-matching the argument expression's own shape — a local,
+    /// formatAs-scoped peek, not a general array-element-type system (v1 tracks no element
+    /// type on <see cref="GrobType.Array"/> at all). Handles: an array literal (from its
+    /// first element's shape); a <c>.select(lambda)</c> result (from the lambda body's
+    /// returned expression — reusing <see cref="GetStructFieldNames"/> directly against
+    /// that expression node, since <c>AnonStructExpr.SynthesisedTypeName</c>/field list is
+    /// already set by the time the lambda body was visited); a <c>.filter(...)</c>/
+    /// <c>.sort(...)</c> result (pass-through — neither changes element shape, so recurses
+    /// into their own receiver); and an identifier bound to a <c>T[]</c>-annotated
+    /// parameter or a <c>:=</c>-inferred local (via <see
+    /// cref="Symbol.ArrayElementStructTypeName"/> or the declaration's annotation/initialiser).
+    /// <see langword="null"/> when none of these shapes match.
+    /// </summary>
+    private IReadOnlyList<string>? GetArrayElementFieldNames(Expression arrayExpr) {
+        switch (arrayExpr) {
+            case ArrayLiteralExpr { Elements: [var first, ..] }:
+                return GetStructFieldNames(first);
+
+            case CallExpr { Callee: MemberAccessExpr { Member: "select" } } call
+                    when call.Arguments is [{ Value: LambdaExpr { Body: LambdaExpressionBody body } }, ..]:
+                return GetStructFieldNames(body.Expression);
+
+            case CallExpr { Callee: MemberAccessExpr { Member: "filter" or "sort" } passThrough }:
+                return GetArrayElementFieldNames(passThrough.Target);
+
+            case IdentifierExpr id:
+                return LookupSymbol(id.Name) is { ArrayElementStructTypeName: string elementName }
+                    ? TryGetTypeInfo(elementName)?.Fields.Select(f => f.Name).ToList()
+                    : GetArrayElementFieldNamesFromDecl(id.Declaration);
+
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>
+    /// Falls back to a <c>:=</c>-inferred array local's declaration (no <see
+    /// cref="Symbol.ArrayElementStructTypeName"/> — that is only threaded for parameters):
+    /// an explicit <c>T[]</c> annotation names the element type directly, otherwise the
+    /// initialiser expression is peeked the same way <see cref="GetArrayElementFieldNames"/>
+    /// peeks any other array expression.
+    /// </summary>
+    private IReadOnlyList<string>? GetArrayElementFieldNamesFromDecl(AstNode? decl) {
+        (TypeRef? annotation, Expression? init) = decl switch {
+            ReadonlyDecl ro => (ro.AnnotatedType, (Expression?)ro.Value),
+            VarDeclStmt vd => (vd.AnnotatedType, vd.Initializer),
+            _ => (null, null),
+        };
+        if (annotation is ArrayTypeRef arrayAnnotation) {
+            string? elementName = TryGetNamedStructTypeName(arrayAnnotation.ElementType);
+            if (elementName is not null) return TryGetTypeInfo(elementName)?.Fields.Select(f => f.Name).ToList();
+        }
+        return init is not null ? GetArrayElementFieldNames(init) : null;
+    }
+
+    /// <summary>
+    /// Peeks whether <paramref name="expr"/> is (or, for a <c>:=</c>-inferred local,
+    /// resolves to) an anonymous-struct literal directly — the node itself, so its field
+    /// order (<see cref="AnonStructExpr.Fields"/>, source order) is read straight off the
+    /// AST rather than re-derived from <see cref="AnonStructExpr.SynthesisedTypeName"/>'s
+    /// sorted canonical signature, which does not preserve source order.
+    /// </summary>
+    private static AnonStructExpr? TryGetAnonStructLiteral(Expression expr) => expr switch {
+        AnonStructExpr anon => anon,
+        IdentifierExpr id => id.Declaration switch {
+            ReadonlyDecl ro => ro.Value as AnonStructExpr,
+            VarDeclStmt vd => vd.Initializer as AnonStructExpr,
+            _ => null,
+        },
+        _ => null,
+    };
 
     // -----------------------------------------------------------------------
     // input() — the one no-namespace native validated here (Sprint 8 Increment C).

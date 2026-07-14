@@ -20,6 +20,10 @@ namespace Grob.Cli;
 /// Increment D adds <see cref="GuidPlugin"/>, reusing the same <see cref="IRandomSource"/>
 /// and a fresh <see cref="SystemClock"/> (D-343's first real <see cref="IClock"/>
 /// consumer, per-run like <see cref="SystemRandomSource"/>).
+/// Increment E adds <see cref="FormatAsPlugin"/> — no capability injection needed, it is
+/// pure formatting over already-resolved arguments (D-342's compile-time column
+/// derivation) plus the injected <see cref="IPluginRegistrar.RenderValue"/> it captures
+/// for itself at <c>Register</c> time.
 /// </summary>
 internal static class PluginRegistration {
     /// <summary>Registers every stdlib plugin against <paramref name="registrar"/>, in a fixed order.</summary>
@@ -41,6 +45,7 @@ internal static class PluginRegistration {
             new LogPlugin(streams, verbose ? LogLevel.Debug : LogLevel.Info),
             new IoPlugin(streams),
             new GuidPlugin(randomSource, new SystemClock()),
+            new FormatAsPlugin(),
         ];
         foreach (IGrobPlugin plugin in plugins) plugin.Register(registrar);
     }

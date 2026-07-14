@@ -725,7 +725,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
     private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode,
                                bool provisional = false, FunctionTypeDescriptor? functionDescriptor = null,
-                               string? namedStructTypeName = null) {
+                               string? namedStructTypeName = null, string? arrayElementStructTypeName = null) {
         _scopes.Peek()[name] = new Symbol {
             Name = name,
             Type = type,
@@ -734,7 +734,25 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             Provisional = provisional,
             FunctionDescriptor = functionDescriptor,
             NamedStructTypeName = namedStructTypeName,
+            ArrayElementStructTypeName = arrayElementStructTypeName,
         };
+    }
+
+    /// <summary>
+    /// Resolves <paramref name="typeRef"/>'s named-user-type identity when it denotes a
+    /// registered <c>type</c> declaration or the <c>guid</c> primitive — the name-only
+    /// counterpart of <see cref="ResolveSignatureType"/>'s guid/<c>TypeDecl</c> arms, kept
+    /// separate rather than threaded through that method's widely-consumed return tuple
+    /// (Sprint 8 Increment E, <c>formatAs</c>). Used to resolve a <c>T[]</c> parameter's
+    /// element-type name for <see cref="Symbol.ArrayElementStructTypeName"/> — nested
+    /// arrays/function types have no direct name here and are not needed for v1's
+    /// <c>formatAs</c> surface.
+    /// </summary>
+    private string? TryGetNamedStructTypeName(TypeRef typeRef) {
+        if (typeRef is ArrayTypeRef or FunctionTypeRef) return null;
+        if (ResolveTypeRef(typeRef) != GrobType.Unknown) return null;
+        if (typeRef.Name == "guid") return "guid";
+        return LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl ? typeRef.Name : null;
     }
 
     /// <summary>
@@ -748,7 +766,13 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private void FinalizeTopLevelBinding(
         string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode, SourceRange range,
         FunctionTypeDescriptor? functionDescriptor = null) {
-        if (_scopes.Peek().TryGetValue(name, out Symbol? existing) && !existing.Provisional) {
+        // Sprint 8 Increment E: 'formatAs' is both a reserved identifier (E1103, D-320) and
+        // a pre-registered NamespaceDecl symbol (D-342) — the first reserved identifier to
+        // be a namespace ('select' is reserved but not a namespace). Skipping the collision
+        // check here avoids a redundant E1102 alongside E1103 for e.g. 'fn formatAs() {}';
+        // the reserved-name diagnostic alone already fully explains the error.
+        if (!_reservedIdentifiers.Contains(name) &&
+                _scopes.Peek().TryGetValue(name, out Symbol? existing) && !existing.Provisional) {
             EmitError(ErrorCatalog.E1102,
                 $"'{name}' is already declared in this scope (first declared at line {existing.DeclaredAt.Line}).",
                 range);
