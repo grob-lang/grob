@@ -1,0 +1,8 @@
+{
+    "calibrated": "2026-07-14",
+    "iterations": 10000,
+    "warmup": 2000,
+    "tolerancePercent": 2.0,
+    "lastPassingHeapBytes": 190456,
+    "lastRun": "2026-07-14"
+}

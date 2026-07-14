@@ -18,6 +18,13 @@
     <ProjectReference Include="..\..\src\Grob.Core\Grob.Core.csproj" />
     <ProjectReference Include="..\..\src\Grob.Compiler\Grob.Compiler.csproj" />
     <ProjectReference Include="..\..\src\Grob.Vm\Grob.Vm.csproj" />
+    <!-- The Stability loop (Sprint 8 Increment F) needs a fully composed VM — stdlib
+         plugins registered, IEnvironment/IRandomSource/IClock capabilities wired.
+         Grob.Cli.RunCommand already does exactly this (fresh VirtualMachine, fresh
+         plugin registration, per call) and is public, so the Stability loop drives
+         the six frozen scripts through it rather than re-implementing the composition
+         root's capability wiring a second time. -->
+    <ProjectReference Include="..\..\src\Grob.Cli\Grob.Cli.csproj" />
   </ItemGroup>
 
   <!-- Copy benchmark fixture sources alongside the binary. -->
@@ -27,6 +34,9 @@
              CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Fixtures\Vm\*.grob"
              Link="Fixtures\Vm\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Fixtures\Stability\*.grob"
+             Link="Fixtures\Stability\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

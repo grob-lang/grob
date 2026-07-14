@@ -1,0 +1,103 @@
+// Sprint 7 close — errors.grob
+// Exercises: throw + a matching typed catch, a non-matching typed catch ahead
+// of the matching one (source-order first-match), the bare catch-all catching
+// what no typed catch matches, finally on both normal and exceptional
+// completion, a nested try/finally with an early return running both
+// finallys inner-then-outer (the D-334 compilation model), a caught runtime
+// error (int division by zero as ArithmeticError) proving the script
+// resumes, and an uncatchable exit() inside try/catch/finally.
+
+// --- 1. throw a constructed exception, typed catch matches ---
+try {
+    throw IoError { message: "config file missing" }
+}
+catch (e: IoError) {
+    print("caught IoError: ${e.message}")
+}
+
+// --- 2. a non-matching typed catch ahead of the matching one — source-order first-match ---
+try {
+    throw ArithmeticError { message: "step value out of range" }
+}
+catch (e: NetworkError) {
+    print("this should never run")
+}
+catch (e: ArithmeticError) {
+    print("caught ArithmeticError: ${e.message}")
+}
+
+// --- 3. bare catch-all catches what no typed catch above matches ---
+try {
+    throw JsonError { message: "malformed payload" }
+}
+catch (e: IoError) {
+    print("this should never run")
+}
+catch e {
+    print("caught by catch-all: ${e.message}")
+}
+
+// --- 4. finally runs on normal completion ---
+try {
+    print("try body completed normally")
+}
+finally {
+    print("finally ran after normal completion")
+}
+
+// --- 5. finally runs on exceptional completion, alongside a matching catch ---
+try {
+    throw IndexError { message: "index 10 out of range for length 3" }
+}
+catch (e: IndexError) {
+    print("caught IndexError: ${e.message}")
+}
+finally {
+    print("finally ran after exceptional completion")
+}
+
+// --- 6. nested try/finally with an early return — inner finally then outer finally, in order (D-334) ---
+fn nestedFinallyDemo(): int {
+    try {
+        try {
+            return 1
+        }
+        finally {
+            print("inner finally")
+        }
+    }
+    finally {
+        print("outer finally")
+    }
+    return 2
+}
+
+print("nested result: ${nestedFinallyDemo()}")
+
+// --- 7. a caught runtime error — int division by zero as ArithmeticError — script resumes ---
+fn safeDivide(a: int, b: int): int {
+    try {
+        return a / b
+    }
+    catch (e: ArithmeticError) {
+        print("caught runtime ArithmeticError: ${e.message}")
+        return 0
+    }
+}
+
+print("10 / 0 -> ${safeDivide(10, 0)}")
+print("10 / 2 -> ${safeDivide(10, 2)}")
+
+// --- 8. exit() inside try/catch/finally is uncatchable — neither runs, process terminates ---
+try {
+    print("before exit")
+    exit(42)
+    print("unreachable")
+}
+catch e {
+    print("unreachable — catch must not run")
+}
+finally {
+    print("unreachable — finally must not run")
+}
+print("unreachable — script must not resume")

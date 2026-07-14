@@ -210,16 +210,31 @@ below are starting points, not locked decisions:
 - Warmup window: 100 iterations (placeholder)
 - Tolerance: 10% (placeholder)
 
-**Calibration ritual at Sprint 8 close.** Before locking these numbers
-in the baseline, run a single-iteration pass against the stdlib-substantial
-build that Sprint 8 produces and characterise:
+**Calibration ritual at Sprint 8 close (mechanically corrected by D-346).**
+Before locking these numbers in the baseline, run a single-iteration pass
+against the stdlib-substantial build that Sprint 8 produces and characterise:
 
-1. Wall-clock time for one full iteration of all thirteen scripts. This
-   sets the realistic upper bound on iteration count — if one iteration
-   takes 30 seconds, 10,000 is too many for a test that ships.
+1. Wall-clock time for one full iteration of the **Sprint-8-runnable script
+   set** — not all thirteen. `grob-sample-scripts.md`'s validation scripts
+   each depend on at least one Sprint-9 module (`fs`, `date`, `csv`, `json`,
+   `process`) or an as-yet-unbuilt plugin (`Grob.Http`, `Grob.Crypto`), so
+   none of them runs at Sprint 8 close; the runnable set is the five
+   sprint-close smoke scripts (`hello`, `calculator`, `functions`, `types`,
+   `errors`) plus the Sprint 8 close-gate script (`stdlib.grob`, D-337). The
+   full validation-suite stability run is deferred to a v1 release-gate step
+   once Sprint 9 lands the remaining modules. This sets the realistic upper
+   bound on iteration count — if one iteration takes 30 seconds, 10,000 is
+   too many for a test that ships. (D-346 also notes, separately: the
+   "thirteen" count itself is stale — `grob-sample-scripts.md` has only ever
+   held eleven scripts; see D-346 for the full account. This does not change
+   the runnable-set finding above, which is zero either way.)
 2. Steady-state managed heap size after the first ten iterations. This
    sets the realistic warmup window — there is no point asserting against
-   the heap before it has reached its plateau.
+   the heap before it has reached its plateau. **Caution from D-346's actual
+   run:** ten iterations was too short a horizon to catch a one-time
+   cache/registry warm-up step that only appeared between iterations 1000
+   and 2000 — a longer checkpoint sweep is worth the extra runtime before
+   locking the warmup window.
 3. Iteration-to-iteration variance in heap size at steady state. This
    sets the realistic tolerance — if normal variance is already 8%, a
    10% tolerance is noise, not a signal.

@@ -105,6 +105,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 8F close-gate: stdlib.grob smoke fixture. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-8f\*.grob"
+             Link="fixtures\sprint-8f\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
