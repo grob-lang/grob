@@ -34,4 +34,17 @@ public interface IPluginRegistrar {
     /// canonical form instead of falling through to structural field rendering.
     /// </summary>
     void RegisterToString(string typeName, Func<GrobValue, string> toString);
+
+    /// <summary>
+    /// Renders <paramref name="value"/> through the VM's real <c>ValueDisplay</c>
+    /// (D-336) — the same top-level rendering <c>print()</c> uses, including any
+    /// <see cref="RegisterToString"/> registration made by any plugin (regardless of
+    /// registration order, since this always consults the registry's current state, not
+    /// a snapshot taken at <c>Register</c> time). The seam <c>formatAs</c> (Sprint 8
+    /// Increment E, <c>Grob.Stdlib</c>) uses to render cell values — <c>Grob.Stdlib</c>
+    /// cannot reference <c>Grob.Vm</c> to construct its own <c>ValueDisplay</c>, and a
+    /// bare <c>NullRegistry</c>-backed instance would miss a plugin type's registered
+    /// <c>toString()</c> (e.g. <c>guid</c>).
+    /// </summary>
+    string RenderValue(GrobValue value);
 }

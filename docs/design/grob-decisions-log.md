@@ -340,6 +340,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-342 | July 2026                                                         | Compiler — module-namespace resolution | Core stdlib modules (`math`, and in later increments `path`/`env`/`log`/`guid`/`formatAs`) are compile-time namespaces — a name category in the global scope that is neither a value nor a type binding. `TypeChecker.RegisterNamespaces` seeds each as a `NamespaceDecl` sentinel (mirroring `BuiltinDecl`); a hand-authored `NamespaceRegistry` table (compile-time twin of the runtime `IGrobPlugin` registration, agreement-tested per the D-308 pattern) maps each namespace's members to a constant type or a native signature. Dispatch precedence at a member-access node is fixed: namespace receiver resolves against `NamespaceRegistry` (unknown member → E1003 "undefined module", reused rather than duplicated); value receiver falls through unchanged to the pre-existing struct-field and array-higher-order-method arms. A namespace referenced in value position (`x := math`, `print(math)`) is E1004 "namespace used as a value" (new), the namespace analogue of the existing `TypeDecl`-as-value arm (E2102). No runtime module object and no new opcode: a namespace constant (`math.pi`) compiles to `GetGlobal`; a namespace-qualified native (`math.sqrt`) compiles to its argument(s) then `GetGlobal` then the existing `Call` — the same `GetGlobal`-by-qualified-name shape a plain top-level function call already uses (D-321's `DefineGlobal` prologue), not a literal embedded function constant, since `Grob.Compiler` cannot reference `Grob.Stdlib` to know a native's C# delegate at compile time. One new error code (E1004); count 116 → 117 |
 | D-343 | July 2026                                                         | Runtime — capability-injection seam | Refines D-319's provisional capability-interface sketch into a landed seam. `IGrobPlugin` (`Register(IPluginRegistrar)`) and `IPluginRegistrar` (`RegisterNative`/`RegisterConstant`) are declared in `Grob.Runtime`; `IPluginRegistrar` exists as a narrow interface distinct from the concrete `VirtualMachine` specifically so `Grob.Runtime` never references `Grob.Vm` (the DAG already has `Grob.Vm` → `Grob.Runtime`; the reverse edge would cycle) — `VirtualMachine` implements `IPluginRegistrar` in `Grob.Vm`. `IStandardStreams` (`Out`/`Error`) is the first capability consumed: `OpCode.Print`'s VM handler reads an injected `IStandardStreams` instead of touching `Console` or a bare `TextWriter` field directly; `Grob.Cli`'s composition root constructs the OS-backed default and passes it to `VirtualMachine` via a new constructor overload (the pre-existing single-`TextWriter` constructor is kept unchanged, wrapping its argument in a minimal default, so none of the ~39 existing call sites across the test suite need to change). `print`/`exit` stay on their existing dedicated opcodes (`OpCode.Print`/`OpCode.Exit`) — they are not converted into `Call`-dispatched `NativeFunction`s; a `Grob.Stdlib.IoPlugin : IGrobPlugin` exists to give the I/O seam a uniform place in the plugin-registration pass, but registers no callable, since print/exit are formalised, not rebuilt. `IEnvironment`, `IClock`, `IRandomSource` are declared in `Grob.Runtime` alongside `IStandardStreams` per D-319's sketch, with no consumer yet — Increment B (`math.random*`), C (`env`/`log`) and D (`guid`) are their first real consumers. `IFileSystem`/`IProcessRunner` are not declared; they arrive with `fs`/`process` in Sprint 9. No new error code; count unchanged at 117 |
 | D-344 | July 2026                                                         | Runtime / Compiler — stdlib host surfaces | Sprint 8 Increment C lands `env`, `log` and `input()`. `IStandardStreams` gains a third member, `In` (`TextReader`), for `input()` to read from; `SingleWriterStreams` answers it with `TextReader.Null` (closed stream), mirroring its existing `Error` convention. `input()` is a new dispatch category — the no-namespace native: `TypeChecker.Expressions.cs VisitCall` validates it (0–1 args, E0003/E0004) ahead of the permissive `print`/`exit` fallback, and `Compiler.Expressions.cs VisitCall` fills a missing 0-argument call's prompt with the constant `""` before the ordinary `GetGlobal`-then-`Call` shape (the runtime native's own arity is always 1) — a one-off arm, not a general defaulted-native mechanism. `env`/`log` are ordinary `NamespaceRegistry` consumers (D-342 pattern): `env.require` reuses `ErrorCatalog.E5801` with D-284's pinned message template; `input()`'s closed-stdin fault reuses the residual `ErrorCatalog.E5305`. `log.setLevel` recognises exactly its four lowercase level names; any other string is a silent no-op, not a thrown fault — deliberate, since a typo in defensive logging code should not crash a script. `ValueDisplay`/registered-`toString()`-through-`log` wiring is deferred to Increment D (`guid`, its first real consumer) — building the seam now would be untested forward scaffolding. `--verbose` is a new CLI presence flag selecting `LogPlugin`'s initial threshold. Corrects this increment's kickoff prompt, which mis-cited non-existent "D-339"/"D-340" and unrelated D-334 — the governing decisions are D-342 and D-343. No new error code; count unchanged at 117 |
+| D-345 | July 2026                                                         | Compiler / Runtime — `formatAs` module | Sprint 8 Increment E lands `formatAs` (`table`/`list`/`csv`). Corrects this increment's kickoff prompt, which again cited non-existent "D-339" (see D-344's identical correction) — the governing decision is D-342, whose E1003/E1004 the two namespace-misuse diagnostics (bare `.formatAs`; unknown `.formatAs.X`) fold into with `formatAs`-specific message text. `formatAs` registers as a namespace **name** only (empty `NamespaceRegistry` member dict); its three members bypass the generic `ConstantMember`/`NativeMember` dispatch entirely for bespoke resolution (`ResolveFormatAsCall`), since compile-time column derivation and the chained-form rewrite don't fit the positional native model. The chained-form rewrite (`items.formatAs.table()` → `formatAs.table(items)`) is shared resolution over a pattern-matched AST shape, not a literal node substitution — `CallExpr`/`MemberAccessExpr` are immutable records, so both the checker's and the (necessarily separately-implemented) compiler's `TryDetectFormatAsChainReceiver` independently re-derive the chain shape, mirroring the existing `math.pi` namespace-receiver precedent. Compile-time column derivation is a bounded, `formatAs`-scoped peek (`GetArrayElementFieldNames`/`GetStructFieldNames`) covering array literals, `.select`/`.filter`/`.sort` chains and indexed elements — not a general array-element-type system; one new `Symbol.ArrayElementStructTypeName` field (parameters only) plugs the one real gap found (`ResolveSignatureType`'s `ArrayTypeRef` arm previously discarded the element's struct name entirely). The compiler always injects the derived columns as a synthesised second constant-array argument (`OpCode.NewArray`, no new opcode), so `FormatAsPlugin`'s three natives keep a fixed arity of 2 regardless of source overload. A new `IPluginRegistrar.RenderValue` capability lets `Grob.Stdlib` (which cannot reference `Grob.Vm`) render cells through the VM's real, registry-backed `ValueDisplay` (D-336) rather than a `NullRegistry`-backed one that would miss `guid`'s registered `toString()`. A real regression was caught and fixed in the same change: `formatAs` is the first reserved identifier (D-320) that is also a pre-registered namespace symbol, so `formatAs := 1` doubled up E1103 with a spurious E1102 until `FinalizeTopLevelBinding`/`VisitVarDecl` were taught to skip the collision check for a reserved name. Array indexing (`arr[i]`) was found to have no compiler emission at all (crashes the VM with or without this change) — confirmed pre-existing and out of scope; `formatAs` on an indexed element is verified at the type-checker level only. No new error code (E0004/E0011/E1003/E1004 all pre-existing; confirmed via `allocating-an-error-code`); count unchanged at 117 |
 
 ---
 
@@ -4566,6 +4567,142 @@ Count unchanged at 117.
 
 ---
 
+### D-345 — `formatAs` lands: bespoke namespace resolution, compile-time column derivation, the chained-form rewrite as shared resolution not AST substitution (July 2026)
+
+Area: Compiler / Runtime — `formatAs` module (Sprint 8 Increment E)
+Supersedes: none
+Superseded by: none
+Refines: D-342, D-282, D-320, D-336
+
+**Correction to the record first.** This increment's kickoff prompt asked to fold
+`formatAs`'s namespace-misuse errors into "D-339's error code." D-339 does not exist —
+D-338 is immediately followed by D-341, exactly the citation gap D-344 already recorded
+for "D-339"/"D-340" in Increment C's kickoff. The governing decision for module-namespace
+resolution, and the two error codes it allocated, is **D-342**: E1003 ("undefined
+module", unknown member) and E1004 ("namespace used as a value", bare access). Both take
+a per-call-site message string, so folding `formatAs`'s two exact-wording diagnostics
+into them is a direct fit.
+
+**`formatAs` is registered as a namespace name only.** `NamespaceRegistry`'s `"formatAs"`
+entry has an empty member dictionary — enough for `RegisterNamespaces` to seed the usual
+`NamespaceDecl` sentinel (so a bare `x := formatAs` correctly falls through to the
+existing generic E1004 arm) and for the plain function form (`formatAs.table(items)`) to
+resolve its receiver via the existing `TryAnnotateNamespaceReceiver` path. Its three
+members are deliberately **not** modelled as `ConstantMember`/`NativeMember` entries: they
+need bespoke per-call-site work (element-type derivation, a synthesised compiler-injected
+argument) the generic positional `NativeMember` model was never meant to stretch to.
+`ResolveNamespaceMemberAccess`/`ResolveNamespaceMemberCall` (`TypeChecker.Expressions.cs`)
+each gain an early `namespaceName == "formatAs"` branch into `ResolveFormatAsCall`.
+
+**The chained-form rewrite is shared resolution, not a literal AST substitution.**
+`CallExpr`/`MemberAccessExpr` are `sealed record`s with `init`-only `Callee`/`Target` — a
+"rewrite" cannot replace the node in place the way a mutable-property annotation
+(`MemberAccessExpr.ResolvedFieldType`) can. Instead, `TryDetectFormatAsChainReceiver`
+pattern-matches the fixed AST shape `CallExpr(Callee: MemberAccessExpr(Member:
+methodName, Target: MemberAccessExpr(Member: "formatAs", Target: receiverExpr)))` —
+sound because `formatAs` is reserved (D-282/D-320), so no struct field, namespace member
+or declared binding can ever be named `formatAs`; any `MemberAccessExpr` with that member
+name is unambiguously this mechanism. The function form (`formatAs.table(items)`) and the
+chained form (`items.formatAs.table()`) both resolve through one core,
+`ResolveFormatAsCall(node, methodName, methodNameRange, receiverExpr, extraArgs)` — for
+the function form `receiverExpr` is the call's own first argument (`null` when the call
+supplies none, reported as E0003); for the chained form it is the chain's inner receiver,
+always present. The **compiler** independently re-derives the same chain shape
+(`Compiler.Expressions.cs`'s own `TryDetectFormatAsChainReceiver`, necessarily duplicated
+— `Compiler` and `TypeChecker` are separate passes with no shared instance state, the
+same reason the namespace-receiver check is already re-derived rather than threaded
+across) — mirroring the established `math.pi`/`node.Target.Declaration is NamespaceDecl`
+precedent rather than inventing a new one.
+
+**Namespace-misuse diagnostics.** Bare `<expr>.formatAs` (a `MemberAccessExpr` with
+`Member == "formatAs"` reached by ordinary `VisitMemberAccess`, meaning no valid method
+chain consumed it) is **E1004** with the spec's exact text. `<expr>.formatAs.X(...)` where
+`X` is not `table`/`list`/`csv` is **E1003**, naming the three valid methods. Both fold
+into D-342's codes with `formatAs`-specific message text — no new code.
+
+**Compile-time column derivation — a bounded, `formatAs`-scoped peek, not a general
+array-generics system.** Tracing the existing machinery found a real gap the kickoff's
+"bounded work over settled machinery" framing understated: `GrobType.Array` carries no
+element-type tag at all, and array higher-order methods (`.select`/`.filter`/`.sort`)
+return bare `GrobType.Array` — v1 never tracked what is inside an array. Scalar
+struct-typed symbols do carry a name (`Symbol.NamedStructTypeName`), but
+`ResolveSignatureType`'s `ArrayTypeRef` arm discarded it even for a plain `items:
+SomeStruct[]` parameter. Rather than generalising array element-type tracking (a much
+larger project), the fix is contained to `formatAs`'s own resolution code:
+
+- One new `Symbol.ArrayElementStructTypeName` field (mirrors `NamedStructTypeName`
+  exactly), populated only for a `T[]`-annotated **parameter** via a new
+  `TypeChecker.TryGetNamedStructTypeName(TypeRef)` helper (the name-only counterpart of
+  `ResolveSignatureType`'s guid/`TypeDecl` arms, kept separate rather than threaded
+  through that method's widely-consumed return tuple). A `:=`-inferred array local needs
+  no such field — its shape is peeked from the declaration's annotation or initialiser
+  directly, the same pattern `GetStructTypeNameFromDecl` already uses for scalars.
+- `GetArrayElementFieldNames(Expression)` peeks the argument expression's own shape: an
+  array literal (first element's shape), a `.select(lambda)` result (the lambda body's
+  returned expression, reusing `GetStructFieldNames` directly against that node — the
+  anonymous-struct literal's own field list, `AnonStructExpr.Fields`, is already in source
+  order regardless of whether the lambda parameter's type is known, since v1 lambda
+  parameters type as `Unknown`), a `.filter(...)`/`.sort(...)` result (pass-through,
+  recursing into the receiver, since neither changes element shape), an indexed array
+  element (`items[0]`, peeking the array), or an identifier (the new symbol field, or the
+  declaration fallback). Anything else is statically indeterminate and reuses E0004 — a
+  clear compile error, not a silent guess.
+- `columns: [...]` (a literal array, `table` only) selects/reorders a subset of the
+  derived full list; a named field not in that list also reuses E0004.
+- No new error code anywhere in this derivation: E0004 (receiver-shape and
+  columns-selection mismatches) and E0011 (a stray extra argument, reusing "no argument
+  named" — a close semantic parallel to its existing "no parameter named" fit) are both
+  pre-existing. Confirmed via `allocating-an-error-code`.
+
+**Compiler emission pushes auto-derivation to compile time, keeping the runtime native
+trivial.** Whatever the checker derives (explicit `columns:` or the full auto-derived
+list) is stored on a new mutable `CallExpr.ResolvedFormatAsColumns` property (the
+established "checker annotates, compiler reads back" pattern, not a dictionary — `Compiler`
+and `TypeChecker` are different classes with no shared reference). The compiler always
+emits it as a literal compile-time string-array constant (`OpCode.NewArray` — no new
+opcode) passed as a synthesised **second** argument alongside the receiver, so
+`Grob.Stdlib.FormatAsPlugin`'s three registered natives have simple fixed arities —
+`table(items, columns)`, `list(item, fields)`, `csv(items, columns)` — regardless of
+which source overload or call form produced the call. No runtime reflection over the
+value, matching the stdlib reference's explicit requirement.
+
+**Cell rendering needed a new capability, `IPluginRegistrar.RenderValue`.** `formatAs`
+lives in `Grob.Stdlib`, which cannot reference `Grob.Vm` (the DAG forbids it) and so
+cannot construct its own registry-backed `ValueDisplay` — a bare `NullRegistry`-backed
+instance would miss a plugin type's registered `toString()` (`guid`, D-336). `RenderValue`
+is one new `IPluginRegistrar` method, implemented by `VirtualMachine` as
+`_valueDisplay.Display(value)`; `FormatAsPlugin.Register` captures `registrar.RenderValue`
+as a delegate, which correctly reflects any later plugin's `RegisterToString` call
+regardless of registration order (a method-group capture, not a snapshot). Floats stay
+culture-pinned end to end because the pin lives inside `ValueDisplay` itself (D-336), not
+in `formatAs`.
+
+**A real regression caught and fixed in the same change.** `formatAs` is the first
+reserved identifier (D-320) that is also a pre-registered `NamespaceDecl` symbol (`select`
+is reserved but not a namespace, so this combination never arose before). Both
+`FinalizeTopLevelBinding` (`TypeChecker.cs`) and the local `VisitVarDecl`
+(`TypeChecker.Statements.cs`) independently check for a same-scope collision after the
+reserved-identifier check runs, so `formatAs := 1` reported **both** E1103 and E1102 —
+caught by the pre-existing `SelectReservedIdentifierTests.FormatAsAsLocalBinding_EmitsE1103`
+regression test, which the namespace registration broke. Both call sites now skip the
+collision check when the name is reserved (`_reservedIdentifiers.Contains(name)`) — the
+reserved-name diagnostic alone already fully explains the error.
+
+**Unrelated pre-existing gap found, not fixed.** Array indexing (`arr[i]`) has no
+compiler emission at all — `Compiler.Expressions.cs` has no `VisitIndex` override, so any
+script indexing an array (with or without `formatAs`) crashes the VM with a stack
+underflow. Confirmed unrelated to this increment's changes. Out of scope here; the
+`formatAs`-on-an-indexed-element derivation path (`GetStructFieldNames`'s `IndexExpr` arm)
+is still implemented and tested at the type-checker level only, since the VM path it
+would otherwise exercise is broken independently of `formatAs`.
+
+No new error code; count unchanged at 117.
+
+Full detail: `grob-stdlib-reference.md`'s `formatAs` section, `grob-decisions-log.md`
+D-342 (the namespace-resolution precedent this refines), D-336 (`ValueDisplay`).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -4787,7 +4924,21 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 8 Increment C: D-344 added. Lands `env`, `log` and `input()`._
+_July 2026 — Sprint 8 Increment E: D-345 added. Lands `formatAs` (`table`/`list`/`csv`)._
+_Corrects a second "D-339" mis-citation (see D-344's identical correction) — the_
+_governing decision is D-342, whose E1003/E1004 the namespace-misuse diagnostics fold_
+_into. The chained-form rewrite is shared resolution over a pattern-matched AST shape_
+_(`CallExpr`/`MemberAccessExpr` are immutable records), independently re-derived by_
+_the checker and the compiler, mirroring the existing namespace-receiver precedent._
+_Compile-time column derivation is a bounded, `formatAs`-scoped peek — one new_
+_`Symbol.ArrayElementStructTypeName` field (parameters only) plugs the one real gap;_
+_no general array-element-type system. A new `IPluginRegistrar.RenderValue` capability_
+_lets `Grob.Stdlib` render cells through the VM's real `ValueDisplay` (D-336). A real_
+_regression (formatAs := 1 double-erroring E1103 + E1102, the first reserved identifier_
+_that is also a namespace) was caught and fixed in the same change. Array indexing_
+_(`arr[i]`) was found to have no compiler emission at all — confirmed pre-existing and_
+_out of scope. No new error code; count unchanged at 117._
+_Previous: July 2026 — Sprint 8 Increment C: D-344 added. Lands `env`, `log` and `input()`._
 _`IStandardStreams` gains a third member, `In`, for `input()` to read from;_
 _`SingleWriterStreams` answers it with a closed `TextReader.Null`, mirroring its_
 _existing `Error` convention. `input()` is a new dispatch category — the_

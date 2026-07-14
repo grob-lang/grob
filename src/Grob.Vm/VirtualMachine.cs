@@ -228,6 +228,9 @@ public sealed class VirtualMachine : IPluginRegistrar {
         _toStringRegistry.Register(typeName, toString);
     }
 
+    /// <inheritdoc/>
+    public string RenderValue(GrobValue value) => _valueDisplay.Display(value);
+
     /// <summary>
     /// Execute <paramref name="chunk"/> until <see cref="OpCode.Return"/>.
     /// Running off the end of the bytecode without a <see cref="OpCode.Return"/>

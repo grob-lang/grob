@@ -128,6 +128,19 @@ internal static class NamespaceRegistry {
                 ["namespaces.url"] = new ConstantMember(GrobType.Struct, NamedTypeName: "guid"),
                 ["namespaces.oid"] = new ConstantMember(GrobType.Struct, NamedTypeName: "guid"),
             },
+            // Sprint 8 Increment E: formatAs — registered as a namespace NAME only, so
+            // IsNamespace/RegisterNamespaces seed the usual NamespaceDecl sentinel (bare
+            // `x := formatAs` correctly falls through to the generic D-342 E1004 arm) and
+            // the plain function form (formatAs.table(x)) resolves its receiver via the
+            // ordinary TryAnnotateNamespaceReceiver path. The three members (table/list/csv)
+            // are NOT modelled here as ConstantMember/NativeMember — they need bespoke
+            // per-call-site resolution (compile-time column derivation from the Sprint 6
+            // field registry, and the chained-form receiver rewrite) that the generic
+            // positional NativeMember model was never meant to stretch to. TypeChecker's
+            // formatAs-specific resolution code (see ResolveFormatAsCall) never consults
+            // this dictionary's "formatAs" entry — it exists purely for the namespace-name
+            // membership check.
+            ["formatAs"] = new Dictionary<string, object>(StringComparer.Ordinal),
         };
 
     /// <summary>Every registered namespace name.</summary>

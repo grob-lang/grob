@@ -723,18 +723,48 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         RegisterSymbol(name, GrobType.Unknown, declaredAt, declarationNode, provisional: true);
     }
 
+    /// <summary>
+    /// Bundles a symbol's optional type-identity metadata — the function-type descriptor
+    /// and/or named-struct-type name(s) that travel alongside a symbol's bare <see
+    /// cref="GrobType"/> tag — into a single <see cref="RegisterSymbol"/> parameter. Keeps
+    /// the parameter count under the analyser bar (S107) as the set of identity channels
+    /// has grown (D-326 function descriptors, Sprint 6 struct names, Sprint 8 Increment
+    /// E's array-element struct name).
+    /// </summary>
+    private readonly record struct SymbolTypeIdentity(
+        FunctionTypeDescriptor? FunctionDescriptor = null,
+        string? NamedStructTypeName = null,
+        string? ArrayElementStructTypeName = null);
+
     private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode,
-                               bool provisional = false, FunctionTypeDescriptor? functionDescriptor = null,
-                               string? namedStructTypeName = null) {
+                               bool provisional = false, SymbolTypeIdentity typeIdentity = default) {
         _scopes.Peek()[name] = new Symbol {
             Name = name,
             Type = type,
             DeclaredAt = declaredAt,
             DeclarationNode = declarationNode,
             Provisional = provisional,
-            FunctionDescriptor = functionDescriptor,
-            NamedStructTypeName = namedStructTypeName,
+            FunctionDescriptor = typeIdentity.FunctionDescriptor,
+            NamedStructTypeName = typeIdentity.NamedStructTypeName,
+            ArrayElementStructTypeName = typeIdentity.ArrayElementStructTypeName,
         };
+    }
+
+    /// <summary>
+    /// Resolves <paramref name="typeRef"/>'s named-user-type identity when it denotes a
+    /// registered <c>type</c> declaration or the <c>guid</c> primitive — the name-only
+    /// counterpart of <see cref="ResolveSignatureType"/>'s guid/<c>TypeDecl</c> arms, kept
+    /// separate rather than threaded through that method's widely-consumed return tuple
+    /// (Sprint 8 Increment E, <c>formatAs</c>). Used to resolve a <c>T[]</c> parameter's
+    /// element-type name for <see cref="Symbol.ArrayElementStructTypeName"/> — nested
+    /// arrays/function types have no direct name here and are not needed for v1's
+    /// <c>formatAs</c> surface.
+    /// </summary>
+    private string? TryGetNamedStructTypeName(TypeRef typeRef) {
+        if (typeRef is ArrayTypeRef or FunctionTypeRef) return null;
+        if (ResolveTypeRef(typeRef) != GrobType.Unknown) return null;
+        if (typeRef.Name == "guid") return "guid";
+        return LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl ? typeRef.Name : null;
     }
 
     /// <summary>
@@ -748,13 +778,19 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private void FinalizeTopLevelBinding(
         string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode, SourceRange range,
         FunctionTypeDescriptor? functionDescriptor = null) {
-        if (_scopes.Peek().TryGetValue(name, out Symbol? existing) && !existing.Provisional) {
+        // Sprint 8 Increment E: 'formatAs' is both a reserved identifier (E1103, D-320) and
+        // a pre-registered NamespaceDecl symbol (D-342) — the first reserved identifier to
+        // be a namespace ('select' is reserved but not a namespace). Skipping the collision
+        // check here avoids a redundant E1102 alongside E1103 for e.g. 'fn formatAs() {}';
+        // the reserved-name diagnostic alone already fully explains the error.
+        if (!_reservedIdentifiers.Contains(name) &&
+                _scopes.Peek().TryGetValue(name, out Symbol? existing) && !existing.Provisional) {
             EmitError(ErrorCatalog.E1102,
                 $"'{name}' is already declared in this scope (first declared at line {existing.DeclaredAt.Line}).",
                 range);
             return;
         }
-        RegisterSymbol(name, type, declaredAt, declarationNode, functionDescriptor: functionDescriptor);
+        RegisterSymbol(name, type, declaredAt, declarationNode, typeIdentity: new(FunctionDescriptor: functionDescriptor));
     }
 
     /// <summary>
@@ -770,7 +806,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         if (!_scopes.Peek().TryGetValue(name, out Symbol? existing)) return;
         if (!existing.Provisional) return;
         RegisterSymbol(name, type, existing.DeclaredAt, existing.DeclarationNode,
-            provisional: true, functionDescriptor: functionDescriptor);
+            provisional: true, typeIdentity: new(FunctionDescriptor: functionDescriptor));
     }
 
     /// <summary>Emits an error diagnostic and returns <see cref="GrobType.Error"/>.</summary>

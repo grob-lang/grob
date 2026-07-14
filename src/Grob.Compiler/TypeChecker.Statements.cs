@@ -25,7 +25,12 @@ public sealed partial class TypeChecker {
         // so we don't clobber a valid symbol if the name is already in this scope.
         // A pass-1 forward-reference placeholder (D-321, D-324) is not a redeclaration —
         // pass 2 finalises it here — so only a non-provisional entry counts as a duplicate.
-        if (_scopes.Peek().TryGetValue(node.Name, out Symbol? existing) && !existing.Provisional) {
+        // Skipped entirely for a reserved identifier (Sprint 8 Increment E: 'formatAs' is
+        // both reserved and a pre-registered NamespaceDecl symbol, D-342) — the E1103
+        // above already fully explains the error; a name collision with the namespace
+        // sentinel it also happens to overwrite is not a second, independent mistake.
+        if (!_reservedIdentifiers.Contains(node.Name) &&
+                _scopes.Peek().TryGetValue(node.Name, out Symbol? existing) && !existing.Provisional) {
             // Only suggest '=' when the prior binding is a mutable variable (a ':='
             // declaration). const, readonly, fn and type bindings cannot be reassigned,
             // so the hint would be false advice for a cross-kind collision (PR #92 review).
@@ -43,7 +48,7 @@ public sealed partial class TypeChecker {
         FunctionTypeDescriptor? initDesc = InitialiserDescriptor(node.Initializer);
         (GrobType symbolType, FunctionTypeDescriptor? symbolDesc) =
             ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Initializer.Range, node.Initializer);
-        RegisterSymbol(node.Name, symbolType, node.Range.Start, node, functionDescriptor: symbolDesc);
+        RegisterSymbol(node.Name, symbolType, node.Range.Start, node, typeIdentity: new(FunctionDescriptor: symbolDesc));
         return GrobType.Unknown;
     }
 

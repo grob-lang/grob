@@ -667,6 +667,20 @@ public sealed partial class Compiler {
     /// </remarks>
     public override object? VisitCall(CallExpr node) {
         int line = node.Range.Start.Line;
+
+        // Sprint 8 Increment E: a formatAs.table/list/csv call — function form
+        // (formatAs.table(items)) or chained form (items.formatAs.table()), both
+        // resolved by the checker's ResolveFormatAsCall (TypeChecker.Expressions.cs),
+        // which leaves the derived column list on the node. Bypasses the generic
+        // Visit(node.Callee)-then-argument-loop shape below entirely: the chained form's
+        // receiver is never a literal argument the loop could visit, and the compiler
+        // needs to inject a synthesised second argument (the columns array) neither
+        // form's Arguments carries.
+        if (node.ResolvedFormatAsColumns is IReadOnlyList<string> formatAsColumns) {
+            EmitFormatAsCall(node, formatAsColumns, line);
+            return null;
+        }
+
         Visit(node.Callee);
 
         // Sprint 8 Increment C: input() is the one no-namespace native needing a
@@ -701,6 +715,51 @@ public sealed partial class Compiler {
         _chunk.WriteOpCode(OpCode.Call, line);
         _chunk.WriteByte(ToByteOperand(node.Arguments.Count, "call argument count"), line);
         return null;
+    }
+
+    /// <summary>
+    /// Emits a validated <c>formatAs.table</c>/<c>list</c>/<c>csv</c> call (Sprint 8
+    /// Increment E): <c>GetGlobal "formatAs.&lt;method&gt;"</c> (the callee, pushed first —
+    /// the same shape every namespace-qualified native call already uses), the receiver
+    /// (the chain's inner receiver, or the function form's own first argument), the
+    /// synthesised columns array (one <c>Constant</c> per name plus <see
+    /// cref="OpCode.NewArray"/> — no reflection over the value at runtime), then <see
+    /// cref="OpCode.Call"/> with a fixed operand of 2. The runtime native's arity is
+    /// therefore always 2 regardless of which source form or overload the user wrote.
+    /// </summary>
+    private void EmitFormatAsCall(CallExpr node, IReadOnlyList<string> columns, int line) {
+        var callee = (MemberAccessExpr)node.Callee;
+        Expression receiverExpr = TryDetectFormatAsChainReceiver(callee, out Expression chainReceiver)
+            ? chainReceiver
+            : node.Arguments[0].Value;
+
+        int qualifiedIdx = _chunk.AddConstant(GrobValue.FromString($"formatAs.{callee.Member}"));
+        _chunk.WriteOpCode(OpCode.GetGlobal, line);
+        _chunk.WriteByte(ToByteOperand(qualifiedIdx, "namespace member name"), line);
+
+        Visit(receiverExpr);
+        foreach (string column in columns) EmitConstant(GrobValue.FromString(column), line);
+        _chunk.WriteOpCode(OpCode.NewArray, line);
+        _chunk.WriteByte(ToByteOperand(columns.Count, "formatAs columns length"), line);
+
+        _chunk.WriteOpCode(OpCode.Call, line);
+        _chunk.WriteByte(2, line);
+    }
+
+    /// <summary>
+    /// Detects the chained form's inner receiver — mirrors the type checker's own
+    /// <c>TryDetectFormatAsChainReceiver</c> (TypeChecker.Expressions.cs), duplicated here
+    /// rather than shared because <see cref="Compiler"/> and <c>TypeChecker</c> are
+    /// separate passes with no shared instance state, the same reason the namespace-receiver
+    /// check a few members up is independently re-derived rather than threaded across.
+    /// </summary>
+    private static bool TryDetectFormatAsChainReceiver(MemberAccessExpr callee, out Expression receiverExpr) {
+        if (callee.Target is MemberAccessExpr { Member: "formatAs" } inner) {
+            receiverExpr = inner.Target;
+            return true;
+        }
+        receiverExpr = null!;
+        return false;
     }
 
     /// <summary>

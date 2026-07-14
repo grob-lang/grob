@@ -102,4 +102,45 @@ public sealed class VirtualMachineCapabilitySeamTests {
         Assert.Same(TextReader.Null, streams.In);
         Assert.Null(streams.In.ReadLine());
     }
+
+    // -----------------------------------------------------------------------
+    // RenderValue (Sprint 8 Increment E) — the seam formatAs's natives (living in
+    // Grob.Stdlib, which cannot reference Grob.Vm) use to render cell values through
+    // the VM's real, registry-backed ValueDisplay (D-336), rather than a bare
+    // NullRegistry-backed instance that would miss a plugin type's registered
+    // toString() (e.g. guid).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void RenderValue_Scalar_MatchesPrintOutput() {
+        var vm = new VirtualMachine(new StringWriter());
+
+        Assert.Equal("1.5", vm.RenderValue(GrobValue.FromFloat(1.5)));
+        Assert.Equal("hello", vm.RenderValue(GrobValue.FromString("hello")));
+    }
+
+    [Fact]
+    public void RenderValue_StructWithRegisteredToString_RendersCanonicalFormNotFields() {
+        var vm = new VirtualMachine(new StringWriter());
+        vm.RegisterToString("guid", v => "canonical-" + v.AsStruct().GetField("__value").AsString());
+        var g = GrobValue.FromStruct(new GrobStruct(
+            "guid", [new KeyValuePair<string, GrobValue>("__value", GrobValue.FromString("abc"))]));
+
+        Assert.Equal("canonical-abc", vm.RenderValue(g));
+    }
+
+    [Fact]
+    public void RenderValue_RegisteredAfterConstruction_StillTakesEffect() {
+        // The VM instance captured by a plugin at Register() time must reflect
+        // registrations made by a LATER plugin in the same registration pass (plugin
+        // order in PluginRegistration.RegisterAll is not required to put formatAs last).
+        var vm = new VirtualMachine(new StringWriter());
+        Func<GrobValue, string> captured = vm.RenderValue;
+
+        vm.RegisterToString("guid", v => "late-" + v.AsStruct().GetField("__value").AsString());
+        var g = GrobValue.FromStruct(new GrobStruct(
+            "guid", [new KeyValuePair<string, GrobValue>("__value", GrobValue.FromString("xyz"))]));
+
+        Assert.Equal("late-xyz", captured(g));
+    }
 }
