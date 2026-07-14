@@ -3,23 +3,29 @@ using System.Reflection;
 
 using Grob.Cli;
 
+// --verbose (Sprint 8 Increment C) is a presence flag recognised anywhere in argv for
+// both "run" and "repl" — stripped out before the existing positional dispatch below so
+// neither command's own argument parsing (the file path for "run") needs to know about it.
+bool verbose = args.Contains("--verbose");
+string[] positional = [.. args.Where(a => a != "--verbose")];
+
 // grob run <file>
-if (args.Length >= 1 && args[0] == "run") {
-    if (args.Length < 2) {
+if (positional.Length >= 1 && positional[0] == "run") {
+    if (positional.Length < 2) {
         await Console.Error.WriteLineAsync("error: missing file path");
-        await Console.Error.WriteLineAsync("usage: grob run <file>");
+        await Console.Error.WriteLineAsync("usage: grob run <file> [--verbose]");
         return 1;
     }
-    return new RunCommand(Console.Out, Console.Error).Run(args[1]);
+    return new RunCommand(Console.Out, Console.Error, Console.In, verbose).Run(positional[1]);
 }
 
 // grob repl
-if (args.Length >= 1 && args[0] == "repl") {
-    return new ReplCommand(Console.In, Console.Out, Console.Error).Run();
+if (positional.Length >= 1 && positional[0] == "repl") {
+    return new ReplCommand(Console.In, Console.Out, Console.Error, verbose).Run();
 }
 
 // grob / grob --help
-if (args.Length == 0 || args[0] == "--help") {
+if (positional.Length == 0 || positional[0] == "--help") {
     string informational = typeof(RunCommand).Assembly
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
         ?.InformationalVersion ?? "unknown";
@@ -32,7 +38,8 @@ if (args.Length == 0 || args[0] == "--help") {
     Console.WriteLine("  grob repl          Start the interactive REPL");
     Console.WriteLine();
     Console.WriteLine("Options:");
-    Console.WriteLine("  --help    Show this message");
+    Console.WriteLine("  --help       Show this message");
+    Console.WriteLine("  --verbose    Start log.* at the debug threshold");
     return 0;
 }
 

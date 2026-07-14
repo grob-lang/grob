@@ -14,4 +14,13 @@ public interface IStandardStreams {
 
     /// <summary>The stream diagnostics and <c>log.*</c> (Increment C) write to.</summary>
     TextWriter Error { get; }
+
+    /// <summary>
+    /// The stream the <c>input()</c> built-in (Sprint 8 Increment C) reads from —
+    /// <c>Console.In</c> in production, a caller-supplied <see cref="TextReader"/> in
+    /// tests or an embedding host. A <see langword="null"/> line from
+    /// <see cref="TextReader.ReadLine"/> (stdin closed/exhausted) is the native's own
+    /// concern to translate into a catchable fault; this interface only names the source.
+    /// </summary>
+    TextReader In { get; }
 }

@@ -67,23 +67,41 @@ public sealed class ReplCommand {
     // Virtual source-file name used in all diagnostics emitted for REPL entries.
     private const string ReplSource = "<repl>";
 
+    // Snapshot of every global name PluginRegistration.RegisterAll wrote before any REPL
+    // entry ran — both namespaced natives/constants ("math.pi") and bare no-namespace
+    // natives ("input", Sprint 8 Increment C). BuildPreamble must never re-declare any of
+    // these as if they were a user binding: a dot-in-name check alone (the pre-Increment-C
+    // guard) caught the namespaced case but not "input", which collided with the
+    // type checker's own BuiltinDecl registration for the same name (E1102) the first
+    // time a REPL entry ran after "input" became a real registered native.
+    private readonly HashSet<string> _stdlibGlobalNames;
+
     /// <summary>
     /// Initialises a <see cref="ReplCommand"/> that reads from
     /// <paramref name="input"/> and writes output and errors to the supplied writers.
     /// </summary>
     /// <param name="input">Source of user input. Use <see cref="Console.In"/> for
-    /// interactive sessions; a <see cref="System.IO.StringReader"/> in tests.</param>
+    /// interactive sessions; a <see cref="System.IO.StringReader"/> in tests. Also the
+    /// stream a script entry's <c>input()</c> call (Sprint 8 Increment C) reads from —
+    /// the same reader driving the REPL's own line-editing loop, so an entry's prompt and
+    /// the next physical line of typed input share one stdin.</param>
     /// <param name="stdout">Writer for programme output and auto-printed values.</param>
     /// <param name="stderr">Writer for diagnostics and error messages.</param>
-    public ReplCommand(TextReader input, TextWriter stdout, TextWriter stderr) {
+    /// <param name="verbose">
+    /// Selects <c>log.*</c>'s initial threshold (<c>--verbose</c> on the CLI): <c>true</c>
+    /// starts at <c>LogLevel.Debug</c>, <c>false</c> (the default) at <c>LogLevel.Info</c>.
+    /// </param>
+    public ReplCommand(TextReader input, TextWriter stdout, TextWriter stderr, bool verbose = false) {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(stdout);
         ArgumentNullException.ThrowIfNull(stderr);
         _input = input;
         _stdout = stdout;
         _stderr = stderr;
-        _vm = new VirtualMachine(new TwoWriterStreams(stdout, stderr));
-        PluginRegistration.RegisterAll(_vm, new SystemRandomSource());
+        var streams = new TwoWriterStreams(stdout, stderr, input);
+        _vm = new VirtualMachine(streams);
+        PluginRegistration.RegisterAll(_vm, new SystemRandomSource(), new SystemEnvironment(), streams, verbose);
+        _stdlibGlobalNames = [.. _vm.Globals.Keys];
     }
 
     /// <summary>
@@ -301,6 +319,15 @@ public sealed class ReplCommand {
             // could have declared — re-declaring it here would emit invalid syntax
             // ("math.pi := 3.14...") and break every later entry in the session.
             if (name.Contains('.', StringComparison.Ordinal)) continue;
+
+            // Sprint 8 Increment C: a bare (no-namespace) stdlib native — "input" is the
+            // first — also sits in the globals table but is not a dotted name, so the
+            // check above misses it. Re-declaring it here would collide with the type
+            // checker's own BuiltinDecl registration for the same name (E1102 "already
+            // declared") on every REPL entry after the first. _stdlibGlobalNames is the
+            // general fix: anything RegisterAll wrote before the session started is never
+            // a user binding, regardless of whether its name happens to contain a dot.
+            if (_stdlibGlobalNames.Contains(name)) continue;
 
             if (value.IsNil) {
                 // Need a type annotation so the type checker accepts the nil.

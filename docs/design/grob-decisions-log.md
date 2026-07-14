@@ -339,6 +339,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-341 | July 2026                                                         | Tooling — benchmarking | D-338's deferred baseline recapture is performed: the rolling `compile.json` baseline is replaced with the `-report-full.json` from `benchmark.yml` run 29207744217 (`windows-latest`, AMD EPYC 7763, 2026-07-12), folding in the accepted +14.0%/+7.6% (8,968 B / 15,584 B) figures per D-309's canonical-workflow production requirement. `BenchCheck` now reads 0.0% delta on both compile benchmarks against the recaptured baseline. `compile.origin.json` is deliberately left untouched — the cumulative axis reads informational only under D-333's CPU-identity guard (fresh AMD EPYC 7763 vs origin's Intel Xeon Platinum 8370C), so the now-larger origin drift (+47.1%/+32.8%) does not gate, and an origin re-freeze remains a separate maintainer-judged act. `vm.json`/`endToEnd.json` untouched — vm deltas stay informational (non-gating, D-313) and no fresh end-to-end benchmarks exist yet. No new error code; count unchanged at 116 |
 | D-342 | July 2026                                                         | Compiler — module-namespace resolution | Core stdlib modules (`math`, and in later increments `path`/`env`/`log`/`guid`/`formatAs`) are compile-time namespaces — a name category in the global scope that is neither a value nor a type binding. `TypeChecker.RegisterNamespaces` seeds each as a `NamespaceDecl` sentinel (mirroring `BuiltinDecl`); a hand-authored `NamespaceRegistry` table (compile-time twin of the runtime `IGrobPlugin` registration, agreement-tested per the D-308 pattern) maps each namespace's members to a constant type or a native signature. Dispatch precedence at a member-access node is fixed: namespace receiver resolves against `NamespaceRegistry` (unknown member → E1003 "undefined module", reused rather than duplicated); value receiver falls through unchanged to the pre-existing struct-field and array-higher-order-method arms. A namespace referenced in value position (`x := math`, `print(math)`) is E1004 "namespace used as a value" (new), the namespace analogue of the existing `TypeDecl`-as-value arm (E2102). No runtime module object and no new opcode: a namespace constant (`math.pi`) compiles to `GetGlobal`; a namespace-qualified native (`math.sqrt`) compiles to its argument(s) then `GetGlobal` then the existing `Call` — the same `GetGlobal`-by-qualified-name shape a plain top-level function call already uses (D-321's `DefineGlobal` prologue), not a literal embedded function constant, since `Grob.Compiler` cannot reference `Grob.Stdlib` to know a native's C# delegate at compile time. One new error code (E1004); count 116 → 117 |
 | D-343 | July 2026                                                         | Runtime — capability-injection seam | Refines D-319's provisional capability-interface sketch into a landed seam. `IGrobPlugin` (`Register(IPluginRegistrar)`) and `IPluginRegistrar` (`RegisterNative`/`RegisterConstant`) are declared in `Grob.Runtime`; `IPluginRegistrar` exists as a narrow interface distinct from the concrete `VirtualMachine` specifically so `Grob.Runtime` never references `Grob.Vm` (the DAG already has `Grob.Vm` → `Grob.Runtime`; the reverse edge would cycle) — `VirtualMachine` implements `IPluginRegistrar` in `Grob.Vm`. `IStandardStreams` (`Out`/`Error`) is the first capability consumed: `OpCode.Print`'s VM handler reads an injected `IStandardStreams` instead of touching `Console` or a bare `TextWriter` field directly; `Grob.Cli`'s composition root constructs the OS-backed default and passes it to `VirtualMachine` via a new constructor overload (the pre-existing single-`TextWriter` constructor is kept unchanged, wrapping its argument in a minimal default, so none of the ~39 existing call sites across the test suite need to change). `print`/`exit` stay on their existing dedicated opcodes (`OpCode.Print`/`OpCode.Exit`) — they are not converted into `Call`-dispatched `NativeFunction`s; a `Grob.Stdlib.IoPlugin : IGrobPlugin` exists to give the I/O seam a uniform place in the plugin-registration pass, but registers no callable, since print/exit are formalised, not rebuilt. `IEnvironment`, `IClock`, `IRandomSource` are declared in `Grob.Runtime` alongside `IStandardStreams` per D-319's sketch, with no consumer yet — Increment B (`math.random*`), C (`env`/`log`) and D (`guid`) are their first real consumers. `IFileSystem`/`IProcessRunner` are not declared; they arrive with `fs`/`process` in Sprint 9. No new error code; count unchanged at 117 |
+| D-344 | July 2026                                                         | Runtime / Compiler — stdlib host surfaces | Sprint 8 Increment C lands `env`, `log` and `input()`. `IStandardStreams` gains a third member, `In` (`TextReader`), for `input()` to read from; `SingleWriterStreams` answers it with `TextReader.Null` (closed stream), mirroring its existing `Error` convention. `input()` is a new dispatch category — the no-namespace native: `TypeChecker.Expressions.cs VisitCall` validates it (0–1 args, E0003/E0004) ahead of the permissive `print`/`exit` fallback, and `Compiler.Expressions.cs VisitCall` fills a missing 0-argument call's prompt with the constant `""` before the ordinary `GetGlobal`-then-`Call` shape (the runtime native's own arity is always 1) — a one-off arm, not a general defaulted-native mechanism. `env`/`log` are ordinary `NamespaceRegistry` consumers (D-342 pattern): `env.require` reuses `ErrorCatalog.E5801` with D-284's pinned message template; `input()`'s closed-stdin fault reuses the residual `ErrorCatalog.E5305`. `log.setLevel` recognises exactly its four lowercase level names; any other string is a silent no-op, not a thrown fault — deliberate, since a typo in defensive logging code should not crash a script. `ValueDisplay`/registered-`toString()`-through-`log` wiring is deferred to Increment D (`guid`, its first real consumer) — building the seam now would be untested forward scaffolding. `--verbose` is a new CLI presence flag selecting `LogPlugin`'s initial threshold. Corrects this increment's kickoff prompt, which mis-cited non-existent "D-339"/"D-340" and unrelated D-334 — the governing decisions are D-342 and D-343. No new error code; count unchanged at 117 |
 
 ---
 
@@ -4457,6 +4458,114 @@ illustrative sketch this entry corrects against the live DAG).
 
 ---
 
+### D-344 — `env`/`log`/`input()` land: stdin capability, a new no-namespace-native dispatch category, silent-no-op level parsing (July 2026)
+
+Area: Runtime / Compiler — stdlib host surfaces (Sprint 8 Increment C)
+Supersedes: none
+Superseded by: none
+Refines: D-342, D-343
+
+**Correction to the record first.** This increment's kickoff prompt cited "D-339",
+"D-340" and "D-334 clarification" as governing decisions. None of the first two exist in
+this log (D-338 is immediately followed by D-341 — no gap-filling entries were ever
+logged as D-339/D-340), and D-334 is the `finally`-compilation-model entry, unrelated to
+this work. The decisions that actually govern Increment C are **D-342** (module-namespace
+resolution) and **D-343** (the capability-injection seam,
+`IPluginRegistrar`/`IStandardStreams`/`IEnvironment`). Increment C's throwing natives
+(`env.require`, `input()`) also ride the **native-throw seam**
+(`Grob.Core.NativeFaultException`), which the VM's `Call` dispatch routes through the same
+handler-table walk a VM-detected fault uses. That seam shipped in Increment A and its
+implementation cites D-342, but note that the D-342 _entry_ itself is scoped to the
+namespace mechanism and does not document the seam — the seam was landed under D-342's
+Increment A work without its own decision entry, so it has no separate D-number to cite.
+This entry records the citation error so a future reader searching for "D-339" in this
+context does not conclude one was silently dropped.
+
+**`IStandardStreams` gains `In`.** A third member, `TextReader In { get; }`, is added
+alongside `Out`/`Error` — the source `input()` reads from. `TwoWriterStreams`
+(`Grob.Cli`) takes a third constructor parameter rather than being renamed (the
+composition-root type predates the three-stream shape; renaming was judged not worth the
+diff). `SingleWriterStreams` (`Grob.Vm`) answers `In` with `TextReader.Null`, mirroring
+its existing `Error => TextWriter.Null` "nothing wired yet" convention for the ~39
+legacy `new VirtualMachine(writer)` call sites — `TextReader.Null.ReadLine()` returns
+`null` immediately, which is exactly the closed-stream behaviour `input()` must
+translate into a catchable `IoError`.
+
+**`input()` is a new dispatch category: the no-namespace native.** Every prior stdlib
+callable was namespace-qualified (`math.sqrt`, `env.get`) and validated through
+`NamespaceRegistry`. `input()` has no namespace — it is a `BuiltinDecl` sentinel
+(pre-registered alongside `print`/`exit` since Sprint 2, but previously fully permissive,
+with no real type-checking behind it). `TypeChecker.Expressions.cs VisitCall` gains a
+dedicated arm, keyed on `Declaration: BuiltinDecl { BuiltinName: "input" }`, checked
+_before_ the general "built-ins stay permissive" fallback: 0 or 1 arguments (E0003
+outside that range), and when supplied, the one argument must be or widen to `string`
+(E0004) — the same two codes namespaced-native call checking already uses, reused rather
+than duplicated for a single call site. `print`/`exit` are untouched and stay fully
+permissive — both are void and stay on their own dedicated opcodes, never reaching this
+machinery. The runtime native (`Grob.Stdlib.IoPlugin`, previously an empty
+print/exit-formalisation placeholder) is registered under the bare name `"input"` with
+arity 1 — `IPluginRegistrar.RegisterNative`'s own doc comment already anticipated "a
+bare name for a top-level built-in". Since the native's real arity is always 1 but a
+script may write `input()` with zero arguments, the compiler (`Compiler.Expressions.cs
+VisitCall`) gains a matching one-off arm: a 0-argument `input()` call has the missing
+prompt filled with the constant `""` at the call site, before the ordinary
+`GetGlobal`-then-`Call` shape. This mirrors the _shape_ of `exit()`'s existing 0-or-1-arg
+default-fill (`Compiler.Statements.cs`) but cannot reuse that code path directly — `exit`
+is void and only ever compiled in statement position, `input()` returns a value and must
+be handled in the general expression path. Deliberately a one-off arm, not a general
+defaulted-native mechanism: `input()` is the only v1 case that needs one, and building a
+generic mechanism ahead of a second real consumer would be forward scaffolding.
+
+**`env` and `log` are ordinary `NamespaceRegistry` consumers — no new decision needed
+for their shape.** `env.get`/`require`/`has`/`set`/`all` and `log.debug`/`info`/
+`warning`/`error`/`setLevel` follow the D-342 native-registration pattern `math`/`path`
+already established; `env.require`'s missing-variable fault reuses `ErrorCatalog.E5801`
+(`LookupError`) with D-284's pinned message template (`"Required environment variable
+'<n>' is not set"`), and `input()`'s closed-stdin fault reuses the residual
+`ErrorCatalog.E5305` (`IoError`) — no more specific existing code covers "stdin closed",
+and the residual code's normally-high bar is accepted here as the pragmatic v1 choice
+rather than allocating a new leaf for a single call site. Both are ordinary consumers of
+the native-throw seam Increment A landed (`NativeFaultException`, above); nothing new is
+decided by their presence.
+
+**`log.setLevel`'s string-level design.** The four levels (`Debug < Info < Warning <
+Error`) are a plain internal `LogLevel` enum with no Grob-visible representation — a
+script only ever sees them as the four lowercase strings `log.setLevel` recognises,
+which are exactly the corresponding function names (`"debug"`, `"info"`, `"warning"`,
+`"error"`). An unrecognised string is a **silent no-op** — not a thrown fault, not a new
+error code. The language spec is silent on invalid levels; a no-op was chosen
+deliberately so a typo in a diagnostic-logging call (itself typically defensive,
+best-effort code) cannot crash an otherwise-working script. This is the same shape as
+`math.pow`'s domain-safe arms (`0 ** -1` returns `Infinity` rather than throwing) —
+some natives fail loud, some fail soft, and the choice is made per-native rather than by
+a blanket policy.
+
+**`ValueDisplay`/registered-`toString()`-through-`log` is deferred to Increment D, not
+built here.** `log.debug`/`info`/`warning`/`error` each take a plain `string` — the
+caller already produces that string via ordinary Grob string interpolation, which
+already routes through `ValueDisplay` (D-336, landed Sprint 7/8A) with no further wiring
+needed. No `IValueToStringRegistry` seam is added to `LogPlugin` or `VirtualMachine` in
+this increment. Reason: no real `Struct`-kind type has a production-registered
+`toString()` yet in v1 — `guid` (Increment D) is the first real consumer of that
+registry. Building the injection seam now, ahead of any real consumer, would be pure
+scaffolding that ships untested (the `forward-scaffolding-yagni` discipline this project
+already applies elsewhere). No VM test asserts registered-`toString()`-through-`log`
+rendering in this increment; that test arrives with `guid`.
+
+**`--verbose`.** A new CLI presence flag, recognised anywhere in argv for both `grob run`
+and `grob repl`, stripped before the existing positional dispatch so neither command's
+own argument parsing needs to know about it. Selects `LogPlugin`'s initial threshold —
+`LogLevel.Debug` under `--verbose`, `LogLevel.Info` otherwise — via a new `bool verbose`
+parameter threaded through `RunCommand`/`ReplCommand`/`PluginRegistration.RegisterAll`
+(all three keep the parameter optional/defaulted where doing so avoided touching
+existing call sites, consistent with D-343's own call-site-preservation choices for
+`SingleWriterStreams` and the single-`TextWriter` `VirtualMachine` constructor).
+
+No new error code; both `env.require` and `input()` reuse existing leaves and codes.
+Count unchanged at 117.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -4678,7 +4787,24 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 8 Increment A kickoff: D-342 and D-343 added. D-342 makes core_
+_July 2026 — Sprint 8 Increment C: D-344 added. Lands `env`, `log` and `input()`._
+_`IStandardStreams` gains a third member, `In`, for `input()` to read from;_
+_`SingleWriterStreams` answers it with a closed `TextReader.Null`, mirroring its_
+_existing `Error` convention. `input()` is a new dispatch category — the_
+_no-namespace native — validated by its own `VisitCall` arm ahead of the permissive_
+_`print`/`exit` fallback (0–1 args, reusing E0003/E0004), with a matching compiler_
+_arm filling a missing 0-argument call's prompt with `""` before the ordinary_
+_`GetGlobal`-then-`Call` shape. `env`/`log` are ordinary `NamespaceRegistry`_
+_consumers of the D-342 pattern; `env.require` reuses E5801, `input()`'s_
+_closed-stdin fault reuses the residual E5305 — no new error codes. `log.setLevel`_
+_recognises exactly its four lowercase level names; anything else is a silent_
+_no-op by design. `ValueDisplay`/registered-`toString()`-through-`log` wiring is_
+_deferred to Increment D (`guid`, its first real consumer) rather than built as_
+_untested forward scaffolding. `--verbose` selects `LogPlugin`'s initial threshold._
+_Corrects the increment's kickoff prompt, which mis-cited non-existent "D-339"/_
+_"D-340" and the unrelated D-334 — the governing decisions are D-342 and D-343._
+_Count unchanged at 117._
+_Previous: July 2026 — Sprint 8 Increment A kickoff: D-342 and D-343 added. D-342 makes core_
 _stdlib modules (`math` this increment) compile-time namespaces — a third name_
 _category alongside value and type bindings, resolved via a `NamespaceRegistry`_
 _table and a fixed member-access dispatch precedence (namespace receiver resolves_

@@ -318,8 +318,16 @@ public sealed partial class TypeChecker {
             callArgTypes[i] = Visit(node.Arguments[i].Value);
         }
 
+        // Sprint 8 Increment C: input() gets its own arity/type validation ahead of the
+        // permissive built-in fallback below (D-342 — the one no-namespace native this
+        // checker validates). print/exit stay fully permissive — both are void and stay
+        // on their own dedicated opcodes, never reaching this call-checking machinery.
+        if (node.Callee is IdentifierExpr { Declaration: BuiltinDecl { BuiltinName: "input" } }) {
+            return CheckInputCall(node, callArgTypes);
+        }
+
         // Only user-defined functions are checked positionally here. Built-ins
-        // (print/exit/input) and unresolved callees are permissive.
+        // (print/exit) and unresolved callees are permissive.
         if (node.Callee is not IdentifierExpr { Declaration: FnDecl fn }) {
             return GrobType.Unknown;
         }
@@ -701,6 +709,36 @@ public sealed partial class TypeChecker {
         return EmitErrorAndReturn(ErrorCatalog.E1003,
             $"Namespace '{namespaceName}' has no member '{memberAccess.Member}'.",
             memberAccess.Range);
+    }
+
+    // -----------------------------------------------------------------------
+    // input() — the one no-namespace native validated here (Sprint 8 Increment C).
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Validates an <c>input()</c> call: 0 or 1 arguments (E0003 outside that range), and
+    /// when supplied, the single argument must be (or widen to) <c>string</c> (E0004).
+    /// Reuses the same two codes <see cref="CheckNativeCall"/> uses for namespaced natives
+    /// rather than allocating dedicated ones for this single bare-name call site. Always
+    /// resolves to <c>string</c> — the runtime native's own return type — even on an
+    /// arity/type mismatch, so a caller's own annotation mismatch is not double-reported.
+    /// </summary>
+    private GrobType CheckInputCall(CallExpr node, GrobType[] argTypes) {
+        if (argTypes.Length > 1) {
+            EmitError(ErrorCatalog.E0003,
+                $"'input' expects 0 or 1 arguments, but {argTypes.Length} were supplied.",
+                node.Range);
+            return GrobType.String;
+        }
+
+        if (argTypes.Length == 1 && argTypes[0] != GrobType.Error &&
+                !TypesAreAssignable(argTypes[0], GrobType.String)) {
+            EmitError(ErrorCatalog.E0004,
+                $"Argument 1 to 'input' has type '{TypeName(argTypes[0])}', which is not assignable to parameter of type 'string'.",
+                node.Arguments[0].Value.Range);
+        }
+
+        return GrobType.String;
     }
 
     /// <summary>
