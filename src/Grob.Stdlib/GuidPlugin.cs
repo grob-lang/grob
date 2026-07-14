@@ -147,6 +147,14 @@ public sealed class GuidPlugin : IGrobPlugin {
         namespaceBytes.CopyTo(combined);
         nameBytes.CopyTo(combined, 16);
 
+        // SHA-1 is mandated by RFC 4122 §4.3 for version-5 UUID construction — not a
+        // choice made for cryptographic strength. It is used here purely as a
+        // deterministic name-to-bits function so the same (namespace, name) pair always
+        // produces the same GUID (Bicep's guid() interop model, D-149); switching to a
+        // stronger hash would produce a value that is no longer RFC-4122-compliant and
+        // would not interoperate with any other implementation's UUIDv5. SonarCloud's
+        // S4790 ("use a stronger hashing algorithm") is suppressed for this file in
+        // .github/workflows/sonarcloud.yml with this same rationale.
         byte[] hash = SHA1.HashData(combined);
         byte[] bytes = hash[..16];
         bytes[6] = (byte)((bytes[6] & 0x0F) | 0x50); // version 5
@@ -157,11 +165,15 @@ public sealed class GuidPlugin : IGrobPlugin {
     /// <summary>Draws <paramref name="count"/> random bytes from <see cref="_randomSource"/>.</summary>
     private byte[] RandomBytes(int count) {
         var bytes = new byte[count];
+        Span<byte> chunk = stackalloc byte[8];
         for (int i = 0; i < count; i += 8) {
             long v = _randomSource.NextInt(long.MinValue, long.MaxValue);
-            byte[] chunk = BitConverter.GetBytes(v);
+            // Write directly into a stack-allocated span rather than
+            // BitConverter.GetBytes(v), which allocates a new array every iteration
+            // (CodeRabbit review, PR #133).
+            BitConverter.TryWriteBytes(chunk, v);
             int n = Math.Min(8, count - i);
-            Array.Copy(chunk, 0, bytes, i, n);
+            chunk[..n].CopyTo(bytes.AsSpan(i, n));
         }
         return bytes;
     }

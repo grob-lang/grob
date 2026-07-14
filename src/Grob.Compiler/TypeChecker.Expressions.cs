@@ -421,7 +421,6 @@ public sealed partial class TypeChecker {
             case "toUpperString":
             case "toCompactString":
                 if (argTypes.Length != 0) {
-                    string argWord = argTypes.Length == 1 ? "argument" : "arguments";
                     string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
                     EmitError(ErrorCatalog.E0003,
                         $"'{memberAccess.Member}' expects 0 arguments, but {argTypes.Length} {suppliedVerb} supplied.",
@@ -607,7 +606,7 @@ public sealed partial class TypeChecker {
         // annotation resolves to a concrete struct kind instead of Unknown; otherwise a
         // non-struct argument to a struct parameter (takesConfig(1)) silently bypasses E0004
         // because the permissive Unknown short-circuits the assignability check (Sprint 6 close).
-        (GrobType paramType, _, FunctionTypeDescriptor? paramDesc) = fn.Parameters[paramIndex].Type is not null
+        (GrobType paramType, string? paramNamedTypeName, FunctionTypeDescriptor? paramDesc) = fn.Parameters[paramIndex].Type is not null
             ? ResolveSignatureType(fn.Parameters[paramIndex].Type!)
             : (GrobType.Unknown, null, null);
         bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
@@ -618,11 +617,42 @@ public sealed partial class TypeChecker {
         } else {
             compatible = TypesAreAssignable(argType, paramType);
         }
+        // guid nominal identity (CodeRabbit review, PR #133): the flat GrobType.Struct
+        // tag alone does not distinguish guid from an unrelated named struct. Scoped to
+        // guid specifically — general struct-vs-struct nominal identity (e.g. passing a
+        // Config where an Other struct is expected) is a pre-existing, wider gap across
+        // the whole checker (parameters, returns, bindings, field construction all share
+        // it), out of scope for this fix and surfaced separately.
+        if (compatible && argExpr is not null && IsGuidNominalMismatch(paramType, paramNamedTypeName, argExpr)) {
+            compatible = false;
+        }
         if (paramType != GrobType.Unknown && argType != GrobType.Error && !compatible) {
             EmitError(ErrorCatalog.E0004,
                 $"Argument to '{fn.Name}' has type '{TypeName(argType)}', which is not assignable to parameter '{fn.Parameters[paramIndex].Name}' of type '{TypeName(paramType)}'.",
                 valueRange);
         }
+    }
+
+    /// <summary>
+    /// Reports whether exactly one of <paramref name="paramNamedTypeName"/> (the
+    /// declared parameter's struct name, when <paramref name="paramType"/> is
+    /// <see cref="GrobType.Struct"/> or <see cref="GrobType.NullableStruct"/>) and the
+    /// argument expression's own struct name is <c>"guid"</c> — i.e. a guid value handed
+    /// to a differently-named struct parameter, or vice versa. Both sides being the same
+    /// name (guid-to-guid, or Config-to-Config) and both sides being unrelated non-guid
+    /// names are left alone — this is guid's own distinctness guarantee, not a general
+    /// struct-nominal-identity check.
+    /// </summary>
+    private bool IsGuidNominalMismatch(GrobType paramType, string? paramNamedTypeName, Expression argExpr) {
+        if (paramType is not (GrobType.Struct or GrobType.NullableStruct)) return false;
+        if (paramNamedTypeName is null) return false;
+
+        string? argNamedTypeName = GetStructTypeName(argExpr);
+        if (argNamedTypeName is null) return false;
+
+        bool paramIsGuid = paramNamedTypeName == "guid";
+        bool argIsGuid = argNamedTypeName == "guid";
+        return paramIsGuid != argIsGuid;
     }
 
     /// <inheritdoc/>
@@ -868,9 +898,15 @@ public sealed partial class TypeChecker {
             return;
         }
 
-        for (int i = 0; i < expected; i++)
-            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, member.ParameterTypes[i]);
+        for (int i = 0; i < expected; i++) {
+            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, member.ParameterTypes[i],
+                ParameterNamedTypeNameAt(member, i));
+        }
     }
+
+    /// <summary>Returns the declared nominal struct name for fixed parameter <paramref name="index"/>, if any.</summary>
+    private static string? ParameterNamedTypeNameAt(NamespaceRegistry.NativeMember member, int index) =>
+        member.ParameterNamedTypeNames is { } names && index < names.Count ? names[index] : null;
 
     /// <summary>
     /// Validates a native member call whose tail is variadic (<c>path.join</c>, the one
@@ -892,8 +928,10 @@ public sealed partial class TypeChecker {
             return;
         }
 
-        for (int i = 0; i < fixedCount; i++)
-            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, member.ParameterTypes[i]);
+        for (int i = 0; i < fixedCount; i++) {
+            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, member.ParameterTypes[i],
+                ParameterNamedTypeNameAt(member, i));
+        }
 
         for (int i = fixedCount; i < argTypes.Length; i++)
             CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, variadicType);
@@ -907,39 +945,71 @@ public sealed partial class TypeChecker {
     /// the assignability check, cascade suppression and error format stay in one place.
     /// </summary>
     private void CheckNativeArgumentType(CallExpr node, string namespaceName, string memberName,
-            GrobType[] argTypes, int index, GrobType targetType) {
+            GrobType[] argTypes, int index, GrobType targetType, string? targetNamedTypeName = null) {
         if (argTypes[index] == GrobType.Error) return; // cascade suppression
-        if (!TypesAreAssignable(argTypes[index], targetType)) {
+        Expression argExpr = node.Arguments[index].Value;
+        bool compatible = TypesAreAssignable(argTypes[index], targetType);
+        // guid nominal identity (CodeRabbit review, PR #133) — see IsGuidNominalMismatch's
+        // doc comment for the scoping rationale (guid-specific, not general struct nominal
+        // identity). guid.newV5's namespace parameter is the one native argument this
+        // applies to today.
+        if (compatible && targetNamedTypeName is not null &&
+                IsGuidNominalMismatch(targetType, targetNamedTypeName, argExpr)) {
+            compatible = false;
+        }
+        if (!compatible) {
             EmitError(ErrorCatalog.E0004,
                 $"Argument {index + 1} to '{namespaceName}.{memberName}' has type '{TypeName(argTypes[index])}', which is not assignable to parameter of type '{TypeName(targetType)}'.",
-                node.Arguments[index].Value.Range);
+                argExpr.Range);
         }
     }
 
     /// <summary>
     /// Compile-time literal validation for <c>guid.parse(s)</c> (D-149): when the sole
-    /// argument is a plain string literal — an <see cref="InterpolatedStringExpr"/> with
-    /// no <c>${ }</c> holes, the same "is this actually a literal" test the constant
-    /// folder (<c>Compiler.cs</c>) uses — and its value is not a parseable GUID, emits
-    /// <see cref="ErrorCatalog.E0601"/> instead of leaving the malformed literal to fail
-    /// at runtime. A non-literal argument (a variable, a call result, a genuinely
-    /// interpolated string, …) is unaffected — it stays on the ordinary runtime
+    /// argument is a plain string literal — either a hole-free
+    /// <see cref="InterpolatedStringExpr"/> (the same "is this actually a literal" test
+    /// the constant folder in <c>Compiler.cs</c> uses) or a <see cref="RawStringLiteralExpr"/>
+    /// (backtick string; CodeRabbit review, PR #133 — the raw form is a compile-time
+    /// literal too and was previously left unchecked) — and its value is not a parseable
+    /// GUID, emits <see cref="ErrorCatalog.E0601"/> instead of leaving the malformed
+    /// literal to fail at runtime. A non-literal argument (a variable, a call result, a
+    /// genuinely interpolated string, …) is unaffected — it stays on the ordinary runtime
     /// <c>ParseError</c> (E5701) path, since its value cannot be known at compile time.
     /// </summary>
     private void CheckGuidParseLiteral(CallExpr node, string namespaceName, string memberName) {
         if (namespaceName != "guid" || memberName != "parse") return;
         if (node.Arguments.Count != 1) return; // arity mismatch already reported by CheckNativeCall
-        if (node.Arguments[0].Value is not InterpolatedStringExpr { Parts: var parts } literal ||
-                !parts.All(p => p is StringTextPart)) {
+        if (!TryGetGuidParseLiteralValue(node.Arguments[0].Value, out string value, out SourceRange literalRange)) {
             return;
         }
-
-        string value = string.Concat(parts.OfType<StringTextPart>().Select(p => p.Text));
         if (Guid.TryParse(value, out _)) return;
 
         EmitError(ErrorCatalog.E0601,
             $"'{value}' is not a valid guid literal.",
-            literal.Range);
+            literalRange);
+    }
+
+    /// <summary>
+    /// Extracts the literal string value of <paramref name="argument"/> when it is a
+    /// compile-time string literal — a hole-free <see cref="InterpolatedStringExpr"/> or
+    /// a <see cref="RawStringLiteralExpr"/> — and <see langword="false"/> for anything
+    /// else (a variable, a call result, a genuinely interpolated string).
+    /// </summary>
+    private static bool TryGetGuidParseLiteralValue(Expression argument, out string value, out SourceRange range) {
+        switch (argument) {
+            case InterpolatedStringExpr { Parts: var parts } interpolated when parts.All(p => p is StringTextPart):
+                value = string.Concat(parts.OfType<StringTextPart>().Select(p => p.Text));
+                range = interpolated.Range;
+                return true;
+            case RawStringLiteralExpr raw:
+                value = raw.Value;
+                range = raw.Range;
+                return true;
+            default:
+                value = string.Empty;
+                range = argument.Range;
+                return false;
+        }
     }
 
     // Looks up node.Member in the user type registry and annotates the node. Written as
@@ -973,7 +1043,7 @@ public sealed partial class TypeChecker {
     /// specially resolved here either — an unrecognised bare member on a guid receiver
     /// stays permissively <see cref="GrobType.Unknown"/>, the same gap that arm already has.
     /// </summary>
-    private static GrobType ResolveGuidPropertyAccess(MemberAccessExpr node) {
+    private GrobType ResolveGuidPropertyAccess(MemberAccessExpr node) {
         switch (node.Member) {
             case "version":
                 node.ResolvedFieldType = GrobType.Int;
@@ -982,7 +1052,15 @@ public sealed partial class TypeChecker {
                 node.ResolvedFieldType = GrobType.Bool;
                 return GrobType.Bool;
             default:
-                return GrobType.Unknown;
+                // A bare unrecognised member must not survive as Unknown — it would
+                // otherwise reach the VM, which has no dispatch for it and throws an
+                // internal exception rather than failing cleanly (CodeRabbit review,
+                // PR #133). Matches how an unrecognised method call is already rejected
+                // (ValidateGuidMethodCall) and how a user struct's unknown field is
+                // rejected (ResolveStructFieldAccess).
+                return EmitErrorAndReturn(ErrorCatalog.E1002,
+                    $"Type 'guid' has no member '{node.Member}'.",
+                    node.Range);
         }
     }
 

@@ -269,7 +269,6 @@ public sealed class GuidPluginTests {
 
     [Fact]
     public void Print_RegisteredToString_RendersCanonicalString() {
-        var vm = NewRegisteredVm();
         var chunk = new Chunk();
         int calleeIdx = chunk.AddConstant(GrobValue.FromString("guid.parse"));
         int argIdx = chunk.AddConstant(GrobValue.FromString("550e8400-e29b-41d4-a716-446655440000"));

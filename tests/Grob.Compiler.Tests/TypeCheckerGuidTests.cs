@@ -62,6 +62,58 @@ public sealed class TypeCheckerGuidTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(6, diag.Range.Start.Column);
+    }
+
+    // -----------------------------------------------------------------------
+    // Nominal identity — guid is not interchangeable with an unrelated named
+    // struct, even though both share the flat GrobType.Struct tag (CodeRabbit
+    // review, PR #133).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void GuidParameter_AssignedUnrelatedStruct_ReportsSingleE0004() {
+        DiagnosticBag bag = Check("""
+            type Config {
+                host: string
+            }
+            fn take(id: guid): void {}
+            c := Config { host: "example.com" }
+            take(c)
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(6, diag.Range.Start.Line);
+        Assert.Equal(6, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void StructParameter_AssignedGuid_ReportsSingleE0004() {
+        DiagnosticBag bag = Check("""
+            type Config {
+                host: string
+            }
+            fn take(c: Config): void {}
+            id := guid.newV4()
+            take(id)
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(6, diag.Range.Start.Line);
+        Assert.Equal(6, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void GuidParameter_AssignedGuid_NoDiagnostics() {
+        DiagnosticBag bag = Check("""
+            fn take(id: guid): void {}
+            take(guid.newV4())
+            """);
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
     }
 
     [Fact]
@@ -73,6 +125,8 @@ public sealed class TypeCheckerGuidTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0002.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -117,6 +171,26 @@ public sealed class TypeCheckerGuidTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(16, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void NewV5_UnrelatedStructAsNamespace_ReportsSingleE0004() {
+        // The namespace argument must itself be a guid — an unrelated struct sharing the
+        // flat GrobType.Struct tag must not pass (CodeRabbit review, PR #133).
+        DiagnosticBag bag = Check("""
+            type Config {
+                host: string
+            }
+            c := Config { host: "example.com" }
+            readonly id := guid.newV5(c, "a")
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(5, diag.Range.Start.Line);
+        Assert.Equal(27, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -131,18 +205,13 @@ public sealed class TypeCheckerGuidTests {
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void Parse_MalformedStringLiteral_ReportsSingleE0601() {
+    public void Parse_MalformedStringLiteral_ReportsSingleE0601WithLocation() {
+        // CodeRabbit review, PR #133: previously split across two tests (code-only and
+        // location-only), leaving neither test to verify the full diagnostic contract.
         DiagnosticBag bag = Check("""readonly id := guid.parse("not-a-guid")""");
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0601.Code, diag.Code);
-    }
-
-    [Fact]
-    public void Parse_MalformedStringLiteral_ReportsLocationOfLiteral() {
-        DiagnosticBag bag = Check("""readonly id := guid.parse("not-a-guid")""");
-
-        Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(1, diag.Range.Start.Line);
         Assert.Equal(27, diag.Range.Start.Column);
     }
@@ -162,6 +231,25 @@ public sealed class TypeCheckerGuidTests {
     [Fact]
     public void Parse_ValidStringLiteral_NoDiagnostics() {
         DiagnosticBag bag = Check("""readonly id := guid.parse("550E8400-E29B-41D4-A716-446655440000")""");
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+    }
+
+    [Fact]
+    public void Parse_MalformedRawStringLiteral_ReportsSingleE0601() {
+        // Raw (backtick) strings are also compile-time literals — CodeRabbit review,
+        // PR #133: the check only handled the interpolated-string form.
+        DiagnosticBag bag = Check("readonly id := guid.parse(`not-a-guid`)");
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0601.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(27, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Parse_ValidRawStringLiteral_NoDiagnostics() {
+        DiagnosticBag bag = Check("readonly id := guid.parse(`550e8400-e29b-41d4-a716-446655440000`)");
 
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
     }
@@ -204,6 +292,8 @@ public sealed class TypeCheckerGuidTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1003.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(16, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -212,6 +302,8 @@ public sealed class TypeCheckerGuidTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1003.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(16, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -260,6 +352,8 @@ public sealed class TypeCheckerGuidTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -271,6 +365,24 @@ public sealed class TypeCheckerGuidTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1002.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void UnknownBareMember_ReportsSingleE1002() {
+        // A bare (uncalled) unknown member must not survive type checking as Unknown —
+        // it would otherwise crash the VM with an internal exception instead of failing
+        // at compile time (CodeRabbit review, PR #133).
+        DiagnosticBag bag = Check("""
+            id := guid.newV4()
+            readonly s := id.nope
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E1002.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -309,6 +421,8 @@ public sealed class TypeCheckerGuidTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1004.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------

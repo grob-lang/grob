@@ -39,12 +39,20 @@ internal static class NamespaceRegistry {
     /// <paramref name="ReturnType"/> is <see cref="GrobType.Struct"/> (or its nullable
     /// variant) and the native returns a specific plugin-owned struct type
     /// (<c>guid.newV4</c>, Increment D) — see <see cref="ConstantMember.NamedTypeName"/>.
+    /// <paramref name="ParameterNamedTypeNames"/> is a parallel, optional list to
+    /// <see cref="ParameterTypes"/> — a non-null entry at index <c>i</c> means that fixed
+    /// parameter must be a specific plugin-owned struct type by name, not merely
+    /// <see cref="GrobType.Struct"/> (<c>guid.newV5</c>'s namespace parameter, which must
+    /// itself be a <c>guid</c>, not any struct sharing the flat tag — CodeRabbit review,
+    /// PR #133). <see langword="null"/> (the default) means no natives currently need it
+    /// beyond a fixed prefix of length 0.
     /// </summary>
     internal sealed record NativeMember(
         IReadOnlyList<GrobType> ParameterTypes,
         GrobType ReturnType,
         GrobType? VariadicElementType = null,
-        string? NamedTypeName = null);
+        string? NamedTypeName = null,
+        IReadOnlyList<string?>? ParameterNamedTypeNames = null);
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, object>> _namespaces =
         new Dictionary<string, IReadOnlyDictionary<string, object>>(StringComparer.Ordinal) {
@@ -111,7 +119,8 @@ internal static class NamespaceRegistry {
                 ["newV4"] = new NativeMember([], GrobType.Struct, NamedTypeName: "guid"),
                 ["newV7"] = new NativeMember([], GrobType.Struct, NamedTypeName: "guid"),
                 ["newV5"] = new NativeMember(
-                    [GrobType.Struct], GrobType.Struct, VariadicElementType: GrobType.String, NamedTypeName: "guid"),
+                    [GrobType.Struct], GrobType.Struct, VariadicElementType: GrobType.String, NamedTypeName: "guid",
+                    ParameterNamedTypeNames: ["guid"]),
                 ["parse"] = new NativeMember([GrobType.String], GrobType.Struct, NamedTypeName: "guid"),
                 ["tryParse"] = new NativeMember([GrobType.String], GrobType.NullableStruct, NamedTypeName: "guid"),
                 ["empty"] = new ConstantMember(GrobType.Struct, NamedTypeName: "guid"),

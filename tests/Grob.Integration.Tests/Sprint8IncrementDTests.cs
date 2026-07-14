@@ -15,7 +15,12 @@ namespace Grob.Integration.Tests;
 /// </summary>
 public sealed class Sprint8IncrementDTests {
     private static (string Stdout, string Stderr, int ExitCode) RunSource(string source) {
-        string path = Path.ChangeExtension(Path.GetTempFileName(), ".grob");
+        // Path.Combine(Path.GetTempPath(), ...) rather than
+        // Path.ChangeExtension(Path.GetTempFileName(), ".grob") — GetTempFileName()
+        // creates (and leaves) a real 0-byte file at the original path; ChangeExtension
+        // only rewrites the string, so that file leaks on every run (CodeRabbit review,
+        // PR #133).
+        string path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.grob");
         File.WriteAllText(path, source);
         try {
             var stdout = new StringWriter(new StringBuilder());

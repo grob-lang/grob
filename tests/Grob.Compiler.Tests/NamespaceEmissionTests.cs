@@ -113,6 +113,27 @@ public sealed class NamespaceEmissionTests {
     }
 
     [Fact]
+    public void GuidNamespacesDns_CompilesToBareGetGlobalAgainstFullyQualifiedName() {
+        // Sprint 8 Increment D — the two-level namespace chain guid.namespaces.dns
+        // compiles to a single GetGlobal against the fully qualified flat key
+        // "guid.namespaces.dns" (CodeRabbit review, PR #133 — this branch previously
+        // had only downstream runtime evidence, no dedicated compiler emission test).
+        var inner = new MemberAccessExpr(SourceRange.Unknown, NamespaceIdent("guid"), "namespaces");
+        var target = new MemberAccessExpr(SourceRange.Unknown, inner, "dns");
+        var unit = new CompilationUnit(SourceRange.Unknown,
+            [new ExpressionStmt(SourceRange.Unknown, target)]);
+
+        var bag = new DiagnosticBag();
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        Assert.False(bag.HasErrors);
+
+        List<Instr> instrs = Decode(chunk);
+        Instr getGlobal = Assert.Single(instrs, i => i.Op == OpCode.GetGlobal);
+        Assert.Equal("guid.namespaces.dns", chunk.ReadConstant(getGlobal.Arg).AsString());
+        Assert.DoesNotContain(instrs, i => i.Op == OpCode.GetProperty);
+    }
+
+    [Fact]
     public void NonNamespaceMemberAccess_StillEmitsGetProperty_Unaffected() {
         // Regression: a receiver that is NOT a registered namespace name (here,
         // "someVar" — an ordinary, unregistered identifier standing in for a struct
