@@ -1,0 +1,8 @@
+error[E0601]: invalid `guid` string literal
+  --> invalid-guid-literal.grob:3:27
+   |
+ 3 | readonly id := guid.parse("not-a-guid")
+   |                           ^^^^^^^^^^^^^
+   |
+   = note: 'not-a-guid' is not a valid guid literal
+   = help: guid.parse() validates a string-literal argument at compile time; use guid.tryParse(...) if the value might not be a guid at runtime

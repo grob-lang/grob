@@ -857,9 +857,10 @@ validation.
   `guid.parse()`, `guid.tryParse()`, `guid.empty`. Well-known
   namespaces: `guid.namespaces.dns`, `guid.namespaces.url`,
   `guid.namespaces.oid`. `guid` type with `version`, `isEmpty`
-  properties, `toString()`, `toUpperString()` methods. `==`, `!=`
-  operators. Compile-time validation on `guid.parse()` with string
-  literal argument. `guid` is a primitive type distinct from `string`.
+  properties, `toString()`, `toUpperString()`, `toCompactString()`
+  methods. `==`, `!=` operators. Compile-time validation on
+  `guid.parse()` with string literal argument. `guid` is a
+  primitive type distinct from `string`.
 
 **Acceptance:** Each module’s full API works. `math.sqrt(9.0)` returns
 `3.0`. `env.require("MISSING")` throws `LookupError`. `log.error()`
@@ -1502,7 +1503,15 @@ Candidates considered and rejected during Session C Part 2:
 
 -----
 
-*This document was updated May 2026 — §2 Assembly Responsibilities gains*
+*This document was updated July 2026 — Sprint 8 Increment D reconciliation:*
+*the §4 Sprint 8 `guid` bullet gains `toCompactString()`, aligning it with*
+*`grob-stdlib-reference.md` and `grob-type-registry.md` (both already listed*
+*it) and with this document's own §6/§7 "`guid` type summary updated with*
+*`toCompactString()`" note below — the summary tables had the method, the*
+*Sprint 8 scope bullet had drifted behind them. No behavioural change;*
+*documentation-completeness only, surfaced per the increment's own*
+*instruction rather than swept quietly.*
+*Previous: May 2026 — §2 Assembly Responsibilities gains*
 *a clarifying note that the v1 build is six `src/` assemblies and that*
 *`Grob.Lsp` is a solution member (D-134) deliberately absent from the v1*
 *dependency graph and table because the LSP is post-MVP (§13), not an*

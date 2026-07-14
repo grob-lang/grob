@@ -418,8 +418,27 @@ public sealed partial class TypeChecker {
             _ => GrobType.Unknown,
         };
 
-        if (builtin != GrobType.Unknown)
-            return (builtin, null, null);
+        return builtin != GrobType.Unknown
+            ? (builtin, null, null)
+            : ResolveNamedFieldType(typeRef);
+    }
+
+    /// <summary>
+    /// Resolves a plain named (non-built-in) field type reference — <c>guid</c> or a
+    /// user-defined <c>type</c>. Split from <see cref="ResolveFieldAnnotationType"/> to
+    /// keep that method's cognitive complexity under the analyser bar.
+    /// </summary>
+    private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor)
+            ResolveNamedFieldType(TypeRef typeRef) {
+        // Sprint 8 Increment D: guid is a primitive type distinct from string, but its
+        // symbol is a NamespaceDecl (D-342), not a TypeDecl — it is never constructed via
+        // '{ }' braces, so it has no ExceptionHierarchy-style TypeDecl/UserTypeInfo
+        // registration for the TypeDecl check below to find. Mirrors the identical branch
+        // in ResolveSignatureType (TypeChecker.cs) for the field-annotation position.
+        if (typeRef.Name == "guid") {
+            GrobType guidKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
+            return (guidKind, "guid", null);
+        }
 
         // User-defined type: look up the symbol registered in pass 1.
         Symbol? symbol = LookupSymbol(typeRef.Name);

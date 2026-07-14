@@ -25,4 +25,13 @@ public interface IPluginRegistrar {
     /// <c>math.pi</c>, which has no callable behaviour to dispatch.
     /// </summary>
     void RegisterConstant(string name, GrobValue value);
+
+    /// <summary>
+    /// Registers <paramref name="toString"/> as the <c>ValueDisplay</c> (D-336) renderer
+    /// for every <c>Struct</c>-kind value whose <c>GrobStruct.TypeName</c> is
+    /// <paramref name="typeName"/> — the seam a plugin-owned type (<c>guid</c>, Sprint 8
+    /// Increment D) uses to make <c>print()</c> and string interpolation render its
+    /// canonical form instead of falling through to structural field rendering.
+    /// </summary>
+    void RegisterToString(string typeName, Func<GrobValue, string> toString);
 }

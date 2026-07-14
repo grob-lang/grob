@@ -478,6 +478,20 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         GrobType builtin = ResolveTypeRef(typeRef);
         if (builtin != GrobType.Unknown) return (builtin, null, null);
 
+        // Sprint 8 Increment D: guid is a primitive type distinct from string, but it is
+        // never constructed via '{ }' braces (only guid.newV4()/newV7()/newV5()/parse()),
+        // so it does not get an ExceptionHierarchy-style TypeDecl/UserTypeInfo/Symbol
+        // registration — there is no construction site for that machinery to serve. Its
+        // symbol IS a NamespaceDecl (registered via NamespaceRegistry, D-342) so
+        // guid.newV4() resolves through the ordinary namespace-call path unchanged; this
+        // branch gives 'guid' used in signature position (parameters, fields) the correct
+        // Struct + NamedTypeName identity, which is what makes 'guid == string' and any
+        // guid<->string assignment/argument fail as an ordinary type mismatch (D-149).
+        if (typeRef.Name == "guid") {
+            GrobType guidKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
+            return (guidKind, "guid", null);
+        }
+
         if (LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl) {
             GrobType structKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
             return (structKind, typeRef.Name, null);
