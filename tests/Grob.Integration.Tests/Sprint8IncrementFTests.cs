@@ -34,8 +34,12 @@ public sealed class Sprint8IncrementFTests {
         // path.join follows Path.Combine (PathPlugin.cs), so the joined form uses
         // whichever separator the host OS gives Path.Combine — not a hard-coded
         // backslash, which only matched on Windows and failed this gold master on
-        // the Linux CI runner.
-        string joined = Path.Combine("a", "b", "c");
+        // the Linux CI runner. Path.Join (not Path.Combine) here for these three
+        // fixed, always-relative literal segments — Path.Join never resets on a
+        // rooted later argument, avoiding the CodeQL cs/path-injection concern
+        // Path.Combine carries (same reasoning as CompileBenchmarks.cs), and it
+        // produces the identical result to Path.Combine for this non-rooted input.
+        string joined = Path.Join("a", "b", "c");
         Assert.Equal(
             "math.sqrt(16.0) = 4.0" + NL +
             $"path.join: {joined}" + NL +
