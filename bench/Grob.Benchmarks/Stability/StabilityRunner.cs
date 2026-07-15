@@ -67,8 +67,11 @@ public static class StabilityRunner {
     /// <c>GC.GetTotalMemory(forceFullCollection: true)</c> after each, past a ten-
     /// iteration warmup, so the caller can eyeball wall-clock time, steady-state heap
     /// and iteration-to-iteration variance before locking numbers into
-    /// <c>stability.json</c>. Prints nothing and asserts nothing — a characterisation
-    /// tool, not a test.
+    /// <c>stability.json</c>. The per-sample stopwatch pauses across each forced
+    /// collection, so <see cref="CalibrationResult.SteadyStateMillisecondsPerIteration"/>
+    /// reflects script execution alone, not skewed by the (exceptionally slow, relative
+    /// to script execution) GC pause. Prints nothing and asserts nothing — a
+    /// characterisation tool, not a test.
     /// </summary>
     public static CalibrationResult Calibrate(IReadOnlyList<StabilityScript> scripts, int sampleCount = 10) {
         var stopwatch = Stopwatch.StartNew();
@@ -80,12 +83,13 @@ public static class StabilityRunner {
         long heapAfterTen = GC.GetTotalMemory(forceFullCollection: true);
 
         var samples = new List<long>(sampleCount);
-        var sampleStopwatch = Stopwatch.StartNew();
+        var sampleStopwatch = new Stopwatch();
         for (int i = 0; i < sampleCount; i++) {
+            sampleStopwatch.Start();
             RunOneIteration(scripts);
+            sampleStopwatch.Stop();
             samples.Add(GC.GetTotalMemory(forceFullCollection: true));
         }
-        sampleStopwatch.Stop();
         double steadyStateMsPerIteration = sampleStopwatch.Elapsed.TotalMilliseconds / sampleCount;
 
         return new CalibrationResult(msPerIteration, heapAfterTen, samples, steadyStateMsPerIteration);

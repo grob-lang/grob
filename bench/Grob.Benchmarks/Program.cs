@@ -46,7 +46,7 @@ static void RunCalibration() {
     CalibrationResult result = StabilityRunner.Calibrate(scripts);
 
     Console.WriteLine($"Wall-clock, first iteration (JIT warm-up included, {scripts.Count} scripts): {result.MillisecondsPerIteration:F3} ms");
-    Console.WriteLine($"Wall-clock, steady-state per iteration (incl. forceFullCollection each sample): {result.SteadyStateMillisecondsPerIteration:F3} ms");
+    Console.WriteLine($"Wall-clock, steady-state per iteration (script execution only, forceFullCollection excluded): {result.SteadyStateMillisecondsPerIteration:F3} ms");
     Console.WriteLine($"Heap after 10 iterations: {result.HeapAfterTenIterationsBytes} bytes");
     Console.WriteLine("Steady-state heap samples (post-warmup):");
     foreach (long sample in result.SteadyStateHeapSamplesBytes) {
