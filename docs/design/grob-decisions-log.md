@@ -342,6 +342,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-344 | July 2026                                                         | Runtime / Compiler — stdlib host surfaces | Sprint 8 Increment C lands `env`, `log` and `input()`. `IStandardStreams` gains a third member, `In` (`TextReader`), for `input()` to read from; `SingleWriterStreams` answers it with `TextReader.Null` (closed stream), mirroring its existing `Error` convention. `input()` is a new dispatch category — the no-namespace native: `TypeChecker.Expressions.cs VisitCall` validates it (0–1 args, E0003/E0004) ahead of the permissive `print`/`exit` fallback, and `Compiler.Expressions.cs VisitCall` fills a missing 0-argument call's prompt with the constant `""` before the ordinary `GetGlobal`-then-`Call` shape (the runtime native's own arity is always 1) — a one-off arm, not a general defaulted-native mechanism. `env`/`log` are ordinary `NamespaceRegistry` consumers (D-342 pattern): `env.require` reuses `ErrorCatalog.E5801` with D-284's pinned message template; `input()`'s closed-stdin fault reuses the residual `ErrorCatalog.E5305`. `log.setLevel` recognises exactly its four lowercase level names; any other string is a silent no-op, not a thrown fault — deliberate, since a typo in defensive logging code should not crash a script. `ValueDisplay`/registered-`toString()`-through-`log` wiring is deferred to Increment D (`guid`, its first real consumer) — building the seam now would be untested forward scaffolding. `--verbose` is a new CLI presence flag selecting `LogPlugin`'s initial threshold. Corrects this increment's kickoff prompt, which mis-cited non-existent "D-339"/"D-340" and unrelated D-334 — the governing decisions are D-342 and D-343. No new error code; count unchanged at 117 |
 | D-345 | July 2026                                                         | Compiler / Runtime — `formatAs` module | Sprint 8 Increment E lands `formatAs` (`table`/`list`/`csv`). Corrects this increment's kickoff prompt, which again cited non-existent "D-339" (see D-344's identical correction) — the governing decision is D-342, whose E1003/E1004 the two namespace-misuse diagnostics (bare `.formatAs`; unknown `.formatAs.X`) fold into with `formatAs`-specific message text. `formatAs` registers as a namespace **name** only (empty `NamespaceRegistry` member dict); its three members bypass the generic `ConstantMember`/`NativeMember` dispatch entirely for bespoke resolution (`ResolveFormatAsCall`), since compile-time column derivation and the chained-form rewrite don't fit the positional native model. The chained-form rewrite (`items.formatAs.table()` → `formatAs.table(items)`) is shared resolution over a pattern-matched AST shape, not a literal node substitution — `CallExpr`/`MemberAccessExpr` are immutable records, so both the checker's and the (necessarily separately-implemented) compiler's `TryDetectFormatAsChainReceiver` independently re-derive the chain shape, mirroring the existing `math.pi` namespace-receiver precedent. Compile-time column derivation is a bounded, `formatAs`-scoped peek (`GetArrayElementFieldNames`/`GetStructFieldNames`) covering array literals, `.select`/`.filter`/`.sort` chains and indexed elements — not a general array-element-type system; one new `Symbol.ArrayElementStructTypeName` field (parameters only) plugs the one real gap found (`ResolveSignatureType`'s `ArrayTypeRef` arm previously discarded the element's struct name entirely). The compiler always injects the derived columns as a synthesised second constant-array argument (`OpCode.NewArray`, no new opcode), so `FormatAsPlugin`'s three natives keep a fixed arity of 2 regardless of source overload. A new `IPluginRegistrar.RenderValue` capability lets `Grob.Stdlib` (which cannot reference `Grob.Vm`) render cells through the VM's real, registry-backed `ValueDisplay` (D-336) rather than a `NullRegistry`-backed one that would miss `guid`'s registered `toString()`. A real regression was caught and fixed in the same change: `formatAs` is the first reserved identifier (D-320) that is also a pre-registered namespace symbol, so `formatAs := 1` doubled up E1103 with a spurious E1102 until `FinalizeTopLevelBinding`/`VisitVarDecl` were taught to skip the collision check for a reserved name. Array indexing (`arr[i]`) was found to have no compiler emission at all (crashes the VM with or without this change) — confirmed pre-existing and out of scope; `formatAs` on an indexed element is verified at the type-checker level only. No new error code (E0004/E0011/E1003/E1004 all pre-existing; confirmed via `allocating-an-error-code`); count unchanged at 117 |
 | D-346 | July 2026                                                         | Tooling — benchmarking        | Sprint 8 close: the stability-test calibration ritual runs against the six Sprint-8-runnable scripts (five smoke scripts + `stdlib.grob`), not "all thirteen" (§6) — every one of `grob-sample-scripts.md`'s scripts depends on a Sprint-9 module or an unbuilt plugin; the full-suite run becomes a v1 release-gate step. Surfaces, rather than silently fixes, that the "thirteen" count itself is stale — the file has only ever held eleven scripts, and D-283 (predating D-302) already called it eleven. A longer checkpoint sweep found a one-time cache/registry warm-up step between iteration 1000–2000, not a leak; locked `iterations: 10000, warmup: 2000, tolerancePercent: 2.0`, first passing run at 0.0% drift (190,456 B both ends). `Grob.Benchmarks` now references `Grob.Cli`, driving the stability loop through `RunCommand` rather than re-implementing capability wiring — a documented deviation from §3's literal assembly list. No new error code; count unchanged at 117 |
+| D-347 | July 2026                                                         | Tooling — benchmarking        | Compile-time baseline recapture: the rolling `compile.json` time axis is folded forward to the post-Sprint-8 floor. `RegisterNamespaces` (D-342) unconditionally seeds all seven core-module namespaces into every compile's global scope — a fixed cost every compile now pays, hitting the tiny `Compile_TwoExpressions` benchmark hardest (+5.8% rolling, a genuine same-CPU breach, not `vm`'s CPU-mismatch noise). The allocation half of this same regression was already fixed once (`NamespaceRegistry`'s static object caching, landed in the Sprint 8 QA pass); this entry performs the equivalent time-axis recapture, mirroring D-338→D-341's ship-then-recapture precedent. `benchmark.yml` run 29399169091's report replaces `compile.json` wholesale (no local run ever committed as a baseline, D-309); `BenchCheck` now reads 0.0% delta. `compile.origin.json` untouched — still CPU-mismatched against the frozen Intel Xeon origin per D-333. No new error code; count unchanged at 117 |
 
 ---
 
@@ -4772,6 +4773,74 @@ decision), §11; `grob-v1-requirements.md`'s Sprint 8 acceptance text.
 
 ---
 
+### D-347 — Compile-time baseline recapture: Sprint 8 namespace registration's fixed per-compile cost folded into the rolling baseline (July 2026)
+
+Area: Tooling — benchmarking
+Supersedes: none
+Superseded by: none
+Refines: D-341, D-342
+
+**The decision.** The rolling `compile.json` baseline's time axis is recaptured against
+the post-Sprint-8 floor. The `-report-full.json` from `benchmark.yml` run
+[29399169091](https://github.com/grob-lang/grob/actions/runs/29399169091)
+(`windows-latest`, host CPU `AMD EPYC 7763`, `main` @ `9419037`, 2026-07-15) replaces
+`bench/Grob.Benchmarks/baseline/compile.json` wholesale, per D-309's canonical-workflow
+production requirement — no local run is ever committed as a baseline. Run locally
+against the recaptured baseline, `tooling/Grob.BenchCheck` now reads `0.0%` delta on
+both compile benchmarks (time and allocation) and the gate passes.
+
+**Root cause, not noise.** This run's gate failed with `Compile_TwoExpressions` reading
++5.8% against the rolling baseline — a genuine same-CPU comparison (both fresh and
+rolling ran on `AMD EPYC 7763`), unrelated to the `vm` category's CPU-mismatch
+downgrade shown in the same run (fresh `AMD EPYC 7763` vs the `vm` rolling baseline's
+`Intel Xeon Platinum 8370C`). The cause is D-342: `TypeChecker.Check` runs
+`RegisterNamespaces` unconditionally on every compile, seeding the global scope with
+all seven core-module namespace names (`math`, `path`, `strings`, `env`, `log`, `guid`,
+`formatAs`) before Pass 1, so that a colliding user declaration is caught as a proper
+shadowing diagnostic rather than silently winning. This is fixed cost every compile now
+pays regardless of source size, so it lands hardest in relative terms on the smallest
+benchmark (`Compile_TwoExpressions`, two statements); `Compile_TenPrints` carries the
+same fixed cost but dilutes it under more source, reading +3.9% — under the 5%
+per-sprint threshold.
+
+**Half of this exact regression was already fixed, and stayed fixed.** `NamespaceRegistry`'s
+own comments record an earlier run (29392344084) breaching both the time and allocation
+axes for `Compile_TwoExpressions`; the Sprint 8 QA pass (PR #137) fixed the allocation
+half by statically caching the per-namespace `NamespaceDecl`/`Symbol` objects so
+`RegisterNamespaces` shares them across every compile instead of re-synthesising seven
+of each per call — mirroring `RegisterExceptionHierarchy`'s D-338 caching shape. That fix
+holds: this run's allocation delta is +2.8%, comfortably inside the 10% ceiling. What
+remains is the residual, irreducible per-compile cost of populating the global-scope
+dictionary with those seven cached entries — `RegisterNamespaces` is already a single
+`foreach` over pre-cached, pre-sized structures, and shrinking it further would mean
+weakening the unconditional-registration guarantee D-342's shadow-detection semantics
+depend on. Not pursued.
+
+**Why recapture rather than optimise further.** This mirrors D-338→D-341: a deliberate,
+already-shipped feature (D-342's namespace resolution) raises the compile-time floor by
+a small, fixed, unavoidable amount; the correct response is to accept the new floor and
+recapture the baseline in a distinct, logged act, not to chase diminishing-return
+micro-optimisation on a synthetic two-statement benchmark. The rolling `compile.json`
+baseline being recaptured here predates all of Sprint 8's stdlib/namespace/plugin work
+(it was last touched by D-341, before PR #127 landed) — so it was structurally
+guaranteed to red the first time a `benchmark.yml` run measured post-Sprint-8 `main`,
+exactly as D-341's own recapture was the expected consequence of D-338's deferred fix,
+not a new defect.
+
+**`compile.origin.json` deliberately untouched**, for the same reason D-341 left it
+untouched: the fresh run's host, `AMD EPYC 7763`, still does not match the frozen origin
+baseline's `Intel Xeon Platinum 8370C`, so per D-333's CPU-identity guard the cumulative
+time comparison (now +55.6%/+38.0%) remains informational only, not a gate breach.
+Re-freezing `compile.origin.json` is left for a separate, maintainer-judged event.
+
+**Scope.** `vm.json` and `endToEnd.json` are untouched — `vm` stays non-gating/
+informational (D-313) and was not part of the flagged regression; `endToEnd` still has
+no fresh benchmarks to compare.
+
+No new error code; count unchanged at 117.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -4993,21 +5062,31 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 8 Increment F (sprint close): D-346 added. The stability-test_
-_calibration ritual runs against the six Sprint-8-runnable scripts (`hello`,_
-_`calculator`, `functions`, `types`, `errors`, `stdlib`), not "all thirteen" per_
-_§6 step 1 — every one of `grob-sample-scripts.md`'s scripts needs a Sprint-9 module_
-_(`fs`/`date`/`csv`/`json`/`process`) or an unbuilt plugin (`Grob.Http`/`Grob.Crypto`);_
-_the full-suite run is deferred to a v1 release-gate step, a mechanical correction to_
-_§6 citing this decision. Surfaces, rather than silently sweeps, that the "thirteen"_
-_count itself is stale: `grob-sample-scripts.md` has only ever held eleven scripts_
-_(confirmed via `git log -p --follow`), and D-283 (April 2026, predating D-302)_
-_already called it "the eleven sample scripts." An initial ten-sample calibration_
-_(post ten-iteration warmup) showed flat heap with zero variance — too short a_
-_horizon; a longer checkpoint sweep (10/50/100/250/500/1000/2000/5000/10000) found a_
-_one-time cache/registry warm-up step between iteration 1000 and 2000_
-_(113,200 B → 125,520 B), then bit-identical heap through iteration 10000 — not a_
-_leak. A first attempt at the §6 placeholder `warmup: 100` mistook this step for_
+_July 2026 — Compile-time baseline recapture: D-347 added. A `benchmark.yml` manual_
+_run (29399169091, `main` @ 9419037, post-Sprint-8) failed the regression gate on_
+_`Compile_TwoExpressions` (+5.8% rolling) — a genuine same-CPU breach, not the `vm`_
+_category's CPU-mismatch noise seen in the same run. Root cause: D-342's_
+_`RegisterNamespaces` unconditionally seeds all seven core-module namespaces into_
+_every compile's global scope, a fixed cost every compile now pays, landing hardest_
+_on the smallest benchmark. The allocation half of this same regression was already_
+_fixed (Sprint 8 QA pass, static `NamespaceRegistry` object caching) and still holds_
+_(+2.8% alloc, ok); the remaining time cost is the irreducible residual of an_
+_already-lean registration loop, not something to chase further. Recaptures_
+_`compile.json`'s time axis from that run's report wholesale (D-309: canonical-_
+_workflow output only, never a local run) — `BenchCheck` now reads 0.0% delta._
+_`compile.origin.json` left untouched (still CPU-mismatched against the frozen_
+_Intel Xeon origin, D-333). Mirrors D-338→D-341's ship-then-recapture precedent._
+_No new error code; count unchanged at 117._
+_Previous: July 2026 — Sprint 8 Increment F (sprint close): D-346 added. The_
+_stability-test calibration ritual runs against the six Sprint-8-runnable scripts_
+_(`hello`, `calculator`, `functions`, `types`, `errors`, `stdlib`), not "all_
+_thirteen" per §6 step 1 — every one of `grob-sample-scripts.md`'s scripts needs a_
+_Sprint-9 module or an unbuilt plugin; the full-suite run is deferred to a v1_
+_release-gate step. Surfaces, rather than silently sweeps, that the "thirteen"_
+_count itself is stale: `grob-sample-scripts.md` has only ever held eleven scripts,_
+_and D-283 (predating D-302) already called it eleven. A longer checkpoint sweep_
+_found a one-time cache/registry warm-up step between iteration 1000 and 2000,_
+_not a leak. A first attempt at the §6 placeholder `warmup: 100` mistook this step for_
 _ongoing growth and failed a naive 5% tolerance. Locked: `iterations: 10000,_
 _warmup: 2000, tolerancePercent: 2.0`; first passing run at exactly 0.0% drift_
 _(190,456 B at both the post-warmup and final snapshot); `stability.json` committed_
