@@ -341,6 +341,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-343 | July 2026                                                         | Runtime — capability-injection seam | Refines D-319's provisional capability-interface sketch into a landed seam. `IGrobPlugin` (`Register(IPluginRegistrar)`) and `IPluginRegistrar` (`RegisterNative`/`RegisterConstant`) are declared in `Grob.Runtime`; `IPluginRegistrar` exists as a narrow interface distinct from the concrete `VirtualMachine` specifically so `Grob.Runtime` never references `Grob.Vm` (the DAG already has `Grob.Vm` → `Grob.Runtime`; the reverse edge would cycle) — `VirtualMachine` implements `IPluginRegistrar` in `Grob.Vm`. `IStandardStreams` (`Out`/`Error`) is the first capability consumed: `OpCode.Print`'s VM handler reads an injected `IStandardStreams` instead of touching `Console` or a bare `TextWriter` field directly; `Grob.Cli`'s composition root constructs the OS-backed default and passes it to `VirtualMachine` via a new constructor overload (the pre-existing single-`TextWriter` constructor is kept unchanged, wrapping its argument in a minimal default, so none of the ~39 existing call sites across the test suite need to change). `print`/`exit` stay on their existing dedicated opcodes (`OpCode.Print`/`OpCode.Exit`) — they are not converted into `Call`-dispatched `NativeFunction`s; a `Grob.Stdlib.IoPlugin : IGrobPlugin` exists to give the I/O seam a uniform place in the plugin-registration pass, but registers no callable, since print/exit are formalised, not rebuilt. `IEnvironment`, `IClock`, `IRandomSource` are declared in `Grob.Runtime` alongside `IStandardStreams` per D-319's sketch, with no consumer yet — Increment B (`math.random*`), C (`env`/`log`) and D (`guid`) are their first real consumers. `IFileSystem`/`IProcessRunner` are not declared; they arrive with `fs`/`process` in Sprint 9. No new error code; count unchanged at 117 |
 | D-344 | July 2026                                                         | Runtime / Compiler — stdlib host surfaces | Sprint 8 Increment C lands `env`, `log` and `input()`. `IStandardStreams` gains a third member, `In` (`TextReader`), for `input()` to read from; `SingleWriterStreams` answers it with `TextReader.Null` (closed stream), mirroring its existing `Error` convention. `input()` is a new dispatch category — the no-namespace native: `TypeChecker.Expressions.cs VisitCall` validates it (0–1 args, E0003/E0004) ahead of the permissive `print`/`exit` fallback, and `Compiler.Expressions.cs VisitCall` fills a missing 0-argument call's prompt with the constant `""` before the ordinary `GetGlobal`-then-`Call` shape (the runtime native's own arity is always 1) — a one-off arm, not a general defaulted-native mechanism. `env`/`log` are ordinary `NamespaceRegistry` consumers (D-342 pattern): `env.require` reuses `ErrorCatalog.E5801` with D-284's pinned message template; `input()`'s closed-stdin fault reuses the residual `ErrorCatalog.E5305`. `log.setLevel` recognises exactly its four lowercase level names; any other string is a silent no-op, not a thrown fault — deliberate, since a typo in defensive logging code should not crash a script. `ValueDisplay`/registered-`toString()`-through-`log` wiring is deferred to Increment D (`guid`, its first real consumer) — building the seam now would be untested forward scaffolding. `--verbose` is a new CLI presence flag selecting `LogPlugin`'s initial threshold. Corrects this increment's kickoff prompt, which mis-cited non-existent "D-339"/"D-340" and unrelated D-334 — the governing decisions are D-342 and D-343. No new error code; count unchanged at 117 |
 | D-345 | July 2026                                                         | Compiler / Runtime — `formatAs` module | Sprint 8 Increment E lands `formatAs` (`table`/`list`/`csv`). Corrects this increment's kickoff prompt, which again cited non-existent "D-339" (see D-344's identical correction) — the governing decision is D-342, whose E1003/E1004 the two namespace-misuse diagnostics (bare `.formatAs`; unknown `.formatAs.X`) fold into with `formatAs`-specific message text. `formatAs` registers as a namespace **name** only (empty `NamespaceRegistry` member dict); its three members bypass the generic `ConstantMember`/`NativeMember` dispatch entirely for bespoke resolution (`ResolveFormatAsCall`), since compile-time column derivation and the chained-form rewrite don't fit the positional native model. The chained-form rewrite (`items.formatAs.table()` → `formatAs.table(items)`) is shared resolution over a pattern-matched AST shape, not a literal node substitution — `CallExpr`/`MemberAccessExpr` are immutable records, so both the checker's and the (necessarily separately-implemented) compiler's `TryDetectFormatAsChainReceiver` independently re-derive the chain shape, mirroring the existing `math.pi` namespace-receiver precedent. Compile-time column derivation is a bounded, `formatAs`-scoped peek (`GetArrayElementFieldNames`/`GetStructFieldNames`) covering array literals, `.select`/`.filter`/`.sort` chains and indexed elements — not a general array-element-type system; one new `Symbol.ArrayElementStructTypeName` field (parameters only) plugs the one real gap found (`ResolveSignatureType`'s `ArrayTypeRef` arm previously discarded the element's struct name entirely). The compiler always injects the derived columns as a synthesised second constant-array argument (`OpCode.NewArray`, no new opcode), so `FormatAsPlugin`'s three natives keep a fixed arity of 2 regardless of source overload. A new `IPluginRegistrar.RenderValue` capability lets `Grob.Stdlib` (which cannot reference `Grob.Vm`) render cells through the VM's real, registry-backed `ValueDisplay` (D-336) rather than a `NullRegistry`-backed one that would miss `guid`'s registered `toString()`. A real regression was caught and fixed in the same change: `formatAs` is the first reserved identifier (D-320) that is also a pre-registered namespace symbol, so `formatAs := 1` doubled up E1103 with a spurious E1102 until `FinalizeTopLevelBinding`/`VisitVarDecl` were taught to skip the collision check for a reserved name. Array indexing (`arr[i]`) was found to have no compiler emission at all (crashes the VM with or without this change) — confirmed pre-existing and out of scope; `formatAs` on an indexed element is verified at the type-checker level only. No new error code (E0004/E0011/E1003/E1004 all pre-existing; confirmed via `allocating-an-error-code`); count unchanged at 117 |
+| D-346 | July 2026                                                         | Tooling — benchmarking        | Sprint 8 close: the stability-test calibration ritual runs against the six Sprint-8-runnable scripts (five smoke scripts + `stdlib.grob`), not "all thirteen" (§6) — every one of `grob-sample-scripts.md`'s scripts depends on a Sprint-9 module or an unbuilt plugin; the full-suite run becomes a v1 release-gate step. Surfaces, rather than silently fixes, that the "thirteen" count itself is stale — the file has only ever held eleven scripts, and D-283 (predating D-302) already called it eleven. A longer checkpoint sweep found a one-time cache/registry warm-up step between iteration 1000–2000, not a leak; locked `iterations: 10000, warmup: 2000, tolerancePercent: 2.0`, first passing run at 0.0% drift (190,456 B both ends). `Grob.Benchmarks` now references `Grob.Cli`, driving the stability loop through `RunCommand` rather than re-implementing capability wiring — a documented deviation from §3's literal assembly list. No new error code; count unchanged at 117 |
 
 ---
 
@@ -4703,6 +4704,74 @@ D-342 (the namespace-resolution precedent this refines), D-336 (`ValueDisplay`).
 
 ---
 
+### D-346 — Sprint 8 close: stability-test calibration, and the "thirteen" validation-script count corrected to eleven (July 2026)
+
+Area: Tooling — benchmarking
+Supersedes: none
+Superseded by: none
+Refines: D-302
+
+**The calibration ritual (§6/§11).** Sprint 8 Increment F runs the calibration against
+the **Sprint-8-runnable script set**, not "all thirteen" as `grob-benchmarking-strategy.md`
+§6 step 1 currently reads. Checking each of `grob-sample-scripts.md`'s eleven scripts
+against the live Sprint 8 module surface (`math`, `strings`, `path`, `env`, `log`,
+`formatAs`, `guid` — D-299): every one depends on at least one Sprint-9 module (`fs`,
+`date`, `csv`, `json`, `process`) or an as-yet-unbuilt plugin (`Grob.Http`,
+`Grob.Crypto`). None is runnable at Sprint 8 close. The calibration and the stability
+test therefore run against exactly six scripts: the five sprint-close smoke scripts
+(`hello`, `calculator`, `functions`, `types`, `errors`) plus the new `stdlib.grob`
+(D-337 family). The full validation-suite stability run becomes a v1 release-gate step,
+not a Sprint 8 deliverable — a mechanical correction is applied to
+`grob-benchmarking-strategy.md` §6 citing this decision.
+
+**Surfaced, not silently swept: the script count itself is stale.**
+`grob-benchmarking-strategy.md` (§4.1, §6, §7.3, §11), D-309, D-313, D-337, and
+`grob-v1-requirements.md`'s Sprint 8/9 and Benchmarking sections all say "the thirteen
+validation suite scripts." `grob-sample-scripts.md` has never contained more than
+**eleven** (`## Script 1` through `## Script 11`, confirmed via `git log -p --follow` —
+no prior revision in this repository ever had a twelfth or thirteenth). D-283 (April
+2026, predating D-302) already refers to "the eleven sample scripts" / "the eleven-script
+release gate" — so the count was eleven before "thirteen" started propagating through
+the benchmarking decisions that followed. This entry logs the drift as a known,
+surfaced gap (the same discipline D-333 used for `compile.origin.json`'s stale-CPU
+capture) rather than quietly rewriting every citing document in this pass, which is
+outside a sprint-close increment that "writes no module code."
+
+**Calibration numbers.** An initial ten-sample pass immediately following a
+ten-iteration warmup showed heap flat at ~113,200 B with zero measured variance — too
+short a horizon. A longer checkpoint sweep (iterations 10/50/100/250/500/1000/2000/
+5000/10000) found a **one-time step** between iteration 1000 and 2000 (113,200 B →
+125,520 B), then bit-identical heap from iteration 2000 through iteration 10000 — a
+bounded cache/registry warm-up cost (consistent with one-time JIT tiering or a
+dictionary settling to its steady size), not unbounded per-iteration retention. A first
+attempt at `warmup: 100` (the §6 placeholder) mistook this step for ongoing growth and
+failed a naive 5% tolerance (179,480 B → 190,456 B, +6.1%) purely because the warmup
+snapshot was taken before the step. Locked: **iterations: 10,000, warmup: 2,000**
+(comfortably past the observed step), **tolerancePercent: 2.0** (tight, justified by the
+exact-zero drift observed once past the step — a looser 10% would have hidden the
+warmup-placement bug rather than caught it). First passing run: post-warmup heap
+190,456 B, final heap 190,456 B (0.0% drift). `calibrated`/`lastRun`: 2026-07-14.
+Locked numbers and the first passing result are in
+`bench/Grob.Benchmarks/baseline/stability.json`.
+
+**Implementation note — a documented dependency-list deviation.** The stability loop
+(`bench/Grob.Benchmarks/Stability/StabilityRunner.cs`) drives each iteration through
+`Grob.Cli.RunCommand` — already public, and already constructing a fresh
+`VirtualMachine` with fresh plugin registration per call — rather than re-implementing
+`SystemEnvironment`/`SystemRandomSource`/`SystemClock` a second time inside
+`Grob.Benchmarks` to satisfy §3's literal "Core, Compiler, Vm, Stdlib, Runtime" assembly
+list, which predates `Grob.Cli`/`RunCommand` existing as the composition root.
+`Grob.Benchmarks.csproj` now also references `Grob.Cli`. `Fixtures/Stability/` holds
+frozen copies of the six scripts, extending §7.3's `Fixtures/EndToEnd` decoupling
+rationale to this one additional subfolder.
+
+No new error code; count unchanged at 117.
+
+Full detail: `grob-benchmarking-strategy.md` §6 (mechanically corrected by this
+decision), §11; `grob-v1-requirements.md`'s Sprint 8 acceptance text.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -4924,7 +4993,36 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 8 Increment E: D-345 added. Lands `formatAs` (`table`/`list`/`csv`)._
+_July 2026 — Sprint 8 Increment F (sprint close): D-346 added. The stability-test_
+_calibration ritual runs against the six Sprint-8-runnable scripts (`hello`,_
+_`calculator`, `functions`, `types`, `errors`, `stdlib`), not "all thirteen" per_
+_§6 step 1 — every one of `grob-sample-scripts.md`'s scripts needs a Sprint-9 module_
+_(`fs`/`date`/`csv`/`json`/`process`) or an unbuilt plugin (`Grob.Http`/`Grob.Crypto`);_
+_the full-suite run is deferred to a v1 release-gate step, a mechanical correction to_
+_§6 citing this decision. Surfaces, rather than silently sweeps, that the "thirteen"_
+_count itself is stale: `grob-sample-scripts.md` has only ever held eleven scripts_
+_(confirmed via `git log -p --follow`), and D-283 (April 2026, predating D-302)_
+_already called it "the eleven sample scripts." An initial ten-sample calibration_
+_(post ten-iteration warmup) showed flat heap with zero variance — too short a_
+_horizon; a longer checkpoint sweep (10/50/100/250/500/1000/2000/5000/10000) found a_
+_one-time cache/registry warm-up step between iteration 1000 and 2000_
+_(113,200 B → 125,520 B), then bit-identical heap through iteration 10000 — not a_
+_leak. A first attempt at the §6 placeholder `warmup: 100` mistook this step for_
+_ongoing growth and failed a naive 5% tolerance. Locked: `iterations: 10000,_
+_warmup: 2000, tolerancePercent: 2.0`; first passing run at exactly 0.0% drift_
+_(190,456 B at both the post-warmup and final snapshot); `stability.json` committed_
+_with the calibration date. `bench/Grob.Benchmarks/Stability/StabilityRunner.cs`_
+_drives the loop through `Grob.Cli.RunCommand` (fresh VirtualMachine, fresh plugin_
+_registration per call, already built for this purpose) rather than_
+_re-implementing `SystemEnvironment`/`SystemRandomSource`/`SystemClock` a second_
+_time — a documented deviation from §3's literal "Core, Compiler, Vm, Stdlib,_
+_Runtime" assembly list, which predates `Grob.Cli`/`RunCommand` existing as the_
+_composition root; `Grob.Benchmarks.csproj` now also references `Grob.Cli`._
+_`stdlib.grob` (D-337 family) is gold-mastered under `Grob.Integration.Tests`,_
+_exercising `math`/`path`/`env`/`log`/`guid`/`formatAs` with no Sprint-9 module; the_
+_five prior smoke scripts confirmed still passing. No new error code; count_
+_unchanged at 117._
+_Previous: July 2026 — Sprint 8 Increment E: D-345 added. Lands `formatAs` (`table`/`list`/`csv`)._
 _Corrects a second "D-339" mis-citation (see D-344's identical correction) — the_
 _governing decision is D-342, whose E1003/E1004 the namespace-misuse diagnostics fold_
 _into. The chained-form rewrite is shared resolution over a pattern-matched AST shape_

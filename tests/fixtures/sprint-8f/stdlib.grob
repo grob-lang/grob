@@ -1,0 +1,31 @@
+// Sprint 8 close-gate smoke script (D-337 family). Exercises the Sprint-8 stdlib
+// surface (math, path, env, log, guid, formatAs) with no Sprint-9 module.
+
+math_result := math.sqrt(16.0)
+print("math.sqrt(16.0) = ${math_result}")
+
+joined := path.join("a", "b", "c")
+print("path.join: ${joined}")
+
+try {
+    env.require("GROB_STDLIB_SMOKE_UNSET")
+} catch (e: LookupError) {
+    print("caught: ${e.message}")
+}
+
+log.info("stdlib smoke: info line")
+log.error("stdlib smoke: error line")
+
+generated := guid.newV4()
+roundtrip := guid.parse("${generated}")
+print("guid roundtrip: ${generated == roundtrip}")
+
+type SmokeRow {
+    name:  string
+    value: int
+}
+rows := [
+    SmokeRow { name: "alpha", value: 1 },
+    SmokeRow { name: "beta",  value: 2 }
+]
+print(formatAs.table(rows))

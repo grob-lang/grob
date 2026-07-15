@@ -1,0 +1,76 @@
+// Sprint 6 close — types.grob
+// Exercises: type declarations with field defaults, named and nested
+// construction, field access and assignment, a recursive type, a #{ }
+// projection through .select(), and a closure escaping through a struct
+// field (D-325).
+
+// --- 1. Declared type with field defaults, constructed both ways ---
+type Config {
+    host: string
+    port: int = 80
+}
+
+defaultConfig := Config { host: "example.com" }
+customConfig := Config { host: "example.com", port: 8080 }
+print("${defaultConfig.host}:${defaultConfig.port}")
+print("${customConfig.host}:${customConfig.port}")
+
+// --- 2. Nested construction ---
+type Address {
+    city: string
+}
+type Person {
+    name: string
+    address: Address
+}
+
+person := Person { name: "Alice", address: Address { city: "London" } }
+print("${person.name} lives in ${person.address.city}")
+
+// --- 3. Field access and assignment; nested access a.b.c ---
+person.address.city = "Paris"
+print(person.address.city)
+
+// --- 4. Recursive type, built and traversed ---
+type Node {
+    value: int
+    next: Node?
+}
+
+third := Node { value: 3, next: nil }
+second := Node { value: 2, next: third }
+first := Node { value: 1, next: second }
+
+fn sumList(n: Node?): int {
+    if (n != nil) {
+        return n.value + sumList(n.next)
+    }
+    return 0
+}
+
+print(sumList(first))
+
+// --- 5. #{ } projection through .select(), type-safe access on results ---
+people := [
+    Person { name: "Bob", address: Address { city: "Berlin" } },
+    Person { name: "Carol", address: Address { city: "Madrid" } }
+]
+
+summaries := people.select(p => #{ name: p.name, city: p.address.city })
+for s in summaries {
+    print("${s.name} - ${s.city}")
+}
+
+// --- 6. Closure stored in a struct field, escaping its enclosing function ---
+type Box {
+    callback: fn(): int
+}
+
+fn makeBox(): Box {
+    n := 42
+    f := () => n
+    return Box { callback: f }
+}
+
+box := makeBox()
+print(box.callback())

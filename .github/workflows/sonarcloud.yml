@@ -73,7 +73,7 @@ jobs:
             /d:sonar.coverage.exclusions="**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs,**/bench/**" \
             /d:sonar.test.exclusions="**/*.Tests/**" \
             /d:sonar.qualitygate.wait=true \
-            /d:sonar.issue.ignore.multicriteria="e1,e2,e3,e4,e5,e6,e7,e8" \
+            /d:sonar.issue.ignore.multicriteria="e1,e2,e3,e4,e5,e6,e7,e8,e9" \
             /d:sonar.issue.ignore.multicriteria.e1.ruleKey="csharpsquid:S1244" \
             /d:sonar.issue.ignore.multicriteria.e1.resourceKey="src/Grob.Vm/VirtualMachine.cs" \
             /d:sonar.issue.ignore.multicriteria.e2.ruleKey="csharpsquid:S3776" \
@@ -89,7 +89,9 @@ jobs:
             /d:sonar.issue.ignore.multicriteria.e7.ruleKey="csharpsquid:S2245" \
             /d:sonar.issue.ignore.multicriteria.e7.resourceKey="src/Grob.Cli/SystemRandomSource.cs" \
             /d:sonar.issue.ignore.multicriteria.e8.ruleKey="csharpsquid:S4790" \
-            /d:sonar.issue.ignore.multicriteria.e8.resourceKey="src/Grob.Stdlib/GuidPlugin.cs"
+            /d:sonar.issue.ignore.multicriteria.e8.resourceKey="src/Grob.Stdlib/GuidPlugin.cs" \
+            /d:sonar.issue.ignore.multicriteria.e9.ruleKey="csharpsquid:S1215" \
+            /d:sonar.issue.ignore.multicriteria.e9.resourceKey="bench/Grob.Benchmarks/Stability/StabilityRunner.cs"
       - name: Restore dependencies
         run: dotnet restore --locked-mode
 
