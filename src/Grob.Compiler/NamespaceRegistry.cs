@@ -144,8 +144,14 @@ internal static class NamespaceRegistry {
             ["formatAs"] = new Dictionary<string, object>(StringComparer.Ordinal),
         };
 
-    /// <summary>Every registered namespace name.</summary>
-    internal static IEnumerable<string> NamespaceNames => _namespaces.Keys;
+    /// <summary>
+    /// Every registered namespace name. A concrete array, not <c>IEnumerable&lt;string&gt;</c> —
+    /// <see cref="Dictionary{TKey, TValue}.KeyCollection"/>'s struct enumerator would box on
+    /// every <c>foreach</c> through an interface-typed property (CodeRabbit review, PR #137),
+    /// and <see cref="TypeChecker.RegisterNamespaces"/> iterates this unconditionally on every
+    /// compile.
+    /// </summary>
+    internal static readonly string[] NamespaceNames = [.. _namespaces.Keys];
 
     /// <summary>The number of registered namespaces, for global-scope dictionary pre-sizing.</summary>
     internal static int Count => _namespaces.Count;

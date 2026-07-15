@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Local line-coverage gate. Runs the full test suite with coverlet and
     fails if total line coverage drops below the supplied threshold.
