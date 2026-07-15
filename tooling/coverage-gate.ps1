@@ -9,11 +9,13 @@
     so a developer notices a large regression before pushing. Designed for
     use as a pre-push hook (slow) — never as pre-commit (which must stay fast).
 
-    Threshold defaults to 80 — the current measured overall floor (D-328).
-    This is a regression guard on *overall* coverage; the 90% gate on *new-code*
-    coverage is enforced in CI by SonarCloud (server-side only).  Bump this
-    default as overall coverage rises.  Pass -Threshold 0 to emit the coverage
-    report but skip enforcement.
+    Threshold defaults to 80 — an interim ratchet on *overall* in-scope
+    coverage, below the 90% line+branch floor D-328 actually mandates for
+    that denominator. SonarCloud separately enforces its own *new-code* gate
+    server-side on PR diffs — a different, unrelated check from D-328's
+    overall floor. Bump this default toward 90 as overall coverage rises;
+    D-328 is not satisfied until it reaches 90. Pass -Threshold 0 to emit the
+    coverage report but skip enforcement.
 
     Output:
       * Per-project coverage files under
