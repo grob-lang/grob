@@ -298,4 +298,25 @@ public sealed class TypeCheckerNamespaceAccessTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1002.Code, diag.Code);
     }
+
+    // -----------------------------------------------------------------------
+    // Cross-compile object identity — allocation-regression guard (D-338's
+    // RegisterExceptionHierarchy shape, applied here to RegisterNamespaces).
+    // Check() runs RegisterNamespaces unconditionally on every compile with
+    // content identical each time, so a fresh NamespaceDecl/Symbol pair per
+    // compile is a fixed per-compile allocation cost regardless of whether the
+    // source references any namespace — this regressed the compile benchmarks
+    // (Compile_TwoExpressions/Compile_TenPrints, GitHub Actions run 29392344084).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void NamespaceDecl_AcrossTwoCompiles_IsSameCachedInstance() {
+        var (unitA, _) = TypeCheckSource("readonly x := math.pi");
+        var (unitB, _) = TypeCheckSource("readonly y := math.pi");
+
+        IdentifierExpr mathA = CollectIdentifiers(unitA).First(i => i.Name == "math");
+        IdentifierExpr mathB = CollectIdentifiers(unitB).First(i => i.Name == "math");
+
+        Assert.Same(mathA.Declaration, mathB.Declaration);
+    }
 }

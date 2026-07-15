@@ -320,13 +320,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// Seeds the global scope with a <see cref="NamespaceDecl"/> sentinel symbol per
     /// registered <see cref="NamespaceRegistry"/> namespace (D-342) — a name category
     /// that is neither a value nor a type binding. Mirrors
-    /// <see cref="RegisterExceptionHierarchy"/>'s registration shape; unlike that
+    /// <see cref="RegisterExceptionHierarchy"/>'s registration shape (including its D-338
+    /// object-caching fix, via <see cref="NamespaceRegistry.SymbolFor"/>); unlike that
     /// registration, a namespace has no <see cref="UserTypeRegistry"/> entry, since it is
     /// never constructed as a struct value.
     /// </summary>
     private void RegisterNamespaces() {
         foreach (string name in NamespaceRegistry.NamespaceNames) {
-            RegisterSymbol(name, GrobType.Unknown, SourceLocation.Unknown, new NamespaceDecl(name));
+            _scopes.Peek()[name] = NamespaceRegistry.SymbolFor(name);
         }
     }
 
