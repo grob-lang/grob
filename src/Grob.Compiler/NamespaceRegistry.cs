@@ -1,3 +1,4 @@
+using Grob.Compiler.Ast.Declarations;
 using Grob.Core;
 
 namespace Grob.Compiler;
@@ -143,11 +144,44 @@ internal static class NamespaceRegistry {
             ["formatAs"] = new Dictionary<string, object>(StringComparer.Ordinal),
         };
 
-    /// <summary>Every registered namespace name.</summary>
-    internal static IEnumerable<string> NamespaceNames => _namespaces.Keys;
+    /// <summary>
+    /// Every registered namespace name. A concrete array, not <c>IEnumerable&lt;string&gt;</c> —
+    /// <see cref="Dictionary{TKey, TValue}.KeyCollection"/>'s struct enumerator would box on
+    /// every <c>foreach</c> through an interface-typed property (CodeRabbit review, PR #137),
+    /// and <see cref="TypeChecker.RegisterNamespaces"/> iterates this unconditionally on every
+    /// compile.
+    /// </summary>
+    internal static readonly string[] NamespaceNames = [.. _namespaces.Keys];
 
     /// <summary>The number of registered namespaces, for global-scope dictionary pre-sizing.</summary>
     internal static int Count => _namespaces.Count;
+
+    // Per-name TypeChecker.RegisterNamespaces registration objects, built once and shared
+    // across every compile — mirrors ExceptionHierarchy's _typeDecls/_symbols caching
+    // (D-338). TypeChecker.Check runs RegisterNamespaces unconditionally on every compile
+    // regardless of whether the source references any namespace; NamespaceDecl is an
+    // immutable record and Symbol carries identical content (Type is always
+    // GrobType.Unknown, DeclaredAt is always SourceLocation.Unknown, DeclarationNode is the
+    // shared NamespaceDecl below) on every run, so re-synthesising 7 NamespaceDecl + 7
+    // Symbol objects per compile was a fixed allocation the smallest compile benchmarks pay
+    // disproportionately for (GitHub Actions run 29392344084 — Compile_TwoExpressions
+    // breached the per-sprint gate on both time and allocation).
+    private static readonly IReadOnlyDictionary<string, NamespaceDecl> _namespaceDecls =
+        _namespaces.Keys.ToDictionary(name => name, name => new NamespaceDecl(name), StringComparer.Ordinal);
+
+    private static readonly IReadOnlyDictionary<string, Symbol> _symbols =
+        _namespaces.Keys.ToDictionary(
+            name => name,
+            name => new Symbol {
+                Name = name,
+                Type = GrobType.Unknown,
+                DeclaredAt = SourceLocation.Unknown,
+                DeclarationNode = _namespaceDecls[name],
+            },
+            StringComparer.Ordinal);
+
+    /// <summary>The shared <see cref="Symbol"/> for <paramref name="name"/>.</summary>
+    internal static Symbol SymbolFor(string name) => _symbols[name];
 
     /// <summary><see langword="true"/> when <paramref name="name"/> is a registered namespace.</summary>
     internal static bool IsNamespace(string name) => _namespaces.ContainsKey(name);

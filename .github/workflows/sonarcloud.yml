@@ -112,11 +112,14 @@ jobs:
             DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Include="[grob]*,[Grob.*]*" \
             DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile="**/Grob.Cli/Program.cs,**/Grob.Lsp/Program.cs,**/bench/**"
 
-      # D-328: overall in-scope line-coverage regression guard.  Aggregates
-      # the OpenCover XML reports (already filtered by ExcludeByFile above)
-      # and fails the job if blended coverage drops below 80%.  This is a
-      # ratchet floor on the in-scope denominator, not the 90% new-code gate
-      # (which SonarCloud enforces server-side via sonar.qualitygate.wait).
+      # Overall in-scope line-coverage regression guard.  Aggregates the
+      # OpenCover XML reports (already filtered by ExcludeByFile above) and
+      # fails the job if blended coverage drops below 80%.  This is an
+      # interim ratchet on the in-scope denominator — D-328 mandates a 90%
+      # line+branch floor on this same denominator, not yet reached; raise
+      # this threshold toward 90 as coverage rises.  SonarCloud separately
+      # enforces its own new-code gate server-side via sonar.qualitygate.wait
+      # — a different, unrelated check from D-328's overall floor.
       #
       # Test projects share transitive references (every project pulls in
       # Grob.Core; Grob.Integration.Tests pulls in the whole src/ graph via
