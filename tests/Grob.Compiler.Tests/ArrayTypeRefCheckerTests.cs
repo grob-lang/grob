@@ -110,7 +110,8 @@ public sealed class ArrayTypeRefCheckerTests {
 
     [Fact]
     public void NestedArrayAnnotation_ResolvesToArray() {
-        // int[][] and int[][][] both resolve to GrobType.Array (element type deferred to generics sprint)
+        // int[][] and int[][][] both resolve to GrobType.Array; the nested element
+        // descriptor (D-351) is exercised separately in ArrayElementTypeCheckerTests
         DiagnosticBag bag = Check("fn f(xs: int[][]): int { return 0 }\n");
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
         DiagnosticBag bag2 = Check("fn g(xs: int[][][]): int { return 0 }\n");

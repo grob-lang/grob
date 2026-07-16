@@ -322,10 +322,11 @@ public sealed partial class TypeChecker {
         // additionally recognises a struct-typed return (Sprint 6 close) and flows the
         // declared name via _callResultStructNames so `box := makeBox()` resolves field
         // access the same way a direct struct-construction initialiser already does.
-        (GrobType resultKind, string? resultStructName, FunctionTypeDescriptor? resultDesc) =
+        (GrobType resultKind, string? resultStructName, FunctionTypeDescriptor? resultDesc, ArrayTypeDescriptor? resultArrayDesc) =
             ResolveSignatureType(fn.ReturnType);
         if (resultDesc is not null) _callResultDescriptors[node] = resultDesc;
         if (resultStructName is not null) _callResultStructNames[node] = resultStructName;
+        if (resultArrayDesc is not null) _callResultArrayDescriptors[node] = resultArrayDesc;
         return resultKind;
     }
 
@@ -618,16 +619,24 @@ public sealed partial class TypeChecker {
         // annotation resolves to a concrete struct kind instead of Unknown; otherwise a
         // non-struct argument to a struct parameter (takesConfig(1)) silently bypasses E0004
         // because the permissive Unknown short-circuits the assignability check (Sprint 6 close).
-        (GrobType paramType, string? paramNamedTypeName, FunctionTypeDescriptor? paramDesc) = fn.Parameters[paramIndex].Type is not null
+        (GrobType paramType, string? paramNamedTypeName, FunctionTypeDescriptor? paramDesc, ArrayTypeDescriptor? paramArrayDesc) = fn.Parameters[paramIndex].Type is not null
             ? ResolveSignatureType(fn.Parameters[paramIndex].Type!)
-            : (GrobType.Unknown, null, null);
+            : (GrobType.Unknown, null, null, null);
         bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
+        bool isArrayParam = paramType == GrobType.Array || paramType == GrobType.NullableArray;
         bool compatible;
         if (isFunctionParam) {
             FunctionTypeDescriptor? argDesc = argExpr is not null ? InitialiserDescriptor(argExpr) : null;
             compatible = TypesAreAssignable(argType, paramType, argDesc, paramDesc);
         } else {
             compatible = TypesAreAssignable(argType, paramType);
+        }
+        // Array element type (D-351): the flat GrobType.Array tag alone does not
+        // distinguish int[] from string[], so an argument whose element type disagrees
+        // with the parameter's declared element type must still be rejected.
+        if (compatible && isArrayParam && argExpr is not null &&
+                !ArrayElementAssignable(ArrayDescriptorOf(argExpr), paramArrayDesc)) {
+            compatible = false;
         }
         // Struct nominal identity (originally CodeRabbit review, PR #133, scoped to guid;
         // generalised to all named structs — fix/compiler-struct-nominal-identity): the
@@ -1091,17 +1100,15 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Derives the ordered field-name list for a <c>formatAs.table</c>/<c>csv</c> array
     /// receiver by pattern-matching the argument expression's own shape — a local,
-    /// formatAs-scoped peek, not a general array-element-type system (v1 tracks no element
-    /// type on <see cref="GrobType.Array"/> at all). Handles: an array literal (from its
-    /// first element's shape); a <c>.select(lambda)</c> result (from the lambda body's
-    /// returned expression — reusing <see cref="GetStructFieldNames"/> directly against
-    /// that expression node, since <c>AnonStructExpr.SynthesisedTypeName</c>/field list is
-    /// already set by the time the lambda body was visited); a <c>.filter(...)</c>/
-    /// <c>.sort(...)</c> result (pass-through — neither changes element shape, so recurses
-    /// into their own receiver); and an identifier bound to a <c>T[]</c>-annotated
-    /// parameter or a <c>:=</c>-inferred local (via <see
-    /// cref="Symbol.ArrayElementStructTypeName"/> or the declaration's annotation/initialiser).
-    /// <see langword="null"/> when none of these shapes match.
+    /// formatAs-scoped peek. Handles: an array literal (from its first element's shape); a
+    /// <c>.select(lambda)</c> result (from the lambda body's returned expression — reusing
+    /// <see cref="GetStructFieldNames"/> directly against that expression node, since
+    /// <c>AnonStructExpr.SynthesisedTypeName</c>/field list is already set by the time the
+    /// lambda body was visited); a <c>.filter(...)</c>/<c>.sort(...)</c> result
+    /// (pass-through — neither changes element shape, so recurses into their own receiver);
+    /// and an identifier bound to a <c>T[]</c>-annotated parameter or a <c>:=</c>-inferred
+    /// local (via <see cref="Symbol.ArrayDescriptor"/>, D-351, or the declaration's
+    /// annotation/initialiser). <see langword="null"/> when none of these shapes match.
     /// </summary>
     private IReadOnlyList<string>? GetArrayElementFieldNames(Expression arrayExpr) {
         switch (arrayExpr) {
@@ -1116,7 +1123,7 @@ public sealed partial class TypeChecker {
                 return GetArrayElementFieldNames(passThrough.Target);
 
             case IdentifierExpr id:
-                return LookupSymbol(id.Name) is { ArrayElementStructTypeName: string elementName }
+                return LookupSymbol(id.Name) is { ArrayDescriptor.ElementNamedTypeName: string elementName }
                     ? TryGetTypeInfo(elementName)?.Fields.Select(f => f.Name).ToList()
                     : GetArrayElementFieldNamesFromDecl(id.Declaration);
 
@@ -1127,10 +1134,11 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Falls back to a <c>:=</c>-inferred array local's declaration (no <see
-    /// cref="Symbol.ArrayElementStructTypeName"/> — that is only threaded for parameters):
-    /// an explicit <c>T[]</c> annotation names the element type directly, otherwise the
-    /// initialiser expression is peeked the same way <see cref="GetArrayElementFieldNames"/>
-    /// peeks any other array expression.
+    /// cref="Symbol.ArrayDescriptor"/> match — a locally-declared struct array whose
+    /// element name resolution reaches this method some other way): an explicit
+    /// <c>T[]</c> annotation names the element type directly, otherwise the initialiser
+    /// expression is peeked the same way <see cref="GetArrayElementFieldNames"/> peeks any
+    /// other array expression.
     /// </summary>
     private IReadOnlyList<string>? GetArrayElementFieldNamesFromDecl(AstNode? decl) {
         (TypeRef? annotation, Expression? init) = decl switch {
@@ -1421,22 +1429,121 @@ public sealed partial class TypeChecker {
     private static string ExtractStructName(TypeRef tr) => tr.Name;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Resolves to the receiver's element type (D-351) via <see cref="ArrayDescriptorOf"/>,
+    /// which already handles a chained target (<c>matrix[r][c]</c>, D-112) by recursing
+    /// into <see cref="ArrayTypeDescriptor.ElementArrayDescriptor"/> for a nested
+    /// <c>IndexExpr</c>. A map receiver (or any target whose element type could not be
+    /// determined) stays <see cref="GrobType.Unknown"/> — maps carry the same
+    /// unparameterised-value gap arrays had before this decision and are out of its scope.
+    /// §3.1.1 does not extend to <c>IndexExpr</c> (D-348) — no <c>ResolvedType</c>/
+    /// <c>Declaration</c> is set here.
+    /// </remarks>
     public override GrobType VisitIndex(IndexExpr node) {
         Visit(node.Target);
         Visit(node.Index);
-        return GrobType.Unknown;
+        return ArrayDescriptorOf(node.Target)?.ElementKind ?? GrobType.Unknown;
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Resolves to <see cref="GrobType.Array"/> so a <c>for...in</c> subject can
-    /// be recognised as iterable. Element-type tracking awaits generics (Sprint 5),
-    /// so the array's element type is not inferred here — iteration over the array
-    /// binds <c>item</c> as <see cref="GrobType.Unknown"/>.
+    /// Resolves to <see cref="GrobType.Array"/> so a <c>for...in</c> subject can be
+    /// recognised as iterable, and infers the element-type descriptor (D-351) from the
+    /// elements — stored in <see cref="_arrayLiteralDescriptors"/>, not returned directly,
+    /// mirroring how <see cref="_lambdaDescriptors"/> carries a lambda's structural shape
+    /// alongside its flat <see cref="GrobType"/>. Elements are unified pairwise via
+    /// <see cref="UnifyArrayElementType"/> (int/float widening, E0001 on a genuine
+    /// mismatch — <c>[1, "a"]</c>). An empty literal infers nothing; its element type
+    /// comes from context (an annotation), consistent with §9's empty-literal rule.
     /// </remarks>
     public override GrobType VisitArrayLiteral(ArrayLiteralExpr node) {
-        foreach (Expression element in node.Elements) Visit(element);
+        if (node.Elements.Count == 0) return GrobType.Array;
+
+        GrobType elementKind = GrobType.Unknown;
+        string? elementNamedTypeName = null;
+        ArrayTypeDescriptor? elementArrayDescriptor = null;
+        bool haveFirst = false;
+
+        foreach (Expression element in node.Elements) {
+            GrobType elemType = Visit(element);
+            if (elemType == GrobType.Error) continue; // cascade suppression
+
+            if (!haveFirst) {
+                elementKind = elemType;
+                elementNamedTypeName = GetStructTypeName(element);
+                elementArrayDescriptor = ArrayDescriptorOf(element);
+                haveFirst = true;
+                continue;
+            }
+
+            GrobType unified = UnifyArrayElementType(elementKind, elemType, element.Range);
+            // A matching flat kind is not sufficient identity for structs and nested arrays:
+            // [A{}, B{}] and [[1], ["a"]] both share a flat kind (Struct, Array) yet differ
+            // nominally / structurally. Reject those so a T[] literal cannot smuggle a U
+            // element (D-351). Only checked when the flat unify itself did not already fail.
+            if (unified != GrobType.Error) {
+                CheckArrayElementIdentity(unified, elementNamedTypeName, elementArrayDescriptor, element);
+            }
+            elementKind = unified;
+        }
+
+        _arrayLiteralDescriptors[node] = new ArrayTypeDescriptor(elementKind, elementNamedTypeName, elementArrayDescriptor);
         return GrobType.Array;
+    }
+
+    /// <summary>
+    /// Enforces that an array-literal element beyond the first shares not just the running
+    /// flat element kind (already unified by <see cref="UnifyArrayElementType"/>) but the
+    /// running <em>identity</em> — the same named struct for a <c>Struct</c> element, and a
+    /// compatible nested descriptor for an <c>Array</c> element (<c>T[][]</c>). Emits E0001
+    /// on a mismatch. Split out to keep <see cref="VisitArrayLiteral"/> under the analyser's
+    /// cognitive-complexity bar.
+    /// </summary>
+    private void CheckArrayElementIdentity(
+            GrobType elementKind, string? runningNamedTypeName, ArrayTypeDescriptor? runningArrayDescriptor, Expression element) {
+        if (elementKind is GrobType.Struct or GrobType.NullableStruct && runningNamedTypeName is not null) {
+            string? elementName = GetStructTypeName(element);
+            if (elementName is not null && !string.Equals(elementName, runningNamedTypeName, StringComparison.Ordinal)) {
+                EmitError(ErrorCatalog.E0001,
+                    $"Array literal elements must share a type; found '{runningNamedTypeName}' and '{elementName}'.",
+                    element.Range);
+            }
+            return;
+        }
+
+        if (elementKind is GrobType.Array or GrobType.NullableArray && runningArrayDescriptor is not null) {
+            ArrayTypeDescriptor? elementDescriptor = ArrayDescriptorOf(element);
+            if (elementDescriptor is not null && !ArrayElementAssignable(elementDescriptor, runningArrayDescriptor)) {
+                EmitError(ErrorCatalog.E0001,
+                    "Array literal elements must share a nested element type.",
+                    element.Range);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Unifies an array literal's running element type with the next element's type
+    /// (D-351), emitting E0001 on a genuine mismatch. Duplicates
+    /// <see cref="UnifyTernaryArms"/>'s int/float-widening shape deliberately rather than
+    /// reusing it directly — an array-literal mismatch needs array-specific wording
+    /// ("array literal elements", not "ternary arms"), and <see cref="UnifyTernaryArms"/>'s
+    /// T/T? nullable-widening arm has no clean array-literal analogue worth forcing through
+    /// a shared parameterised helper for two call sites.
+    /// </summary>
+    private GrobType UnifyArrayElementType(GrobType running, GrobType next, SourceRange range) {
+        if (running == GrobType.Error || next == GrobType.Error) return GrobType.Error;
+        if (running == GrobType.Unknown || next == GrobType.Unknown) return GrobType.Unknown;
+        if (running == next) return running;
+
+        if ((running == GrobType.Int && next == GrobType.Float) ||
+            (running == GrobType.Float && next == GrobType.Int)) {
+            return GrobType.Float;
+        }
+
+        EmitError(ErrorCatalog.E0001,
+            $"Array literal elements must share a type; found '{TypeName(running)}' and '{TypeName(next)}'.",
+            range);
+        return GrobType.Error;
     }
 
     /// <inheritdoc/>

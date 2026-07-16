@@ -46,9 +46,10 @@ public sealed partial class TypeChecker {
 
         GrobType initType = Visit(node.Initializer);
         FunctionTypeDescriptor? initDesc = InitialiserDescriptor(node.Initializer);
-        (GrobType symbolType, FunctionTypeDescriptor? symbolDesc) =
+        (GrobType symbolType, FunctionTypeDescriptor? symbolDesc, ArrayTypeDescriptor? symbolArrayDesc) =
             ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Initializer.Range, node.Initializer);
-        RegisterSymbol(node.Name, symbolType, node.Range.Start, node, typeIdentity: new(FunctionDescriptor: symbolDesc));
+        RegisterSymbol(node.Name, symbolType, node.Range.Start, node,
+            typeIdentity: new(symbolDesc, ArrayDescriptor: symbolArrayDesc));
         return GrobType.Unknown;
     }
 
@@ -136,14 +137,33 @@ public sealed partial class TypeChecker {
         }
         bool compatible = TypesAreAssignable(actual, expected);
         if (compatible && valueNode is not null) {
-            // Struct nominal identity (fix/compiler-struct-nominal-identity, Site C): the
-            // flat GrobType.Struct tag alone does not distinguish the declared return
-            // type's struct name from a differently-named struct actually returned.
-            string? expectedNamedTypeName =
-                _functionReturnStructNames.TryPeek(out string? name) ? name : null;
-            if (IsStructNominalMismatch(expected, expectedNamedTypeName, valueNode)) compatible = false;
+            compatible = IsReturnValueIdentityCompatible(expected, valueNode);
         }
         return compatible;
+    }
+
+    /// <summary>
+    /// Checks a compatible-by-flat-kind return value against the declared return type's
+    /// element/nominal identity — array element type (D-351), then struct nominal
+    /// identity. Split from <see cref="ComputeReturnCompatibility"/> to keep that method's
+    /// cognitive complexity under the analyser bar.
+    /// </summary>
+    private bool IsReturnValueIdentityCompatible(GrobType expected, Expression valueNode) {
+        bool isArrayReturn = expected == GrobType.Array || expected == GrobType.NullableArray;
+        if (isArrayReturn) {
+            // Array element type (D-351): the flat GrobType.Array tag alone does not
+            // distinguish int[] from string[], so a returned array whose element type
+            // disagrees with the declared return element type must still be rejected.
+            ArrayTypeDescriptor? expectedArrayDescriptor =
+                _functionReturnArrayDescriptors.TryPeek(out ArrayTypeDescriptor? peekedArray) ? peekedArray : null;
+            if (!ArrayElementAssignable(ArrayDescriptorOf(valueNode), expectedArrayDescriptor)) return false;
+        }
+        // Struct nominal identity (fix/compiler-struct-nominal-identity, Site C): the flat
+        // GrobType.Struct tag alone does not distinguish the declared return type's struct
+        // name from a differently-named struct actually returned.
+        string? expectedNamedTypeName =
+            _functionReturnStructNames.TryPeek(out string? name) ? name : null;
+        return !IsStructNominalMismatch(expected, expectedNamedTypeName, valueNode);
     }
 
     /// <summary>
@@ -193,8 +213,10 @@ public sealed partial class TypeChecker {
             return GrobType.Unknown;
         }
 
+        if (node.Target is IndexExpr indexTarget) return VisitIndexAssignmentTarget(node, indexTarget);
+
         if (node.Target is not IdentifierExpr target) {
-            // Index targets are deferred (collections sprint).
+            // Any other assignment-target shape (none exist in the current grammar).
             Visit(node.Target);
             Visit(node.Value);
             return GrobType.Unknown;
@@ -336,6 +358,53 @@ public sealed partial class TypeChecker {
         return symbol;
     }
 
+    /// <summary>
+    /// Sprint 9 Increment A2 (D-350) / A3 (D-351): array/map index-store target
+    /// (<c>arr[i] = v</c>). Visiting the target cascades into the pre-existing
+    /// <c>VisitIdentifier</c> path on the root identifier (or a nested <c>VisitIndex</c>
+    /// read for a chained target like <c>matrix[r][c]</c>), setting
+    /// <c>ResolvedType</c>/<c>Declaration</c> there exactly as the read side (D-348)
+    /// already does, and now also resolving the receiver's real element type (D-351) —
+    /// closing the A2 gap: <c>arr[0] = "x"</c> on an <c>int[]</c> is a mismatch. A map
+    /// target (or any array whose element type could not be determined) resolves the
+    /// target's element type as <see cref="GrobType.Unknown"/> and stays permissive,
+    /// exactly as before.
+    /// </summary>
+    private GrobType VisitIndexAssignmentTarget(AssignmentStmt node, IndexExpr indexTarget) {
+        GrobType elementType = Visit(indexTarget);
+        GrobType valueType = Visit(node.Value);
+        if (FindReadonlyRoot(indexTarget) is not null) {
+            EmitError(ErrorCatalog.E0204,
+                "Cannot mutate element of `readonly` binding.",
+                node.Range);
+        }
+        if (elementType != GrobType.Unknown && elementType != GrobType.Error && valueType != GrobType.Error &&
+                !IsIndexRhsCompatible(elementType, indexTarget, node.Value, valueType)) {
+            EmitError(ErrorCatalog.E0001,
+                $"Cannot assign value of type '{TypeName(valueType)}' to array element of type '{TypeName(elementType)}'.",
+                node.Value.Range);
+        }
+        return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Checks an index-write's right-hand side against the receiver's element type
+    /// (D-351) — flat kind, array element type (for a <c>T[][]</c> write), then struct
+    /// nominal identity. Split from <see cref="VisitIndexAssignmentTarget"/> to keep that
+    /// method's cognitive complexity under the analyser bar.
+    /// </summary>
+    private bool IsIndexRhsCompatible(GrobType elementType, IndexExpr indexTarget, Expression valueExpr, GrobType valueType) {
+        ArrayTypeDescriptor? receiverElementDescriptor = ArrayDescriptorOf(indexTarget.Target);
+        bool compatible = TypesAreAssignable(valueType, elementType);
+        if (compatible && elementType is GrobType.Array or GrobType.NullableArray) {
+            compatible = ArrayElementAssignable(ArrayDescriptorOf(valueExpr), receiverElementDescriptor?.ElementArrayDescriptor);
+        }
+        if (compatible && IsStructNominalMismatch(elementType, receiverElementDescriptor?.ElementNamedTypeName, valueExpr)) {
+            compatible = false;
+        }
+        return compatible;
+    }
+
     private static BinaryOperator CompoundOpToBinary(CompoundAssignmentOperator op) => op switch {
         CompoundAssignmentOperator.PlusAssign => BinaryOperator.Add,
         CompoundAssignmentOperator.MinusAssign => BinaryOperator.Subtract,
@@ -346,14 +415,21 @@ public sealed partial class TypeChecker {
     };
 
     /// <summary>
-    /// Walks the receiver chain of a member-access expression to find the root identifier.
-    /// Returns the <see cref="ReadonlyDecl"/> if the root binding is readonly (D-291 deep
+    /// Walks the receiver chain of an assignment target — through any mix of
+    /// <see cref="MemberAccessExpr"/> and <see cref="IndexExpr"/> nesting (Sprint 9
+    /// Increment A2, D-350) — to find the root identifier. Returns the
+    /// <see cref="ReadonlyDecl"/> if the root binding is readonly (D-291 deep
     /// immutability); otherwise returns <see langword="null"/>.
     /// </summary>
-    private static ReadonlyDecl? FindReadonlyRoot(MemberAccessExpr ma) {
-        Expression current = ma.Target;
-        while (current is MemberAccessExpr inner) {
-            current = inner.Target;
+    private static ReadonlyDecl? FindReadonlyRoot(Expression target) {
+        Expression current = target;
+        while (true) {
+            current = current switch {
+                MemberAccessExpr ma => ma.Target,
+                IndexExpr idx => idx.Target,
+                _ => current,
+            };
+            if (current is not (MemberAccessExpr or IndexExpr)) break;
         }
         return current is IdentifierExpr { Declaration: ReadonlyDecl ro } ? ro : null;
     }

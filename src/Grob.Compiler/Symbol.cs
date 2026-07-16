@@ -62,18 +62,17 @@ public sealed class Symbol {
     public string? NamedStructTypeName { get; init; }
 
     /// <summary>
-    /// When <see cref="Type"/> is <see cref="GrobType.Array"/> (or its nullable variant)
-    /// and the array's declared element type is a named user <c>type</c>, carries that
-    /// element type's name — the array analogue of <see cref="NamedStructTypeName"/>,
-    /// which <c>ResolveSignatureType</c>'s <c>ArrayTypeRef</c> arm otherwise discards
-    /// (Sprint 8 Increment E, <c>formatAs</c>'s compile-time column derivation). Set only
-    /// for a <c>T[]</c>-annotated parameter, whose declaration node is the owning
-    /// <c>FnDecl</c> rather than the <c>Parameter</c> itself — mirrors why
-    /// <see cref="NamedStructTypeName"/> is threaded onto the symbol rather than recovered
-    /// from <see cref="DeclarationNode"/>. <see langword="null"/> for a <c>:=</c>-inferred
-    /// array local, whose element shape is instead resolved by peeking the initialiser
-    /// expression directly (an array literal, a struct-array-returning call, or an
-    /// explicit <c>T[]</c> annotation on the binding itself).
+    /// When <see cref="Type"/> is <see cref="GrobType.Array"/> or <see cref="GrobType.NullableArray"/>,
+    /// carries the array's element-type identity (D-351) — the array analogue of
+    /// <see cref="NamedStructTypeName"/>/<see cref="FunctionDescriptor"/>, generalising the
+    /// narrower struct-name-only, parameter-only channel Sprint 8 Increment E introduced for
+    /// <c>formatAs</c>'s compile-time column derivation. Set for a <c>T[]</c>-annotated
+    /// parameter (whose declaration node is the owning <c>FnDecl</c> rather than the
+    /// <c>Parameter</c> itself, mirroring why <see cref="NamedStructTypeName"/> is threaded
+    /// onto the symbol) and for a <c>:=</c>-inferred or explicitly annotated array local or
+    /// field, whose element shape is resolved from the initialiser expression or the
+    /// annotation itself. <see langword="null"/> when the element type could not be
+    /// determined (an empty literal with no annotation stays permissive elsewhere).
     /// </summary>
-    public string? ArrayElementStructTypeName { get; init; }
+    public ArrayTypeDescriptor? ArrayDescriptor { get; init; }
 }

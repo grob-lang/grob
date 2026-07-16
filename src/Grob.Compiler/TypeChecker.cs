@@ -122,6 +122,12 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // -----------------------------------------------------------------------
     private readonly Stack<string?> _functionReturnStructNames = new();
 
+    // Parallel to _functionReturnStructNames (D-351): non-null when the enclosing fn's
+    // declared return type is T[] and the element type is known, so a returned array
+    // value's own element type can be checked against the declared return element type
+    // (ComputeReturnCompatibility) exactly as the struct name stack does for structs.
+    private readonly Stack<ArrayTypeDescriptor?> _functionReturnArrayDescriptors = new();
+
     private readonly Dictionary<LambdaExpr, FunctionTypeDescriptor> _lambdaDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
@@ -140,6 +146,23 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // struct-construction initialiser already does. Keyed by reference identity,
     // matching _callResultDescriptors.
     private readonly Dictionary<CallExpr, string> _callResultStructNames =
+        new(ReferenceEqualityComparer.Instance);
+
+    // _callResultArrayDescriptors mirrors _callResultStructNames for T[]-returning calls
+    // (D-351): when a call's callee has a T[] return annotation with a known element type,
+    // this records the descriptor so a `:=`-inferred binding from that call
+    // (`items := makeItems()`) carries the element type onward the same way a direct
+    // array-literal initialiser does. Keyed by reference identity, matching
+    // _callResultDescriptors.
+    private readonly Dictionary<CallExpr, ArrayTypeDescriptor> _callResultArrayDescriptors =
+        new(ReferenceEqualityComparer.Instance);
+
+    // _arrayLiteralDescriptors maps each array-literal expression to its inferred element
+    // descriptor (D-351), keyed by reference identity for the same reason
+    // _lambdaDescriptors is. Populated by VisitArrayLiteral; consulted wherever an
+    // array-typed binding or index expression needs to resolve its element type from a
+    // literal initialiser.
+    private readonly Dictionary<ArrayLiteralExpr, ArrayTypeDescriptor> _arrayLiteralDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
     // -----------------------------------------------------------------------
@@ -357,26 +380,32 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// struct-annotated binding whose initialiser is a differently-named struct — see
     /// <see cref="IsStructNominalMismatch"/>.
     /// </param>
-    private (GrobType Type, FunctionTypeDescriptor? Descriptor) ResolveBindingFull(
+    private (GrobType Type, FunctionTypeDescriptor? Descriptor, ArrayTypeDescriptor? ArrayDescriptor) ResolveBindingFull(
         TypeRef? annotation, GrobType initType, FunctionTypeDescriptor? initDescriptor, SourceRange initRange,
         Expression? initExpr) {
-        if (annotation is null) return (initType, initDescriptor);
+        ArrayTypeDescriptor? initArrayDescriptor = initExpr is not null ? ArrayDescriptorOf(initExpr) : null;
+        if (annotation is null) return (initType, initDescriptor, initArrayDescriptor);
 
         // ResolveSignatureType (not ResolveTypeRefFull) so a user-defined struct annotation
         // resolves to a concrete struct kind and carries its declared name — otherwise every
         // struct-typed binding annotation resolves to Unknown and is never checked against
         // its initialiser at all, flatly or nominally (fix/compiler-struct-nominal-identity,
         // Site B; mirrors the parameter/field/native-argument sites, Sprint 6 close onward).
-        (GrobType annotated, string? annotatedNamedTypeName, FunctionTypeDescriptor? annotatedDesc) =
+        (GrobType annotated, string? annotatedNamedTypeName, FunctionTypeDescriptor? annotatedDesc, ArrayTypeDescriptor? annotatedArrayDesc) =
             ResolveSignatureType(annotation);
-        if (annotated == GrobType.Unknown) return (initType, initDescriptor); // unrecognised — permissive
+        if (annotated == GrobType.Unknown) return (initType, initDescriptor, initArrayDescriptor); // unrecognised — permissive
 
-        if (initType == GrobType.Error) return (GrobType.Error, null); // cascade suppression
+        if (initType == GrobType.Error) return (GrobType.Error, null, null); // cascade suppression
 
         bool isFunctionAnnotation = annotated == GrobType.Function || annotated == GrobType.NullableFunction;
+        bool isArrayAnnotation = annotated == GrobType.Array || annotated == GrobType.NullableArray;
         bool compatible = isFunctionAnnotation
             ? TypesAreAssignable(initType, annotated, initDescriptor, annotatedDesc)
             : TypesAreAssignable(initType, annotated);
+
+        if (compatible && isArrayAnnotation && !ArrayElementAssignable(initArrayDescriptor, annotatedArrayDesc)) {
+            compatible = false;
+        }
 
         if (compatible && initExpr is not null && IsStructNominalMismatch(annotated, annotatedNamedTypeName, initExpr)) {
             compatible = false;
@@ -386,11 +415,11 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             EmitError(PickAssignabilityError(initType, annotated),
                 $"Cannot assign value of type '{TypeName(initType)}' to binding of type '{TypeName(annotated)}'.",
                 initRange);
-            return (GrobType.Error, null);
+            return (GrobType.Error, null, null);
         }
 
         // Annotation wins (e.g. int → float widening is recorded as float).
-        return (annotated, annotatedDesc);
+        return (annotated, annotatedDesc, annotatedArrayDesc);
     }
 
     /// <summary>
@@ -431,6 +460,22 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         CallExpr call => _callResultDescriptors.GetValueOrDefault(call),
         IdentifierExpr id => LookupSymbol(id.Name)?.FunctionDescriptor,
         GroupingExpr grp => ExpressionDescriptor(grp.Inner),
+        _ => null,
+    };
+
+    /// <summary>
+    /// Returns the element-type descriptor of an arbitrary array-typed expression (D-351) —
+    /// an array literal, a call returning <c>T[]</c>, an identifier bound to an array-typed
+    /// symbol, or a chained index into a <c>T[][]</c> value. Mirrors
+    /// <see cref="ExpressionDescriptor"/>'s shape for the function-descriptor channel. The
+    /// expression must already have been visited so its descriptor is recorded.
+    /// </summary>
+    private ArrayTypeDescriptor? ArrayDescriptorOf(Expression expr) => expr switch {
+        ArrayLiteralExpr literal => _arrayLiteralDescriptors.GetValueOrDefault(literal),
+        CallExpr call => _callResultArrayDescriptors.GetValueOrDefault(call),
+        IdentifierExpr id => LookupSymbol(id.Name)?.ArrayDescriptor,
+        GroupingExpr grp => ArrayDescriptorOf(grp.Inner),
+        IndexExpr index => ArrayDescriptorOf(index.Target)?.ElementArrayDescriptor,
         _ => null,
     };
 
@@ -504,16 +549,25 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// <see cref="GrobType.Unknown"/> with no diagnostic — the name has already been
     /// validated (or not) wherever the annotation's owning declaration was itself
     /// checked, so re-validating here on every reference would duplicate E1001.
+    /// <see cref="ArrayTypeDescriptor"/> (D-351) is resolved separately from
+    /// <see cref="ResolveTypeRefFull"/>'s <c>FunctionTypeRef</c> arm — building an element's
+    /// named-type identity needs the instance-level <see cref="TryGetNamedStructTypeName"/>,
+    /// which the static <see cref="ResolveTypeRefFull"/> cannot call.
     /// </summary>
-    private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? Descriptor)
+    private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor, ArrayTypeDescriptor? ArrayDescriptor)
             ResolveSignatureType(TypeRef typeRef) {
-        if (typeRef is ArrayTypeRef or FunctionTypeRef) {
+        if (typeRef is ArrayTypeRef arrayRef) {
+            GrobType arrayKind = arrayRef.IsNullable ? GrobType.NullableArray : GrobType.Array;
+            return (arrayKind, null, null, ResolveArrayElementDescriptor(arrayRef.ElementType));
+        }
+
+        if (typeRef is FunctionTypeRef) {
             (GrobType kind, FunctionTypeDescriptor? desc) = ResolveTypeRefFull(typeRef);
-            return (kind, null, desc);
+            return (kind, null, desc, null);
         }
 
         GrobType builtin = ResolveTypeRef(typeRef);
-        if (builtin != GrobType.Unknown) return (builtin, null, null);
+        if (builtin != GrobType.Unknown) return (builtin, null, null, null);
 
         // Sprint 8 Increment D: guid is a primitive type distinct from string, but it is
         // never constructed via '{ }' braces (only guid.newV4()/newV7()/newV5()/parse()),
@@ -526,15 +580,50 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // guid<->string assignment/argument fail as an ordinary type mismatch (D-149).
         if (typeRef.Name == "guid") {
             GrobType guidKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-            return (guidKind, "guid", null);
+            return (guidKind, "guid", null, null);
         }
 
         if (LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl) {
             GrobType structKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-            return (structKind, typeRef.Name, null);
+            return (structKind, typeRef.Name, null, null);
         }
 
-        return (GrobType.Unknown, null, null);
+        return (GrobType.Unknown, null, null, null);
+    }
+
+    /// <summary>
+    /// Resolves an array element type reference to its <see cref="ArrayTypeDescriptor"/>
+    /// (D-351) — the flat element kind plus, where the flat kind alone is not enough to
+    /// distinguish two element shapes, the element's named-type identity (a user
+    /// <c>type</c> or <c>guid</c>, via <see cref="TryGetNamedStructTypeName"/>) or its own
+    /// nested array descriptor (a <c>T[][]</c> element). A function-typed element
+    /// (<c>(fn(): int)[]</c>) resolves its flat <see cref="GrobType.Function"/> kind via the
+    /// static <see cref="ResolveTypeRefFull"/> but carries no nested structural descriptor —
+    /// distinguishing <c>(fn(): int)[]</c> from <c>(fn(): string)[]</c> element-for-element
+    /// is out of scope for D-351 (named as a residual gap, not built ad hoc). Quiet, like
+    /// <see cref="ResolveSignatureType"/>: an unrecognised element name resolves to
+    /// <see cref="GrobType.Unknown"/> with no diagnostic.
+    /// </summary>
+    private ArrayTypeDescriptor ResolveArrayElementDescriptor(TypeRef elementType) {
+        if (elementType is ArrayTypeRef nestedArray) {
+            GrobType nestedKind = ResolveTypeRef(nestedArray);
+            return new ArrayTypeDescriptor(nestedKind, null, ResolveArrayElementDescriptor(nestedArray.ElementType));
+        }
+
+        if (elementType is FunctionTypeRef) {
+            (GrobType functionKind, _) = ResolveTypeRefFull(elementType);
+            return new ArrayTypeDescriptor(functionKind);
+        }
+
+        GrobType kind = ResolveTypeRef(elementType);
+        if (kind == GrobType.Unknown) {
+            string? namedTypeName = TryGetNamedStructTypeName(elementType);
+            if (namedTypeName is not null) {
+                GrobType structKind = elementType.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
+                return new ArrayTypeDescriptor(structKind, namedTypeName);
+            }
+        }
+        return new ArrayTypeDescriptor(kind);
     }
 
     /// <summary>
@@ -617,6 +706,30 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
                    fromDesc is not null && toDesc is not null &&
                    DescriptorsAreAssignable(fromDesc, toDesc);
         return TypesAreAssignable(from, to);
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when an array value described by
+    /// <paramref name="from"/> can be used where an array of element descriptor
+    /// <paramref name="to"/> is expected (D-351). Element types are invariant — unlike
+    /// scalar assignability, no <c>int → float</c> widening — because an array is a
+    /// reference to shared, mutable storage whose elements keep their original runtime
+    /// representation; a value read back out under a widened static type would
+    /// misrepresent its actual <c>GrobValueKind</c>. Either descriptor missing (the
+    /// element type could not be determined — an empty literal with no annotation, a
+    /// value that flowed through <see cref="GrobType.Unknown"/>) stays permissive,
+    /// mirroring how an <see cref="GrobType.Unknown"/> scalar is already treated
+    /// elsewhere. Recurses into the nested descriptor for a <c>T[][]</c> element.
+    /// </summary>
+    private static bool ArrayElementAssignable(ArrayTypeDescriptor? from, ArrayTypeDescriptor? to) {
+        if (from is null || to is null) return true;
+        if (from.ElementKind == GrobType.Unknown || to.ElementKind == GrobType.Unknown) return true;
+        if (from.ElementKind != to.ElementKind) return false;
+        if (to.ElementNamedTypeName is not null && from.ElementNamedTypeName != to.ElementNamedTypeName) return false;
+        if (to.ElementKind is GrobType.Array or GrobType.NullableArray) {
+            return ArrayElementAssignable(from.ElementArrayDescriptor, to.ElementArrayDescriptor);
+        }
+        return true;
     }
 
     /// <summary>
@@ -735,7 +848,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly record struct SymbolTypeIdentity(
         FunctionTypeDescriptor? FunctionDescriptor = null,
         string? NamedStructTypeName = null,
-        string? ArrayElementStructTypeName = null);
+        ArrayTypeDescriptor? ArrayDescriptor = null);
 
     private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode,
                                bool provisional = false, SymbolTypeIdentity typeIdentity = default) {
@@ -747,7 +860,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             Provisional = provisional,
             FunctionDescriptor = typeIdentity.FunctionDescriptor,
             NamedStructTypeName = typeIdentity.NamedStructTypeName,
-            ArrayElementStructTypeName = typeIdentity.ArrayElementStructTypeName,
+            ArrayDescriptor = typeIdentity.ArrayDescriptor,
         };
     }
 
@@ -756,10 +869,10 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// registered <c>type</c> declaration or the <c>guid</c> primitive — the name-only
     /// counterpart of <see cref="ResolveSignatureType"/>'s guid/<c>TypeDecl</c> arms, kept
     /// separate rather than threaded through that method's widely-consumed return tuple
-    /// (Sprint 8 Increment E, <c>formatAs</c>). Used to resolve a <c>T[]</c> parameter's
-    /// element-type name for <see cref="Symbol.ArrayElementStructTypeName"/> — nested
-    /// arrays/function types have no direct name here and are not needed for v1's
-    /// <c>formatAs</c> surface.
+    /// (Sprint 8 Increment E, <c>formatAs</c>). Also used by
+    /// <see cref="ResolveArrayElementDescriptor"/> (D-351) to resolve a <c>T[]</c>
+    /// element's named-type identity for <see cref="Symbol.ArrayDescriptor"/> — nested
+    /// arrays/function types have no direct name here and resolve their own kind instead.
     /// </summary>
     private string? TryGetNamedStructTypeName(TypeRef typeRef) {
         if (typeRef is ArrayTypeRef or FunctionTypeRef) return null;
@@ -778,7 +891,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// </summary>
     private void FinalizeTopLevelBinding(
         string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode, SourceRange range,
-        FunctionTypeDescriptor? functionDescriptor = null) {
+        FunctionTypeDescriptor? functionDescriptor = null, ArrayTypeDescriptor? arrayDescriptor = null) {
         // Sprint 8 Increment E: 'formatAs' is both a reserved identifier (E1103, D-320) and
         // a pre-registered NamespaceDecl symbol (D-342) — the first reserved identifier to
         // be a namespace ('select' is reserved but not a namespace). Skipping the collision
@@ -791,7 +904,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
                 range);
             return;
         }
-        RegisterSymbol(name, type, declaredAt, declarationNode, typeIdentity: new(FunctionDescriptor: functionDescriptor));
+        RegisterSymbol(name, type, declaredAt, declarationNode,
+            typeIdentity: new(functionDescriptor, ArrayDescriptor: arrayDescriptor));
     }
 
     /// <summary>

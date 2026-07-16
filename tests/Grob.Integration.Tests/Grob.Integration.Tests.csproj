@@ -112,6 +112,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 9 Increment A — array-indexer emission fix fixtures. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-9a\*.grob"
+             Link="fixtures\sprint-9a\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>

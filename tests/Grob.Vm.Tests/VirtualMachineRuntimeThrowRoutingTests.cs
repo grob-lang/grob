@@ -181,6 +181,57 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         }, "IndexError", "out of range");
     }
 
+    /// <summary>
+    /// Sprint 9 Increment A (D-348): the D-334 finally partition holds for a
+    /// bounds throw exactly as it does for the ArithmeticError example proven
+    /// generically below (<see cref="CaughtRoutedError_HandlerCompletesNormally_RunsFinallyOnce"/>) —
+    /// a <c>finally</c> around an out-of-range <see cref="OpCode.GetIndex"/> runs
+    /// exactly once, proving the array-index fault site correctly threads the
+    /// finally-boundary parameters through <c>TryRaiseRuntimeGrobError</c>, not
+    /// just that the mechanism works for some fault site.
+    /// </summary>
+    [Fact]
+    public void Catch_IndexError_WithFinally_RunsFinallyExactlyOnce() {
+        var script = new Chunk();
+        int counterName = script.AddConstant(GrobValue.FromString("ran"));
+        int zero0 = script.AddConstant(GrobValue.FromInt(0));
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)zero0, 1);
+        script.WriteOpCode(OpCode.DefineGlobal, 1); script.WriteByte((byte)counterName, 1);
+
+        int regionIndex = script.AddTryRegion();
+        script.WriteOpCode(OpCode.TryBegin, 2); script.WriteByte((byte)regionIndex, 2);
+        int startOffset = script.Count;
+
+        var arr = new GrobArray([GrobValue.FromInt(10)]);
+        int arrConst = script.AddConstant(GrobValue.FromArray(arr));
+        int idxConst = script.AddConstant(GrobValue.FromInt(5));
+        script.WriteOpCode(OpCode.Constant, 3); script.WriteByte((byte)arrConst, 3);
+        script.WriteOpCode(OpCode.Constant, 3); script.WriteByte((byte)idxConst, 3);
+        script.WriteOpCode(OpCode.GetIndex, 3);
+        int endOffset = script.Count;
+
+        script.WriteOpCode(OpCode.Jump, 3);
+        int jumpSite = script.Count;
+        script.WriteByte(0xFF, 3); script.WriteByte(0xFF, 3);
+
+        int handlerOffset = script.Count; // empty catch body — binds at slot 0
+
+        PatchJump16(script, jumpSite);
+        int finallyOffset = script.Count;
+        EmitIncrementGlobalCounter(script, counterName, 4);
+
+        script.WriteOpCode(OpCode.TryEnd, 5);
+        script.WriteOpCode(OpCode.Return, 5);
+
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
+            [new CatchHandler(["IndexError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset));
+
+        var (vm, _) = NewVm();
+        vm.Run(script);
+
+        Assert.Equal(1L, vm.Globals["ran"].AsInt());
+    }
+
     [Fact]
     public void Catch_NilError_GetIndexOnNil_CatchesAndResumes() {
         AssertCaughtAndResumes(script => {
@@ -188,6 +239,90 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
             script.WriteOpCode(OpCode.Nil, 2);
             script.WriteOpCode(OpCode.Constant, 2); script.WriteByte((byte)idxConst, 2);
             script.WriteOpCode(OpCode.GetIndex, 2);
+        }, "NilError", "nil dereference");
+    }
+
+    /// <summary>
+    /// Sprint 9 Increment A2 (D-350): the write-side companion to
+    /// <see cref="Catch_IndexError_ArrayOutOfRange_CatchesAndResumes"/> — an out-of-range
+    /// <see cref="OpCode.SetIndex"/> raises the same <c>IndexError</c> through the same
+    /// D-334 handler table via the existing <c>E5101</c>, not a bespoke path.
+    /// </summary>
+    [Fact]
+    public void Catch_IndexError_SetIndexArrayOutOfRange_CatchesAndResumes() {
+        AssertCaughtAndResumes(script => {
+            var arr = new GrobArray([GrobValue.FromInt(10)]);
+            int arrConst = script.AddConstant(GrobValue.FromArray(arr));
+            int idxConst = script.AddConstant(GrobValue.FromInt(5));
+            int valueConst = script.AddConstant(GrobValue.FromInt(1));
+            script.WriteOpCode(OpCode.Constant, 2); script.WriteByte((byte)arrConst, 2);
+            script.WriteOpCode(OpCode.Constant, 2); script.WriteByte((byte)idxConst, 2);
+            script.WriteOpCode(OpCode.Constant, 2); script.WriteByte((byte)valueConst, 2);
+            script.WriteOpCode(OpCode.SetIndex, 2);
+        }, "IndexError", "out of range");
+    }
+
+    /// <summary>
+    /// The write-side companion to
+    /// <see cref="Catch_IndexError_WithFinally_RunsFinallyExactlyOnce"/> — a
+    /// <c>finally</c> around an out-of-range <see cref="OpCode.SetIndex"/> runs exactly
+    /// once too, proving the write fault site threads the same finally-boundary
+    /// parameters through <c>TryRaiseRuntimeGrobError</c>.
+    /// </summary>
+    [Fact]
+    public void Catch_IndexError_SetIndexWithFinally_RunsFinallyExactlyOnce() {
+        var script = new Chunk();
+        int counterName = script.AddConstant(GrobValue.FromString("ran"));
+        int zero0 = script.AddConstant(GrobValue.FromInt(0));
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)zero0, 1);
+        script.WriteOpCode(OpCode.DefineGlobal, 1); script.WriteByte((byte)counterName, 1);
+
+        int regionIndex = script.AddTryRegion();
+        script.WriteOpCode(OpCode.TryBegin, 2); script.WriteByte((byte)regionIndex, 2);
+        int startOffset = script.Count;
+
+        var arr = new GrobArray([GrobValue.FromInt(10)]);
+        int arrConst = script.AddConstant(GrobValue.FromArray(arr));
+        int idxConst = script.AddConstant(GrobValue.FromInt(5));
+        int valueConst = script.AddConstant(GrobValue.FromInt(1));
+        script.WriteOpCode(OpCode.Constant, 3); script.WriteByte((byte)arrConst, 3);
+        script.WriteOpCode(OpCode.Constant, 3); script.WriteByte((byte)idxConst, 3);
+        script.WriteOpCode(OpCode.Constant, 3); script.WriteByte((byte)valueConst, 3);
+        script.WriteOpCode(OpCode.SetIndex, 3);
+        int endOffset = script.Count;
+
+        script.WriteOpCode(OpCode.Jump, 3);
+        int jumpSite = script.Count;
+        script.WriteByte(0xFF, 3); script.WriteByte(0xFF, 3);
+
+        int handlerOffset = script.Count; // empty catch body — binds at slot 0
+
+        PatchJump16(script, jumpSite);
+        int finallyOffset = script.Count;
+        EmitIncrementGlobalCounter(script, counterName, 4);
+
+        script.WriteOpCode(OpCode.TryEnd, 5);
+        script.WriteOpCode(OpCode.Return, 5);
+
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
+            [new CatchHandler(["IndexError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset));
+
+        var (vm, _) = NewVm();
+        vm.Run(script);
+
+        Assert.Equal(1L, vm.Globals["ran"].AsInt());
+    }
+
+    /// <summary>The write-side companion to <see cref="Catch_NilError_GetIndexOnNil_CatchesAndResumes"/>.</summary>
+    [Fact]
+    public void Catch_NilError_SetIndexOnNil_CatchesAndResumes() {
+        AssertCaughtAndResumes(script => {
+            int idxConst = script.AddConstant(GrobValue.FromInt(0));
+            int valueConst = script.AddConstant(GrobValue.FromInt(1));
+            script.WriteOpCode(OpCode.Nil, 2);
+            script.WriteOpCode(OpCode.Constant, 2); script.WriteByte((byte)idxConst, 2);
+            script.WriteOpCode(OpCode.Constant, 2); script.WriteByte((byte)valueConst, 2);
+            script.WriteOpCode(OpCode.SetIndex, 2);
         }, "NilError", "nil dereference");
     }
 

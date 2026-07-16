@@ -51,9 +51,11 @@ public enum GrobType {
     // ---- Collection types — Sprint 4 Increment C (for...in iteration surface) ----
 
     /// <summary>
-    /// Array — the Grob <c>array</c> type. Element type tracking awaits generics
-    /// (Sprint 5); for now this is the unparameterised array tag the <c>for...in</c>
-    /// lowering reads to select the array iteration shape.
+    /// Array — the Grob <c>array</c> type. This flat tag stays unparameterised — it is
+    /// the <c>for...in</c> lowering's iteration-shape selector — but the checker carries
+    /// the element type alongside it in an <c>ArrayTypeDescriptor</c> (D-351), mirroring
+    /// how <see cref="Function"/>'s structural shape is carried in a
+    /// <c>FunctionTypeDescriptor</c> rather than in this enum.
     /// </summary>
     Array,
 
@@ -85,8 +87,9 @@ public enum GrobType {
 
     /// <summary>
     /// Nullable array — the Grob <c>T[]?</c> type. Nil is assignable;
-    /// a non-nullable <c>array</c> value widens to this slot. Element-type
-    /// tracking awaits generics (Sprint 5); the tag is the compile-time marker only.
+    /// a non-nullable <c>array</c> value widens to this slot. Carries an element type
+    /// the same way <see cref="Array"/> does (D-351) — via an <c>ArrayTypeDescriptor</c>
+    /// alongside this flat tag, not on the tag itself.
     /// </summary>
     NullableArray,
 
