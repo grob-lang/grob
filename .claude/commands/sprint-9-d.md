@@ -41,6 +41,21 @@ Read, in order:
    indexer builds on). Grep for the next-free D-number for the `mapAs<T>` decision (this
    prompt provisionally names it **D-349**, extending D-080).
 
+> **Dependency-invariant check first — confirm the footing before building.** This
+> increment leans on two invariants from earlier features that the array gap (A2/A3) has
+> taught us not to assume. Verify both against the **code**, not the corpus, before any
+> edit — the corpus can read clean while the invariant was never carried:
+> - **Struct field typing (the array gap's twin).** `mapAs<Config>()` coerces a
+>   `json.Node` into a struct's **individually typed** fields. Confirm the struct
+>   `GrobType` carries each field's name **and** type in a checkable form — the exact
+>   invariant arrays lacked for elements. If A3's Phase 1 already reported this, read that
+>   finding; if it is uncarried or unchecked, `mapAs<Config>()` breaks the same way the A2
+>   write check did — **stop and surface** before building the coercion on sand.
+> - **Nullable inner-type tracking.** `node["key"]` returns `json.Node?` and will be
+>   chained (`node["a"]?["b"]`, `?? default`). Confirm `?.`/`??` preserve the **inner**
+>   type precisely, so the chain types as `json.Node?` throughout and the coalesced result
+>   types correctly. If the inner type is lost to `any`/unknown, surface it.
+>
 > **Verify before relying on cited decisions and sections.** Grep the `json`/`json.Node`
 > sections, the type-registry constrained-generics prose, and the three error codes. If a
 > signature has moved or a code is absent where assumed, surface it — do not invent a
