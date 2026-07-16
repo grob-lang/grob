@@ -83,19 +83,42 @@ public sealed partial class TypeChecker {
             // Resolve the parameter type with its structural descriptor so a function-type
             // parameter default (action: fn(): int = () => "s") is checked structurally,
             // not merely as fn-to-fn (D-326; Fix H).
-            (GrobType paramType, _, FunctionTypeDescriptor? paramDesc, _) =
+            (GrobType paramType, string? paramStructName, FunctionTypeDescriptor? paramDesc, ArrayTypeDescriptor? paramArrayDesc) =
                 p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null, null);
-            FunctionTypeDescriptor? defaultDesc = ExpressionDescriptor(p.DefaultValue);
-            bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
-            bool compatible = isFunctionParam
-                ? TypesAreAssignable(defaultType, paramType, defaultDesc, paramDesc)
-                : TypesAreAssignable(defaultType, paramType);
-            if (paramType != GrobType.Unknown && defaultType != GrobType.Error && !compatible) {
+            if (paramType != GrobType.Unknown && defaultType != GrobType.Error &&
+                    !IsParameterDefaultCompatible(paramType, paramStructName, paramDesc, paramArrayDesc, defaultType, p.DefaultValue)) {
                 EmitError(ErrorCatalog.E0004,
                     $"Default value for parameter '{p.Name}' has type '{TypeName(defaultType)}', which is not assignable to '{TypeName(paramType)}'.",
                     p.DefaultValue.Range);
             }
         }
+    }
+
+    /// <summary>
+    /// Reports whether a parameter default's value (<paramref name="defaultValue"/>, already
+    /// known to have <paramref name="defaultType"/>) may be assigned to the parameter's
+    /// declared type — flat kind, then structural function descriptor (D-326), array element
+    /// type (D-351), and struct nominal identity in turn. Mirrors
+    /// <see cref="IsFieldValueCompatible"/> and the argument-side check in <c>VisitCall</c>;
+    /// split from <see cref="CheckParameterDefaults"/> to keep that method under the
+    /// analyser's cognitive-complexity bar.
+    /// </summary>
+    private bool IsParameterDefaultCompatible(
+            GrobType paramType, string? paramStructName, FunctionTypeDescriptor? paramDesc,
+            ArrayTypeDescriptor? paramArrayDesc, GrobType defaultType, Expression defaultValue) {
+        bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
+        bool isArrayParam = paramType == GrobType.Array || paramType == GrobType.NullableArray;
+        bool compatible = isFunctionParam
+            ? TypesAreAssignable(defaultType, paramType, ExpressionDescriptor(defaultValue), paramDesc)
+            : TypesAreAssignable(defaultType, paramType);
+        if (compatible && isArrayParam &&
+                !ArrayElementAssignable(ArrayDescriptorOf(defaultValue), paramArrayDesc)) {
+            compatible = false;
+        }
+        if (compatible && IsStructNominalMismatch(paramType, paramStructName, defaultValue)) {
+            compatible = false;
+        }
+        return compatible;
     }
 
     /// <inheritdoc/>

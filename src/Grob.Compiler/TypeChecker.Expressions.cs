@@ -1476,11 +1476,49 @@ public sealed partial class TypeChecker {
                 continue;
             }
 
-            elementKind = UnifyArrayElementType(elementKind, elemType, element.Range);
+            GrobType unified = UnifyArrayElementType(elementKind, elemType, element.Range);
+            // A matching flat kind is not sufficient identity for structs and nested arrays:
+            // [A{}, B{}] and [[1], ["a"]] both share a flat kind (Struct, Array) yet differ
+            // nominally / structurally. Reject those so a T[] literal cannot smuggle a U
+            // element (D-351). Only checked when the flat unify itself did not already fail.
+            if (unified != GrobType.Error) {
+                CheckArrayElementIdentity(unified, elementNamedTypeName, elementArrayDescriptor, element);
+            }
+            elementKind = unified;
         }
 
         _arrayLiteralDescriptors[node] = new ArrayTypeDescriptor(elementKind, elementNamedTypeName, elementArrayDescriptor);
         return GrobType.Array;
+    }
+
+    /// <summary>
+    /// Enforces that an array-literal element beyond the first shares not just the running
+    /// flat element kind (already unified by <see cref="UnifyArrayElementType"/>) but the
+    /// running <em>identity</em> — the same named struct for a <c>Struct</c> element, and a
+    /// compatible nested descriptor for an <c>Array</c> element (<c>T[][]</c>). Emits E0001
+    /// on a mismatch. Split out to keep <see cref="VisitArrayLiteral"/> under the analyser's
+    /// cognitive-complexity bar.
+    /// </summary>
+    private void CheckArrayElementIdentity(
+            GrobType elementKind, string? runningNamedTypeName, ArrayTypeDescriptor? runningArrayDescriptor, Expression element) {
+        if (elementKind is GrobType.Struct or GrobType.NullableStruct && runningNamedTypeName is not null) {
+            string? elementName = GetStructTypeName(element);
+            if (elementName is not null && !string.Equals(elementName, runningNamedTypeName, StringComparison.Ordinal)) {
+                EmitError(ErrorCatalog.E0001,
+                    $"Array literal elements must share a type; found '{runningNamedTypeName}' and '{elementName}'.",
+                    element.Range);
+            }
+            return;
+        }
+
+        if (elementKind is GrobType.Array or GrobType.NullableArray && runningArrayDescriptor is not null) {
+            ArrayTypeDescriptor? elementDescriptor = ArrayDescriptorOf(element);
+            if (elementDescriptor is not null && !ArrayElementAssignable(elementDescriptor, runningArrayDescriptor)) {
+                EmitError(ErrorCatalog.E0001,
+                    "Array literal elements must share a nested element type.",
+                    element.Range);
+            }
+        }
     }
 
     /// <summary>
