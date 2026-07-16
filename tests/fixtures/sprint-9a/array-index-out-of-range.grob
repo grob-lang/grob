@@ -1,0 +1,8 @@
+// Sprint 9 Increment A — unhandled out-of-range arr[i] read. Proves the
+// bounds check the VM's GetIndex handler already had (raising IndexError via
+// the existing E5101) is actually reachable now that a real .grob script can
+// compile an index expression at all, and that it produces the quality
+// top-level diagnostic with exit code 1.
+
+arr := [10, 20, 30]
+print(arr[99])

@@ -1,0 +1,15 @@
+// Sprint 9 Increment A — the D-345 array-indexer emission fix, end to end
+// through the full pipeline: lex -> parse -> type-check -> compile -> VM.
+// Before this increment, arr[i] compiled to nothing (no VisitIndex override)
+// and crashed the VM with a stack underflow; this is the regression proof
+// that a real .grob script indexing an array now runs correctly. Also
+// exercises matrix[r][c] (D-112 multi-dimensional, chained index reads).
+
+arr := [10, 20, 30]
+print(arr[0])
+print(arr[1])
+print(arr[2])
+
+matrix := [[1, 2], [3, 4]]
+print(matrix[0][1])
+print(matrix[1][0])

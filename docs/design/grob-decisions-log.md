@@ -343,6 +343,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-345 | July 2026                                                         | Compiler / Runtime — `formatAs` module | Sprint 8 Increment E lands `formatAs` (`table`/`list`/`csv`). Corrects this increment's kickoff prompt, which again cited non-existent "D-339" (see D-344's identical correction) — the governing decision is D-342, whose E1003/E1004 the two namespace-misuse diagnostics (bare `.formatAs`; unknown `.formatAs.X`) fold into with `formatAs`-specific message text. `formatAs` registers as a namespace **name** only (empty `NamespaceRegistry` member dict); its three members bypass the generic `ConstantMember`/`NativeMember` dispatch entirely for bespoke resolution (`ResolveFormatAsCall`), since compile-time column derivation and the chained-form rewrite don't fit the positional native model. The chained-form rewrite (`items.formatAs.table()` → `formatAs.table(items)`) is shared resolution over a pattern-matched AST shape, not a literal node substitution — `CallExpr`/`MemberAccessExpr` are immutable records, so both the checker's and the (necessarily separately-implemented) compiler's `TryDetectFormatAsChainReceiver` independently re-derive the chain shape, mirroring the existing `math.pi` namespace-receiver precedent. Compile-time column derivation is a bounded, `formatAs`-scoped peek (`GetArrayElementFieldNames`/`GetStructFieldNames`) covering array literals, `.select`/`.filter`/`.sort` chains and indexed elements — not a general array-element-type system; one new `Symbol.ArrayElementStructTypeName` field (parameters only) plugs the one real gap found (`ResolveSignatureType`'s `ArrayTypeRef` arm previously discarded the element's struct name entirely). The compiler always injects the derived columns as a synthesised second constant-array argument (`OpCode.NewArray`, no new opcode), so `FormatAsPlugin`'s three natives keep a fixed arity of 2 regardless of source overload. A new `IPluginRegistrar.RenderValue` capability lets `Grob.Stdlib` (which cannot reference `Grob.Vm`) render cells through the VM's real, registry-backed `ValueDisplay` (D-336) rather than a `NullRegistry`-backed one that would miss `guid`'s registered `toString()`. A real regression was caught and fixed in the same change: `formatAs` is the first reserved identifier (D-320) that is also a pre-registered namespace symbol, so `formatAs := 1` doubled up E1103 with a spurious E1102 until `FinalizeTopLevelBinding`/`VisitVarDecl` were taught to skip the collision check for a reserved name. Array indexing (`arr[i]`) was found to have no compiler emission at all (crashes the VM with or without this change) — confirmed pre-existing and out of scope; `formatAs` on an indexed element is verified at the type-checker level only. No new error code (E0004/E0011/E1003/E1004 all pre-existing; confirmed via `allocating-an-error-code`); count unchanged at 117 |
 | D-346 | July 2026                                                         | Tooling — benchmarking        | Sprint 8 close: the stability-test calibration ritual runs against the six Sprint-8-runnable scripts (five smoke scripts + `stdlib.grob`), not "all thirteen" (§6) — every one of `grob-sample-scripts.md`'s scripts depends on a Sprint-9 module or an unbuilt plugin; the full-suite run becomes a v1 release-gate step. Surfaces, rather than silently fixes, that the "thirteen" count itself is stale — the file has only ever held eleven scripts, and D-283 (predating D-302) already called it eleven. A longer checkpoint sweep found a one-time cache/registry warm-up step between iteration 1000–2000, not a leak; locked `iterations: 10000, warmup: 2000, tolerancePercent: 2.0`, first passing run at 0.0% drift (190,456 B both ends). `Grob.Benchmarks` now references `Grob.Cli`, driving the stability loop through `RunCommand` rather than re-implementing capability wiring — a documented deviation from §3's literal assembly list. No new error code; count unchanged at 117 |
 | D-347 | July 2026                                                         | Tooling — benchmarking        | Compile-time baseline recapture: the rolling `compile.json` time axis is folded forward to the post-Sprint-8 floor. `RegisterNamespaces` (D-342) unconditionally seeds all seven core-module namespaces into every compile's global scope — a fixed cost every compile now pays, hitting the tiny `Compile_TwoExpressions` benchmark hardest (+5.8% rolling, a genuine same-CPU breach, not `vm`'s CPU-mismatch noise). The allocation half of this same regression was already fixed once (`NamespaceRegistry`'s static object caching, landed in the Sprint 8 QA pass); this entry performs the equivalent time-axis recapture, mirroring D-338→D-341's ship-then-recapture precedent. `benchmark.yml` run 29399169091's report replaces `compile.json` wholesale (no local run ever committed as a baseline, D-309); `BenchCheck` now reads 0.0% delta. `compile.origin.json` untouched — still CPU-mismatched against the frozen Intel Xeon origin per D-333. No new error code; count unchanged at 117 |
+| D-348 | July 2026                                                         | Compiler — expression emission | Sprint 9 Increment A lands the missing `VisitIndex` override (D-345's surfaced gap): `arr[i]` compiled to nothing at all (`AstVisitor<T>.VisitIndex`'s default fell through to `Compiler`'s no-op `DefaultVisit`), crashing the VM with a stack underflow. The fix emits the receiver, the index expression, then the existing `OpCode.GetIndex` — the opcode itself, its bounds-checked array arm and nil-on-miss map arm, and the D-334 handler-table routing of an out-of-range read through the existing `E5101`/`IndexError` leaf (D-284) were already implemented at the VM layer, reachable only via `for...in` lowering until now. One emission shape covers array and map reads and chained indexing (`matrix[r][c]`, D-112) via `IndexExpr` nesting — no opcode, `GrobValueKind`, parser or AST change. Array element **write** (`arr[i] = v`) is a confirmed, separately pre-existing gap (`Compiler.Statements.cs`'s deferred-index-target early-return, unchanged), left deferred since Sprint 9's `json`/`csv` indexer consumers are read-only. §3.1.1's `ResolvedType`/`Declaration` invariant scopes to identifier nodes only — `IndexExpr` carries neither property and none is added; an identifier used as an index target still gets both set via the pre-existing `VisitIdentifier` path. No new error code; count unchanged at 118 |
+| D-349 | July 2026                                                         | Process — decisions-log reconciliation (append-only) | Append-only landing record for Sprint 8 Increment D's `guid` module, which shipped `E0601` (invalid `guid` string literal, the first E06xx entry, source D-149) without a matching decisions-log entry — so D-345 and D-346, both logged afterwards, still read "count unchanged at 117" against `grob-error-codes.md`'s footer, which already correctly recorded 118. D-345 and D-346 are left unedited (append-only); this entry is the missing landing record and the pointer that reconciles the log's own narrative count to the registry's true, already-live total. No new error code; count unchanged at 118 |
 
 ---
 
@@ -4841,6 +4843,93 @@ No new error code; count unchanged at 117.
 
 ---
 
+### D-348 — Array-indexer read emission: the missing `VisitIndex` override, `arr[i]` and `matrix[r][c]` now compile (July 2026)
+
+Area: Compiler — expression emission
+Supersedes: none
+Superseded by: none
+Refines: D-345
+
+**The decision.** Sprint 9 Increment A adds `VisitIndex` to `Compiler.Expressions.cs` —
+the missing override D-345 surfaced but explicitly left out of scope. Before this entry
+`arr[i]` had **no compiler emission at all**: `AstVisitor<T>.VisitIndex`'s default
+implementation falls through to `Compiler`'s `DefaultVisit`, which returns `null` and
+emits nothing, so any script indexing an array crashed the VM with a stack underflow
+regardless of whether the index was in bounds. The fix is a single two-line visitor
+body: emit the receiver (`node.Target`), emit the index expression (`node.Index`), then
+the existing `OpCode.GetIndex` — the same value-stack discipline every other expression
+visitor follows, over an opcode that already existed and needed no change.
+
+**Nothing new at the VM layer.** `GetIndex`'s handler in `VirtualMachine.cs` already
+implemented both arms — an array receiver bounds-checks and raises `IndexError` via the
+existing `E5101` (D-284) through the D-334 handler table (`TryRaiseRuntimeGrobError`,
+catchable by `try`/`catch`, running any enclosing `finally` exactly once, and producing
+the quality top-level diagnostic plus exit 1 when unhandled); a map receiver returns
+nil-on-miss. That handler predates this fix and was reachable only via `for...in`
+lowering (`Compiler.ControlFlow.cs`, which emits `GetIndex` directly as part of its
+`while`-lowering), never via a direct index expression in user source — so this entry's
+`VisitIndex` is the first thing that makes a real `.grob` script's `arr[i]` reach it at
+all. One emission shape covers both the array and the map arm (the VM dispatches on the
+runtime `GrobValue.Kind`, not anything the compiler decides), and covers chained
+indexing (`matrix[r][c]`, D-112's multi-dimensional syntax) for free: the parser already
+nests `IndexExpr(IndexExpr(matrix, r), c)`, so visiting the outer node's `Target`
+recursively re-enters `VisitIndex` for the inner one, emitting two `GetIndex`
+instructions in the correct order. No `OpCode` enum change, no `GrobValueKind` change,
+no parser or AST change.
+
+**Index-write remains deferred, confirmed rather than assumed.** The increment's verify
+step checked whether `arr[i] = v` (array element **write**) also lacks emission — it
+does: `Compiler.Statements.cs`'s `VisitAssignment` has an explicit early-return with the
+comment "Index targets are deferred (collections sprint)." This is left unchanged and
+deferred to a separate increment rather than folded in here, since Sprint 9's read-only
+indexer consumers (`json.Node["key"]`, Increment D; `csv`'s `row[name]`/`row[index]`,
+Increment E) need only the read path this entry lands.
+
+**§3.1.1 does not apply to `IndexExpr`.** The increment's own test list asked to assert
+a non-null `ResolvedType`/`Declaration` on "the index node" — checked directly against
+`grob-v1-requirements.md` §3.1.1, the invariant is scoped to **identifier nodes** only
+(`IdentifierExpr`, plus `StructConstructionExpr` and `SwitchExprNode`, which separately
+carry the same two properties for their own reasons). `IndexExpr` has neither property
+and this entry does not add them — no decision extends the invariant there. The real
+invariant is unaffected: an identifier used as an index target (`arr` in `arr[i]`)
+already gets `ResolvedType`/`Declaration` set correctly via the pre-existing
+`VisitIdentifier` path that `TypeChecker.VisitIndex` calls on `node.Target`.
+
+No new error code (E5101/E5102 both pre-existing, D-284); count unchanged at 118.
+
+---
+
+### D-349 — Reconciliation: Sprint 8 Increment D's guid `E0601` landing was never logged, running count corrected to 118 (July 2026)
+
+Area: Process — decisions-log reconciliation (append-only)
+Supersedes: none
+Superseded by: none
+Refines: D-149, D-345, D-346
+
+**The gap.** Sprint 8 Increment D landed the `guid` module's `E0601` (invalid `guid`
+string literal — the first entry in the previously empty E06xx sub-block of the Type
+category, source decision D-149), taking the true error-code count from 117 to 118.
+`grob-error-codes.md`'s three internal locations (summary index row, full entry, footer
+changelog note) were updated correctly at the time and the footer already states the
+true total of 118. But the landing was never captured as a decisions-log entry — no
+`D-###` records it — so **D-345** and **D-346**, both logged after `E0601` shipped,
+still read "count unchanged at 117", now stale against the registry's own footer.
+
+**The fix — append-only, not a correction of D-345/D-346.** Per the log's append-only
+discipline (the same discipline D-341 followed when it backfilled D-338's missing
+changelog line), D-345 and D-346's text is left exactly as written; this entry is the
+missing landing record, and the pointer future readers should follow to reconcile the
+log's own narrative count against `grob-error-codes.md`'s live total. As of this entry
+the decisions log's running count reads **118**, matching the registry — no code is
+added by this entry itself; `E0601` was already live in `ErrorCatalog` and counted by
+`Grob.Consistency.Tests`' `ErrorCodeCountTests` before this entry existed. This mirrors
+D-316's original purpose (a mechanical drift gate on the registry) being satisfied all
+along by the code; only the free-text decisions-log narrative had drifted.
+
+No new error code; count unchanged at 118.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -5062,7 +5151,26 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Compile-time baseline recapture: D-347 added. A `benchmark.yml` manual_
+_July 2026 — Sprint 9 Increment A: D-348 and D-349 added. D-348 lands the missing_
+_`VisitIndex` override in `Compiler.Expressions.cs` — `arr[i]` previously compiled to_
+_nothing at all (the default `AstVisitor<T>.VisitIndex` falls through to `Compiler`'s_
+_no-op `DefaultVisit`), crashing the VM with a stack underflow (D-345's surfaced gap)._
+_The fix emits the receiver, the index expression, then the existing `OpCode.GetIndex`;_
+_the opcode's bounds-checked array arm, nil-on-miss map arm, and its D-334 handler-table_
+_routing through the existing `E5101`/`IndexError` (D-284) were already implemented at_
+_the VM layer, reachable only via `for...in` lowering until now. Covers `matrix[r][c]`_
+_(D-112) via `IndexExpr` nesting for free. No opcode, `GrobValueKind`, parser or AST_
+_change. Array element write (`arr[i] = v`) is confirmed still deferred (a pre-existing,_
+_separate gap in `Compiler.Statements.cs`) and left for a future increment — Sprint 9's_
+_`json`/`csv` indexer consumers are read-only. §3.1.1's `ResolvedType`/`Declaration`_
+_invariant is confirmed scoped to identifier nodes only, not `IndexExpr` — no properties_
+_added. D-349 is an append-only reconciliation: Sprint 8 Increment D's `guid` module_
+_landed `E0601` (source D-149, count 117→118) with `grob-error-codes.md` updated_
+_correctly but no matching decisions-log entry, leaving D-345/D-346 reading a stale_
+_"count unchanged at 117". D-345/D-346 are left unedited; D-349 is the missing landing_
+_record, correcting the log's own running-count narrative to 118 to match the registry._
+_No new error code from either entry; count unchanged at 118._
+_Previous: July 2026 — Compile-time baseline recapture: D-347 added. A `benchmark.yml` manual_
 _run (29399169091, `main` @ 9419037, post-Sprint-8) failed the regression gate on_
 _`Compile_TwoExpressions` (+5.8% rolling) — a genuine same-CPU breach, not the `vm`_
 _category's CPU-mismatch noise seen in the same run. Root cause: D-342's_

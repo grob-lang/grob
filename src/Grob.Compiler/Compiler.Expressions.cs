@@ -180,6 +180,24 @@ public sealed partial class Compiler {
         return null;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Sprint 9 Increment A (D-345, D-348). Emits the receiver then the index
+    /// expression, then <see cref="OpCode.GetIndex"/> — the VM handler resolves
+    /// array (bounds-checked, <c>E5101</c> via the Sprint-7 handler table) versus
+    /// map (nil-on-miss) dynamically at runtime, so one emission shape covers both.
+    /// A chained form (<c>matrix[r][c]</c>) needs no special handling: the target
+    /// of the outer <see cref="IndexExpr"/> is itself an <see cref="IndexExpr"/>,
+    /// so visiting it re-enters this override and emits the inner <c>GetIndex</c>
+    /// first.
+    /// </remarks>
+    public override object? VisitIndex(IndexExpr node) {
+        Visit(node.Target);
+        Visit(node.Index);
+        _chunk.WriteOpCode(OpCode.GetIndex, node.Range.Start.Line);
+        return null;
+    }
+
     // -----------------------------------------------------------------------
     // Lambda expression  (Sprint 5 Increment C/D — categories 1–4)
     // -----------------------------------------------------------------------
