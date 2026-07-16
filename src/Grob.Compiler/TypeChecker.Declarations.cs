@@ -34,20 +34,14 @@ public sealed partial class TypeChecker {
             // A reserved identifier (formatAs, select) may not be a parameter name
             // (E1103, D-320).
             CheckReservedBindingName(p.Name, p.Range);
-            (GrobType paramType, string? paramStructName, FunctionTypeDescriptor? paramDesc) =
-                p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null);
-            // Sprint 8 Increment E: a T[]-annotated parameter's element struct name, for
-            // formatAs's compile-time column derivation — ResolveSignatureType's ArrayTypeRef
-            // arm does not carry it (see Symbol.ArrayElementStructTypeName).
-            string? paramArrayElementStructName = p.Type is ArrayTypeRef arrayParamType
-                ? TryGetNamedStructTypeName(arrayParamType.ElementType)
-                : null;
+            (GrobType paramType, string? paramStructName, FunctionTypeDescriptor? paramDesc, ArrayTypeDescriptor? paramArrayDesc) =
+                p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null, null);
             // Use the owning FnDecl as the declaring node — Parameter is not an AstNode.
-            // The struct name travels on the symbol itself (not recoverable from
-            // DeclarationNode alone) so a struct-typed parameter's fields resolve
-            // inside the function body the same way a `:=`-inferred struct local does.
+            // The struct name/array descriptor travel on the symbol itself (not recoverable
+            // from DeclarationNode alone) so a struct-typed or T[]-typed parameter resolves
+            // inside the function body the same way a `:=`-inferred local does.
             RegisterSymbol(p.Name, paramType, p.Range.Start, node,
-                typeIdentity: new(paramDesc, paramStructName, paramArrayElementStructName));
+                typeIdentity: new(paramDesc, paramStructName, paramArrayDesc));
         }
 
         // Track the declared return type so VisitReturn can check returned values
@@ -55,18 +49,21 @@ public sealed partial class TypeChecker {
         // _functionReturnDescriptors is pushed in lockstep for function-type returns (D-326).
         // _functionReturnStructNames is pushed in lockstep for named-struct returns
         // (fix/compiler-struct-nominal-identity, Site C) — never pushed for a lambda, see
-        // that stack's declaration comment.
-        (GrobType returnKind, string? returnStructName, FunctionTypeDescriptor? returnDesc) =
+        // that stack's declaration comment. _functionReturnArrayDescriptors mirrors it for
+        // T[] returns (D-351).
+        (GrobType returnKind, string? returnStructName, FunctionTypeDescriptor? returnDesc, ArrayTypeDescriptor? returnArrayDesc) =
             ResolveSignatureType(node.ReturnType);
         _functionReturnTypes.Push(returnKind);
         _functionReturnDescriptors.Push(returnDesc);
         _functionReturnStructNames.Push(returnStructName);
+        _functionReturnArrayDescriptors.Push(returnArrayDesc);
         _controlFrameFloors.Push(_controlFrames.Count);
         Visit(node.Body);
         _controlFrameFloors.Pop();
         _functionReturnTypes.Pop();
         _functionReturnDescriptors.Pop();
         _functionReturnStructNames.Pop();
+        _functionReturnArrayDescriptors.Pop();
 
         _scopes.Pop();
         return GrobType.Unknown;
@@ -86,8 +83,8 @@ public sealed partial class TypeChecker {
             // Resolve the parameter type with its structural descriptor so a function-type
             // parameter default (action: fn(): int = () => "s") is checked structurally,
             // not merely as fn-to-fn (D-326; Fix H).
-            (GrobType paramType, _, FunctionTypeDescriptor? paramDesc) =
-                p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null);
+            (GrobType paramType, _, FunctionTypeDescriptor? paramDesc, _) =
+                p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null, null);
             FunctionTypeDescriptor? defaultDesc = ExpressionDescriptor(p.DefaultValue);
             bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
             bool compatible = isFunctionParam
@@ -123,9 +120,10 @@ public sealed partial class TypeChecker {
             }
 
             // Resolve the field's type annotation through the full §9 grammar.
-            (GrobType kind, string? namedTypeName, FunctionTypeDescriptor? fnDesc) = ResolveFieldAnnotationType(field.Type);
+            (GrobType kind, string? namedTypeName, FunctionTypeDescriptor? fnDesc, ArrayTypeDescriptor? arrayDesc) =
+                ResolveFieldAnnotationType(field.Type);
             bool isRequired = field.DefaultValue is null;
-            resolvedFields.Add(new ResolvedFieldInfo(field.Name, kind, namedTypeName, field.Range, isRequired, fnDesc));
+            resolvedFields.Add(new ResolvedFieldInfo(field.Name, kind, namedTypeName, field.Range, isRequired, fnDesc, arrayDesc));
         }
 
         // Type-check field default expressions and flag sibling-field references (E0013).
@@ -155,7 +153,10 @@ public sealed partial class TypeChecker {
             string? namedTypeName = (valueType == GrobType.Struct || valueType == GrobType.AnonStruct)
                 ? GetFieldValueStructTypeName(fi.Value)
                 : null;
-            resolvedFields.Add(new ResolvedFieldInfo(fi.Name, valueType, namedTypeName, fi.Range, IsRequired: true));
+            ArrayTypeDescriptor? arrayDesc = valueType is GrobType.Array or GrobType.NullableArray
+                ? ArrayDescriptorOf(fi.Value)
+                : null;
+            resolvedFields.Add(new ResolvedFieldInfo(fi.Name, valueType, namedTypeName, fi.Range, IsRequired: true, ArrayDescriptor: arrayDesc));
         }
 
         // Build the canonical structural signature: sorted field-name:GrobType pairs.
@@ -293,22 +294,36 @@ public sealed partial class TypeChecker {
         foreach (FieldInit fi in fields) {
             GrobType valueType = Visit(fi.Value);
             ResolvedFieldInfo? fieldInfo = typeInfo.Fields.FirstOrDefault(f => f.Name == fi.Name);
-            if (fieldInfo is not null && fieldInfo.Kind != GrobType.Unknown && valueType != GrobType.Error) {
-                bool isFunctionField = fieldInfo.Kind == GrobType.Function || fieldInfo.Kind == GrobType.NullableFunction;
-                FunctionTypeDescriptor? valueDesc = ExpressionDescriptor(fi.Value);
-                bool compatible = isFunctionField
-                    ? TypesAreAssignable(valueType, fieldInfo.Kind, valueDesc, fieldInfo.FunctionDescriptor)
-                    : TypesAreAssignable(valueType, fieldInfo.Kind);
-                if (compatible && IsStructNominalMismatch(fieldInfo.Kind, fieldInfo.NamedTypeName, fi.Value)) {
-                    compatible = false;
-                }
-                if (!compatible) {
-                    EmitError(ErrorCatalog.E0001,
-                        $"Cannot assign value of type '{TypeName(valueType)}' to field '{fi.Name}' of type '{TypeName(fieldInfo.Kind)}'.",
-                        fi.Value.Range);
-                }
+            if (fieldInfo is not null && fieldInfo.Kind != GrobType.Unknown && valueType != GrobType.Error &&
+                    !IsFieldValueCompatible(fieldInfo, valueType, fi.Value)) {
+                EmitError(ErrorCatalog.E0001,
+                    $"Cannot assign value of type '{TypeName(valueType)}' to field '{fi.Name}' of type '{TypeName(fieldInfo.Kind)}'.",
+                    fi.Value.Range);
             }
         }
+    }
+
+    /// <summary>
+    /// Reports whether <paramref name="valueExpr"/>'s value (already known to have
+    /// <paramref name="valueType"/>) may be assigned to <paramref name="fieldInfo"/>'s
+    /// declared field type — flat kind, then structural function descriptor (D-326),
+    /// array element type (D-351), and struct nominal identity in turn. Split from
+    /// <see cref="TypeCheckFieldValues"/> to keep that method's cognitive complexity
+    /// under the analyser bar.
+    /// </summary>
+    private bool IsFieldValueCompatible(ResolvedFieldInfo fieldInfo, GrobType valueType, Expression valueExpr) {
+        bool isFunctionField = fieldInfo.Kind == GrobType.Function || fieldInfo.Kind == GrobType.NullableFunction;
+        bool isArrayField = fieldInfo.Kind == GrobType.Array || fieldInfo.Kind == GrobType.NullableArray;
+        bool compatible = isFunctionField
+            ? TypesAreAssignable(valueType, fieldInfo.Kind, ExpressionDescriptor(valueExpr), fieldInfo.FunctionDescriptor)
+            : TypesAreAssignable(valueType, fieldInfo.Kind);
+        if (compatible && isArrayField && !ArrayElementAssignable(ArrayDescriptorOf(valueExpr), fieldInfo.ArrayDescriptor)) {
+            compatible = false;
+        }
+        if (compatible && IsStructNominalMismatch(fieldInfo.Kind, fieldInfo.NamedTypeName, valueExpr)) {
+            compatible = false;
+        }
+        return compatible;
     }
 
     /// <summary>
@@ -408,13 +423,16 @@ public sealed partial class TypeChecker {
     /// pass-1 registration (D-166). An unknown name emits E1001; a name that resolves
     /// to a non-type symbol also emits E1001.
     /// </remarks>
-    private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor)
+    private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor, ArrayTypeDescriptor? ArrayDescriptor)
         ResolveFieldAnnotationType(TypeRef typeRef) {
         // Array suffix: T[] or T[]? — cycle walk terminates at array fields (§17.1).
-        // Still validate the element type so that Missing[] emits E1001.
+        // Still validate the element type so that Missing[] emits E1001. The element's
+        // descriptor (D-351) is resolved separately via ResolveArrayElementDescriptor,
+        // which is quiet (no diagnostic) — the validation above already covers E1001.
         if (typeRef is ArrayTypeRef arr) {
             ResolveFieldAnnotationType(arr.ElementType);
-            return (arr.IsNullable ? GrobType.NullableArray : GrobType.Array, null, null);
+            return (arr.IsNullable ? GrobType.NullableArray : GrobType.Array, null, null,
+                ResolveArrayElementDescriptor(arr.ElementType));
         }
 
         // Function type: fn(T…): R or (fn(T…): R)? — erased at runtime (D-326).
@@ -426,7 +444,7 @@ public sealed partial class TypeChecker {
                 ResolveFieldAnnotationType(param);
             ResolveFieldAnnotationType(fnRef.ReturnType);
             (GrobType kind, FunctionTypeDescriptor? fnDesc) = ResolveTypeRefFull(typeRef);
-            return (kind, null, fnDesc);
+            return (kind, null, fnDesc, null);
         }
 
         // Plain named type reference. Check built-ins first, then user-defined.
@@ -437,7 +455,7 @@ public sealed partial class TypeChecker {
         };
 
         return builtin != GrobType.Unknown
-            ? (builtin, null, null)
+            ? (builtin, null, null, null)
             : ResolveNamedFieldType(typeRef);
     }
 
@@ -446,7 +464,7 @@ public sealed partial class TypeChecker {
     /// user-defined <c>type</c>. Split from <see cref="ResolveFieldAnnotationType"/> to
     /// keep that method's cognitive complexity under the analyser bar.
     /// </summary>
-    private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor)
+    private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor, ArrayTypeDescriptor? ArrayDescriptor)
             ResolveNamedFieldType(TypeRef typeRef) {
         // Sprint 8 Increment D: guid is a primitive type distinct from string, but its
         // symbol is a NamespaceDecl (D-342), not a TypeDecl — it is never constructed via
@@ -455,7 +473,7 @@ public sealed partial class TypeChecker {
         // in ResolveSignatureType (TypeChecker.cs) for the field-annotation position.
         if (typeRef.Name == "guid") {
             GrobType guidKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-            return (guidKind, "guid", null);
+            return (guidKind, "guid", null, null);
         }
 
         // User-defined type: look up the symbol registered in pass 1.
@@ -464,18 +482,18 @@ public sealed partial class TypeChecker {
             EmitError(ErrorCatalog.E1001,
                 $"'{typeRef.Name}' is not defined.",
                 typeRef.Range);
-            return (GrobType.Error, null, null);
+            return (GrobType.Error, null, null, null);
         }
 
         if (symbol.DeclarationNode is not TypeDecl) {
             EmitError(ErrorCatalog.E1001,
                 $"'{typeRef.Name}' is not a type.",
                 typeRef.Range);
-            return (GrobType.Error, null, null);
+            return (GrobType.Error, null, null, null);
         }
 
         GrobType structKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-        return (structKind, typeRef.Name, null);
+        return (structKind, typeRef.Name, null, null);
     }
 
     /// <inheritdoc/>
@@ -529,11 +547,11 @@ public sealed partial class TypeChecker {
         // annotation (readonly f: fn(): int := () => 1, or := makeCounter()) is checked
         // structurally and the descriptor is stored on the symbol (D-326; Fixes G and I).
         FunctionTypeDescriptor? initDesc = InitialiserDescriptor(node.Value);
-        (GrobType symbolType, FunctionTypeDescriptor? symbolDesc) =
+        (GrobType symbolType, FunctionTypeDescriptor? symbolDesc, ArrayTypeDescriptor? symbolArrayDesc) =
             ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Value.Range, node.Value);
         // Finalise the pass-1 provisional entry (D-324). Detects collisions with prior
         // real bindings and registers as real when free.
-        FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range, symbolDesc);
+        FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range, symbolDesc, symbolArrayDesc);
         return GrobType.Unknown;
     }
 

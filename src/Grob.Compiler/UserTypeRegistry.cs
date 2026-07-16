@@ -18,13 +18,19 @@ namespace Grob.Compiler;
 ///   <see cref="GrobType.NullableFunction"/>; <see langword="null"/> otherwise.
 ///   Used by the type checker to enforce structural compatibility (D-326) for function-
 ///   typed field defaults and construction values.</param>
+/// <param name="ArrayDescriptor">Element-type descriptor for the field's array type
+///   (D-351) when <paramref name="Kind"/> is <see cref="GrobType.Array"/> or
+///   <see cref="GrobType.NullableArray"/>; <see langword="null"/> otherwise. Used by the
+///   type checker to enforce element-type compatibility for array-typed field defaults
+///   and construction values.</param>
 internal record ResolvedFieldInfo(
     string Name,
     GrobType Kind,
     string? NamedTypeName,
     SourceRange Range,
     bool IsRequired,
-    FunctionTypeDescriptor? FunctionDescriptor = null);
+    FunctionTypeDescriptor? FunctionDescriptor = null,
+    ArrayTypeDescriptor? ArrayDescriptor = null);
 
 /// <summary>
 /// A registered user-defined type with its fully resolved field list.

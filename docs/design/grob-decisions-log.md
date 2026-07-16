@@ -346,6 +346,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-348 | July 2026                                                         | Compiler — expression emission | Sprint 9 Increment A lands the missing `VisitIndex` override (D-345's surfaced gap): `arr[i]` compiled to nothing at all (`AstVisitor<T>.VisitIndex`'s default fell through to `Compiler`'s no-op `DefaultVisit`), crashing the VM with a stack underflow. The fix emits the receiver, the index expression, then the existing `OpCode.GetIndex` — the opcode itself, its bounds-checked array arm and nil-on-miss map arm, and the D-334 handler-table routing of an out-of-range read through the existing `E5101`/`IndexError` leaf (D-284) were already implemented at the VM layer, reachable only via `for...in` lowering until now. One emission shape covers array and map reads and chained indexing (`matrix[r][c]`, D-112) via `IndexExpr` nesting — no opcode, `GrobValueKind`, parser or AST change. Array element **write** (`arr[i] = v`) is a confirmed, separately pre-existing gap (`Compiler.Statements.cs`'s deferred-index-target early-return, unchanged), left deferred since Sprint 9's `json`/`csv` indexer consumers are read-only. §3.1.1's `ResolvedType`/`Declaration` invariant scopes to identifier nodes only — `IndexExpr` carries neither property and none is added; an identifier used as an index target still gets both set via the pre-existing `VisitIdentifier` path. No new error code; count unchanged at 118 |
 | D-349 | July 2026                                                         | Process — decisions-log reconciliation (append-only) | Append-only landing record for Sprint 8 Increment D's `guid` module, which shipped `E0601` (invalid `guid` string literal, the first E06xx entry, source D-149) without a matching decisions-log entry — so D-345 and D-346, both logged afterwards, still read "count unchanged at 117" against `grob-error-codes.md`'s footer, which already correctly recorded 118. D-345 and D-346 are left unedited (append-only); this entry is the missing landing record and the pointer that reconciles the log's own narrative count to the registry's true, already-live total. No new error code; count unchanged at 118 |
 | D-350 | July 2026                                                         | Compiler — statement emission | Sprint 9 Increment A2 lands `arr[i] = v` / `m[k] = v` index-store emission — the write companion to D-348's read-side `VisitIndex`. Wires the existing, previously-unemitted `OpCode.SetIndex` (already in the closed enum, recognised by the disassembler, simply never dispatched by the VM or emitted by the compiler) into both: array writes bounds-check and raise `IndexError` via the existing `E5101`/D-334 handler table exactly as `GetIndex` does; map writes upsert (no bounds error); a nil receiver raises `E5201`. One emission shape covers array and map writes and chained targets (`matrix[r][c] = v`) for free, mirroring D-348's precedent. `readonly` rejection (`E0204`) generalises the existing member-access root-walk (`FindReadonlyRoot`) to also walk `IndexExpr` chains — its deep-immutability precedent is **D-291**, not D-289 as the kickoff prompt cited (D-289 is the compile-time-constant-expression definition; corrected here, not silently). `const`-bound array/map mutation is not a reachable state to test: D-289 already disallows array/map/struct literals as `const` RHS, so a `const`-bound collection fails earlier at `E0205` — no const-rejection path is added, mirroring the pre-existing member-access check, which likewise only ever tests `ReadonlyDecl`. RHS element-type checking stays permissive: `GrobType.Array` carries no scalar element type (element-type tracking awaits generics, per `VisitIndex`'s own unconditional `Unknown` read-side result); this is named here as an open, honestly-scoped gap, not built ad hoc. Two adjacent assignment-target gaps sharing the same early-return shape are confirmed still deferred and named for scheduling rather than left as a code comment: `arr[i] += v` (compound assignment) and `arr[i]++`/`arr[i]--` (increment/decrement) both silently drop emission today. No new opcode, no new error code (E5101/E0204/E5201 all pre-existing); count unchanged at 118 |
+| D-351 | July 2026                                                         | Compiler — type representation | Sprint 9 Increment A3 gives `GrobType.Array`/`NullableArray` a real element-type identity via a new `ArrayTypeDescriptor` mirroring `FunctionTypeDescriptor`'s side-channel shape (`Symbol.ArrayDescriptor`, generalising the Sprint 8 Increment E parameter/struct-name-only field; literal-node and call-result dictionaries), never folding element data into the `GrobType` enum itself. Corrects the increment's own premise: `map<K, V>` is not a working precedent — `TypeRef.TypeArguments` is parsed but never consulted, `"map"` resolves to the flat `GrobType.Map` tag everywhere, and `for k, v in m` already binds `v` as `Unknown`; maps share arrays' pre-existing gap and stay out of scope here. Threads the element type through array-literal inference (`[1, "a"]` is `E0001`, int/float widens), index read (`arr[i]`, replacing D-348's unconditional `Unknown`), index write RHS (closing the A2 gap D-350 named), `for...in` item binding (including the item's own struct-name/nested-array identity, so member access and further indexing inside the loop resolve as a `:=`-local's would), function-parameter/return enforcement and struct-field construction — reusing `E0001`/`E0004`/`E0005` throughout, no new error code. Zero quarantines: no fixture in the corpus relied on loosely-typed or heterogeneous arrays. Surfaces, Chris-approved as its own follow-up rather than folded in: the array mutation-method surface (`append`/`insert`/`remove`/`clear`/`contains`/`first`/`last`/`length`/`isEmpty`) has no type-checking, no compiler emission and almost no VM support at all — D-140 documented it but only `filter`/`select`/`sort`/`each` were ever built. Unblocks A4 (`arr[i] += v`, `arr[i]++`/`--`, D-350's named follow-up) and Increment D's `mapAs<T[]>()`. No new opcode; count unchanged at 118 |
 
 ---
 
@@ -5007,6 +5008,106 @@ No new opcode (`SetIndex` pre-existed in the enum), no new error code (`E5101`,
 
 ---
 
+### D-351 — Array element-type tracking: `ArrayTypeDescriptor` mirrors `FunctionTypeDescriptor`, not `map<K, V>` (July 2026)
+
+Area: Compiler — type representation
+Supersedes: none
+Superseded by: none
+Refines: D-348, D-350
+
+**The decision.** Sprint 9 Increment A3 gives `GrobType.Array`/`NullableArray` a real
+element-type identity. `GrobType` stays the flat enum it always was — no field added to
+the type itself — and a new `ArrayTypeDescriptor` (`Grob.Compiler`, mirroring
+`FunctionTypeDescriptor`'s existing side-channel shape exactly: a flat element
+`GrobType`, an optional named-type name for a struct/`guid` element, an optional nested
+descriptor for a `T[][]` element) is carried alongside it on `Symbol.ArrayDescriptor`
+(generalising the narrower, parameter-only, struct-name-only Sprint 8 Increment E field
+of the same shape), on array-literal nodes (`_arrayLiteralDescriptors`), and on
+array-returning call results (`_callResultArrayDescriptors`) — the same three-tier
+pattern (`Symbol` field / literal-node dictionary / call-result dictionary) `Function`
+already uses.
+
+**Correction to the increment's own premise: `map<K, V>` is not a working precedent.**
+The kickoff prompt (and D-112's original text) describes the checker as already
+distinguishing `map<string, string>` from `map<string, int>`. Reading the code found
+this false: `TypeRef.TypeArguments` is parsed but never read anywhere: `"map"` resolves
+straight to the flat `GrobType.Map` tag in both `TypeChecker.cs`'s `ResolveTypeRef` and
+`TypeChecker.Declarations.cs`'s `ResolveFieldAnnotationType`, and `for k, v in m` binds
+`v` as `Unknown` — the identical total gap arrays had. There was no working
+map-parameterisation machinery to mirror. The actual working precedent in this codebase
+is the `Function`/`Struct` side-channel pattern (`FunctionTypeDescriptor`,
+`Symbol.NamedStructTypeName`) — a compiler-side descriptor carried beside the flat tag,
+never folded into `GrobType` itself, keeping `Grob.Core`'s enum a neutral DAG-respecting
+tag. Maps keep their pre-existing gap; it is out of this decision's scope (arrays only),
+named here rather than left unremarked now that the record is being corrected anyway.
+
+**The four sites threaded, all reusing existing diagnostic codes.**
+`TypeChecker.Expressions.cs`'s `VisitArrayLiteral` infers the element kind from the
+elements (`[1, 2, 3]` → `int`), unifying pairwise via a dedicated `UnifyArrayElementType`
+(int/float widening; a genuine mismatch — `[1, "a"]` — is `E0001`; deliberately not
+`UnifyTernaryArms` reused directly, since that helper's message text and T/T? arm are
+ternary/switch-shaped and a third caller would force an unwanted shared-wording
+compromise for two call sites). `VisitIndex` resolves to the receiver's real element
+type via the new `ArrayDescriptorOf` walker (which recurses through a chained
+`IndexExpr` target for `matrix[r][c]`, D-112) instead of the unconditional `Unknown`
+D-348 left; `VisitIndexAssignmentTarget` checks the RHS against that same element type
+— **closing the A2 gap**: `arr[0] = "x"` on an `int[]` is now `E0001`. `for...in`'s
+`ResolveIterationVariableTypes` binds the item variable to the real element type (and,
+for a struct or nested-array element, threads the element's own named-type name or
+array descriptor onto the loop variable's symbol, so member access or further indexing
+inside the loop body resolves exactly as a `:=`-inferred local's would — this was not
+merely "leave item as Unknown" before; it needed active threading to avoid silently
+regressing existing struct-array iteration). Function-signature enforcement
+(`ResolveSignatureType`, `CheckBoundArgumentType`) and struct-field construction
+(`TypeCheckFieldValues`) and function-return checking (`ComputeReturnCompatibility`)
+all gained a matching `ArrayElementAssignable` check — invariant element comparison
+(no `int → float` widening at the element level: an array is a reference to shared
+mutable storage, and a value read back under a widened static element type would
+misrepresent its actual runtime `GrobValueKind`), reusing `E0004` (arguments) and
+`E0005`/`E0001` (returns/bindings/fields) exactly as their existing flat-kind checks
+already did. No new error code; count unchanged at 118.
+
+**The struct-field twin (report item, feeds Increment D) is sound.** Struct fields are
+already individually typed via `ResolvedFieldInfo.Kind` per field (Sprint 6 Increment
+A) — `mapAs<Config>()`'s reliance on that invariant is safe. No companion gap found
+there.
+
+**No break risk materialised — zero quarantines.** Neither the existing test suite,
+the `tests/fixtures/*.grob` corpus, nor `grob-sample-scripts.md`'s validation scripts
+contained a heterogeneous array literal or a call to an array mutation method; every
+array literal in the corpus was already homogeneous. All 1,291 `Grob.Compiler.Tests`
+(19 new, in `ArrayElementTypeCheckerTests.cs`) plus the full cross-project suite (Core,
+Runtime, Vm, Stdlib, Integration, Consistency — 2,482 tests total) pass unmodified
+except two stale doc-comment corrections in `ArrayTypeRefCheckerTests.cs` and
+`GrobType.cs` ("element type deferred to generics" was no longer true). Coverage on
+`Grob.Compiler` after the change: 92.17%, above the 90% floor.
+
+**A materially larger, separate gap surfaced and deliberately not built here: the array
+mutation-method surface has no implementation at all.** Investigating "are mutation-method
+arguments checked" (the prompt's own reach question) found `append`/`insert`/`remove`/
+`clear`/`contains`/`first`/`last`/`length`/`isEmpty` are not in
+`IsArrayHigherOrderMethod` and fall through `ResolveMemberAccessCall`'s generic branch to
+bare `GrobType.Unknown` with **zero** checking — not even that the method exists, let
+alone its argument types. The compiler emits nothing for any of them (zero matches for
+`append`/`insert`/`remove`/`clear` anywhere in `Grob.Compiler`), and `GrobArray`
+(`Grob.Core`) only exposes `Add`/an indexer — no `Insert`, `Remove`, `Clear`, or
+`Contains` at all. D-140 documented this whole surface (`grob-type-registry.md`) but
+only `filter`/`select`/`sort`/`each` were ever actually built. This is confirmed,
+Chris-approved (this decision's own kickoff exchange) as its own follow-up increment —
+building nine methods across the type checker, the compiler emitter and `GrobArray`
+before any element-type enforcement on them is meaningful — not folded into A3 and not
+the A4 compound-assignment follow-up either.
+
+**A4 (compound assignment) is now unblocked**, as D-350 named it: `arr[i] += v` and
+`arr[i]++`/`arr[i]--` need a well-typed element for their read-modify-write, which this
+decision now provides.
+
+No new opcode (type-system work only; the D-348/D-350 read/write emission is
+unchanged), no new error code (`E0001`/`E0004`/`E0005` all pre-existing); count
+unchanged at 118.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -5228,7 +5329,28 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 9 Increment A2: D-350 added. Lands `arr[i] = v` / `m[k] = v`_
+_July 2026 — Sprint 9 Increment A3: D-351 added. Gives `GrobType.Array`/`NullableArray`_
+_a real element-type identity via a new `ArrayTypeDescriptor` mirroring_
+_`FunctionTypeDescriptor`'s side-channel shape — `Grob.Core`'s `GrobType` enum stays_
+_flat; the descriptor is carried on `Symbol.ArrayDescriptor` (generalising Sprint 8_
+_Increment E's narrower field), array-literal nodes and array-returning call results._
+_Corrects the increment's own premise: `map<K, V>` is not a working precedent —_
+_`TypeRef.TypeArguments` is parsed but never read, `"map"` resolves to the flat_
+_`GrobType.Map` tag everywhere, and map values are already `Unknown` in `for...in`;_
+_maps share arrays' pre-existing gap and stay out of this decision's scope. Threads the_
+_element type through array-literal inference (`[1, "a"]` is `E0001`, int/float_
+_widens), index read (replacing D-348's unconditional `Unknown`), index write RHS_
+_(closing the A2 gap D-350 named), `for...in` item binding (including the item's own_
+_struct-name/nested-array identity), function-parameter/return enforcement and_
+_struct-field construction — reusing `E0001`/`E0004`/`E0005` throughout, no new error_
+_code. Zero quarantines — no fixture in the corpus relied on loosely-typed or_
+_heterogeneous arrays; 2,482 tests pass across the affected projects, 92.17% coverage_
+_on `Grob.Compiler`. Surfaces, Chris-approved as its own follow-up: the array_
+_mutation-method surface (`append`/`insert`/`remove`/`clear`/`contains`/`first`/`last`/_
+_`length`/`isEmpty`) has no type-checking, compiler emission, or VM support at all —_
+_D-140 documented it but only `filter`/`select`/`sort`/`each` were ever built._
+_Unblocks A4 (`arr[i] += v`, `arr[i]++`/`--`) and Increment D's `mapAs<T[]>()`._
+_Previous: July 2026 — Sprint 9 Increment A2: D-350 added. Lands `arr[i] = v` / `m[k] = v`_
 _index-store emission, the write companion to D-348's read-side `VisitIndex`. Wires the_
 _existing, previously-unemitted `OpCode.SetIndex` (already in the closed enum and_
 _recognised by the disassembler; never dispatched by the VM or emitted by the compiler)_
