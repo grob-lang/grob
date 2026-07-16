@@ -345,6 +345,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-347 | July 2026                                                         | Tooling — benchmarking        | Compile-time baseline recapture: the rolling `compile.json` time axis is folded forward to the post-Sprint-8 floor. `RegisterNamespaces` (D-342) unconditionally seeds all seven core-module namespaces into every compile's global scope — a fixed cost every compile now pays, hitting the tiny `Compile_TwoExpressions` benchmark hardest (+5.8% rolling, a genuine same-CPU breach, not `vm`'s CPU-mismatch noise). The allocation half of this same regression was already fixed once (`NamespaceRegistry`'s static object caching, landed in the Sprint 8 QA pass); this entry performs the equivalent time-axis recapture, mirroring D-338→D-341's ship-then-recapture precedent. `benchmark.yml` run 29399169091's report replaces `compile.json` wholesale (no local run ever committed as a baseline, D-309); `BenchCheck` now reads 0.0% delta. `compile.origin.json` untouched — still CPU-mismatched against the frozen Intel Xeon origin per D-333. No new error code; count unchanged at 117 |
 | D-348 | July 2026                                                         | Compiler — expression emission | Sprint 9 Increment A lands the missing `VisitIndex` override (D-345's surfaced gap): `arr[i]` compiled to nothing at all (`AstVisitor<T>.VisitIndex`'s default fell through to `Compiler`'s no-op `DefaultVisit`), crashing the VM with a stack underflow. The fix emits the receiver, the index expression, then the existing `OpCode.GetIndex` — the opcode itself, its bounds-checked array arm and nil-on-miss map arm, and the D-334 handler-table routing of an out-of-range read through the existing `E5101`/`IndexError` leaf (D-284) were already implemented at the VM layer, reachable only via `for...in` lowering until now. One emission shape covers array and map reads and chained indexing (`matrix[r][c]`, D-112) via `IndexExpr` nesting — no opcode, `GrobValueKind`, parser or AST change. Array element **write** (`arr[i] = v`) is a confirmed, separately pre-existing gap (`Compiler.Statements.cs`'s deferred-index-target early-return, unchanged), left deferred since Sprint 9's `json`/`csv` indexer consumers are read-only. §3.1.1's `ResolvedType`/`Declaration` invariant scopes to identifier nodes only — `IndexExpr` carries neither property and none is added; an identifier used as an index target still gets both set via the pre-existing `VisitIdentifier` path. No new error code; count unchanged at 118 |
 | D-349 | July 2026                                                         | Process — decisions-log reconciliation (append-only) | Append-only landing record for Sprint 8 Increment D's `guid` module, which shipped `E0601` (invalid `guid` string literal, the first E06xx entry, source D-149) without a matching decisions-log entry — so D-345 and D-346, both logged afterwards, still read "count unchanged at 117" against `grob-error-codes.md`'s footer, which already correctly recorded 118. D-345 and D-346 are left unedited (append-only); this entry is the missing landing record and the pointer that reconciles the log's own narrative count to the registry's true, already-live total. No new error code; count unchanged at 118 |
+| D-350 | July 2026                                                         | Compiler — statement emission | Sprint 9 Increment A2 lands `arr[i] = v` / `m[k] = v` index-store emission — the write companion to D-348's read-side `VisitIndex`. Wires the existing, previously-unemitted `OpCode.SetIndex` (already in the closed enum, recognised by the disassembler, simply never dispatched by the VM or emitted by the compiler) into both: array writes bounds-check and raise `IndexError` via the existing `E5101`/D-334 handler table exactly as `GetIndex` does; map writes upsert (no bounds error); a nil receiver raises `E5201`. One emission shape covers array and map writes and chained targets (`matrix[r][c] = v`) for free, mirroring D-348's precedent. `readonly` rejection (`E0204`) generalises the existing member-access root-walk (`FindReadonlyRoot`) to also walk `IndexExpr` chains — its deep-immutability precedent is **D-291**, not D-289 as the kickoff prompt cited (D-289 is the compile-time-constant-expression definition; corrected here, not silently). `const`-bound array/map mutation is not a reachable state to test: D-289 already disallows array/map/struct literals as `const` RHS, so a `const`-bound collection fails earlier at `E0205` — no const-rejection path is added, mirroring the pre-existing member-access check, which likewise only ever tests `ReadonlyDecl`. RHS element-type checking stays permissive: `GrobType.Array` carries no scalar element type (element-type tracking awaits generics, per `VisitIndex`'s own unconditional `Unknown` read-side result); this is named here as an open, honestly-scoped gap, not built ad hoc. Two adjacent assignment-target gaps sharing the same early-return shape are confirmed still deferred and named for scheduling rather than left as a code comment: `arr[i] += v` (compound assignment) and `arr[i]++`/`arr[i]--` (increment/decrement) both silently drop emission today. No new opcode, no new error code (E5101/E0204/E5201 all pre-existing); count unchanged at 118 |
 
 ---
 
@@ -4930,6 +4931,82 @@ No new error code; count unchanged at 118.
 
 ---
 
+### D-350 — Array/map index-store emission: `arr[i] = v` wires the existing, previously-unemitted `OpCode.SetIndex` (July 2026)
+
+Area: Compiler — statement emission
+Supersedes: none
+Superseded by: none
+Refines: D-348
+
+**The decision.** Sprint 9 Increment A2 lands the write companion to D-348's read-side
+`VisitIndex`: `Compiler.Statements.cs`'s `VisitAssignment` had an explicit early-return
+— `// Index targets are deferred (collections sprint)` — that made `arr[i] = v` compile
+to **nothing at all** (the right-hand side was never even visited, so side effects in it
+were silently dropped). `TypeChecker.Statements.cs` carried the mirror gap: it visited
+the target and value for diagnostic purposes but performed no readonly check and no type
+check. Both are replaced with a dedicated `IndexExpr`-target branch.
+
+**No new opcode — `OpCode.SetIndex` already existed, unwired.** It was already present
+in the closed `OpCode` enum and already recognised by `Disassembler.cs` as a no-operand
+instruction; it simply had no VM dispatch case and no compiler emitter. This entry wires
+both, mirroring `GetIndex`'s existing shape exactly: pop value, then index, then
+receiver (the reverse of the push order — receiver, index, value — that the compiler
+emits, itself mirroring how `SetProperty` pops value-then-receiver). An array receiver
+bounds-checks before writing (`GrobArray`'s indexer setter throws a bare CLR exception
+out of range, so the VM must check first, exactly as `GetIndex` already does) and raises
+`IndexError` via the existing `E5101`/D-334 handler table on a miss; a map receiver
+upserts via the existing `GrobMap.Set` (no bounds error, mirroring `GetIndex`'s
+nil-on-miss read permissiveness); a nil receiver raises `E5201`. One emission shape
+covers both array and map writes and chained targets (`matrix[r][c] = v`) for free: the
+compiler's new branch emits the chain's `Target` as an ordinary (read) expression —
+re-entering `VisitIndex` for any nested `IndexExpr` exactly as the read side already
+does for `matrix[r][c]` — then the index, then the value, then `SetIndex`.
+
+**`readonly` rejection generalises the existing member-access root-walk.** The
+type checker's `FindReadonlyRoot`, previously typed to accept only a `MemberAccessExpr`
+and walk only `MemberAccessExpr.Target` chains, is generalised to accept any
+`Expression` and walk through both `MemberAccessExpr.Target` and `IndexExpr.Target` —
+one shared helper, no behaviour change for the pre-existing `point.x = v` call site,
+and it now also correctly reaches a `readonly` array-of-structs mixed chain
+(`p.items[0].field = v`), a latent gap this closes for free. `arr[0] = v` on a
+`readonly`-bound array is `E0204` ("mutation of `readonly` value") — the correct
+citation for this precedent is **D-291** ("`readonly` semantics", whose point 4 is
+explicit deep immutability, `X["k"] = v` on `readonly map<...>` named directly), **not
+D-289** as the increment's kickoff prompt cited. D-289 is "definition of compile-time
+constant expression" (the `const` right-hand-side rules) — an unrelated decision;
+corrected here rather than propagated.
+
+**`const`-bound array/map mutation is not a reachable state — no code added for it.**
+D-289 explicitly disallows array, map and struct literals as `const` right-hand sides
+(only literals, arithmetic on constant operands, and references to other `const`
+bindings qualify); any attempt already fails earlier at `E0205`. There is therefore no
+valid Grob program with a `const`-bound array or map to index-assign into, so no
+const-rejection branch is added — mirroring the pre-existing member-access check, which
+likewise has only ever tested `ReadonlyDecl`, never `ConstDecl`.
+
+**RHS element-type checking stays permissive — named as an open gap, not built ad
+hoc.** `GrobType.Array` carries no scalar element type; `VisitIndex`'s own read-side
+implementation already returns `GrobType.Unknown` unconditionally, with element-type
+tracking noted there as awaiting generics. `Symbol.ArrayElementStructTypeName` (D-345)
+tracks only struct-element arrays, and only for `formatAs`'s field-name derivation, not
+general assignability. Building real scalar element-type tracking is materially larger,
+unauthorised scope (generics-adjacent) for a store-emission increment, so `arr[0] = "x"`
+on an `int[]`-annotated array is not flagged — permissive, consistent with how an
+`Unknown`-typed identifier assignment target is already treated elsewhere in the same
+file. This is recorded here as the honest scope boundary, not silently invented.
+
+**Two adjacent, still-broken assignment-target gaps, named for scheduling.** The same
+early-return shape silently drops emission for `arr[i] += v` (`VisitCompoundAssignment`)
+and `arr[i]++`/`arr[i]--` (`VisitIncrement`) — confirmed, not assumed, by reading both
+methods. Neither is fixed here (out of scope: this increment is the assignment-statement
+target only); both are named so they are scheduled rather than left as an unowned code
+comment.
+
+No new opcode (`SetIndex` pre-existed in the enum), no new error code (`E5101`,
+`E0204`, `E5201` all pre-existing); count unchanged at 118.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -5151,7 +5228,25 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 9 Increment A: D-348 and D-349 added. D-348 lands the missing_
+_July 2026 — Sprint 9 Increment A2: D-350 added. Lands `arr[i] = v` / `m[k] = v`_
+_index-store emission, the write companion to D-348's read-side `VisitIndex`. Wires the_
+_existing, previously-unemitted `OpCode.SetIndex` (already in the closed enum and_
+_recognised by the disassembler; never dispatched by the VM or emitted by the compiler)_
+_into both `Compiler.Statements.cs` and the VM: array writes bounds-check via the_
+_existing `E5101`/D-334 handler table exactly as `GetIndex` does; map writes upsert; nil_
+_raises `E5201`. One shape covers chained targets (`matrix[r][c] = v`) for free._
+_`readonly` rejection (`E0204`) generalises the existing member-access root-walk to also_
+_walk `IndexExpr` chains — corrects the increment's kickoff prompt, which cited D-289 for_
+_the readonly-deep-immutability precedent; the actual source is **D-291** (D-289 is the_
+_unrelated `const`-expression definition). `const`-bound array/map mutation is confirmed_
+_unreachable (D-289 already disallows array/map/struct literals as `const` RHS, failing_
+_earlier at `E0205`) so no const-rejection code is added. RHS element-type checking stays_
+_permissive — `GrobType.Array` has no scalar element type (awaits generics) — named as an_
+_open, honestly-scoped gap rather than built ad hoc. `arr[i] += v` and `arr[i]++`/`--`_
+_are confirmed still silently broken by the same early-return shape and named for_
+_scheduling, not left as a code comment. No new opcode, no new error code; count_
+_unchanged at 118._
+_Previous: July 2026 — Sprint 9 Increment A: D-348 and D-349 added. D-348 lands the missing_
 _`VisitIndex` override in `Compiler.Expressions.cs` — `arr[i]` previously compiled to_
 _nothing at all (the default `AstVisitor<T>.VisitIndex` falls through to `Compiler`'s_
 _no-op `DefaultVisit`), crashing the VM with a stack underflow (D-345's surfaced gap)._

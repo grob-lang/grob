@@ -193,8 +193,10 @@ public sealed partial class TypeChecker {
             return GrobType.Unknown;
         }
 
+        if (node.Target is IndexExpr indexTarget) return VisitIndexAssignmentTarget(node, indexTarget);
+
         if (node.Target is not IdentifierExpr target) {
-            // Index targets are deferred (collections sprint).
+            // Any other assignment-target shape (none exist in the current grammar).
             Visit(node.Target);
             Visit(node.Value);
             return GrobType.Unknown;
@@ -336,6 +338,27 @@ public sealed partial class TypeChecker {
         return symbol;
     }
 
+    /// <summary>
+    /// Sprint 9 Increment A2 (D-350): array/map index-store target (<c>arr[i] = v</c>).
+    /// Visiting the target cascades into the pre-existing <c>VisitIdentifier</c> path on
+    /// the root identifier (or a nested <c>VisitIndex</c> read for a chained target like
+    /// <c>matrix[r][c]</c>), setting <c>ResolvedType</c>/<c>Declaration</c> there exactly
+    /// as the read side (D-348) already does. RHS element-type checking stays permissive
+    /// — <see cref="GrobType.Array"/> carries no scalar element type today (element-type
+    /// tracking awaits generics, mirroring <c>VisitIndex</c>'s own read-side
+    /// <see cref="GrobType.Unknown"/> result).
+    /// </summary>
+    private GrobType VisitIndexAssignmentTarget(AssignmentStmt node, IndexExpr indexTarget) {
+        Visit(indexTarget);
+        Visit(node.Value);
+        if (FindReadonlyRoot(indexTarget) is not null) {
+            EmitError(ErrorCatalog.E0204,
+                "Cannot mutate element of `readonly` binding.",
+                node.Range);
+        }
+        return GrobType.Unknown;
+    }
+
     private static BinaryOperator CompoundOpToBinary(CompoundAssignmentOperator op) => op switch {
         CompoundAssignmentOperator.PlusAssign => BinaryOperator.Add,
         CompoundAssignmentOperator.MinusAssign => BinaryOperator.Subtract,
@@ -346,14 +369,21 @@ public sealed partial class TypeChecker {
     };
 
     /// <summary>
-    /// Walks the receiver chain of a member-access expression to find the root identifier.
-    /// Returns the <see cref="ReadonlyDecl"/> if the root binding is readonly (D-291 deep
+    /// Walks the receiver chain of an assignment target — through any mix of
+    /// <see cref="MemberAccessExpr"/> and <see cref="IndexExpr"/> nesting (Sprint 9
+    /// Increment A2, D-350) — to find the root identifier. Returns the
+    /// <see cref="ReadonlyDecl"/> if the root binding is readonly (D-291 deep
     /// immutability); otherwise returns <see langword="null"/>.
     /// </summary>
-    private static ReadonlyDecl? FindReadonlyRoot(MemberAccessExpr ma) {
-        Expression current = ma.Target;
-        while (current is MemberAccessExpr inner) {
-            current = inner.Target;
+    private static ReadonlyDecl? FindReadonlyRoot(Expression target) {
+        Expression current = target;
+        while (true) {
+            current = current switch {
+                MemberAccessExpr ma => ma.Target,
+                IndexExpr idx => idx.Target,
+                _ => current,
+            };
+            if (current is not (MemberAccessExpr or IndexExpr)) break;
         }
         return current is IdentifierExpr { Declaration: ReadonlyDecl ro } ? ro : null;
     }

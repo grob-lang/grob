@@ -271,8 +271,24 @@ public sealed partial class Compiler {
             return null;
         }
 
+        if (node.Target is IndexExpr indexTarget) {
+            // Sprint 9 Increment A2 (D-350): array/map index-store on the assignment-
+            // target path. Emit the receiver — Visit re-enters VisitIndex for a chained
+            // target (matrix[r][c]), emitting the inner read(s) first, exactly as the
+            // read-side emission (D-348) already does for nested indexing — then the
+            // index expression, then the value, then the existing OpCode.SetIndex
+            // (already in the closed enum; this is its first emitter). No push: an
+            // assignment statement leaves nothing on the stack, mirroring SetProperty.
+            int indexAssignLine = node.Range.Start.Line;
+            Visit(indexTarget.Target);
+            Visit(indexTarget.Index);
+            Visit(node.Value);
+            _chunk.WriteOpCode(OpCode.SetIndex, indexAssignLine);
+            return null;
+        }
+
         if (node.Target is not IdentifierExpr target) {
-            // Index targets are deferred (collections sprint).
+            // No other assignment-target shape exists in the current grammar.
             return null;
         }
 

@@ -154,4 +154,81 @@ public sealed class CompilerIndexTests {
         Assert.NotNull(target.Declaration);
         Assert.Same(arrDecl, target.Declaration);
     }
+
+    // -----------------------------------------------------------------------
+    // Sprint 9 Increment A2 (D-350) — arr[i] = v index-store emission.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void IndexAssignment_MutableArray_EmitsReceiverIndexValueThenSetIndex() {
+        Chunk chunk = CompileSource("arr := [10, 20, 30]\narr[0] = 99\n");
+        List<OpCode> ops = Opcodes(chunk);
+
+        Assert.Equal(
+            [
+                OpCode.Constant, OpCode.Constant, OpCode.Constant, OpCode.NewArray, OpCode.DefineGlobal, // arr := [10, 20, 30]
+                OpCode.GetGlobal, OpCode.Constant, OpCode.Constant, OpCode.SetIndex,                     // arr[0] = 99
+                OpCode.Return, // implicit top-level return
+            ],
+            ops);
+    }
+
+    [Fact]
+    public void IndexAssignment_OperandsPointAtTheCorrectReceiverIndexAndValueConstants() {
+        Chunk chunk = CompileSource("arr := [10, 20, 30]\narr[1] = 42\n");
+        List<Instr> instrs = Decode(chunk);
+
+        Instr setIndex = instrs.Single(i => i.Op == OpCode.SetIndex);
+        int setIndexPos = instrs.IndexOf(setIndex);
+        Instr valueConstant = instrs[setIndexPos - 1];
+        Instr indexConstant = instrs[setIndexPos - 2];
+        Instr getGlobal = instrs[setIndexPos - 3];
+
+        Assert.Equal(OpCode.GetGlobal, getGlobal.Op);
+        Assert.Equal("arr", chunk.ReadConstant(getGlobal.Arg).AsString());
+        Assert.Equal(1L, chunk.ReadConstant(indexConstant.Arg).AsInt());
+        Assert.Equal(42L, chunk.ReadConstant(valueConstant.Arg).AsInt());
+    }
+
+    [Fact]
+    public void ChainedMatrixIndexAssignment_EmitsGetIndexForInnerReceiverThenSetIndex() {
+        Chunk chunk = CompileSource("matrix := [[1, 2], [3, 4]]\nr := 0\nc := 1\nmatrix[r][c] = 9\n");
+        List<Instr> instrs = Decode(chunk);
+
+        // matrix[r][c] = 9 → GetGlobal(matrix), GetGlobal(r), GetIndex (inner read),
+        // GetGlobal(c), Constant(9), SetIndex.
+        List<Instr> tail = instrs.SkipLast(1).TakeLast(6).ToList();
+        Assert.Equal(
+            [OpCode.GetGlobal, OpCode.GetGlobal, OpCode.GetIndex, OpCode.GetGlobal, OpCode.Constant, OpCode.SetIndex],
+            tail.Select(i => i.Op).ToList());
+        Assert.Equal(1, instrs.Count(i => i.Op == OpCode.GetIndex));
+        Assert.Equal(1, instrs.Count(i => i.Op == OpCode.SetIndex));
+    }
+
+    [Fact]
+    public void IndexAssignment_RootIdentifierKeepsResolvedTypeAndDeclarationInvariant() {
+        CompilationUnit unit = CheckSource("arr := [1, 2, 3]\narr[0] = 99\n");
+
+        var arrDecl = unit.TopLevel.OfType<VarDeclStmt>().Single(s => s.Name == "arr");
+        var assignment = unit.TopLevel.OfType<AssignmentStmt>().Single();
+
+        var indexExpr = Assert.IsType<IndexExpr>(assignment.Target);
+        var target = Assert.IsType<IdentifierExpr>(indexExpr.Target);
+
+        Assert.Equal(GrobType.Array, target.ResolvedType);
+        Assert.Same(arrDecl, target.Declaration);
+    }
+
+    [Fact]
+    public void IndexAssignment_ReadonlyArray_EmitsE0204() {
+        DiagnosticBag bag = new();
+        IReadOnlyList<Token> tokens = Lexer.Scan("readonly arr := [1, 2, 3]\narr[0] = 99\n", bag);
+        CompilationUnit unit = Parser.Parse(tokens, bag);
+        new TypeChecker(bag).Check(unit);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0204", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
+    }
 }

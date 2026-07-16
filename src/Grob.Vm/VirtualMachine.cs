@@ -777,6 +777,40 @@ public sealed class VirtualMachine : IPluginRegistrar {
                             break;
                         }
 
+                    case OpCode.SetIndex: {
+                            // Sprint 9 Increment A2 (D-350): array[int] = v (bounds-checked,
+                            // E5101 via the same handler table as GetIndex); map[string] = v
+                            // (upsert, no bounds error — mirrors GetIndex's nil-on-miss
+                            // permissiveness). No stack push: a pure store, mirrors SetProperty.
+                            GrobValue setIndexValue = _stack.Pop();
+                            GrobValue setIndex = _stack.Pop();
+                            GrobValue setIndexReceiver = _stack.Pop();
+                            if (setIndexReceiver.TryAsArray(out GrobArray? setIndexArray)) {
+                                long i = setIndex.AsInt();
+                                if (i < 0 || i >= setIndexArray!.Count) {
+                                    string message =
+                                        $"array index {i} is out of range for an array of length {setIndexArray!.Count}";
+                                    if (!TryRaiseRuntimeGrobError(IndexErrorLeaf, message, line,
+                                            boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                        throw new GrobRuntimeException(ErrorCatalog.E5101.Code, line, column, message);
+                                    break;
+                                }
+                                setIndexArray[(int)i] = setIndexValue;
+                            } else if (setIndexReceiver.TryAsMap(out GrobMap? setIndexMap)) {
+                                setIndexMap!.Set(setIndex.AsString(), setIndexValue);
+                            } else if (setIndexReceiver.IsNil) {
+                                const string message = "nil dereference: cannot index nil value";
+                                if (!TryRaiseRuntimeGrobError(NilErrorLeaf, message, line,
+                                        boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                    throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column, message);
+                                break;
+                            } else {
+                                throw new GrobInternalException(
+                                    $"SetIndex on receiver of kind {setIndexReceiver.Kind} is not supported.");
+                            }
+                            break;
+                        }
+
                     // --- Properties (array.length, map.keys, and Sprint 5C array methods) ---
 
                     case OpCode.GetProperty: {
