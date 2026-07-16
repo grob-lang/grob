@@ -922,6 +922,14 @@ itself implemented and producing a first passing run. Authority: D-302,
 JSON and CSV round-trip works. Regex matching and replacement works.
 Process execution captures stdout/stderr.
 
+>  **Hardening interlude (Sprint 9/10) — Pillars 1–6 of the adversarial suite.**
+>  Authority: D-353, `grob-adversarial-testing-strategy.md`. At Sprint 9 close the
+>  whole language, VM and core-stdlib surface is complete, so compiler fuzzing,
+>  hostile `.grobc`, differential/metamorphic and cross-model testing, the full
+>  core-stdlib environment brutality (incl. `regex` ReDoS and `process` pipe
+>  deadlock), exhaustion, soak and cold-read all run here. Pillar 7 (hostile
+>  network) waits for `Grob.Http` — see the post-Sprint-11 note.
+
 ### Sprint 10 — Script Parameters and Decorators
 
 **Delivers:** `param` block, `.grobparams` files, `@secure`, `@allowed`,
@@ -978,6 +986,12 @@ output.
 **Acceptance:** `import Grob.Http` works end-to-end. Plugin functions are
 type-checked at compile time. `grob install` downloads from NuGet.
 `grob.json` restore works.
+
+>  **Network-hardening pass (post-Sprint-11) — Pillar 7 of the adversarial suite.**
+>  Authority: D-353, D-352. Now that `Grob.Http`/`Grob.Crypto` exist, the hostile
+>  network surface runs — local hostile Kestrel plus the two-tier Azure work, the
+>  redirect and IMDS security tests, and empirical verification of D-352's redirect
+>  and credential-forwarding policy.
 
 ### Sprint 12 — CLI, Formatting, Polish
 
@@ -1356,6 +1370,41 @@ is `dotnet run -c Release --project bench/Grob.Benchmarks`.
 
 -----
 
+### Adversarial Testing — Pre-Alpha
+
+> **Authority:** D-353. Full specification in `grob-adversarial-testing-strategy.md`;
+> D-352 pins the `Grob.Http` policy its network pillar verifies.
+
+The test families above are **cooperative** — they verify Grob does what it should.
+Before alpha, a separate **adversarial** suite verifies Grob fails well when someone
+does what they should not: no input may produce an unhandled .NET exception, a host
+stack trace, a non-responsive hang or an undocumented exit code — every failure is a
+Grob diagnostic with an E-code on stderr, and any violation is P0.
+
+Seven pillars: compiler fuzzing (mutation, grammar-based, SharpFuzz); hostile
+`.grobc`; differential and metamorphic testing plus cross-model spec adversaries;
+stdlib and environment brutality (Windows-specific); resource exhaustion and soak;
+cold-read usage campaigns; and a hostile network surface (two-tier local Kestrel plus
+Azure tenant). The harness is `tooling/Grob.Torture` — a black-box CLI driver outside
+`tests/`, with an in-proc SharpFuzz mode; a stabilised subset graduates to CI as
+`tests/Grob.Integration`-adjacent `Grob.Torture.Tests` under the D-335 membership gate.
+
+**Two passes, following the build plan.** Sprint 9 completes the core-stdlib surface
+but the plugins are Sprint 11, so Pillars 1–6 run as a **Sprint 9/10 hardening
+interlude** and Pillar 7 (which needs `Grob.Http`) runs as a **post-Sprint-11 network
+pass**. D-352's redirect and credential policy is pinned now for Sprint 11 to build
+against; only its verification is deferred. Alpha is post-Sprint-11 regardless — the
+validation suite itself needs the plugins.
+
+**Alpha exit criteria** (both passes): zero P0s across a calibrated coverage-guided
+fuzzing budget; the full environment-brutality matrix green on Windows 11/Server and
+x64/ARM64; every registry error code demonstrably reachable by a fixture; every P1
+dispositioned with a fix or a D-###; both cross-model spec adversaries run with all
+ambiguity findings dispositioned; D-352 verified against real cross-host and IMDS
+endpoints; the credential-opacity gate green on every rendering path.
+
+-----
+
 ## 13. Explicitly Out of Scope
 
 These features are NOT in v1. They are confirmed as post-MVP in the
@@ -1502,6 +1551,13 @@ Candidates considered and rejected during Session C Part 2:
   slip the sprint, not to cut the feature.
 
 -----
+
+*This document was updated July 2026 — adversarial testing strategy wired in:*
+*§12 gains an Adversarial Testing (Pre-Alpha) subsection and the §4 build plan gains*
+*two markers — a Sprint 9/10 hardening interlude (Pillars 1–6) and a post-Sprint-11*
+*network-hardening pass (Pillar 7). Authority D-353 (`grob-adversarial-testing-strategy.md`)*
+*and D-352 (`Grob.Http` redirect and credential policy). Plugins are Sprint 11, so the*
+*network pillar and D-352's verification wait for `Grob.Http`; alpha is post-Sprint-11.*
 
 *This document was updated July 2026 — Sprint 8 Increment D reconciliation:*
 *the §4 Sprint 8 `guid` bullet gains `toCompactString()`, aligning it with*

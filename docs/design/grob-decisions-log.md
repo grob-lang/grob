@@ -347,6 +347,9 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-349 | July 2026                                                         | Process — decisions-log reconciliation (append-only) | Append-only landing record for Sprint 8 Increment D's `guid` module, which shipped `E0601` (invalid `guid` string literal, the first E06xx entry, source D-149) without a matching decisions-log entry — so D-345 and D-346, both logged afterwards, still read "count unchanged at 117" against `grob-error-codes.md`'s footer, which already correctly recorded 118. D-345 and D-346 are left unedited (append-only); this entry is the missing landing record and the pointer that reconciles the log's own narrative count to the registry's true, already-live total. No new error code; count unchanged at 118 |
 | D-350 | July 2026                                                         | Compiler — statement emission | Sprint 9 Increment A2 lands `arr[i] = v` / `m[k] = v` index-store emission — the write companion to D-348's read-side `VisitIndex`. Wires the existing, previously-unemitted `OpCode.SetIndex` (already in the closed enum, recognised by the disassembler, simply never dispatched by the VM or emitted by the compiler) into both: array writes bounds-check and raise `IndexError` via the existing `E5101`/D-334 handler table exactly as `GetIndex` does; map writes upsert (no bounds error); a nil receiver raises `E5201`. One emission shape covers array and map writes and chained targets (`matrix[r][c] = v`) for free, mirroring D-348's precedent. `readonly` rejection (`E0204`) generalises the existing member-access root-walk (`FindReadonlyRoot`) to also walk `IndexExpr` chains — its deep-immutability precedent is **D-291**, not D-289 as the kickoff prompt cited (D-289 is the compile-time-constant-expression definition; corrected here, not silently). `const`-bound array/map mutation is not a reachable state to test: D-289 already disallows array/map/struct literals as `const` RHS, so a `const`-bound collection fails earlier at `E0205` — no const-rejection path is added, mirroring the pre-existing member-access check, which likewise only ever tests `ReadonlyDecl`. RHS element-type checking stays permissive: `GrobType.Array` carries no scalar element type (element-type tracking awaits generics, per `VisitIndex`'s own unconditional `Unknown` read-side result); this is named here as an open, honestly-scoped gap, not built ad hoc. Two adjacent assignment-target gaps sharing the same early-return shape are confirmed still deferred and named for scheduling rather than left as a code comment: `arr[i] += v` (compound assignment) and `arr[i]++`/`arr[i]--` (increment/decrement) both silently drop emission today. No new opcode, no new error code (E5101/E0204/E5201 all pre-existing); count unchanged at 118 |
 | D-351 | July 2026                                                         | Compiler — type representation | Sprint 9 Increment A3 gives `GrobType.Array`/`NullableArray` a real element-type identity via a new `ArrayTypeDescriptor` mirroring `FunctionTypeDescriptor`'s side-channel shape (`Symbol.ArrayDescriptor`, generalising the Sprint 8 Increment E parameter/struct-name-only field; literal-node and call-result dictionaries), never folding element data into the `GrobType` enum itself. Corrects the increment's own premise: `map<K, V>` is not a working precedent — `TypeRef.TypeArguments` is parsed but never consulted, `"map"` resolves to the flat `GrobType.Map` tag everywhere, and `for k, v in m` already binds `v` as `Unknown`; maps share arrays' pre-existing gap and stay out of scope here. Threads the element type through array-literal inference (`[1, "a"]` is `E0001`, int/float widens), index read (`arr[i]`, replacing D-348's unconditional `Unknown`), index write RHS (closing the A2 gap D-350 named), `for...in` item binding (including the item's own struct-name/nested-array identity, so member access and further indexing inside the loop resolve as a `:=`-local's would), function-parameter/return enforcement and struct-field construction — reusing `E0001`/`E0004`/`E0005` throughout, no new error code. Zero quarantines: no fixture in the corpus relied on loosely-typed or heterogeneous arrays. Surfaces, Chris-approved as its own follow-up rather than folded in: the array mutation-method surface (`append`/`insert`/`remove`/`clear`/`contains`/`first`/`last`/`length`/`isEmpty`) has no type-checking, no compiler emission and almost no VM support at all — D-140 documented it but only `filter`/`select`/`sort`/`each` were ever built. Unblocks A4 (`arr[i] += v`, `arr[i]++`/`--`, D-350's named follow-up) and Increment D's `mapAs<T[]>()`. No new opcode; count unchanged at 118 |
+| D-352 | July 2026                                                         | Grob.Http — redirect and credential policy | `grob-stdlib-reference.md` and D-155 lock every `Grob.Http` signature but say nothing about redirect behaviour, so the .NET `HttpClientHandler` default (`AllowAutoRedirect=true`, `MaxAutomaticRedirections=50`, and historically `Authorization` forwarded across redirects) would ship silently — an unpinned default lets a `302` from a trusted host walk a live `auth.bearer` token to an attacker-controlled origin, a credential-exfiltration vector in the stdlib itself. Pinned policy: (1) redirects are followed by default but a cross-origin target (differing scheme+host+port) does **not** receive the `AuthHeader` — the request proceeds without it, silent-and-safe by design, not a fault; (2) an https→http downgrade redirect throws `NetworkError` — no silent downgrade; (3) the total redirect chain caps at 10 (tighter than .NET's 50 — a scripting default should be conservative), exceeding it throws `NetworkError`; (4) `download()` follows the identical policy. Cap and downgrade faults reuse the existing `NetworkError` leaf (D-284) — no new error code. Implementation lands in **Sprint 11** with `Grob.Http` (plugins are Sprint 11 in the build plan, not Sprint 9), so the policy is pinned now for Sprint 11 to build against; verified later by Pillar 7 of the adversarial suite (D-353) — a post-Sprint-11 network-hardening pass against a local hostile Kestrel server and the Azure tenant's real cross-host and IMDS-reachable endpoints. Extends D-155. No new error code; count unchanged at 118 |
+| D-353 | July 2026                                                         | Process / Tooling — adversarial testing | Authorises `grob-adversarial-testing-strategy.md`. The corpus's existing test families (§12 unit/integration, the D-337 smoke family, the D-346 eleven-script validation suite) are all cooperative — they verify Grob does what it should; the adversarial family verifies Grob fails well under hostile input, a distinct discipline with its own harness and exit criteria. The contract: no input (source, bytecode, CLI args, environment, file-system state, child-process behaviour) may produce an unhandled .NET exception, a host stack trace, a non-responsive hang or an undocumented exit code — every failure is a Grob diagnostic with an E-code on stderr; any violation is P0. Seven pillars: (1) compiler fuzzing (mutation, grammar-based, SharpFuzz), (2) hostile `.grobc` fuzzing, (3) differential/metamorphic + cross-model spec adversaries, (4) stdlib/environment brutality (Windows-specific), (5) resource exhaustion/soak, (6) cold-read usage campaigns, (7) hostile network surface (two-tier: local Kestrel + Azure tenant). Harness: `tooling/Grob.Torture` — a black-box CLI driver outside `tests/` with an in-proc SharpFuzz mode; a stabilised subset graduates to CI as `tests/Grob.Torture.Tests` (D-335 membership gate applies). Timing (split to fit the build plan): Sprint 9 lands the remaining **core** modules (`fs`/`date`/`json`/`csv`/`regex`/`process`) but plugins are **Sprint 11** — so the **Sprint 9/10 hardening interlude** runs Pillars 1–6 in full (the language, VM and core-stdlib surface is complete at Sprint 9 close), and Pillar 7 (hostile network) plus D-352 verification and the Azure work become a smaller **post-Sprint-11 network-hardening pass** once `Grob.Http` exists. Harness skeleton and Pillar 1 layers 1–2 build during/after Sprint 9; each pass carries its own DoD. Four decisions the interlude is expected to force and log: the `.grobc` load-time verifier vs per-instruction bounds checks, the parser recursion-depth guard, the `regex` `matchTimeout` value, the `exit(n)` out-of-range clamp. No new error code; count unchanged at 118 |
+
 
 ---
 
@@ -5108,6 +5111,142 @@ unchanged at 118.
 
 ---
 
+### D-352 — `Grob.Http` redirect and credential-forwarding policy (July 2026)
+
+Area: Grob.Http — redirect and credential policy
+Supersedes: none
+Superseded by: none
+Extends: D-155
+
+**The gap.** `grob-stdlib-reference.md` and D-155 lock every `Grob.Http` signature —
+`get`/`post`/`put`/`patch`/`delete`/`download`, the `auth.*` helpers, the `Response`
+type — but say nothing about what happens when a response is a redirect. The .NET
+`HttpClientHandler` default is `AllowAutoRedirect = true` with
+`MaxAutomaticRedirections = 50`, and .NET has historically forwarded the
+`Authorization` header across redirects to a different host under some
+configurations. `auth.bearer(pat)` carries a live credential. An unpinned default
+therefore lets a `302` from `http.get("https://api.trusted.com", auth.bearer(pat))`
+walk that bearer token to an attacker-controlled origin — a credential-exfiltration
+vector in the stdlib itself, not a robustness nit. The Azure metadata endpoint
+(`169.254.169.254`) makes the worst case concrete: a redirect to it carrying a token
+is real SSRF.
+
+**The pinned policy.**
+
+1. **Cross-origin drops the credential.** Redirects are followed by default, but if
+   the redirect target's origin (scheme + host + port) differs from the request
+   origin, the `AuthHeader` is **not** forwarded. Same-origin redirects preserve it.
+   The dropped-credential case is silent-and-safe by design — the request proceeds
+   without the header — not a fault.
+2. **Protocol downgrade is refused.** An https→http redirect throws `NetworkError`.
+   No silent downgrade to a sniffable channel.
+3. **Hop cap.** The total redirect chain caps at 10 — tighter than .NET's 50,
+   because a scripting default should be conservative. Exceeding the cap throws
+   `NetworkError`.
+4. **`download()` follows the identical policy.**
+
+**Surfacing.** The cap and downgrade faults reuse the existing `NetworkError` leaf
+(D-284) — no new error code, count unchanged at 118. The cross-origin credential
+drop is not a fault and raises nothing.
+
+**Why its own decision.** This is a language-design call with a security posture, not
+a test detail — it changes observable behaviour and the credential-safety guarantee.
+It must not ride silently in the adversarial-testing document (D-353). Implementation
+lands in **Sprint 11** with `Grob.Http` — plugins are Sprint 11 in the build plan, not
+Sprint 9 — so this policy is pinned now for the Sprint 11 implementation to build
+against. Verification is Pillar 7 of the adversarial suite, which runs as a
+post-Sprint-11 network-hardening pass (Pillar 7 cannot run at the Sprint 9/10 interlude
+because `Grob.Http` does not yet exist) against both a local hostile Kestrel server (two
+localhost ports for the cross-origin case) and the Azure tenant (real cross-host
+redirects and a genuinely IMDS-reachable box).
+
+Relates to D-155, D-159, D-284, D-336, D-353.
+
+---
+
+### D-353 — Adversarial testing strategy and Sprint 9/10 hardening interlude (July 2026)
+
+Area: Process / Tooling — adversarial testing
+Supersedes: none
+Superseded by: none
+
+**The decision.** Authorises `grob-adversarial-testing-strategy.md`. Grob's existing
+test families are all cooperative — §12's unit and integration projects, the D-337
+sprint-close smoke family and the D-346 eleven-script validation suite each verify
+that Grob does what it should. None verifies that Grob *fails well* when someone does
+what they should not. That is a distinct discipline, and it earns its own document,
+its own harness and its own exit criteria rather than extensions to the cooperative
+families.
+
+**The contract.** No input — source text, bytecode, CLI arguments, environment, file
+system state or child-process behaviour — may produce an unhandled .NET exception, a
+host stack trace, a hang without a Ctrl+C response or an exit code outside the
+documented set (`{0, 1, 2, 3}` for the runtime, `0..255` for a script-chosen
+`exit(n)`). Every failure is a Grob diagnostic with an E-code on stderr. Any
+violation is P0 regardless of how contrived the input.
+
+**Seven pillars.** (1) Compiler fuzzing — byte/token mutation, deterministic
+grammar-based generation, and coverage-guided SharpFuzz. (2) Hostile `.grobc` —
+truncated headers, out-of-range constant indices, jump targets past chunk end,
+lying arities. (3) Differential and metamorphic testing — formatter neutrality and
+idempotence, declaration-reorder neutrality (stressing the D-166 two-pass checker),
+`const`-inlining fidelity, FsCheck VM-vs-tree-evaluator divergence, and cross-model
+spec adversaries whose three-way disagreement separates implementation bugs from
+spec ambiguity. (4) Stdlib and environment brutality — Windows reserved device
+names, long paths, pipe deadlock, ReDoS, and a credential-opacity gate mechanising
+D-159/D-336. (5) Resource exhaustion and soak. (6) Cold-read usage campaigns. (7)
+Hostile network surface — two-tier local-Kestrel-plus-Azure, verifying D-352.
+
+**Harness.** `tooling/Grob.Torture`, a black-box CLI driver outside `tests/` (these
+are campaigns, not gates), with an in-proc SharpFuzz mode for throughput. It asserts
+the no-stack-trace and exit-code contracts, greps for a credential sentinel,
+preserves P0 repros to `findings/` and deduplicates by diagnostic signature. A
+stabilised subset graduates to `tests/Grob.Torture.Tests` as a per-commit gate,
+which then falls under the D-335 solution-membership check.
+
+**Timing — split to fit the build plan.** The build plan lands the remaining **core**
+modules (`fs`, `date`, `json`, `csv`, `regex`, `process`) at Sprint 9, but the
+first-party plugins (`Grob.Http`, `Grob.Crypto`, `Grob.Zip`) not until **Sprint 11**.
+The adversarial work therefore runs in two passes rather than one:
+
+- **Sprint 9/10 hardening interlude — Pillars 1–6.** At Sprint 9 close the whole
+  language, VM and core-stdlib surface is complete, so the compiler fuzzing, hostile
+  `.grobc`, differential/metamorphic and cross-model work, the full core-stdlib
+  environment brutality (`fs`/`path`/`process`/`regex`/`json`/`csv` — the Windows
+  nastiness, ReDoS, pipe deadlock, reserved device names), exhaustion, soak and
+  cold-read campaigns all run here. Pillar 1 layers 1–2, the harness skeleton and the
+  Sprint 9 module fixtures build during and immediately after Sprint 9; the CPU-heavy
+  campaigns run in the interlude proper.
+- **Post-Sprint-11 network-hardening pass — Pillar 7.** The hostile network surface,
+  D-352's verification and the two-tier local-Kestrel-plus-Azure infrastructure wait
+  until `Grob.Http` exists at Sprint 11. Pillar 7 cannot run at the 9/10 interlude
+  because its subject is not yet built. D-352's policy is pinned now so Sprint 11
+  builds to it; only the verification is deferred.
+
+Each pass carries its own Definition of Done. Because the eleven-script validation
+suite itself depends on the plugins (scripts 4/7/10/11/13 use `Grob.Http`/`Grob.Crypto`),
+alpha is necessarily post-Sprint-11, and the alpha exit criteria span both passes.
+
+**Decisions the interlude is expected to force.** Four, each logged as its own D-###
+rather than folded silently into a fix: the `.grobc` load-time verifier vs
+per-instruction bounds checks (Pillar 2); the parser recursion-depth guard and its
+threshold, converting `StackOverflowException` into a diagnostic (Pillar 1); the
+`regex` `matchTimeout` value (Pillar 4); and the `exit(n)` out-of-range clamp
+behaviour (the contract).
+
+**Alpha exit criteria.** Zero P0s across a calibrated coverage-guided fuzzing budget
+(24 CPU-hours a floor); the full Pillar 4 matrix green; every registry error code
+demonstrably reachable by a fixture; every P1 dispositioned with a fix or a D-###;
+both cross-model spec adversaries run with all ambiguity findings dispositioned;
+D-352 verified against real cross-host and IMDS endpoints; the credential-opacity
+gate green on every path.
+
+No new error code; count unchanged at 118.
+
+Relates to D-155, D-284, D-298, D-300, D-302, D-333, D-335, D-337, D-346, D-352.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -5329,7 +5468,20 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 9 Increment A3: D-351 added. Gives `GrobType.Array`/`NullableArray`_
+_July 2026 — Sprint 9/10 adversarial-hardening planning: D-352 and D-353 added._
+_D-352 pins `Grob.Http`'s previously-unspecified redirect and credential-forwarding_
+_policy — cross-origin redirects drop the `AuthHeader` (silent-and-safe), https→http_
+_downgrades throw `NetworkError`, the hop chain caps at 10, `download()` follows_
+_identically; cap and downgrade faults reuse the existing `NetworkError` leaf. D-353_
+_authorises `grob-adversarial-testing-strategy.md` — the seven-pillar suite (compiler_
+_fuzzing, hostile `.grobc`, differential/metamorphic + cross-model adversaries, stdlib/_
+_environment brutality, exhaustion/soak, cold-read campaigns, and a two-tier local-_
+_Kestrel-plus-Azure hostile network surface), the `tooling/Grob.Torture` black-box_
+_harness, and a two-pass schedule with quantitative alpha exit criteria — a Sprint 9/10_
+_interlude for Pillars 1–6 (complete at Sprint 9's core-module close) and a post-Sprint-11_
+_network-hardening pass for Pillar 7 once `Grob.Http` lands (plugins are Sprint 11, not_
+_Sprint 9). No error code added; count unchanged at 118._
+_Previous: July 2026 — Sprint 9 Increment A3: D-351 added. Gives `GrobType.Array`/`NullableArray`_
 _a real element-type identity via a new `ArrayTypeDescriptor` mirroring_
 _`FunctionTypeDescriptor`'s side-channel shape — `Grob.Core`'s `GrobType` enum stays_
 _flat; the descriptor is carried on `Symbol.ArrayDescriptor` (generalising Sprint 8_
