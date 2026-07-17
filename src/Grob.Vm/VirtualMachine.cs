@@ -29,6 +29,12 @@ public sealed class VirtualMachine : IPluginRegistrar {
     /// </summary>
     private const int MaxFrames = 256;
 
+    // SonarCloud S1192: shared across every "the type checker should have already
+    // rejected this" internal-exception site below (guid/date GetProperty, struct
+    // field GetProperty/SetProperty) — these are defensive, not a hot path, so the
+    // constant costs nothing at runtime.
+    private const string RejectedByTypeCheckerSuffix = "Type checker should have rejected this before emission.";
+
     /// <summary>
     /// D-319: check the cancellation token every 256 dispatch iterations.
     /// The mask must be a power-of-two minus one so the bitwise AND is a
@@ -888,7 +894,7 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                             if (guidMethod is null) {
                                                 throw new GrobInternalException(
                                                     $"GetProperty: guid has no member '{propertyName}'. " +
-                                                    "Type checker should have rejected this before emission.");
+                                                    RejectedByTypeCheckerSuffix);
                                             }
                                             _stack.Push(GrobValue.FromFunction(guidMethod), line);
                                             break;
@@ -915,7 +921,7 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                             if (dateMethod is null) {
                                                 throw new GrobInternalException(
                                                     $"GetProperty: date has no member '{propertyName}'. " +
-                                                    "Type checker should have rejected this before emission.");
+                                                    RejectedByTypeCheckerSuffix);
                                             }
                                             _stack.Push(GrobValue.FromFunction(dateMethod), line);
                                             break;
@@ -928,7 +934,7 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                 }
                                 throw new GrobInternalException(
                                     $"GetProperty: struct '{grobStruct.TypeName}' has no field '{propertyName}'. " +
-                                    "Type checker should have rejected this before emission.");
+                                    RejectedByTypeCheckerSuffix);
                             }
                             throw new GrobInternalException(
                                 $"opcode {OpCode.GetProperty} '{propertyName}' on receiver of kind " +
@@ -946,7 +952,7 @@ public sealed class VirtualMachine : IPluginRegistrar {
                             if (!setStruct!.TryGetField(setPropertyName, out _))
                                 throw new GrobInternalException(
                                     $"SetProperty: struct '{setStruct.TypeName}' has no field '{setPropertyName}'. " +
-                                    "Type checker should have rejected this before emission.");
+                                    RejectedByTypeCheckerSuffix);
                             setStruct.SetField(setPropertyName, setValue);
                             break;
                         }

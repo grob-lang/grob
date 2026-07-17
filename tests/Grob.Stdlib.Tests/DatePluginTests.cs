@@ -114,6 +114,23 @@ public sealed class DatePluginTests {
         Assert.Equal(localNow.Year, vm.Stack.Peek().AsInt());
     }
 
+    [Fact]
+    public void Today_UsesMidnightsOwnUtcOffset_NotNows() {
+        // CodeRabbit review, PR #143: date.today() previously reused `now`'s offset for
+        // midnight, wrong on a day the local zone's offset changes (a DST transition).
+        // TimeZoneInfo.Local is not mockable, so this cannot force an actual transition
+        // day, but it does pin the implementation to computing midnight's own offset
+        // rather than reusing `now`'s — the two happen to coincide outside a transition.
+        var vm = NewRegisteredVm();
+        DateTimeOffset localNow = new DateTimeOffset(PinnedUtc).ToLocalTime();
+        var midnight = new DateTime(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0, DateTimeKind.Unspecified);
+        long expectedOffsetMinutes = (long)TimeZoneInfo.Local.GetUtcOffset(midnight).TotalMinutes;
+
+        vm.Run(BuildGetPropertyOnCallChunk("date.today", "utcOffset"));
+
+        Assert.Equal(expectedOffsetMinutes, vm.Stack.Peek().AsInt());
+    }
+
     // -----------------------------------------------------------------------
     // of()/ofTime() — construction.
     // -----------------------------------------------------------------------
@@ -145,6 +162,30 @@ public sealed class DatePluginTests {
             GrobValue.FromInt(14), GrobValue.FromInt(30), GrobValue.FromInt(0)));
 
         Assert.Equal(30, vm.Stack.Peek().AsInt());
+    }
+
+    [Fact]
+    public void Of_MonthOutsideIntRange_ThrowsCatchableArithmeticErrorRatherThanWrapping() {
+        // CodeRabbit review, PR #143: an unchecked long-to-int narrowing would have
+        // silently wrapped this into some other, wrong but valid-looking month instead
+        // of failing. checked() lets the VM's existing generic OverflowException ->
+        // GrobArithmeticException(E5001) safety net (VirtualMachine.cs's RunDispatch
+        // catch block) turn it into a real, catchable Grob diagnostic for free — not a
+        // raw, unhandled CLR OverflowException.
+        var vm = NewRegisteredVm();
+
+        GrobArithmeticException ex = Assert.Throws<GrobArithmeticException>(() => vm.Run(BuildCallChunk(
+            "date.of", GrobValue.FromInt(2026), GrobValue.FromInt(long.MaxValue), GrobValue.FromInt(5))));
+        Assert.Equal(ErrorCatalog.E5001.Code, ex.Code);
+    }
+
+    [Fact]
+    public void AddMonths_ArgumentOutsideIntRange_ThrowsCatchableArithmeticErrorRatherThanWrapping() {
+        var vm = NewRegisteredVm();
+
+        GrobArithmeticException ex = Assert.Throws<GrobArithmeticException>(() => vm.Run(BuildMethodCallOnCallChunk(
+            "date.now", "addMonths", [], GrobValue.FromInt(long.MaxValue))));
+        Assert.Equal(ErrorCatalog.E5001.Code, ex.Code);
     }
 
     // -----------------------------------------------------------------------
@@ -532,10 +573,14 @@ public sealed class DatePluginTests {
 
     [Fact]
     public void Now_DoesNotReflectRealSystemClock_OnlyThePinnedOne() {
+        // CodeRabbit review, PR #143: midnight UTC on 1 January 2099 converts to
+        // 31 December 2098 in a negative-offset local zone, so the expected year is
+        // computed from the pinned clock's own local conversion rather than hardcoded.
         var farFutureClock = new TestClock(new DateTime(2099, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         var vm = NewRegisteredVm(farFutureClock);
         vm.Run(BuildGetPropertyOnCallChunk("date.now", "year"));
 
-        Assert.Equal(2099, vm.Stack.Peek().AsInt());
+        long expectedYear = new DateTimeOffset(farFutureClock.UtcNow).ToLocalTime().Year;
+        Assert.Equal(expectedYear, vm.Stack.Peek().AsInt());
     }
 }

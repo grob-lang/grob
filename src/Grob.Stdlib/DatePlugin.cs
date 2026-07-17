@@ -59,20 +59,31 @@ public sealed class DatePlugin : IGrobPlugin {
         registrar.RegisterNative("date.now", new NativeFunction("date.now", 0, (_, _) => FromDateTimeOffset(Now())));
 
         registrar.RegisterNative("date.today", new NativeFunction("date.today", 0, (_, _) => {
+            // CodeRabbit review, PR #143: midnight's own UTC offset, not `now`'s — on a
+            // day the local zone's offset changes (a DST transition), the two can differ.
             DateTimeOffset now = Now();
-            return FromDateTimeOffset(new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, now.Offset));
+            var midnight = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Unspecified);
+            return FromDateTimeOffset(new DateTimeOffset(midnight, TimeZoneInfo.Local.GetUtcOffset(midnight)));
         }));
 
         registrar.RegisterNative("date.of", new NativeFunction("date.of", 3, (args, _) => {
-            var local = new DateTime((int)args[0].AsInt(), (int)args[1].AsInt(), (int)args[2].AsInt(),
-                0, 0, 0, DateTimeKind.Unspecified);
+            // checked: CodeRabbit review, PR #143 — an unchecked long-to-int narrowing
+            // could silently wrap an out-of-range component into an unrelated, wrong but
+            // valid-looking date instead of failing. checked turns that into a
+            // deterministic OverflowException rather than silently wrong data; a full
+            // translation into a catchable Grob diagnostic is deferred to the Sprint
+            // 9/10 adversarial hardening pass (D-353), which covers this systematically
+            // across every Sprint 9 stdlib module, not date alone.
+            var local = checked(new DateTime((int)args[0].AsInt(), (int)args[1].AsInt(), (int)args[2].AsInt(),
+                0, 0, 0, DateTimeKind.Unspecified));
             return FromDateTimeOffset(new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)));
         }));
 
         registrar.RegisterNative("date.ofTime", new NativeFunction("date.ofTime", 6, (args, _) => {
-            var local = new DateTime(
+            // checked — see date.of above.
+            var local = checked(new DateTime(
                 (int)args[0].AsInt(), (int)args[1].AsInt(), (int)args[2].AsInt(),
-                (int)args[3].AsInt(), (int)args[4].AsInt(), (int)args[5].AsInt(), DateTimeKind.Unspecified);
+                (int)args[3].AsInt(), (int)args[4].AsInt(), (int)args[5].AsInt(), DateTimeKind.Unspecified));
             return FromDateTimeOffset(new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)));
         }));
 

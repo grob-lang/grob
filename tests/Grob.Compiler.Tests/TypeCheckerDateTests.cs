@@ -12,7 +12,7 @@ namespace Grob.Compiler.Tests;
 /// surface (D-342) for the seven static constructors, instance property/method dispatch
 /// (including the arity/type-checked method arguments guid's all-zero-arity family never
 /// needed), the <c>&lt;</c>/<c>&gt;</c>/<c>&lt;=</c>/<c>&gt;=</c> date-vs-date comparison gate
-/// (D-354's <c>LessDate</c>/<c>GreaterDate</c> authorisation), and §3.1.1.
+/// (D-354's <c>LessDate</c>/<c>GreaterDate</c> authorisation) and §3.1.1.
 /// </summary>
 public sealed class TypeCheckerDateTests {
     private static (CompilationUnit Unit, DiagnosticBag Diagnostics) TypeCheckSource(string source) {
@@ -61,6 +61,7 @@ public sealed class TypeCheckerDateTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0001.Code, diag.Code);
         Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(12, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -77,6 +78,7 @@ public sealed class TypeCheckerDateTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
         Assert.Equal(6, diag.Range.Start.Line);
+        Assert.Equal(6, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -89,6 +91,7 @@ public sealed class TypeCheckerDateTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0002.Code, diag.Code);
         Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -156,6 +159,7 @@ public sealed class TypeCheckerDateTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1004.Code, diag.Code);
         Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -164,6 +168,8 @@ public sealed class TypeCheckerDateTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1003.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -217,6 +223,7 @@ public sealed class TypeCheckerDateTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1002.Code, diag.Code);
         Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -260,6 +267,8 @@ public sealed class TypeCheckerDateTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(28, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -271,6 +280,8 @@ public sealed class TypeCheckerDateTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(18, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -320,9 +331,9 @@ public sealed class TypeCheckerDateTests {
     }
 
     [Theory]
-    [InlineData("isBefore")]
-    [InlineData("isAfter")]
-    public void OrderingMethod_WithNonDateArgument_ReportsSingleE0004(string method) {
+    [InlineData("isBefore", 26)]
+    [InlineData("isAfter", 25)]
+    public void OrderingMethod_WithNonDateArgument_ReportsSingleE0004(string method, int column) {
         DiagnosticBag bag = Check($"""
             a := date.now()
             readonly r := a.{method}(5)
@@ -330,12 +341,14 @@ public sealed class TypeCheckerDateTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(column, diag.Range.Start.Column);
     }
 
     [Theory]
-    [InlineData("isBefore")]
-    [InlineData("isAfter")]
-    public void OrderingMethod_WithUnrelatedStructArgument_ReportsSingleE0004(string method) {
+    [InlineData("isBefore", 26)]
+    [InlineData("isAfter", 25)]
+    public void OrderingMethod_WithUnrelatedStructArgument_ReportsSingleE0004(string method, int column) {
         DiagnosticBag bag = Check($$"""
             type Config {
                 host: string
@@ -347,6 +360,8 @@ public sealed class TypeCheckerDateTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(6, diag.Range.Start.Line);
+        Assert.Equal(column, diag.Range.Start.Column);
     }
 
     [Theory]
@@ -401,6 +416,8 @@ public sealed class TypeCheckerDateTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1002.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -408,6 +425,33 @@ public sealed class TypeCheckerDateTests {
         DiagnosticBag bag = Check("""
             fn describe(d: date): string {
                 return d.toIso()
+            }
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+    }
+
+    [Fact]
+    public void NullableDateParameter_NonOptionalMethodCall_ReportsSingleE0101() {
+        // CodeRabbit review, PR #143: ResolveMemberAccessCall (the method-CALL path) had
+        // no nullable guard at all, unlike VisitMemberAccess's plain property-access path
+        // — d.toIso() on a date? silently resolved Unknown instead of erroring E0101.
+        DiagnosticBag bag = Check("""
+            fn describe(d: date?): string {
+                return d.toIso()
+            }
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0101.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(12, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void NullableDateParameter_OptionalMethodCall_ResolvesPermissively() {
+        DiagnosticBag bag = Check("""
+            fn describe(d: date?): void {
+                s := d?.toIso()
             }
             """);
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
@@ -432,6 +476,36 @@ public sealed class TypeCheckerDateTests {
     }
 
     [Fact]
+    public void DirectDateCalls_NotStoredInBindings_LessThan_ResolvesToBool_NoDiagnostics() {
+        // CodeRabbit review, PR #143: GetStructTypeName previously had no CallExpr arm,
+        // so a direct struct-returning call not yet bound to a variable lost its nominal
+        // date identity, failing IsDateStructPair and falling through to E0002 — the most
+        // natural comparison shape (comparing two constructor calls directly) didn't work.
+        DiagnosticBag bag = Check("readonly r := date.now() < date.today()");
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+    }
+
+    [Fact]
+    public void ChainedMethodCallResult_NotStoredInBinding_LessThan_ResolvesToBool_NoDiagnostics() {
+        DiagnosticBag bag = Check("""
+            d := date.now()
+            readonly r := d.addDays(1) < d.addDays(2)
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+    }
+
+    [Fact]
+    public void ChainedCallResult_DirectPropertyAccess_ResolvesWithNoDiagnostics() {
+        // The same _callResultStructNames gap also blocked direct property access on a
+        // call result with no intervening `:=` (d.addDays(1).year).
+        DiagnosticBag bag = Check("""
+            d := date.now()
+            readonly y := d.addDays(1).year
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+    }
+
+    [Fact]
     public void DateVsInt_LessThan_ReportsSingleE0002() {
         DiagnosticBag bag = Check("""
             a := date.now()
@@ -440,6 +514,8 @@ public sealed class TypeCheckerDateTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0002.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -455,6 +531,8 @@ public sealed class TypeCheckerDateTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0002.Code, diag.Code);
+        Assert.Equal(6, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------

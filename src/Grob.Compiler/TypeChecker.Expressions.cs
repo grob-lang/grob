@@ -382,6 +382,21 @@ public sealed partial class TypeChecker {
             return ValidateArrayMethodCall(node, memberAccess.Member, argTypes);
         }
 
+        // A non-optional '.' method call on a nullable guid/date receiver may
+        // dereference nil — reject at compile time (E0101), mirroring
+        // VisitMemberAccess's identical guard for plain property access (CodeRabbit
+        // review, PR #143 — this call-site arm had no nullable guard at all, so
+        // `d.toIso()` on a `date?` silently resolved Unknown instead of erroring).
+        // '?.' stays permissive, matching the existing property-access pattern.
+        string? nullableStructName = receiverType == GrobType.NullableStruct
+            ? GetStructTypeName(memberAccess.Target)
+            : null;
+        if (!memberAccess.IsOptional && nullableStructName is "guid" or "date") {
+            return EmitErrorAndReturn(ErrorCatalog.E0101,
+                $"Member access via '.' on nullable type '{nullableStructName}?' may dereference nil. Use '?.' to chain or '??' to unwrap first.",
+                memberAccess.Range);
+        }
+
         // Sprint 8 Increment D: guid instance methods (toString/toUpperString/
         // toCompactString) — mirrors the array higher-order-method arm above, since
         // guid has no UserTypeInfo/declared fields for ResolveStructFieldAccess to
@@ -541,7 +556,7 @@ public sealed partial class TypeChecker {
         if (argTypes.Length != expected.Length) {
             string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
             EmitError(ErrorCatalog.E0003,
-                $"'{memberAccess.Member}' expects {expected.Length} {Plural(expected.Length, "argument")}, but {argTypes.Length} {suppliedVerb} supplied.",
+                $"'{memberAccess.Member}' expects {expected.Length} {Plural(expected.Length, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
                 node.Range);
             return;
         }
@@ -685,7 +700,7 @@ public sealed partial class TypeChecker {
         int required = fn.Parameters.Count(pm => pm.DefaultValue is null);
         int supplied = node.Arguments.Count;
         string expectation = required == paramCount
-            ? $"{paramCount} {Plural(paramCount, "argument")}"
+            ? $"{paramCount} {Plural(paramCount, ArgumentNoun)}"
             : $"between {required} and {paramCount} arguments";
         string suppliedVerb = supplied == 1 ? "was" : "were";
         EmitError(ErrorCatalog.E0003,
@@ -695,6 +710,11 @@ public sealed partial class TypeChecker {
 
     /// <summary>Returns <paramref name="noun"/> pluralised for a count of <paramref name="n"/>.</summary>
     private static string Plural(int n, string noun) => n == 1 ? noun : noun + "s";
+
+    // SonarCloud S1192: "argument" is the noun in every arity-mismatch message across
+    // this file (positional-call, native-call and date-method arity checks) — a shared
+    // constant rather than four independent literals.
+    private const string ArgumentNoun = "argument";
 
     /// <summary>
     /// Returns the index of the parameter named <paramref name="name"/> in
@@ -1345,10 +1365,9 @@ public sealed partial class TypeChecker {
 
         int expected = member.ParameterTypes.Count;
         if (argTypes.Length != expected) {
-            string argWord = expected == 1 ? "argument" : "arguments";
             string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
             EmitError(ErrorCatalog.E0003,
-                $"'{namespaceName}.{memberName}' expects {expected} {argWord}, but {argTypes.Length} {suppliedVerb} supplied.",
+                $"'{namespaceName}.{memberName}' expects {expected} {Plural(expected, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
                 node.Range);
             return;
         }
@@ -1375,10 +1394,9 @@ public sealed partial class TypeChecker {
         int fixedCount = member.ParameterTypes.Count;
         int minimum = fixedCount + 1;
         if (argTypes.Length < minimum) {
-            string argWord = minimum == 1 ? "argument" : "arguments";
             string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
             EmitError(ErrorCatalog.E0003,
-                $"'{namespaceName}.{memberName}' expects at least {minimum} {argWord}, but {argTypes.Length} {suppliedVerb} supplied.",
+                $"'{namespaceName}.{memberName}' expects at least {minimum} {Plural(minimum, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
                 node.Range);
             return;
         }
@@ -1558,6 +1576,14 @@ public sealed partial class TypeChecker {
         // the declaration node alone. `:=`-inferred locals still resolve via that path.
         IdentifierExpr id => LookupSymbol(id.Name)?.NamedStructTypeName ?? GetStructTypeNameFromDecl(id.Declaration),
         MemberAccessExpr ma => ma.ResolvedStructTypeName,
+        // A direct struct-returning call not yet stored in a binding (date.now() <
+        // date.today(), or d.addDays(1) < d2) — _callResultStructNames is already
+        // populated by the time this runs: Visit(target) (VisitCall) always precedes
+        // the caller's own GetStructTypeName consultation, in every call site (D-355 —
+        // CodeRabbit review PR #143 reported this for date; generalised here since the
+        // same gap silently affected every struct-returning call, guid included).
+        CallExpr call => _callResultStructNames.GetValueOrDefault(call),
+        GroupingExpr g => GetStructTypeName(g.Inner),
         _ => null
     };
 

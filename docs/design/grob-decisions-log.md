@@ -5267,7 +5267,7 @@ shipped behaviour.
    accept a negative `n` to subtract, uniformly. .NET's `DateTimeOffset.AddDays`/
    `AddMonths`/`AddHours`/`AddMinutes` already accept negative arguments with ordinary,
    well-defined semantics, so this needed no new logic — a smaller surface, one verb
-   per unit, and the shape a developer reaches for instinctively (a negative argument
+   per unit and the shape a developer reaches for instinctively (a negative argument
    to an "add" method) rather than a bespoke `minus*` counterpart most host languages
    don't offer either.
 2. **`toDateOnly()`/`toTimeOnly()` added.** Mirrors `date.today()`'s existing
@@ -5629,7 +5629,7 @@ _`DateTimeOffset` string, a `NamespaceRegistry` entry for the seven static_
 _constructors, real per-argument arity/type checking (unlike guid's all-zero-arity_
 _methods), the first type besides `guid` recognised in annotation position, `IClock`_
 _consumption (D-343) converted to local time (D-176), `date.parse` reusing the_
-_reserved `E5702` (D-284, no compile-time literal check unlike guid's E0601), and a_
+_reserved `E5702` (D-284, no compile-time literal check unlike guid's E0601) and a_
 _registered canonical-ISO-8601 `toString()` for `ValueDisplay` (D-336) — discovered_
 _`DateTimeOffset`'s `K` specifier never renders `Z`, unlike `DateTime`'s, handled with_
 _an explicit zero-offset format branch. No new error code; no new `GrobValueKind`._

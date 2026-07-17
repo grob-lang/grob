@@ -129,13 +129,12 @@ internal static class NamespaceRegistry {
                 ["namespaces.url"] = new ConstantMember(GrobType.Struct, NamedTypeName: "guid"),
                 ["namespaces.oid"] = new ConstantMember(GrobType.Struct, NamedTypeName: "guid"),
             },
-            // Sprint 9 Increment B: date — the second namespace with Struct-kind members
-            // (after guid). Static constructors all return date (NamedTypeName: "date");
+            // Sprint 9 Increment B: date is the second namespace with Struct-kind
+            // members, after guid. Every static constructor below returns a date struct;
             // the instance property/method surface is resolved separately in
-            // TypeChecker.Expressions.cs, keyed off GetStructTypeName(...) == "date",
-            // mirroring guid's instance-member arms (this table only models
-            // namespace-qualified members, not instance members on an already-resolved
-            // date value).
+            // TypeChecker.Expressions.cs, keyed off the receiver's struct name, mirroring
+            // guid's instance-member arms — this table only models namespace-qualified
+            // members, not instance members on an already-resolved date value.
             ["date"] = new Dictionary<string, object>(StringComparer.Ordinal) {
                 ["now"] = new NativeMember([], GrobType.Struct, NamedTypeName: "date"),
                 ["today"] = new NativeMember([], GrobType.Struct, NamedTypeName: "date"),

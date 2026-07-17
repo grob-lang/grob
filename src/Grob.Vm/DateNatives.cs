@@ -39,7 +39,7 @@ internal static class DateNatives {
     private const string IsoUtcFormat = "yyyy-MM-ddTHH:mm:ss'Z'";
     private const string IsoDateOnlyFormat = "yyyy-MM-dd";
 
-    private static readonly DateTimeOffset UnixEpoch = new(1970, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset UnixEpoch = DateTimeOffset.UnixEpoch;
 
     /// <summary>Constructs the runtime <c>date</c> value for <paramref name="value"/>.</summary>
     internal static GrobValue FromDateTimeOffset(DateTimeOffset value) => GrobValue.FromStruct(new GrobStruct(
@@ -89,8 +89,11 @@ internal static class DateNatives {
         methodName switch {
             "addDays" => new NativeFunction("addDays", 1,
                 (args, _) => FromDateTimeOffset(ToDateTimeOffset(receiver).AddDays(args[0].AsInt()))),
+            // checked: CodeRabbit review, PR #143 — see DatePlugin.date.of's identical
+            // rationale (an unchecked long-to-int narrowing could silently wrap into a
+            // wrong but valid-looking month count).
             "addMonths" => new NativeFunction("addMonths", 1,
-                (args, _) => FromDateTimeOffset(ToDateTimeOffset(receiver).AddMonths((int)args[0].AsInt()))),
+                (args, _) => FromDateTimeOffset(ToDateTimeOffset(receiver).AddMonths(checked((int)args[0].AsInt())))),
             "addHours" => new NativeFunction("addHours", 1,
                 (args, _) => FromDateTimeOffset(ToDateTimeOffset(receiver).AddHours(args[0].AsInt()))),
             "addMinutes" => new NativeFunction("addMinutes", 1,
