@@ -84,8 +84,15 @@ Chris.**
 
 ## Quality gates
 
-- **Husky.NET pre-push** runs build, test and format verification before every
-  push.
+- **`pre-commit` framework** (`.pre-commit-config.yaml`, not Husky) drives the git
+  hooks. The **pre-commit** stage runs TruffleHog secret scanning, file hygiene
+  (trailing whitespace, end-of-file newline, YAML/JSON validation, merge-conflict
+  markers, large-file block, LF/CRLF line-ending enforcement) and
+  `dotnet format --verify-no-changes` scoped to staged `.cs` files. The **pre-push**
+  stage runs `tooling/coverage-gate.ps1` — `dotnet test` with coverlet's OpenCover
+  collector — failing the push if overall line coverage drops below 80% (a coarse
+  local proxy for SonarCloud's new-code floor, ratcheting up; distinct from the 90%
+  line-coverage bar above). Every clone runs `pre-commit install` once.
 - **CodeRabbit** is the in-loop pre-PR reviewer (a deliberate step before the
   PR is opened). There is no Claude reviewer subagent.
 - **SonarCloud** runs in CI via the `dotnet-sonarscanner` workflow
@@ -118,16 +125,5 @@ Chris.**
 - **British English** in documentation; **Oxford comma never**; never the word
   "simply".
 - Decisions-log entries follow ADR style (`D-###`, `Area`, `Supersedes`,
-  `Superseded by`), updated in **four-location lockstep** where applicable:
-  summary index row, full entry, status table, footer changelog.
-
-## Repo harness map (D-314)
-
-- `CLAUDE.md` — this file, durable project memory.
-- `.claude/commands/sprint-N-*.md` — invokable increment prompts (`/sprint-4-a`…).
-- `.claude/agents/*.md` — subagents (e.g. the Opus lowering specialist).
-- `prompts/<sprint>/` — kickoff records, QA briefs and archive copies of the
-  increment commands. The retired `.github/` Copilot harness lives here in
-  history for the sprints it drove.
-- `docs/design/` — the working design corpus; the decisions log is the
-  authority. `docs/wiki/` is a published reference rendering.
+  `Superseded by`), updated in **three-location lockstep**: full entry, summary
+  index row, footer changelog — the `logging-a-decision` skill is the procedure.
