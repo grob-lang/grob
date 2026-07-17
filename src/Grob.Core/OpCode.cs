@@ -1,8 +1,15 @@
 namespace Grob.Core;
 
 /// <summary>
-/// The complete v1 Grob instruction set. Defined in full from Sprint 2 -
-/// never grown incrementally (same discipline as <see cref="TokenKind"/>).
+/// The complete v1 Grob instruction set. Defined in full from Sprint 2 and grown only
+/// deliberately, via the <c>adding-an-opcode</c> procedure — never casually (same
+/// discipline as <see cref="TokenKind"/>). <c>LessDate</c>/<c>GreaterDate</c> (D-354,
+/// Sprint 9 Increment B) are the first such deliberate growth: <c>date</c> ordering
+/// comparisons need their own typed opcodes because <see cref="GrobValueKind.Struct"/>
+/// is a flat, undiscriminated kind at compile time (D-303) — the existing
+/// <c>Less</c>/<c>Greater</c> family has no struct variant, and the compiler's
+/// opcode-selection default (anything non-<c>Float</c>/non-<c>String</c> falls to
+/// <c>Int</c>) would otherwise silently miscompile a <c>date</c> comparison.
 /// Authority: grob-v1-requirements.md SS3.3.
 /// </summary>
 public enum OpCode : byte {
@@ -120,6 +127,18 @@ public enum OpCode : byte {
 
     /// <summary>float greater than or equal to float to bool.</summary>
     GreaterEqualFloat,
+
+    /// <summary>
+    /// date (Struct-discriminated, D-303) less than date to bool — compares the
+    /// underlying instant. Appended (D-354), not inserted, so no existing opcode's
+    /// implicit byte value shifts. <c>&lt;=</c> has no dedicated opcode: lowered to
+    /// <c>GreaterDate</c> + <c>Not</c>, mirroring the string <c>&lt;=</c>/<c>&gt;=</c>
+    /// lowering.
+    /// </summary>
+    LessDate,
+
+    /// <summary>date greater than date to bool — compares the underlying instant. See <see cref="LessDate"/>.</summary>
+    GreaterDate,
 
     // -------------------------------------------------------------------------
     // Logic

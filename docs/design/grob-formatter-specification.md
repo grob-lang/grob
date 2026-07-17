@@ -827,7 +827,7 @@ type IssueUser{
 login :string
 }
 
-cutoff:=date.today().minusDays(days_old)
+cutoff:=date.today().addDays(-days_old)
 
 issues := http.get("https://api.github.com/repos/${repo}/issues?state=open",auth.bearer(token)).asJson().mapAs<Issue>()
 
@@ -860,7 +860,7 @@ type IssueUser {
     login: string
 }
 
-cutoff := date.today().minusDays(days_old)
+cutoff := date.today().addDays(-days_old)
 
 issues := http.get("https://api.github.com/repos/${repo}/issues?state=open", auth.bearer(token))
     .asJson()

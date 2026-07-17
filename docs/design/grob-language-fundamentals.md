@@ -643,7 +643,7 @@ const MAX := 100         // inferred, compile-time constant
 const MAX: int := 100    // explicit, compile-time constant
 
 readonly TOKEN := env.require("ADO_PAT")        // inferred, runtime-once
-readonly CUTOFF: date := date.today().minusDays(30)
+readonly CUTOFF: date := date.today().addDays(-30)
 
 name: string? := nil     // annotation required — nil provides no type information
 items: int[] := []       // annotation required — [] provides no element type
@@ -1846,7 +1846,7 @@ right-hand side may be any valid Grob expression.
 
 ```grob
 readonly TOKEN  := env.require("ADO_PAT")
-readonly CUTOFF := date.today().minusDays(30)
+readonly CUTOFF := date.today().addDays(-30)
 readonly CONFIG := fs.readText("config.json")
 readonly ITEMS  := [1, 2, 3]
 ```

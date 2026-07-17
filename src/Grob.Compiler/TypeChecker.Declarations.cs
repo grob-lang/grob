@@ -499,6 +499,12 @@ public sealed partial class TypeChecker {
             return (guidKind, "guid", null, null);
         }
 
+        // Sprint 9 Increment B: date is the same shape as guid above.
+        if (typeRef.Name == "date") {
+            GrobType dateKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
+            return (dateKind, "date", null, null);
+        }
+
         // User-defined type: look up the symbol registered in pass 1.
         Symbol? symbol = LookupSymbol(typeRef.Name);
         if (symbol is null) {

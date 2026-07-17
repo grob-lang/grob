@@ -129,6 +129,24 @@ internal static class NamespaceRegistry {
                 ["namespaces.url"] = new ConstantMember(GrobType.Struct, NamedTypeName: "guid"),
                 ["namespaces.oid"] = new ConstantMember(GrobType.Struct, NamedTypeName: "guid"),
             },
+            // Sprint 9 Increment B: date is the second namespace with Struct-kind
+            // members, after guid. Every static constructor below returns a date struct;
+            // the instance property/method surface is resolved separately in
+            // TypeChecker.Expressions.cs, keyed off the receiver's struct name, mirroring
+            // guid's instance-member arms — this table only models namespace-qualified
+            // members, not instance members on an already-resolved date value.
+            ["date"] = new Dictionary<string, object>(StringComparer.Ordinal) {
+                ["now"] = new NativeMember([], GrobType.Struct, NamedTypeName: "date"),
+                ["today"] = new NativeMember([], GrobType.Struct, NamedTypeName: "date"),
+                ["of"] = new NativeMember(
+                    [GrobType.Int, GrobType.Int, GrobType.Int], GrobType.Struct, NamedTypeName: "date"),
+                ["ofTime"] = new NativeMember(
+                    [GrobType.Int, GrobType.Int, GrobType.Int, GrobType.Int, GrobType.Int, GrobType.Int],
+                    GrobType.Struct, NamedTypeName: "date"),
+                ["parse"] = new NativeMember([GrobType.String], GrobType.Struct, NamedTypeName: "date"),
+                ["fromUnixSeconds"] = new NativeMember([GrobType.Int], GrobType.Struct, NamedTypeName: "date"),
+                ["fromUnixMillis"] = new NativeMember([GrobType.Int], GrobType.Struct, NamedTypeName: "date"),
+            },
             // Sprint 8 Increment E: formatAs — registered as a namespace NAME only, so
             // IsNamespace/RegisterNamespaces seed the usual NamespaceDecl sentinel (bare
             // `x := formatAs` correctly falls through to the generic D-342 E1004 arm) and

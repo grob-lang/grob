@@ -571,7 +571,7 @@ type IssueUser {
     login: string
 }
 
-cutoff := date.today().minusDays(days_old)
+cutoff := date.today().addDays(-days_old)
 
 issues := http.get(
     "https://api.github.com/repos/${repo}/issues?state=open&per_page=100",
@@ -651,7 +651,7 @@ type BranchInfo {
     author: string
 }
 
-cutoff := date.today().minusDays(stale_days)
+cutoff := date.today().addDays(-stale_days)
 
 raw := process.runOrFail("git", [
     "-C", repo_path,

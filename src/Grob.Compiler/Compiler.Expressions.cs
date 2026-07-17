@@ -479,18 +479,37 @@ public sealed partial class Compiler {
         if (rt == GrobType.Int && lt == GrobType.Float)
             _chunk.WriteOpCode(OpCode.IntToFloat, node.Right.Range.Start.Line);
 
-        // String '<=' and '>=' have no dedicated opcodes — the closed enum provides
-        // only LessString/GreaterString (the strict forms). Lower them to the strict
-        // comparison followed by Not:  a <= b  ≡  !(a > b);  a >= b  ≡  !(a < b).
-        if (lt == GrobType.String &&
-            (node.Operator == BinaryOperator.LessEqual || node.Operator == BinaryOperator.GreaterEqual)) {
-            OpCode strict = node.Operator == BinaryOperator.LessEqual ? OpCode.GreaterString : OpCode.LessString;
+        // String and date '<=' and '>=' have no dedicated opcodes — the closed enum
+        // provides only the strict forms (LessString/GreaterString; LessDate/GreaterDate,
+        // Sprint 9 Increment B, D-354). Lower them to the strict comparison followed by
+        // Not:  a <= b  ≡  !(a > b);  a >= b  ≡  !(a < b).
+        if (TryGetStrictLoweredOpCode(lt, node.Operator, out OpCode strict)) {
             _chunk.WriteOpCode(strict, line);
             _chunk.WriteOpCode(OpCode.Not, line);
             return;
         }
 
         _chunk.WriteOpCode(GetComparisonOpCode(node.Operator, lt, rt), line);
+    }
+
+    /// <summary>
+    /// Reports whether <paramref name="op"/> is a <c>&lt;=</c>/<c>&gt;=</c> over an operand
+    /// category with no dedicated opcode (string or date), and if so the strict opcode to
+    /// lower it to (<c>&lt;=</c> lowers to the strict <c>&gt;</c> plus <c>Not</c>; <c>&gt;=</c>
+    /// to the strict <c>&lt;</c> plus <c>Not</c>).
+    /// </summary>
+    private static bool TryGetStrictLoweredOpCode(GrobType lt, BinaryOperator op, out OpCode strict) {
+        bool isLessEqual = op == BinaryOperator.LessEqual;
+        if ((isLessEqual || op == BinaryOperator.GreaterEqual) && lt == GrobType.String) {
+            strict = isLessEqual ? OpCode.GreaterString : OpCode.LessString;
+            return true;
+        }
+        if ((isLessEqual || op == BinaryOperator.GreaterEqual) && lt == GrobType.Struct) {
+            strict = isLessEqual ? OpCode.GreaterDate : OpCode.LessDate;
+            return true;
+        }
+        strict = default;
+        return false;
     }
 
     // Arithmetic — coerce either operand from int → float as needed, then the typed op.
@@ -1005,11 +1024,13 @@ public sealed partial class Compiler {
             (BinaryOperator.NotEqual, _) => OpCode.NotEqual,
             (BinaryOperator.Less, GrobType.Float) => OpCode.LessFloat,
             (BinaryOperator.Less, GrobType.String) => OpCode.LessString,
+            (BinaryOperator.Less, GrobType.Struct) => OpCode.LessDate,
             (BinaryOperator.Less, _) => OpCode.LessInt,
             (BinaryOperator.LessEqual, GrobType.Float) => OpCode.LessEqualFloat,
             (BinaryOperator.LessEqual, _) => OpCode.LessEqualInt,
             (BinaryOperator.Greater, GrobType.Float) => OpCode.GreaterFloat,
             (BinaryOperator.Greater, GrobType.String) => OpCode.GreaterString,
+            (BinaryOperator.Greater, GrobType.Struct) => OpCode.GreaterDate,
             (BinaryOperator.Greater, _) => OpCode.GreaterInt,
             (BinaryOperator.GreaterEqual, GrobType.Float) => OpCode.GreaterEqualFloat,
             (BinaryOperator.GreaterEqual, _) => OpCode.GreaterEqualInt,
@@ -1019,11 +1040,16 @@ public sealed partial class Compiler {
     /// <summary>
     /// Reduces a pair of comparison operand types to a single category —
     /// <see cref="GrobType.Float"/> (any float operand, mixed numerics included),
-    /// <see cref="GrobType.String"/> (string operands) or <see cref="GrobType.Int"/>.
+    /// <see cref="GrobType.String"/> (string operands), <see cref="GrobType.Struct"/>
+    /// (Sprint 9 Increment B, D-354 — safe because the type checker's
+    /// <c>IsDateStructPair</c> gate only ever lets a <c>Struct</c>-vs-<c>Struct</c> pair
+    /// reach a comparison operator when both sides are nominally <c>date</c>) or
+    /// <see cref="GrobType.Int"/>.
     /// </summary>
     private static GrobType ComparisonCategory(GrobType lt, GrobType rt) {
         if (lt == GrobType.Float || rt == GrobType.Float) return GrobType.Float;
         if (lt == GrobType.String) return GrobType.String;
+        if (lt == GrobType.Struct) return GrobType.Struct;
         return GrobType.Int;
     }
 
