@@ -2,7 +2,7 @@
 
 **Type:** Interlude (workflow/tooling — no language, compiler, VM or stdlib changes)
 **Runs:** Before Sprint 9 increment B
-**Branch:** `chore/harness-token-audit` (use `/start-branch`; refuse on `main` as usual)
+**Branch:** `chore/token-optimisation-audit` (use `/start-branch`; refuse on `main` as usual)
 **Session shape:** Read-only audit → report → explicit approval → apply approved fixes only
 
 ---

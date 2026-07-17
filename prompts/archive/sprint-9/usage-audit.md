@@ -4,9 +4,9 @@ Account
 Auth method
 Claude AI
 Email
-cjgrove@sky.com
+[redacted]
 Organization
-cjgrove@sky.com's Organization
+[redacted]
 Plan
 Claude pro
 Usage

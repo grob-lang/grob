@@ -1,3 +1,8 @@
+[Excerpt — raw /context paste supplied by Chris. Truncated after the Custom agents
+breakdown; the paste did not carry per-skill or MCP-server detail rows. The category
+totals above the breakdowns (including Skills 7.9k) are complete, and those are the
+figures §1 of harness-audit-report.md reconciles against.]
+
 Context usage
 
 claude-sonnet-5

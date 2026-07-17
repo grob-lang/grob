@@ -1,7 +1,9 @@
 # Harness and Token-Baseline Audit — Phase 1 Report
 
 **Session:** Interlude, before Sprint 9 Increment B. Branch: `chore/token-optimisation-audit`.
-**Status:** Read-only findings. Nothing has been edited. Awaiting approval by item number.
+**Status:** Two-phase record. Phase 1 (§1–§5) was delivered read-only for approval by
+item number — nothing was edited at that point. Phase 2 (§6) records the items Chris
+approved, now applied.
 
 Method: token estimates use chars ÷ 4 unless a figure is quoted directly from the
 supplied `/context` paste. File sizes are `wc -c` on the working tree at HEAD of this
@@ -167,7 +169,7 @@ anyway, since it's adjacent — not a separate numbered item on its own.
 defined in `.mcp.json` (which only defines `microsoft-docs`). Harmless (nothing to
 enable), but dead configuration. Agrees with `/doctor` (`doctor-audit.md` line 44).
 
-**F7 — outer `d:/Code/grob-lang/.claude/settings.local.json` duplicates a rule
+**F7 — outer `D:\Code\grob-lang\.claude\settings.local.json` duplicates a rule
 already in the checked-in outer `settings.json` — (d).**
 Both files grant `Bash(python -c ' *)` at the same scope. Agrees with `/doctor`
 (`doctor-audit.md` line 44).
@@ -315,7 +317,7 @@ Numbered, independently approvable. Approve by number ("apply 1, 3–7").
 6. Remove the dangling `"github"` entry from
    `grob/.claude/settings.local.json`'s `enabledMcpjsonServers` (F6).
 7. Remove the duplicate `Bash(python -c ' *)` allow rule from the outer
-   `d:/Code/grob-lang/.claude/settings.local.json` (F7).
+   `D:\Code\grob-lang\.claude\settings.local.json` (F7).
 8. Add `tooling/test-summary.ps1` and `tooling/build-summary.ps1` output-filter
    wrappers (F9).
 9. Add the `PreToolUse` main-branch edit guard hook only (block). Hold the
@@ -389,7 +391,7 @@ real value; correctness was. What was applied:
 - **6 — done.** Dangling `"github"` removed from
   `grob/.claude/settings.local.json`'s `enabledMcpjsonServers`.
 - **7 — done.** Duplicate `Bash(python -c ' *)` allow rule emptied from the outer
-  `d:/Code/grob-lang/.claude/settings.local.json` (already granted by the sibling
+  `D:\Code\grob-lang\.claude\settings.local.json` (already granted by the sibling
   `settings.json`). This file is outside the `grob/` git repo, so it is not part of
   any commit — a local-hygiene fix only.
 - **10 — Chris's action.** `claude update` (2.1.181 → 2.1.211) runs in an interactive
@@ -433,4 +435,10 @@ that plainly rather than massaging the figure.
 
 Only markdown and JSON settings files were edited — no code. Confirmed green after
 the changes: `dotnet build Grob.slnx` exit 0; `dotnet test Grob.slnx` exit 0. The
-session changed documentation accuracy and configuration hygiene, not behaviour.
+pre-push gate (`tooling/coverage-gate.ps1`, the coverlet coverage check that fires at
+push) was run locally to evidence the criterion rather than leave it implied: exit 0,
+overall line coverage 95.3% (8,901 / 9,340 sequence points), comfortably above its
+80% floor and unmoved by a docs-only change. The gate proper still runs at push time —
+pushing is the maintainer's action — so this is a local confirmation, not a substitute
+for it. The session changed documentation accuracy and configuration hygiene, not
+behaviour.
