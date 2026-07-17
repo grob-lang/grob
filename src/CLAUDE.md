@@ -102,24 +102,11 @@ from a neighbour. If parent-namespace callers would otherwise need a `using` for
 every new subfolder, add a single `GlobalUsings.cs` at the project root rather than
 weakening the per-file rule.
 
-## What goes where
-
-| Concern | Project |
-| --- | --- |
-| `SourceLocation`, `Diagnostic`, `GrobError` hierarchy, AST node types | `Grob.Core` |
-| `GrobValue` and its variants; `GrobType` (runtime type-tag enum and metadata) | `Grob.Core` |
-| Lexer, parser, type checker, emitter, `.grobc` writer | `Grob.Compiler` |
-| Bytecode interpreter, call stack, value stack, `.grobc` reader | `Grob.Vm` |
-| `IGrobPlugin` interface and plugin host | `Grob.Runtime` |
-| `fs`, `strings`, `json`, `process`, the other core modules | `Grob.Stdlib` |
-| `grob` command-line entry, argument parsing, REPL, error formatting | `Grob.Cli` |
-| LSP protocol handling | `Grob.Lsp` |
-| Ambient abstractions (`IClock`, `IFileSystem`, `IConsole`, `IProcessRunner`) | `Grob.Core` (interface) + `Grob.Cli` (concrete) |
-
-Before writing the namespace on a new file, ask: which project owns this type; does
-that project have access to everything the type needs; if not, can the missing thing
-move to `Grob.Core`, or does the type belong elsewhere? If you cannot answer
-confidently, the file is not ready to write — propose the design first.
+Before writing the namespace on a new file, ask: which project owns this type (the
+DAG table above is the authority); does that project have access to everything the
+type needs; if not, can the missing thing move to `Grob.Core`, or does the type
+belong elsewhere? If you cannot answer confidently, the file is not ready to write —
+propose the design first.
 
 ## Naming and style
 
