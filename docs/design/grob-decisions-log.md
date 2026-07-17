@@ -349,6 +349,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-351 | July 2026                                                         | Compiler — type representation | Sprint 9 Increment A3 gives `GrobType.Array`/`NullableArray` a real element-type identity via a new `ArrayTypeDescriptor` mirroring `FunctionTypeDescriptor`'s side-channel shape (`Symbol.ArrayDescriptor`, generalising the Sprint 8 Increment E parameter/struct-name-only field; literal-node and call-result dictionaries), never folding element data into the `GrobType` enum itself. Corrects the increment's own premise: `map<K, V>` is not a working precedent — `TypeRef.TypeArguments` is parsed but never consulted, `"map"` resolves to the flat `GrobType.Map` tag everywhere, and `for k, v in m` already binds `v` as `Unknown`; maps share arrays' pre-existing gap and stay out of scope here. Threads the element type through array-literal inference (`[1, "a"]` is `E0001`, int/float widens), index read (`arr[i]`, replacing D-348's unconditional `Unknown`), index write RHS (closing the A2 gap D-350 named), `for...in` item binding (including the item's own struct-name/nested-array identity, so member access and further indexing inside the loop resolve as a `:=`-local's would), function-parameter/return enforcement and struct-field construction — reusing `E0001`/`E0004`/`E0005` throughout, no new error code. Zero quarantines: no fixture in the corpus relied on loosely-typed or heterogeneous arrays. Surfaces, Chris-approved as its own follow-up rather than folded in: the array mutation-method surface (`append`/`insert`/`remove`/`clear`/`contains`/`first`/`last`/`length`/`isEmpty`) has no type-checking, no compiler emission and almost no VM support at all — D-140 documented it but only `filter`/`select`/`sort`/`each` were ever built. Unblocks A4 (`arr[i] += v`, `arr[i]++`/`--`, D-350's named follow-up) and Increment D's `mapAs<T[]>()`. No new opcode; count unchanged at 118 |
 | D-352 | July 2026                                                         | Grob.Http — redirect and credential policy | `grob-stdlib-reference.md` and D-155 lock every `Grob.Http` signature but say nothing about redirect behaviour, so the .NET `HttpClientHandler` default (`AllowAutoRedirect=true`, `MaxAutomaticRedirections=50`, and historically `Authorization` forwarded across redirects) would ship silently — an unpinned default lets a `302` from a trusted host walk a live `auth.bearer` token to an attacker-controlled origin, a credential-exfiltration vector in the stdlib itself. Pinned policy: (1) redirects are followed by default but a cross-origin target (differing scheme+host+port) does **not** receive the `AuthHeader` — the request proceeds without it, silent-and-safe by design, not a fault; (2) an https→http downgrade redirect throws `NetworkError` — no silent downgrade; (3) the total redirect chain caps at 10 (tighter than .NET's 50 — a scripting default should be conservative), exceeding it throws `NetworkError`; (4) `download()` follows the identical policy. Cap and downgrade faults reuse the existing `NetworkError` leaf (D-284) — no new error code. Implementation lands in **Sprint 11** with `Grob.Http` (plugins are Sprint 11 in the build plan, not Sprint 9), so the policy is pinned now for Sprint 11 to build against; verified later by Pillar 7 of the adversarial suite (D-353) — a post-Sprint-11 network-hardening pass against a local hostile Kestrel server and the Azure tenant's real cross-host and IMDS-reachable endpoints. Extends D-155. No new error code; count unchanged at 118 |
 | D-353 | July 2026                                                         | Process / Tooling — adversarial testing | Authorises `grob-adversarial-testing-strategy.md`. The corpus's existing test families (§12 unit/integration, the D-337 smoke family, the D-346 eleven-script validation suite) are all cooperative — they verify Grob does what it should; the adversarial family verifies Grob fails well under hostile input, a distinct discipline with its own harness and exit criteria. The contract: no input (source, bytecode, CLI args, environment, file-system state, child-process behaviour) may produce an unhandled .NET exception, a host stack trace, a non-responsive hang or an undocumented exit code — every failure is a Grob diagnostic with an E-code on stderr; any violation is P0. Seven pillars: (1) compiler fuzzing (mutation, grammar-based, SharpFuzz), (2) hostile `.grobc` fuzzing, (3) differential/metamorphic + cross-model spec adversaries, (4) stdlib/environment brutality (Windows-specific), (5) resource exhaustion/soak, (6) cold-read usage campaigns, (7) hostile network surface (two-tier: local Kestrel + Azure tenant). Harness: `tooling/Grob.Torture` — a black-box CLI driver outside `tests/` with an in-proc SharpFuzz mode; a stabilised subset graduates to CI as `tests/Grob.Torture.Tests` (D-335 membership gate applies). Timing (split to fit the build plan): Sprint 9 lands the remaining **core** modules (`fs`/`date`/`json`/`csv`/`regex`/`process`) but plugins are **Sprint 11** — so the **Sprint 9/10 hardening interlude** runs Pillars 1–6 in full (the language, VM and core-stdlib surface is complete at Sprint 9 close), and Pillar 7 (hostile network) plus D-352 verification and the Azure work become a smaller **post-Sprint-11 network-hardening pass** once `Grob.Http` exists. Harness skeleton and Pillar 1 layers 1–2 build during/after Sprint 9; each pass carries its own DoD. Four decisions the interlude is expected to force and log: the `.grobc` load-time verifier vs per-instruction bounds checks, the parser recursion-depth guard, the `regex` `matchTimeout` value, the `exit(n)` out-of-range clamp. No new error code; count unchanged at 118 |
+| D-354 | July 2026                                                         | date module — API shape       | Amends D-108 ahead of `date`'s first implementation: drops `minusDays` (no per-unit `minus*` — `addDays`/`addMonths`/`addHours`/`addMinutes` all accept a negative `n` uniformly); adds `toDateOnly()`/`toTimeOnly()` (mirrors `date.today()`'s zero-the-other-part convention, `toTimeOnly()` epoch-anchored); authorises `LessDate`/`GreaterDate` — the first `OpCode` enum growth since Sprint 2 — so `d1 < d2`/`>`/`<=`/`>=` work, gated to a nominal date-vs-date pair at the type checker. No new error code; count unchanged at 118 |
+| D-355 | July 2026                                                         | Runtime / Compiler / Stdlib / Vm — date module | Sprint 9 Increment B: `date` lands following the `guid` precedent (D-149) — `Struct`-discriminated (D-303, no new `GrobValueKind`), one hidden `__value` field holding a round-trip `DateTimeOffset` string, `NamespaceRegistry` entry for the seven static constructors, type-checker/VM dispatch keyed off the struct name. Diverges from guid: real per-argument arity/type checking (guid's methods are all zero-arity); `date` is the first type besides `guid` recognised in annotation position (`ResolveSignatureType`/`ResolveNamedFieldType`/`TryGetNamedStructTypeName` each gain a `"date"` arm). `now`/`today` read the injected `IClock` (D-343), converted to local time (D-176), never `DateTime.Now` directly. `date.parse` reuses the reserved `E5702` (D-284) through the native-throw seam — no compile-time literal check (unlike guid's E0601). Registers a canonical ISO-8601 `toString()` for `ValueDisplay` (D-336); discovered `DateTimeOffset`'s `K` specifier never renders `Z` (unlike `DateTime`'s), handled with an explicit zero-offset case. No new error code (E5702 reused); no new `GrobValueKind`. The two opcodes are D-354's; this is the landing record, mirroring the D-348/D-349-vs-D-345 split precedent |
 
 
 ---
@@ -1445,7 +1447,7 @@ Single `date` type holds both date and time. `date.today()` zeroes the time comp
 
 Area: date module — API
 Supersedes: none
-Superseded by: none
+Superseded by: D-354
 
 Full date/time API locked. Construction: `date.now()`, `date.today()`, `date.of(y,m,d)`, `date.ofTime(y,m,d,h,min,s)`. Parsing: `date.parse(str)` ISO 8601 default, `date.parse(str, pattern)` explicit. Formatting: `toIso()`, `toIsoDateTime()`, `format(pattern)`. Arithmetic: `addDays()`, `minusDays()`, `addMonths()`, `addHours()`, `addMinutes()`. Comparison: `<`, `>`, `==`, `isBefore()`, `isAfter()`. Components: `year`, `month`, `day`, `hour`, `minute`, `second`, `dayOfWeek`, `dayOfYear` as properties. Epoch: `toUnixSeconds()`, `toUnixMillis()`, `date.fromUnixSeconds(n)`, `date.fromUnixMillis(n)`. Timezone: `toUtc()`, `toLocal()`, `toZone("Europe/London")`, `utcOffset` property. Zone names preferred; offset integers supported for API interop.
 
@@ -5247,6 +5249,153 @@ Relates to D-155, D-284, D-298, D-300, D-302, D-333, D-335, D-337, D-346, D-352.
 
 ---
 
+### D-354 — `date` arithmetic/comparison API amendment: no per-unit `minus*`, `toDateOnly`/`toTimeOnly` added, `LessDate`/`GreaterDate` authorised (July 2026)
+
+Area: date module — API shape
+Supersedes: D-108
+Superseded by: none
+
+**The decision.** Three amendments to D-108's locked `date` API, made during Sprint 9
+Increment B's planning, ahead of `date`'s first implementation — nothing has shipped
+against D-108 yet, so this corrects the API before it lands rather than breaking
+shipped behaviour.
+
+1. **No per-unit `minus*` methods.** D-108 gave `days` both `addDays()`/`minusDays()`
+   but left `months`/`hours`/`minutes` with `add*()` only — an inconsistent surface.
+   Rather than add `minusMonths()`/`minusHours()`/`minusMinutes()` for symmetry,
+   `minusDays()` is dropped: `addDays()`/`addMonths()`/`addHours()`/`addMinutes()` all
+   accept a negative `n` to subtract, uniformly. .NET's `DateTimeOffset.AddDays`/
+   `AddMonths`/`AddHours`/`AddMinutes` already accept negative arguments with ordinary,
+   well-defined semantics, so this needed no new logic — a smaller surface, one verb
+   per unit, and the shape a developer reaches for instinctively (a negative argument
+   to an "add" method) rather than a bespoke `minus*` counterpart most host languages
+   don't offer either.
+2. **`toDateOnly()`/`toTimeOnly()` added.** Mirrors `date.today()`'s existing
+   "zero the other part" convention (D-107) as instance methods on an arbitrary
+   `date` value, not only the current moment. `to`-prefixed to match every other
+   conversion method on the type (`toUtc`/`toLocal`/`toZone`/`toIso`/`toIsoDateTime`/
+   `toUnixSeconds`/`toUnixMillis`). `toDateOnly()` zeroes hour/minute/second, keeping
+   year/month/day and the offset. `toTimeOnly()` keeps hour/minute/second and anchors
+   the date to the Unix epoch (1970-01-01) — the Gregorian calendar has no "zero day"
+   to zero to, so an explicit, unambiguous anchor is chosen rather than leaving the
+   date component undefined.
+3. **`LessDate`/`GreaterDate` opcodes authorised.** `d1 < d2`/`d1 > d2`/`d1 <= d2`/
+   `d1 >= d2` are added to `date`'s surface (alongside the existing `isBefore()`/
+   `isAfter()` methods) — real, deliberate growth of the `OpCode` enum, the first
+   since Sprint 2, via the `adding-an-opcode` procedure. `Less`/`Greater` are
+   typed-opcode families (`LessInt`/`LessFloat`/`LessString`, `GreaterInt`/
+   `GreaterFloat`/`GreaterString` — no struct variant), and the compiler's
+   `ComparisonCategory` helper defaults any non-`Float`/non-`String` category to
+   `Int`; letting a `date`-vs-`date` comparison reach that default unchanged would
+   silently emit `LessInt`/`GreaterInt` against two `Struct` receivers (the "checker
+   permits ≠ can emit" hazard, D-315). `LessDate`/`GreaterDate` are appended to the
+   end of the `OpCode` enum's Comparison category (not inserted elsewhere — nothing
+   has shipped a `.grobc` file depending on today's opcode numbers, so appending is a
+   convention choice made to keep the category grouping intact for the next reader,
+   not a compatibility requirement). `<=`/`>=` get no dedicated opcode, mirroring the
+   pre-existing string lowering: `a <= b ≡ !(a > b)` via `GreaterDate` + `Not`;
+   `a >= b ≡ !(a < b)` via `LessDate` + `Not`. The type checker's gate is narrow: a
+   `Struct`-vs-`Struct` comparison is admitted only when both operands are nominally
+   `date` (`GetStructTypeName(...) == "date"` on both sides) — any other struct
+   pairing, or a struct against a scalar, still falls through to the pre-existing
+   `E0002`. Justified independently of the amendment itself: this very log's D-353
+   worked example (`last < cutoff`, comparing two `date` values) and two scripts in
+   `grob-sample-scripts.md` already assumed this worked — it did not, until now.
+
+**Not amended.** `date.parse(str, pattern)` — an explicit second `pattern` argument
+shown in `grob-stdlib-reference.md`'s sample — is not part of this increment's
+surface: `grob-v1-requirements.md`'s Sprint 9 Scope bullet lists only `parse()`, and
+this entry does not expand it. Left for a future decision if the two-argument
+overload is wanted; `NamespaceRegistry`'s flat one-entry-per-member-name model does
+not currently support arity-overloaded members, a separate design question from this
+entry's three amendments.
+
+**Historical text left untouched.** D-108's own body and D-353's embedded worked
+example (`cutoff := date.today().minusDays(staleDays)`) still read `minusDays` —
+neither is rewritten, per this log's own convention that a superseded entry's prose is
+never edited to pretend it always said something else. `grob-stdlib-reference.md`
+and `grob-sample-scripts.md`, the living specs, are updated to `addDays(-n)`.
+
+No new error code (`E5702` — already registered, D-284 — is reused for `date.parse`'s
+runtime `ParseError`, unaffected by this entry). Count unchanged at 118.
+
+Full detail: `grob-stdlib-reference.md`'s `date` section (updated to match),
+`grob-v1-requirements.md`'s Sprint 9 Scope bullet (updated to match), D-107/D-108/
+D-117/D-176 (the entries this amends), the `adding-an-opcode` skill (the procedure
+followed for `LessDate`/`GreaterDate`).
+
+---
+
+### D-355 — `date` core module lands (Sprint 9 Increment B) (July 2026)
+
+Area: Runtime / Compiler / Stdlib / Vm — date module
+Supersedes: none
+Superseded by: none
+Refines: D-107, D-108, D-117, D-176, D-284, D-336, D-342, D-343, D-354
+
+**The decision.** `date` lands as Sprint 9's first type-carrying module, following the
+`guid` precedent (D-149, Sprint 8 Increment D) at every layer: a `Struct`-discriminated
+`GrobValue` (D-303 — no new `GrobValueKind` variant), one hidden field (`__value`)
+holding a round-trip-formatted `DateTimeOffset` string (mirrors guid's canonical-string
+field — the only representation `GrobStruct` permits, since it stores only named
+`GrobValue` fields), a compile-time `NamespaceRegistry` entry for the seven static
+constructors (`now`/`today`/`of`/`ofTime`/`parse`/`fromUnixSeconds`/`fromUnixMillis`,
+all `NamedTypeName: "date"`), and type-checker/VM dispatch arms for the instance
+property surface (`year`/`month`/`day`/`hour`/`minute`/`second`/`dayOfYear`/
+`utcOffset`/`dayOfWeek`) and method surface (arithmetic, `isBefore`/`isAfter`,
+`toIso`/`toIsoDateTime`/`format`, epoch conversions, `toUtc`/`toLocal`/`toZone`/
+`toDateOnly`/`toTimeOnly`, `daysUntil`/`daysSince`) keyed off the struct's type name
+exactly as guid's are.
+
+**Where date diverges from guid's precedent.** Guid's three instance methods are all
+zero-arity; date's are not (`addDays(n: int)`, `isBefore(other: date)`,
+`format(pattern: string)`, ...), so `ValidateDateMethodCall`/`CheckDateMethodArgs`
+(`TypeChecker.Expressions.cs`) validate real per-argument arity and type, including a
+nominal `date`-vs-any-other-struct rejection for the `other: date` parameters
+(`isBefore`/`isAfter`/`daysUntil`/`daysSince`) — the same nominal-identity reasoning
+`IsStructNominalMismatch` already established for guid's namespace-parameter check.
+`date` is also the first named type recognised in **annotation position** outside
+`guid` itself: `ResolveSignatureType` (`TypeChecker.cs`), `ResolveNamedFieldType`
+(`TypeChecker.Declarations.cs`) and `TryGetNamedStructTypeName` (`TypeChecker.cs`)
+each needed a `"date"` arm alongside their existing `"guid"` one — a `d: date`
+parameter or field annotation would otherwise resolve as `E1001` ("not a type"),
+since date has no `TypeDecl`/`UserTypeInfo` registration (never constructed via
+`{ }` braces) for the ordinary user-type lookup to find.
+
+**`IClock` — a real second consumer.** `date.now()`/`date.today()` read the injected
+`IClock` (declared D-343, `guid.newV7()` its first consumer) via `Grob.Cli`'s existing
+`SystemClock`, converted to local time (D-176) — never `DateTime.Now`/
+`DateTimeOffset.Now` directly (grep-verified absent from `Grob.Stdlib`).
+
+**`ParseError` — reuses the reserved code.** `date.parse` throws through the
+native-throw seam (`NativeFaultException`) exactly as `guid.parse` does, but reuses
+`ErrorCatalog.E5702` — the "parse error (residual)" code D-284 explicitly reserved for
+`int.parse`/`float.parse`/`date.parse` — rather than allocating a new one. Unlike
+`guid.parse`, `date.parse` has **no** compile-time literal validation (no analogue of
+guid's `E0601`): the requirements list no such rule for v1, so a malformed literal
+argument is a runtime `ParseError` unconditionally, literal or not.
+
+**`ValueDisplay` — registered `toString()`.** `DatePlugin` registers a canonical
+ISO-8601-with-offset renderer (`yyyy-MM-ddTHH:mm:sszzz`, with an explicit zero-offset
+special case rendering `Z`) so `print(d)`/`"${d}"` render the canonical string per
+D-336's registered-`toString()` precedence (step 2, ahead of structural rendering),
+never the hidden `__value` field. Discovered while implementing this entry:
+`DateTimeOffset`'s `K` custom format specifier is **not** equivalent to `DateTime`'s
+for this purpose — it always renders `+00:00`, never `Z`, regardless of offset — so
+the zero-offset case is handled with an explicit format-string branch instead.
+
+No new error code (`E5702` reused, unchanged); no new `GrobValueKind` variant. The two
+new opcodes (`LessDate`/`GreaterDate`) are D-354's authorisation, not this entry's —
+D-354 is the API-shape/opcode-authorisation decision, this entry is its landing
+record, mirroring the D-348/D-349 (opcode landing) vs. D-345 (namespace-resolution
+decision) split precedent.
+
+Full detail: `grob-stdlib-reference.md`'s `date` section, `grob-v1-requirements.md`'s
+Sprint 9 Scope bullet, `NamespaceRegistry.cs`'s `date` entry, `DateNatives.cs`/
+`DatePlugin.cs`.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -5468,7 +5617,23 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 9/10 adversarial-hardening planning: D-352 and D-353 added._
+_July 2026 — Sprint 9 Increment B: D-354 and D-355 added. D-354 amends D-108 ahead of_
+_`date`'s first implementation — drops `minusDays` (no per-unit `minus*`; `addDays`/_
+_`addMonths`/`addHours`/`addMinutes` all accept a negative `n` uniformly), adds_
+_`toDateOnly()`/`toTimeOnly()` (epoch-anchored), and authorises `LessDate`/`GreaterDate`_
+_— the first `OpCode` enum growth since Sprint 2 — so `d1 < d2`/`>`/`<=`/`>=` work,_
+_gated to a nominal date-vs-date pair at the type checker; D-108 marked superseded._
+_D-355 is the landing record: `date` lands following the `guid` precedent (D-149) —_
+_`Struct`-discriminated (D-303), one hidden `__value` field holding a round-trip_
+_`DateTimeOffset` string, a `NamespaceRegistry` entry for the seven static_
+_constructors, real per-argument arity/type checking (unlike guid's all-zero-arity_
+_methods), the first type besides `guid` recognised in annotation position, `IClock`_
+_consumption (D-343) converted to local time (D-176), `date.parse` reusing the_
+_reserved `E5702` (D-284, no compile-time literal check unlike guid's E0601), and a_
+_registered canonical-ISO-8601 `toString()` for `ValueDisplay` (D-336) — discovered_
+_`DateTimeOffset`'s `K` specifier never renders `Z`, unlike `DateTime`'s, handled with_
+_an explicit zero-offset format branch. No new error code; no new `GrobValueKind`._
+_Previous: July 2026 — Sprint 9/10 adversarial-hardening planning: D-352 and D-353 added._
 _D-352 pins `Grob.Http`'s previously-unspecified redirect and credential-forwarding_
 _policy — cross-origin redirects drop the `AuthHeader` (silent-and-safe), https→http_
 _downgrades throw `NetworkError`, the hop chain caps at 10, `download()` follows_

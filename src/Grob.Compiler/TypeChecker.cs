@@ -583,6 +583,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             return (guidKind, "guid", null, null);
         }
 
+        // Sprint 9 Increment B: date is the same shape as guid above — a primitive type
+        // distinct from string, never constructed via '{ }' braces, with no
+        // ExceptionHierarchy-style TypeDecl/UserTypeInfo registration.
+        if (typeRef.Name == "date") {
+            GrobType dateKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
+            return (dateKind, "date", null, null);
+        }
+
         if (LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl) {
             GrobType structKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
             return (structKind, typeRef.Name, null, null);
@@ -878,6 +886,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         if (typeRef is ArrayTypeRef or FunctionTypeRef) return null;
         if (ResolveTypeRef(typeRef) != GrobType.Unknown) return null;
         if (typeRef.Name == "guid") return "guid";
+        if (typeRef.Name == "date") return "date";
         return LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl ? typeRef.Name : null;
     }
 

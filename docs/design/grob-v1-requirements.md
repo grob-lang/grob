@@ -889,14 +889,17 @@ itself implemented and producing a first passing run. Authority: D-302,
   `isDirectory`. `File` methods: `rename()`,
   `moveTo(destDir, overwrite: bool = false)`,
   `copyTo(destDir, overwrite: bool = false)`, `delete()`.
-- **`date`** — full API as specified. `now()`, `today()`, `of()`,
-  `ofTime()`, `parse()`. Properties: `year`, `month`, `day`, `hour`,
-  `minute`, `second`, `dayOfWeek`, `dayOfYear`, `utcOffset`. Methods:
-  `addDays()`, `minusDays()`, `addMonths()`, `addHours()`,
-  `addMinutes()`, `isBefore()`, `isAfter()`, `toIso()`,
-  `toIsoDateTime()`, `format()`, `toUnixSeconds()`, `toUnixMillis()`,
-  `toUtc()`, `toLocal()`, `toZone()`, `daysUntil()`, `daysSince()`.
-  Static: `fromUnixSeconds()`, `fromUnixMillis()`.
+- **`date`** — full API as specified (D-354 amends the arithmetic/comparison
+  surface below). `now()`, `today()`, `of()`, `ofTime()`, `parse()`.
+  Properties: `year`, `month`, `day`, `hour`, `minute`, `second`,
+  `dayOfWeek`, `dayOfYear`, `utcOffset`. Methods: `addDays()`,
+  `addMonths()`, `addHours()`, `addMinutes()` (each accepts a negative
+  `n` to subtract — no per-unit `minus*`, D-354), `isBefore()`,
+  `isAfter()`, `<`/`>`/`<=`/`>=` (D-354, `LessDate`/`GreaterDate`),
+  `toIso()`, `toIsoDateTime()`, `format()`, `toUnixSeconds()`,
+  `toUnixMillis()`, `toUtc()`, `toLocal()`, `toZone()`, `toDateOnly()`,
+  `toTimeOnly()` (D-354), `daysUntil()`, `daysSince()`. Static:
+  `fromUnixSeconds()`, `fromUnixMillis()`.
 - **`json`** — `read()`, `write(compact: bool = false)`, `parse()`,
   `encode(compact: bool = false)`, `stdin()`, `stdout(compact: bool = false)`.
   `json.Node` type with indexer access `node["key"]`. `asString()`,

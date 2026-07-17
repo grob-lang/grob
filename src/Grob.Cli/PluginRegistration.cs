@@ -24,6 +24,9 @@ namespace Grob.Cli;
 /// pure formatting over already-resolved arguments (D-342's compile-time column
 /// derivation) plus the injected <see cref="IPluginRegistrar.RenderValue"/> it captures
 /// for itself at <c>Register</c> time.
+/// Sprint 9 Increment B adds <see cref="DatePlugin"/>, reusing the same
+/// <see cref="SystemClock"/> shape as <see cref="GuidPlugin"/>'s (D-354/D-355) — a fresh
+/// instance per run, no new capability interface needed.
 /// </summary>
 internal static class PluginRegistration {
     /// <summary>Registers every stdlib plugin against <paramref name="registrar"/>, in a fixed order.</summary>
@@ -45,6 +48,7 @@ internal static class PluginRegistration {
             new LogPlugin(streams, verbose ? LogLevel.Debug : LogLevel.Info),
             new IoPlugin(streams),
             new GuidPlugin(randomSource, new SystemClock()),
+            new DatePlugin(new SystemClock()),
             new FormatAsPlugin(),
         ];
         foreach (IGrobPlugin plugin in plugins) plugin.Register(registrar);

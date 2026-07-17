@@ -634,6 +634,15 @@ public sealed class VirtualMachine : IPluginRegistrar {
                             _stack.Push(GrobValue.FromBool(string.CompareOrdinal(a, b) < 0), line);
                             break;
                         }
+                    case OpCode.LessDate: {
+                            // Sprint 9 Increment B, D-354. Compares the underlying instant —
+                            // DateTimeOffset's own operator< already normalises across
+                            // differing UTC offsets.
+                            DateTimeOffset b = DateNatives.ToDateTimeOffset(_stack.Pop().AsStruct());
+                            DateTimeOffset a = DateNatives.ToDateTimeOffset(_stack.Pop().AsStruct());
+                            _stack.Push(GrobValue.FromBool(a < b), line);
+                            break;
+                        }
                     case OpCode.LessEqualInt: {
                             long b = _stack.Pop().AsInt();
                             long a = _stack.Pop().AsInt();
@@ -662,6 +671,13 @@ public sealed class VirtualMachine : IPluginRegistrar {
                             string b = _stack.Pop().AsString();
                             string a = _stack.Pop().AsString();
                             _stack.Push(GrobValue.FromBool(string.CompareOrdinal(a, b) > 0), line);
+                            break;
+                        }
+                    case OpCode.GreaterDate: {
+                            // Sprint 9 Increment B, D-354. See OpCode.LessDate.
+                            DateTimeOffset b = DateNatives.ToDateTimeOffset(_stack.Pop().AsStruct());
+                            DateTimeOffset a = DateNatives.ToDateTimeOffset(_stack.Pop().AsStruct());
+                            _stack.Push(GrobValue.FromBool(a > b), line);
                             break;
                         }
                     case OpCode.GreaterEqualInt: {
@@ -875,6 +891,33 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                                     "Type checker should have rejected this before emission.");
                                             }
                                             _stack.Push(GrobValue.FromFunction(guidMethod), line);
+                                            break;
+                                    }
+                                    break;
+                                }
+                                // Sprint 9 Increment B: date instance properties/methods —
+                                // mirrors the guid arm above (checked before the ordinary
+                                // TryGetField fall-through, since date has no user-visible
+                                // fields beyond its own hidden canonical-string payload).
+                                if (grobStruct.TypeName == DateNatives.TypeName) {
+                                    switch (propertyName) {
+                                        case "year": _stack.Push(DateNatives.GetYear(grobStruct), line); break;
+                                        case "month": _stack.Push(DateNatives.GetMonth(grobStruct), line); break;
+                                        case "day": _stack.Push(DateNatives.GetDay(grobStruct), line); break;
+                                        case "hour": _stack.Push(DateNatives.GetHour(grobStruct), line); break;
+                                        case "minute": _stack.Push(DateNatives.GetMinute(grobStruct), line); break;
+                                        case "second": _stack.Push(DateNatives.GetSecond(grobStruct), line); break;
+                                        case "dayOfYear": _stack.Push(DateNatives.GetDayOfYear(grobStruct), line); break;
+                                        case "dayOfWeek": _stack.Push(DateNatives.GetDayOfWeek(grobStruct), line); break;
+                                        case "utcOffset": _stack.Push(DateNatives.GetUtcOffset(grobStruct), line); break;
+                                        default:
+                                            NativeFunction? dateMethod = DateNatives.GetMethod(propertyName, grobStruct);
+                                            if (dateMethod is null) {
+                                                throw new GrobInternalException(
+                                                    $"GetProperty: date has no member '{propertyName}'. " +
+                                                    "Type checker should have rejected this before emission.");
+                                            }
+                                            _stack.Push(GrobValue.FromFunction(dateMethod), line);
                                             break;
                                     }
                                     break;

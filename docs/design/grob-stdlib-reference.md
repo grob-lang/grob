@@ -393,14 +393,14 @@ d.toIsoDateTime()             // "2026-04-05T14:30:00Z"
 d.format("dd MMM yyyy")       // "05 Apr 2026"
 d.format("dd/MM/yyyy HH:mm")  // "05/04/2026 14:30"
 
-// Arithmetic
+// Arithmetic — D-354: no per-unit minus* methods; a negative n subtracts, uniformly
 d.addDays(7)
-d.minusDays(30)
+d.addDays(-30)
 d.addMonths(3)
 d.addHours(2)
 d.addMinutes(30)
 
-// Comparison — operators and methods
+// Comparison — operators and methods (D-354: LessDate/GreaterDate)
 d1 < d2
 d1 > d2
 d1 == d2
@@ -428,6 +428,10 @@ d.toUtc()
 d.toLocal()
 d.toZone("Europe/London")
 d.utcOffset    // minutes as int
+
+// Date/time extraction (D-354)
+d.toDateOnly()   // time zeroed, date and offset kept
+d.toTimeOnly()   // time kept, date anchored to the Unix epoch (1970-01-01)
 
 // Interval computation
 created.daysUntil(date.today())   // positive if today is later
@@ -868,7 +872,7 @@ files.filter(f => f.extension == ".jpg")
 branches.filter(b => !b.name.contains("HEAD"))
 
 // Closure — captures variable from enclosing scope
-cutoff := date.today().minusDays(staleDays)
+cutoff := date.today().addDays(-staleDays)
 branches.filter(b => date.parse(b.lastCommit) < cutoff)
 
 // Block-body lambda — used when the transformation needs local bindings
