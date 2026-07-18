@@ -351,6 +351,9 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-353 | July 2026                                                         | Process / Tooling — adversarial testing | Authorises `grob-adversarial-testing-strategy.md`. The corpus's existing test families (§12 unit/integration, the D-337 smoke family, the D-346 eleven-script validation suite) are all cooperative — they verify Grob does what it should; the adversarial family verifies Grob fails well under hostile input, a distinct discipline with its own harness and exit criteria. The contract: no input (source, bytecode, CLI args, environment, file-system state, child-process behaviour) may produce an unhandled .NET exception, a host stack trace, a non-responsive hang or an undocumented exit code — every failure is a Grob diagnostic with an E-code on stderr; any violation is P0. Seven pillars: (1) compiler fuzzing (mutation, grammar-based, SharpFuzz), (2) hostile `.grobc` fuzzing, (3) differential/metamorphic + cross-model spec adversaries, (4) stdlib/environment brutality (Windows-specific), (5) resource exhaustion/soak, (6) cold-read usage campaigns, (7) hostile network surface (two-tier: local Kestrel + Azure tenant). Harness: `tooling/Grob.Torture` — a black-box CLI driver outside `tests/` with an in-proc SharpFuzz mode; a stabilised subset graduates to CI as `tests/Grob.Torture.Tests` (D-335 membership gate applies). Timing (split to fit the build plan): Sprint 9 lands the remaining **core** modules (`fs`/`date`/`json`/`csv`/`regex`/`process`) but plugins are **Sprint 11** — so the **Sprint 9/10 hardening interlude** runs Pillars 1–6 in full (the language, VM and core-stdlib surface is complete at Sprint 9 close), and Pillar 7 (hostile network) plus D-352 verification and the Azure work become a smaller **post-Sprint-11 network-hardening pass** once `Grob.Http` exists. Harness skeleton and Pillar 1 layers 1–2 build during/after Sprint 9; each pass carries its own DoD. Four decisions the interlude is expected to force and log: the `.grobc` load-time verifier vs per-instruction bounds checks, the parser recursion-depth guard, the `regex` `matchTimeout` value, the `exit(n)` out-of-range clamp. No new error code; count unchanged at 118 |
 | D-354 | July 2026                                                         | date module — API shape       | Amends D-108 ahead of `date`'s first implementation: drops `minusDays` (no per-unit `minus*` — `addDays`/`addMonths`/`addHours`/`addMinutes` all accept a negative `n` uniformly); adds `toDateOnly()`/`toTimeOnly()` (mirrors `date.today()`'s zero-the-other-part convention, `toTimeOnly()` epoch-anchored); authorises `LessDate`/`GreaterDate` — the first `OpCode` enum growth since Sprint 2 — so `d1 < d2`/`>`/`<=`/`>=` work, gated to a nominal date-vs-date pair at the type checker. No new error code; count unchanged at 118 |
 | D-355 | July 2026                                                         | Runtime / Compiler / Stdlib / Vm — date module | Sprint 9 Increment B: `date` lands following the `guid` precedent (D-149) — `Struct`-discriminated (D-303, no new `GrobValueKind`), one hidden `__value` field holding a round-trip `DateTimeOffset` string, `NamespaceRegistry` entry for the seven static constructors, type-checker/VM dispatch keyed off the struct name. Diverges from guid: real per-argument arity/type checking (guid's methods are all zero-arity); `date` is the first type besides `guid` recognised in annotation position (`ResolveSignatureType`/`ResolveNamedFieldType`/`TryGetNamedStructTypeName` each gain a `"date"` arm). `now`/`today` read the injected `IClock` (D-343), converted to local time (D-176), never `DateTime.Now` directly. `date.parse` reuses the reserved `E5702` (D-284) through the native-throw seam — no compile-time literal check (unlike guid's E0601). Registers a canonical ISO-8601 `toString()` for `ValueDisplay` (D-336); discovered `DateTimeOffset`'s `K` specifier never renders `Z` (unlike `DateTime`'s), handled with an explicit zero-offset case. No new error code (E5702 reused); no new `GrobValueKind`. The two opcodes are D-354's; this is the landing record, mirroring the D-348/D-349-vs-D-345 split precedent |
+| D-356 | July 2026                                                          | Compiler / Type checker / Runtime — named-type dispatch | A single declarative named-type registry consolidates the six hand-rolled, string-matched dispatch surfaces per nominal `Struct` type (the three annotation-position resolvers, the method/property validator, VM dispatch, the `ValueDisplay` `toString()` registration) into one table entry per type. `guid` and `date` migrate onto it as behaviour-preserving proving cases; `File`/`json.Node`/`csv.Table`/`CsvRow`/`Regex`/`Match`/`ProcessResult` (Sprint 9) and `Response`/`AuthHeader`/`ZipEntry` (Sprint 11) then land as data, not as code spread across six sites where one missed arm resolves a valid type as E1001. Extends the `NamespaceRegistry` (D-342) idea from module members to instance surfaces; arrays and maps stay structural (descriptor-based, D-351, not registered here). Agreement-tested against runtime plugin registration in the D-308/D-342 pattern. Highest-leverage item in the Sprint 9B review — converts four increments of per-type dispatch plumbing into entries and shrinks the D-353 adversarial attack surface before the fuzzer meets it. No new error code; count unchanged at 118 |
+| D-357 | July 2026                                                          | date module / Type system — equality and ordering | Amends D-169 for nominal `date` only: `date`-vs-`date` equality **and** ordering are both instant-based, matching .NET `DateTimeOffset` operator semantics (`EqualsExact`, the offset-sensitive variant, is deliberately not exposed). Resolves the incoherence where D-355's round-trip-string `__value` field made `date.now()` and `date.now().toUtc()` — the same instant — compare neither `<`, `>` nor `==`, violating trichotomy and the "language that doesn't surprise you" identity. Keyed off the nominal date-vs-date pair the checker already gates (D-354); the `Equal` handler gains a date arm parsing both `__value` strings to instants (opcode shape at the increment's discretion). `daysUntil`/`daysSince` pinned to whole 86,400-second periods between instants (Scripts 7 and 8 depend on the answer). `guid` reviewed and left field-by-field — its canonical string IS its identity, no "same value, different representation" case exists. Every other struct keeps D-169 unchanged. Fixtures for `date` equality authored after this decision, not before. No new error code (E0002 reused); count unchanged at 118 |
+| D-358 | July 2026                                                          | Compiler / Stdlib — native default arguments; date module | Native functions gain optional trailing parameters with compile-time constant defaults — one default-argument mechanism in the native-dispatch path (generalising D-344's one-off `input()` prompt-defaulting arm), the compiler synthesising the missing trailing arguments from the declared constants before the ordinary `GetGlobal`-then-`Call` so runtime natives keep a fixed arity. Default arguments, not overload resolution — resolves the arity-overload question D-354 named as open. `date.parse(input: string, pattern: string = "")` gains its documented second argument (empty pattern = ISO-8601, the unchanged one-arg behaviour; non-empty → `ParseExact`; failure reuses E5702, D-284), making `grob-stdlib-reference.md`'s line-388 sample true rather than aspirational. `fs.copy`/`fs.move`'s `overwrite: bool = false` (Increment C) ride the identical mechanism, designed once with D-356's registry. Decision is pre-9C; `date.parse`'s code half lands during 9C before `csv` (Increment E). No new error code; count unchanged at 118 |
 
 
 ---
@@ -5396,6 +5399,237 @@ Sprint 9 Scope bullet, `NamespaceRegistry.cs`'s `date` entry, `DateNatives.cs`/
 
 ---
 
+### D-356 — Named-type registration table: nominal-type dispatch becomes data, not per-type code (July 2026)
+
+Area: Compiler / Type checker / Runtime — named-type dispatch
+Supersedes: none
+Superseded by: none
+Refines: D-149, D-303, D-342, D-355
+
+**The problem.** A nominal, `Struct`-discriminated type — `guid` and `date` today,
+`File`/`json.Node`/`csv.Table`/`CsvRow`/`Regex`/`Match`/`ProcessResult` across Sprint 9's
+remaining increments, `Response`/`AuthHeader`/`ZipEntry` in Sprint 11 — is currently
+wired into the compiler and runtime by hand-added, string-matched arms across at least
+six dispatch surfaces, each keyed off the type's name:
+
+1. `ResolveSignatureType` (`TypeChecker.cs`) — the type name in parameter/return annotation position.
+2. `ResolveNamedFieldType` (`TypeChecker.Declarations.cs`) — the type name in a struct-field annotation.
+3. `TryGetNamedStructTypeName` (`TypeChecker.cs`) — nominal-name recovery.
+4. The method/property validator (`ValidateDateMethodCall`/`CheckDateMethodArgs` for `date`; guid's equivalents) — per-member arity and type checking.
+5. VM dispatch — the instance property/method arms keyed off the struct's type name.
+6. `ValueDisplay` (D-336) — the registered `toString()` renderer.
+
+D-355's own landing record demonstrates the failure mode: `date` needed a `"date"` arm
+added alongside the existing `"guid"` one at each of the three annotation-position sites,
+and it names the consequence of missing one — a `d: date` annotation would otherwise
+resolve as `E1001` ("not a type"). This is O(types × sites) copy-paste. With seven new
+types landing across four increments, one missed arm somewhere is close to certain, and
+each miss is a wrong-code bug the adversarial suite (D-353) will independently rediscover.
+
+**The decision.** A single declarative **named-type registry** — one hand-authored entry
+per nominal type — that the annotation-position resolvers, the method-call validator, the
+VM instance dispatch and `ValueDisplay` all consult in place of per-type string-matched
+arms. Each entry carries: the canonical type name; the property table (name → type); the
+method table (name → arity, parameter types including the nominal-identity rule for
+`date`-typed or `guid`-typed parameters, return type, and optional/default parameters per
+D-358); and the `toString()` renderer. This is the same architectural move
+`NamespaceRegistry` (D-342) already made for **module members** — a compile-time twin of
+the runtime `IGrobPlugin` registration, agreement-tested in the D-308/D-342 pattern with
+drift a CI failure — extended from module namespaces to **instance surfaces** on nominal
+types.
+
+**Registry versus `NamespaceRegistry` — they compose, they don't replace.** A named type's
+**static constructors** stay `NamespaceRegistry` entries: `date.now()`/`guid.parse()` are
+namespace-receiver calls (`date`/`guid` in receiver position), which is D-342's existing
+domain. The new registry governs the **instance** surface — properties and methods on a
+*value* of the type — plus the annotation-position name recognition that the three
+string-matched resolvers do today. A named type therefore has presence in both tables: a
+`NamespaceRegistry` entry for its constructors, a named-type-registry entry for its
+instance surface.
+
+**Arrays and maps are out of scope — deliberately.** Arrays and maps are **structural**,
+not nominal: they carry an `ArrayTypeDescriptor` (D-351) and a `MapTypeDescriptor` (F5-2,
+scheduled), and their method surfaces (the C0a/C0b collection work) dispatch on the
+descriptor, not on this registry. The registry is for `Struct`-discriminated nominal types
+only. Stated explicitly so a future reader does not wrongly route the array/map method
+surface through the named-type table — the two mechanisms are siblings, not one subsuming
+the other.
+
+**Proving cases first.** `guid` and `date` migrate onto the registry as its first two
+entries, behaviour-preserving — every guid and date gold master unchanged, proving the
+table reproduces the hand-rolled arms exactly before any new type depends on it. `File`
+through `ProcessResult` then land as registry **data** (one entry each) rather than code
+spread across the six sites.
+
+**Scope boundaries.** The registry is hand-authored — it introduces no user-defined
+nominal types with methods (v1 has no user-authored methods; user `type`s remain
+field-only structs, D-043, and D-080's no-user-generics rule is untouched). Arity-overloaded
+members remain unsupported by the flat one-entry-per-member-name model; the method table
+carries optional/default parameters instead (D-358), which covers `date.parse`'s and
+`fs.copy`'s needs without true overloading.
+
+No new error code — annotation-position misses continue to surface `E1001`; method and
+argument errors reuse `E0003`/`E0004`/`E0005`/`E0011` as today. Count unchanged at 118.
+
+This is the single highest-leverage item in the Sprint 9 Increment B principal review: it
+converts four increments of error-prone dispatch plumbing into table entries and shrinks
+the adversarial suite's attack surface before Pillar 1's fuzzer and Pillar 3's cross-model
+spec adversaries meet it. Sequenced as Increment C0c, before `fs` (Increment C) introduces
+`File`, the first of the seven new nominal types.
+
+Full detail: `grob-type-registry.md` (nominal-type instance surfaces), `grob-vm-architecture.md`
+(instance dispatch), the `NamespaceRegistry` precedent (D-342), D-149/D-303/D-355 (the
+guid/date arms this consolidates), D-308 (the agreement-test pattern).
+
+---
+
+### D-357 — `date` equality and ordering are instant-based (amends D-169 for nominal `date`) (July 2026)
+
+Area: date module / Type system — equality and ordering
+Supersedes: none
+Superseded by: none
+Refines: D-169 (nominal `date` carve-out), D-354, D-355
+
+**The incoherence.** Three shipped decisions combine into a contradiction:
+
+- **D-169** makes equality value-based — structs compared field-by-field.
+- **D-355** makes `date` a `Struct` whose single field (`__value`) is a
+  round-trip-formatted `DateTimeOffset` string, **offset included**.
+- **D-354** authorised `LessDate`/`GreaterDate` for ordering but stated the comparison
+  *basis* — instant or string — nowhere; `grob-stdlib-reference.md`'s timezone section is
+  silent on it too, while its comparison block explicitly lists `d1 == d2`.
+
+`toUtc()`/`toLocal()`/`toZone()` (D-355) make mixed-offset values of the **same instant**
+routine. If `==` follows D-169 verbatim (field-by-field on `__value`) it is
+offset-sensitive: `date.now()` and `date.now().toUtc()` compare unequal because their
+round-trip strings differ. If `LessDate`/`GreaterDate` parse `__value` to `DateTimeOffset`
+and use its ordering — the only sensible implementation, and almost certainly what shipped
+**[verify on disk: confirm `LessDate`'s handler parses `__value` to `DateTimeOffset` and
+orders by the instant, not the string]** — they are instant-based. The two then disagree:
+for `a := date.now()` and `b := a.toUtc()`, `a < b` is false, `a > b` is false and `a == b`
+is false. Trichotomy is violated — a value neither less than, greater than, nor equal to
+another of the same instant is exactly the surprise the "LINQ-for-scripting, a language
+that doesn't surprise you" identity exists to forbid. `sort` by a `date` key inherits
+whichever semantics its comparator receives, compounding the sort-key gap C0a's audit
+covers.
+
+**The decision.**
+
+1. **`date`-vs-`date` equality and comparison are both instant-based**, matching .NET
+   `DateTimeOffset`'s own operator semantics: `==` and the relational operators compare the
+   instant (the moment in UTC), and `EqualsExact` — the offset-sensitive variant — is
+   deliberately **not** exposed. Two `date` values of the same instant at different offsets
+   are equal, and neither is less nor greater; trichotomy holds. Implemented as a documented
+   special case of D-169 keyed off the nominal `date`-vs-`date` pairing the checker already
+   gates (D-354's `GetStructTypeName(...) == "date"` on both operands): the `Equal` handler
+   gains a `date`-nominal arm — or a dedicated `EqualDate` dispatch, at the increment's
+   discretion, opcode shape governed by `adding-an-opcode` if a new opcode is chosen — that
+   parses both `__value` strings and compares instants, rather than falling through to
+   structural field-by-field string comparison. Every **other** struct pairing (user `type`s,
+   other plugin nominal types) keeps D-169's field-by-field semantics unchanged. This
+   amendment is `date`-scoped.
+
+2. **`daysUntil`/`daysSince` basis is pinned** to whole 86,400-second periods between the two
+   instants (`DateTimeOffset` subtraction → `TimeSpan.Days`), **not** calendar days counted in
+   either operand's local offset — instant-based, consistent with (1). The "calendar days,
+   DST-aware" alternative is deliberately rejected for v1: it is the more surprising choice
+   for the sysadmin-data-plumbing use cases, and instant-difference is what a script author
+   reaching for `daysSince` expects. Scripts 7 and 8 depend on this answer; it is fixed here
+   rather than discovered at fixture-authoring time.
+
+3. **`guid` reviewed while open, left unchanged.** guid equality stays field-by-field string
+   equality under D-169: a guid's canonical-string field *is* its identity — no "same guid,
+   different representation" case exists the way "same instant, different offset" does for
+   `date` — so no amendment is warranted. Stated explicitly so the review's "review guid while
+   there" is closed, not left implicit.
+
+**Sequencing — why P1.** Gold masters and fixtures for `date` equality and ordering are
+authored **after** this decision lands in code (the C0-cluster date-equality increment,
+sequenced after the named-type registry so `date` is on the registry before its `Equal` arm
+is touched), never before. Increment B's date test surface is still fresh; every fixture
+written against accidental string-equality semantics raises the cost of the fix. That is the
+whole reason this is P1 rather than a parked follow-up.
+
+No new error code — a `date`-vs-non-`date`-struct or `date`-vs-scalar equality or comparison
+still surfaces the pre-existing `E0002` (D-169's incompatible-type rule and D-354's relational
+gate). Count unchanged at 118.
+
+Full detail: `grob-stdlib-reference.md`'s `date` comparison section (to be updated to state
+the instant-basis explicitly and pin `daysUntil`/`daysSince`), D-169 (the entry this amends for
+`date`), D-354 (the relational-opcode authorisation and its nominal gate), D-355 (the `__value`
+string field).
+
+---
+
+### D-358 — Native default arguments; `date.parse`'s optional pattern (July 2026)
+
+Area: Compiler / Stdlib — native default arguments; date module
+Supersedes: none
+Superseded by: none
+Refines: D-342, D-344, D-354, D-355, D-356
+
+**The problem.** `grob-stdlib-reference.md` (line 388) shows
+`date.parse("05/04/2026", "dd/MM/yyyy")` as live surface, but D-354 and D-355 both record
+that the two-argument form is **not** built, is not in the Sprint 9 scope bullet, and that
+`NamespaceRegistry`'s flat one-entry-per-member model cannot express it — D-354 left it as an
+open design question with no D-### of its own. Independently, Sprint 9's `fs` scope requires
+`copy(src, dest, overwrite: bool = false)` and `move(..., overwrite: bool = false)`:
+default-argument dispatch is a Sprint 9 dependency **regardless** of `date.parse`.
+
+**The decision.**
+
+1. **Native functions support optional trailing parameters with compile-time constant
+   defaults** — a single default-argument mechanism in the native-dispatch path, not
+   per-function special-casing. It generalises D-344's one-off `input()` prompt-defaulting arm
+   (which filled a missing 0-argument call's prompt with `""`) into the general shape, and can
+   later absorb it. A member entry (in `NamespaceRegistry` or the D-356 named-type registry)
+   may declare trailing parameters as optional with a constant default; at a call site
+   supplying fewer arguments than the full arity, the compiler synthesises the missing trailing
+   arguments from the declared constants — the same "inject a synthesised constant argument"
+   shape D-345's `formatAs` column-injection already uses — before the ordinary `GetGlobal`-
+   then-`Call`, so the runtime native keeps a **fixed** arity. This is **default arguments, not
+   overload resolution**: one function with an optional tail, no dispatch on argument count or
+   type. True arity/type overloading remains unsupported and out of v1 scope. Resolves the
+   open question D-354 named.
+
+2. **`date.parse` gains its optional second argument** — `parse(input: string, pattern: string
+   = "")`. An empty pattern means ISO-8601 (the one-argument behaviour, unchanged); a non-empty
+   pattern is passed to `DateTimeOffset.ParseExact`. Runtime parse failure reuses `E5702`
+   (D-284, unchanged — the same code the one-argument form already throws through the
+   native-throw seam). `grob-stdlib-reference.md`'s line-388 sample becomes true rather than
+   aspirational.
+
+3. **`fs.copy`/`fs.move`'s `overwrite: bool = false`** land on the identical mechanism when
+   Increment C builds `fs`. Named here so the machinery is designed **once**, alongside D-356's
+   registry (where the optional/default metadata lives on the member entry), and consumed by
+   both `date.parse` and `fs` rather than built twice.
+
+**Rationale — the foundational-principle call.** Shipping pattern parsing is the better
+language. Real-world CSV dates are rarely ISO-8601, and `csv` (Increment E) is `date.parse`'s
+natural habitat — Script 5's domain (CSV processing) hits this in anger. PowerShell, Python and
+Go all offer pattern parsing; a statically typed scripting language whose driving use cases are
+sysadmin data plumbing cutting it would be a visible gap and a spec-vs-surface divergence
+Pillar 6's cold-read campaigns would catch anyway. The alternative — cut it from v1, correct the
+sample, add it to the scope-cut list — was considered and rejected: the optional-argument
+machinery is needed for `fs` regardless, so the marginal cost of `date.parse`'s second argument
+is one registry-entry field, not a new subsystem.
+
+**Sequencing.** The default-argument mechanism is designed with D-356's registry and lands
+before Increment C, which consumes it for `fs`. `date.parse`'s code half then rides Increment C
+or a dedicated micro-increment — the **decision** is pre-9C, the **code** lands during 9C,
+before `csv` (Increment E) needs it.
+
+No new error code (`E5702` reused for `date.parse`; `fs`'s `overwrite` is a boolean parameter,
+not an error path). Count unchanged at 118.
+
+Full detail: `grob-stdlib-reference.md`'s `date.parse` and `fs` sections, `grob-v1-requirements.md`'s
+Sprint 9 Scope bullet (`fs`/`date`), D-342 (`NamespaceRegistry`), D-356 (the registry carrying
+default-argument metadata), D-344 (the `input()` one-off this generalises), D-354 (the open
+question this resolves).
+
+---
+
+
 ## Post-MVP Decisions
 
 ---
@@ -5617,7 +5851,28 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 9 Increment B: D-354 and D-355 added. D-354 amends D-108 ahead of_
+_July 2026 — Sprint 9 Increment B principal-review remediation, planning session: D-356,_
+_D-357 and D-358 added; `grob-type-registry.md`'s `map<K, V>` static-typing claim corrected._
+_D-356 authorises a single declarative named-type registry consolidating the six hand-rolled,_
+_string-matched dispatch surfaces per nominal `Struct` type (three annotation-position resolvers,_
+_the method/property validator, VM dispatch, the `ValueDisplay` `toString()` registration) into_
+_one table entry per type — extending the `NamespaceRegistry` (D-342) idea from module members to_
+_instance surfaces; `guid`/`date` migrate as behaviour-preserving proving cases, `File` through_
+_`ProcessResult` (Sprint 9) and `Response`/`AuthHeader`/`ZipEntry` (Sprint 11) then land as data;_
+_arrays/maps stay structural (descriptor-based, D-351), explicitly out of scope. D-357 amends_
+_D-169 for nominal `date`: equality and ordering both instant-based, matching `DateTimeOffset`_
+_operator semantics (`EqualsExact` not exposed), restoring the trichotomy the round-trip-string_
+_`__value` field (D-355) would have broken across `toUtc`/`toLocal`/`toZone`; `daysUntil`/_
+_`daysSince` pinned to 86,400-second periods between instants; `guid` reviewed and left_
+_field-by-field. D-358 adds native default arguments (one mechanism generalising D-344's_
+_`input()` arm, compiler-synthesised trailing constants, fixed runtime arity — default_
+_arguments, not overloading), landing `date.parse`'s documented optional `pattern` argument_
+_(reusing E5702) and `fs.copy`/`fs.move`'s `overwrite` default on the same machinery. The_
+_registry doc-honesty edit (F5-1) states map per-key/value typing as the target surface with_
+_a build-status note citing D-351, not a shipped claim. Decisions are pre-Sprint-9C; code lands_
+_across the C0 cluster (registry → date-equality → arrays → maps) and Increment C. No new error_
+_code; count unchanged at 118._
+_Previous: July 2026 — Sprint 9 Increment B: D-354 and D-355 added. D-354 amends D-108 ahead of_
 _`date`'s first implementation — drops `minusDays` (no per-unit `minus*`; `addDays`/_
 _`addMonths`/`addHours`/`addMinutes` all accept a negative `n` uniformly), adds_
 _`toDateOnly()`/`toTimeOnly()` (epoch-anchored), and authorises `LessDate`/`GreaterDate`_

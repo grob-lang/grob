@@ -114,10 +114,17 @@ time — no boxing, no vtable, no heap allocation.
 
 ## `map<K, V>`
 
-A first-class built-in type. The type checker knows `map<string, string>` and
-`map<string, int>` as distinct types. Users consume and construct maps; they
-cannot declare generic map types of their own (same constrained-generics model
-as arrays). In v1, keys must be `string` — non-string keys are deferred post-MVP.
+A first-class built-in type. Maps are *intended* to be statically typed by key and
+value — `map<string, string>` and `map<string, int>` as distinct types — but **this
+typing is not yet implemented (D-351)**: `TypeRef.TypeArguments` is parsed and not yet
+consulted, `map` resolves to the flat `GrobType.Map` tag everywhere, and a
+`for k, v in m` loop binds `v` as `Unknown`. Value-type inference — mirroring arrays'
+`ArrayTypeDescriptor` (D-351) as a `MapTypeDescriptor`, with only `V` inferred since
+v1 keys are `string`-only — is scheduled before v1; until it lands, the per-key and
+per-value typing described in this section is the **target** surface, not current
+behaviour. Users consume and construct maps; they cannot declare generic map types of
+their own (same constrained-generics model as arrays). In v1, keys must be `string` —
+non-string keys are deferred post-MVP.
 
 **Construction:**
 
