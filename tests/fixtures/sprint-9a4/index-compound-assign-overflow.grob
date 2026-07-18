@@ -1,0 +1,8 @@
+// Sprint 9 Increment A4 (D-359) — arr[i] += v overflowing int is uncaught: the
+// E5001 integer-overflow diagnostic (inherited through the existing AddInt
+// opcode, unchanged by this increment) reaches the CLI's top-level formatting.
+
+arr := [9223372036854775807]
+one := 1
+arr[0] += one
+print(arr[0])
