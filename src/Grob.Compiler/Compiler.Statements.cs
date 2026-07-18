@@ -303,7 +303,18 @@ public sealed partial class Compiler {
     // -----------------------------------------------------------------------
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Sprint 9 Increment A4 (D-359): an <see cref="IndexExpr"/> target
+    /// (<c>arr[i] += v</c>) is delegated to <see cref="EmitIndexReadModifyWrite"/> — the
+    /// identifier-target path below is otherwise unchanged.
+    /// </remarks>
     public override object? VisitCompoundAssignment(CompoundAssignmentStmt node) {
+        if (node.Target is IndexExpr indexTarget) {
+            EmitIndexReadModifyWrite(
+                indexTarget, indexTarget.ElementType, node.Operator, node.Value, node.Range.Start.Line);
+            return null;
+        }
+
         if (node.Target is not IdentifierExpr target) return null;
 
         int line = node.Range.Start.Line;
@@ -329,6 +340,56 @@ public sealed partial class Compiler {
         return null;
     }
 
+    /// <summary>
+    /// Sprint 9 Increment A4 (D-359): the evaluate-once read-modify-write shared by
+    /// index-target compound assignment and increment/decrement (<c>arr[i]++</c> lowers
+    /// to <c>arr[i] += 1</c> at the call site, an int literal <paramref name="valueExpr"/>
+    /// and <see cref="CompoundAssignmentOperator.PlusAssign"/>/<c>MinusAssign</c>). The
+    /// receiver and index expressions are each evaluated exactly once — stashed in
+    /// reserved temp locals in their own scope — then re-read via <see cref="OpCode.GetLocal"/>
+    /// for both <see cref="OpCode.SetIndex"/>'s eventual operands and the current-value
+    /// <see cref="OpCode.GetIndex"/> read. No new opcode; the temp locals are released with
+    /// the same <see cref="EmitScopeCleanup"/> a block uses, never lambda-capturable so
+    /// this always resolves to a plain <see cref="OpCode.PopN"/>.
+    /// </summary>
+    private void EmitIndexReadModifyWrite(
+            IndexExpr indexTarget, GrobType elementType, CompoundAssignmentOperator op,
+            Expression valueExpr, int line) {
+        _localScopes.Push([]);
+        int scopeBase = _nextSlot;
+
+        Visit(indexTarget.Target);
+        int receiverSlot = DeclareLocalSlot("$idxRecv");
+        Visit(indexTarget.Index);
+        int indexSlot = DeclareLocalSlot("$idxIdx");
+
+        // SetIndex's eventual receiver/index operands — pushed first so they sit
+        // below the computed result.
+        EmitGetLocal(receiverSlot, line);
+        EmitGetLocal(indexSlot, line);
+
+        // Read the current value: target[index].
+        EmitGetLocal(receiverSlot, line);
+        EmitGetLocal(indexSlot, line);
+        _chunk.WriteOpCode(OpCode.GetIndex, line);
+
+        GrobType rt = GetExprType(valueExpr);
+        if (elementType == GrobType.Int && rt == GrobType.Float)
+            _chunk.WriteOpCode(OpCode.IntToFloat, line);
+
+        Visit(valueExpr);
+        if (elementType == GrobType.Float && rt == GrobType.Int)
+            _chunk.WriteOpCode(OpCode.IntToFloat, line);
+
+        bool floatResult = elementType == GrobType.Float || rt == GrobType.Float;
+        _chunk.WriteOpCode(EmitCompoundBinaryOpCode(op, elementType, floatResult), line);
+        _chunk.WriteOpCode(OpCode.SetIndex, line);
+
+        List<LocalVar> tempScope = _localScopes.Pop();
+        EmitScopeCleanup(tempScope, line);
+        _nextSlot = scopeBase;
+    }
+
     private static OpCode EmitCompoundBinaryOpCode(
         CompoundAssignmentOperator op, GrobType leftType, bool floatResult) => op switch {
             CompoundAssignmentOperator.PlusAssign when leftType == GrobType.String => OpCode.Concat,
@@ -352,7 +413,27 @@ public sealed partial class Compiler {
     // -----------------------------------------------------------------------
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Sprint 9 Increment A4 (D-359): an <see cref="IndexExpr"/> target
+    /// (<c>arr[i]++</c>/<c>--</c>) lowers to <c>arr[i] += 1</c>/<c>-= 1</c> and is
+    /// delegated to <see cref="EmitIndexReadModifyWrite"/> — there is no dedicated
+    /// index-local fast path (that opcode pair only exists for a true stack local).
+    /// </remarks>
     public override object? VisitIncrement(IncrementStmt node) {
+        if (node.Target is IndexExpr indexTarget) {
+            GrobType elementType = indexTarget.ElementType;
+            // Type errors (float++/string++) are already rejected by the type checker;
+            // a map's permissive Unknown element still emits (int at runtime).
+            if (elementType != GrobType.Int && elementType != GrobType.Unknown) return null;
+
+            CompoundAssignmentOperator op = node.Kind == IncrementKind.Increment
+                ? CompoundAssignmentOperator.PlusAssign
+                : CompoundAssignmentOperator.MinusAssign;
+            EmitIndexReadModifyWrite(
+                indexTarget, elementType, op, new IntLiteralExpr(node.Range, 1L), node.Range.Start.Line);
+            return null;
+        }
+
         if (node.Target is not IdentifierExpr target) return null;
         // Type errors (float++, const++) are already rejected by the type checker;
         // only emit for valid int targets.

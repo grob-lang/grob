@@ -1102,6 +1102,7 @@ public sealed partial class Compiler {
         CallExpr { Callee: IdentifierExpr { Declaration: FnDecl fn } }
             => TypeChecker.ResolveTypeRef(fn.ReturnType),
         MemberAccessExpr ma => ma.ResolvedFieldType,
+        IndexExpr idx => idx.ElementType,
         _ => GrobType.Unknown
     };
 

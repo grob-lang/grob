@@ -119,6 +119,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 9 Increment A4 — index-target compound assignment/increment fixtures. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-9a4\*.grob"
+             Link="fixtures\sprint-9a4\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>

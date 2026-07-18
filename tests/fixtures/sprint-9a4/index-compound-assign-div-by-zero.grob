@@ -1,0 +1,8 @@
+// Sprint 9 Increment A4 (D-359) — arr[i] /= 0 is uncaught: the E5002 integer
+// division-by-zero diagnostic (inherited through the existing DivideInt opcode,
+// unchanged by this increment) reaches the CLI's top-level formatting.
+
+arr := [10, 20, 30]
+divisor := 0
+arr[0] /= divisor
+print(arr[0])

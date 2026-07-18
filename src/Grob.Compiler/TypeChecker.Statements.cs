@@ -247,7 +247,17 @@ public sealed partial class TypeChecker {
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Sprint 9 Increment A4 (D-359): an <see cref="IndexExpr"/> target
+    /// (<c>arr[i] += v</c>) is delegated to <see cref="VisitIndexCompoundAssignmentTarget"/>,
+    /// mirroring <see cref="VisitIndexAssignmentTarget"/>'s shape — the identifier-target
+    /// path below is otherwise unchanged.
+    /// </remarks>
     public override GrobType VisitCompoundAssignment(CompoundAssignmentStmt node) {
+        if (node.Target is IndexExpr indexTarget) {
+            return VisitIndexCompoundAssignmentTarget(node, indexTarget);
+        }
+
         if (node.Target is not IdentifierExpr target) {
             Visit(node.Target);
             Visit(node.Value);
@@ -261,32 +271,80 @@ public sealed partial class TypeChecker {
         }
 
         GrobType valueType = Visit(node.Value);
-
-        // Validate the underlying binary operator's type rules using the target's resolved type.
-        if (symbol.Type != GrobType.Error && valueType != GrobType.Error) {
-            BinaryOperator op = CompoundOpToBinary(node.Operator);
-            // Inline the arithmetic-type-rule check: reuse the same logic as VisitBinary.
-            string opSym = OperatorSymbol(op);
-            bool valid = (symbol.Type == GrobType.Int && valueType == GrobType.Int) ||
-                         (symbol.Type == GrobType.Float && valueType == GrobType.Float) ||
-                         (symbol.Type == GrobType.Float && valueType == GrobType.Int) ||
-                         (op == BinaryOperator.Add && symbol.Type == GrobType.String && valueType == GrobType.String);
-            if (!valid)
-                EmitError(ErrorCatalog.E0002,
-                    $"Operator '{opSym}=' cannot be applied to types '{TypeName(symbol.Type)}' and '{TypeName(valueType)}'.",
-                    node.Range);
-        }
-
+        EmitCompoundOperatorTypeCheck(symbol.Type, valueType, node.Operator, node.Range);
         return GrobType.Unknown;
     }
 
+    /// <summary>
+    /// Sprint 9 Increment A4 (D-359): array/map index compound-assignment target
+    /// (<c>arr[i] += v</c>). Mirrors <see cref="VisitIndexAssignmentTarget"/>'s shape:
+    /// visiting the target resolves the receiver's real element type (D-351) via the
+    /// existing <c>VisitIndex</c> path (permissively <see cref="GrobType.Unknown"/> for a
+    /// map receiver — the same honest gap D-350/D-351 already carry), <see
+    /// cref="FindReadonlyRoot"/> raises <see cref="ErrorCatalog.E0204"/> exactly as the
+    /// plain-assignment path does, and the operator/operand check reuses
+    /// <see cref="EmitCompoundOperatorTypeCheck"/> — the identical rule the
+    /// identifier-target path already applies.
+    /// </summary>
+    private GrobType VisitIndexCompoundAssignmentTarget(CompoundAssignmentStmt node, IndexExpr indexTarget) {
+        GrobType elementType = Visit(indexTarget);
+        GrobType valueType = Visit(node.Value);
+        if (FindReadonlyRoot(indexTarget) is not null) {
+            EmitError(ErrorCatalog.E0204,
+                "Cannot mutate element of `readonly` binding.",
+                node.Range);
+        }
+        if (elementType != GrobType.Unknown) {
+            EmitCompoundOperatorTypeCheck(elementType, valueType, node.Operator, node.Range);
+        }
+        return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// The compound-assignment operator/operand validity rule shared by the
+    /// identifier-target and index-target paths — arithmetic operators need matching
+    /// int/float (with int-to-float widening either way), and <c>+=</c> also accepts
+    /// <c>string</c>/<c>string</c> (concatenation). Skipped by callers when either side
+    /// is already <see cref="GrobType.Error"/>.
+    /// </summary>
+    private void EmitCompoundOperatorTypeCheck(
+            GrobType leftType, GrobType valueType, CompoundAssignmentOperator op, SourceRange range) {
+        if (leftType == GrobType.Error || valueType == GrobType.Error) return;
+
+        BinaryOperator binOp = CompoundOpToBinary(op);
+        string opSym = OperatorSymbol(binOp);
+        bool valid = (leftType == GrobType.Int && valueType == GrobType.Int) ||
+                     (leftType == GrobType.Float && valueType == GrobType.Float) ||
+                     (leftType == GrobType.Float && valueType == GrobType.Int) ||
+                     (binOp == BinaryOperator.Add && leftType == GrobType.String && valueType == GrobType.String);
+        if (!valid)
+            EmitError(ErrorCatalog.E0002,
+                $"Operator '{opSym}=' cannot be applied to types '{TypeName(leftType)}' and '{TypeName(valueType)}'.",
+                range);
+    }
+
     /// <inheritdoc/>
+    /// <remarks>
+    /// Sprint 9 Increment A4 (D-359): an <see cref="IndexExpr"/> target
+    /// (<c>arr[i]++</c>/<c>--</c>) is delegated to <see cref="VisitIndexIncrementTarget"/>.
+    /// </remarks>
     public override GrobType VisitIncrement(IncrementStmt node) {
+        if (node.Target is IndexExpr indexTarget) {
+            return VisitIndexIncrementTarget(node, indexTarget);
+        }
         if (node.Target is not IdentifierExpr target) {
             Visit(node.Target);
             return GrobType.Unknown;
         }
+        return VisitIdentifierIncrementTarget(node, target);
+    }
 
+    /// <summary>
+    /// The pre-existing identifier-target increment/decrement rule — extracted verbatim
+    /// from <see cref="VisitIncrement"/> so the new <see cref="IndexExpr"/> dispatch above
+    /// does not push the dispatcher itself over the analyser's complexity bar.
+    /// </summary>
+    private GrobType VisitIdentifierIncrementTarget(IncrementStmt node, IdentifierExpr target) {
         Symbol? symbol = LookupSymbol(target.Name);
         if (symbol is null) {
             EmitError(ErrorCatalog.E1001,
@@ -316,6 +374,33 @@ public sealed partial class TypeChecker {
             EmitError(ErrorCatalog.E0002,
                 $"Operator '{(node.Kind == IncrementKind.Increment ? "++" : "--")}' cannot be applied to type '{TypeName(symbol.Type)}'.",
                 node.Range);
+        }
+
+        return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Sprint 9 Increment A4 (D-359): array/map index increment/decrement target
+    /// (<c>arr[i]++</c>/<c>--</c>). Mirrors the identifier-target int-only rule, except a
+    /// map receiver's <see cref="GrobType.Unknown"/> element stays permissive (D-350's
+    /// established map-write gap) rather than being rejected — the same latitude
+    /// <see cref="VisitIndexCompoundAssignmentTarget"/> gives compound assignment.
+    /// </summary>
+    private GrobType VisitIndexIncrementTarget(IncrementStmt node, IndexExpr indexTarget) {
+        GrobType elementType = Visit(indexTarget);
+        if (FindReadonlyRoot(indexTarget) is not null) {
+            EmitError(ErrorCatalog.E0204,
+                "Cannot mutate element of `readonly` binding.",
+                node.Range);
+        }
+
+        string opSym = node.Kind == IncrementKind.Increment ? "++" : "--";
+        if (elementType == GrobType.Float) {
+            EmitError(ErrorCatalog.E0002,
+                $"Operator '{opSym}' cannot be applied to type 'float'.", node.Range);
+        } else if (elementType != GrobType.Int && elementType != GrobType.Unknown && elementType != GrobType.Error) {
+            EmitError(ErrorCatalog.E0002,
+                $"Operator '{opSym}' cannot be applied to type '{TypeName(elementType)}'.", node.Range);
         }
 
         return GrobType.Unknown;

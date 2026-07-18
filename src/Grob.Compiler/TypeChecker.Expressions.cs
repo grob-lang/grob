@@ -1624,12 +1624,17 @@ public sealed partial class TypeChecker {
     /// determined) stays <see cref="GrobType.Unknown"/> — maps carry the same
     /// unparameterised-value gap arrays had before this decision and are out of its scope.
     /// §3.1.1 does not extend to <c>IndexExpr</c> (D-348) — no <c>ResolvedType</c>/
-    /// <c>Declaration</c> is set here.
+    /// <c>Declaration</c> is set here. The result is also stashed on
+    /// <see cref="IndexExpr.ElementType"/> (Sprint 9 Increment A4, D-359) so the
+    /// compiler's <c>GetExprType</c> can select the right typed opcode for an index
+    /// operand — mirroring <see cref="MemberAccessExpr.ResolvedFieldType"/>.
     /// </remarks>
     public override GrobType VisitIndex(IndexExpr node) {
         Visit(node.Target);
         Visit(node.Index);
-        return ArrayDescriptorOf(node.Target)?.ElementKind ?? GrobType.Unknown;
+        GrobType elementType = ArrayDescriptorOf(node.Target)?.ElementKind ?? GrobType.Unknown;
+        node.ElementType = elementType;
+        return elementType;
     }
 
     /// <inheritdoc/>
