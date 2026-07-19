@@ -305,10 +305,24 @@ public sealed partial class Compiler {
     /// <inheritdoc/>
     /// <remarks>
     /// Sprint 9 Increment A4 (D-359): an <see cref="IndexExpr"/> target
-    /// (<c>arr[i] += v</c>) is delegated to <see cref="EmitIndexReadModifyWrite"/> — the
-    /// identifier-target path below is otherwise unchanged.
+    /// (<c>arr[i] += v</c>) is delegated to <see cref="EmitIndexReadModifyWrite"/>. Sprint 9
+    /// Increment A4b (D-360): a <see cref="MemberAccessExpr"/> target (<c>obj.field += v</c>)
+    /// is delegated to <see cref="EmitMemberReadModifyWrite"/> — the identifier-target path
+    /// below is otherwise unchanged.
     /// </remarks>
     public override object? VisitCompoundAssignment(CompoundAssignmentStmt node) {
+        if (node.Target is MemberAccessExpr memberTarget) {
+            // An optional-chained member compound-assignment target is rejected by the
+            // type checker with E0206, so a well-formed compilation never reaches this
+            // guard. It stays as defence in depth, mirroring VisitAssignment: emit
+            // nothing if one slips through, so no GetProperty/SetProperty is lowered
+            // onto a possibly-nil receiver.
+            if (memberTarget.IsOptional) return null;
+            EmitMemberReadModifyWrite(
+                memberTarget, memberTarget.ResolvedFieldType, node.Operator, node.Value, node.Range.Start.Line);
+            return null;
+        }
+
         if (node.Target is IndexExpr indexTarget) {
             EmitIndexReadModifyWrite(
                 indexTarget, indexTarget.ElementType, node.Operator, node.Value, node.Range.Start.Line);
@@ -390,6 +404,94 @@ public sealed partial class Compiler {
         _nextSlot = scopeBase;
     }
 
+    /// <summary>
+    /// Sprint 9 Increment A4b (D-360): the evaluate-once read-modify-write for a struct
+    /// field target (<c>obj.field op= v</c>, and <c>obj.field++</c>/<c>--</c> lowering to
+    /// <c>+= 1</c>/<c>-= 1</c> at the call site) — the member-target sibling of <see
+    /// cref="EmitIndexReadModifyWrite"/>. The receiver is evaluated exactly once, stashed
+    /// in a single reserved temp local (there is no index subexpression to stash — the
+    /// field name is a static inline operand, so one <see cref="OpCode.Constant"/> serves
+    /// both the read and the write). The temp local is released with the same
+    /// <see cref="EmitScopeCleanup"/> a block uses.
+    /// </summary>
+    private void EmitMemberReadModifyWrite(
+            MemberAccessExpr memberTarget, GrobType fieldType, CompoundAssignmentOperator op,
+            Expression valueExpr, int line) {
+        _localScopes.Push([]);
+        int scopeBase = _nextSlot;
+
+        Visit(memberTarget.Target);
+        int receiverSlot = DeclareLocalSlot("$memRecv");
+        int nameIdx = _chunk.AddConstant(GrobValue.FromString(memberTarget.Member));
+
+        // SetProperty's eventual receiver operand — pushed first so it sits below the
+        // computed result.
+        EmitGetLocal(receiverSlot, line);
+
+        // Read the current value: target.field.
+        EmitGetLocal(receiverSlot, line);
+        _chunk.WriteOpCode(OpCode.GetProperty, line);
+        _chunk.WriteByte(ToByteOperand(nameIdx, "property name"), line);
+
+        GrobType rt = GetExprType(valueExpr);
+        if (fieldType == GrobType.Int && rt == GrobType.Float)
+            _chunk.WriteOpCode(OpCode.IntToFloat, line);
+
+        Visit(valueExpr);
+        if (fieldType == GrobType.Float && rt == GrobType.Int)
+            _chunk.WriteOpCode(OpCode.IntToFloat, line);
+
+        bool floatResult = fieldType == GrobType.Float || rt == GrobType.Float;
+        _chunk.WriteOpCode(EmitCompoundBinaryOpCode(op, fieldType, floatResult), line);
+        _chunk.WriteOpCode(OpCode.SetProperty, line);
+        _chunk.WriteByte(ToByteOperand(nameIdx, "property name"), line);
+
+        List<LocalVar> tempScope = _localScopes.Pop();
+        EmitScopeCleanup(tempScope, line);
+        _nextSlot = scopeBase;
+    }
+
+    /// <summary>
+    /// Sprint 9 Increment A4 (D-359): <c>arr[i]++</c>/<c>--</c> lowers to
+    /// <c>arr[i] += 1</c>/<c>-= 1</c> (int literal) and delegates to <see
+    /// cref="EmitIndexReadModifyWrite"/>. Split out of <see cref="VisitIncrement"/> so its
+    /// dispatcher stays under the analyser's cognitive-complexity bar, mirroring
+    /// <see cref="EmitMemberIncrement"/>.
+    /// </summary>
+    private void EmitIndexIncrement(IncrementStmt node, IndexExpr indexTarget) {
+        GrobType elementType = indexTarget.ElementType;
+        // Type errors (float++/string++) are already rejected by the type checker;
+        // a map's permissive Unknown element still emits (int at runtime).
+        if (elementType != GrobType.Int && elementType != GrobType.Unknown) return;
+
+        CompoundAssignmentOperator op = node.Kind == IncrementKind.Increment
+            ? CompoundAssignmentOperator.PlusAssign
+            : CompoundAssignmentOperator.MinusAssign;
+        EmitIndexReadModifyWrite(
+            indexTarget, elementType, op, new IntLiteralExpr(node.Range, 1L), node.Range.Start.Line);
+    }
+
+    /// <summary>
+    /// Sprint 9 Increment A4b (D-360): <c>obj.field++</c>/<c>--</c> lowers to
+    /// <c>obj.field += 1</c>/<c>-= 1</c> (int literal) and delegates to <see
+    /// cref="EmitMemberReadModifyWrite"/>. Split out of <see cref="VisitIncrement"/> to keep
+    /// that method's cognitive complexity under the analyser bar (mirrors why the
+    /// index-target and identifier-target branches already sit in their own emission paths).
+    /// </summary>
+    private void EmitMemberIncrement(IncrementStmt node, MemberAccessExpr memberTarget) {
+        GrobType fieldType = memberTarget.ResolvedFieldType;
+        // Type errors (float++/string++) are already rejected by the type checker; a
+        // receiver whose type could not be resolved still permissively emits Unknown
+        // (int at runtime), mirroring the index-target map latitude.
+        if (fieldType != GrobType.Int && fieldType != GrobType.Unknown) return;
+
+        CompoundAssignmentOperator op = node.Kind == IncrementKind.Increment
+            ? CompoundAssignmentOperator.PlusAssign
+            : CompoundAssignmentOperator.MinusAssign;
+        EmitMemberReadModifyWrite(
+            memberTarget, fieldType, op, new IntLiteralExpr(node.Range, 1L), node.Range.Start.Line);
+    }
+
     private static OpCode EmitCompoundBinaryOpCode(
         CompoundAssignmentOperator op, GrobType leftType, bool floatResult) => op switch {
             CompoundAssignmentOperator.PlusAssign when leftType == GrobType.String => OpCode.Concat,
@@ -417,20 +519,22 @@ public sealed partial class Compiler {
     /// Sprint 9 Increment A4 (D-359): an <see cref="IndexExpr"/> target
     /// (<c>arr[i]++</c>/<c>--</c>) lowers to <c>arr[i] += 1</c>/<c>-= 1</c> and is
     /// delegated to <see cref="EmitIndexReadModifyWrite"/> — there is no dedicated
-    /// index-local fast path (that opcode pair only exists for a true stack local).
+    /// index-local fast path (that opcode pair only exists for a true stack local). Sprint 9
+    /// Increment A4b (D-360): a <see cref="MemberAccessExpr"/> target (<c>obj.field++</c>/
+    /// <c>--</c>) lowers the same way and is delegated to <see cref="EmitMemberReadModifyWrite"/>.
     /// </remarks>
     public override object? VisitIncrement(IncrementStmt node) {
-        if (node.Target is IndexExpr indexTarget) {
-            GrobType elementType = indexTarget.ElementType;
-            // Type errors (float++/string++) are already rejected by the type checker;
-            // a map's permissive Unknown element still emits (int at runtime).
-            if (elementType != GrobType.Int && elementType != GrobType.Unknown) return null;
+        if (node.Target is MemberAccessExpr memberTarget) {
+            // Defence in depth, mirroring VisitAssignment: an optional-chained member
+            // increment target is rejected by the type checker (E0206), so this is
+            // never reached in a well-formed compilation — emit nothing if it is.
+            if (memberTarget.IsOptional) return null;
+            EmitMemberIncrement(node, memberTarget);
+            return null;
+        }
 
-            CompoundAssignmentOperator op = node.Kind == IncrementKind.Increment
-                ? CompoundAssignmentOperator.PlusAssign
-                : CompoundAssignmentOperator.MinusAssign;
-            EmitIndexReadModifyWrite(
-                indexTarget, elementType, op, new IntLiteralExpr(node.Range, 1L), node.Range.Start.Line);
+        if (node.Target is IndexExpr indexTarget) {
+            EmitIndexIncrement(node, indexTarget);
             return null;
         }
 

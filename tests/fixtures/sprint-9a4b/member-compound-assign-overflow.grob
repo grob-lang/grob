@@ -1,0 +1,12 @@
+// Sprint 9 Increment A4b (D-360) — obj.field += v overflowing int is uncaught: the
+// E5001 integer-overflow diagnostic (inherited through the existing AddInt opcode,
+// unchanged by this increment) reaches the CLI's top-level formatting.
+
+type Config {
+count: int
+}
+
+c := Config { count: 9223372036854775807 }
+one := 1
+c.count += one
+print(c.count)

@@ -2245,6 +2245,12 @@ a compile error.
 Compound assignment is compile-time sugar: `x += y` lowers to `x = x + y`.
 The type rules of the underlying binary operator apply.
 
+For an array-index target (`arr[i] += v`) or a struct-field target
+(`obj.field += v`), the receiver — and, for an index target, the index
+expression — is evaluated exactly once, not once per occurrence of the
+lowered form. `arr[sideEffect()] += 1` calls `sideEffect()` once, not twice
+(D-359, D-360).
+
 ### Increment and decrement — `++`, `--`
 
 | Operator | Operation          |
@@ -2256,6 +2262,8 @@ The type rules of the underlying binary operator apply.
 - Applies to `int` only. `float++` and `float--` are compile errors.
 - `++` and `--` on a `const` binding is a compile error.
 - The compiler lowers `i++` to `i = i + 1`.
+- The same evaluate-once rule applies to `arr[i]++` and `obj.field++`
+  (D-359, D-360).
 
 ### `throw` — see §27
 

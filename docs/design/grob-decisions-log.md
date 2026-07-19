@@ -355,6 +355,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-357 | July 2026                                                          | date module / Type system — equality and ordering | Amends D-169 for nominal `date` only: `date`-vs-`date` equality **and** ordering are both instant-based, matching .NET `DateTimeOffset` operator semantics (`EqualsExact`, the offset-sensitive variant, is deliberately not exposed). Resolves the incoherence where D-355's round-trip-string `__value` field made `date.now()` and `date.now().toUtc()` — the same instant — compare neither `<`, `>` nor `==`, violating trichotomy and the "language that doesn't surprise you" identity. Keyed off the nominal date-vs-date pair the checker already gates (D-354); the `Equal` handler gains a date arm parsing both `__value` strings to instants (opcode shape at the increment's discretion). `daysUntil`/`daysSince` pinned to whole 86,400-second periods between instants (Scripts 7 and 8 depend on the answer). `guid` reviewed and left field-by-field — its canonical string IS its identity, no "same value, different representation" case exists. Every other struct keeps D-169 unchanged. Fixtures for `date` equality authored after this decision, not before. No new error code (E0002 reused); count unchanged at 118 |
 | D-358 | July 2026                                                          | Compiler / Stdlib — native default arguments; date module | Native functions gain optional trailing parameters with compile-time constant defaults — one default-argument mechanism in the native-dispatch path (generalising D-344's one-off `input()` prompt-defaulting arm), the compiler synthesising the missing trailing arguments from the declared constants before the ordinary `GetGlobal`-then-`Call` so runtime natives keep a fixed arity. Default arguments, not overload resolution — resolves the arity-overload question D-354 named as open. `date.parse(input: string, pattern: string = "")` gains its documented second argument (empty pattern = ISO-8601, the unchanged one-arg behaviour; non-empty → `ParseExact`; failure reuses E5702, D-284), making `grob-stdlib-reference.md`'s line-388 sample true rather than aspirational. `fs.copy`/`fs.move`'s `overwrite: bool = false` (Increment C) ride the identical mechanism, designed once with D-356's registry. Decision is pre-9C; `date.parse`'s code half lands during 9C before `csv` (Increment E). No new error code; count unchanged at 118 |
 | D-359 | July 2026                                                          | Compiler — statement emission / type checking | Sprint 9 Increment A4 closes the index-target compound-assignment/increment gap D-350 named: `arr[i] += v`/`m[k] += v` and `arr[i]++`/`arr[i]--` no longer silently drop emission. Evaluate-once design — receiver and index each visited exactly once into reserved temp locals (the `DeclareLocalSlot`/`EmitGetLocal` `for...in`/switch-expression precedent, not D-334's bare `_nextSlot` bump the kickoff prompt named), then the existing `GetIndex`/typed-binary-op/`SetIndex` compose the read-modify-write, temps released via the existing `EmitScopeCleanup` (`PopN`, never lambda-capturable). `arr[i]++`/`--` lowers to `arr[i] += 1`/`-= 1` at the call site through the same helper — no dedicated index-local fast path. Type-checked via `ArrayTypeDescriptor` (D-351) reusing _E0002_ (not E0001, which is the plain-assignment RHS-assignability check the A4 kickoff prompt left ambiguous) for operand-type/int-only mismatches, and the existing `FindReadonlyRoot` walk for E0204; a map's `Unknown` element stays permissive (D-350's precedent) rather than rejected. `IndexExpr` gained a settable `ElementType` property (mirroring `MemberAccessExpr.ResolvedFieldType`), set by `VisitIndex` and consumed by a new `GetExprType` arm — necessary plumbing this increment depends on, since `GetExprType` previously had no `IndexExpr` case and silently defaulted a float array element to int arithmetic in the _plain_ binary-op path too (`floatArr[i] + 1.0`, a pre-existing gap predating D-351, fixed as a side effect). Confirmed but left unfixed and named for scheduling: field-target compound assignment/increment (`obj.field += v`/`obj.field++`) hits the identical silent-drop guard and is not, as the kickoff prompt supposed, a working precedent. Chosen over the Sprint 9B principal review's F1b tourniquet recommendation — delivering the feature closes F1b outright. No new opcode, no new error code; count unchanged at 118 |
+| D-360 | July 2026                                                          | Compiler — statement emission / type checking | Sprint 9 Increment A4b closes the sibling member-target compound-assignment/increment gap D-359 confirmed but left unfixed: `obj.field += v` and `obj.field++`/`obj.field--` (including chained `a.b.c` targets) no longer silently drop emission. Evaluate-once design — the receiver is visited exactly once into a single reserved temp local (no index subexpression, unlike D-359's two), then the existing `GetProperty`/typed-binary-op/`SetProperty` compose the read-modify-write, the temp released via the existing `EmitScopeCleanup` (`PopN` of 1). `obj.field++`/`--` lowers to `+= 1`/`-= 1` at the call site through the same helper. Type-checked via `MemberAccessExpr.ResolvedFieldType` (live since Sprint 6 Increment C, unlike D-359's `IndexExpr.ElementType` which A4 added from scratch) reusing _E0002_, and the existing `FindReadonlyRoot` walk for E0204 — it already covered `MemberAccessExpr` chains since Sprint 6C, so unlike D-359's `IndexExpr` extension, no change was needed; a field whose type could not be resolved because the receiver itself is `Unknown` stays permissive, mirroring D-359's map-element latitude. Corrects the A4 kickoff prompt's premise: `GetExprType`'s `MemberAccessExpr` arm (`ma.ResolvedFieldType`) already existed since Sprint 6C (commit `ede8dda`, PR #104) — `obj.floatField + 1.0` already selected `AddFloat` before this increment, so no `GetExprType` fix was made or is claimed here; a regression-lock test was added instead, and residual `GetExprType` gaps (`CallExpr` via a member/lambda callee, `StructConstructionExpr`, `LambdaExpr`) are named for the separate completeness audit. No new opcode, no new error code; count unchanged at 118 |
 
 
 ---
@@ -5713,6 +5714,74 @@ D-351 (`ArrayTypeDescriptor`), `grob-principal-review-sprint9b.md` (finding F1b)
 
 ---
 
+### D-360 — Member-target compound assignment and increment/decrement: `obj.field op= v`, `obj.field++`/`--` (Sprint 9 Increment A4b) (July 2026)
+
+Area: Compiler — statement emission / type checking
+Supersedes: none
+Superseded by: none
+Refines: D-359, D-350
+
+**The decision.** `obj.field += v` and `obj.field++`/`obj.field--` — including chained
+(`a.b.c`) targets — now emit, closing the sibling gap D-359 confirmed but explicitly left
+unfixed: the statement previously compiled to nothing, RHS side effects included, via the
+same blanket `is not IdentifierExpr` early-return in both `Compiler.Statements.cs` and
+`TypeChecker.Statements.cs` that D-359 removed for index targets. `grob-language-
+fundamentals.md` §28 already specified `obj.field` as a valid compound-assignment target;
+the gap was in the compiler, not the spec. D-359's own framing is corrected here too:
+plain `obj.field = v`'s working, receiver-evaluated-once assignment path is not, as the
+original A4 kickoff prompt supposed, a precedent the compound/increment forms could
+mirror wholesale — they needed their own read-modify-write, built by adapting A4's
+index-target shape instead, minus the index subexpression.
+
+**Emission — evaluate-once, no new opcode.** The receiver is visited exactly once,
+stashed in a single reserved temp local (`DeclareLocalSlot`/`EmitGetLocal`, the same
+vehicle D-359 reused) — one temp local, not two, since a member target has no index
+subexpression to stash: the field name is a static inline operand shared by both the
+read and the write (`GetProperty`/`SetProperty`'s existing byte-operand shape). A
+`GetLocal` pushes the eventual `SetProperty` receiver operand; a second `GetLocal`/
+`GetProperty` reads the current value; the RHS (or the int literal `1` for `++`/`--`, the
+identical `+= 1`/`-= 1` lowering D-359 established) and the ordinary typed binary opcode
+follow; `SetProperty` writes back, popping `[receiver, result]`. The temp local is
+released via the existing `EmitScopeCleanup` (`PopN` of `1`, not `2`).
+
+**Type checking.** Field type comes from `MemberAccessExpr.ResolvedFieldType` via the
+ordinary `VisitMemberAccess` path (live since Sprint 6 Increment C — predates this
+increment, unlike D-359's `IndexExpr.ElementType`, which A4 added from scratch). The
+operand-type/int-only validity check reuses the shared `EmitCompoundOperatorTypeCheck`
+(**E0002**), identical to every other compound-assignment target path; `FindReadonlyRoot`
+(D-350) is reused unchanged for **E0204** — it has walked `MemberAccessExpr` chains since
+Sprint 6C, so unlike D-359's `IndexExpr` extension, no change was needed here. A field
+whose type could not be resolved because the receiver's own type is `Unknown` (e.g. an
+untyped lambda parameter) stays permissive — mirroring D-359's map-element latitude — via
+the identical `if (fieldType != GrobType.Unknown)` guard around the operator check. No
+new opcode, no new error code; count unchanged at 118.
+
+**Correction to the kickoff prompt's premise: no `GetExprType` fix here.** The prompt
+modelled this increment on D-359's own shape, where `GetExprType` had no `IndexExpr` arm
+and needed one added, and asked the plan-mode gate to check whether the same was true for
+`MemberAccessExpr`. It is not: the `MemberAccessExpr` arm (`ma.ResolvedFieldType`) has
+existed since Sprint 6 Increment C (commit `ede8dda`, PR #104) — `obj.floatField + 1.0`
+already selected `AddFloat`, not `AddInt`, before this increment. No fix was made or is
+claimed; the regression test the prompt asked for was kept as a permanent lock against
+future drift, not as evidence of a fix. Residual `GetExprType` gaps observed and left for
+the separate completeness audit: `CallExpr` only resolves a return type through a direct
+`IdentifierExpr`-callee to a `FnDecl` — a call via member access (`obj.method()`), a
+function-typed variable, or a native/stdlib call, plus `StructConstructionExpr` and
+`LambdaExpr` operands, all still fall through to `Unknown` and the silent `Int` default.
+
+**Tests.** Bytecode-shape and type-check diagnostic tests in `Grob.Compiler.Tests`
+(struct types constructed via ordinary `.grob` source — no hand-built AST needed, unlike
+D-359's map case, since struct literals exist in the v1 parser); end-to-end tests in
+`Grob.Integration.Tests` covering all five compound operators, increment/decrement,
+chained targets, the evaluate-once case (a side-effect-counter receiver function observed
+to run exactly once) and the inherited `E5001`/`E5003` runtime-error paths (integer
+overflow and modulo-by-zero) through the CLI's top-level diagnostic formatting.
+
+Full detail: `grob-language-fundamentals.md` §28 (Assignment, Increment and decrement),
+D-359 (index-target precedent), D-350 (`FindReadonlyRoot`).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -5935,7 +6004,23 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 9 Increment A4: D-359 added. Closes the index-target compound-_
+_July 2026 — Sprint 9 Increment A4b: D-360 added. Closes the sibling member-target_
+_compound-assignment/increment gap D-359 confirmed but left unfixed — `obj.field += v`_
+_and `obj.field++`/`obj.field--` (including chained `a.b.c` targets) now emit instead of_
+_silently dropping the statement. Evaluate-once emission: the receiver is visited once_
+_into a single reserved temp local (no index subexpression, unlike D-359's two), then the_
+_existing `GetProperty`/typed-binary-op/`SetProperty` compose the read-modify-write, the_
+_temp released via `EmitScopeCleanup` (`PopN` of 1). `++`/`--` lowers to `+= 1`/`-= 1` at_
+_the call site. Type-checked via `MemberAccessExpr.ResolvedFieldType` (live since Sprint 6_
+_Increment C, unlike D-359's `IndexExpr.ElementType`, which A4 added from scratch) reusing_
+_E0002 and the existing `FindReadonlyRoot` walk (already covered member chains) for_
+_E0204; an unresolvable receiver's `Unknown` field type stays permissive, mirroring_
+_D-359's map latitude. Corrects the A4 kickoff prompt's premise: `GetExprType`'s_
+_`MemberAccessExpr` arm already existed since Sprint 6C — no fix made or claimed here,_
+_only a regression-lock test added; residual `GetExprType` gaps (`CallExpr` via a member/_
+_lambda callee, etc.) named for the separate completeness audit. No new opcode, no new_
+_error code; count unchanged at 118._
+_Previous: July 2026 — Sprint 9 Increment A4: D-359 added. Closes the index-target compound-_
 _assignment/increment gap D-350 named — `arr[i] += v`/`m[k] += v` and `arr[i]++`/`arr[i]--`_
 _now emit instead of silently dropping the statement. Evaluate-once emission: receiver/_
 _index each visited once into reserved temp locals (the `for...in`/switch-expression_
