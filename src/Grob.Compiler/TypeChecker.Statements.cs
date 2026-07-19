@@ -250,10 +250,16 @@ public sealed partial class TypeChecker {
     /// <remarks>
     /// Sprint 9 Increment A4 (D-359): an <see cref="IndexExpr"/> target
     /// (<c>arr[i] += v</c>) is delegated to <see cref="VisitIndexCompoundAssignmentTarget"/>,
-    /// mirroring <see cref="VisitIndexAssignmentTarget"/>'s shape — the identifier-target
+    /// mirroring <see cref="VisitIndexAssignmentTarget"/>'s shape. Sprint 9 Increment A4b
+    /// (D-360): a <see cref="MemberAccessExpr"/> target (<c>obj.field += v</c>) is
+    /// delegated to <see cref="VisitMemberCompoundAssignmentTarget"/> — the identifier-target
     /// path below is otherwise unchanged.
     /// </remarks>
     public override GrobType VisitCompoundAssignment(CompoundAssignmentStmt node) {
+        if (node.Target is MemberAccessExpr memberTarget) {
+            return VisitMemberCompoundAssignmentTarget(node, memberTarget);
+        }
+
         if (node.Target is IndexExpr indexTarget) {
             return VisitIndexCompoundAssignmentTarget(node, indexTarget);
         }
@@ -301,6 +307,33 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
+    /// Sprint 9 Increment A4b (D-360): struct field compound-assignment target
+    /// (<c>obj.field += v</c>), closing the sibling gap D-359 named. Mirrors
+    /// <see cref="VisitIndexCompoundAssignmentTarget"/>'s shape: visiting the target
+    /// resolves the field's real type via the pre-existing <c>VisitMemberAccess</c> path
+    /// (<see cref="MemberAccessExpr.ResolvedFieldType"/>, live since Sprint 6 Increment C —
+    /// permissively <see cref="GrobType.Unknown"/> when the receiver's own type could not be
+    /// resolved, the same honest gap the index-target map case carries), <see
+    /// cref="FindReadonlyRoot"/> raises <see cref="ErrorCatalog.E0204"/> exactly as the
+    /// plain-assignment path does, and the operator/operand check reuses <see
+    /// cref="EmitCompoundOperatorTypeCheck"/> — the identical rule every other
+    /// compound-assignment target path already applies.
+    /// </summary>
+    private GrobType VisitMemberCompoundAssignmentTarget(CompoundAssignmentStmt node, MemberAccessExpr memberTarget) {
+        GrobType fieldType = Visit(memberTarget);
+        GrobType valueType = Visit(node.Value);
+        if (FindReadonlyRoot(memberTarget) is not null) {
+            EmitError(ErrorCatalog.E0204,
+                "Cannot mutate field of `readonly` binding.",
+                node.Range);
+        }
+        if (fieldType != GrobType.Unknown) {
+            EmitCompoundOperatorTypeCheck(fieldType, valueType, node.Operator, node.Range);
+        }
+        return GrobType.Unknown;
+    }
+
+    /// <summary>
     /// The compound-assignment operator/operand validity rule shared by the
     /// identifier-target and index-target paths — arithmetic operators need matching
     /// int/float (with int-to-float widening either way), and <c>+=</c> also accepts
@@ -327,8 +360,13 @@ public sealed partial class TypeChecker {
     /// <remarks>
     /// Sprint 9 Increment A4 (D-359): an <see cref="IndexExpr"/> target
     /// (<c>arr[i]++</c>/<c>--</c>) is delegated to <see cref="VisitIndexIncrementTarget"/>.
+    /// Sprint 9 Increment A4b (D-360): a <see cref="MemberAccessExpr"/> target
+    /// (<c>obj.field++</c>/<c>--</c>) is delegated to <see cref="VisitMemberIncrementTarget"/>.
     /// </remarks>
     public override GrobType VisitIncrement(IncrementStmt node) {
+        if (node.Target is MemberAccessExpr memberTarget) {
+            return VisitMemberIncrementTarget(node, memberTarget);
+        }
         if (node.Target is IndexExpr indexTarget) {
             return VisitIndexIncrementTarget(node, indexTarget);
         }
@@ -401,6 +439,32 @@ public sealed partial class TypeChecker {
         } else if (elementType != GrobType.Int && elementType != GrobType.Unknown && elementType != GrobType.Error) {
             EmitError(ErrorCatalog.E0002,
                 $"Operator '{opSym}' cannot be applied to type '{TypeName(elementType)}'.", node.Range);
+        }
+
+        return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Sprint 9 Increment A4b (D-360): struct field increment/decrement target
+    /// (<c>obj.field++</c>/<c>--</c>). Mirrors <see cref="VisitIndexIncrementTarget"/>'s
+    /// int-only rule, including the same <see cref="GrobType.Unknown"/> latitude for a
+    /// field whose type could not be resolved because the receiver's own type is unknown.
+    /// </summary>
+    private GrobType VisitMemberIncrementTarget(IncrementStmt node, MemberAccessExpr memberTarget) {
+        GrobType fieldType = Visit(memberTarget);
+        if (FindReadonlyRoot(memberTarget) is not null) {
+            EmitError(ErrorCatalog.E0204,
+                "Cannot mutate field of `readonly` binding.",
+                node.Range);
+        }
+
+        string opSym = node.Kind == IncrementKind.Increment ? "++" : "--";
+        if (fieldType == GrobType.Float) {
+            EmitError(ErrorCatalog.E0002,
+                $"Operator '{opSym}' cannot be applied to type 'float'.", node.Range);
+        } else if (fieldType != GrobType.Int && fieldType != GrobType.Unknown && fieldType != GrobType.Error) {
+            EmitError(ErrorCatalog.E0002,
+                $"Operator '{opSym}' cannot be applied to type '{TypeName(fieldType)}'.", node.Range);
         }
 
         return GrobType.Unknown;

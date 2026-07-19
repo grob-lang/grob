@@ -1,0 +1,12 @@
+// Sprint 9 Increment A4b (D-360) — obj.field %= 0 is uncaught: the E5003 integer
+// modulo-by-zero diagnostic (inherited through the existing ModuloInt opcode,
+// unchanged by this increment) reaches the CLI's top-level formatting.
+
+type Config {
+count: int
+}
+
+c := Config { count: 10 }
+divisor := 0
+c.count %= divisor
+print(c.count)
