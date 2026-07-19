@@ -312,6 +312,12 @@ public sealed partial class Compiler {
     /// </remarks>
     public override object? VisitCompoundAssignment(CompoundAssignmentStmt node) {
         if (node.Target is MemberAccessExpr memberTarget) {
+            // An optional-chained member compound-assignment target is rejected by the
+            // type checker with E0206, so a well-formed compilation never reaches this
+            // guard. It stays as defence in depth, mirroring VisitAssignment: emit
+            // nothing if one slips through, so no GetProperty/SetProperty is lowered
+            // onto a possibly-nil receiver.
+            if (memberTarget.IsOptional) return null;
             EmitMemberReadModifyWrite(
                 memberTarget, memberTarget.ResolvedFieldType, node.Operator, node.Value, node.Range.Start.Line);
             return null;
@@ -446,6 +452,26 @@ public sealed partial class Compiler {
     }
 
     /// <summary>
+    /// Sprint 9 Increment A4 (D-359): <c>arr[i]++</c>/<c>--</c> lowers to
+    /// <c>arr[i] += 1</c>/<c>-= 1</c> (int literal) and delegates to <see
+    /// cref="EmitIndexReadModifyWrite"/>. Split out of <see cref="VisitIncrement"/> so its
+    /// dispatcher stays under the analyser's cognitive-complexity bar, mirroring
+    /// <see cref="EmitMemberIncrement"/>.
+    /// </summary>
+    private void EmitIndexIncrement(IncrementStmt node, IndexExpr indexTarget) {
+        GrobType elementType = indexTarget.ElementType;
+        // Type errors (float++/string++) are already rejected by the type checker;
+        // a map's permissive Unknown element still emits (int at runtime).
+        if (elementType != GrobType.Int && elementType != GrobType.Unknown) return;
+
+        CompoundAssignmentOperator op = node.Kind == IncrementKind.Increment
+            ? CompoundAssignmentOperator.PlusAssign
+            : CompoundAssignmentOperator.MinusAssign;
+        EmitIndexReadModifyWrite(
+            indexTarget, elementType, op, new IntLiteralExpr(node.Range, 1L), node.Range.Start.Line);
+    }
+
+    /// <summary>
     /// Sprint 9 Increment A4b (D-360): <c>obj.field++</c>/<c>--</c> lowers to
     /// <c>obj.field += 1</c>/<c>-= 1</c> (int literal) and delegates to <see
     /// cref="EmitMemberReadModifyWrite"/>. Split out of <see cref="VisitIncrement"/> to keep
@@ -499,21 +525,16 @@ public sealed partial class Compiler {
     /// </remarks>
     public override object? VisitIncrement(IncrementStmt node) {
         if (node.Target is MemberAccessExpr memberTarget) {
+            // Defence in depth, mirroring VisitAssignment: an optional-chained member
+            // increment target is rejected by the type checker (E0206), so this is
+            // never reached in a well-formed compilation — emit nothing if it is.
+            if (memberTarget.IsOptional) return null;
             EmitMemberIncrement(node, memberTarget);
             return null;
         }
 
         if (node.Target is IndexExpr indexTarget) {
-            GrobType elementType = indexTarget.ElementType;
-            // Type errors (float++/string++) are already rejected by the type checker;
-            // a map's permissive Unknown element still emits (int at runtime).
-            if (elementType != GrobType.Int && elementType != GrobType.Unknown) return null;
-
-            CompoundAssignmentOperator op = node.Kind == IncrementKind.Increment
-                ? CompoundAssignmentOperator.PlusAssign
-                : CompoundAssignmentOperator.MinusAssign;
-            EmitIndexReadModifyWrite(
-                indexTarget, elementType, op, new IntLiteralExpr(node.Range, 1L), node.Range.Start.Line);
+            EmitIndexIncrement(node, indexTarget);
             return null;
         }
 

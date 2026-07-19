@@ -158,7 +158,7 @@ public sealed class CompilerMemberCompoundAssignTests {
     [InlineData("%=", OpCode.ModuloInt)]
     public void MemberCompoundAssign_EmitsExactOpcodesAndOperandsForEachOperator(string op, OpCode expectedBinaryOp) {
         Chunk chunk = CompileSource(ConfigType + $"c := Config {{ count: 10 }}\nc.count {op} 5\n");
-        List<OpCode> ops = Opcodes(chunk);
+        List<Instr> instrs = Decode(chunk);
 
         Assert.Equal(
             [
@@ -171,7 +171,19 @@ public sealed class CompilerMemberCompoundAssignTests {
                 OpCode.PopN,
                 OpCode.Return,
             ],
-            ops);
+            instrs.Select(i => i.Op).ToList());
+
+        // Operand contract per operator, not just the opcode sequence: the read
+        // and write both name 'count' via the same pooled constant, and the RHS is
+        // the int literal 5 loaded immediately before the binary op.
+        Instr getProperty = instrs.Single(i => i.Op == OpCode.GetProperty);
+        Instr setProperty = instrs.Single(i => i.Op == OpCode.SetProperty);
+        Assert.Equal("count", chunk.ReadConstant(getProperty.Arg).AsString());
+        Assert.Equal(getProperty.Arg, setProperty.Arg);
+        Instr binaryOp = instrs.Single(i => i.Op == expectedBinaryOp);
+        Instr rhsConstant = instrs[instrs.IndexOf(binaryOp) - 1];
+        Assert.Equal(OpCode.Constant, rhsConstant.Op);
+        Assert.Equal(5L, chunk.ReadConstant(rhsConstant.Arg).AsInt());
     }
 
     // -----------------------------------------------------------------------
@@ -234,7 +246,7 @@ public sealed class CompilerMemberCompoundAssignTests {
     [InlineData("%=", OpCode.ModuloFloat)]
     public void FloatMemberCompoundAssign_EmitsExactOpcodesWithIntToFloatCoercion(string op, OpCode expectedFloatOp) {
         Chunk chunk = CompileSource(FConfigType + $"f := FConfig {{ amount: 1.0 }}\nf.amount {op} 1\n");
-        List<OpCode> ops = Opcodes(chunk);
+        List<Instr> instrs = Decode(chunk);
 
         Assert.Equal(
             [
@@ -248,7 +260,18 @@ public sealed class CompilerMemberCompoundAssignTests {
                 OpCode.PopN,
                 OpCode.Return,
             ],
-            ops);
+            instrs.Select(i => i.Op).ToList());
+
+        // Operand contract per operator: read/write both name 'amount' via the same
+        // pooled constant, and the RHS is the int literal 1 (widened by IntToFloat).
+        Instr getProperty = instrs.Single(i => i.Op == OpCode.GetProperty);
+        Instr setProperty = instrs.Single(i => i.Op == OpCode.SetProperty);
+        Assert.Equal("amount", chunk.ReadConstant(getProperty.Arg).AsString());
+        Assert.Equal(getProperty.Arg, setProperty.Arg);
+        Instr intToFloat = instrs.Single(i => i.Op == OpCode.IntToFloat);
+        Instr rhsConstant = instrs[instrs.IndexOf(intToFloat) - 1];
+        Assert.Equal(OpCode.Constant, rhsConstant.Op);
+        Assert.Equal(1L, chunk.ReadConstant(rhsConstant.Arg).AsInt());
     }
 
     // -----------------------------------------------------------------------
@@ -398,5 +421,64 @@ public sealed class CompilerMemberCompoundAssignTests {
             ConfigType + "c := Config { count: 10 }\nc.count += 1\nc.count++\nc.count--\n");
         Assert.False(bag.HasErrors,
             $"Unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
+    // -----------------------------------------------------------------------
+    // E0206 — optional chaining ('?.') is rejected in a mutating member target,
+    // exactly as the plain-assignment path (VisitAssignment) already rejects
+    // 'c?.port = v'. A compound assignment or increment through '?.' must never
+    // lower to GetProperty/SetProperty on a possibly-nil receiver. Full
+    // diagnostic contract (code, 1-based line and column).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MemberCompoundAssign_OptionalChain_EmitsE0206() {
+        DiagnosticBag bag = TypeCheckDiagnostics(ConfigType + "c := Config { count: 10 }\nc?.count += 5\n");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0206", diag.Code);
+        Assert.Equal(5, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void MemberIncrement_OptionalChain_EmitsE0206() {
+        DiagnosticBag bag = TypeCheckDiagnostics(ConfigType + "c := Config { count: 10 }\nc?.count++\n");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0206", diag.Code);
+        Assert.Equal(5, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
+    }
+
+    // -----------------------------------------------------------------------
+    // Compiler defence-in-depth — an optional-chained mutating member target is
+    // rejected by the type checker (E0206 above), so a well-formed compilation
+    // never reaches the emitter with IsOptional=true. These tests compile despite
+    // the TC error to exercise the 'if (memberTarget.IsOptional) return null'
+    // guard that keeps SetProperty from being emitted even if one slips through,
+    // mirroring FieldAssign_OptionalTarget_WithTcErrors_EmitsNoSetProperty.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MemberCompoundAssign_OptionalTarget_WithTcErrors_EmitsNoSetProperty() {
+        DiagnosticBag bag = new();
+        IReadOnlyList<Token> tokens = Lexer.Scan(ConfigType + "c := Config { count: 10 }\nc?.count += 5\n", bag);
+        CompilationUnit unit = Parser.Parse(tokens, bag);
+        new TypeChecker(bag).Check(unit);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0206", diag.Code);
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        Assert.DoesNotContain(Decode(chunk), i => i.Op == OpCode.SetProperty);
+    }
+
+    [Fact]
+    public void MemberIncrement_OptionalTarget_WithTcErrors_EmitsNoSetProperty() {
+        DiagnosticBag bag = new();
+        IReadOnlyList<Token> tokens = Lexer.Scan(ConfigType + "c := Config { count: 10 }\nc?.count++\n", bag);
+        CompilationUnit unit = Parser.Parse(tokens, bag);
+        new TypeChecker(bag).Check(unit);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0206", diag.Code);
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        Assert.DoesNotContain(Decode(chunk), i => i.Op == OpCode.SetProperty);
     }
 }

@@ -320,6 +320,12 @@ public sealed partial class TypeChecker {
     /// compound-assignment target path already applies.
     /// </summary>
     private GrobType VisitMemberCompoundAssignmentTarget(CompoundAssignmentStmt node, MemberAccessExpr memberTarget) {
+        if (memberTarget.IsOptional) {
+            EmitError(ErrorCatalog.E0206,
+                "Optional chaining '?.' cannot appear in an assignment target. Use '.' for field assignment.",
+                memberTarget.Range);
+            return GrobType.Unknown;
+        }
         GrobType fieldType = Visit(memberTarget);
         GrobType valueType = Visit(node.Value);
         if (FindReadonlyRoot(memberTarget) is not null) {
@@ -451,6 +457,12 @@ public sealed partial class TypeChecker {
     /// field whose type could not be resolved because the receiver's own type is unknown.
     /// </summary>
     private GrobType VisitMemberIncrementTarget(IncrementStmt node, MemberAccessExpr memberTarget) {
+        if (memberTarget.IsOptional) {
+            EmitError(ErrorCatalog.E0206,
+                "Optional chaining '?.' cannot appear in an assignment target. Use '.' for field assignment.",
+                memberTarget.Range);
+            return GrobType.Unknown;
+        }
         GrobType fieldType = Visit(memberTarget);
         if (FindReadonlyRoot(memberTarget) is not null) {
             EmitError(ErrorCatalog.E0204,
