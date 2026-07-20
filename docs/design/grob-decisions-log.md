@@ -356,6 +356,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-358 | July 2026                                                          | Compiler / Stdlib — native default arguments; date module | Native functions gain optional trailing parameters with compile-time constant defaults — one default-argument mechanism in the native-dispatch path (generalising D-344's one-off `input()` prompt-defaulting arm), the compiler synthesising the missing trailing arguments from the declared constants before the ordinary `GetGlobal`-then-`Call` so runtime natives keep a fixed arity. Default arguments, not overload resolution — resolves the arity-overload question D-354 named as open. `date.parse(input: string, pattern: string = "")` gains its documented second argument (empty pattern = ISO-8601, the unchanged one-arg behaviour; non-empty → `ParseExact`; failure reuses E5702, D-284), making `grob-stdlib-reference.md`'s line-388 sample true rather than aspirational. `fs.copy`/`fs.move`'s `overwrite: bool = false` (Increment C) ride the identical mechanism, designed once with D-356's registry. Decision is pre-9C; `date.parse`'s code half lands during 9C before `csv` (Increment E). No new error code; count unchanged at 118 |
 | D-359 | July 2026                                                          | Compiler — statement emission / type checking | Sprint 9 Increment A4 closes the index-target compound-assignment/increment gap D-350 named: `arr[i] += v`/`m[k] += v` and `arr[i]++`/`arr[i]--` no longer silently drop emission. Evaluate-once design — receiver and index each visited exactly once into reserved temp locals (the `DeclareLocalSlot`/`EmitGetLocal` `for...in`/switch-expression precedent, not D-334's bare `_nextSlot` bump the kickoff prompt named), then the existing `GetIndex`/typed-binary-op/`SetIndex` compose the read-modify-write, temps released via the existing `EmitScopeCleanup` (`PopN`, never lambda-capturable). `arr[i]++`/`--` lowers to `arr[i] += 1`/`-= 1` at the call site through the same helper — no dedicated index-local fast path. Type-checked via `ArrayTypeDescriptor` (D-351) reusing _E0002_ (not E0001, which is the plain-assignment RHS-assignability check the A4 kickoff prompt left ambiguous) for operand-type/int-only mismatches, and the existing `FindReadonlyRoot` walk for E0204; a map's `Unknown` element stays permissive (D-350's precedent) rather than rejected. `IndexExpr` gained a settable `ElementType` property (mirroring `MemberAccessExpr.ResolvedFieldType`), set by `VisitIndex` and consumed by a new `GetExprType` arm — necessary plumbing this increment depends on, since `GetExprType` previously had no `IndexExpr` case and silently defaulted a float array element to int arithmetic in the _plain_ binary-op path too (`floatArr[i] + 1.0`, a pre-existing gap predating D-351, fixed as a side effect). Confirmed but left unfixed and named for scheduling: field-target compound assignment/increment (`obj.field += v`/`obj.field++`) hits the identical silent-drop guard and is not, as the kickoff prompt supposed, a working precedent. Chosen over the Sprint 9B principal review's F1b tourniquet recommendation — delivering the feature closes F1b outright. No new opcode, no new error code; count unchanged at 118 |
 | D-360 | July 2026                                                          | Compiler — statement emission / type checking | Sprint 9 Increment A4b closes the sibling member-target compound-assignment/increment gap D-359 confirmed but left unfixed: `obj.field += v` and `obj.field++`/`obj.field--` (including chained `a.b.c` targets) no longer silently drop emission. Evaluate-once design — the receiver is visited exactly once into a single reserved temp local (no index subexpression, unlike D-359's two), then the existing `GetProperty`/typed-binary-op/`SetProperty` compose the read-modify-write, the temp released via the existing `EmitScopeCleanup` (`PopN` of 1). `obj.field++`/`--` lowers to `+= 1`/`-= 1` at the call site through the same helper. Type-checked via `MemberAccessExpr.ResolvedFieldType` (live since Sprint 6 Increment C, unlike D-359's `IndexExpr.ElementType` which A4 added from scratch) reusing _E0002_, and the existing `FindReadonlyRoot` walk for E0204 — it already covered `MemberAccessExpr` chains since Sprint 6C, so unlike D-359's `IndexExpr` extension, no change was needed; a field whose type could not be resolved because the receiver itself is `Unknown` stays permissive, mirroring D-359's map-element latitude. Corrects the A4 kickoff prompt's premise: `GetExprType`'s `MemberAccessExpr` arm (`ma.ResolvedFieldType`) already existed since Sprint 6C (commit `ede8dda`, PR #104) — `obj.floatField + 1.0` already selected `AddFloat` before this increment, so no `GetExprType` fix was made or is claimed here; a regression-lock test was added instead, and residual `GetExprType` gaps (`CallExpr` via a member/lambda callee, `StructConstructionExpr`, `LambdaExpr`) are named for the separate completeness audit. No new opcode, no new error code; count unchanged at 118 |
+| D-361 | July 2026                                                          | Compiler / Vm / Stdlib / Core — named-type dispatch | D-356's `NamedTypeRegistry` lands: one hand-authored table entry per nominal `Struct` type, in `Grob.Core` (the only assembly `Grob.Compiler`/`Grob.Vm`/`Grob.Runtime` all reach without a `Grob.Compiler`-to-`Grob.Vm` reference edge), carrying real executable property/method delegates alongside type-checking metadata and the D-336 `toString()` renderer. `guid`/`date` migrate onto it as behaviour-preserving proving cases — every pre-existing test passes unchanged — replacing the six hand-rolled dispatch arms D-356 catalogued; `Grob.Vm.GuidNatives`/`DateNatives` shrink to construction/field-layout helpers only (`DateNatives.ToDateTimeOffset` stays, since `LessDate`/`GreaterDate` still call it — D-357's territory untouched). The D-358 default-parameter metadata field is present but unused. Builds the first real "hand-table vs. live runtime registration" agreement test in the repo (`NamedTypeRegistryAgreementTests`, `Grob.Integration.Tests` — no dedicated `Grob.Cli.Tests` project exists to host it, corrected from the kickoff prompt's assumption); `ErrorCatalogAgreementTests` (D-308) remained the only precedent, and it diffs against a markdown doc, not live registration. `File` through `ProcessResult` land as registry data from here on. No new opcode, no new error code; count unchanged at 118 |
 
 
 ---
@@ -5782,6 +5783,95 @@ D-359 (index-target precedent), D-350 (`FindReadonlyRoot`).
 
 ---
 
+### D-361 — Named-type registry lands: `guid`/`date` migrate onto it (Sprint 9 Increment C0c) (July 2026)
+
+Area: Compiler / Vm / Stdlib / Core — named-type dispatch
+Supersedes: none
+Superseded by: none
+Refines: D-356
+
+**The decision.** D-356's `NamedTypeRegistry` lands: a single hand-authored table, one
+entry per nominal `Struct`-discriminated type, replacing the six hand-rolled,
+string-matched dispatch arms D-356 catalogued. `guid` and `date` migrate onto it as the
+first two entries, behaviour-preserving — every pre-existing guid/date test (compiler,
+VM, stdlib, integration) passes unchanged, proving the table reproduces the former
+`GuidNatives`/`DateNatives`/`ValidateGuidMethodCall`/`ValidateDateMethodCall` arms
+exactly before `File` through `ProcessResult` depend on it.
+
+**Placement — `Grob.Core`.** The registry (`NamedTypeEntry`, `NamedTypeProperty`,
+`NamedTypeMethod`, `NamedTypeParameter`/`NamedTypeParameterKind`, and the
+`NamedTypeRegistry` static table itself) lives in `src/Grob.Core/NamedTypes/`.
+`Grob.Core` is the only assembly `Grob.Compiler` (annotation resolvers, method/property
+validators), `Grob.Vm` (`OpCode.GetProperty` instance dispatch) and `Grob.Runtime`
+(`ValueDisplay`'s renderer, via the runtime `RegisterToString` seam) can all reach
+without creating the forbidden `Grob.Compiler`-to-`Grob.Vm` reference edge — the identical
+reasoning `NativeFunction` already documents for its own `Grob.Core` placement. Each
+entry carries real executable delegates, not just type-checking metadata: a property's
+`Get` and a method's `Bind` operate directly on `GrobStruct`, so VM dispatch resolves
+"type name → entry → member" exactly as D-356 specified, rather than the registry
+being consulted for shape alone.
+
+**Six surfaces, now table-driven.** `ResolveSignatureType`/`ResolveNamedFieldType`/
+`TryGetNamedStructTypeName` (`TypeChecker.cs`/`TypeChecker.Declarations.cs`) and the
+nullable-receiver guard (`TypeChecker.Expressions.cs`) consult `NamedTypeRegistry.TryGet`
+in place of `typeRef.Name == "guid"/"date"` pairs. `ValidateGuidMethodCall`/
+`ValidateDateMethodCall`/`CheckDateMethodArgs` collapse into one
+`ValidateNamedTypeMethodCall`/`CheckNamedTypeMethodArgs` pair, driven by an entry's
+method table; a `NamedTypeParameterKind.NominalSelf` parameter reproduces the
+nominal-identity rule (`date.isBefore(other: date)`) generically, and a
+`ReturnsNominalSelf` flag reproduces the `_callResultStructNames` threading
+(`date.addDays` returning `date`). `ResolveGuidPropertyAccess`/`ResolveDatePropertyAccess`
+collapse into `ResolveNamedTypePropertyAccess` over an entry's property table. VM's
+`OpCode.GetProperty` (`VirtualMachine.cs`) replaces its two `TypeName`-keyed `if` blocks
+with one `NamedTypeRegistry.TryGet` lookup. `ValueDisplay` (D-336) itself is untouched —
+only the _source_ of the renderer moves: `GuidPlugin`/`DatePlugin` now call
+`registrar.RegisterToString(NamedTypeRegistry.Guid.CanonicalName,
+NamedTypeRegistry.Guid.ToStringRenderer)` (and the `date` equivalent) instead of each
+defining its own local rendering method, preserving the credential-ordering guarantee
+(registered lookup strictly precedes structural `Struct` rendering) unchanged and
+removing one of the two remaining duplicate copies of the ISO-8601 rendering logic.
+`Grob.Vm.GuidNatives`/`DateNatives` shrink to construction/field-layout constants and
+canonical-string/instant accessors only (`ValueFieldName`, `TypeName`,
+`FromCanonicalString`/`FromDateTimeOffset`, `CanonicalString`,
+`DateNatives.ToDateTimeOffset`) — `ToDateTimeOffset` stays, since `OpCode.LessDate`/
+`GreaterDate` (D-357's deliberately unfixed instant-based comparison) still call it
+directly; nothing in D-357's territory was touched.
+
+**The D-358 metadata field — present, unused.** `NamedTypeMethod.ParameterDefaults`
+exists on the schema (an optional per-parameter default-value list) but is `null` for
+every guid/date entry; the default-argument call-site synthesis mechanism and
+`date.parse`'s second argument remain D-358's own session, which needs a proving case
+this increment does not provide.
+
+**The agreement test — built here for the first time, not mirrored from an existing
+one.** D-356 (and D-342 before it) describe a "compile-time twin vs. live runtime
+registration" consistency test in the D-308 mould; no such test actually existed prior
+to this entry — `ErrorCatalogAgreementTests` (D-308) is the only working precedent, and
+it diffs a hand-table against a markdown document, not live `IGrobPlugin` registration.
+`NamedTypeRegistryAgreementTests` closes that gap for real: a recording
+`IPluginRegistrar` captures every `RegisterToString` type name as
+`PluginRegistration.RegisterAll` runs the real composition-root plugin list, diffed both
+ways against `NamedTypeRegistry.Names`. It lives in `Grob.Integration.Tests` — the
+kickoff prompt's own framing assumed a dedicated `Grob.Cli.Tests` project, which does
+not exist in this repository (`tests/CLAUDE.md`'s canonical five plus
+`Grob.Consistency.Tests` are the only test projects on disk); `Grob.Integration.Tests`
+already references `Grob.Cli` and already holds `InternalsVisibleTo` from it, so no new
+project-reference wiring was needed.
+
+**`File` through `ProcessResult`.** Land as `NamedTypeRegistry` entries — data, not code
+spread across six sites — in their own increments from here on.
+
+No new opcode, no new error code — `E1001`/`E0003`/`E0004`/`E1002` all reused exactly as
+before; count unchanged at 118.
+
+Full detail: `grob-type-registry.md` (guid/date instance-surface entries),
+`src/Grob.Core/NamedTypes/NamedTypeRegistry.cs`, D-356 (the design decision this lands),
+D-342 (the `NamespaceRegistry` precedent this extends from module members to instance
+surfaces), D-308 (the agreement-test pattern), D-355 (the guid/date arms this
+consolidates), D-336 (the `ValueDisplay` ordering preserved unchanged).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -6004,7 +6094,23 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 9 Increment A4b: D-360 added. Closes the sibling member-target_
+_July 2026 — Sprint 9 Increment C0c: D-361 added. Lands D-356's `NamedTypeRegistry` —_
+_one hand-authored table entry per nominal `Struct` type, placed in `Grob.Core` (the_
+_only assembly `Grob.Compiler`/`Grob.Vm`/`Grob.Runtime` all reach without a forbidden_
+_`Grob.Compiler`-to-`Grob.Vm` edge), carrying real executable property/method delegates_
+_alongside type-checking metadata and the D-336 `toString()` renderer. `guid`/`date`_
+_migrate onto it behaviour-preserving — every pre-existing test passes unchanged —_
+_replacing the six hand-rolled dispatch arms D-356 catalogued; `Grob.Vm.GuidNatives`/_
+_`DateNatives` shrink to construction/field-layout helpers only (`ToDateTimeOffset`_
+_stays, since `LessDate`/`GreaterDate` still call it — D-357's territory untouched). The_
+_D-358 default-parameter metadata field is present but unused. Builds the first real_
+_"hand-table vs. live runtime registration" agreement test in the repo_
+_(`NamedTypeRegistryAgreementTests`, in `Grob.Integration.Tests` — no dedicated_
+_`Grob.Cli.Tests` project exists, corrected from the kickoff prompt's assumption);_
+_`ErrorCatalogAgreementTests` (D-308) remained the only precedent, and it diffs against a_
+_markdown doc, not live registration. `File` through `ProcessResult` land as registry_
+_data from here on. No new opcode, no new error code; count unchanged at 118._
+_Previous: July 2026 — Sprint 9 Increment A4b: D-360 added. Closes the sibling member-target_
 _compound-assignment/increment gap D-359 confirmed but left unfixed — `obj.field += v`_
 _and `obj.field++`/`obj.field--` (including chained `a.b.c` targets) now emit instead of_
 _silently dropping the statement. Evaluate-once emission: the receiver is visited once_

@@ -1,6 +1,7 @@
 using System.Globalization;
 
 using Grob.Core;
+using Grob.Core.NamedTypes;
 using Grob.Runtime;
 
 namespace Grob.Stdlib;
@@ -34,12 +35,6 @@ public sealed class DatePlugin : IGrobPlugin {
     // produce/consume the same runtime string, and neither project can reference the
     // other's constant.
     private const string RoundTripFormat = "yyyy-MM-ddTHH:mm:sszzz";
-
-    // Unlike DateTime, DateTimeOffset's 'K' specifier is equivalent to 'zzz' — it never
-    // renders "Z" for a zero offset, always "+00:00" — so the zero-offset case is handled
-    // explicitly in IsoDateTimeString rather than relying on 'K'.
-    private const string IsoOffsetFormat = "yyyy-MM-ddTHH:mm:sszzz";
-    private const string IsoUtcFormat = "yyyy-MM-ddTHH:mm:ss'Z'";
 
     private readonly IClock _clock;
 
@@ -105,7 +100,11 @@ public sealed class DatePlugin : IGrobPlugin {
         registrar.RegisterNative("date.fromUnixMillis", new NativeFunction("date.fromUnixMillis", 1,
             (args, _) => FromDateTimeOffset(DateTimeOffset.FromUnixTimeMilliseconds(args[0].AsInt()))));
 
-        registrar.RegisterToString(TypeName, v => IsoDateTimeString(v.AsStruct()));
+        // D-356: the renderer itself now lives on the NamedTypeRegistry entry (the
+        // single source of truth also consulted by Grob.Compiler/Grob.Vm) — this call
+        // only wires it into ValueDisplay's runtime registry, preserving the D-336
+        // credential-ordering guarantee unchanged.
+        registrar.RegisterToString(NamedTypeRegistry.Date.CanonicalName, NamedTypeRegistry.Date.ToStringRenderer);
     }
 
     // -----------------------------------------------------------------------
@@ -121,12 +120,4 @@ public sealed class DatePlugin : IGrobPlugin {
         [new KeyValuePair<string, GrobValue>(
             ValueFieldName, GrobValue.FromString(value.ToString(RoundTripFormat, CultureInfo.InvariantCulture)))]));
 
-    private static DateTimeOffset ToDateTimeOffset(GrobStruct receiver) => DateTimeOffset.ParseExact(
-        receiver.GetField(ValueFieldName).AsString(), RoundTripFormat, CultureInfo.InvariantCulture, DateTimeStyles.None);
-
-    private static string IsoDateTimeString(GrobStruct receiver) {
-        DateTimeOffset value = ToDateTimeOffset(receiver);
-        string format = value.Offset == TimeSpan.Zero ? IsoUtcFormat : IsoOffsetFormat;
-        return value.ToString(format, CultureInfo.InvariantCulture);
-    }
 }
