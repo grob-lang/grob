@@ -491,15 +491,12 @@ public sealed partial class TypeChecker {
     /// </summary>
     private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor, ArrayTypeDescriptor? ArrayDescriptor)
             ResolveNamedFieldType(TypeRef typeRef) {
-        // D-356: a registered nominal type (guid, date, ...) is a primitive type
-        // distinct from string, but its symbol is a NamespaceDecl (D-342), not a
-        // TypeDecl — it is never constructed via '{ }' braces, so it has no
-        // ExceptionHierarchy-style TypeDecl/UserTypeInfo registration for the TypeDecl
-        // check below to find. Mirrors the identical branch in ResolveSignatureType
-        // (TypeChecker.cs) for the field-annotation position.
-        if (NamedTypeRegistry.TryGet(typeRef.Name, out _)) {
-            GrobType namedKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-            return (namedKind, typeRef.Name, null, null);
+        // D-356: a registered nominal type (guid, date, ...) resolves here for the
+        // field-annotation position — the shared TryResolveRegisteredNamedType helper
+        // (TypeChecker.cs) also serves the signature position, keeping the two lookup
+        // sites from drifting.
+        if (TryResolveRegisteredNamedType(typeRef) is (GrobType namedKind, string namedName)) {
+            return (namedKind, namedName, null, null);
         }
 
         // User-defined type: look up the symbol registered in pass 1.

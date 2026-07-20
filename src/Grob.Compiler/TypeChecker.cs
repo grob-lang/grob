@@ -580,9 +580,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // position (parameters, fields) the correct Struct + NamedTypeName identity,
         // which is what makes e.g. 'guid == string' fail as an ordinary type mismatch
         // (D-149).
-        if (NamedTypeRegistry.TryGet(typeRef.Name, out _)) {
-            GrobType namedKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-            return (namedKind, typeRef.Name, null, null);
+        if (TryResolveRegisteredNamedType(typeRef) is (GrobType namedKind, string namedName)) {
+            return (namedKind, namedName, null, null);
         }
 
         if (LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl) {
@@ -591,6 +590,24 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         }
 
         return (GrobType.Unknown, null, null, null);
+    }
+
+    /// <summary>
+    /// D-356: resolves a plain type-name reference to a registered nominal type
+    /// (<c>guid</c>, <c>date</c>, ...) if the name is a <see cref="NamedTypeRegistry"/>
+    /// entry, returning its <see cref="GrobType.Struct"/>/<see cref="GrobType.NullableStruct"/>
+    /// kind and name. A registered nominal type is a primitive distinct from
+    /// <c>string</c> whose symbol is a <c>NamespaceDecl</c> (D-342), not a
+    /// <c>TypeDecl</c> — it is never constructed via '{ }' braces, so it carries no
+    /// ExceptionHierarchy-style <c>TypeDecl</c>/<c>UserTypeInfo</c> registration.
+    /// Shared by the signature position (<see cref="ResolveSignatureType"/>) and the
+    /// field-annotation position (<see cref="ResolveNamedFieldType"/>) so the two lookup
+    /// sites cannot drift if the registry contract changes.
+    /// </summary>
+    private static (GrobType Kind, string NamedTypeName)? TryResolveRegisteredNamedType(TypeRef typeRef) {
+        if (!NamedTypeRegistry.TryGet(typeRef.Name, out _)) return null;
+        GrobType kind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
+        return (kind, typeRef.Name);
     }
 
     /// <summary>

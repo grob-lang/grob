@@ -293,7 +293,7 @@ is a compile error.
 **Registry mechanism (D-356).** The **instance members** table below (properties and
 methods on a `guid` *value*) is `Grob.Core.NamedTypes.NamedTypeRegistry`'s `guid` entry
 — a single declarative table consulted by the type checker's annotation resolvers and
-method/property validators, the VM's instance dispatch, and `ValueDisplay`'s registered
+method/property validators, the VM's instance dispatch and `ValueDisplay`'s registered
 `toString()` lookup, replacing what were six separate hand-rolled, string-matched
 dispatch arms per type. The **static members** table (the constructors below) is
 unaffected — those stay `NamespaceRegistry` entries (D-342), a receiver-qualified call
