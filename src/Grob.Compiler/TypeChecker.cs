@@ -1,5 +1,6 @@
 using Grob.Compiler.Ast;
 using Grob.Core;
+using Grob.Core.NamedTypes;
 
 namespace Grob.Compiler;
 
@@ -569,26 +570,18 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         GrobType builtin = ResolveTypeRef(typeRef);
         if (builtin != GrobType.Unknown) return (builtin, null, null, null);
 
-        // Sprint 8 Increment D: guid is a primitive type distinct from string, but it is
-        // never constructed via '{ }' braces (only guid.newV4()/newV7()/newV5()/parse()),
-        // so it does not get an ExceptionHierarchy-style TypeDecl/UserTypeInfo/Symbol
-        // registration — there is no construction site for that machinery to serve. Its
-        // symbol IS a NamespaceDecl (registered via NamespaceRegistry, D-342) so
-        // guid.newV4() resolves through the ordinary namespace-call path unchanged; this
-        // branch gives 'guid' used in signature position (parameters, fields) the correct
-        // Struct + NamedTypeName identity, which is what makes 'guid == string' and any
-        // guid<->string assignment/argument fail as an ordinary type mismatch (D-149).
-        if (typeRef.Name == "guid") {
-            GrobType guidKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-            return (guidKind, "guid", null, null);
-        }
-
-        // Sprint 9 Increment B: date is the same shape as guid above — a primitive type
-        // distinct from string, never constructed via '{ }' braces, with no
-        // ExceptionHierarchy-style TypeDecl/UserTypeInfo registration.
-        if (typeRef.Name == "date") {
-            GrobType dateKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-            return (dateKind, "date", null, null);
+        // D-356: a registered nominal type (guid, date, ...) is a primitive type
+        // distinct from string, never constructed via '{ }' braces, so it does not get
+        // an ExceptionHierarchy-style TypeDecl/UserTypeInfo/Symbol registration — there
+        // is no construction site for that machinery to serve. Its symbol IS a
+        // NamespaceDecl (registered via NamespaceRegistry, D-342) so its static
+        // constructors (guid.newV4(), date.now(), ...) resolve through the ordinary
+        // namespace-call path unchanged; this branch gives the name used in signature
+        // position (parameters, fields) the correct Struct + NamedTypeName identity,
+        // which is what makes e.g. 'guid == string' fail as an ordinary type mismatch
+        // (D-149).
+        if (TryResolveRegisteredNamedType(typeRef) is (GrobType namedKind, string namedName)) {
+            return (namedKind, namedName, null, null);
         }
 
         if (LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl) {
@@ -597,6 +590,24 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         }
 
         return (GrobType.Unknown, null, null, null);
+    }
+
+    /// <summary>
+    /// D-356: resolves a plain type-name reference to a registered nominal type
+    /// (<c>guid</c>, <c>date</c>, ...) if the name is a <see cref="NamedTypeRegistry"/>
+    /// entry, returning its <see cref="GrobType.Struct"/>/<see cref="GrobType.NullableStruct"/>
+    /// kind and name. A registered nominal type is a primitive distinct from
+    /// <c>string</c> whose symbol is a <c>NamespaceDecl</c> (D-342), not a
+    /// <c>TypeDecl</c> — it is never constructed via '{ }' braces, so it carries no
+    /// ExceptionHierarchy-style <c>TypeDecl</c>/<c>UserTypeInfo</c> registration.
+    /// Shared by the signature position (<see cref="ResolveSignatureType"/>) and the
+    /// field-annotation position (<see cref="ResolveNamedFieldType"/>) so the two lookup
+    /// sites cannot drift if the registry contract changes.
+    /// </summary>
+    private static (GrobType Kind, string NamedTypeName)? TryResolveRegisteredNamedType(TypeRef typeRef) {
+        if (!NamedTypeRegistry.TryGet(typeRef.Name, out _)) return null;
+        GrobType kind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
+        return (kind, typeRef.Name);
     }
 
     /// <summary>
@@ -874,8 +885,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
     /// <summary>
     /// Resolves <paramref name="typeRef"/>'s named-user-type identity when it denotes a
-    /// registered <c>type</c> declaration or the <c>guid</c> primitive — the name-only
-    /// counterpart of <see cref="ResolveSignatureType"/>'s guid/<c>TypeDecl</c> arms, kept
+    /// registered <c>type</c> declaration or a <see cref="NamedTypeRegistry"/> entry
+    /// (D-356) — the name-only counterpart of <see cref="ResolveSignatureType"/>'s
+    /// registry/<c>TypeDecl</c> arms, kept
     /// separate rather than threaded through that method's widely-consumed return tuple
     /// (Sprint 8 Increment E, <c>formatAs</c>). Also used by
     /// <see cref="ResolveArrayElementDescriptor"/> (D-351) to resolve a <c>T[]</c>
@@ -885,8 +897,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private string? TryGetNamedStructTypeName(TypeRef typeRef) {
         if (typeRef is ArrayTypeRef or FunctionTypeRef) return null;
         if (ResolveTypeRef(typeRef) != GrobType.Unknown) return null;
-        if (typeRef.Name == "guid") return "guid";
-        if (typeRef.Name == "date") return "date";
+        if (NamedTypeRegistry.TryGet(typeRef.Name, out _)) return typeRef.Name;
         return LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl ? typeRef.Name : null;
     }
 

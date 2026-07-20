@@ -1,5 +1,6 @@
 using System.Threading;
 using Grob.Core;
+using Grob.Core.NamedTypes;
 using Grob.Runtime;
 
 namespace Grob.Vm;
@@ -877,56 +878,24 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                 break;
                             }
                             if (receiver.TryAsStruct(out GrobStruct? grobStruct)) {
-                                // Sprint 8 Increment D: guid instance properties/methods — checked
-                                // before the ordinary TryGetField fall-through below, since guid has
-                                // no user-visible fields at all (its one field is the hidden
-                                // canonical-string payload, GuidNatives.ValueFieldName).
-                                if (grobStruct!.TypeName == GuidNatives.TypeName) {
-                                    switch (propertyName) {
-                                        case "version":
-                                            _stack.Push(GuidNatives.GetVersion(grobStruct), line);
-                                            break;
-                                        case "isEmpty":
-                                            _stack.Push(GuidNatives.GetIsEmpty(grobStruct), line);
-                                            break;
-                                        default:
-                                            NativeFunction? guidMethod = GuidNatives.GetMethod(propertyName, grobStruct);
-                                            if (guidMethod is null) {
-                                                throw new GrobInternalException(
-                                                    $"GetProperty: guid has no member '{propertyName}'. " +
-                                                    RejectedByTypeCheckerSuffix);
-                                            }
-                                            _stack.Push(GrobValue.FromFunction(guidMethod), line);
-                                            break;
+                                // D-356: instance properties/methods on a registered named type
+                                // (guid, date, ...) — checked before the ordinary TryGetField
+                                // fall-through below, since a registered named type has no
+                                // user-visible fields at all (its one field is a hidden payload).
+                                if (NamedTypeRegistry.TryGet(grobStruct!.TypeName, out NamedTypeEntry namedEntry)) {
+                                    if (namedEntry.Properties.TryGetValue(propertyName, out NamedTypeProperty? property) &&
+                                            property is not null) {
+                                        _stack.Push(property.Get(grobStruct), line);
+                                        break;
                                     }
-                                    break;
-                                }
-                                // Sprint 9 Increment B: date instance properties/methods —
-                                // mirrors the guid arm above (checked before the ordinary
-                                // TryGetField fall-through, since date has no user-visible
-                                // fields beyond its own hidden canonical-string payload).
-                                if (grobStruct.TypeName == DateNatives.TypeName) {
-                                    switch (propertyName) {
-                                        case "year": _stack.Push(DateNatives.GetYear(grobStruct), line); break;
-                                        case "month": _stack.Push(DateNatives.GetMonth(grobStruct), line); break;
-                                        case "day": _stack.Push(DateNatives.GetDay(grobStruct), line); break;
-                                        case "hour": _stack.Push(DateNatives.GetHour(grobStruct), line); break;
-                                        case "minute": _stack.Push(DateNatives.GetMinute(grobStruct), line); break;
-                                        case "second": _stack.Push(DateNatives.GetSecond(grobStruct), line); break;
-                                        case "dayOfYear": _stack.Push(DateNatives.GetDayOfYear(grobStruct), line); break;
-                                        case "dayOfWeek": _stack.Push(DateNatives.GetDayOfWeek(grobStruct), line); break;
-                                        case "utcOffset": _stack.Push(DateNatives.GetUtcOffset(grobStruct), line); break;
-                                        default:
-                                            NativeFunction? dateMethod = DateNatives.GetMethod(propertyName, grobStruct);
-                                            if (dateMethod is null) {
-                                                throw new GrobInternalException(
-                                                    $"GetProperty: date has no member '{propertyName}'. " +
-                                                    RejectedByTypeCheckerSuffix);
-                                            }
-                                            _stack.Push(GrobValue.FromFunction(dateMethod), line);
-                                            break;
+                                    if (namedEntry.Methods.TryGetValue(propertyName, out NamedTypeMethod? method) &&
+                                            method is not null) {
+                                        _stack.Push(GrobValue.FromFunction(method.Bind(grobStruct)), line);
+                                        break;
                                     }
-                                    break;
+                                    throw new GrobInternalException(
+                                        $"GetProperty: {namedEntry.CanonicalName} has no member '{propertyName}'. " +
+                                        RejectedByTypeCheckerSuffix);
                                 }
                                 if (grobStruct.TryGetField(propertyName, out GrobValue fieldValue)) {
                                     _stack.Push(fieldValue, line);

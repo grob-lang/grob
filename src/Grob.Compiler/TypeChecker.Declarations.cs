@@ -1,5 +1,6 @@
 using Grob.Compiler.Ast;
 using Grob.Core;
+using Grob.Core.NamedTypes;
 
 namespace Grob.Compiler;
 
@@ -483,26 +484,19 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Resolves a plain named (non-built-in) field type reference — <c>guid</c> or a
-    /// user-defined <c>type</c>. Split from <see cref="ResolveFieldAnnotationType"/> to
-    /// keep that method's cognitive complexity under the analyser bar.
+    /// Resolves a plain named (non-built-in) field type reference — a
+    /// <see cref="NamedTypeRegistry"/> entry (D-356) or a user-defined <c>type</c>.
+    /// Split from <see cref="ResolveFieldAnnotationType"/> to keep that method's
+    /// cognitive complexity under the analyser bar.
     /// </summary>
     private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor, ArrayTypeDescriptor? ArrayDescriptor)
             ResolveNamedFieldType(TypeRef typeRef) {
-        // Sprint 8 Increment D: guid is a primitive type distinct from string, but its
-        // symbol is a NamespaceDecl (D-342), not a TypeDecl — it is never constructed via
-        // '{ }' braces, so it has no ExceptionHierarchy-style TypeDecl/UserTypeInfo
-        // registration for the TypeDecl check below to find. Mirrors the identical branch
-        // in ResolveSignatureType (TypeChecker.cs) for the field-annotation position.
-        if (typeRef.Name == "guid") {
-            GrobType guidKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-            return (guidKind, "guid", null, null);
-        }
-
-        // Sprint 9 Increment B: date is the same shape as guid above.
-        if (typeRef.Name == "date") {
-            GrobType dateKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-            return (dateKind, "date", null, null);
+        // D-356: a registered nominal type (guid, date, ...) resolves here for the
+        // field-annotation position — the shared TryResolveRegisteredNamedType helper
+        // (TypeChecker.cs) also serves the signature position, keeping the two lookup
+        // sites from drifting.
+        if (TryResolveRegisteredNamedType(typeRef) is (GrobType namedKind, string namedName)) {
+            return (namedKind, namedName, null, null);
         }
 
         // User-defined type: look up the symbol registered in pass 1.

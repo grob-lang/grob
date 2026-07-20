@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Grob.Compiler.Ast;
 using Grob.Core;
+using Grob.Core.NamedTypes;
 
 namespace Grob.Compiler;
 
@@ -382,8 +383,8 @@ public sealed partial class TypeChecker {
             return ValidateArrayMethodCall(node, memberAccess.Member, argTypes);
         }
 
-        // A non-optional '.' method call on a nullable guid/date receiver may
-        // dereference nil — reject at compile time (E0101), mirroring
+        // A non-optional '.' method call on a nullable registered-named-type (D-356)
+        // receiver may dereference nil — reject at compile time (E0101), mirroring
         // VisitMemberAccess's identical guard for plain property access (CodeRabbit
         // review, PR #143 — this call-site arm had no nullable guard at all, so
         // `d.toIso()` on a `date?` silently resolved Unknown instead of erroring).
@@ -391,26 +392,20 @@ public sealed partial class TypeChecker {
         string? nullableStructName = receiverType == GrobType.NullableStruct
             ? GetStructTypeName(memberAccess.Target)
             : null;
-        if (!memberAccess.IsOptional && nullableStructName is "guid" or "date") {
+        if (!memberAccess.IsOptional && nullableStructName is not null &&
+                NamedTypeRegistry.TryGet(nullableStructName, out _)) {
             return EmitErrorAndReturn(ErrorCatalog.E0101,
                 $"Member access via '.' on nullable type '{nullableStructName}?' may dereference nil. Use '?.' to chain or '??' to unwrap first.",
                 memberAccess.Range);
         }
 
-        // Sprint 8 Increment D: guid instance methods (toString/toUpperString/
-        // toCompactString) — mirrors the array higher-order-method arm above, since
-        // guid has no UserTypeInfo/declared fields for ResolveStructFieldAccess to
-        // consult (it is never constructed via '{ }' braces).
-        if (receiverType == GrobType.Struct && GetStructTypeName(memberAccess.Target) == "guid") {
-            return ValidateGuidMethodCall(node, memberAccess, argTypes);
-        }
-
-        // Sprint 9 Increment B: date instance methods — unlike guid's all-zero-arity
-        // methods, date's take real arguments (addDays(n: int), isBefore(other: date),
-        // ...), so ValidateDateMethodCall validates arity and per-argument type, not
-        // just arity.
-        if (receiverType == GrobType.Struct && GetStructTypeName(memberAccess.Target) == "date") {
-            return ValidateDateMethodCall(node, memberAccess, argTypes);
+        // D-356: instance methods on a registered named type (guid, date, ...) —
+        // mirrors the array higher-order-method arm above, since a named type has no
+        // UserTypeInfo/declared fields for ResolveStructFieldAccess to consult (it is
+        // never constructed via '{ }' braces).
+        if (receiverType == GrobType.Struct && GetStructTypeName(memberAccess.Target) is string namedTypeName &&
+                NamedTypeRegistry.TryGet(namedTypeName, out NamedTypeEntry namedEntry)) {
+            return ValidateNamedTypeMethodCall(node, memberAccess, argTypes, namedEntry);
         }
         return GrobType.Unknown;
     }
@@ -460,114 +455,61 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Validates a <c>guid</c> instance-method call (<c>toString</c>/<c>toUpperString</c>/
-    /// <c>toCompactString</c>, Sprint 8 Increment D) — all three are zero-arg, returning
-    /// <c>string</c>. An unrecognised member on a <c>guid</c> receiver is E1002 (undefined
-    /// member), matching how an unrecognised field on a user struct is rejected.
+    /// Validates a registered-named-type (D-356) instance-method call and returns its
+    /// result type, driven entirely by <paramref name="entry"/>'s method table rather
+    /// than a per-type switch. Delegates arity/per-argument-type checking to
+    /// <see cref="CheckNamedTypeMethodArgs"/>. A method flagged
+    /// <see cref="NamedTypeMethod.ReturnsNominalSelf"/> (e.g. <c>date.addDays</c>
+    /// returning <c>date</c>) threads the nominal name through
+    /// <c>_callResultStructNames</c> (mirrors <see cref="ResolveNamespaceMemberCall"/>'s
+    /// native-call threading) so a <c>:=</c>-bound result resolves further member
+    /// access. An unrecognised member is <see cref="ErrorCatalog.E1002"/>, matching a
+    /// user struct's unknown-member handling.
     /// </summary>
-    private GrobType ValidateGuidMethodCall(CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
-        switch (memberAccess.Member) {
-            case "toString":
-            case "toUpperString":
-            case "toCompactString":
-                if (argTypes.Length != 0) {
-                    string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
-                    EmitError(ErrorCatalog.E0003,
-                        $"'{memberAccess.Member}' expects 0 arguments, but {argTypes.Length} {suppliedVerb} supplied.",
-                        node.Range);
-                }
-                return GrobType.String;
-            default:
-                return EmitErrorAndReturn(ErrorCatalog.E1002,
-                    $"Type 'guid' has no member '{memberAccess.Member}'.",
-                    memberAccess.Range);
+    private GrobType ValidateNamedTypeMethodCall(
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, NamedTypeEntry entry) {
+        if (!entry.Methods.TryGetValue(memberAccess.Member, out NamedTypeMethod? method) || method is null) {
+            return EmitErrorAndReturn(ErrorCatalog.E1002,
+                $"Type '{entry.CanonicalName}' has no member '{memberAccess.Member}'.",
+                memberAccess.Range);
         }
+        CheckNamedTypeMethodArgs(node, memberAccess, argTypes, method.Parameters, entry.CanonicalName);
+        if (method.ReturnsNominalSelf) {
+            _callResultStructNames[node] = entry.CanonicalName;
+            return GrobType.Struct;
+        }
+        return method.ReturnType;
     }
 
     /// <summary>
-    /// Validates a <c>date</c> instance-method call (Sprint 9 Increment B — D-354/D-355)
-    /// and returns its result type. Unlike <see cref="ValidateGuidMethodCall"/>'s
-    /// all-zero-arity methods, most of date's methods take real arguments, so each arm
-    /// declares its expected positional parameter list and delegates arity/type checking
-    /// to <see cref="CheckDateMethodArgs"/>. Methods returning <c>date</c> thread the
-    /// struct name through <c>_callResultStructNames</c> (mirrors
-    /// <see cref="ResolveNamespaceMemberCall"/>'s native-call threading) so a
-    /// <c>:=</c>-bound result resolves further member access. An unrecognised member is
-    /// <see cref="ErrorCatalog.E1002"/>, matching guid's and a user struct's unknown-member
-    /// handling.
-    /// </summary>
-    private GrobType ValidateDateMethodCall(CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
-        switch (memberAccess.Member) {
-            case "addDays":
-            case "addMonths":
-            case "addHours":
-            case "addMinutes":
-                CheckDateMethodArgs(node, memberAccess, argTypes, [GrobType.Int]);
-                _callResultStructNames[node] = "date";
-                return GrobType.Struct;
-            case "toUtc":
-            case "toLocal":
-            case "toDateOnly":
-            case "toTimeOnly":
-                CheckDateMethodArgs(node, memberAccess, argTypes, []);
-                _callResultStructNames[node] = "date";
-                return GrobType.Struct;
-            case "toZone":
-                CheckDateMethodArgs(node, memberAccess, argTypes, [GrobType.String]);
-                _callResultStructNames[node] = "date";
-                return GrobType.Struct;
-            case "isBefore":
-            case "isAfter":
-                CheckDateMethodArgs(node, memberAccess, argTypes, [GrobType.Struct]);
-                return GrobType.Bool;
-            case "daysUntil":
-            case "daysSince":
-                CheckDateMethodArgs(node, memberAccess, argTypes, [GrobType.Struct]);
-                return GrobType.Int;
-            case "toIso":
-            case "toIsoDateTime":
-                CheckDateMethodArgs(node, memberAccess, argTypes, []);
-                return GrobType.String;
-            case "format":
-                CheckDateMethodArgs(node, memberAccess, argTypes, [GrobType.String]);
-                return GrobType.String;
-            case "toUnixSeconds":
-            case "toUnixMillis":
-                CheckDateMethodArgs(node, memberAccess, argTypes, []);
-                return GrobType.Int;
-            default:
-                return EmitErrorAndReturn(ErrorCatalog.E1002,
-                    $"Type 'date' has no member '{memberAccess.Member}'.",
-                    memberAccess.Range);
-        }
-    }
-
-    /// <summary>
-    /// Checks a <c>date</c> instance-method call's argument list against
+    /// Checks a registered-named-type instance-method call's argument list against
     /// <paramref name="expected"/> — arity (<see cref="ErrorCatalog.E0003"/>) then
-    /// per-argument type (<see cref="ErrorCatalog.E0004"/>). An expected slot of
-    /// <see cref="GrobType.Struct"/> means "must be a <c>date</c>" specifically (nominal,
-    /// not the flat tag every struct shares — mirrors <see cref="IsStructNominalMismatch"/>'s
-    /// reasoning for <c>isBefore</c>/<c>isAfter</c>/<c>daysUntil</c>/<c>daysSince</c>'s
-    /// <c>other: date</c> parameter). Cascade suppression for an already-errored argument.
+    /// per-argument type (<see cref="ErrorCatalog.E0004"/>). A parameter of kind
+    /// <see cref="NamedTypeParameterKind.NominalSelf"/> means "must be exactly
+    /// <paramref name="canonicalName"/>" (nominal, not the flat <see cref="GrobType.Struct"/>
+    /// tag every struct shares — e.g. <c>date.isBefore</c>'s <c>other: date</c>
+    /// parameter). Cascade suppression for an already-errored argument.
     /// </summary>
-    private void CheckDateMethodArgs(
-            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, GrobType[] expected) {
-        if (argTypes.Length != expected.Length) {
+    private void CheckNamedTypeMethodArgs(
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes,
+            IReadOnlyList<NamedTypeParameter> expected, string canonicalName) {
+        if (argTypes.Length != expected.Count) {
             string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
             EmitError(ErrorCatalog.E0003,
-                $"'{memberAccess.Member}' expects {expected.Length} {Plural(expected.Length, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
+                $"'{memberAccess.Member}' expects {expected.Count} {Plural(expected.Count, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
                 node.Range);
             return;
         }
-        for (int i = 0; i < expected.Length; i++) {
+        for (int i = 0; i < expected.Count; i++) {
             if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
             Expression argExpr = node.Arguments[i].Value;
-            bool compatible = expected[i] == GrobType.Struct
-                ? argTypes[i] == GrobType.Struct && GetStructTypeName(argExpr) == "date"
-                : TypesAreAssignable(argTypes[i], expected[i]);
+            bool compatible = expected[i].Kind == NamedTypeParameterKind.NominalSelf
+                ? argTypes[i] == GrobType.Struct && GetStructTypeName(argExpr) == canonicalName
+                : TypesAreAssignable(argTypes[i], expected[i].Type);
             if (!compatible) {
-                string expectedName = expected[i] == GrobType.Struct ? "date" : TypeName(expected[i]);
+                string expectedName = expected[i].Kind == NamedTypeParameterKind.NominalSelf
+                    ? canonicalName
+                    : TypeName(expected[i].Type);
                 EmitError(ErrorCatalog.E0004,
                     $"Argument to '{memberAccess.Member}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{expectedName}'.",
                     argExpr.Range);
@@ -881,10 +823,10 @@ public sealed partial class TypeChecker {
             return GrobType.Unknown;
         }
 
-        // Sprint 8 Increment D / Sprint 9 Increment B: guid/date instance properties —
-        // neither has UserTypeInfo/declared fields (never constructed via '{ }' braces)
-        // for ResolveStructFieldAccess to consult, so their property surfaces are
-        // resolved directly by struct name ahead of the field-access fall-through below.
+        // D-356: instance properties on a registered named type (guid, date, ...) —
+        // none has UserTypeInfo/declared fields (never constructed via '{ }' braces) for
+        // ResolveStructFieldAccess to consult, so their property surfaces are resolved
+        // directly by struct name ahead of the field-access fall-through below.
         if (TryResolveKnownStructPropertyAccess(node, targetType) is GrobType knownStructResult) {
             return knownStructResult;
         }
@@ -906,19 +848,18 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Resolves a bare property access on a known plugin struct type (<c>guid</c>,
-    /// <c>date</c>) by name, or <see langword="null"/> when <paramref name="targetType"/>
-    /// is not <see cref="GrobType.Struct"/> or the receiver names neither — the shared
-    /// dispatch <see cref="VisitMemberAccess"/> consults, extracted to keep its own
-    /// cognitive complexity under the analyser bar.
+    /// Resolves a bare property access on a registered named type's (D-356) struct
+    /// receiver by name, or <see langword="null"/> when <paramref name="targetType"/> is
+    /// not <see cref="GrobType.Struct"/> or the receiver names no registered type — the
+    /// shared dispatch <see cref="VisitMemberAccess"/> consults, extracted to keep its
+    /// own cognitive complexity under the analyser bar.
     /// </summary>
     private GrobType? TryResolveKnownStructPropertyAccess(MemberAccessExpr node, GrobType targetType) {
         if (targetType != GrobType.Struct) return null;
-        return GetStructTypeName(node.Target) switch {
-            "guid" => ResolveGuidPropertyAccess(node),
-            "date" => ResolveDatePropertyAccess(node),
-            _ => null,
-        };
+        string? structTypeName = GetStructTypeName(node.Target);
+        return structTypeName is not null && NamedTypeRegistry.TryGet(structTypeName, out NamedTypeEntry entry)
+            ? ResolveNamedTypePropertyAccess(node, entry)
+            : null;
     }
 
     // -----------------------------------------------------------------------
@@ -1508,63 +1449,26 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Resolves a bare <c>guid</c> instance-property access (<c>id.version</c>,
-    /// <c>id.isEmpty</c>, Sprint 8 Increment D). The three <c>toString</c>-family methods
-    /// are resolved only via a call (<see cref="ValidateGuidMethodCall"/>), mirroring how
-    /// a bare array higher-order-method reference (<c>arr.filter</c>, no call) is not
-    /// specially resolved here either — an unrecognised bare member on a guid receiver
-    /// stays permissively <see cref="GrobType.Unknown"/>, the same gap that arm already has.
+    /// Resolves a bare instance-property access on a registered named type (D-356) —
+    /// e.g. <c>id.version</c>, <c>d.year</c>. Method-family members are resolved only
+    /// via a call (<see cref="ValidateNamedTypeMethodCall"/>) — mirrors how a bare array
+    /// higher-order-method reference (<c>arr.filter</c>, no call) is not specially
+    /// resolved here either.
     /// </summary>
-    private GrobType ResolveGuidPropertyAccess(MemberAccessExpr node) {
-        switch (node.Member) {
-            case "version":
-                node.ResolvedFieldType = GrobType.Int;
-                return GrobType.Int;
-            case "isEmpty":
-                node.ResolvedFieldType = GrobType.Bool;
-                return GrobType.Bool;
-            default:
-                // A bare unrecognised member must not survive as Unknown — it would
-                // otherwise reach the VM, which has no dispatch for it and throws an
-                // internal exception rather than failing cleanly (CodeRabbit review,
-                // PR #133). Matches how an unrecognised method call is already rejected
-                // (ValidateGuidMethodCall) and how a user struct's unknown field is
-                // rejected (ResolveStructFieldAccess).
-                return EmitErrorAndReturn(ErrorCatalog.E1002,
-                    $"Type 'guid' has no member '{node.Member}'.",
-                    node.Range);
+    private GrobType ResolveNamedTypePropertyAccess(MemberAccessExpr node, NamedTypeEntry entry) {
+        if (entry.Properties.TryGetValue(node.Member, out NamedTypeProperty? property) && property is not null) {
+            node.ResolvedFieldType = property.Type;
+            return property.Type;
         }
-    }
 
-    /// <summary>
-    /// Resolves a bare <c>date</c> instance-property access (<c>d.year</c>, <c>d.dayOfWeek</c>,
-    /// ..., Sprint 9 Increment B). All the method-family members
-    /// (<c>addDays</c>/<c>toIso</c>/...) are resolved only via a call
-    /// (<see cref="ValidateDateMethodCall"/>) — mirrors <see cref="ResolveGuidPropertyAccess"/>'s
-    /// property/method split exactly.
-    /// </summary>
-    private GrobType ResolveDatePropertyAccess(MemberAccessExpr node) {
-        switch (node.Member) {
-            case "year":
-            case "month":
-            case "day":
-            case "hour":
-            case "minute":
-            case "second":
-            case "dayOfYear":
-            case "utcOffset":
-                node.ResolvedFieldType = GrobType.Int;
-                return GrobType.Int;
-            case "dayOfWeek":
-                node.ResolvedFieldType = GrobType.String;
-                return GrobType.String;
-            default:
-                // A bare unrecognised member must not survive as Unknown — see
-                // ResolveGuidPropertyAccess's identical reasoning (CodeRabbit review, PR #133).
-                return EmitErrorAndReturn(ErrorCatalog.E1002,
-                    $"Type 'date' has no member '{node.Member}'.",
-                    node.Range);
-        }
+        // A bare unrecognised member must not survive as Unknown — it would otherwise
+        // reach the VM, which has no dispatch for it and throws an internal exception
+        // rather than failing cleanly (CodeRabbit review, PR #133). Matches how an
+        // unrecognised method call is already rejected (ValidateNamedTypeMethodCall) and
+        // how a user struct's unknown field is rejected (ResolveStructFieldAccess).
+        return EmitErrorAndReturn(ErrorCatalog.E1002,
+            $"Type '{entry.CanonicalName}' has no member '{node.Member}'.",
+            node.Range);
     }
 
     private string? GetStructTypeName(Expression target) => target switch {

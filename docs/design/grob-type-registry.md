@@ -212,6 +212,14 @@ The full construction, parsing, formatting, arithmetic, comparison, component, e
 and timezone members are specified in the confirmed decisions table (Apr 2026,
 `date module — API`).
 
+Like `guid` (see `## guid` above), `date`'s full instance-member set (properties —
+`year`/`month`/`day`/`hour`/`minute`/`second`/`dayOfYear`/`dayOfWeek`/`utcOffset` —
+and methods — the arithmetic, comparison, ISO/Unix-epoch, timezone and interval
+members) is `NamedTypeRegistry`'s (D-356) `date` entry; the two `daysUntil`/
+`daysSince` members below are that entry's data, not a separate mechanism. `date`'s
+static constructors (`date.now()`, `date.of()`, `date.parse()`, ...) remain
+`NamespaceRegistry` entries, untouched by D-356.
+
 | Member                   | Kind   | Signature | Notes                                                            |
 | ------------------------ | ------ | --------- | ---------------------------------------------------------------- |
 | `daysUntil(other: date)` | method | `→ int`   | Positive if `other` is later than receiver; negative if reversed |
@@ -281,6 +289,17 @@ and timezone members are specified in the confirmed decisions table (Apr 2026,
 A first-class primitive type known to the type checker at compile time. Registered
 by `GuidPlugin` in `Grob.Stdlib` at startup. Distinct from `string` — `guid == string`
 is a compile error.
+
+**Registry mechanism (D-356).** The **instance members** table below (properties and
+methods on a `guid` *value*) is `Grob.Core.NamedTypes.NamedTypeRegistry`'s `guid` entry
+— a single declarative table consulted by the type checker's annotation resolvers and
+method/property validators, the VM's instance dispatch and `ValueDisplay`'s registered
+`toString()` lookup, replacing what were six separate hand-rolled, string-matched
+dispatch arms per type. The **static members** table (the constructors below) is
+unaffected — those stay `NamespaceRegistry` entries (D-342), a receiver-qualified call
+(`guid.newV4()`), not an instance surface; the two registries compose. `date`'s
+instance-member table further down is the registry's second entry, migrated
+behaviour-preserving alongside `guid`'s.
 
 **Generation:**
 
