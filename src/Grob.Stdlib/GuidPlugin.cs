@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 
 using Grob.Core;
+using Grob.Core.NamedTypes;
 using Grob.Runtime;
 
 namespace Grob.Stdlib;
@@ -84,7 +85,11 @@ public sealed class GuidPlugin : IGrobPlugin {
         registrar.RegisterConstant("guid.namespaces.url", FromGuid(UrlNamespace));
         registrar.RegisterConstant("guid.namespaces.oid", FromGuid(OidNamespace));
 
-        registrar.RegisterToString(TypeName, v => CanonicalString(v.AsStruct()));
+        // D-356: the renderer itself now lives on the NamedTypeRegistry entry (the
+        // single source of truth also consulted by Grob.Compiler/Grob.Vm) — this call
+        // only wires it into ValueDisplay's runtime registry, preserving the D-336
+        // credential-ordering guarantee unchanged.
+        registrar.RegisterToString(NamedTypeRegistry.Guid.CanonicalName, NamedTypeRegistry.Guid.ToStringRenderer);
     }
 
     // -----------------------------------------------------------------------
