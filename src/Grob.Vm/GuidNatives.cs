@@ -3,19 +3,15 @@ using Grob.Core;
 namespace Grob.Vm;
 
 /// <summary>
-/// Factory and property accessors for the <c>guid</c> instance surface (Sprint 8
-/// Increment D): <c>version</c>/<c>isEmpty</c> (properties, read directly by
-/// <see cref="OpCode.GetProperty"/>) and <c>toString</c>/<c>toUpperString</c>/
-/// <c>toCompactString</c> (methods, bound at <see cref="OpCode.GetProperty"/> dispatch
-/// time exactly as <see cref="ArrayNatives.GetMethod"/> binds array higher-order
-/// methods). A <c>guid</c> value is a <see cref="GrobStruct"/> with <c>TypeName</c>
-/// <c>"guid"</c> and exactly one field, <see cref="ValueFieldName"/>, holding the
-/// canonical lowercase-hyphenated string form (D-303's "boxed <c>System.Guid</c>"
-/// realised as a hidden field, since <see cref="GrobStruct"/> can only ever hold named
-/// <see cref="GrobValue"/> fields — see the Increment D plan's runtime-storage
-/// reconciliation). This keeps value equality, hashing and <c>ValueDisplay</c>'s cycle
-/// detection all working through the unmodified existing <see cref="GrobStruct"/>
-/// machinery.
+/// Construction and canonical-string access for the <c>guid</c> runtime
+/// representation. Instance property/method dispatch itself moved to
+/// <see cref="Grob.Core.NamedTypes.NamedTypeRegistry"/> (D-356) — this class now holds
+/// only the field-layout constants and the accessor <c>Grob.Vm.Tests</c> constructs
+/// fixture values through. A <c>guid</c> value is a <see cref="GrobStruct"/> with
+/// <c>TypeName</c> <c>"guid"</c> and exactly one field, <see cref="ValueFieldName"/>,
+/// holding the canonical lowercase-hyphenated string form (D-303's "boxed
+/// <see cref="Guid"/>" realised as a hidden field, since <see cref="GrobStruct"/> can
+/// only ever hold named <see cref="GrobValue"/> fields).
 /// </summary>
 internal static class GuidNatives {
     /// <summary>
@@ -36,29 +32,4 @@ internal static class GuidNatives {
 
     /// <summary>The canonical lowercase-hyphenated string stored on <paramref name="receiver"/>.</summary>
     internal static string CanonicalString(GrobStruct receiver) => receiver.GetField(ValueFieldName).AsString();
-
-    /// <summary>The parsed <see cref="Guid"/> value <paramref name="receiver"/> stores.</summary>
-    internal static Guid ToGuid(GrobStruct receiver) => Guid.Parse(CanonicalString(receiver));
-
-    /// <summary><c>id.version</c> — 4, 5 or 7.</summary>
-    internal static GrobValue GetVersion(GrobStruct receiver) => GrobValue.FromInt(ToGuid(receiver).Version);
-
-    /// <summary><c>id.isEmpty</c> — true when the value is all zeros.</summary>
-    internal static GrobValue GetIsEmpty(GrobStruct receiver) => GrobValue.FromBool(ToGuid(receiver) == Guid.Empty);
-
-    /// <summary>
-    /// Returns the bound <see cref="NativeFunction"/> for the given
-    /// <paramref name="methodName"/> on <paramref name="receiver"/>, or
-    /// <see langword="null"/> when the name is not a <c>guid</c> instance method.
-    /// </summary>
-    internal static NativeFunction? GetMethod(string methodName, GrobStruct receiver) =>
-        methodName switch {
-            "toString" => new NativeFunction("toString", 0,
-                (_, _) => GrobValue.FromString(CanonicalString(receiver))),
-            "toUpperString" => new NativeFunction("toUpperString", 0,
-                (_, _) => GrobValue.FromString(CanonicalString(receiver).ToUpperInvariant())),
-            "toCompactString" => new NativeFunction("toCompactString", 0,
-                (_, _) => GrobValue.FromString(ToGuid(receiver).ToString("N"))),
-            _ => null,
-        };
 }
