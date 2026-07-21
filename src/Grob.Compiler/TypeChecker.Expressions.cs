@@ -325,8 +325,17 @@ public sealed partial class TypeChecker {
         }
 
         // Only user-defined functions are checked positionally here. Built-ins
-        // (print/exit) and unresolved callees are permissive.
+        // (print/exit) are permissive. A callee bound to a function-typed value
+        // (D-362) still resolves a return type — via its descriptor rather than a
+        // declared FnDecl signature — so GetExprType can pick the right typed
+        // opcode when the call is used as an arithmetic operand; no argument
+        // validation is added for this shape, that stays out of scope. Any other
+        // unresolved callee is permissive.
         if (node.Callee is not IdentifierExpr { Declaration: FnDecl fn }) {
+            if (ExpressionDescriptor(node.Callee) is FunctionTypeDescriptor calleeDescriptor) {
+                node.ResolvedReturnType = calleeDescriptor.ReturnType;
+                return calleeDescriptor.ReturnType;
+            }
             return GrobType.Unknown;
         }
 
@@ -342,6 +351,7 @@ public sealed partial class TypeChecker {
         if (resultDesc is not null) _callResultDescriptors[node] = resultDesc;
         if (resultStructName is not null) _callResultStructNames[node] = resultStructName;
         if (resultArrayDesc is not null) _callResultArrayDescriptors[node] = resultArrayDesc;
+        node.ResolvedReturnType = resultKind;
         return resultKind;
     }
 
@@ -476,8 +486,10 @@ public sealed partial class TypeChecker {
         CheckNamedTypeMethodArgs(node, memberAccess, argTypes, method.Parameters, entry.CanonicalName);
         if (method.ReturnsNominalSelf) {
             _callResultStructNames[node] = entry.CanonicalName;
+            node.ResolvedReturnType = GrobType.Struct;
             return GrobType.Struct;
         }
+        node.ResolvedReturnType = method.ReturnType;
         return method.ReturnType;
     }
 
@@ -980,6 +992,7 @@ public sealed partial class TypeChecker {
         object? member = NamespaceRegistry.TryGetMember(namespaceName, memberAccess.Member);
         if (member is NamespaceRegistry.NativeMember native) {
             memberAccess.ResolvedFieldType = native.ReturnType;
+            node.ResolvedReturnType = native.ReturnType;
             CheckNativeCall(node, namespaceName, memberAccess.Member, native, argTypes);
             // Sprint 8 Increment D: mirrors the user-fn struct-return threading a few
             // lines up in VisitCall — a `:=`-inferred binding from a struct-returning
@@ -1089,6 +1102,10 @@ public sealed partial class TypeChecker {
         }
 
         node.ResolvedFormatAsColumns = finalColumns ?? [];
+        // A formatAs.table/list/csv call renders to string — persist it for GetExprType
+        // (D-362) so the result can be used as a string-concat operand without falling to
+        // the Unknown→Int arithmetic default.
+        node.ResolvedReturnType = GrobType.String;
         return GrobType.String;
     }
 
@@ -1274,6 +1291,10 @@ public sealed partial class TypeChecker {
     /// arity/type mismatch, so a caller's own annotation mismatch is not double-reported.
     /// </summary>
     private GrobType CheckInputCall(CallExpr node, GrobType[] argTypes) {
+        // input() always resolves to string — persist it for GetExprType (D-362) on both
+        // the arity-error and success returns below, so `input() + "x"` selects Concat
+        // rather than falling to the Unknown→Int arithmetic default.
+        node.ResolvedReturnType = GrobType.String;
         if (argTypes.Length > 1) {
             EmitError(ErrorCatalog.E0003,
                 $"'input' expects 0 or 1 arguments, but {argTypes.Length} were supplied.",

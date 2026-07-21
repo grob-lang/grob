@@ -22,6 +22,19 @@ public sealed record CallExpr(
     /// </summary>
     public IReadOnlyList<string>? ResolvedFormatAsColumns { get; set; }
 
+    /// <summary>
+    /// Set by the type checker (D-362) to this call's statically resolved return type —
+    /// mirroring <see cref="IndexExpr.ElementType"/> (D-359) and
+    /// <see cref="MemberAccessExpr.ResolvedFieldType"/> — at every call shape whose return
+    /// type is known: a direct user <c>FnDecl</c> call, a function-typed-variable call, a
+    /// namespace-qualified native call, and a registered-named-type instance-method call.
+    /// Stays <see cref="GrobType.Unknown"/> (the default) for a call whose result is
+    /// genuinely unresolvable statically — a void-returning array higher-order method
+    /// (<c>each</c>) or a call on an <c>Unknown</c>-typed receiver. The compiler's
+    /// <c>GetExprType</c> reads this field directly rather than re-deriving the type.
+    /// </summary>
+    public GrobType ResolvedReturnType { get; set; } = GrobType.Unknown;
+
     /// <inheritdoc/>
     public override T Accept<T>(AstVisitor<T> visitor) => visitor.VisitCall(this);
 }
