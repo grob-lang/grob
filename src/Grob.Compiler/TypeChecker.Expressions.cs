@@ -325,8 +325,17 @@ public sealed partial class TypeChecker {
         }
 
         // Only user-defined functions are checked positionally here. Built-ins
-        // (print/exit) and unresolved callees are permissive.
+        // (print/exit) are permissive. A callee bound to a function-typed value
+        // (D-362) still resolves a return type — via its descriptor rather than a
+        // declared FnDecl signature — so GetExprType can pick the right typed
+        // opcode when the call is used as an arithmetic operand; no argument
+        // validation is added for this shape, that stays out of scope. Any other
+        // unresolved callee is permissive.
         if (node.Callee is not IdentifierExpr { Declaration: FnDecl fn }) {
+            if (ExpressionDescriptor(node.Callee) is FunctionTypeDescriptor calleeDescriptor) {
+                node.ResolvedReturnType = calleeDescriptor.ReturnType;
+                return calleeDescriptor.ReturnType;
+            }
             return GrobType.Unknown;
         }
 
@@ -342,6 +351,7 @@ public sealed partial class TypeChecker {
         if (resultDesc is not null) _callResultDescriptors[node] = resultDesc;
         if (resultStructName is not null) _callResultStructNames[node] = resultStructName;
         if (resultArrayDesc is not null) _callResultArrayDescriptors[node] = resultArrayDesc;
+        node.ResolvedReturnType = resultKind;
         return resultKind;
     }
 
@@ -476,8 +486,10 @@ public sealed partial class TypeChecker {
         CheckNamedTypeMethodArgs(node, memberAccess, argTypes, method.Parameters, entry.CanonicalName);
         if (method.ReturnsNominalSelf) {
             _callResultStructNames[node] = entry.CanonicalName;
+            node.ResolvedReturnType = GrobType.Struct;
             return GrobType.Struct;
         }
+        node.ResolvedReturnType = method.ReturnType;
         return method.ReturnType;
     }
 
@@ -980,6 +992,7 @@ public sealed partial class TypeChecker {
         object? member = NamespaceRegistry.TryGetMember(namespaceName, memberAccess.Member);
         if (member is NamespaceRegistry.NativeMember native) {
             memberAccess.ResolvedFieldType = native.ReturnType;
+            node.ResolvedReturnType = native.ReturnType;
             CheckNativeCall(node, namespaceName, memberAccess.Member, native, argTypes);
             // Sprint 8 Increment D: mirrors the user-fn struct-return threading a few
             // lines up in VisitCall — a `:=`-inferred binding from a struct-returning

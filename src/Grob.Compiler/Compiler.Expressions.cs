@@ -514,14 +514,26 @@ public sealed partial class Compiler {
 
     // Arithmetic — coerce either operand from int → float as needed, then the typed op.
     private void EmitArithmetic(BinaryExpr node, GrobType lt, GrobType rt, int line) {
+        // Defensive guard (D-362): ResolveArithmetic (TypeChecker.Expressions.cs) rejects a
+        // Struct/Function-typed operand with E0002 before emission ever runs, so a
+        // StructConstructionExpr/LambdaExpr operand reaching here is a compiler defect, not
+        // a state a valid program can produce — belt-and-braces, mirroring
+        // ThrowUnsupportedBinaryOp below.
+        if (node.Left is StructConstructionExpr or LambdaExpr || node.Right is StructConstructionExpr or LambdaExpr) {
+            ThrowStructOrLambdaOperand();
+        }
+
         bool leftNeedsCoerce = lt == GrobType.Int && rt == GrobType.Float;
         bool rightNeedsCoerce = rt == GrobType.Int && lt == GrobType.Float;
-        // resultType: Float if either operand is float; Unknown operands (lambda
-        // parameters) default to Int — the same optimistic convention used in
-        // ComparisonCategory. A lambda that passes a float array gets a VM-level
-        // type fault; typed parameter inference (Increment D) will fix this.
-        // When baseType is Unknown both operands are non-float by construction, so the
-        // Unknown fallback can only ever be Int.
+        // resultType: Float if either operand is float; Unknown operands default to Int —
+        // the same optimistic convention used in ComparisonCategory. This is a documented
+        // permissive assumption for the residue GetExprType (below) cannot resolve
+        // statically: an untyped lambda-parameter identifier, a map-element IndexExpr
+        // (D-359), an Unknown-receiver-field MemberAccessExpr (D-360), and a
+        // void-returning CallExpr such as arr.each(...) (D-362) — a VM-level type fault is
+        // the fallback if the runtime value disagrees. When baseType is Unknown both
+        // operands are non-float by construction, so the Unknown fallback can only ever be
+        // Int.
         GrobType baseType = (lt == GrobType.Float || rt == GrobType.Float) ? GrobType.Float : lt;
         GrobType resultType = baseType == GrobType.Unknown ? GrobType.Int : baseType;
 
@@ -1077,6 +1089,17 @@ public sealed partial class Compiler {
             $"Operator {op} with result type {type} is not supported in Sprint 2.");
 
     /// <summary>
+    /// Throws for a Struct/Function-typed arithmetic operand (D-362). The type checker's
+    /// <c>ResolveArithmetic</c> rejects that combination with E0002 before compilation ever
+    /// reaches emission, so this is unreachable from a valid program — a belt-and-braces
+    /// guard against the operand-typing class recurring, not a live diagnostic path.
+    /// </summary>
+    [ExcludeFromCodeCoverage(Justification = "The type checker rejects a struct/lambda arithmetic operand (E0002) before emission.")]
+    private static void ThrowStructOrLambdaOperand() =>
+        throw new InvalidOperationException(
+            "EmitArithmetic: struct/lambda operand should have been rejected at type-check (E0002) before reaching emission.");
+
+    /// <summary>
     /// Statically determines the <see cref="GrobType"/> that <paramref name="node"/>
     /// evaluates to, using information that has already been annotated onto the
     /// AST by the type checker.
@@ -1096,11 +1119,12 @@ public sealed partial class Compiler {
         BinaryExpr b => GetBinaryResultType(b),
         TernaryExpr t => GetTernaryResultType(t),
         SwitchExprNode s => GetSwitchExprResultType(s),
-        // A call to a user function resolves to that function's declared return type,
-        // so a surrounding operator selects the right typed opcode. Built-in and
-        // unresolved callees stay Unknown.
-        CallExpr { Callee: IdentifierExpr { Declaration: FnDecl fn } }
-            => TypeChecker.ResolveTypeRef(fn.ReturnType),
+        // A call's return type is annotated by the type checker (D-362) at every shape
+        // whose type is statically known: a direct FnDecl call, a function-typed-variable
+        // call, a namespace-qualified native call, and a registered-named-type
+        // instance-method call. A genuinely unresolvable call (a void-returning array
+        // higher-order method, or a call on an Unknown-typed receiver) stays Unknown.
+        CallExpr c => c.ResolvedReturnType,
         MemberAccessExpr ma => ma.ResolvedFieldType,
         IndexExpr idx => idx.ElementType,
         _ => GrobType.Unknown

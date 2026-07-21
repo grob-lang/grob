@@ -357,6 +357,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-359 | July 2026                                                          | Compiler — statement emission / type checking | Sprint 9 Increment A4 closes the index-target compound-assignment/increment gap D-350 named: `arr[i] += v`/`m[k] += v` and `arr[i]++`/`arr[i]--` no longer silently drop emission. Evaluate-once design — receiver and index each visited exactly once into reserved temp locals (the `DeclareLocalSlot`/`EmitGetLocal` `for...in`/switch-expression precedent, not D-334's bare `_nextSlot` bump the kickoff prompt named), then the existing `GetIndex`/typed-binary-op/`SetIndex` compose the read-modify-write, temps released via the existing `EmitScopeCleanup` (`PopN`, never lambda-capturable). `arr[i]++`/`--` lowers to `arr[i] += 1`/`-= 1` at the call site through the same helper — no dedicated index-local fast path. Type-checked via `ArrayTypeDescriptor` (D-351) reusing _E0002_ (not E0001, which is the plain-assignment RHS-assignability check the A4 kickoff prompt left ambiguous) for operand-type/int-only mismatches, and the existing `FindReadonlyRoot` walk for E0204; a map's `Unknown` element stays permissive (D-350's precedent) rather than rejected. `IndexExpr` gained a settable `ElementType` property (mirroring `MemberAccessExpr.ResolvedFieldType`), set by `VisitIndex` and consumed by a new `GetExprType` arm — necessary plumbing this increment depends on, since `GetExprType` previously had no `IndexExpr` case and silently defaulted a float array element to int arithmetic in the _plain_ binary-op path too (`floatArr[i] + 1.0`, a pre-existing gap predating D-351, fixed as a side effect). Confirmed but left unfixed and named for scheduling: field-target compound assignment/increment (`obj.field += v`/`obj.field++`) hits the identical silent-drop guard and is not, as the kickoff prompt supposed, a working precedent. Chosen over the Sprint 9B principal review's F1b tourniquet recommendation — delivering the feature closes F1b outright. No new opcode, no new error code; count unchanged at 118 |
 | D-360 | July 2026                                                          | Compiler — statement emission / type checking | Sprint 9 Increment A4b closes the sibling member-target compound-assignment/increment gap D-359 confirmed but left unfixed: `obj.field += v` and `obj.field++`/`obj.field--` (including chained `a.b.c` targets) no longer silently drop emission. Evaluate-once design — the receiver is visited exactly once into a single reserved temp local (no index subexpression, unlike D-359's two), then the existing `GetProperty`/typed-binary-op/`SetProperty` compose the read-modify-write, the temp released via the existing `EmitScopeCleanup` (`PopN` of 1). `obj.field++`/`--` lowers to `+= 1`/`-= 1` at the call site through the same helper. Type-checked via `MemberAccessExpr.ResolvedFieldType` (live since Sprint 6 Increment C, unlike D-359's `IndexExpr.ElementType` which A4 added from scratch) reusing _E0002_, and the existing `FindReadonlyRoot` walk for E0204 — it already covered `MemberAccessExpr` chains since Sprint 6C, so unlike D-359's `IndexExpr` extension, no change was needed; a field whose type could not be resolved because the receiver itself is `Unknown` stays permissive, mirroring D-359's map-element latitude. Corrects the A4 kickoff prompt's premise: `GetExprType`'s `MemberAccessExpr` arm (`ma.ResolvedFieldType`) already existed since Sprint 6C (commit `ede8dda`, PR #104) — `obj.floatField + 1.0` already selected `AddFloat` before this increment, so no `GetExprType` fix was made or is claimed here; a regression-lock test was added instead, and residual `GetExprType` gaps (`CallExpr` via a member/lambda callee, `StructConstructionExpr`, `LambdaExpr`) are named for the separate completeness audit. No new opcode, no new error code; count unchanged at 118 |
 | D-361 | July 2026                                                          | Compiler / Vm / Stdlib / Core — named-type dispatch | D-356's `NamedTypeRegistry` lands: one hand-authored table entry per nominal `Struct` type, in `Grob.Core` (the only assembly `Grob.Compiler`/`Grob.Vm`/`Grob.Runtime` all reach without a `Grob.Compiler`-to-`Grob.Vm` reference edge), carrying real executable property/method delegates alongside type-checking metadata and the D-336 `toString()` renderer. `guid`/`date` migrate onto it as behaviour-preserving proving cases — every pre-existing test passes unchanged — replacing the six hand-rolled dispatch arms D-356 catalogued; `Grob.Vm.GuidNatives`/`DateNatives` shrink to construction/field-layout helpers only (`DateNatives.ToDateTimeOffset` stays, since `LessDate`/`GreaterDate` still call it — D-357's territory untouched). The D-358 default-parameter metadata field is present but unused. Builds the first real "hand-table vs. live runtime registration" agreement test in the repo (`NamedTypeRegistryAgreementTests`, `Grob.Integration.Tests` — no dedicated `Grob.Cli.Tests` project exists to host it, corrected from the kickoff prompt's assumption); `ErrorCatalogAgreementTests` (D-308) remained the only precedent, and it diffs against a markdown doc, not live registration. `File` through `ProcessResult` land as registry data from here on. No new opcode, no new error code; count unchanged at 118 |
+| D-362 | July 2026                                                          | Compiler — type checking / bytecode emission | Closes D-360's `CallExpr` residue: `GetExprType` previously resolved a call's return type only through a bare identifier bound to a user `FnDecl`, so a native/stdlib call, a function-typed-variable call or a nominal-type-method call used as an arithmetic operand silently selected `AddInt` instead of `AddFloat`. New `CallExpr.ResolvedReturnType` (mirrors `IndexExpr.ElementType`/`MemberAccessExpr.ResolvedFieldType`) is populated at all three real sub-cases; `GetExprType`'s arm collapses to `c => c.ResolvedReturnType`. Corrects the kickoff prompt's four-sub-case premise to three (member-access and nominal-type-method calls are the same code path) and names the advertised-but-unbuilt `float`/`int` instance-method surface as out of scope, flagged with a `grob-type-registry.md` build-status note rather than built. Names a third permissive-Unknown source D-360's gate text missed — a void-returning call (`arr.each()`) — alongside D-359's map-element and D-360's Unknown-receiver-field latitude; none hardened into a failure. `EmitArithmetic` gains a narrow defensive guard (`InvalidOperationException`, `[ExcludeFromCodeCoverage]`) specific to the `StructConstructionExpr`/`LambdaExpr` pair the type checker already proves unreachable via E0002 — not a general allow-list assert, deliberately. Two side-findings logged for future increments: the unbuilt numeric-method surface, and `arr.each(fn)` as an arithmetic operand arguably warranting a type-checker E0002 rejection. No new opcode, no new error code; count unchanged at 118 |
 
 
 ---
@@ -5872,6 +5873,97 @@ consolidates), D-336 (the `ValueDisplay` ordering preserved unchanged).
 
 ---
 
+### D-362 — `GetExprType` `CallExpr` operand-typing completeness, closing D-360's residue (July 2026)
+
+Area: Compiler — type checking / bytecode emission
+Supersedes: none
+Superseded by: none
+Refines: D-359, D-360
+
+**The decision.** Closes the `CallExpr` residue D-360 catalogued and left for a
+separate completeness audit. `GetExprType` — the compiler's static, independent
+recomputation of type info the type checker already resolved, used by
+`EmitArithmetic` to pick `AddInt` vs `AddFloat` — previously resolved a call's
+return type only through a bare identifier bound to a user `FnDecl`; every other
+call shape fell to `Unknown`, which `EmitArithmetic` silently defaults to `Int`,
+the same silent-wrong-opcode class D-359 closed for `IndexExpr` and D-360
+confirmed was already correct for `MemberAccessExpr`.
+
+**The fix.** `CallExpr` gained a settable `ResolvedReturnType` property (mirroring
+`IndexExpr.ElementType`/`MemberAccessExpr.ResolvedFieldType`), populated by the
+type checker at every call shape whose return type is knowable: `VisitCall`'s
+direct-`FnDecl` arm, `ResolveNamespaceMemberCall` (a native/stdlib call, e.g.
+`math.sqrt`), `ValidateNamedTypeMethodCall` (a registered-named-type instance
+method, e.g. `date.daysUntil`, D-356/D-361), and a new function-typed-variable-call
+arm in `VisitCall` reusing the existing `ExpressionDescriptor` helper (no argument
+validation added for this shape — out of scope). `GetExprType`'s `CallExpr` arm
+collapses from the old narrow pattern match to a single `CallExpr c =>
+c.ResolvedReturnType` read.
+
+**Two corrections to the kickoff prompt's four-sub-case premise.** (1)
+"Member-access call" and "nominal-type-method call" are the same code path —
+`ValidateNamedTypeMethodCall` via `NamedTypeRegistry` — not two: Grob's user `type`
+structs carry no methods, so the only `obj.method()` shape that resolves a real
+return type is a registered named type. The real gap was three sub-cases, not
+four. (2) The prompt's fourth sub-case — a "numeric/structural member method"
+(`someFloat.round(2)`, `someInt.toFloat()`, `float.max/min/clamp`) — does not exist
+anywhere in the compiler: no `float`/`int` namespace in `NamespaceRegistry`, no
+receiver-type arm in `ResolveMemberAccessCall` for a `Float`/`Int` receiver, no
+compiler emission path either. `grob-type-registry.md` documents it as surface
+with zero implementation behind it; out of scope here, and flagged with a
+build-status note on that doc rather than built (see side-findings below).
+
+**A third permissive-Unknown source, not named in D-360's own gate text.** The
+genuinely unresolvable residue reaching `EmitArithmetic` today is **three**
+sources, not the two D-360 named: map-element `IndexExpr` access (D-359),
+Unknown-receiver-field `MemberAccessExpr` access (D-360), and a void-returning
+`CallExpr` (array `.each()` — new finding, this entry) — plus the pre-existing
+untyped-lambda-parameter-identifier convention `EmitArithmetic`'s own comment
+already documented. None of these is hardened into a failure; the `Int`-default
+assumption is unchanged for all three, and `EmitArithmetic`'s comment now names
+all three explicitly.
+
+**Hardening — narrow, not a general allow-list.** `ResolveArithmetic`
+(`TypeChecker.Expressions.cs`) already rejects a `Struct`/`Function`-typed
+arithmetic operand with E0002 before compilation ever reaches emission, so a
+`StructConstructionExpr`/`LambdaExpr` operand at `EmitArithmetic` is provably a
+compiler defect, never a state a valid program produces. `EmitArithmetic` now
+throws `InvalidOperationException` (`ThrowStructOrLambdaOperand`,
+`[ExcludeFromCodeCoverage]` — mirrors the pre-existing `ThrowUnsupportedBinaryOp`
+precedent) specifically for that pair, ahead of the unchanged `Unknown`→`Int`
+default. A broader allow-list predicate covering every currently-permissive shape
+was considered and rejected: it could misfire on a legitimate-but-unlisted
+program, and is deliberately not built here. The narrow guard cannot catch a
+future `GetExprType`-forgot-an-arm regression in general — only this specific,
+already-proven-impossible state.
+
+**Two side-findings, logged and not acted on here.** (a) The `float`/`int`
+instance-method surface (`round`/`toFloat`/`abs`/`clamp`/...) `grob-type-registry.md`
+advertises is entirely unbuilt — grammar, type-checker dispatch and compiler
+emission are all missing, not merely a `GetExprType` gap. Checking the doc's
+neighbouring sections while writing the build-status note found the same is true
+of `string`'s and `bool`'s method surfaces (`trim`/`upper`/`split`/... — no
+compiler-side dispatch for a primitive-receiver method call exists at all, for any
+primitive), so the note (mirroring F5-1's `map<K, V>` doc-honesty correction) covers
+all four primitive sections, not only `float`/`int`. `grob-type-registry.md` now
+carries that note; the surface itself needs its own future increment. (b) `arr.each(fn)` used as an arithmetic operand currently type-checks
+permissively (`Unknown` propagates through `ResolveArithmetic`) when it arguably
+should be a type-checker-side E0002 rejection — flagged for a future increment,
+not resolved here.
+
+No new opcode, no new error code; count unchanged at 118.
+
+Full detail: this entry (the fix is entirely in `TypeChecker.Expressions.cs`,
+`Compiler.Expressions.cs`, `CallExpr.cs` — no separate spec doc), D-360 (the gap
+report and prompt-premise this entry further corrects), D-359 (the `IndexExpr`
+precedent this mirrors), D-356/D-342/D-361 (`NamespaceRegistry`/`NamedTypeRegistry`,
+the two registries consulted), `grob-language-fundamentals.md` § (the int/float
+promotion rule this closes the last silent-selection gap against),
+`grob-type-registry.md` (the build-status note added for the unbuilt
+numeric-method surface).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -6094,7 +6186,27 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 9 Increment C0c: D-361 added. Lands D-356's `NamedTypeRegistry` —_
+_July 2026 — GetExprType CallExpr operand-typing completeness: D-362 added. Closes_
+_D-360's CallExpr residue — GetExprType only resolved a call's return type through a_
+_bare FnDecl identifier, so a native/stdlib call, a function-typed-variable call or a_
+_nominal-type-method call used as an arithmetic operand silently picked AddInt over_
+_AddFloat. New CallExpr.ResolvedReturnType (mirrors IndexExpr.ElementType/_
+_MemberAccessExpr.ResolvedFieldType) is populated at all three real sub-cases;_
+_GetExprType's arm collapses to a single field read. Corrects the kickoff prompt's_
+_four-sub-case premise to three (member-access and nominal-type-method calls are the_
+_same code path) and confirms the fourth — a float/int instance-method surface_
+_(round/toFloat/abs/clamp) — is advertised in grob-type-registry.md but entirely_
+_unbuilt; flagged with a build-status note, not built here. Names a third_
+_permissive-Unknown source D-360's own gate text missed (a void-returning call,_
+_arr.each()) alongside D-359's map-element and D-360's Unknown-receiver-field_
+_latitude — none hardened into a failure. EmitArithmetic gains a narrow defensive_
+_guard (InvalidOperationException, ExcludeFromCodeCoverage) specific to the_
+_StructConstructionExpr/LambdaExpr pair the type checker already proves unreachable_
+_via E0002 — not a general allow-list assert. Two side-findings logged for future_
+_increments, not resolved here: the unbuilt numeric-method surface, and whether_
+_arr.each(fn) as an arithmetic operand should be a type-checker E0002 rejection._
+_No new opcode, no new error code; count unchanged at 118._
+_Previous: July 2026 — Sprint 9 Increment C0c: D-361 added. Lands D-356's `NamedTypeRegistry` —_
 _one hand-authored table entry per nominal `Struct` type, placed in `Grob.Core` (the_
 _only assembly `Grob.Compiler`/`Grob.Vm`/`Grob.Runtime` all reach without a forbidden_
 _`Grob.Compiler`-to-`Grob.Vm` edge), carrying real executable property/method delegates_

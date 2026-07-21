@@ -14,6 +14,22 @@ time — no boxing, no vtable, no heap allocation.
 
 ---
 
+**Build-status note (D-362, mirroring F5-1's `map<K, V>` doc-honesty correction).**
+The `string`, `int`, `float` and `bool` sections below describe the **target**
+instance/static-method surface, not current behaviour: no compiler dispatch path
+exists yet for a primitive-receiver method call. `ResolveMemberAccessCall`
+(`TypeChecker.Expressions.cs`) has no arm treating a `String`/`Int`/`Float`/`Bool`
+receiver as a method-call target — only a namespace receiver (`math.sqrt`), an array
+higher-order method and a registered `NamedTypeRegistry` entry (`date`/`guid`)
+resolve today — and there is no corresponding compiler emission path either. This
+was surfaced while closing D-360's `GetExprType` `CallExpr` residue (D-362): the
+kickoff prompt for that sweep assumed `someFloat.round(2)`/`someInt.toFloat()`/
+`float.max(a, b)` were reachable-but-mistyped, but they are not reachable at all.
+Building the primitive-method dispatch surface is its own future increment — this
+note only corrects the doc's claim to match what is actually implemented.
+
+---
+
 ## `string`
 
 | Member                                             | Kind     | Signature    | Notes                                                       |
