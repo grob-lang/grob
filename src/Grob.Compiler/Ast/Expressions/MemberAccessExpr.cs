@@ -31,6 +31,15 @@ public sealed record MemberAccessExpr(
     /// </summary>
     public string? ResolvedStructTypeName { get; set; }
 
+    /// <summary>
+    /// Set by the type checker when this bare (non-call) access resolves to a
+    /// primitive-receiver instance property (D-066, <c>PrimitiveMemberRegistry</c>) —
+    /// the qualified native name (e.g. <c>"string.length"</c>) the compiler rewrites the
+    /// access to, called with the receiver as its sole argument. <see langword="null"/>
+    /// for every other access.
+    /// </summary>
+    public string? ResolvedPrimitiveNativeName { get; set; }
+
     /// <inheritdoc/>
     public override T Accept<T>(AstVisitor<T> visitor) => visitor.VisitMemberAccess(this);
 }
