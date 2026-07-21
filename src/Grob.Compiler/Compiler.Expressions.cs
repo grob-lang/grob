@@ -519,9 +519,7 @@ public sealed partial class Compiler {
         // StructConstructionExpr/LambdaExpr operand reaching here is a compiler defect, not
         // a state a valid program can produce — belt-and-braces, mirroring
         // ThrowUnsupportedBinaryOp below.
-        if (node.Left is StructConstructionExpr or LambdaExpr || node.Right is StructConstructionExpr or LambdaExpr) {
-            ThrowStructOrLambdaOperand();
-        }
+        ThrowIfStructOrLambdaOperand(node);
 
         bool leftNeedsCoerce = lt == GrobType.Int && rt == GrobType.Float;
         bool rightNeedsCoerce = rt == GrobType.Int && lt == GrobType.Float;
@@ -1091,13 +1089,18 @@ public sealed partial class Compiler {
     /// <summary>
     /// Throws for a Struct/Function-typed arithmetic operand (D-362). The type checker's
     /// <c>ResolveArithmetic</c> rejects that combination with E0002 before compilation ever
-    /// reaches emission, so this is unreachable from a valid program — a belt-and-braces
-    /// guard against the operand-typing class recurring, not a live diagnostic path.
+    /// reaches emission, so both the predicate and the throw are unreachable from a valid
+    /// program — a belt-and-braces guard against the operand-typing class recurring, not a
+    /// live diagnostic path. The predicate lives here (rather than at the call site) so the
+    /// whole never-taken branch is excluded from coverage as one unit.
     /// </summary>
     [ExcludeFromCodeCoverage(Justification = "The type checker rejects a struct/lambda arithmetic operand (E0002) before emission.")]
-    private static void ThrowStructOrLambdaOperand() =>
-        throw new InvalidOperationException(
-            "EmitArithmetic: struct/lambda operand should have been rejected at type-check (E0002) before reaching emission.");
+    private static void ThrowIfStructOrLambdaOperand(BinaryExpr node) {
+        if (node.Left is StructConstructionExpr or LambdaExpr || node.Right is StructConstructionExpr or LambdaExpr) {
+            throw new InvalidOperationException(
+                "EmitArithmetic: struct/lambda operand should have been rejected at type-check (E0002) before reaching emission.");
+        }
+    }
 
     /// <summary>
     /// Statically determines the <see cref="GrobType"/> that <paramref name="node"/>

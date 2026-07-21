@@ -1102,6 +1102,10 @@ public sealed partial class TypeChecker {
         }
 
         node.ResolvedFormatAsColumns = finalColumns ?? [];
+        // A formatAs.table/list/csv call renders to string — persist it for GetExprType
+        // (D-362) so the result can be used as a string-concat operand without falling to
+        // the Unknown→Int arithmetic default.
+        node.ResolvedReturnType = GrobType.String;
         return GrobType.String;
     }
 
@@ -1287,6 +1291,10 @@ public sealed partial class TypeChecker {
     /// arity/type mismatch, so a caller's own annotation mismatch is not double-reported.
     /// </summary>
     private GrobType CheckInputCall(CallExpr node, GrobType[] argTypes) {
+        // input() always resolves to string — persist it for GetExprType (D-362) on both
+        // the arity-error and success returns below, so `input() + "x"` selects Concat
+        // rather than falling to the Unknown→Int arithmetic default.
+        node.ResolvedReturnType = GrobType.String;
         if (argTypes.Length > 1) {
             EmitError(ErrorCatalog.E0003,
                 $"'input' expects 0 or 1 arguments, but {argTypes.Length} were supplied.",

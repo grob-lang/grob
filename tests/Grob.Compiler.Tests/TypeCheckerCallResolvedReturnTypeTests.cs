@@ -108,4 +108,57 @@ public sealed class TypeCheckerCallResolvedReturnTypeTests {
         CallExpr call = Assert.Single(CollectCalls(unit), c => c.Callee is MemberAccessExpr { Member: "each" });
         Assert.Equal(GrobType.Unknown, call.ResolvedReturnType);
     }
+
+    // -----------------------------------------------------------------------
+    // String-returning built-ins (CodeRabbit PR #152): input() and formatAs
+    // resolve to String at type-check but return through their own dedicated
+    // paths (CheckInputCall / ResolveFormatAsCall) that short-circuit before
+    // VisitCall's general ResolvedReturnType assignment. Without persisting
+    // String here, GetExprType reads the default Unknown, so a string-concat
+    // operand (input() + "x") mis-selects the arithmetic opcode instead of
+    // Concat — the exact bug class D-362 set out to close.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void InputCall_AnnotatesStringReturnType() {
+        var (unit, bag) = TypeCheckSource("x := input()\n");
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit), c => c.Callee is IdentifierExpr { Name: "input" });
+        Assert.Equal(GrobType.String, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void FormatAsCall_AnnotatesStringReturnType() {
+        var (unit, bag) = TypeCheckSource(
+            "type Item {\n" +
+            "    name: string\n" +
+            "    price: float\n" +
+            "}\n" +
+            "fn report(items: Item[]): string {\n" +
+            "    return items.formatAs.table()\n" +
+            "}\n");
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit), c => c.Callee is MemberAccessExpr { Member: "table" });
+        Assert.Equal(GrobType.String, call.ResolvedReturnType);
+    }
+
+    // -----------------------------------------------------------------------
+    // Nominal-self-returning method (date.addDays returns date): resolves to
+    // Struct via the ReturnsNominalSelf arm of ResolveNamedTypeMethodCall.
+    // Complements the daysUntil (int) sub-case above so both nominal-method
+    // return arms — declared-type and nominal-self — are exercised.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void NominalSelfReturningMethodCall_AddDays_AnnotatesStructReturnType() {
+        var (unit, bag) = TypeCheckSource(
+            "a := date.of(2026, 1, 1)\n" +
+            "b := a.addDays(10)\n");
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit), c => c.Callee is MemberAccessExpr { Member: "addDays" });
+        Assert.Equal(GrobType.Struct, call.ResolvedReturnType);
+    }
 }

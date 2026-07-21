@@ -104,6 +104,24 @@ public sealed class CompilerCallOperandTypingTests {
         Assert.Contains(OpCode.AddInt, ops);
     }
 
+    // -----------------------------------------------------------------------
+    // Sub-case 4: string-returning built-in call as a '+' operand (CodeRabbit
+    // PR #152). input() resolves to String at type-check but reached GetExprType
+    // as Unknown before the fix, so `input() + "x"` fell through the String-concat
+    // guard and mis-selected AddInt (an AddInt on a string operand — a runtime
+    // type fault). With ResolvedReturnType persisted, both operands read String
+    // and the compiler selects Concat.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void StringReturningCallAsOperand_InputConcat_SelectsConcatNotAddInt() {
+        Chunk chunk = CompileSource("x := input() + \"a\"\n");
+        List<OpCode> ops = ReadOpcodes(chunk);
+
+        Assert.Contains(OpCode.Concat, ops);
+        Assert.DoesNotContain(OpCode.AddInt, ops);
+    }
+
     [Fact]
     public void UnknownReceiverFieldAsOperand_UntypedLambdaParameter_StillCompilesUnderIntAssumption() {
         // The AddInt this residue selects is emitted into the lambda's own nested chunk
