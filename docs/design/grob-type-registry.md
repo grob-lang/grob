@@ -14,19 +14,18 @@ time — no boxing, no vtable, no heap allocation.
 
 ---
 
-**Build-status note (D-362, mirroring F5-1's `map<K, V>` doc-honesty correction).**
-The `string`, `int`, `float` and `bool` sections below describe the **target**
-instance/static-method surface, not current behaviour: no compiler dispatch path
-exists yet for a primitive-receiver method call. `ResolveMemberAccessCall`
-(`TypeChecker.Expressions.cs`) has no arm treating a `String`/`Int`/`Float`/`Bool`
-receiver as a method-call target — only a namespace receiver (`math.sqrt`), an array
-higher-order method and a registered `NamedTypeRegistry` entry (`date`/`guid`)
-resolve today — and there is no corresponding compiler emission path either. This
-was surfaced while closing D-360's `GetExprType` `CallExpr` residue (D-362): the
-kickoff prompt for that sweep assumed `someFloat.round(2)`/`someInt.toFloat()`/
-`float.max(a, b)` were reachable-but-mistyped, but they are not reachable at all.
-Building the primitive-method dispatch surface is its own future increment — this
-note only corrects the doc's claim to match what is actually implemented.
+**Build-status note (D-363, updating D-362's doc-honesty correction).**
+The `string` section below is now **built**, except `padLeft`/`padRight`/`truncate`
+— those three carry default parameters and are pending D-358's default-argument
+call-site synthesis; every other member ships. `ResolveMemberAccessCall`
+(`TypeChecker.Expressions.cs`) gained a primitive-value-receiver arm keyed on
+`PrimitiveMemberRegistry` (`Grob.Core`, parallel to the `NamedTypeRegistry` shape),
+and `VisitCall`/`VisitMemberAccess` rewrite a resolved primitive-member access to a
+qualified native call at compile time (D-066), receiver injected as arg[0] — no
+`GetProperty`/`Bind` runtime dispatch, no new opcode. The `int`, `float` and `bool`
+sections below still describe the **target** surface only, not current behaviour —
+the same mechanism, unbuilt for those three primitives until their own follow-on
+increments prove it out.
 
 ---
 

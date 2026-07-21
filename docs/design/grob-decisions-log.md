@@ -358,6 +358,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-360 | July 2026                                                          | Compiler — statement emission / type checking | Sprint 9 Increment A4b closes the sibling member-target compound-assignment/increment gap D-359 confirmed but left unfixed: `obj.field += v` and `obj.field++`/`obj.field--` (including chained `a.b.c` targets) no longer silently drop emission. Evaluate-once design — the receiver is visited exactly once into a single reserved temp local (no index subexpression, unlike D-359's two), then the existing `GetProperty`/typed-binary-op/`SetProperty` compose the read-modify-write, the temp released via the existing `EmitScopeCleanup` (`PopN` of 1). `obj.field++`/`--` lowers to `+= 1`/`-= 1` at the call site through the same helper. Type-checked via `MemberAccessExpr.ResolvedFieldType` (live since Sprint 6 Increment C, unlike D-359's `IndexExpr.ElementType` which A4 added from scratch) reusing _E0002_, and the existing `FindReadonlyRoot` walk for E0204 — it already covered `MemberAccessExpr` chains since Sprint 6C, so unlike D-359's `IndexExpr` extension, no change was needed; a field whose type could not be resolved because the receiver itself is `Unknown` stays permissive, mirroring D-359's map-element latitude. Corrects the A4 kickoff prompt's premise: `GetExprType`'s `MemberAccessExpr` arm (`ma.ResolvedFieldType`) already existed since Sprint 6C (commit `ede8dda`, PR #104) — `obj.floatField + 1.0` already selected `AddFloat` before this increment, so no `GetExprType` fix was made or is claimed here; a regression-lock test was added instead, and residual `GetExprType` gaps (`CallExpr` via a member/lambda callee, `StructConstructionExpr`, `LambdaExpr`) are named for the separate completeness audit. No new opcode, no new error code; count unchanged at 118 |
 | D-361 | July 2026                                                          | Compiler / Vm / Stdlib / Core — named-type dispatch | D-356's `NamedTypeRegistry` lands: one hand-authored table entry per nominal `Struct` type, in `Grob.Core` (the only assembly `Grob.Compiler`/`Grob.Vm`/`Grob.Runtime` all reach without a `Grob.Compiler`-to-`Grob.Vm` reference edge), carrying real executable property/method delegates alongside type-checking metadata and the D-336 `toString()` renderer. `guid`/`date` migrate onto it as behaviour-preserving proving cases — every pre-existing test passes unchanged — replacing the six hand-rolled dispatch arms D-356 catalogued; `Grob.Vm.GuidNatives`/`DateNatives` shrink to construction/field-layout helpers only (`DateNatives.ToDateTimeOffset` stays, since `LessDate`/`GreaterDate` still call it — D-357's territory untouched). The D-358 default-parameter metadata field is present but unused. Builds the first real "hand-table vs. live runtime registration" agreement test in the repo (`NamedTypeRegistryAgreementTests`, `Grob.Integration.Tests` — no dedicated `Grob.Cli.Tests` project exists to host it, corrected from the kickoff prompt's assumption); `ErrorCatalogAgreementTests` (D-308) remained the only precedent, and it diffs against a markdown doc, not live registration. `File` through `ProcessResult` land as registry data from here on. No new opcode, no new error code; count unchanged at 118 |
 | D-362 | July 2026                                                          | Compiler — type checking / bytecode emission | Closes D-360's `CallExpr` residue: `GetExprType` previously resolved a call's return type only through a bare identifier bound to a user `FnDecl`, so a native/stdlib call, a function-typed-variable call or a nominal-type-method call used as an arithmetic operand silently selected `AddInt` instead of `AddFloat`. New `CallExpr.ResolvedReturnType` (mirrors `IndexExpr.ElementType`/`MemberAccessExpr.ResolvedFieldType`) is populated at all three real sub-cases; `GetExprType`'s arm collapses to `c => c.ResolvedReturnType`. Corrects the kickoff prompt's four-sub-case premise to three (member-access and nominal-type-method calls are the same code path) and names the advertised-but-unbuilt `float`/`int` instance-method surface as out of scope, flagged with a `grob-type-registry.md` build-status note rather than built. Names a third permissive-Unknown source D-360's gate text missed — a void-returning call (`arr.each()`) — alongside D-359's map-element and D-360's Unknown-receiver-field latitude; none hardened into a failure. `EmitArithmetic` gains a narrow defensive guard (`InvalidOperationException`, `[ExcludeFromCodeCoverage]`) specific to the `StructConstructionExpr`/`LambdaExpr` pair the type checker already proves unreachable via E0002 — not a general allow-list assert, deliberately. Two side-findings logged for future increments: the unbuilt numeric-method surface, and `arr.each(fn)` as an arithmetic operand arguably warranting a type-checker E0002 rejection. No new opcode, no new error code; count unchanged at 118 |
+| D-363 | July 2026                                                          | Compiler / Type checker / Runtime — primitive-method dispatch | Implements D-066's primitive-method-as-compile-time-sugar model, proven on `string` — the compile-time dispatch mechanism D-362 found entirely unbuilt. New `PrimitiveMemberRegistry` (`Grob.Core.PrimitiveMembers`), keyed on primitive `GrobType` × member name, parallel to `NamedTypeRegistry` (D-361) — its method entry mirrors `NamedTypeMethod`'s shape (including an inert `ParameterDefaults` field so D-358 lands additively) but drops `Bind`/`ReturnsNominalSelf` and the `NominalSelf` parameter kind, none applicable to a primitive receiver. `ResolveMemberAccessCall`/`VisitMemberAccess` gain a primitive-value-receiver arm; `VisitCall`/`VisitMemberAccess` (`Compiler.Expressions.cs`) rewrite a resolved access to `GetGlobal`-then-`Call` against the qualified native, receiver injected as arg[0] — the D-342 namespace-native shape, not D-356/D-361's `GetProperty`+`Bind` (primitives are never `GrobValueKind.Struct`). No new opcode. Delivers the 21-member no-default `string` surface (2 properties, 19 methods); `padLeft`/`padRight`/`truncate` deferred to D-358 (default parameters). `CallExpr.ResolvedReturnType`/`MemberAccessExpr.ResolvedFieldType` wired for every member, including `split`'s array-element type via the existing `_callResultArrayDescriptors` channel (D-351) so a chained index/for-in resolves `string`, not `Unknown`. `toInt`/`toFloat` return `int?`/`float?` (nil on parse failure, mirroring `env.get`); `substring`/`left`/`right` throw the existing `IndexError`/`E5101` through the native-throw seam — its first stdlib-plugin use, no new code. Undefined-member reuses `E1002`. New `StringMethodsPlugin` (`Grob.Stdlib`) registers the natives; `PrimitiveMemberRegistryAgreementTests` (`Grob.Integration.Tests`) diffs the compile-time table against live registration. Closes the release-gate blocker — the validation scripts' `.split`/`.replace`/`.contains` now dispatch. `int`/`float`/`bool` instance methods and `int.min`/`float.clamp` static functions are the same mechanism, follow-on increments. No new opcode, no new error code; count unchanged at 118 |
 
 
 ---
@@ -5964,6 +5965,107 @@ numeric-method surface).
 
 ---
 
+### D-363 — Primitive instance-method dispatch lands, proven on `string` (July 2026)
+
+Area: Compiler / Type checker / Runtime — primitive-method dispatch
+Supersedes: none
+Superseded by: none
+Refines: D-066, D-362
+
+**The decision.** Implements D-066's original model — "primitives are never boxed;
+method-call syntax is compile-time sugar, the compiler rewrites to native function
+calls at compile time" — which D-362's investigation established was entirely
+unbuilt: no arm in `ResolveMemberAccessCall` for a primitive receiver, no
+compiler emission path, no runtime dispatch. This closes that gap and delivers the
+full no-default `string` surface, the release-gate blocker `grob-type-registry.md`
+and the validation scripts depended on.
+
+**The registry.** `PrimitiveMemberRegistry` (`Grob.Core.PrimitiveMembers`), keyed on
+primitive `GrobType` × member name — parallel to `NamedTypeRegistry` (D-356/D-361),
+not an extension of it: a primitive is never `GrobValueKind.Struct`, so there is no
+`GetProperty`/`Bind` runtime shape here, only a compile-time rewrite.
+`PrimitiveMemberMethod` mirrors `NamedTypeMethod`'s field shape — including an inert
+`ParameterDefaults` field so D-358's default-argument mechanism lands additively,
+populating the field rather than altering the entry type — but drops `Bind`,
+`ReturnsNominalSelf` and the `NominalSelf` parameter kind: no primitive parameter in
+the `string` surface needs "must be this exact nominal type" (every parameter is a
+flat `GrobType`), so parameters are a plain `IReadOnlyList<GrobType>`, not a
+`NamedTypeParameter`-shaped wrapper. `string` is the only entry; `int`/`float`/`bool`
+return `false` from `TryGet` until their own follow-on increments.
+
+**The dispatch.** `ResolveMemberAccessCall` gains a primitive-value-receiver arm
+(`ValidatePrimitiveMemberCall`), inserted after the array higher-order-method arm,
+guarded on a `PrimitiveMemberRegistry.TryGet` hit — never colliding with the
+Struct-only arms below it. `VisitMemberAccess` gains the property-only counterpart
+(`ResolvePrimitiveMemberPropertyAccess`), reached only for a statically non-nullable
+receiver (the checker's existing generic nullable guards already reject or
+short-circuit a nullable one before this point) — a bare method name accessed
+without a call (`s.trim`, no parens) stays `E1002`, mirroring
+`ResolveNamedTypePropertyAccess`'s identical un-called-method rejection. Both set a
+new checker→compiler side channel — `CallExpr.ResolvedPrimitiveNativeName`/
+`MemberAccessExpr.ResolvedPrimitiveNativeName` (mirroring `ResolvedFormatAsColumns`) —
+so the compiler never re-derives the receiver type or re-consults the registry.
+
+**The emission.** `VisitCall`/`VisitMemberAccess` (`Compiler.Expressions.cs`) each
+gain an early branch reading the new field: `GetGlobal` against the qualified
+native (the callee, pushed first — the D-342 namespace-native shape
+`EmitFormatAsCall` already proves), then the receiver, then the call's own
+arguments in source order, then `Call` with an operand of `1 + argument count`. No
+new opcode — `OpCode.GetProperty` gains no primitive arm and must not: it has no
+dispatch for a `String`-kind receiver today (D-362's gap), and the whole rewrite
+happens here instead. The bare-property emission omits the `?.`-nil-guard
+scaffolding the generic `GetProperty` path wraps every access in: the field is only
+ever set for a provably non-nullable receiver, so the guard would be permanently
+dead code.
+
+**The surface.** All 21 no-default `string` members: `length`/`isEmpty`
+(properties); `toInt`/`toFloat` (returning `int?`/`float?`, nil on parse failure,
+mirroring `env.get`'s existing nullable-native convention); `trim`/`trimStart`/
+`trimEnd`/`upper`/`lower`; `split`/`contains`/`startsWith`/`endsWith`/`replace`
+(replace-all)/`indexOf`/`lastIndexOf` (-1 when absent); `substring`/`left`/`right`
+(throwing the existing `IndexError`/`E5101` through the D-342 native-throw seam —
+`NativeFaultException`, this leaf's first stdlib-plugin use, previously raised only
+VM-internally for array bounds); `repeat`; `toString` (identity).
+`padLeft`/`padRight`/`truncate` are deferred to D-358 — they carry default
+parameters and would ship a signature narrower than advertised without it.
+`CallExpr.ResolvedReturnType`/`MemberAccessExpr.ResolvedFieldType` are wired for
+every member (D-362's threading), including `split`'s `string[]` result: its
+element type is threaded through the existing `_callResultArrayDescriptors`
+channel (D-351) so a chained index or `for...in` over the result resolves a real
+`string` element rather than falling back to the generic untracked-array
+`Unknown` permissiveness.
+
+**Runtime and verification.** `StringMethodsPlugin` (`Grob.Stdlib`) registers all 21
+qualified natives, added to `PluginRegistration`'s composition-root list.
+`PrimitiveMemberRegistryAgreementTests` (`Grob.Integration.Tests`) is the third
+hand-table-vs-live-registration agreement test in the repo (after
+`ErrorCatalogAgreementTests` (D-308) and `NamedTypeRegistryAgreementTests` (D-361)) —
+a recording registrar diffs the compile-time registry against live `RegisterNative`
+calls both ways, the orphan side scoped to the `"string."` prefix so it does not
+flag unrelated natives registered by the same plugin list.
+
+**Correction to the kickoff prompt's arithmetic.** The prompt's landing section
+described "the 22-member no-default `string` surface"; the actual count — 2
+properties plus 19 methods, `grob-type-registry.md`'s table minus the 3 deferred
+default-parameter methods — is 21. Logged with the correct count rather than
+propagating the prompt's number.
+
+**Undefined-member and error-code reuse.** `E1002` (undefined member) is reused
+verbatim for an unrecognised primitive member, matching the named-type precedent
+exactly. No new error code anywhere in this increment; count unchanged at 118.
+
+Full detail: `prompts/archive/sprint-9/increment-string-instance-methods.md` (the
+source prompt), D-066 (the original compile-time-sugar model this finally
+implements), D-091 (the primitive-method-call design context), D-071 (`strings.join`'s
+array-receiver precedent explaining why it is not an instance method), D-362 (the
+investigation that found the mechanism unbuilt), D-342 (the `NamespaceRegistry`
+native-call shape reused), D-361 (`NamedTypeRegistry`, the sibling registry this
+mirrors), D-358 (the deferred default-argument mechanism `padLeft`/`padRight`/
+`truncate` depend on). `grob-type-registry.md`'s `string` build-status note updated
+to record this increment's scope.
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -6186,7 +6288,30 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — GetExprType CallExpr operand-typing completeness: D-362 added. Closes_
+_July 2026 — Primitive instance-method dispatch: D-363 added. Implements D-066's_
+_compile-time-sugar model, proven on `string` — the dispatch mechanism D-362 found_
+_entirely unbuilt. New PrimitiveMemberRegistry (Grob.Core.PrimitiveMembers), keyed_
+_on primitive GrobType x member name, parallel to NamedTypeRegistry (D-356/D-361);_
+_its method entry mirrors NamedTypeMethod's shape (inert ParameterDefaults field so_
+_D-358 lands additively) minus Bind/ReturnsNominalSelf/NominalSelf, none applicable_
+_to a primitive receiver. ResolveMemberAccessCall/VisitMemberAccess gain a_
+_primitive-value-receiver arm; the compiler rewrites a resolved access to_
+_GetGlobal-then-Call against the qualified native, receiver as arg[0] — the D-342_
+_namespace shape, not D-356/D-361's GetProperty+Bind. No new opcode. Delivers all_
+_21 no-default string members (2 properties, 19 methods); padLeft/padRight/truncate_
+_deferred to D-358. CallExpr.ResolvedReturnType/MemberAccessExpr.ResolvedFieldType_
+_wired throughout, including split's array-element type via the existing_
+__callResultArrayDescriptors channel (D-351). toInt/toFloat return int?/float?;_
+_substring/left/right throw the existing IndexError/E5101 through the native-throw_
+_seam (its first stdlib-plugin use). Undefined-member reuses E1002. New_
+_StringMethodsPlugin (Grob.Stdlib) registers the natives;_
+_PrimitiveMemberRegistryAgreementTests (Grob.Integration.Tests) is the third_
+_hand-table-vs-live-registration agreement test in the repo. Corrects the kickoff_
+_prompt's "22-member" claim to the actual count, 21. Closes the release-gate_
+_blocker — the validation scripts' .split/.replace/.contains now dispatch._
+_int/float/bool instance methods are the same mechanism, follow-on increments. No_
+_new opcode, no new error code; count unchanged at 118._
+_Previous: July 2026 — GetExprType CallExpr operand-typing completeness: D-362 added. Closes_
 _D-360's CallExpr residue — GetExprType only resolved a call's return type through a_
 _bare FnDecl identifier, so a native/stdlib call, a function-typed-variable call or a_
 _nominal-type-method call used as an arithmetic operand silently picked AddInt over_

@@ -728,6 +728,17 @@ public sealed partial class Compiler {
             return null;
         }
 
+        // D-066: a primitive instance-method call (string first) — resolved by the type
+        // checker (ResolvedPrimitiveNativeName) to a qualified native rewrite. Bypasses
+        // the generic Visit(node.Callee) below entirely: that path would route the
+        // MemberAccessExpr callee through VisitMemberAccess's GetProperty emission, which
+        // has no primitive arm (D-362's gap) and must not gain one — the whole rewrite
+        // happens here instead, receiver injected as arg[0].
+        if (node.ResolvedPrimitiveNativeName is string primitiveNative) {
+            EmitPrimitiveMemberCall(node, (MemberAccessExpr)node.Callee, primitiveNative, line);
+            return null;
+        }
+
         Visit(node.Callee);
 
         // Sprint 8 Increment C: input() is the one no-namespace native needing a
@@ -791,6 +802,28 @@ public sealed partial class Compiler {
 
         _chunk.WriteOpCode(OpCode.Call, line);
         _chunk.WriteByte(2, line);
+    }
+
+    /// <summary>
+    /// Emits a primitive instance-method call (D-066, <c>string</c> first): <c>GetGlobal
+    /// "&lt;qualified native&gt;"</c> (the callee, pushed first — the same shape every
+    /// namespace-qualified native call already uses), the receiver
+    /// (<paramref name="callee"/>'s target), then the call's own arguments in source
+    /// order, then <see cref="OpCode.Call"/> with an operand of <c>1 + argument count</c>
+    /// (receiver plus the declared parameters). No <see cref="OpCode.GetProperty"/> is
+    /// emitted — a primitive receiver is never <see cref="GrobValueKind.Struct"/>, so
+    /// that opcode has no dispatch for it.
+    /// </summary>
+    private void EmitPrimitiveMemberCall(CallExpr node, MemberAccessExpr callee, string qualifiedNativeName, int line) {
+        int qualifiedIdx = _chunk.AddConstant(GrobValue.FromString(qualifiedNativeName));
+        _chunk.WriteOpCode(OpCode.GetGlobal, line);
+        _chunk.WriteByte(ToByteOperand(qualifiedIdx, "primitive-member native name"), line);
+
+        Visit(callee.Target);
+        foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
+
+        _chunk.WriteOpCode(OpCode.Call, line);
+        _chunk.WriteByte(ToByteOperand(node.Arguments.Count + 1, "call argument count"), line);
     }
 
     /// <summary>
@@ -919,6 +952,22 @@ public sealed partial class Compiler {
             int qualifiedIdx = _chunk.AddConstant(GrobValue.FromString(qualifiedName));
             _chunk.WriteOpCode(OpCode.GetGlobal, line);
             _chunk.WriteByte(ToByteOperand(qualifiedIdx, "namespace member name"), line);
+            return null;
+        }
+
+        // D-066: a bare primitive instance-property access (string first) — resolved by
+        // the type checker (ResolvedPrimitiveNativeName) to a qualified native rewrite,
+        // the receiver as the native's sole argument. No IsOptional wrap: this arm is
+        // only ever reached for a statically non-nullable receiver (the checker's
+        // generic nullable guards above already reject or short-circuit a nullable one
+        // before this field is ever set), so the wrap would be permanently dead code.
+        if (node.ResolvedPrimitiveNativeName is string primitiveNative) {
+            int qualifiedIdx = _chunk.AddConstant(GrobValue.FromString(primitiveNative));
+            _chunk.WriteOpCode(OpCode.GetGlobal, line);
+            _chunk.WriteByte(ToByteOperand(qualifiedIdx, "primitive-member native name"), line);
+            Visit(node.Target);
+            _chunk.WriteOpCode(OpCode.Call, line);
+            _chunk.WriteByte(1, line);
             return null;
         }
 

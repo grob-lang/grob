@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using Grob.Compiler.Ast;
 using Grob.Core;
 using Grob.Core.NamedTypes;
+using Grob.Core.PrimitiveMembers;
 
 namespace Grob.Compiler;
 
@@ -393,6 +394,14 @@ public sealed partial class TypeChecker {
             return ValidateArrayMethodCall(node, memberAccess.Member, argTypes);
         }
 
+        // D-066: primitive instance-method dispatch (string first) — compile-time sugar,
+        // rewritten to a qualified native call rather than a runtime GetProperty/Bind
+        // (primitives are never GrobValueKind.Struct, so NamedTypeRegistry's shape below
+        // does not apply). Checked ahead of the Struct-only arms since they never overlap.
+        if (PrimitiveMemberRegistry.TryGet(receiverType, out PrimitiveMemberEntry primitiveEntry)) {
+            return ValidatePrimitiveMemberCall(node, memberAccess, argTypes, primitiveEntry);
+        }
+
         // A non-optional '.' method call on a nullable registered-named-type (D-356)
         // receiver may dereference nil — reject at compile time (E0101), mirroring
         // VisitMemberAccess's identical guard for plain property access (CodeRabbit
@@ -505,13 +514,7 @@ public sealed partial class TypeChecker {
     private void CheckNamedTypeMethodArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes,
             IReadOnlyList<NamedTypeParameter> expected, string canonicalName) {
-        if (argTypes.Length != expected.Count) {
-            string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
-            EmitError(ErrorCatalog.E0003,
-                $"'{memberAccess.Member}' expects {expected.Count} {Plural(expected.Count, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
-                node.Range);
-            return;
-        }
+        if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, expected.Count)) return;
         for (int i = 0; i < expected.Count; i++) {
             if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
             Expression argExpr = node.Arguments[i].Value;
@@ -527,6 +530,101 @@ public sealed partial class TypeChecker {
                     argExpr.Range);
             }
         }
+    }
+
+    /// <summary>
+    /// Validates a primitive-receiver (D-066, <c>string</c> first) instance-method call
+    /// and returns its result type, driven entirely by <paramref name="entry"/>'s method
+    /// table — the primitive analogue of <see cref="ValidateNamedTypeMethodCall"/>, minus
+    /// the nominal-self-return threading no primitive method needs. Sets
+    /// <see cref="CallExpr.ResolvedPrimitiveNativeName"/> so the compiler rewrites the
+    /// call to the qualified native, receiver injected as arg[0]. <c>split</c> is the one
+    /// array-returning member in the current surface; its element is always <c>string</c>,
+    /// threaded through <c>_callResultArrayDescriptors</c> (D-351) the same way a
+    /// declared-return-type array threads it, so a chained index/for-in over the result
+    /// resolves a real element type rather than falling back to the generic
+    /// untracked-array <see cref="GrobType.Unknown"/> permissiveness.
+    /// </summary>
+    private GrobType ValidatePrimitiveMemberCall(
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, PrimitiveMemberEntry entry) {
+        if (!entry.Methods.TryGetValue(memberAccess.Member, out PrimitiveMemberMethod? method) || method is null) {
+            return EmitErrorAndReturn(ErrorCatalog.E1002,
+                $"Type '{TypeName(entry.ReceiverType)}' has no member '{memberAccess.Member}'.",
+                memberAccess.Range);
+        }
+        CheckPrimitiveMemberArgs(node, memberAccess, argTypes, method.ParameterTypes);
+        node.ResolvedReturnType = method.ReturnType;
+        node.ResolvedPrimitiveNativeName = method.QualifiedNativeName;
+        if (method.ReturnType == GrobType.Array) {
+            _callResultArrayDescriptors[node] = new ArrayTypeDescriptor(GrobType.String, null, null);
+        }
+        return method.ReturnType;
+    }
+
+    /// <summary>
+    /// Checks a primitive-member method call's argument list against
+    /// <paramref name="expected"/> — arity (<see cref="ErrorCatalog.E0003"/>) then
+    /// per-argument type (<see cref="ErrorCatalog.E0004"/>). The primitive analogue of
+    /// <see cref="CheckNamedTypeMethodArgs"/>, minus the <c>NominalSelf</c> parameter
+    /// kind — no primitive parameter in the current surface needs "must be this exact
+    /// nominal type" (every parameter is a flat <see cref="GrobType"/>).
+    /// </summary>
+    private void CheckPrimitiveMemberArgs(
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, IReadOnlyList<GrobType> expected) {
+        if (RejectNamedPrimitiveArgs(node, memberAccess)) return;
+        if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, expected.Count)) return;
+        for (int i = 0; i < expected.Count; i++) {
+            if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
+            Expression argExpr = node.Arguments[i].Value;
+            if (!TypesAreAssignable(argTypes[i], expected[i])) {
+                EmitError(ErrorCatalog.E0004,
+                    $"Argument to '{memberAccess.Member}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{TypeName(expected[i])}'.",
+                    argExpr.Range);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Shared arity guard for a member-call argument list — the named-type (D-356) and
+    /// primitive (D-066) receivers share this identical <see cref="ErrorCatalog.E0003"/>
+    /// shape. Factored out of <see cref="CheckNamedTypeMethodArgs"/> and
+    /// <see cref="CheckPrimitiveMemberArgs"/> so the two paths stay independent
+    /// (NominalSelf vs flat parameter kinds) without duplicating the diagnostic. Returns
+    /// <c>true</c> when the counts match and per-argument checking should proceed.
+    /// </summary>
+    private bool MemberArgCountMatches(
+            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int expectedCount) {
+        if (suppliedCount != expectedCount) {
+            string suppliedVerb = suppliedCount == 1 ? "was" : "were";
+            EmitError(ErrorCatalog.E0003,
+                $"'{memberAccess.Member}' expects {expectedCount} {Plural(expectedCount, ArgumentNoun)}, but {suppliedCount} {suppliedVerb} supplied.",
+                node.Range);
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Rejects named arguments on a primitive-member call with
+    /// <see cref="ErrorCatalog.E0011"/>. <see cref="PrimitiveMemberMethod"/> carries no
+    /// parameter names, so a named argument cannot bind — and emission preserves source
+    /// order, which would otherwise let a swapped pair (e.g. <c>s.replace(to: "b",
+    /// from: "a")</c>) pass the type checks yet call the native with mis-ordered
+    /// arguments. Primitive members are positional-only until D-358 adds parameter-name
+    /// binding. Returns <c>true</c> when at least one named argument was found, so the
+    /// caller suppresses the downstream arity/type checks (one diagnostic per root cause).
+    /// </summary>
+    private bool RejectNamedPrimitiveArgs(CallExpr node, MemberAccessExpr memberAccess) {
+        bool rejected = false;
+        foreach (CallArgument arg in node.Arguments) {
+            if (arg.Name is not null) {
+                EmitError(ErrorCatalog.E0011,
+                    $"'{memberAccess.Member}' does not accept named arguments; pass them positionally.",
+                    arg.Range);
+                rejected = true;
+            }
+        }
+        return rejected;
     }
 
     /// <summary>
@@ -841,6 +939,15 @@ public sealed partial class TypeChecker {
         // directly by struct name ahead of the field-access fall-through below.
         if (TryResolveKnownStructPropertyAccess(node, targetType) is GrobType knownStructResult) {
             return knownStructResult;
+        }
+
+        // D-066: primitive instance-property dispatch (string first). Only ever reached
+        // for a non-nullable receiver — the generic nullable guards above (lines checking
+        // GrobTypeHelpers.IsNullable(targetType)) already reject or short-circuit a
+        // nullable receiver before this point, so no extra nullable handling is needed
+        // here (mirrors TryResolveKnownStructPropertyAccess's identical latitude).
+        if (PrimitiveMemberRegistry.TryGet(targetType, out PrimitiveMemberEntry primitiveEntry)) {
+            return ResolvePrimitiveMemberPropertyAccess(node, primitiveEntry);
         }
 
         // Resolve struct field access: look up the field in the user type registry and
@@ -1489,6 +1596,28 @@ public sealed partial class TypeChecker {
         // how a user struct's unknown field is rejected (ResolveStructFieldAccess).
         return EmitErrorAndReturn(ErrorCatalog.E1002,
             $"Type '{entry.CanonicalName}' has no member '{node.Member}'.",
+            node.Range);
+    }
+
+    /// <summary>
+    /// Resolves a bare (non-call) property access on a primitive receiver (D-066,
+    /// <c>string</c> first), the primitive analogue of
+    /// <see cref="ResolveNamedTypePropertyAccess"/>. Consults <c>entry.Properties</c>
+    /// only — a method name accessed without a call (<c>s.trim</c>, no parens) is not a
+    /// property and stays <see cref="ErrorCatalog.E1002"/>, matching the named-type
+    /// precedent exactly. Sets <see cref="MemberAccessExpr.ResolvedPrimitiveNativeName"/>
+    /// so the compiler rewrites the access to the qualified native, receiver as its sole
+    /// argument.
+    /// </summary>
+    private GrobType ResolvePrimitiveMemberPropertyAccess(MemberAccessExpr node, PrimitiveMemberEntry entry) {
+        if (entry.Properties.TryGetValue(node.Member, out PrimitiveMemberProperty? property) && property is not null) {
+            node.ResolvedFieldType = property.Type;
+            node.ResolvedPrimitiveNativeName = property.QualifiedNativeName;
+            return property.Type;
+        }
+
+        return EmitErrorAndReturn(ErrorCatalog.E1002,
+            $"Type '{TypeName(entry.ReceiverType)}' has no member '{node.Member}'.",
             node.Range);
     }
 

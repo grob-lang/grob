@@ -35,6 +35,14 @@ public sealed record CallExpr(
     /// </summary>
     public GrobType ResolvedReturnType { get; set; } = GrobType.Unknown;
 
+    /// <summary>
+    /// Set by the type checker when this call resolves to a primitive-receiver
+    /// instance-method call (D-066's compile-time-sugar model, <c>PrimitiveMemberRegistry</c>) —
+    /// the qualified native name (e.g. <c>"string.split"</c>) the compiler rewrites the
+    /// call to, receiver injected as arg[0]. <see langword="null"/> for every other call.
+    /// </summary>
+    public string? ResolvedPrimitiveNativeName { get; set; }
+
     /// <inheritdoc/>
     public override T Accept<T>(AstVisitor<T> visitor) => visitor.VisitCall(this);
 }
