@@ -231,6 +231,18 @@ public sealed class StringMethodsPluginTests {
     }
 
     [Fact]
+    public void Substring_StartOverflowsOnAddition_StillThrowsIndexError() {
+        // start + length must not wrap: long.MaxValue + 1 overflows to a negative value that
+        // would bypass an `start + length > Length` guard, letting Substring throw an uncoded
+        // CLR fault instead of E5101. The guard checks start against Length before subtracting.
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.substring", GrobValue.FromString("hi"),
+                GrobValue.FromInt(long.MaxValue), GrobValue.FromInt(1))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
     public void Repeat_RepeatsStringNTimes() {
         var vm = NewRegisteredVm();
         vm.Run(BuildCallChunk("string.repeat", GrobValue.FromString("ab"), GrobValue.FromInt(3)));

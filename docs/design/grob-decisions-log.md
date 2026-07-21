@@ -6039,7 +6039,7 @@ channel (D-351) so a chained index or `for...in` over the result resolves a real
 qualified natives, added to `PluginRegistration`'s composition-root list.
 `PrimitiveMemberRegistryAgreementTests` (`Grob.Integration.Tests`) is the third
 hand-table-vs-live-registration agreement test in the repo (after
-`ErrorCatalogAgreementTests`, D-308, and `NamedTypeRegistryAgreementTests`, D-361) —
+`ErrorCatalogAgreementTests` (D-308) and `NamedTypeRegistryAgreementTests` (D-361)) —
 a recording registrar diffs the compile-time registry against live `RegisterNative`
 calls both ways, the orphan side scoped to the `"string."` prefix so it does not
 flag unrelated natives registered by the same plugin list.

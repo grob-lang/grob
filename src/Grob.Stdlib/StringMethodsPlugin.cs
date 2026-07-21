@@ -85,7 +85,9 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         string s = receiver.AsString();
         long start = startArg.AsInt();
         long length = lengthArg.AsInt();
-        if (start < 0 || length < 0 || start + length > s.Length) {
+        // Compare start against Length before subtracting so `start + length` cannot wrap:
+        // long.MaxValue + 1 would overflow to a negative value and slip past an additive guard.
+        if (start < 0 || length < 0 || start > s.Length || length > s.Length - start) {
             throw new NativeFaultException("IndexError", ErrorCatalog.E5101.Code,
                 $"substring: start {start} and length {length} are out of range for a string of length {s.Length}.");
         }

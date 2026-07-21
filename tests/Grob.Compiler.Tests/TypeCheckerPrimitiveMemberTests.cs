@@ -104,6 +104,8 @@ public sealed class TypeCheckerPrimitiveMemberTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1002.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -166,6 +168,8 @@ public sealed class TypeCheckerPrimitiveMemberTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -177,6 +181,24 @@ public sealed class TypeCheckerPrimitiveMemberTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(26, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void NamedArgument_OnPrimitiveMember_ReportsSingleE0011() {
+        // The registry carries no parameter names, so a named argument cannot bind — and
+        // emission preserves source order, which would silently mis-order a swapped pair.
+        // Reject with E0011 (positional-only) rather than let it type-check as valid.
+        DiagnosticBag bag = Check("""
+            s := "abc"
+            readonly v := s.repeat(count: 3)
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(24, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
@@ -219,7 +241,9 @@ public sealed class TypeCheckerPrimitiveMemberTests {
             """);
 
         Diagnostic diag = Assert.Single(bag.Errors);
-        Assert.Equal("E0104", diag.Code);
+        Assert.Equal(ErrorCatalog.E0104.Code, diag.Code);
+        Assert.Equal(3, diag.Range.Start.Line);
+        Assert.Equal(5, diag.Range.Start.Column);
     }
 
     [Fact]

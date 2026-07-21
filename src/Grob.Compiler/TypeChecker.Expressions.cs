@@ -514,13 +514,7 @@ public sealed partial class TypeChecker {
     private void CheckNamedTypeMethodArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes,
             IReadOnlyList<NamedTypeParameter> expected, string canonicalName) {
-        if (argTypes.Length != expected.Count) {
-            string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
-            EmitError(ErrorCatalog.E0003,
-                $"'{memberAccess.Member}' expects {expected.Count} {Plural(expected.Count, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
-                node.Range);
-            return;
-        }
+        if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, expected.Count)) return;
         for (int i = 0; i < expected.Count; i++) {
             if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
             Expression argExpr = node.Arguments[i].Value;
@@ -577,13 +571,8 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckPrimitiveMemberArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, IReadOnlyList<GrobType> expected) {
-        if (argTypes.Length != expected.Count) {
-            string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
-            EmitError(ErrorCatalog.E0003,
-                $"'{memberAccess.Member}' expects {expected.Count} {Plural(expected.Count, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
-                node.Range);
-            return;
-        }
+        if (RejectNamedPrimitiveArgs(node, memberAccess)) return;
+        if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, expected.Count)) return;
         for (int i = 0; i < expected.Count; i++) {
             if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
             Expression argExpr = node.Arguments[i].Value;
@@ -593,6 +582,49 @@ public sealed partial class TypeChecker {
                     argExpr.Range);
             }
         }
+    }
+
+    /// <summary>
+    /// Shared arity guard for a member-call argument list — the named-type (D-356) and
+    /// primitive (D-066) receivers share this identical <see cref="ErrorCatalog.E0003"/>
+    /// shape. Factored out of <see cref="CheckNamedTypeMethodArgs"/> and
+    /// <see cref="CheckPrimitiveMemberArgs"/> so the two paths stay independent
+    /// (NominalSelf vs flat parameter kinds) without duplicating the diagnostic. Returns
+    /// <c>true</c> when the counts match and per-argument checking should proceed.
+    /// </summary>
+    private bool MemberArgCountMatches(
+            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int expectedCount) {
+        if (suppliedCount != expectedCount) {
+            string suppliedVerb = suppliedCount == 1 ? "was" : "were";
+            EmitError(ErrorCatalog.E0003,
+                $"'{memberAccess.Member}' expects {expectedCount} {Plural(expectedCount, ArgumentNoun)}, but {suppliedCount} {suppliedVerb} supplied.",
+                node.Range);
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Rejects named arguments on a primitive-member call with
+    /// <see cref="ErrorCatalog.E0011"/>. <see cref="PrimitiveMemberMethod"/> carries no
+    /// parameter names, so a named argument cannot bind — and emission preserves source
+    /// order, which would otherwise let a swapped pair (e.g. <c>s.replace(to: "b",
+    /// from: "a")</c>) pass the type checks yet call the native with mis-ordered
+    /// arguments. Primitive members are positional-only until D-358 adds parameter-name
+    /// binding. Returns <c>true</c> when at least one named argument was found, so the
+    /// caller suppresses the downstream arity/type checks (one diagnostic per root cause).
+    /// </summary>
+    private bool RejectNamedPrimitiveArgs(CallExpr node, MemberAccessExpr memberAccess) {
+        bool rejected = false;
+        foreach (CallArgument arg in node.Arguments) {
+            if (arg.Name is not null) {
+                EmitError(ErrorCatalog.E0011,
+                    $"'{memberAccess.Member}' does not accept named arguments; pass them positionally.",
+                    arg.Range);
+                rejected = true;
+            }
+        }
+        return rejected;
     }
 
     /// <summary>

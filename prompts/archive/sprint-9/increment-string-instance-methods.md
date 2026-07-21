@@ -49,8 +49,8 @@ Map on the live source tree and report:
 2. **Property access on a primitive** — `s.length` / `s.isEmpty` (no parens) versus a method
    call `s.trim()`. How the parser and type checker distinguish property from method access,
    so the registry can carry both (mirroring `NamedTypeProperty`/`NamedTypeMethod`).
-3. **The native-call emission shape** the rewrite reuses: D-342's "emit args, then
-   `GetGlobal` by qualified name, then `Call`". Confirm a rewritten `s.split(sep)` becomes a
+3. **The native-call emission shape** the rewrite reuses: D-342's "emit `GetGlobal` by
+   qualified name, then the receiver, then args, then `Call`". Confirm a rewritten `s.split(sep)` becomes a
    native call with the **receiver injected as arg[0]** (e.g. `string.split` invoked with
    `[s, sep]`), and that no new opcode is needed.
 4. **Where the runtime natives live.** `StringsPlugin` scopes instance methods out. Determine
@@ -85,7 +85,7 @@ not `NamedTypeMethod`'s `Bind(GrobStruct)` binder), so mirror the *shape*, not t
 **Include an (empty) `ParameterDefaults` field on the method entry now, even though this
 increment builds no default-parameter methods.** `NamedTypeMethod` already carries
 `ParameterDefaults` (`IReadOnlyList<GrobValue?>?`, added by C0c, `null` on every current
-entry) — mirroring it here, `null` for all 22 members, means D-358 is **purely additive**: it
+entry) — mirroring it here, `null` for all 19 methods, means D-358 is **purely additive**: it
 populates the field and wires the call-site synthesis for `padLeft`/`padRight`/`truncate`
 rather than having to alter this entry type after the fact. Do not build the synthesis
 mechanism here — the field is inert this increment (D-358 owns it).
@@ -94,7 +94,7 @@ mechanism here — the field is inert this increment (D-358 owns it).
   (receiver type, member) in the registry; resolve parameter/return types from the entry; set
   `CallExpr.ResolvedReturnType`. Property access resolves the property entry's type.
 - **Emission:** `VisitCall` (and the property path) rewrites `receiver.member(args)` to the
-  entry's native — emit receiver as arg[0], then args, then `GetGlobal` by qualified name, then
+  entry's native — emit `GetGlobal` by qualified name, then the receiver as arg[0], then args, then
   `Call` (D-342 shape). No new opcode.
 - **Runtime:** a plugin registers each native (`string.split`, `string.replace`, …), captured by
   the agreement test's recording registrar.
@@ -174,7 +174,7 @@ replace-**all**; `indexOf`/`lastIndexOf` return `-1` when absent; `substring` is
   `GrobType` × member, parallel to `NamedTypeRegistry`, its method entry mirroring
   `NamedTypeMethod`'s shape including an inert `ParameterDefaults` field so D-358 is additive); the `ResolveMemberAccessCall`
   primitive-value route and the `VisitCall` native rewrite (receiver as arg[0], no new opcode);
-  the 22-member no-default `string` surface delivered; `padLeft`/`padRight`/`truncate` deferred
+  the 21-member no-default `string` surface delivered; `padLeft`/`padRight`/`truncate` deferred
   to D-358; `CallExpr.ResolvedReturnType` wired for numeric returns; `IndexError` and the
   undefined-member code reused; the `PrimitiveMemberRegistryAgreementTests` added; and that this
   **closes the release-gate blocker** — the validation scripts' `.split`/`.replace`/`.contains`

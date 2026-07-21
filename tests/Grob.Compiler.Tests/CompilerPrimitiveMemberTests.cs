@@ -1,5 +1,6 @@
 using Grob.Compiler.Ast;
 using Grob.Core;
+using Grob.Core.PrimitiveMembers;
 using Xunit;
 
 using GrobCompiler = Grob.Compiler.Compiler;
@@ -173,6 +174,72 @@ public sealed class CompilerPrimitiveMemberTests {
         Assert.Equal("b", chunk.ReadConstant(instrs[idx + 3].Arg).AsString());
         Assert.Equal(OpCode.Call, instrs[idx + 4].Op);
         Assert.Equal(3, instrs[idx + 4].Arg);
+    }
+
+    // -----------------------------------------------------------------------
+    // Complete-chunk contract — the whole emitted instruction sequence, so a stray or
+    // reordered opcode around the dispatch cannot slip through a windowed spot-check.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ZeroArgMethod_EmitsExactCompleteInstructionSequence() {
+        Chunk chunk = SingleFunctionConstant(CompileSource("""
+            fn run(s: string): string {
+                return s.trim()
+            }
+            """)).Bytecode;
+        List<Instr> instrs = Decode(chunk);
+
+        Assert.Equal(
+            [OpCode.GetGlobal, OpCode.GetLocal, OpCode.Call, OpCode.Return, OpCode.Nil, OpCode.Return],
+            instrs.Select(i => i.Op));
+        Assert.Equal("string.trim", chunk.ReadConstant(instrs[0].Arg).AsString());
+        Assert.Equal(0, instrs[1].Arg);   // receiver injected as local slot 0
+        Assert.Equal(1, instrs[2].Arg);   // Call arity = receiver only
+    }
+
+    // -----------------------------------------------------------------------
+    // Every registered string member — each registry entry proves its qualified-native
+    // rewrite, receiver-first argument order and Call arity (data-driven off the registry
+    // so a new member is covered the moment it is registered).
+    // -----------------------------------------------------------------------
+
+    public static IEnumerable<object[]> AllStringMembers() {
+        PrimitiveMemberEntry entry = PrimitiveMemberRegistry.String;
+        foreach (PrimitiveMemberProperty p in entry.Properties.Values) {
+            yield return [$"v := s.{p.Name}", p.QualifiedNativeName, 1];
+        }
+        foreach (PrimitiveMemberMethod m in entry.Methods.Values) {
+            string args = string.Join(", ", m.ParameterTypes.Select(ArgLiteral));
+            yield return [$"s.{m.Name}({args})", m.QualifiedNativeName, m.ParameterTypes.Count + 1];
+        }
+    }
+
+    private static string ArgLiteral(GrobType parameterType) =>
+        parameterType == GrobType.Int ? "1" : "\"x\"";
+
+    [Theory]
+    [MemberData(nameof(AllStringMembers))]
+    public void EveryRegistryMember_LowersToQualifiedNativeReceiverFirstCall(
+            string statement, string qualifiedName, int expectedCallArity) {
+        Chunk chunk = SingleFunctionConstant(CompileSource($$"""
+            fn run(s: string): void {
+                {{statement}}
+            }
+            """)).Bytecode;
+        List<Instr> instrs = Decode(chunk);
+
+        Assert.DoesNotContain(instrs, i => i.Op == OpCode.GetProperty);
+
+        Instr getGlobal = Assert.Single(instrs, i => i.Op == OpCode.GetGlobal &&
+            chunk.ReadConstant(i.Arg).TryAsString(out string? s) && s == qualifiedName);
+        int idx = instrs.IndexOf(getGlobal);
+
+        Assert.Equal(OpCode.GetLocal, instrs[idx + 1].Op);
+        Assert.Equal(0, instrs[idx + 1].Arg);   // receiver injected as arg[0]
+
+        Instr call = Assert.Single(instrs, i => i.Op == OpCode.Call);
+        Assert.Equal(expectedCallArity, call.Arg);
     }
 
     // -----------------------------------------------------------------------

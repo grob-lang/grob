@@ -47,17 +47,19 @@ public sealed class Sprint9StringInstanceMethodsTests {
 
     [Fact]
     public void Replace_ReplacesEveryOccurrence() {
-        (string stdout, _, int exitCode) = RunSource("""print("x".replace("x", "y"))""" + "\n");
+        (string stdout, string stderr, int exitCode) = RunSource("""print("x".replace("x", "y"))""" + "\n");
 
         Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
         Assert.Equal("y" + Environment.NewLine, stdout);
     }
 
     [Fact]
     public void Contains_FindsSubstring() {
-        (string stdout, _, int exitCode) = RunSource("""print("abc".contains("b"))""" + "\n");
+        (string stdout, string stderr, int exitCode) = RunSource("""print("abc".contains("b"))""" + "\n");
 
         Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
         Assert.Equal("true" + Environment.NewLine, stdout);
     }
 
@@ -68,13 +70,14 @@ public sealed class Sprint9StringInstanceMethodsTests {
 
     [Fact]
     public void Length_And_TrimUpperChain_ProduceExpectedOutput() {
-        (string stdout, _, int exitCode) = RunSource("""
+        (string stdout, string stderr, int exitCode) = RunSource("""
             s := "  hello  "
             print(s.length)
             print(s.trim().upper())
             """);
 
         Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
         Assert.Equal($"9{Environment.NewLine}HELLO{Environment.NewLine}", stdout);
     }
 
@@ -84,17 +87,19 @@ public sealed class Sprint9StringInstanceMethodsTests {
 
     [Fact]
     public void ToInt_Unparseable_NullCoalescesToFallback() {
-        (string stdout, _, int exitCode) = RunSource("""print("nope".toInt() ?? -1)""" + "\n");
+        (string stdout, string stderr, int exitCode) = RunSource("""print("nope".toInt() ?? -1)""" + "\n");
 
         Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
         Assert.Equal("-1" + Environment.NewLine, stdout);
     }
 
     [Fact]
     public void Substring_OutOfRange_UncaughtIndexError_ExitsNonZero() {
-        (_, string stderr, int exitCode) = RunSource("""print("hi".substring(0, 10))""" + "\n");
+        (string stdout, string stderr, int exitCode) = RunSource("""print("hi".substring(0, 10))""" + "\n");
 
         Assert.NotEqual(0, exitCode);
+        Assert.Equal(string.Empty, stdout);
         Assert.Contains(ErrorCatalog.E5101.Code, stderr);
     }
 
