@@ -40,9 +40,9 @@ public static class PrimitiveMemberRegistry {
         _entries.TryGetValue(receiverType, out entry!);
 
     // -----------------------------------------------------------------------
-    // string — grob-type-registry.md's `string` section, no-default subset
-    // (padLeft/padRight/truncate excluded pending D-358's default-argument
-    // call-site synthesis).
+    // string — grob-type-registry.md's `string` section, now complete (D-365
+    // wires padLeft/padRight/truncate onto D-364's default-argument-fill
+    // mechanism, the second of its three designed consumers to be wired).
     // -----------------------------------------------------------------------
 
     private static PrimitiveMemberEntry BuildStringEntry() {
@@ -73,6 +73,15 @@ public static class PrimitiveMemberRegistry {
             ["left"] = new PrimitiveMemberMethod("left", [GrobType.Int], GrobType.String, "string.left"),
             ["right"] = new PrimitiveMemberMethod("right", [GrobType.Int], GrobType.String, "string.right"),
             ["toString"] = new PrimitiveMemberMethod("toString", [], GrobType.String, "string.toString"),
+            ["padLeft"] = new PrimitiveMemberMethod(
+                "padLeft", [GrobType.Int, GrobType.String], GrobType.String, "string.padLeft",
+                [null, GrobValue.FromString(" ")]),
+            ["padRight"] = new PrimitiveMemberMethod(
+                "padRight", [GrobType.Int, GrobType.String], GrobType.String, "string.padRight",
+                [null, GrobValue.FromString(" ")]),
+            ["truncate"] = new PrimitiveMemberMethod(
+                "truncate", [GrobType.Int, GrobType.String], GrobType.String, "string.truncate",
+                [null, GrobValue.FromString("...")]),
         };
 
         return new PrimitiveMemberEntry(GrobType.String, properties, methods);

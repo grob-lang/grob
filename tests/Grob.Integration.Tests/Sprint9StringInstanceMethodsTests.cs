@@ -117,4 +117,64 @@ public sealed class Sprint9StringInstanceMethodsTests {
         Assert.Equal(string.Empty, stderr);
         Assert.Equal("caught" + Environment.NewLine, stdout);
     }
+
+    // -----------------------------------------------------------------------
+    // padLeft/padRight/truncate (D-365) — end to end with and without the
+    // optional trailing argument, proving the compiler's default-argument
+    // fill against the real runtime natives.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void PadLeft_WithoutOptionalChar_PadsWithSpace() {
+        (string stdout, string stderr, int exitCode) = RunSource("""print("7".padLeft(3))""" + "\n");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal("  7" + Environment.NewLine, stdout);
+    }
+
+    [Fact]
+    public void PadLeft_WithOptionalChar_PadsWithSuppliedChar() {
+        (string stdout, string stderr, int exitCode) = RunSource("""print("7".padLeft(3, "0"))""" + "\n");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal("007" + Environment.NewLine, stdout);
+    }
+
+    [Fact]
+    public void PadRight_WithoutOptionalChar_PadsWithSpace() {
+        (string stdout, string stderr, int exitCode) = RunSource("""print("7".padRight(3))""" + "\n");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal("7  " + Environment.NewLine, stdout);
+    }
+
+    [Fact]
+    public void PadRight_WithOptionalChar_PadsWithSuppliedChar() {
+        (string stdout, string stderr, int exitCode) = RunSource("""print("7".padRight(3, "0"))""" + "\n");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal("700" + Environment.NewLine, stdout);
+    }
+
+    [Fact]
+    public void Truncate_WithoutOptionalSuffix_UsesDefaultEllipsis() {
+        (string stdout, string stderr, int exitCode) = RunSource("""print("hello world".truncate(8))""" + "\n");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal("hello..." + Environment.NewLine, stdout);
+    }
+
+    [Fact]
+    public void Truncate_WithOptionalSuffix_UsesSuppliedSuffix() {
+        (string stdout, string stderr, int exitCode) = RunSource("""print("hello world".truncate(8, "-"))""" + "\n");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal("hello w-" + Environment.NewLine, stdout);
+    }
 }

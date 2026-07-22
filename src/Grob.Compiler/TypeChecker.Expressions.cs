@@ -552,9 +552,10 @@ public sealed partial class TypeChecker {
                 $"Type '{TypeName(entry.ReceiverType)}' has no member '{memberAccess.Member}'.",
                 memberAccess.Range);
         }
-        CheckPrimitiveMemberArgs(node, memberAccess, argTypes, method.ParameterTypes);
+        CheckPrimitiveMemberArgs(node, memberAccess, argTypes, method.ParameterTypes, method.ParameterDefaults);
         node.ResolvedReturnType = method.ReturnType;
         node.ResolvedPrimitiveNativeName = method.QualifiedNativeName;
+        node.ResolvedPrimitiveParameterDefaults = method.ParameterDefaults;
         if (method.ReturnType == GrobType.Array) {
             _callResultArrayDescriptors[node] = new ArrayTypeDescriptor(GrobType.String, null, null);
         }
@@ -563,17 +564,22 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Checks a primitive-member method call's argument list against
-    /// <paramref name="expected"/> — arity (<see cref="ErrorCatalog.E0003"/>) then
-    /// per-argument type (<see cref="ErrorCatalog.E0004"/>). The primitive analogue of
-    /// <see cref="CheckNamedTypeMethodArgs"/>, minus the <c>NominalSelf</c> parameter
-    /// kind — no primitive parameter in the current surface needs "must be this exact
-    /// nominal type" (every parameter is a flat <see cref="GrobType"/>).
+    /// <paramref name="expected"/> — a required-to-full arity range (<see
+    /// cref="ErrorCatalog.E0003"/>, D-365 generalising the previous exact-match check the
+    /// same way <see cref="CheckNativeCall"/> already does for namespace natives) then
+    /// per-argument type (<see cref="ErrorCatalog.E0004"/>) over only the arguments
+    /// actually supplied. The primitive analogue of <see cref="CheckNamedTypeMethodArgs"/>,
+    /// minus the <c>NominalSelf</c> parameter kind — no primitive parameter in the current
+    /// surface needs "must be this exact nominal type" (every parameter is a flat
+    /// <see cref="GrobType"/>).
     /// </summary>
     private void CheckPrimitiveMemberArgs(
-            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, IReadOnlyList<GrobType> expected) {
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes,
+            IReadOnlyList<GrobType> expected, IReadOnlyList<GrobValue?>? parameterDefaults) {
         if (RejectNamedPrimitiveArgs(node, memberAccess)) return;
-        if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, expected.Count)) return;
-        for (int i = 0; i < expected.Count; i++) {
+        int requiredCount = RequiredArgumentCount(expected.Count, parameterDefaults);
+        if (!MemberArgCountInRange(node, memberAccess, argTypes.Length, requiredCount, expected.Count)) return;
+        for (int i = 0; i < argTypes.Length; i++) {
             if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
             Expression argExpr = node.Arguments[i].Value;
             if (!TypesAreAssignable(argTypes[i], expected[i])) {
@@ -585,19 +591,32 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Shared arity guard for a member-call argument list — the named-type (D-356) and
-    /// primitive (D-066) receivers share this identical <see cref="ErrorCatalog.E0003"/>
-    /// shape. Factored out of <see cref="CheckNamedTypeMethodArgs"/> and
-    /// <see cref="CheckPrimitiveMemberArgs"/> so the two paths stay independent
-    /// (NominalSelf vs flat parameter kinds) without duplicating the diagnostic. Returns
-    /// <c>true</c> when the counts match and per-argument checking should proceed.
+    /// Shared exact-arity guard for a member-call argument list — the named-type (D-356)
+    /// path, which declares no defaults today. A thin wrapper over
+    /// <see cref="MemberArgCountInRange"/> with <c>required == full == expectedCount</c>,
+    /// so its message and behaviour are unchanged from before D-365.
     /// </summary>
     private bool MemberArgCountMatches(
-            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int expectedCount) {
-        if (suppliedCount != expectedCount) {
+            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int expectedCount) =>
+        MemberArgCountInRange(node, memberAccess, suppliedCount, expectedCount, expectedCount);
+
+    /// <summary>
+    /// Shared required-to-full arity guard for a member-call argument list (<see
+    /// cref="ErrorCatalog.E0003"/>) — the named-type (D-356) and primitive (D-066/D-365)
+    /// receivers share this shape, mirroring <see cref="CheckNativeCall"/>'s namespace-native
+    /// range check and its "between X and Y arguments" phrasing when the range is not a
+    /// single value. Returns <c>true</c> when the supplied count falls within range and
+    /// per-argument checking should proceed.
+    /// </summary>
+    private bool MemberArgCountInRange(
+            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int requiredCount, int fullArity) {
+        if (suppliedCount < requiredCount || suppliedCount > fullArity) {
             string suppliedVerb = suppliedCount == 1 ? "was" : "were";
+            string expectedPhrase = requiredCount == fullArity
+                ? $"{fullArity} {Plural(fullArity, ArgumentNoun)}"
+                : $"between {requiredCount} and {fullArity} {ArgumentNoun}s";
             EmitError(ErrorCatalog.E0003,
-                $"'{memberAccess.Member}' expects {expectedCount} {Plural(expectedCount, ArgumentNoun)}, but {suppliedCount} {suppliedVerb} supplied.",
+                $"'{memberAccess.Member}' expects {expectedPhrase}, but {suppliedCount} {suppliedVerb} supplied.",
                 node.Range);
             return false;
         }
@@ -1439,7 +1458,7 @@ public sealed partial class TypeChecker {
         }
 
         int fullArity = member.ParameterTypes.Count;
-        int requiredCount = RequiredArgumentCount(member);
+        int requiredCount = RequiredArgumentCount(fullArity, member.ParameterDefaults);
         if (argTypes.Length < requiredCount || argTypes.Length > fullArity) {
             string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
             string expectedPhrase = requiredCount == fullArity
@@ -1458,15 +1477,19 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// The minimum argument count <paramref name="member"/> requires — its full arity when
-    /// it declares no defaults, or the count remaining after walking back over the
-    /// contiguous trailing run of non-null <see
-    /// cref="NamespaceRegistry.NativeMember.ParameterDefaults"/> entries (D-358's "optional
-    /// trailing parameters" shape; defaults are never declared for a leading parameter).
+    /// The minimum argument count a member with <paramref name="fullArity"/> declared
+    /// parameters requires — <paramref name="fullArity"/> itself when it declares no
+    /// defaults, or the count remaining after walking back over the contiguous trailing
+    /// run of non-null <paramref name="defaults"/> entries (D-358's "optional trailing
+    /// parameters" shape; defaults are never declared for a leading parameter). Shared by
+    /// the namespace-native (<see cref="NamespaceRegistry.NativeMember"/>) and
+    /// primitive-member (<c>PrimitiveMemberMethod</c>, D-365) call paths — promoted from a
+    /// namespace-native-only helper so the required/full range rule has one implementation
+    /// rather than a second copy per registry shape.
     /// </summary>
-    private static int RequiredArgumentCount(NamespaceRegistry.NativeMember member) {
-        int required = member.ParameterTypes.Count;
-        if (member.ParameterDefaults is not { } defaults) return required;
+    private static int RequiredArgumentCount(int fullArity, IReadOnlyList<GrobValue?>? defaults) {
+        int required = fullArity;
+        if (defaults is null) return required;
         while (required > 0 && defaults[required - 1] is not null) required--;
         return required;
     }

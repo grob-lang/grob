@@ -360,6 +360,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-362 | July 2026                                                          | Compiler — type checking / bytecode emission | Closes D-360's `CallExpr` residue: `GetExprType` previously resolved a call's return type only through a bare identifier bound to a user `FnDecl`, so a native/stdlib call, a function-typed-variable call or a nominal-type-method call used as an arithmetic operand silently selected `AddInt` instead of `AddFloat`. New `CallExpr.ResolvedReturnType` (mirrors `IndexExpr.ElementType`/`MemberAccessExpr.ResolvedFieldType`) is populated at all three real sub-cases; `GetExprType`'s arm collapses to `c => c.ResolvedReturnType`. Corrects the kickoff prompt's four-sub-case premise to three (member-access and nominal-type-method calls are the same code path) and names the advertised-but-unbuilt `float`/`int` instance-method surface as out of scope, flagged with a `grob-type-registry.md` build-status note rather than built. Names a third permissive-Unknown source D-360's gate text missed — a void-returning call (`arr.each()`) — alongside D-359's map-element and D-360's Unknown-receiver-field latitude; none hardened into a failure. `EmitArithmetic` gains a narrow defensive guard (`InvalidOperationException`, `[ExcludeFromCodeCoverage]`) specific to the `StructConstructionExpr`/`LambdaExpr` pair the type checker already proves unreachable via E0002 — not a general allow-list assert, deliberately. Two side-findings logged for future increments: the unbuilt numeric-method surface, and `arr.each(fn)` as an arithmetic operand arguably warranting a type-checker E0002 rejection. No new opcode, no new error code; count unchanged at 118 |
 | D-363 | July 2026                                                          | Compiler / Type checker / Runtime — primitive-method dispatch | Implements D-066's primitive-method-as-compile-time-sugar model, proven on `string` — the compile-time dispatch mechanism D-362 found entirely unbuilt. New `PrimitiveMemberRegistry` (`Grob.Core.PrimitiveMembers`), keyed on primitive `GrobType` × member name, parallel to `NamedTypeRegistry` (D-361) — its method entry mirrors `NamedTypeMethod`'s shape (including an inert `ParameterDefaults` field so D-358 lands additively) but drops `Bind`/`ReturnsNominalSelf` and the `NominalSelf` parameter kind, none applicable to a primitive receiver. `ResolveMemberAccessCall`/`VisitMemberAccess` gain a primitive-value-receiver arm; `VisitCall`/`VisitMemberAccess` (`Compiler.Expressions.cs`) rewrite a resolved access to `GetGlobal`-then-`Call` against the qualified native, receiver injected as arg[0] — the D-342 namespace-native shape, not D-356/D-361's `GetProperty`+`Bind` (primitives are never `GrobValueKind.Struct`). No new opcode. Delivers the 21-member no-default `string` surface (2 properties, 19 methods); `padLeft`/`padRight`/`truncate` deferred to D-358 (default parameters). `CallExpr.ResolvedReturnType`/`MemberAccessExpr.ResolvedFieldType` wired for every member, including `split`'s array-element type via the existing `_callResultArrayDescriptors` channel (D-351) so a chained index/for-in resolves `string`, not `Unknown`. `toInt`/`toFloat` return `int?`/`float?` (nil on parse failure, mirroring `env.get`); `substring`/`left`/`right` throw the existing `IndexError`/`E5101` through the native-throw seam — its first stdlib-plugin use, no new code. Undefined-member reuses `E1002`. New `StringMethodsPlugin` (`Grob.Stdlib`) registers the natives; `PrimitiveMemberRegistryAgreementTests` (`Grob.Integration.Tests`) diffs the compile-time table against live registration. Closes the release-gate blocker — the validation scripts' `.split`/`.replace`/`.contains` now dispatch. `int`/`float`/`bool` instance methods and `int.min`/`float.clamp` static functions are the same mechanism, follow-on increments. No new opcode, no new error code; count unchanged at 118 |
 | D-364 | July 2026                                                          | Compiler — native default arguments | Builds D-358's default-argument mechanism and lands `date.parse`'s optional `pattern` argument on it. `NamespaceRegistry.NativeMember` gains a `ParameterDefaults` field (mirroring `NamedTypeMethod`/`PrimitiveMemberMethod`, D-361/D-363's inert precedent). New `NativeDefaultArgumentFill` (`Grob.Compiler`) is the branch-agnostic `(supplied, arity, defaults)` synthesis helper, generalising D-344's `input()` one-off constant-fill arm and reusing D-345's `formatAs` synthesised-constant-injection shape. `CheckNativeCall` (`TypeChecker.Expressions.cs`) accepts a required-to-full argument-count range instead of an exact match when a native declares defaults — `E0003` below the required count, unchanged exact-count wording and behaviour for the other 50 existing entries with no defaults. `VisitCall` (`Compiler.Expressions.cs`) gains a namespace-native default-fill branch that emits the supplied arguments, then `EmitConstant`s the missing trailing defaults in order, then `Call` with the native's full declared arity — wired for the namespace-native path only. `date.parse(input: string, pattern: string = "")` is the proving case: empty pattern keeps the existing ISO-8601 `TryParse` behaviour unchanged, a non-empty pattern selects `DateTimeOffset.ParseExact`; failure reuses `E5702` (D-284) unchanged. The primitive-member and named-type-method branches can call the same helper once they carry default metadata of their own; `fs.copy`/`fs.move`'s `overwrite: bool = false` (Increment C) rides it next. No new opcode, no new error code; count unchanged at 118 |
+| D-365 | July 2026                                                          | Compiler / Type checker / Stdlib — primitive-member default arguments | Wires D-364's `NativeDefaultArgumentFill` into the primitive-member call path — the second of its three designed consumers to be wired — landing the three `string` methods D-363 deferred: `padLeft`/`padRight`/`truncate`. `PrimitiveMemberRegistry` populates their previously inert `ParameterDefaults`. `RequiredArgumentCount` (D-364) promoted from a `NamespaceRegistry.NativeMember`-only helper to `(fullArity, defaults)`, reused rather than duplicated; `CheckPrimitiveMemberArgs` gains a new shared `MemberArgCountInRange` (D-356's exact-match `MemberArgCountMatches` now a thin wrapper over it, unchanged behaviour), and its E0004 loop bound changes from declared arity to supplied count. `CallExpr.ResolvedPrimitiveParameterDefaults` (new side channel, mirrors `ResolvedPrimitiveNativeName`) carries the resolved defaults to `EmitPrimitiveMemberCall`, which computes the full arity, calls `NativeDefaultArgumentFill.Resolve`, and emits `Call` with the full arity plus receiver — a no-op change in shape for every no-default method. Pinned edge cases (registry silent): `truncate`'s `maxLength` is the total result length including the suffix, clamped to the suffix itself when `maxLength` doesn't exceed it (including negative); `padLeft`/`padRight`'s `width` no larger than the input (including negative) returns the input unchanged; a multi-character pad `char` uses its first character, an empty one falls back to a space. `string` surface now complete (24 members: 2 properties, 22 methods). No new opcode, no new error code; count unchanged at 118 |
 
 
 ---
@@ -6151,6 +6152,88 @@ that one, actually populates).
 
 ---
 
+### D-365 — Default-parameter methods land on the primitive-member path: `padLeft`/`padRight`/`truncate` (July 2026)
+
+Area: Compiler / Type checker / Stdlib — primitive-member default arguments
+Supersedes: none
+Superseded by: none
+Refines: D-363, D-364, D-358, D-066
+
+**The decision.** Wires D-364's `NativeDefaultArgumentFill` into the primitive-member
+call path — the second of its three designed consumers to be wired (the namespace-native
+path, `date.parse`, was the first; `NamedTypeMethod` remains the third, still unwired) —
+and lands the three `string` methods D-363 deferred for
+exactly this reason: `padLeft(width: int, char: string = " ")`,
+`padRight(width: int, char: string = " ")` and
+`truncate(maxLength: int, suffix: string = "...")`. Pure application: the registry
+field, the synthesis helper and the required/full arity concept all already existed;
+this increment populates and wires them onto the second branch, closing the documented
+`string` surface completely (24 members: 2 properties, 22 methods).
+
+**The registry.** `PrimitiveMemberRegistry.BuildStringEntry` (`Grob.Core`) populates
+`ParameterDefaults` — inert since D-363 — on the three new method entries:
+`[null, GrobValue.FromString(" ")]` for `padLeft`/`padRight`,
+`[null, GrobValue.FromString("...")]` for `truncate`.
+
+**`RequiredArgumentCount` promoted, not duplicated.** The helper D-364 introduced was
+`private`, hard-typed to `NamespaceRegistry.NativeMember`. Rather than write a second
+copy for `PrimitiveMemberMethod`, its signature is promoted to
+`(int fullArity, IReadOnlyList<GrobValue?>? defaults)`, decoupled from either registry
+shape; `CheckNativeCall`'s one call site is updated to pass
+`member.ParameterTypes.Count, member.ParameterDefaults` and behaves identically. One
+implementation for the required-to-full range rule, reused by both call paths.
+
+**The type-checker change.** `CheckPrimitiveMemberArgs` (`TypeChecker.Expressions.cs`)
+gains the same required-to-full range `CheckNativeCall` already had: a new
+`MemberArgCountInRange` (shared by the named-type path too, `MemberArgCountMatches` now
+a thin wrapper over it with `required == full`, so its exact-match message and
+behaviour for the 19 no-default `string` methods and the named-type path are
+byte-for-byte unchanged) replaces the previous hard exact-match, reporting "expects
+between `X` and `Y` arguments" when a method declares defaults. The per-argument
+E0004 loop's bound changes from the declared arity to the supplied count — the
+previous bound would have indexed past a short argument list once arity became
+optional. `ValidatePrimitiveMemberCall` threads the resolved method's
+`ParameterDefaults` onto a new `CallExpr.ResolvedPrimitiveParameterDefaults` field,
+mirroring the existing `ResolvedPrimitiveNativeName` side channel — `null` whenever the
+resolved method declares no defaults or the call is not a primitive-member call.
+
+**The compiler emission.** `EmitPrimitiveMemberCall` (`Compiler.Expressions.cs`) reads
+the new field to compute the full arity (`ResolvedPrimitiveParameterDefaults?.Count ??
+node.Arguments.Count`), calls `NativeDefaultArgumentFill.Resolve` after emitting the
+supplied arguments, `EmitConstant`s each returned default, and writes `Call`'s operand
+as the full arity plus the receiver — not the source call's own argument count, the
+previous unconditional operand (a latent bug the moment arity became optional, though
+never reachable before this increment since no primitive member declared defaults).
+A no-op change in shape for every one of the 19 no-default methods, where full arity
+always equals the supplied count.
+
+**Pinned edge-case semantics** (the registry and `grob-type-registry.md` were silent on
+these). `truncate`'s `maxLength` is the total result length including the suffix —
+the result never exceeds it, unlike a pre-suffix cut which could produce a result
+longer than the input. When `maxLength` does not exceed the suffix's own length
+(including a negative `maxLength`), the result is the suffix itself clamped to
+`maxLength` characters (empty at `maxLength <= 0`) rather than a fault. `padLeft`/
+`padRight`'s `width` no larger than the input (including negative) returns the input
+unchanged, matching .NET's own `PadLeft`/`PadRight` no-op convention at
+`totalWidth <= Length` (the implementation clamps explicitly rather than relying on
+`.PadLeft`'s own negative-argument behaviour). A multi-character `char` argument uses
+only its first character; an empty `char` argument falls back to a space. None of
+these needed a new runtime error.
+
+No new opcode (`EmitConstant` reused). No new error code (arity via existing `E0003`,
+argument types via `E0004`). `NamedTypeMethod` remains the one branch of
+`NativeDefaultArgumentFill`'s three designed consumers still unwired, pending a nominal
+method that declares defaults. Count unchanged at 118.
+
+Full detail: `prompts/archive/sprint-9/increment-string-default-parameter-methods.md`
+(the source prompt), D-363 (the `string` no-default surface and the inert
+`ParameterDefaults` field this populates), D-364 (`NativeDefaultArgumentFill` and its
+namespace-native proving case, the first of its three consumers), D-358 (the ratified
+default-argument design), D-066 (the primitive-method-as-compile-time-sugar model both
+this and D-363 implement).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -6373,7 +6456,28 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Native default arguments: D-364 added. Builds D-358's default-argument_
+_July 2026 — Primitive-member default arguments: D-365 added. Wires D-364's_
+_NativeDefaultArgumentFill into the primitive-member call path — the second of its three_
+_designed consumers to be wired — landing padLeft/padRight/truncate, the three string methods_
+_D-363 deferred. PrimitiveMemberRegistry populates their previously inert_
+_ParameterDefaults. RequiredArgumentCount (D-364) promoted from a_
+_NamespaceRegistry.NativeMember-only helper to (fullArity, defaults), reused rather_
+_than duplicated. CheckPrimitiveMemberArgs gains a shared MemberArgCountInRange_
+_(MemberArgCountMatches now a thin wrapper over it, unchanged behaviour for the_
+_named-type path and the 19 no-default string methods); its E0004 loop bound changes_
+_from declared arity to supplied count. CallExpr.ResolvedPrimitiveParameterDefaults_
+_(new side channel, mirrors ResolvedPrimitiveNativeName) carries the resolved defaults_
+_to EmitPrimitiveMemberCall, which computes the full arity, calls_
+_NativeDefaultArgumentFill.Resolve, and emits Call with the full arity plus receiver —_
+_a no-op change in shape for every no-default method. Pinned edge cases: truncate's_
+_maxLength is the total result length including the suffix, clamped to the suffix_
+_itself when maxLength doesn't exceed it (including negative); padLeft/padRight's_
+_width no larger than the input (including negative) returns the input unchanged; a_
+_multi-character pad char uses its first character, an empty one falls back to a_
+_space. string surface now complete (24 members: 2 properties, 22 methods)._
+_NamedTypeMethod remains the one branch still unwired. No new opcode, no new error_
+_code; count unchanged at 118._
+_Previous: July 2026 — Native default arguments: D-364 added. Builds D-358's default-argument_
 _mechanism and lands date.parse's optional pattern argument on it._
 _NamespaceRegistry.NativeMember gains a ParameterDefaults field (mirroring_
 _NamedTypeMethod/PrimitiveMemberMethod, D-361/D-363's inert precedent). New_

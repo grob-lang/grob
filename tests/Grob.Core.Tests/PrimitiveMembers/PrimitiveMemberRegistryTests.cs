@@ -69,10 +69,40 @@ public sealed class PrimitiveMemberRegistryTests {
         Assert.Null(method.ParameterDefaults);
     }
 
+    // -----------------------------------------------------------------------
+    // padLeft/padRight/truncate — the three default-parameter methods D-358's
+    // NativeDefaultArgumentFill mechanism unblocks (D-365).
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("padLeft", new[] { GrobType.Int, GrobType.String }, GrobType.String, "string.padLeft")]
+    [InlineData("padRight", new[] { GrobType.Int, GrobType.String }, GrobType.String, "string.padRight")]
+    [InlineData("truncate", new[] { GrobType.Int, GrobType.String }, GrobType.String, "string.truncate")]
+    public void StringMethods_WithDefaultParameter_HaveDeclaredSignature(
+            string name, GrobType[] parameterTypes, GrobType returnType, string qualifiedNativeName) {
+        PrimitiveMemberMethod method = PrimitiveMemberRegistry.String.Methods[name];
+        Assert.Equal(name, method.Name);
+        Assert.Equal(parameterTypes, method.ParameterTypes);
+        Assert.Equal(returnType, method.ReturnType);
+        Assert.Equal(qualifiedNativeName, method.QualifiedNativeName);
+    }
+
+    [Theory]
+    [InlineData("padLeft", " ")]
+    [InlineData("padRight", " ")]
+    [InlineData("truncate", "...")]
+    public void StringMethods_WithDefaultParameter_HaveDeclaredParameterDefault(string name, string expectedDefault) {
+        PrimitiveMemberMethod method = PrimitiveMemberRegistry.String.Methods[name];
+        Assert.NotNull(method.ParameterDefaults);
+        Assert.Equal(2, method.ParameterDefaults!.Count);
+        Assert.Null(method.ParameterDefaults[0]);
+        Assert.Equal(GrobValue.FromString(expectedDefault), method.ParameterDefaults[1]);
+    }
+
     [Fact]
-    public void StringEntry_HasExactlyTwoPropertiesAndNineteenMethods() {
+    public void StringEntry_HasExactlyTwoPropertiesAndTwentyTwoMethods() {
         Assert.Equal(2, PrimitiveMemberRegistry.String.Properties.Count);
-        Assert.Equal(19, PrimitiveMemberRegistry.String.Methods.Count);
+        Assert.Equal(22, PrimitiveMemberRegistry.String.Methods.Count);
     }
 
     [Fact]
@@ -83,7 +113,7 @@ public sealed class PrimitiveMemberRegistryTests {
             .ToList();
         var actual = PrimitiveMemberRegistry.AllQualifiedNativeNames.OrderBy(n => n, StringComparer.Ordinal).ToList();
 
-        Assert.Equal(21, actual.Count);
+        Assert.Equal(24, actual.Count);
         Assert.Equal(actual.Count, actual.Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(expected, actual);
     }

@@ -831,10 +831,17 @@ public sealed partial class Compiler {
     /// "&lt;qualified native&gt;"</c> (the callee, pushed first — the same shape every
     /// namespace-qualified native call already uses), the receiver
     /// (<paramref name="callee"/>'s target), then the call's own arguments in source
-    /// order, then <see cref="OpCode.Call"/> with an operand of <c>1 + argument count</c>
-    /// (receiver plus the declared parameters). No <see cref="OpCode.GetProperty"/> is
-    /// emitted — a primitive receiver is never <see cref="GrobValueKind.Struct"/>, so
-    /// that opcode has no dispatch for it.
+    /// order. When <see cref="CallExpr.ResolvedPrimitiveParameterDefaults"/> is set and the
+    /// call under-supplies (<c>padLeft</c>/<c>padRight</c>/<c>truncate</c>, D-365), the
+    /// trailing defaults <see cref="NativeDefaultArgumentFill.Resolve"/> returns are emitted
+    /// as further <c>Constant</c>s before <see cref="OpCode.Call"/> — the same "inject a
+    /// synthesised constant argument" shape the namespace-native arm above uses for
+    /// <c>date.parse</c> (D-364). <see cref="OpCode.Call"/>'s operand is therefore the full
+    /// declared arity plus the receiver, not the source call's own argument count — a no-op
+    /// change in shape for every method with no declared defaults, where full arity always
+    /// equals the supplied count. No <see cref="OpCode.GetProperty"/> is emitted — a
+    /// primitive receiver is never <see cref="GrobValueKind.Struct"/>, so that opcode has no
+    /// dispatch for it.
     /// </summary>
     private void EmitPrimitiveMemberCall(CallExpr node, MemberAccessExpr callee, string qualifiedNativeName, int line) {
         int qualifiedIdx = _chunk.AddConstant(GrobValue.FromString(qualifiedNativeName));
@@ -844,8 +851,14 @@ public sealed partial class Compiler {
         Visit(callee.Target);
         foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
 
+        int fullArity = node.ResolvedPrimitiveParameterDefaults?.Count ?? node.Arguments.Count;
+        foreach (GrobValue value in NativeDefaultArgumentFill.Resolve(
+                node.Arguments.Count, fullArity, node.ResolvedPrimitiveParameterDefaults)) {
+            EmitConstant(value, line);
+        }
+
         _chunk.WriteOpCode(OpCode.Call, line);
-        _chunk.WriteByte(ToByteOperand(node.Arguments.Count + 1, CallArgumentCountOperand), line);
+        _chunk.WriteByte(ToByteOperand(fullArity + 1, CallArgumentCountOperand), line);
     }
 
     /// <summary>
