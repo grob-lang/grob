@@ -96,6 +96,10 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
     /// while still being cheap for an adversarial input to exceed.</summary>
     private const int MaxAllocationLength = 10_000_000;
 
+    /// <summary>The <c>GrobError</c> leaf every range-bound <c>string</c> member raises through
+    /// the native-throw seam (Sonar S1192: one spelling, not five literal repetitions).</summary>
+    private const string IndexErrorLeaf = "IndexError";
+
     private static GrobValue PadLeft(GrobValue receiver, GrobValue widthArg, GrobValue charArg) {
         string s = receiver.AsString();
         long width = widthArg.AsInt();
@@ -122,7 +126,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
     /// raise.</summary>
     private static void RejectOversizedWidth(string method, long width) {
         if (width > MaxAllocationLength) {
-            throw new NativeFaultException("IndexError", ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
                 $"{method}: width {width} exceeds the maximum supported value {MaxAllocationLength}.");
         }
     }
@@ -164,7 +168,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         // Compare start against Length before subtracting so `start + length` cannot wrap:
         // long.MaxValue + 1 would overflow to a negative value and slip past an additive guard.
         if (start < 0 || length < 0 || start > s.Length || length > s.Length - start) {
-            throw new NativeFaultException("IndexError", ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
                 $"substring: start {start} and length {length} are out of range for a string of length {s.Length}.");
         }
         return GrobValue.FromString(s.Substring((int)start, (int)length));
@@ -187,7 +191,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
     /// treatment of the same allocation-ceiling class for <c>padLeft</c>/<c>padRight</c>.</summary>
     private static void RejectOversizedRepeat(int length, long count) {
         if (length > 0 && count > MaxAllocationLength / length) {
-            throw new NativeFaultException("IndexError", ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
                 $"repeat: result length exceeds the maximum supported value {MaxAllocationLength}.");
         }
     }
@@ -196,7 +200,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         string s = receiver.AsString();
         long n = nArg.AsInt();
         if (n < 0 || n > s.Length) {
-            throw new NativeFaultException("IndexError", ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
                 $"left: {n} exceeds string length {s.Length}.");
         }
         return GrobValue.FromString(s[..(int)n]);
@@ -206,7 +210,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         string s = receiver.AsString();
         long n = nArg.AsInt();
         if (n < 0 || n > s.Length) {
-            throw new NativeFaultException("IndexError", ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
                 $"right: {n} exceeds string length {s.Length}.");
         }
         return GrobValue.FromString(s[(s.Length - (int)n)..]);
