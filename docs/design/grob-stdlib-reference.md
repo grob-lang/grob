@@ -383,7 +383,7 @@ today := date.today()         // date only, time zeroed
 d := date.of(2026, 4, 5)
 t := date.ofTime(2026, 4, 5, 14, 30, 0)
 
-// Parsing
+// Parsing — pattern is an optional trailing argument (D-358/D-364)
 d := date.parse("2026-04-05")               // ISO 8601 default
 d := date.parse("05/04/2026", "dd/MM/yyyy") // explicit pattern
 
@@ -442,8 +442,9 @@ date.today().daysSince(created)   // same result, different direction
 
 - `date.now()` and `date.today()` return local time.
 - `date.of()` and `date.ofTime()` construct local time values.
-- `date.parse()` with an ISO 8601 string preserves the timezone from the string.
-  A string with no timezone offset is interpreted as local time.
+- `date.parse()` with no pattern argument (or an empty one) parses ISO 8601 and
+  preserves the timezone from the string. A string with no timezone offset is
+  interpreted as local time. A non-empty pattern parses via an exact match instead.
 - Use `toUtc()`, `toLocal()`, `toZone()` to convert between timezones.
 - `date.fromUnixSeconds()` and `date.fromUnixMillis()` return UTC values.
 

@@ -140,6 +140,76 @@ public sealed class TypeCheckerDateTests {
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
     }
 
+    // -----------------------------------------------------------------------
+    // parse()'s optional pattern argument (D-358) — a defaulted trailing
+    // parameter on a namespace native. Proves CheckNativeCall's required/full
+    // arity range: 1 argument (the pre-D-358 form) and 2 (input + pattern) are
+    // both valid; 0 and 3 are E0003; a supplied pattern is still type-checked.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Parse_CallWithPattern_ResolvesToStruct_NoDiagnostics() {
+        DiagnosticBag bag = Check("""readonly d := date.parse("05/04/2026", "dd/MM/yyyy")""");
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+    }
+
+    [Fact]
+    public void Parse_ZeroArguments_ReportsSingleE0003WithRangeMessage() {
+        DiagnosticBag bag = Check("readonly x := date.parse()");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal("'date.parse' expects between 1 and 2 arguments, but 0 were supplied.", diag.Message);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Parse_ThreeArguments_ReportsSingleE0003WithRangeMessage() {
+        DiagnosticBag bag = Check("""readonly x := date.parse("a", "b", "c")""");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal("'date.parse' expects between 1 and 2 arguments, but 3 were supplied.", diag.Message);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Parse_RegistryEntry_DoesNotDeclareVariadicElementType() {
+        // Defaults and a variadic tail are different, mutually exclusive shapes
+        // (NamespaceRegistry.NativeMember's doc comment) — a registry-authoring
+        // invariant for the one entry that carries defaults this increment.
+        var member = (NamespaceRegistry.NativeMember)NamespaceRegistry.TryGetMember("date", "parse")!;
+        Assert.Null(member.VariadicElementType);
+    }
+
+    [Fact]
+    public void Parse_PatternArgumentWrongType_ReportsSingleE0004() {
+        DiagnosticBag bag = Check("""readonly x := date.parse("2026-04-05", 123)""");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(
+            "Argument 2 to 'date.parse' has type 'int', which is not assignable to parameter of type 'string'.",
+            diag.Message);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(40, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Parse_NamedArgument_ReportsSingleE0011() {
+        // NativeMember carries no parameter names and emission preserves source order, so a
+        // named argument cannot bind — it would otherwise slot "dd/MM/yyyy" into the input
+        // parameter and let the pattern take its "" default (CodeRabbit review, PR #154).
+        // Reject with E0011 (positional-only), matching RejectNamedPrimitiveArgs.
+        DiagnosticBag bag = Check("""readonly x := date.parse(pattern: "dd/MM/yyyy")""");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
+        Assert.Equal(
+            "'date.parse' does not accept named arguments; pass them positionally.",
+            diag.Message);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(26, diag.Range.Start.Column);
+    }
+
     [Fact]
     public void FromUnixSeconds_Call_ResolvesToStruct_NoDiagnostics() {
         DiagnosticBag bag = Check("readonly d := date.fromUnixSeconds(0)");

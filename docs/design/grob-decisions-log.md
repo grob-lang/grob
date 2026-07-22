@@ -359,6 +359,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-361 | July 2026                                                          | Compiler / Vm / Stdlib / Core — named-type dispatch | D-356's `NamedTypeRegistry` lands: one hand-authored table entry per nominal `Struct` type, in `Grob.Core` (the only assembly `Grob.Compiler`/`Grob.Vm`/`Grob.Runtime` all reach without a `Grob.Compiler`-to-`Grob.Vm` reference edge), carrying real executable property/method delegates alongside type-checking metadata and the D-336 `toString()` renderer. `guid`/`date` migrate onto it as behaviour-preserving proving cases — every pre-existing test passes unchanged — replacing the six hand-rolled dispatch arms D-356 catalogued; `Grob.Vm.GuidNatives`/`DateNatives` shrink to construction/field-layout helpers only (`DateNatives.ToDateTimeOffset` stays, since `LessDate`/`GreaterDate` still call it — D-357's territory untouched). The D-358 default-parameter metadata field is present but unused. Builds the first real "hand-table vs. live runtime registration" agreement test in the repo (`NamedTypeRegistryAgreementTests`, `Grob.Integration.Tests` — no dedicated `Grob.Cli.Tests` project exists to host it, corrected from the kickoff prompt's assumption); `ErrorCatalogAgreementTests` (D-308) remained the only precedent, and it diffs against a markdown doc, not live registration. `File` through `ProcessResult` land as registry data from here on. No new opcode, no new error code; count unchanged at 118 |
 | D-362 | July 2026                                                          | Compiler — type checking / bytecode emission | Closes D-360's `CallExpr` residue: `GetExprType` previously resolved a call's return type only through a bare identifier bound to a user `FnDecl`, so a native/stdlib call, a function-typed-variable call or a nominal-type-method call used as an arithmetic operand silently selected `AddInt` instead of `AddFloat`. New `CallExpr.ResolvedReturnType` (mirrors `IndexExpr.ElementType`/`MemberAccessExpr.ResolvedFieldType`) is populated at all three real sub-cases; `GetExprType`'s arm collapses to `c => c.ResolvedReturnType`. Corrects the kickoff prompt's four-sub-case premise to three (member-access and nominal-type-method calls are the same code path) and names the advertised-but-unbuilt `float`/`int` instance-method surface as out of scope, flagged with a `grob-type-registry.md` build-status note rather than built. Names a third permissive-Unknown source D-360's gate text missed — a void-returning call (`arr.each()`) — alongside D-359's map-element and D-360's Unknown-receiver-field latitude; none hardened into a failure. `EmitArithmetic` gains a narrow defensive guard (`InvalidOperationException`, `[ExcludeFromCodeCoverage]`) specific to the `StructConstructionExpr`/`LambdaExpr` pair the type checker already proves unreachable via E0002 — not a general allow-list assert, deliberately. Two side-findings logged for future increments: the unbuilt numeric-method surface, and `arr.each(fn)` as an arithmetic operand arguably warranting a type-checker E0002 rejection. No new opcode, no new error code; count unchanged at 118 |
 | D-363 | July 2026                                                          | Compiler / Type checker / Runtime — primitive-method dispatch | Implements D-066's primitive-method-as-compile-time-sugar model, proven on `string` — the compile-time dispatch mechanism D-362 found entirely unbuilt. New `PrimitiveMemberRegistry` (`Grob.Core.PrimitiveMembers`), keyed on primitive `GrobType` × member name, parallel to `NamedTypeRegistry` (D-361) — its method entry mirrors `NamedTypeMethod`'s shape (including an inert `ParameterDefaults` field so D-358 lands additively) but drops `Bind`/`ReturnsNominalSelf` and the `NominalSelf` parameter kind, none applicable to a primitive receiver. `ResolveMemberAccessCall`/`VisitMemberAccess` gain a primitive-value-receiver arm; `VisitCall`/`VisitMemberAccess` (`Compiler.Expressions.cs`) rewrite a resolved access to `GetGlobal`-then-`Call` against the qualified native, receiver injected as arg[0] — the D-342 namespace-native shape, not D-356/D-361's `GetProperty`+`Bind` (primitives are never `GrobValueKind.Struct`). No new opcode. Delivers the 21-member no-default `string` surface (2 properties, 19 methods); `padLeft`/`padRight`/`truncate` deferred to D-358 (default parameters). `CallExpr.ResolvedReturnType`/`MemberAccessExpr.ResolvedFieldType` wired for every member, including `split`'s array-element type via the existing `_callResultArrayDescriptors` channel (D-351) so a chained index/for-in resolves `string`, not `Unknown`. `toInt`/`toFloat` return `int?`/`float?` (nil on parse failure, mirroring `env.get`); `substring`/`left`/`right` throw the existing `IndexError`/`E5101` through the native-throw seam — its first stdlib-plugin use, no new code. Undefined-member reuses `E1002`. New `StringMethodsPlugin` (`Grob.Stdlib`) registers the natives; `PrimitiveMemberRegistryAgreementTests` (`Grob.Integration.Tests`) diffs the compile-time table against live registration. Closes the release-gate blocker — the validation scripts' `.split`/`.replace`/`.contains` now dispatch. `int`/`float`/`bool` instance methods and `int.min`/`float.clamp` static functions are the same mechanism, follow-on increments. No new opcode, no new error code; count unchanged at 118 |
+| D-364 | July 2026                                                          | Compiler — native default arguments | Builds D-358's default-argument mechanism and lands `date.parse`'s optional `pattern` argument on it. `NamespaceRegistry.NativeMember` gains a `ParameterDefaults` field (mirroring `NamedTypeMethod`/`PrimitiveMemberMethod`, D-361/D-363's inert precedent). New `NativeDefaultArgumentFill` (`Grob.Compiler`) is the branch-agnostic `(supplied, arity, defaults)` synthesis helper, generalising D-344's `input()` one-off constant-fill arm and reusing D-345's `formatAs` synthesised-constant-injection shape. `CheckNativeCall` (`TypeChecker.Expressions.cs`) accepts a required-to-full argument-count range instead of an exact match when a native declares defaults — `E0003` below the required count, unchanged exact-count wording and behaviour for the other 50 existing entries with no defaults. `VisitCall` (`Compiler.Expressions.cs`) gains a namespace-native default-fill branch that emits the supplied arguments, then `EmitConstant`s the missing trailing defaults in order, then `Call` with the native's full declared arity — wired for the namespace-native path only. `date.parse(input: string, pattern: string = "")` is the proving case: empty pattern keeps the existing ISO-8601 `TryParse` behaviour unchanged, a non-empty pattern selects `DateTimeOffset.ParseExact`; failure reuses `E5702` (D-284) unchanged. The primitive-member and named-type-method branches can call the same helper once they carry default metadata of their own; `fs.copy`/`fs.move`'s `overwrite: bool = false` (Increment C) rides it next. No new opcode, no new error code; count unchanged at 118 |
 
 
 ---
@@ -6066,6 +6067,90 @@ to record this increment's scope.
 
 ---
 
+### D-364 — Native default arguments land, proven on `date.parse` (July 2026)
+
+Area: Compiler — native default arguments
+Supersedes: none
+Superseded by: none
+Refines: D-358, D-342, D-344, D-345, D-363
+
+**The decision.** Builds D-358's default-argument mechanism — native functions support
+optional trailing parameters with compile-time constant defaults, the compiler
+synthesising the missing trailing arguments before `Call` so the runtime native keeps
+a fixed arity — and lands `date.parse`'s optional second argument on it. Default
+arguments, not overload resolution: one function with an optional tail, no dispatch on
+argument count or type.
+
+**The registry field.** `NamespaceRegistry.NativeMember` (`Grob.Compiler`) gains
+`ParameterDefaults: IReadOnlyList<GrobValue?>? = null`, mirroring
+`NamedTypeMethod`/`PrimitiveMemberMethod`'s existing inert field (D-361/D-363) — the
+last of the three native-call registries to carry it, and the first to actually
+populate it. A non-null entry at index `i` is the compile-time constant a call omitting
+that argument is filled with; `null` at the leading (required) indices, non-null only
+for the trailing optional run. Never combined with `VariadicElementType` on the same
+entry — trailing defaults and a variable-length tail are different, mutually exclusive
+shapes; the `date.parse` entry (the one live consumer) is asserted to declare no
+`VariadicElementType`. The doc comment's now-false "v1 core-module natives take no
+named or defaulted arguments" line is corrected.
+
+**The synthesis helper.** New `NativeDefaultArgumentFill` (`Grob.Compiler`) is a pure,
+branch-agnostic `(suppliedCount, fullArity, defaults) -> IReadOnlyList<GrobValue>`
+function — no `Chunk`/emission dependency, so it is unit-testable directly and callable
+from any native-call emission branch. It generalises the `input()` one-off
+constant-fill arm `Compiler.Expressions.cs` already carried (D-344) and reuses the
+"inject a synthesised constant argument" shape D-345's `formatAs` column injection
+established. Returns the trailing default constants a call omitted, in parameter
+order; empty when every parameter was supplied or no defaults are declared; throws
+`InvalidOperationException` if a requested slot has no declared default — a
+programmer-error guard, since the type checker's required/full arity range is what
+guarantees this never happens for a call that passed validation.
+
+**The type-checker change.** `CheckNativeCall` (`TypeChecker.Expressions.cs`) replaces
+its exact-arity check with a required-to-full range: a new `RequiredArgumentCount`
+helper walks back from the end of `ParameterTypes` while `ParameterDefaults` entries
+are non-null (defaults are always a contiguous trailing run). A native with no
+defaults keeps its exact-count `E0003` wording and behaviour unchanged (all 50
+pre-existing entries, proven by the untouched `math.sqrt`/`guid.newV5` regression
+suite); a native declaring defaults reports "expects between `X` and `Y` arguments"
+when the supplied count falls outside the range. Only the arguments actually supplied
+are type-checked (`E0004`) — the synthesised trailing defaults are compiler constants
+and are never re-typechecked.
+
+**The compiler emission.** `VisitCall` (`Compiler.Expressions.cs`) gains a branch,
+placed after `Visit(node.Callee)` and before the `input()` arm: when the callee
+resolves (via `NamespaceRegistry.TryGetMember`, the same lookup helper the type
+checker and `VisitMemberAccess`'s nested-namespace arm already use) to a `NativeMember`
+declaring defaults, and the call under-supplies, it emits the supplied arguments in
+source order, then `EmitConstant`s each `NativeDefaultArgumentFill.Resolve` result in
+order, then `Call` with the native's full declared arity — not `node.Arguments.Count`,
+the previous unconditional operand. Every other native (`ParameterDefaults` null) is
+untouched by this branch and keeps the pre-existing fast path. Wired for the
+namespace-native path only this increment; the primitive-member and named-type-method
+branches can call the same helper unchanged once they carry default metadata of their
+own.
+
+**`date.parse`.** Its `NativeMember` entry becomes `[String, String]` with
+`ParameterDefaults: [null, GrobValue.FromString("")]`. `Grob.Stdlib.DatePlugin`'s
+runtime native goes from arity 1 to a fixed arity 2: an empty pattern keeps the
+pre-existing ISO-8601 `DateTimeOffset.TryParse` behaviour unchanged, a non-empty
+pattern selects `DateTimeOffset.ParseExact` (same `InvariantCulture`/`AssumeLocal`
+convention as the ISO branch); either failure reuses `ParseError`/`E5702` (D-284)
+unchanged. `grob-stdlib-reference.md`'s two-argument `date.parse` sample, previously
+aspirational, is now real.
+
+No new opcode (`EmitConstant` reused). No new error code (`E5702` reused; arity via
+existing `E0003`). Count unchanged at 118.
+
+Full detail: `prompts/archive/sprint-9/increment-D358-native-default-arguments.md` (the
+source prompt), D-358 (the ratified design this implements), D-342 (the
+`NamespaceRegistry`/`TryGetMember` shape reused for compile-time namespace-native
+resolution), D-344 (the `input()` one-off constant-fill arm this generalises), D-345
+(the `formatAs` synthesised-constant-injection precedent), D-363 (the inert
+`ParameterDefaults` field on `PrimitiveMemberMethod` this field mirrors and, unlike
+that one, actually populates).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -6288,6 +6373,30 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_July 2026 — Native default arguments: D-364 added. Builds D-358's default-argument_
+_mechanism and lands date.parse's optional pattern argument on it._
+_NamespaceRegistry.NativeMember gains a ParameterDefaults field (mirroring_
+_NamedTypeMethod/PrimitiveMemberMethod, D-361/D-363's inert precedent). New_
+_NativeDefaultArgumentFill (Grob.Compiler) is the branch-agnostic (supplied, arity,_
+_defaults) synthesis helper, generalising D-344's input() one-off constant-fill arm_
+_and reusing D-345's formatAs synthesised-constant-injection shape. CheckNativeCall_
+_accepts a required-to-full argument-count range instead of an exact match when a_
+_native declares defaults — E0003 below the required count, unchanged exact-count_
+_wording for the other 50 existing entries with no defaults. VisitCall gains a_
+_namespace-native default-fill branch that emits the supplied arguments, then_
+_EmitConstant for each missing trailing default, then Call with the native's full_
+_declared arity — wired for the namespace-native path only. date.parse(input: string,_
+_pattern: string = "") is the proving case: empty pattern keeps the existing ISO-8601_
+_behaviour unchanged, a non-empty pattern selects DateTimeOffset.ParseExact; failure_
+_reuses E5702 (D-284) unchanged. The primitive-member and named-type-method branches_
+_can call the same helper once they carry default metadata of their own; fs.copy/_
+_fs.move's overwrite: bool = false (Increment C) rides it next. No new opcode, no new_
+_error code; count unchanged at 118._
+_Previous: July 2026 — Primitive instance-method dispatch: D-363 added. Implements_
+_D-066's compile-time-sugar model, proven on string — the dispatch mechanism D-362_
+_found entirely unbuilt. New PrimitiveMemberRegistry, StringMethodsPlugin delivering_
+_the 21-member string surface (2 properties, 19 methods); padLeft/padRight/truncate_
+_deferred to D-358. No new opcode, no new error code; count unchanged at 118._
 _July 2026 — Primitive instance-method dispatch: D-363 added. Implements D-066's_
 _compile-time-sugar model, proven on `string` — the dispatch mechanism D-362 found_
 _entirely unbuilt. New PrimitiveMemberRegistry (Grob.Core.PrimitiveMembers), keyed_

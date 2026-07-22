@@ -29,31 +29,39 @@ internal static class NamespaceRegistry {
 
     /// <summary>
     /// A namespace native member (e.g. <c>math.sqrt</c>) and its positional signature.
-    /// v1 core-module natives take no named or defaulted arguments, so arity/type
-    /// validation is a straight positional check — the smaller counterpart of the
-    /// named-argument binding machinery <c>CheckCall</c> uses for user-defined <c>fn</c>s.
-    /// <paramref name="VariadicElementType"/> is non-null for a native that needs a
-    /// variable-length tail (<c>path.join</c>, Sprint 8 Increment B; <c>guid.newV5</c>,
-    /// Increment D): when set, at least one argument beyond <see cref="ParameterTypes"/>'s
-    /// fixed prefix is required, and every argument from that point on is checked against
-    /// this type instead of a fixed slot. <paramref name="NamedTypeName"/> is non-null when
-    /// <paramref name="ReturnType"/> is <see cref="GrobType.Struct"/> (or its nullable
-    /// variant) and the native returns a specific plugin-owned struct type
-    /// (<c>guid.newV4</c>, Increment D) — see <see cref="ConstantMember.NamedTypeName"/>.
-    /// <paramref name="ParameterNamedTypeNames"/> is a parallel, optional list to
-    /// <see cref="ParameterTypes"/> — a non-null entry at index <c>i</c> means that fixed
-    /// parameter must be a specific plugin-owned struct type by name, not merely
-    /// <see cref="GrobType.Struct"/> (<c>guid.newV5</c>'s namespace parameter, which must
-    /// itself be a <c>guid</c>, not any struct sharing the flat tag — CodeRabbit review,
-    /// PR #133). <see langword="null"/> (the default) means no natives currently need it
-    /// beyond a fixed prefix of length 0.
+    /// Most v1 core-module natives take no named or defaulted arguments, so arity/type
+    /// validation is a straight positional check for them — the smaller counterpart of
+    /// the named-argument binding machinery <c>CheckCall</c> uses for user-defined
+    /// <c>fn</c>s. <paramref name="VariadicElementType"/> is non-null for a native that
+    /// needs a variable-length tail (<c>path.join</c>, Sprint 8 Increment B;
+    /// <c>guid.newV5</c>, Increment D): when set, at least one argument beyond
+    /// <see cref="ParameterTypes"/>'s fixed prefix is required, and every argument from
+    /// that point on is checked against this type instead of a fixed slot.
+    /// <paramref name="NamedTypeName"/> is non-null when <paramref name="ReturnType"/> is
+    /// <see cref="GrobType.Struct"/> (or its nullable variant) and the native returns a
+    /// specific plugin-owned struct type (<c>guid.newV4</c>, Increment D) — see
+    /// <see cref="ConstantMember.NamedTypeName"/>. <paramref name="ParameterNamedTypeNames"/>
+    /// is a parallel, optional list to <see cref="ParameterTypes"/> — a non-null entry at
+    /// index <c>i</c> means that fixed parameter must be a specific plugin-owned struct
+    /// type by name, not merely <see cref="GrobType.Struct"/> (<c>guid.newV5</c>'s
+    /// namespace parameter, which must itself be a <c>guid</c>, not any struct sharing the
+    /// flat tag — CodeRabbit review, PR #133). <see langword="null"/> (the default) means
+    /// no natives currently need it beyond a fixed prefix of length 0.
+    /// <paramref name="ParameterDefaults"/> (D-358) declares an optional trailing run of
+    /// <see cref="ParameterTypes"/> as defaulted — a non-null entry at index <c>i</c> is
+    /// the compile-time constant a call omitting that argument gets filled with
+    /// (<see cref="NativeDefaultArgumentFill"/>); <see langword="null"/> at the leading
+    /// (required) indices, non-null only for the trailing optional run. Never combined
+    /// with <paramref name="VariadicElementType"/> on the same entry — trailing defaults
+    /// and a variable-length tail are different, mutually exclusive shapes.
     /// </summary>
     internal sealed record NativeMember(
         IReadOnlyList<GrobType> ParameterTypes,
         GrobType ReturnType,
         GrobType? VariadicElementType = null,
         string? NamedTypeName = null,
-        IReadOnlyList<string?>? ParameterNamedTypeNames = null);
+        IReadOnlyList<string?>? ParameterNamedTypeNames = null,
+        IReadOnlyList<GrobValue?>? ParameterDefaults = null);
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, object>> _namespaces =
         new Dictionary<string, IReadOnlyDictionary<string, object>>(StringComparer.Ordinal) {
@@ -143,7 +151,11 @@ internal static class NamespaceRegistry {
                 ["ofTime"] = new NativeMember(
                     [GrobType.Int, GrobType.Int, GrobType.Int, GrobType.Int, GrobType.Int, GrobType.Int],
                     GrobType.Struct, NamedTypeName: "date"),
-                ["parse"] = new NativeMember([GrobType.String], GrobType.Struct, NamedTypeName: "date"),
+                // D-358: pattern is optional and trailing — "" means the pre-existing
+                // ISO-8601 behaviour, unchanged; a non-empty pattern selects ParseExact
+                // (Grob.Stdlib.DatePlugin).
+                ["parse"] = new NativeMember([GrobType.String, GrobType.String], GrobType.Struct,
+                    NamedTypeName: "date", ParameterDefaults: [null, GrobValue.FromString("")]),
                 ["fromUnixSeconds"] = new NativeMember([GrobType.Int], GrobType.Struct, NamedTypeName: "date"),
                 ["fromUnixMillis"] = new NativeMember([GrobType.Int], GrobType.Struct, NamedTypeName: "date"),
             },
