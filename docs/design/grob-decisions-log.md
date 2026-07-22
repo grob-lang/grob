@@ -362,6 +362,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-364 | July 2026                                                          | Compiler — native default arguments | Builds D-358's default-argument mechanism and lands `date.parse`'s optional `pattern` argument on it. `NamespaceRegistry.NativeMember` gains a `ParameterDefaults` field (mirroring `NamedTypeMethod`/`PrimitiveMemberMethod`, D-361/D-363's inert precedent). New `NativeDefaultArgumentFill` (`Grob.Compiler`) is the branch-agnostic `(supplied, arity, defaults)` synthesis helper, generalising D-344's `input()` one-off constant-fill arm and reusing D-345's `formatAs` synthesised-constant-injection shape. `CheckNativeCall` (`TypeChecker.Expressions.cs`) accepts a required-to-full argument-count range instead of an exact match when a native declares defaults — `E0003` below the required count, unchanged exact-count wording and behaviour for the other 50 existing entries with no defaults. `VisitCall` (`Compiler.Expressions.cs`) gains a namespace-native default-fill branch that emits the supplied arguments, then `EmitConstant`s the missing trailing defaults in order, then `Call` with the native's full declared arity — wired for the namespace-native path only. `date.parse(input: string, pattern: string = "")` is the proving case: empty pattern keeps the existing ISO-8601 `TryParse` behaviour unchanged, a non-empty pattern selects `DateTimeOffset.ParseExact`; failure reuses `E5702` (D-284) unchanged. The primitive-member and named-type-method branches can call the same helper once they carry default metadata of their own; `fs.copy`/`fs.move`'s `overwrite: bool = false` (Increment C) rides it next. No new opcode, no new error code; count unchanged at 118 |
 | D-365 | July 2026                                                          | Compiler / Type checker / Stdlib — primitive-member default arguments | Wires D-364's `NativeDefaultArgumentFill` into the primitive-member call path — the second of its three designed consumers to be wired — landing the three `string` methods D-363 deferred: `padLeft`/`padRight`/`truncate`. `PrimitiveMemberRegistry` populates their previously inert `ParameterDefaults`. `RequiredArgumentCount` (D-364) promoted from a `NamespaceRegistry.NativeMember`-only helper to `(fullArity, defaults)`, reused rather than duplicated; `CheckPrimitiveMemberArgs` gains a new shared `MemberArgCountInRange` (D-356's exact-match `MemberArgCountMatches` now a thin wrapper over it, unchanged behaviour), and its E0004 loop bound changes from declared arity to supplied count. `CallExpr.ResolvedPrimitiveParameterDefaults` (new side channel, mirrors `ResolvedPrimitiveNativeName`) carries the resolved defaults to `EmitPrimitiveMemberCall`, which computes the full arity, calls `NativeDefaultArgumentFill.Resolve`, and emits `Call` with the full arity plus receiver — a no-op change in shape for every no-default method. Pinned edge cases (registry silent): `truncate`'s `maxLength` is the total result length including the suffix, clamped to the suffix itself when `maxLength` doesn't exceed it (including negative); `padLeft`/`padRight`'s `width` no larger than the input (including negative) returns the input unchanged; a multi-character pad `char` uses its first character, an empty one falls back to a space. `string` surface now complete (24 members: 2 properties, 22 methods). No new opcode, no new error code; count unchanged at 118 |
 | D-366 | July 2026                                                          | Stdlib — native-seam size/count hardening | Closes the native-seam size/count class D-365's PR review flagged as out of scope for `string.repeat`: any native allocating proportionally to a user-supplied count/width/size must fault through the native-throw seam rather than let a hostile or accidental value escape as an uncoded host exception (D-353's "fails well" contract). Audit corrected the prompt's own framing: `repeat`'s existing `checked((int)(s.Length * count))` cast-overflow case is already safe — `VirtualMachine.cs`'s per-instruction dispatch loop catches `OverflowException` around the whole opcode switch (including the native-call branch) and already converts it to a catchable `E5001`/`ArithmeticError`. The real unguarded gap, for `repeat` and (newly confirmed) `padLeft`/`padRight` alike, is a _valid-but-enormous_ allocation — a count/width comfortably within `int` range that still asks `StringBuilder`/`.PadLeft`/`.PadRight` to allocate an unreasonable buffer, throwing an uncaught `OutOfMemoryException`. `truncate` (bounded by input/suffix length) and `substring`/`left`/`right` (bounded by explicit `> s.Length` comparisons) audited and confirmed already safe, including at `int.MaxValue` and negative inputs, now locked by regression tests. `guid`'s `RandomBytes`, `formatAs.*` and `strings.join` are not candidates — fixed/internal or array-derived sizes, never a raw user integer. New `MaxAllocationLength` constant (`StringMethodsPlugin`, `Grob.Stdlib`) — 10,000,000 characters, ~20 MB as UTF-16, a judgement call with no existing precedent to mirror — replaces `RejectOversizedWidth`'s `int.MaxValue` bound (subsuming the cast-safety case) and gates a new `RejectOversizedRepeat` guard checked via division so the guard itself cannot overflow. Both fault through the existing `NativeFaultException("IndexError", ErrorCatalog.E5101.Code, ...)` seam — no new error code, reusing D-365's leaf. No new opcode; count unchanged at 118 |
+| D-367 | July 2026                                                          | date module / VM — equality | Implements D-357: `date`-vs-`date` equality is now instant-based, matching `LessDate`/`GreaterDate`, restoring trichotomy (`date.now() == date.now().toUtc()` was false; empirically confirmed before and after). New `OpCode.EqualDate` (appended after `GreaterDate`, no `.grobc` version bump — the format has no reader/writer yet) parses both `__value` strings via the existing `DateNatives.ToDateTimeOffset` and compares instants; `!=` lowers to `EqualDate` + `Not`, no dedicated `NotEqualDate`. New `BinaryExpr.IsDateEquality` annotation is the checker-to-compiler handoff the fix actually depends on: unlike the relational operators, whose `Struct`-vs-`Struct` acceptance is already gated to nominal `date` pairs, `==`/`!=` deliberately accepts any matching `Struct` pair (D-169), so the compiler cannot safely infer `date` from the flat `Struct` tag alone. Ordering (`LessDate`/`GreaterDate`, `<=`/`>=` lowering) and `daysUntil`/`daysSince` (already instant-based) confirmed correct and locked, not changed. `guid` and every other struct type confirmed unchanged under D-169. Consolidates the round-trip format constant, triplicated across `Grob.Vm.DateNatives`/`Grob.Core.NamedTypes.NamedTypeRegistry`/`Grob.Stdlib.DatePlugin`, into a single `public const string NamedTypeRegistry.RoundTripFormat` in `Grob.Core` — no behaviour change. No new error code; count unchanged at 118 |
 
 
 ---
@@ -6300,6 +6301,95 @@ satisfies ahead of Pillar 1 fuzzing).
 
 ---
 
+### D-367 — `date` equality lands on the instant basis, closing D-357 (July 2026)
+
+Area: date module / VM — equality
+Supersedes: none
+Superseded by: none
+Refines: D-357, D-354, D-169, D-315, D-361, D-284
+
+**The decision.** Implements D-357: `date`-vs-`date` equality is now instant-based,
+matching `LessDate`/`GreaterDate`'s existing instant basis and restoring trichotomy.
+Confirmed empirically before the fix, via `dotnet run` against the built CLI, for
+`a := date.now()`, `b := a.toUtc()`: `a == b` false, `a < b` false, `a > b` false,
+`a != b` true — a value neither less than, greater than nor equal to another of the
+same instant. After the fix the same script prints `true`, `false`, `false`, `false`.
+
+**The mechanism.** A new `OpCode.EqualDate` (appended to the end of the Comparison
+category, immediately after `GreaterDate` — mirroring D-354's own append precedent;
+no `.grobc` reader/writer exists anywhere in the codebase yet, so the format-version
+question D-298 raises is moot in practice and no version bump was needed). Its VM
+handler parses both operands' `__value` strings via the existing
+`DateNatives.ToDateTimeOffset` — the same helper `LessDate`/`GreaterDate` already
+call — and compares the resulting `DateTimeOffset` instants with `==`, which already
+normalises across offsets. `!=` on a date pair lowers to `EqualDate` + `Not` — no
+dedicated `NotEqualDate` — mirroring the `<=`/`>=` lowering already used for
+`LessDate`/`GreaterDate` (the smaller-growth choice, keeping the disassembler's
+per-opcode switch growing by exactly one case).
+
+**The type-checker/compiler handoff was the actual structural question.** D-354's
+`IsDateStructPair` gate safely lets `LessDate`/`GreaterDate`'s opcode selection trust
+a flat `Struct` category, because `ResolveComparison`'s relational branch only ever
+accepts a `Struct`-vs-`Struct` pair for `<`/`<=`/`>`/`>=` when both are nominally
+`date` — any other struct pairing is `E0002` before reaching emission. Equality does
+not have that invariant: `ResolveComparison`'s `==`/`!=` branch deliberately accepts
+_any_ two same-tagged `Struct` operands (D-169's generic struct equality for user
+types), so a `Struct` category at the compiler's opcode-selection point does not by
+itself imply `date`. A new `BinaryExpr.IsDateEquality` annotation (set by the type
+checker, mirroring `CallExpr.ResolvedReturnType`/`MemberAccessExpr.ResolvedStructTypeName`'s
+checker-to-compiler handoff pattern) carries exactly that fact across the pass
+boundary — a pure annotation write, changing nothing about what type-checks.
+`date == <unrelated struct>` and `<unrelated struct> == <unrelated struct>` continue
+to type-check under D-169 (no `E0002`) with `IsDateEquality` false, still resolving
+structurally via the unmodified `GrobStruct.Equals` (which checks `TypeName` first,
+so a `date`-vs-non-`date` pairing is a structural `false`, never a fault).
+
+**Ordering confirmed already correct, locked not changed.** `LessDate`/`GreaterDate`
+were already instant-based (D-354) and are untouched here; new tests lock the
+trichotomy across three different offsets of the same instant. `<=`/`>=` on dates
+were investigated as a possible sibling defect and found already correct — D-354's
+`TryGetStrictLoweredOpCode` already lowers them to `GreaterDate`/`LessDate` + `Not`
+— no fix needed, no sibling finding to schedule.
+
+**`daysUntil`/`daysSince` confirmed already instant-based.**
+`NamedTypeRegistry.DateDaysBetween` already subtracts two `DateTimeOffset` instants
+and truncates to whole days (`(long)(to - from).TotalDays`) — matching D-357(2)
+exactly. No code change; a new regression test locks an offset-boundary case where a
+naive calendar-date reading would disagree with the correct instant-based answer.
+
+**`guid` and every other struct type confirmed unchanged.** D-169's field-by-field
+equality is untouched for every nominal type but `date`; explicit regression tests
+lock `guid == guid`, an unrelated user `type` pairing, and float `NaN`/`+0.0`/`-0.0`
+(D-315) all still exercising the unmodified generic `Equal` path.
+
+**Format-constant consolidation (a dependency, not a drive-by).** The round-trip
+format string `"yyyy-MM-ddTHH:mm:sszzz"` — the mechanism the equality fix works by
+parsing — was independently triplicated in `Grob.Vm.DateNatives`,
+`Grob.Core.NamedTypes.NamedTypeRegistry` and `Grob.Stdlib.DatePlugin`, the
+`NamedTypeRegistry` copy's own comment naming `DateNatives`'s copy "former" (implying
+a D-361/C0c removal that never happened). Consolidated into a single
+`public const string NamedTypeRegistry.RoundTripFormat` in `Grob.Core` — the only
+assembly both `Grob.Vm` and `Grob.Stdlib` reference without creating a
+`Grob.Compiler`-to-`Grob.Vm` edge; `DateNatives` and `DatePlugin` now consume it
+rather than each holding their own copy. No behaviour change — identical string in
+all three before and after.
+
+No new error code — `date`-vs-non-`date` equality still surfaces the pre-existing
+structural `false`, and `date`-vs-scalar/unrelated-struct comparisons still surface
+`E0002` (D-169/D-354's rule, unchanged). Count unchanged at 118.
+
+Full detail: `prompts/archive/sprint-9/increment-D357-date-equality-instant-basis.md`
+(the source prompt), `grob-stdlib-reference.md`'s `date` comparison section (updated
+to state the instant basis explicitly and pin `daysUntil`/`daysSince`), D-357 (the
+ratified design this implements), D-354 (the relational-opcode precedent this
+mirrors), D-169 (the generic struct-equality rule this amends only for `date`), D-315
+(the "checker permits does not imply can emit" hazard this increment's
+`IsDateEquality` annotation exists to avoid), D-361 (the `NamedTypeRegistry` home the
+consolidated format constant now lives alongside), D-284 (unaffected — no error code
+added).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -6522,7 +6612,21 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Native-seam size/count hardening: D-366 added. Closes the class D-365's_
+_July 2026 — `date` equality lands on the instant basis: D-367 added, implementing_
+_D-357. New OpCode.EqualDate (appended after GreaterDate; no .grobc version bump —_
+_the format has no reader/writer yet) restores trichotomy — date.now() ==_
+_date.now().toUtc() was false, confirmed empirically before the fix and true after._
+_!= lowers to EqualDate + Not, no dedicated NotEqualDate. New BinaryExpr.IsDateEquality_
+_annotation is the checker-to-compiler handoff the fix depends on: == deliberately_
+_accepts any matching Struct pair (D-169), unlike the relational operators' nominal-_
+_date-only gate, so the compiler cannot infer date from the flat Struct tag alone at_
+_the equality opcode-selection point. Ordering and daysUntil/daysSince confirmed_
+_already correct and locked, not changed; guid and every other struct confirmed_
+_unchanged under D-169. Consolidates the round-trip format constant — triplicated_
+_across DateNatives/NamedTypeRegistry/DatePlugin — into a single public_
+_NamedTypeRegistry.RoundTripFormat in Grob.Core. No new error code; count unchanged_
+_at 118._
+_Previous: July 2026 — Native-seam size/count hardening: D-366 added. Closes the class D-365's_
 _PR review flagged as out of scope for string.repeat — any native allocating_
 _proportionally to a user-supplied count/width/size must fault through the_
 _native-throw seam rather than escape as a host exception (D-353's "fails well"_

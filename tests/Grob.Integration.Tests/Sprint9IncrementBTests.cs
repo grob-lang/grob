@@ -126,6 +126,43 @@ public sealed class Sprint9IncrementBTests {
     }
 
     // -----------------------------------------------------------------------
+    // Equality — D-357/D-367: instant-based, restoring trichotomy. This is the exact
+    // shape the decision's own worked example uses (date.now() vs date.now().toUtc()).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void EqualityOperator_SameInstant_DifferentOffset_ViaToUtc_RestoresTrichotomy() {
+        (string stdout, string stderr, int exitCode) = RunSource("""
+            a := date.parse("2026-04-05T14:30:00+01:00")
+            b := a.toUtc()
+            print(a == b)
+            print(a < b)
+            print(a > b)
+            print(a != b)
+            """);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal(
+            $"true{Environment.NewLine}false{Environment.NewLine}false{Environment.NewLine}false{Environment.NewLine}",
+            stdout);
+    }
+
+    [Fact]
+    public void EqualityOperator_DifferentInstants_IsFalse() {
+        (string stdout, string stderr, int exitCode) = RunSource("""
+            a := date.of(2026, 1, 1)
+            b := date.of(2026, 1, 2)
+            print(a == b)
+            print(a != b)
+            """);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal($"false{Environment.NewLine}true{Environment.NewLine}", stdout);
+    }
+
+    // -----------------------------------------------------------------------
     // Display — print() and string interpolation render the canonical string.
     // -----------------------------------------------------------------------
 

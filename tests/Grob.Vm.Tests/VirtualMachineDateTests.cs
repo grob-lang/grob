@@ -101,6 +101,84 @@ public sealed class VirtualMachineDateTests {
         Assert.True(vm.Stack.Peek().AsBool());
     }
 
+    // -----------------------------------------------------------------------
+    // EqualDate (D-357/D-367) — instant-based equality, restoring trichotomy.
+    // The generic Equal opcode (above) compares __value strings field-by-field;
+    // for two dates of the SAME instant at DIFFERENT offsets those strings differ,
+    // so Equal wrongly returns false. EqualDate parses both to DateTimeOffset first.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void EqualDate_SameInstant_DifferentOffsets_IsTrue() {
+        // 13:00 at +01:00 and 12:00 at +00:00 are both 12:00 UTC — the same instant,
+        // expressed with two different wall-clock readings and offsets. The generic
+        // Equal opcode (Equal_* tests above) would say these are unequal, since their
+        // __value strings differ.
+        var atPlusOne = new DateTimeOffset(2026, 1, 1, 13, 0, 0, TimeSpan.FromHours(1));
+        var atUtc = new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
+
+        var chunk = new Chunk();
+        byte a = (byte)chunk.AddConstant(Date(atPlusOne));
+        byte b = (byte)chunk.AddConstant(Date(atUtc));
+
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(a, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(b, 1);
+        chunk.WriteOpCode(OpCode.EqualDate, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        Assert.True(vm.Stack.Peek().AsBool());
+    }
+
+    [Fact]
+    public void EqualDate_DifferentInstants_IsFalse() {
+        var chunk = new Chunk();
+        byte a = (byte)chunk.AddConstant(Date(SampleInstant));
+        byte b = (byte)chunk.AddConstant(Date(SampleInstant.AddDays(1)));
+
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(a, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(b, 1);
+        chunk.WriteOpCode(OpCode.EqualDate, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        Assert.False(vm.Stack.Peek().AsBool());
+    }
+
+    [Fact]
+    public void EqualDate_SameInstant_ThreeDifferentOffsets_AllPairwiseEqual() {
+        // The trichotomy lock's third-offset variant (the D-357 prompt's own test
+        // list): the same instant expressed at three different offsets is pairwise
+        // equal under EqualDate, mirroring what toUtc()/toZone() produce at runtime.
+        var atPlusOne = new DateTimeOffset(2026, 6, 15, 13, 0, 0, TimeSpan.FromHours(1));
+        var atUtc = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
+        var atMinusFive = new DateTimeOffset(2026, 6, 15, 7, 0, 0, TimeSpan.FromHours(-5));
+
+        var chunk = new Chunk();
+        byte a = (byte)chunk.AddConstant(Date(atPlusOne));
+        byte b = (byte)chunk.AddConstant(Date(atUtc));
+        byte c = (byte)chunk.AddConstant(Date(atMinusFive));
+
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(a, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(b, 1);
+        chunk.WriteOpCode(OpCode.EqualDate, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(b, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(c, 1);
+        chunk.WriteOpCode(OpCode.EqualDate, 1);
+        chunk.WriteOpCode(OpCode.NotEqual, 1); // pops the two bools; both true, so equal, so NotEqual is false
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        // Both EqualDate results were true; NotEqual on two equal bools is false.
+        Assert.False(vm.Stack.Peek().AsBool());
+    }
+
     [Fact]
     public void LessDate_ComparesAcrossDifferingOffsets_ByInstant() {
         // Same wall-clock hour, but +01:00 is one hour earlier in absolute time than

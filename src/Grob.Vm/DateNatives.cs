@@ -1,6 +1,7 @@
 using System.Globalization;
 
 using Grob.Core;
+using Grob.Core.NamedTypes;
 
 namespace Grob.Vm;
 
@@ -17,9 +18,10 @@ namespace Grob.Vm;
 /// <see cref="DateTimeOffset"/> string (D-303's "boxed <see cref="DateTimeOffset"/>"
 /// realised as a hidden field, since <see cref="GrobStruct"/> can only ever hold named
 /// <see cref="GrobValue"/> fields — the same realisation <see cref="GuidNatives"/> uses
-/// for a boxed <see cref="Guid"/>). Own copy of the field/type-name constants — DAG
-/// siblings, <c>Grob.Vm</c> and <c>Grob.Stdlib</c> share no code — must stay in lockstep
-/// with <c>Grob.Stdlib.DatePlugin</c>'s equivalents.
+/// for a boxed <see cref="Guid"/>). The round-trip format constant itself is
+/// <see cref="NamedTypeRegistry.RoundTripFormat"/> (consolidated there by D-357/D-367 —
+/// previously an independent copy here, drifting-hazard-prone alongside
+/// <c>Grob.Stdlib.DatePlugin</c>'s own former copy).
 /// </summary>
 internal static class DateNatives {
     /// <summary>The hidden field name storing a <c>date</c> value's round-trip string form.</summary>
@@ -27,11 +29,6 @@ internal static class DateNatives {
 
     /// <summary>The struct type name every <c>date</c> value carries.</summary>
     internal const string TypeName = "date";
-
-    // Round-trip format: preserves the offset exactly (unlike "o", which also carries
-    // fractional-second precision this type does not model) and is unambiguous to parse
-    // back with DateTimeStyles.RoundtripKind.
-    private const string RoundTripFormat = "yyyy-MM-ddTHH:mm:sszzz";
 
     // The canonical ISO-8601 rendering (ValueDisplay's registered toString(), toIso(),
     // toIsoDateTime()). Unlike DateTime, DateTimeOffset's 'K' specifier is equivalent to
@@ -44,11 +41,11 @@ internal static class DateNatives {
     internal static GrobValue FromDateTimeOffset(DateTimeOffset value) => GrobValue.FromStruct(new GrobStruct(
         TypeName,
         [new KeyValuePair<string, GrobValue>(
-            ValueFieldName, GrobValue.FromString(value.ToString(RoundTripFormat, CultureInfo.InvariantCulture)))]));
+            ValueFieldName, GrobValue.FromString(value.ToString(NamedTypeRegistry.RoundTripFormat, CultureInfo.InvariantCulture)))]));
 
     /// <summary>The <see cref="DateTimeOffset"/> <paramref name="receiver"/> stores.</summary>
     internal static DateTimeOffset ToDateTimeOffset(GrobStruct receiver) => DateTimeOffset.ParseExact(
-        receiver.GetField(ValueFieldName).AsString(), RoundTripFormat, CultureInfo.InvariantCulture, DateTimeStyles.None);
+        receiver.GetField(ValueFieldName).AsString(), NamedTypeRegistry.RoundTripFormat, CultureInfo.InvariantCulture, DateTimeStyles.None);
 
     /// <summary>The canonical ISO-8601 string (registered <c>toString()</c>, <c>toIsoDateTime()</c>).</summary>
     internal static string IsoDateTimeString(GrobStruct receiver) {

@@ -23,11 +23,16 @@ public static class NamedTypeRegistry {
     private const string GuidValueFieldName = "__value";
     private const string DateValueFieldName = "__value";
 
-    // Matches Grob.Vm.DateNatives's former RoundTripFormat / Grob.Stdlib.DatePlugin's
-    // own copy — the hidden field's round-trip storage format. Neither of those two
-    // remaining copies (construction only, out of this increment's instance-surface
-    // scope) can reference this one; all three must stay in lockstep by inspection.
-    private const string DateRoundTripFormat = "yyyy-MM-ddTHH:mm:sszzz";
+    /// <summary>
+    /// The <c>date</c> hidden field's round-trip storage format (preserves the offset
+    /// exactly, unambiguous to parse back with <see cref="DateTimeStyles.None"/>). The
+    /// single shared home for the constant that was independently triplicated across
+    /// <c>Grob.Vm.DateNatives</c> and <c>Grob.Stdlib.DatePlugin</c> before D-357/D-367 —
+    /// <c>Grob.Core</c> is the only assembly both of those DAG siblings reference
+    /// without creating a <c>Grob.Compiler</c>&lt;-&gt;<c>Grob.Vm</c> edge.
+    /// </summary>
+    public const string RoundTripFormat = "yyyy-MM-ddTHH:mm:sszzz";
+
     private const string DateIsoOffsetFormat = "yyyy-MM-ddTHH:mm:sszzz";
     private const string DateIsoUtcFormat = "yyyy-MM-ddTHH:mm:ss'Z'";
     private const string DateIsoDateOnlyFormat = "yyyy-MM-dd";
@@ -166,10 +171,10 @@ public static class NamedTypeRegistry {
     private static GrobValue DateFromOffset(DateTimeOffset value) => GrobValue.FromStruct(new GrobStruct(
         "date",
         [new KeyValuePair<string, GrobValue>(
-            DateValueFieldName, GrobValue.FromString(value.ToString(DateRoundTripFormat, CultureInfo.InvariantCulture)))]));
+            DateValueFieldName, GrobValue.FromString(value.ToString(RoundTripFormat, CultureInfo.InvariantCulture)))]));
 
     private static DateTimeOffset DateToOffset(GrobStruct receiver) => DateTimeOffset.ParseExact(
-        receiver.GetField(DateValueFieldName).AsString(), DateRoundTripFormat, CultureInfo.InvariantCulture, DateTimeStyles.None);
+        receiver.GetField(DateValueFieldName).AsString(), RoundTripFormat, CultureInfo.InvariantCulture, DateTimeStyles.None);
 
     private static string DateIsoDateTimeString(GrobStruct receiver) {
         DateTimeOffset value = DateToOffset(receiver);

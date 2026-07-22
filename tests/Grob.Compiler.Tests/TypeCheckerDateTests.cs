@@ -588,6 +588,101 @@ public sealed class TypeCheckerDateTests {
         Assert.Equal(15, diag.Range.Start.Column);
     }
 
+    // -----------------------------------------------------------------------
+    // date-vs-date equality — D-357/D-367, the IsDateEquality annotation the
+    // compiler's emission relies on to safely select EqualDate (see
+    // BinaryExpr.IsDateEquality's doc comment). ResolveComparison's `==`/`!=` branch
+    // stays permissive for any matching Struct pair (D-169 generic equality) — the
+    // annotation is set alongside that, purely to tell the compiler which sites are
+    // specifically nominal-date, never narrowing what type-checks.
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("==")]
+    [InlineData("!=")]
+    public void DateVsDate_EqualityOperator_SetsIsDateEqualityTrue(string op) {
+        var (unit, bag) = TypeCheckSource($$"""
+            a := date.now()
+            b := date.now()
+            readonly r := a {{op}} b
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+
+        var binaries = new BinaryExprCollector();
+        binaries.Visit(unit);
+        BinaryExpr comparison = Assert.Single(binaries.Nodes);
+        Assert.True(comparison.IsDateEquality);
+    }
+
+    [Fact]
+    public void DateVsUnrelatedStruct_Equality_ResolvesToBool_ButIsDateEqualityFalse() {
+        // D-169's generic struct equality still type-checks two mismatched struct
+        // types (GrobType.Struct is a flat tag) — that permissiveness is unchanged.
+        // IsDateEquality must stay false here so the compiler's emission does not
+        // mistake this for a date-vs-date comparison.
+        var (unit, bag) = TypeCheckSource("""
+            type Config {
+                host: string
+            }
+            a := date.now()
+            c := Config { host: "example.com" }
+            readonly r := a == c
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+
+        var binaries = new BinaryExprCollector();
+        binaries.Visit(unit);
+        BinaryExpr comparison = Assert.Single(binaries.Nodes);
+        Assert.False(comparison.IsDateEquality);
+    }
+
+    [Fact]
+    public void UnrelatedStructVsUnrelatedStruct_Equality_IsDateEqualityFalse() {
+        var (unit, bag) = TypeCheckSource("""
+            type Config {
+                host: string
+            }
+            a := Config { host: "a" }
+            b := Config { host: "b" }
+            readonly r := a == b
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+
+        var binaries = new BinaryExprCollector();
+        binaries.Visit(unit);
+        BinaryExpr comparison = Assert.Single(binaries.Nodes);
+        Assert.False(comparison.IsDateEquality);
+    }
+
+    [Fact]
+    public void IntEquality_IsDateEqualityFalse() {
+        var (unit, bag) = TypeCheckSource("readonly r := 1 == 2");
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+
+        var binaries = new BinaryExprCollector();
+        binaries.Visit(unit);
+        BinaryExpr comparison = Assert.Single(binaries.Nodes);
+        Assert.False(comparison.IsDateEquality);
+    }
+
+    [Fact]
+    public void DateVsDate_LessThan_IsDateEqualityFalse() {
+        // IsDateEquality is an equality-only annotation — a relational comparison on
+        // the same nominal-date pair must not set it (LessDate/GreaterDate selection
+        // is unrelated, driven by the pre-existing IsDateStructPair-gated invariant).
+        var (unit, bag) = TypeCheckSource("""
+            a := date.now()
+            b := date.now()
+            readonly r := a < b
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+
+        var binaries = new BinaryExprCollector();
+        binaries.Visit(unit);
+        BinaryExpr comparison = Assert.Single(binaries.Nodes);
+        Assert.False(comparison.IsDateEquality);
+    }
+
     [Fact]
     public void DateVsUnrelatedStruct_LessThan_ReportsSingleE0002() {
         DiagnosticBag bag = Check("""
@@ -659,6 +754,19 @@ public sealed class TypeCheckerDateTests {
         public override Unit VisitMemberAccess(MemberAccessExpr node) {
             Nodes.Add(node);
             Visit(node.Target);
+            return default;
+        }
+        public override Unit VisitErrorExpr(ErrorExpr node) => default;
+        public override Unit VisitErrorStmt(ErrorStmt node) => default;
+        public override Unit VisitErrorDecl(ErrorDecl node) => default;
+    }
+
+    private sealed class BinaryExprCollector : AstWalker {
+        public List<BinaryExpr> Nodes { get; } = [];
+        public override Unit VisitBinary(BinaryExpr node) {
+            Nodes.Add(node);
+            Visit(node.Left);
+            Visit(node.Right);
             return default;
         }
         public override Unit VisitErrorExpr(ErrorExpr node) => default;

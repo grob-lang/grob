@@ -623,6 +623,18 @@ public sealed class VirtualMachine : IPluginRegistrar {
                             _stack.Push(GrobValue.FromBool(a != b), line);
                             break;
                         }
+                    case OpCode.EqualDate: {
+                            // D-357/D-367. Instant-based, restoring trichotomy with LessDate/
+                            // GreaterDate below: the generic Equal opcode above's field-by-field
+                            // __value string compare is offset-sensitive, so date == date must
+                            // not reach it. DateTimeOffset's own operator== already normalises
+                            // across offsets. !=  on dates lowers to EqualDate + Not — no
+                            // dedicated NotEqualDate.
+                            DateTimeOffset b = DateNatives.ToDateTimeOffset(_stack.Pop().AsStruct());
+                            DateTimeOffset a = DateNatives.ToDateTimeOffset(_stack.Pop().AsStruct());
+                            _stack.Push(GrobValue.FromBool(a == b), line);
+                            break;
+                        }
                     case OpCode.LessInt: {
                             long b = _stack.Pop().AsInt();
                             long a = _stack.Pop().AsInt();

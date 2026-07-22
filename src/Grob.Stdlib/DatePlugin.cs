@@ -14,11 +14,14 @@ namespace Grob.Stdlib;
 /// makes <c>ValueDisplay</c> (D-336) render the canonical ISO-8601 form. A <c>date</c>
 /// runtime value is a <see cref="GrobStruct"/> named <c>"date"</c> with exactly one hidden
 /// field (<see cref="ValueFieldName"/>) holding a round-trip-formatted
-/// <see cref="DateTimeOffset"/> string — this is the only place outside <c>Grob.Vm</c>'s
-/// <c>DateNatives</c> that convention is spelled out (the two cannot share code:
-/// <c>Grob.Stdlib</c> and <c>Grob.Vm</c> are DAG siblings, neither referencing the other),
-/// so it must stay in lockstep with <c>DateNatives.ValueFieldName</c>/<c>TypeName</c> and
-/// its round-trip format string. Registers exactly the qualified names listed in the
+/// <see cref="DateTimeOffset"/> string, formatted with
+/// <see cref="NamedTypeRegistry.RoundTripFormat"/> (the shared, <c>Grob.Core</c>-resident
+/// constant D-357/D-367 consolidated this and <c>Grob.Vm.DateNatives</c>'s copy into) —
+/// this is the only place outside <c>DateNatives</c> that the field-layout convention is
+/// spelled out (the two cannot share code: <c>Grob.Stdlib</c> and <c>Grob.Vm</c> are DAG
+/// siblings, neither referencing the other), so <see cref="ValueFieldName"/>/
+/// <see cref="TypeName"/> must stay in lockstep with <c>DateNatives</c>'s equivalents by
+/// inspection. Registers exactly the qualified names listed in the
 /// compile-time twin, <c>NamespaceRegistry</c>'s <c>date</c> entry in <c>Grob.Compiler</c>.
 /// The instance property/method surface (<c>year</c>, <c>addDays</c>, ...) is dispatched
 /// entirely by <c>Grob.Vm</c>'s <c>OpCode.GetProperty</c> handler via <c>DateNatives</c> —
@@ -30,11 +33,6 @@ public sealed class DatePlugin : IGrobPlugin {
 
     /// <summary>The struct type name every <c>date</c> value carries.</summary>
     internal const string TypeName = "date";
-
-    // Must match Grob.Vm.DateNatives's private RoundTripFormat exactly — both sides
-    // produce/consume the same runtime string, and neither project can reference the
-    // other's constant.
-    private const string RoundTripFormat = "yyyy-MM-ddTHH:mm:sszzz";
 
     private readonly IClock _clock;
 
@@ -131,6 +129,6 @@ public sealed class DatePlugin : IGrobPlugin {
     private static GrobValue FromDateTimeOffset(DateTimeOffset value) => GrobValue.FromStruct(new GrobStruct(
         TypeName,
         [new KeyValuePair<string, GrobValue>(
-            ValueFieldName, GrobValue.FromString(value.ToString(RoundTripFormat, CultureInfo.InvariantCulture)))]));
+            ValueFieldName, GrobValue.FromString(value.ToString(NamedTypeRegistry.RoundTripFormat, CultureInfo.InvariantCulture)))]));
 
 }
