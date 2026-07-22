@@ -91,6 +91,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         string s = receiver.AsString();
         long width = widthArg.AsInt();
         if (width <= s.Length) return GrobValue.FromString(s);
+        RejectOversizedWidth("padLeft", width);
         return GrobValue.FromString(s.PadLeft((int)width, PadCharacter(charArg)));
     }
 
@@ -98,7 +99,20 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         string s = receiver.AsString();
         long width = widthArg.AsInt();
         if (width <= s.Length) return GrobValue.FromString(s);
+        RejectOversizedWidth("padRight", width);
         return GrobValue.FromString(s.PadRight((int)width, PadCharacter(charArg)));
+    }
+
+    /// <summary>Rejects a pad <c>width</c> that will not fit a 32-bit <see cref="string.PadLeft(int,char)"/>
+    /// total-width argument. The unchecked cast of a <c>long</c> above <see cref="int.MaxValue"/> wraps to a
+    /// negative value, whereupon .NET's pad overloads throw an uncoded CLR fault that bypasses the
+    /// native-throw seam; routing it through <see cref="NativeFaultException"/> surfaces the same
+    /// <c>IndexError</c>/<c>E5101</c> the other range-bound string members raise.</summary>
+    private static void RejectOversizedWidth(string method, long width) {
+        if (width > int.MaxValue) {
+            throw new NativeFaultException("IndexError", ErrorCatalog.E5101.Code,
+                $"{method}: width {width} exceeds the maximum supported value {int.MaxValue}.");
+        }
     }
 
     /// <summary>

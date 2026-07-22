@@ -261,6 +261,8 @@ public sealed class TypeCheckerPrimitiveMemberTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -273,6 +275,7 @@ public sealed class TypeCheckerPrimitiveMemberTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
         Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(25, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -285,6 +288,7 @@ public sealed class TypeCheckerPrimitiveMemberTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
         Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(29, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -296,6 +300,8 @@ public sealed class TypeCheckerPrimitiveMemberTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(25, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------

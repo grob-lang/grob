@@ -17,7 +17,7 @@ time — no boxing, no vtable, no heap allocation.
 **Build-status note (D-365, updating D-363's build-status note).**
 The `string` section below is now **fully built** — `padLeft`/`padRight`/`truncate`
 (D-365 wires D-364's `NativeDefaultArgumentFill` into the primitive-member call path,
-the second of its two designed consumers) join the 21 members D-363 shipped, closing
+the second of its three designed consumers to be wired) join the 21 members D-363 shipped, closing
 the documented surface at 24 members (2 properties, 22 methods). `ResolveMemberAccessCall`
 (`TypeChecker.Expressions.cs`) gained a primitive-value-receiver arm keyed on
 `PrimitiveMemberRegistry` (`Grob.Core`, parallel to the `NamedTypeRegistry` shape),

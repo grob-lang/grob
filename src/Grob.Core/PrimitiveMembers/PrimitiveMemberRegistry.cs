@@ -42,7 +42,7 @@ public static class PrimitiveMemberRegistry {
     // -----------------------------------------------------------------------
     // string — grob-type-registry.md's `string` section, now complete (D-365
     // wires padLeft/padRight/truncate onto D-364's default-argument-fill
-    // mechanism, the second of its two designed consumers).
+    // mechanism, the second of its three designed consumers to be wired).
     // -----------------------------------------------------------------------
 
     private static PrimitiveMemberEntry BuildStringEntry() {

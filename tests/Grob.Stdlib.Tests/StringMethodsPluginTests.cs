@@ -384,6 +384,27 @@ public sealed class StringMethodsPluginTests {
     }
 
     [Fact]
+    public void PadLeft_WidthAboveIntMax_ThrowsIndexError() {
+        // width is a 64-bit int; a value above int.MaxValue would wrap to a negative
+        // on the unchecked cast to .NET's PadLeft overload and throw an uncoded CLR
+        // fault that bypasses the native-throw seam. The guard rejects it as E5101 first.
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.padLeft",
+                GrobValue.FromString("7"), GrobValue.FromInt((long)int.MaxValue + 1), GrobValue.FromString(" "))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
+    public void PadRight_WidthAboveIntMax_ThrowsIndexError() {
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.padRight",
+                GrobValue.FromString("7"), GrobValue.FromInt((long)int.MaxValue + 1), GrobValue.FromString(" "))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
     public void Truncate_LongerThanMaxLength_CutsToMaxLengthIncludingSuffix() {
         var vm = NewRegisteredVm();
         vm.Run(BuildCallChunk("string.truncate",

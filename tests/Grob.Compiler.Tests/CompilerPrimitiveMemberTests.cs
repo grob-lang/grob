@@ -40,12 +40,13 @@ public sealed class CompilerPrimitiveMemberTests {
         return Assert.Single(functions);
     }
 
-    private readonly record struct Instr(OpCode Op, int Arg);
+    private readonly record struct Instr(OpCode Op, int Arg, int Offset);
 
     private static List<Instr> Decode(Chunk chunk) {
         var result = new List<Instr>();
         int offset = 0;
         while (offset < chunk.Count) {
+            int start = offset;
             var op = (OpCode)chunk.ReadByte(offset++);
             int arg = 0;
             switch (op) {
@@ -63,7 +64,7 @@ public sealed class CompilerPrimitiveMemberTests {
                 default:
                     break;
             }
-            result.Add(new Instr(op, arg));
+            result.Add(new Instr(op, arg, start));
         }
         return result;
     }
@@ -275,6 +276,18 @@ public sealed class CompilerPrimitiveMemberTests {
         Assert.Equal(GrobValue.FromInt(3), chunk.ReadConstant(instrs[2].Arg));
         Assert.Equal(GrobValue.FromString(expectedDefault), chunk.ReadConstant(instrs[3].Arg));
         Assert.Equal(3, instrs[4].Arg);
+
+        // Full constant pool: exactly the callee name, the supplied argument and the
+        // synthesised default — no stray or duplicated constants.
+        List<GrobValue> pool = [.. Enumerable.Range(0, chunk.ConstantCount).Select(chunk.ReadConstant)];
+        Assert.Equal(3, chunk.ConstantCount);
+        Assert.Contains(GrobValue.FromString(qualifiedName), pool);
+        Assert.Contains(GrobValue.FromInt(3), pool);
+        Assert.Contains(GrobValue.FromString(expectedDefault), pool);
+
+        // Source-line array: every instruction of the `return` statement carries line 2,
+        // the implicit function epilogue (Nil, Return) the closing brace on line 3.
+        Assert.Equal([2, 2, 2, 2, 2, 2, 3, 3], instrs.Select(i => chunk.GetLine(i.Offset)));
     }
 
     [Theory]
@@ -300,6 +313,17 @@ public sealed class CompilerPrimitiveMemberTests {
         Assert.Equal(GrobValue.FromInt(3), chunk.ReadConstant(instrs[2].Arg));
         Assert.Equal(GrobValue.FromString("x"), chunk.ReadConstant(instrs[3].Arg));
         Assert.Equal(3, instrs[4].Arg);
+
+        // Full constant pool: the callee name plus both supplied arguments, nothing
+        // synthesised — no default constant is emitted when every argument is supplied.
+        List<GrobValue> pool = [.. Enumerable.Range(0, chunk.ConstantCount).Select(chunk.ReadConstant)];
+        Assert.Equal(3, chunk.ConstantCount);
+        Assert.Contains(GrobValue.FromString(qualifiedName), pool);
+        Assert.Contains(GrobValue.FromInt(3), pool);
+        Assert.Contains(GrobValue.FromString("x"), pool);
+
+        // Source-line array: the `return` statement on line 2, the implicit epilogue on line 3.
+        Assert.Equal([2, 2, 2, 2, 2, 2, 3, 3], instrs.Select(i => chunk.GetLine(i.Offset)));
     }
 
     // -----------------------------------------------------------------------
