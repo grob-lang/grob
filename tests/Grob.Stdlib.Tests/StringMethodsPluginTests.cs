@@ -1,3 +1,5 @@
+using System.Threading.Tasks;
+
 using Grob.Core;
 using Grob.Core.PrimitiveMembers;
 using Grob.Vm;
@@ -315,6 +317,24 @@ public sealed class StringMethodsPluginTests {
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.repeat", GrobValue.FromString("ab"), GrobValue.FromInt(long.MaxValue))));
         Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
+    public void Repeat_EmptyReceiverHugeCount_ReturnsEmptyStringWithoutHanging() {
+        // CodeRabbit (PR #156): RejectOversizedRepeat's `length > 0` guard (added to avoid
+        // a divide-by-zero on an empty receiver) also skips the ceiling check entirely for
+        // an empty receiver, leaving the append loop to run `count` times — for
+        // "".repeat(long.MaxValue), an unbounded busy loop the VM's cooperative
+        // cancellation cannot interrupt (it only checks between VM instructions, not inside
+        // a native call). Bounded with a timeout rather than letting a genuine reproduction
+        // hang the test run; the background task is left to exit with the test process if
+        // the bug is present.
+        var vm = NewRegisteredVm();
+        var task = Task.Run(() =>
+            vm.Run(BuildCallChunk("string.repeat", GrobValue.FromString(string.Empty), GrobValue.FromInt(long.MaxValue))));
+        bool completed = task.Wait(TimeSpan.FromSeconds(2));
+        Assert.True(completed, "repeat on an empty receiver with a huge count must return immediately.");
+        Assert.Equal(GrobValue.FromString(string.Empty), vm.Stack.Peek());
     }
 
     [Fact]

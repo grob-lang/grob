@@ -177,7 +177,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
     private static GrobValue Repeat(GrobValue receiver, GrobValue countArg) {
         string s = receiver.AsString();
         long count = countArg.AsInt();
-        if (count <= 0) return GrobValue.FromString(string.Empty);
+        if (count <= 0 || s.Length == 0) return GrobValue.FromString(string.Empty);
         RejectOversizedRepeat(s.Length, count);
         var builder = new StringBuilder(checked((int)(s.Length * count)));
         for (long i = 0; i < count; i++) builder.Append(s);
