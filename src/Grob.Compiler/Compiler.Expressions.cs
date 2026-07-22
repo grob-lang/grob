@@ -741,6 +741,24 @@ public sealed partial class Compiler {
 
         Visit(node.Callee);
 
+        // D-358: a namespace-native call (date.parse) that omits trailing optional
+        // arguments — generalises the input() one-off arm below via
+        // NativeDefaultArgumentFill, the same "inject a synthesised constant argument"
+        // shape D-345's formatAs column injection also uses. The runtime native keeps a
+        // fixed arity regardless of how many trailing defaults the source call omitted.
+        if (node.Callee is MemberAccessExpr { Target: IdentifierExpr { Declaration: NamespaceDecl } nsId } ma &&
+                NamespaceRegistry.TryGetMember(nsId.Name, ma.Member) is NamespaceRegistry.NativeMember { ParameterDefaults: not null } native &&
+                node.Arguments.Count < native.ParameterTypes.Count) {
+            foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
+            foreach (GrobValue value in NativeDefaultArgumentFill.Resolve(
+                    node.Arguments.Count, native.ParameterTypes.Count, native.ParameterDefaults)) {
+                EmitConstant(value, line);
+            }
+            _chunk.WriteOpCode(OpCode.Call, line);
+            _chunk.WriteByte(ToByteOperand(native.ParameterTypes.Count, "call argument count"), line);
+            return null;
+        }
+
         // Sprint 8 Increment C: input() is the one no-namespace native needing a
         // default-argument fill (D-342) — the runtime native's own arity is always 1
         // (Grob.Stdlib.IoPlugin), so a 0-argument script-level call has its missing

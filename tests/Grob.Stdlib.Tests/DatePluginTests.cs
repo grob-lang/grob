@@ -195,8 +195,8 @@ public sealed class DatePluginTests {
     [Fact]
     public void Parse_IsoStringWithOffset_PreservesOffset() {
         var vm = NewRegisteredVm();
-        vm.Run(BuildGetPropertyOnCallChunk(
-            "date.parse", "utcOffset", GrobValue.FromString("2026-04-05T14:30:00+02:00")));
+        vm.Run(BuildGetPropertyOnCallChunk("date.parse", "utcOffset",
+            GrobValue.FromString("2026-04-05T14:30:00+02:00"), GrobValue.FromString("")));
 
         Assert.Equal(120, vm.Stack.Peek().AsInt());
     }
@@ -204,8 +204,8 @@ public sealed class DatePluginTests {
     [Fact]
     public void Parse_IsoStringWithOffset_RoundTripsComponents() {
         var vm = NewRegisteredVm();
-        vm.Run(BuildGetPropertyOnCallChunk(
-            "date.parse", "hour", GrobValue.FromString("2026-04-05T14:30:00+02:00")));
+        vm.Run(BuildGetPropertyOnCallChunk("date.parse", "hour",
+            GrobValue.FromString("2026-04-05T14:30:00+02:00"), GrobValue.FromString("")));
 
         Assert.Equal(14, vm.Stack.Peek().AsInt());
     }
@@ -215,7 +215,47 @@ public sealed class DatePluginTests {
         var vm = NewRegisteredVm();
 
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
-            vm.Run(BuildCallChunk("date.parse", GrobValue.FromString("not-a-date"))));
+            vm.Run(BuildCallChunk("date.parse", GrobValue.FromString("not-a-date"), GrobValue.FromString(""))));
+
+        Assert.Equal(ErrorCatalog.E5702.Code, ex.Code);
+    }
+
+    // -----------------------------------------------------------------------
+    // parse()'s optional pattern argument (D-358) — arity 2, hand-built directly
+    // (the compiler's default-fill for the 1-argument source form is exercised in
+    // Grob.Compiler.Tests, not here).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Parse_TwoArgumentsEmptyPattern_StillParsesIso() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildGetPropertyOnCallChunk("date.parse", "utcOffset",
+            GrobValue.FromString("2026-04-05T14:30:00+02:00"), GrobValue.FromString("")));
+
+        Assert.Equal(120, vm.Stack.Peek().AsInt());
+    }
+
+    [Fact]
+    public void Parse_ExplicitPattern_ParsesViaParseExact() {
+        var vm = NewRegisteredVm();
+        GrobValue[] args = [GrobValue.FromString("05/04/2026"), GrobValue.FromString("dd/MM/yyyy")];
+
+        vm.Run(BuildGetPropertyOnCallChunk("date.parse", "day", args));
+        Assert.Equal(5, vm.Stack.Peek().AsInt());
+
+        vm.Run(BuildGetPropertyOnCallChunk("date.parse", "month", args));
+        Assert.Equal(4, vm.Stack.Peek().AsInt());
+
+        vm.Run(BuildGetPropertyOnCallChunk("date.parse", "year", args));
+        Assert.Equal(2026, vm.Stack.Peek().AsInt());
+    }
+
+    [Fact]
+    public void Parse_StringMismatchedWithExplicitPattern_ThrowsCatchableParseError() {
+        var vm = NewRegisteredVm();
+
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(BuildCallChunk(
+            "date.parse", GrobValue.FromString("not-a-date"), GrobValue.FromString("dd/MM/yyyy"))));
 
         Assert.Equal(ErrorCatalog.E5702.Code, ex.Code);
     }
@@ -259,8 +299,8 @@ public sealed class DatePluginTests {
     [Fact]
     public void AddHours_AdvancesHour() {
         var vm = NewRegisteredVm();
-        vm.Run(BuildMethodCallOnCallChunk(
-            "date.parse", "addHours", [GrobValue.FromString("2026-04-05T14:30:00+00:00")], GrobValue.FromInt(2)));
+        vm.Run(BuildMethodCallOnCallChunk("date.parse", "addHours",
+            [GrobValue.FromString("2026-04-05T14:30:00+00:00"), GrobValue.FromString("")], GrobValue.FromInt(2)));
 
         var propChunk = new Chunk();
         GrobValue advanced = vm.Stack.Peek();
@@ -277,8 +317,8 @@ public sealed class DatePluginTests {
     [Fact]
     public void AddMinutes_NegativeArgument_MovesBackward() {
         var vm = NewRegisteredVm();
-        vm.Run(BuildMethodCallOnCallChunk(
-            "date.parse", "addMinutes", [GrobValue.FromString("2026-04-05T14:30:00+00:00")], GrobValue.FromInt(-15)));
+        vm.Run(BuildMethodCallOnCallChunk("date.parse", "addMinutes",
+            [GrobValue.FromString("2026-04-05T14:30:00+00:00"), GrobValue.FromString("")], GrobValue.FromInt(-15)));
 
         var propChunk = new Chunk();
         GrobValue moved = vm.Stack.Peek();
@@ -299,17 +339,20 @@ public sealed class DatePluginTests {
         int laterIdx = chunk.AddConstant(GrobValue.FromString("2026-01-02T00:00:00+00:00"));
         int earlierIdx = chunk.AddConstant(GrobValue.FromString("2026-01-01T00:00:00+00:00"));
         int parseIdx = chunk.AddConstant(GrobValue.FromString("date.parse"));
+        int emptyPatternIdx = chunk.AddConstant(GrobValue.FromString(""));
 
         chunk.WriteOpCode(OpCode.GetGlobal, 1); chunk.WriteByte((byte)parseIdx, 1);
         chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)laterIdx, 1);
-        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)emptyPatternIdx, 1);
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(2, 1);
 
         int isAfterIdx = chunk.AddConstant(GrobValue.FromString("isAfter"));
         chunk.WriteOpCode(OpCode.GetProperty, 1); chunk.WriteByte((byte)isAfterIdx, 1);
 
         chunk.WriteOpCode(OpCode.GetGlobal, 1); chunk.WriteByte((byte)parseIdx, 1);
         chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)earlierIdx, 1);
-        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)emptyPatternIdx, 1);
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(2, 1);
 
         chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
         chunk.WriteOpCode(OpCode.Return, 1);
@@ -326,17 +369,20 @@ public sealed class DatePluginTests {
         int lateIdx = chunk.AddConstant(GrobValue.FromString("2026-01-11T00:00:00+00:00"));
         int earlyIdx = chunk.AddConstant(GrobValue.FromString("2026-01-01T00:00:00+00:00"));
         int parseIdx = chunk.AddConstant(GrobValue.FromString("date.parse"));
+        int emptyPatternIdx = chunk.AddConstant(GrobValue.FromString(""));
 
         chunk.WriteOpCode(OpCode.GetGlobal, 1); chunk.WriteByte((byte)parseIdx, 1);
         chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)lateIdx, 1);
-        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)emptyPatternIdx, 1);
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(2, 1);
 
         int daysSinceIdx = chunk.AddConstant(GrobValue.FromString("daysSince"));
         chunk.WriteOpCode(OpCode.GetProperty, 1); chunk.WriteByte((byte)daysSinceIdx, 1);
 
         chunk.WriteOpCode(OpCode.GetGlobal, 1); chunk.WriteByte((byte)parseIdx, 1);
         chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)earlyIdx, 1);
-        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)emptyPatternIdx, 1);
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(2, 1);
 
         chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
         chunk.WriteOpCode(OpCode.Return, 1);
@@ -349,8 +395,8 @@ public sealed class DatePluginTests {
     [Fact]
     public void ToIsoDateTime_RendersFullForm() {
         var vm = NewRegisteredVm();
-        vm.Run(BuildMethodCallOnCallChunk(
-            "date.parse", "toIsoDateTime", [GrobValue.FromString("2026-04-05T14:30:00+01:00")]));
+        vm.Run(BuildMethodCallOnCallChunk("date.parse", "toIsoDateTime",
+            [GrobValue.FromString("2026-04-05T14:30:00+01:00"), GrobValue.FromString("")]));
 
         Assert.Equal("2026-04-05T14:30:00+01:00", vm.Stack.Peek().AsString());
     }
@@ -360,7 +406,8 @@ public sealed class DatePluginTests {
         var vm = NewRegisteredVm();
         vm.Run(BuildMethodCallOnCallChunk(
             "date.parse", "format",
-            [GrobValue.FromString("2026-04-05T14:30:00+00:00")], GrobValue.FromString("dd MMM yyyy")));
+            [GrobValue.FromString("2026-04-05T14:30:00+00:00"), GrobValue.FromString("")],
+            GrobValue.FromString("dd MMM yyyy")));
 
         Assert.Equal("05 Apr 2026", vm.Stack.Peek().AsString());
     }
@@ -381,8 +428,8 @@ public sealed class DatePluginTests {
     [Fact]
     public void ToLocal_RoundTripsThroughToUtc() {
         var vm = NewRegisteredVm();
-        vm.Run(BuildMethodCallOnCallChunk(
-            "date.parse", "toUtc", [GrobValue.FromString("2026-04-05T14:30:00+00:00")]));
+        vm.Run(BuildMethodCallOnCallChunk("date.parse", "toUtc",
+            [GrobValue.FromString("2026-04-05T14:30:00+00:00"), GrobValue.FromString("")]));
         GrobValue utcDate = vm.Stack.Peek();
 
         var localChunk = new Chunk();
@@ -402,8 +449,8 @@ public sealed class DatePluginTests {
     [Fact]
     public void ToUtc_ZeroesOffset() {
         var vm = NewRegisteredVm();
-        vm.Run(BuildMethodCallOnCallChunk(
-            "date.parse", "toUtc", [GrobValue.FromString("2026-04-05T14:30:00+02:00")]));
+        vm.Run(BuildMethodCallOnCallChunk("date.parse", "toUtc",
+            [GrobValue.FromString("2026-04-05T14:30:00+02:00"), GrobValue.FromString("")]));
         GrobValue utcDate = vm.Stack.Peek();
 
         var propChunk = new Chunk();
@@ -422,7 +469,7 @@ public sealed class DatePluginTests {
         var vm = NewRegisteredVm();
         vm.Run(BuildMethodCallOnCallChunk(
             "date.parse", "toZone",
-            [GrobValue.FromString("2026-04-05T12:00:00Z")], GrobValue.FromString("UTC")));
+            [GrobValue.FromString("2026-04-05T12:00:00Z"), GrobValue.FromString("")], GrobValue.FromString("UTC")));
 
         var propChunk = new Chunk();
         GrobValue zoned = vm.Stack.Peek();
@@ -443,8 +490,8 @@ public sealed class DatePluginTests {
     [Fact]
     public void ToDateOnly_ZeroesTimeKeepsDate() {
         var vm = NewRegisteredVm();
-        vm.Run(BuildMethodCallOnCallChunk(
-            "date.parse", "toDateOnly", [GrobValue.FromString("2026-04-05T14:30:00+00:00")]));
+        vm.Run(BuildMethodCallOnCallChunk("date.parse", "toDateOnly",
+            [GrobValue.FromString("2026-04-05T14:30:00+00:00"), GrobValue.FromString("")]));
 
         var propChunk = new Chunk();
         GrobValue dateOnly = vm.Stack.Peek();
@@ -461,8 +508,8 @@ public sealed class DatePluginTests {
     [Fact]
     public void ToTimeOnly_AnchorsDateToUnixEpoch() {
         var vm = NewRegisteredVm();
-        vm.Run(BuildMethodCallOnCallChunk(
-            "date.parse", "toTimeOnly", [GrobValue.FromString("2026-04-05T14:30:00+00:00")]));
+        vm.Run(BuildMethodCallOnCallChunk("date.parse", "toTimeOnly",
+            [GrobValue.FromString("2026-04-05T14:30:00+00:00"), GrobValue.FromString("")]));
 
         var propChunk = new Chunk();
         GrobValue timeOnly = vm.Stack.Peek();
@@ -479,8 +526,8 @@ public sealed class DatePluginTests {
     [Fact]
     public void ToTimeOnly_KeepsTimeComponents() {
         var vm = NewRegisteredVm();
-        vm.Run(BuildMethodCallOnCallChunk(
-            "date.parse", "toTimeOnly", [GrobValue.FromString("2026-04-05T14:30:00+00:00")]));
+        vm.Run(BuildMethodCallOnCallChunk("date.parse", "toTimeOnly",
+            [GrobValue.FromString("2026-04-05T14:30:00+00:00"), GrobValue.FromString("")]));
 
         var propChunk = new Chunk();
         GrobValue timeOnly = vm.Stack.Peek();
@@ -505,17 +552,20 @@ public sealed class DatePluginTests {
         int earlyIdx = chunk.AddConstant(GrobValue.FromString("2026-01-01T00:00:00+00:00"));
         int lateIdx = chunk.AddConstant(GrobValue.FromString("2026-01-11T00:00:00+00:00"));
         int parseIdx = chunk.AddConstant(GrobValue.FromString("date.parse"));
+        int emptyPatternIdx = chunk.AddConstant(GrobValue.FromString(""));
 
         chunk.WriteOpCode(OpCode.GetGlobal, 1); chunk.WriteByte((byte)parseIdx, 1);
         chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)earlyIdx, 1);
-        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)emptyPatternIdx, 1);
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(2, 1);
 
         int daysUntilIdx = chunk.AddConstant(GrobValue.FromString("daysUntil"));
         chunk.WriteOpCode(OpCode.GetProperty, 1); chunk.WriteByte((byte)daysUntilIdx, 1);
 
         chunk.WriteOpCode(OpCode.GetGlobal, 1); chunk.WriteByte((byte)parseIdx, 1);
         chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)lateIdx, 1);
-        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)emptyPatternIdx, 1);
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(2, 1);
 
         chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
         chunk.WriteOpCode(OpCode.Return, 1);
@@ -534,9 +584,11 @@ public sealed class DatePluginTests {
         var chunk = new Chunk();
         int calleeIdx = chunk.AddConstant(GrobValue.FromString("date.parse"));
         int argIdx = chunk.AddConstant(GrobValue.FromString("2026-04-05T14:30:00+01:00"));
+        int patternIdx = chunk.AddConstant(GrobValue.FromString(""));
         chunk.WriteOpCode(OpCode.GetGlobal, 1); chunk.WriteByte((byte)calleeIdx, 1);
         chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)argIdx, 1);
-        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)patternIdx, 1);
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(2, 1);
         chunk.WriteOpCode(OpCode.Print, 1);
         chunk.WriteOpCode(OpCode.Return, 1);
 
@@ -553,9 +605,11 @@ public sealed class DatePluginTests {
         var chunk = new Chunk();
         int calleeIdx = chunk.AddConstant(GrobValue.FromString("date.parse"));
         int argIdx = chunk.AddConstant(GrobValue.FromString("2026-04-05T14:30:00Z"));
+        int patternIdx = chunk.AddConstant(GrobValue.FromString(""));
         chunk.WriteOpCode(OpCode.GetGlobal, 1); chunk.WriteByte((byte)calleeIdx, 1);
         chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)argIdx, 1);
-        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)patternIdx, 1);
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(2, 1);
         chunk.WriteOpCode(OpCode.Print, 1);
         chunk.WriteOpCode(OpCode.Return, 1);
 

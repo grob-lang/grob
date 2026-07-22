@@ -82,14 +82,27 @@ public sealed class DatePlugin : IGrobPlugin {
             return FromDateTimeOffset(new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)));
         }));
 
-        registrar.RegisterNative("date.parse", new NativeFunction("date.parse", 1, (args, _) => {
+        // D-358: pattern is the compiler-synthesised second argument — "" (the
+        // pre-existing one-argument behaviour) selects ISO-8601 via TryParse; a
+        // non-empty pattern selects DateTimeOffset.ParseExact.
+        registrar.RegisterNative("date.parse", new NativeFunction("date.parse", 2, (args, _) => {
             string s = args[0].AsString();
-            // D-176: a string with an explicit offset preserves it; one without is
-            // interpreted as local time — DateTimeStyles.AssumeLocal gives exactly that.
-            if (!DateTimeOffset.TryParse(
-                    s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out DateTimeOffset parsed)) {
-                throw new NativeFaultException(
-                    "ParseError", ErrorCatalog.E5702.Code, $"date.parse: '{s}' is not a valid date.");
+            string pattern = args[1].AsString();
+            DateTimeOffset parsed;
+            if (pattern.Length == 0) {
+                // D-176: a string with an explicit offset preserves it; one without is
+                // interpreted as local time — DateTimeStyles.AssumeLocal gives exactly that.
+                if (!DateTimeOffset.TryParse(
+                        s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out parsed)) {
+                    throw new NativeFaultException(
+                        "ParseError", ErrorCatalog.E5702.Code, $"date.parse: '{s}' is not a valid date.");
+                }
+            } else {
+                if (!DateTimeOffset.TryParseExact(
+                        s, pattern, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out parsed)) {
+                    throw new NativeFaultException("ParseError", ErrorCatalog.E5702.Code,
+                        $"date.parse: '{s}' does not match pattern '{pattern}'.");
+                }
             }
             return FromDateTimeOffset(parsed);
         }));

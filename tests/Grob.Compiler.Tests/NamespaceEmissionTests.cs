@@ -157,6 +157,64 @@ public sealed class NamespaceEmissionTests {
     }
 
     [Fact]
+    public void DateParse_OneArgument_SynthesisesEmptyPatternDefault_CallArityTwo() {
+        // D-358: date.parse's optional trailing pattern parameter. A 1-argument source
+        // call under-supplies the native's full arity (2) — the compiler's default-fill
+        // branch (Compiler.Expressions.cs VisitCall) must synthesise the declared ""
+        // default as a second Constant, after the supplied argument and before Call,
+        // so the runtime native (Grob.Stdlib.DatePlugin, arity 2) always receives both.
+        var callee = new MemberAccessExpr(SourceRange.Unknown, NamespaceIdent("date"), "parse");
+        var call = new CallExpr(SourceRange.Unknown, callee,
+            [new CallArgument(SourceRange.Unknown, null, new StringLiteralExpr(SourceRange.Unknown, "2026-04-05"))]);
+        var unit = new CompilationUnit(SourceRange.Unknown,
+            [new ExpressionStmt(SourceRange.Unknown, call)]);
+
+        var bag = new DiagnosticBag();
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        Assert.False(bag.HasErrors);
+
+        List<Instr> instrs = Decode(chunk);
+        Assert.Equal(OpCode.GetGlobal, instrs[0].Op);
+        Assert.Equal("date.parse", chunk.ReadConstant(instrs[0].Arg).AsString());
+
+        Assert.Equal(OpCode.Constant, instrs[1].Op);
+        Assert.Equal(GrobValue.FromString("2026-04-05"), chunk.ReadConstant(instrs[1].Arg));
+
+        Assert.Equal(OpCode.Constant, instrs[2].Op);
+        Assert.Equal(GrobValue.FromString(""), chunk.ReadConstant(instrs[2].Arg));
+
+        Assert.Equal(OpCode.Call, instrs[3].Op);
+        Assert.Equal(2, instrs[3].Arg);
+    }
+
+    [Fact]
+    public void DateParse_TwoArguments_CompilesBothSupplied_NoSynthesisedConstant() {
+        var callee = new MemberAccessExpr(SourceRange.Unknown, NamespaceIdent("date"), "parse");
+        var call = new CallExpr(SourceRange.Unknown, callee, [
+            new CallArgument(SourceRange.Unknown, null, new StringLiteralExpr(SourceRange.Unknown, "05/04/2026")),
+            new CallArgument(SourceRange.Unknown, null, new StringLiteralExpr(SourceRange.Unknown, "dd/MM/yyyy")),
+        ]);
+        var unit = new CompilationUnit(SourceRange.Unknown,
+            [new ExpressionStmt(SourceRange.Unknown, call)]);
+
+        var bag = new DiagnosticBag();
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        Assert.False(bag.HasErrors);
+
+        List<Instr> instrs = Decode(chunk);
+        Assert.Equal(OpCode.GetGlobal, instrs[0].Op);
+        Assert.Equal(OpCode.Constant, instrs[1].Op);
+        Assert.Equal(GrobValue.FromString("05/04/2026"), chunk.ReadConstant(instrs[1].Arg));
+        Assert.Equal(OpCode.Constant, instrs[2].Op);
+        Assert.Equal(GrobValue.FromString("dd/MM/yyyy"), chunk.ReadConstant(instrs[2].Arg));
+        Assert.Equal(OpCode.Call, instrs[3].Op);
+        Assert.Equal(2, instrs[3].Arg);
+
+        // Exactly two Constants — both supplied, no third synthesised default.
+        Assert.Equal(2, instrs.Count(i => i.Op == OpCode.Constant));
+    }
+
+    [Fact]
     public void ShadowedNamespaceName_Declaration_IsNotNamespaceDecl_EmitsGetPropertyNotGetGlobal() {
         // Regression (PR #127 review): a local/parameter named "math" that the type
         // checker resolved to something other than the namespace (Declaration is not

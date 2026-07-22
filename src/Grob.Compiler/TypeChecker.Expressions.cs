@@ -1421,9 +1421,13 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Validates a native member call positionally: arity (E0003) then per-argument
-    /// assignability (E0004, at the argument's location). A native has no named or defaulted
-    /// parameters, so a straight index-by-index check suffices; an already-errored argument
-    /// is suppressed to keep one diagnostic per root cause.
+    /// assignability (E0004, at the argument's location). Most natives have no defaulted
+    /// parameters, so <paramref name="member"/>'s required count equals its full arity and
+    /// the check is an exact-count match; a native declaring <see
+    /// cref="NamespaceRegistry.NativeMember.ParameterDefaults"/> (D-358) accepts any count
+    /// in the required-to-full range — only the arguments actually supplied are
+    /// type-checked, since the compiler synthesises the rest from the declared constants.
+    /// An already-errored argument is suppressed to keep one diagnostic per root cause.
     /// </summary>
     private void CheckNativeCall(CallExpr node, string namespaceName, string memberName,
             NamespaceRegistry.NativeMember member, GrobType[] argTypes) {
@@ -1432,19 +1436,37 @@ public sealed partial class TypeChecker {
             return;
         }
 
-        int expected = member.ParameterTypes.Count;
-        if (argTypes.Length != expected) {
+        int fullArity = member.ParameterTypes.Count;
+        int requiredCount = RequiredArgumentCount(member);
+        if (argTypes.Length < requiredCount || argTypes.Length > fullArity) {
             string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
+            string expectedPhrase = requiredCount == fullArity
+                ? $"{fullArity} {Plural(fullArity, ArgumentNoun)}"
+                : $"between {requiredCount} and {fullArity} {ArgumentNoun}s";
             EmitError(ErrorCatalog.E0003,
-                $"'{namespaceName}.{memberName}' expects {expected} {Plural(expected, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
+                $"'{namespaceName}.{memberName}' expects {expectedPhrase}, but {argTypes.Length} {suppliedVerb} supplied.",
                 node.Range);
             return;
         }
 
-        for (int i = 0; i < expected; i++) {
+        for (int i = 0; i < argTypes.Length; i++) {
             CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, member.ParameterTypes[i],
                 ParameterNamedTypeNameAt(member, i));
         }
+    }
+
+    /// <summary>
+    /// The minimum argument count <paramref name="member"/> requires — its full arity when
+    /// it declares no defaults, or the count remaining after walking back over the
+    /// contiguous trailing run of non-null <see
+    /// cref="NamespaceRegistry.NativeMember.ParameterDefaults"/> entries (D-358's "optional
+    /// trailing parameters" shape; defaults are never declared for a leading parameter).
+    /// </summary>
+    private static int RequiredArgumentCount(NamespaceRegistry.NativeMember member) {
+        int required = member.ParameterTypes.Count;
+        if (member.ParameterDefaults is not { } defaults) return required;
+        while (required > 0 && defaults[required - 1] is not null) required--;
+        return required;
     }
 
     /// <summary>Returns the declared nominal struct name for fixed parameter <paramref name="index"/>, if any.</summary>
