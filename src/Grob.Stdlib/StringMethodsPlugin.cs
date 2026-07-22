@@ -87,6 +87,19 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         return s.Length == 0 ? ' ' : s[0];
     }
 
+    /// <summary>The ceiling on any single native-seam allocation driven by a user-supplied
+    /// count/width/size argument (D-366). Chosen well below <see cref="int.MaxValue"/>: the
+    /// cast-safety boundary alone (D-365) only rejects values that cannot fit an <c>int</c>
+    /// at all, leaving a valid-but-enormous width or count free to ask the CLR to allocate
+    /// an unreasonable buffer and throw an uncoded, uncatchable <see cref="OutOfMemoryException"/>.
+    /// 10,000,000 characters (~20 MB as UTF-16) comfortably covers any real script's output
+    /// while still being cheap for an adversarial input to exceed.</summary>
+    private const int MaxAllocationLength = 10_000_000;
+
+    /// <summary>The <c>GrobError</c> leaf every range-bound <c>string</c> member raises through
+    /// the native-throw seam (Sonar S1192: one spelling, not five literal repetitions).</summary>
+    private const string IndexErrorLeaf = "IndexError";
+
     private static GrobValue PadLeft(GrobValue receiver, GrobValue widthArg, GrobValue charArg) {
         string s = receiver.AsString();
         long width = widthArg.AsInt();
@@ -103,15 +116,18 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         return GrobValue.FromString(s.PadRight((int)width, PadCharacter(charArg)));
     }
 
-    /// <summary>Rejects a pad <c>width</c> that will not fit a 32-bit <see cref="string.PadLeft(int,char)"/>
-    /// total-width argument. The unchecked cast of a <c>long</c> above <see cref="int.MaxValue"/> wraps to a
-    /// negative value, whereupon .NET's pad overloads throw an uncoded CLR fault that bypasses the
-    /// native-throw seam; routing it through <see cref="NativeFaultException"/> surfaces the same
-    /// <c>IndexError</c>/<c>E5101</c> the other range-bound string members raise.</summary>
+    /// <summary>Rejects a pad <c>width</c> above <see cref="MaxAllocationLength"/> — both the
+    /// case that would not fit a 32-bit <see cref="string.PadLeft(int,char)"/> total-width
+    /// argument at all (the unchecked cast of a <c>long</c> above <see cref="int.MaxValue"/>
+    /// wraps to a negative value, whereupon .NET's pad overloads throw an uncoded CLR fault)
+    /// and the case that fits an <c>int</c> comfortably but would still ask .NET to allocate
+    /// an unreasonable buffer (D-366). Routing either through <see cref="NativeFaultException"/>
+    /// surfaces the same <c>IndexError</c>/<c>E5101</c> the other range-bound string members
+    /// raise.</summary>
     private static void RejectOversizedWidth(string method, long width) {
-        if (width > int.MaxValue) {
-            throw new NativeFaultException("IndexError", ErrorCatalog.E5101.Code,
-                $"{method}: width {width} exceeds the maximum supported value {int.MaxValue}.");
+        if (width > MaxAllocationLength) {
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
+                $"{method}: width {width} exceeds the maximum supported value {MaxAllocationLength}.");
         }
     }
 
@@ -152,7 +168,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         // Compare start against Length before subtracting so `start + length` cannot wrap:
         // long.MaxValue + 1 would overflow to a negative value and slip past an additive guard.
         if (start < 0 || length < 0 || start > s.Length || length > s.Length - start) {
-            throw new NativeFaultException("IndexError", ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
                 $"substring: start {start} and length {length} are out of range for a string of length {s.Length}.");
         }
         return GrobValue.FromString(s.Substring((int)start, (int)length));
@@ -161,17 +177,30 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
     private static GrobValue Repeat(GrobValue receiver, GrobValue countArg) {
         string s = receiver.AsString();
         long count = countArg.AsInt();
-        if (count <= 0) return GrobValue.FromString(string.Empty);
+        if (count <= 0 || s.Length == 0) return GrobValue.FromString(string.Empty);
+        RejectOversizedRepeat(s.Length, count);
         var builder = new StringBuilder(checked((int)(s.Length * count)));
         for (long i = 0; i < count; i++) builder.Append(s);
         return GrobValue.FromString(builder.ToString());
+    }
+
+    /// <summary>Rejects a <c>repeat</c> whose result length would exceed
+    /// <see cref="MaxAllocationLength"/> (D-366) — checked via division rather than computing
+    /// <c>length * count</c> directly, so the guard itself cannot overflow ahead of the
+    /// existing <c>checked(...)</c> cast it guards. Mirrors <see cref="RejectOversizedWidth"/>'s
+    /// treatment of the same allocation-ceiling class for <c>padLeft</c>/<c>padRight</c>.</summary>
+    private static void RejectOversizedRepeat(int length, long count) {
+        if (length > 0 && count > MaxAllocationLength / length) {
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
+                $"repeat: result length exceeds the maximum supported value {MaxAllocationLength}.");
+        }
     }
 
     private static GrobValue Left(GrobValue receiver, GrobValue nArg) {
         string s = receiver.AsString();
         long n = nArg.AsInt();
         if (n < 0 || n > s.Length) {
-            throw new NativeFaultException("IndexError", ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
                 $"left: {n} exceeds string length {s.Length}.");
         }
         return GrobValue.FromString(s[..(int)n]);
@@ -181,7 +210,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         string s = receiver.AsString();
         long n = nArg.AsInt();
         if (n < 0 || n > s.Length) {
-            throw new NativeFaultException("IndexError", ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
                 $"right: {n} exceeds string length {s.Length}.");
         }
         return GrobValue.FromString(s[(s.Length - (int)n)..]);

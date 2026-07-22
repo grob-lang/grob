@@ -1,3 +1,5 @@
+using System.Threading.Tasks;
+
 using Grob.Core;
 using Grob.Core.PrimitiveMembers;
 using Grob.Vm;
@@ -243,10 +245,96 @@ public sealed class StringMethodsPluginTests {
     }
 
     [Fact]
+    public void Substring_LengthAtIntMaxValue_StillThrowsIndexErrorNotHostException() {
+        // Locks in the audit finding: Substring is already safe at int.MaxValue, bounded
+        // by explicit comparisons against s.Length rather than any wrap-prone arithmetic.
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.substring", GrobValue.FromString("hi"),
+                GrobValue.FromInt(0), GrobValue.FromInt(int.MaxValue))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
+    public void Substring_NegativeStart_ThrowsIndexError() {
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.substring", GrobValue.FromString("hi"),
+                GrobValue.FromInt(-1), GrobValue.FromInt(1))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
+    public void Substring_NegativeLength_ThrowsIndexError() {
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.substring", GrobValue.FromString("hi"),
+                GrobValue.FromInt(0), GrobValue.FromInt(-1))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
     public void Repeat_RepeatsStringNTimes() {
         var vm = NewRegisteredVm();
         vm.Run(BuildCallChunk("string.repeat", GrobValue.FromString("ab"), GrobValue.FromInt(3)));
         Assert.Equal(GrobValue.FromString("ababab"), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void Repeat_CountZero_ReturnsEmptyString() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.repeat", GrobValue.FromString("ab"), GrobValue.FromInt(0)));
+        Assert.Equal(GrobValue.FromString(string.Empty), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void Repeat_NegativeCount_ReturnsEmptyString() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.repeat", GrobValue.FromString("ab"), GrobValue.FromInt(-3)));
+        Assert.Equal(GrobValue.FromString(string.Empty), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void Repeat_CountExceedsAllocationCeiling_ThrowsCatchableIndexError() {
+        // A count whose product with the receiver's length does not overflow the
+        // checked(...) cast to int (so the VM's generic OverflowException handler never
+        // gets a chance to help) but is still large enough to ask StringBuilder to
+        // allocate an unreasonable buffer. The explicit ceiling must reject it as a
+        // catchable GrobError before that allocation is attempted.
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.repeat", GrobValue.FromString("a"), GrobValue.FromInt(500_000_000))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
+    public void Repeat_CountOverflowsCastEntirely_StillThrowsCatchableIndexError() {
+        // A count large enough to overflow the checked(...) cast outright. Confirms the
+        // new ceiling guard fires first and the fault is E5101/IndexError, not the
+        // generic E5001/ArithmeticError the VM's OverflowException catch would otherwise
+        // produce.
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.repeat", GrobValue.FromString("ab"), GrobValue.FromInt(long.MaxValue))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
+    public void Repeat_EmptyReceiverHugeCount_ReturnsEmptyStringWithoutHanging() {
+        // CodeRabbit (PR #156): RejectOversizedRepeat's `length > 0` guard (added to avoid
+        // a divide-by-zero on an empty receiver) also skips the ceiling check entirely for
+        // an empty receiver, leaving the append loop to run `count` times — for
+        // "".repeat(long.MaxValue), an unbounded busy loop the VM's cooperative
+        // cancellation cannot interrupt (it only checks between VM instructions, not inside
+        // a native call). Bounded with a timeout rather than letting a genuine reproduction
+        // hang the test run; the background task is left to exit with the test process if
+        // the bug is present.
+        var vm = NewRegisteredVm();
+        var task = Task.Run(() =>
+            vm.Run(BuildCallChunk("string.repeat", GrobValue.FromString(string.Empty), GrobValue.FromInt(long.MaxValue))));
+        bool completed = task.Wait(TimeSpan.FromSeconds(2));
+        Assert.True(completed, "repeat on an empty receiver with a huge count must return immediately.");
+        Assert.Equal(GrobValue.FromString(string.Empty), vm.Stack.Peek());
     }
 
     [Fact]
@@ -265,6 +353,25 @@ public sealed class StringMethodsPluginTests {
     }
 
     [Fact]
+    public void Left_NAtIntMaxValue_StillThrowsIndexErrorNotHostException() {
+        // Locks in the audit finding: Left is already safe at int.MaxValue, bounded by
+        // the explicit `n > s.Length` comparison rather than any arithmetic that could
+        // wrap. A future change must not regress this to an unguarded cast/allocation.
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.left", GrobValue.FromString("hi"), GrobValue.FromInt(int.MaxValue))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
+    public void Left_NegativeN_ThrowsIndexError() {
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.left", GrobValue.FromString("hi"), GrobValue.FromInt(-1))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
     public void Right_ValidN_ReturnsSuffix() {
         var vm = NewRegisteredVm();
         vm.Run(BuildCallChunk("string.right", GrobValue.FromString("hello"), GrobValue.FromInt(3)));
@@ -276,6 +383,22 @@ public sealed class StringMethodsPluginTests {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.right", GrobValue.FromString("hi"), GrobValue.FromInt(5))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
+    public void Right_NAtIntMaxValue_StillThrowsIndexErrorNotHostException() {
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.right", GrobValue.FromString("hi"), GrobValue.FromInt(int.MaxValue))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
+    public void Right_NegativeN_ThrowsIndexError() {
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.right", GrobValue.FromString("hi"), GrobValue.FromInt(-1))));
         Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
     }
 
@@ -396,11 +519,33 @@ public sealed class StringMethodsPluginTests {
     }
 
     [Fact]
+    public void PadLeft_WidthExceedsAllocationCeiling_ThrowsIndexError() {
+        // A width that fits comfortably in an int (nowhere near int.MaxValue, so the
+        // cast-safety half of the guard would let it through) but is still large enough
+        // that .NET's PadLeft would allocate an unreasonable buffer. The allocation
+        // ceiling must reject it as a catchable GrobError.
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.padLeft",
+                GrobValue.FromString("7"), GrobValue.FromInt(500_000_000), GrobValue.FromString(" "))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
     public void PadRight_WidthAboveIntMax_ThrowsIndexError() {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.padRight",
                 GrobValue.FromString("7"), GrobValue.FromInt((long)int.MaxValue + 1), GrobValue.FromString(" "))));
+        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+    }
+
+    [Fact]
+    public void PadRight_WidthExceedsAllocationCeiling_ThrowsIndexError() {
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("string.padRight",
+                GrobValue.FromString("7"), GrobValue.FromInt(500_000_000), GrobValue.FromString(" "))));
         Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
     }
 
