@@ -243,6 +243,66 @@ public sealed class CompilerPrimitiveMemberTests {
     }
 
     // -----------------------------------------------------------------------
+    // padLeft/padRight/truncate omitted-optional-argument form (D-365) — the
+    // NativeDefaultArgumentFill synthesised constant must land after the supplied
+    // argument and before Call, and Call's operand must be the full declared arity
+    // (receiver included), not the source call's own argument count.
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("padLeft", "string.padLeft", " ")]
+    [InlineData("padRight", "string.padRight", " ")]
+    [InlineData("truncate", "string.truncate", "...")]
+    public void DefaultParameterMethod_OmittedArgument_SynthesisesDefault_CallArityThree(
+            string method, string qualifiedName, string expectedDefault) {
+        Chunk topLevel = CompileSource($$"""
+            fn run(s: string): string {
+                return s.{{method}}(3)
+            }
+            """);
+        Chunk chunk = SingleFunctionConstant(topLevel).Bytecode;
+        List<Instr> instrs = Decode(chunk);
+
+        // Full sequence: GetGlobal callee, receiver GetLocal, supplied-arg Constant,
+        // synthesised-default Constant, Call 3, then the fn's own Return/Nil/Return tail.
+        Assert.Equal(
+            [OpCode.GetGlobal, OpCode.GetLocal, OpCode.Constant, OpCode.Constant, OpCode.Call,
+                OpCode.Return, OpCode.Nil, OpCode.Return],
+            instrs.Select(i => i.Op));
+
+        Assert.Equal(qualifiedName, chunk.ReadConstant(instrs[0].Arg).AsString());
+        Assert.Equal(0, instrs[1].Arg);
+        Assert.Equal(GrobValue.FromInt(3), chunk.ReadConstant(instrs[2].Arg));
+        Assert.Equal(GrobValue.FromString(expectedDefault), chunk.ReadConstant(instrs[3].Arg));
+        Assert.Equal(3, instrs[4].Arg);
+    }
+
+    [Theory]
+    [InlineData("padLeft", "string.padLeft")]
+    [InlineData("padRight", "string.padRight")]
+    [InlineData("truncate", "string.truncate")]
+    public void DefaultParameterMethod_BothArgumentsSupplied_NoSynthesisedConstant_CallArityThree(
+            string method, string qualifiedName) {
+        Chunk topLevel = CompileSource($$"""
+            fn run(s: string): string {
+                return s.{{method}}(3, "x")
+            }
+            """);
+        Chunk chunk = SingleFunctionConstant(topLevel).Bytecode;
+        List<Instr> instrs = Decode(chunk);
+
+        Assert.Equal(
+            [OpCode.GetGlobal, OpCode.GetLocal, OpCode.Constant, OpCode.Constant, OpCode.Call,
+                OpCode.Return, OpCode.Nil, OpCode.Return],
+            instrs.Select(i => i.Op));
+
+        Assert.Equal(qualifiedName, chunk.ReadConstant(instrs[0].Arg).AsString());
+        Assert.Equal(GrobValue.FromInt(3), chunk.ReadConstant(instrs[2].Arg));
+        Assert.Equal(GrobValue.FromString("x"), chunk.ReadConstant(instrs[3].Arg));
+        Assert.Equal(3, instrs[4].Arg);
+    }
+
+    // -----------------------------------------------------------------------
     // Numeric-return-as-operand — proves ResolvedReturnType/ResolvedFieldType thread
     // into GetExprType's opcode selection (D-362).
     // -----------------------------------------------------------------------

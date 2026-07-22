@@ -43,6 +43,17 @@ public sealed record CallExpr(
     /// </summary>
     public string? ResolvedPrimitiveNativeName { get; set; }
 
+    /// <summary>
+    /// Set by the type checker (D-365) alongside <see cref="ResolvedPrimitiveNativeName"/>
+    /// to the resolved <c>PrimitiveMemberMethod</c>'s <c>ParameterDefaults</c> — the
+    /// compile-time constants a call that omits trailing optional arguments is filled
+    /// with, mirroring D-364's namespace-native <c>NativeMember.ParameterDefaults</c>
+    /// side channel. <see langword="null"/> whenever the resolved method declares no
+    /// defaults (every primitive member but <c>padLeft</c>/<c>padRight</c>/<c>truncate</c>
+    /// today) or this call is not a primitive-member call at all.
+    /// </summary>
+    public IReadOnlyList<GrobValue?>? ResolvedPrimitiveParameterDefaults { get; set; }
+
     /// <inheritdoc/>
     public override T Accept<T>(AstVisitor<T> visitor) => visitor.VisitCall(this);
 }

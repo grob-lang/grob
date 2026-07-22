@@ -202,6 +202,103 @@ public sealed class TypeCheckerPrimitiveMemberTests {
     }
 
     // -----------------------------------------------------------------------
+    // padLeft/padRight/truncate — the three default-parameter methods D-365
+    // wires onto D-364's NativeDefaultArgumentFill. Required-to-full arity
+    // range (E0003), only supplied arguments type-checked (E0004), and
+    // CallExpr.ResolvedPrimitiveParameterDefaults threaded for the compiler.
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("""s.padLeft(5)""", "string.padLeft", " ")]
+    [InlineData("""s.padLeft(5, "0")""", "string.padLeft", " ")]
+    [InlineData("""s.padRight(5)""", "string.padRight", " ")]
+    [InlineData("""s.padRight(5, "0")""", "string.padRight", " ")]
+    [InlineData("""s.truncate(5)""", "string.truncate", "...")]
+    [InlineData("""s.truncate(5, "-")""", "string.truncate", "...")]
+    public void DefaultParameterMethod_ValidCall_ResolvesNativeNameAndParameterDefaults(
+            string callExpr, string expectedNative, string expectedDefault) {
+        var (unit, bag) = TypeCheckSource($$"""
+            s := "abc"
+            readonly v := {{callExpr}}
+            """);
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.String, call.ResolvedReturnType);
+        Assert.Equal(expectedNative, call.ResolvedPrimitiveNativeName);
+        Assert.NotNull(call.ResolvedPrimitiveParameterDefaults);
+        Assert.Equal(2, call.ResolvedPrimitiveParameterDefaults!.Count);
+        Assert.Null(call.ResolvedPrimitiveParameterDefaults[0]);
+        Assert.Equal(GrobValue.FromString(expectedDefault), call.ResolvedPrimitiveParameterDefaults[1]);
+    }
+
+    [Theory]
+    [InlineData("padLeft")]
+    [InlineData("padRight")]
+    [InlineData("truncate")]
+    public void DefaultParameterMethod_NoArguments_ReportsSingleE0003WithRangePhrasing(string method) {
+        DiagnosticBag bag = Check($$"""
+            s := "abc"
+            readonly v := s.{{method}}()
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Contains("between 1 and 2 arguments", diag.Message, StringComparison.Ordinal);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
+    }
+
+    [Theory]
+    [InlineData("padLeft")]
+    [InlineData("padRight")]
+    [InlineData("truncate")]
+    public void DefaultParameterMethod_ThreeArguments_ReportsSingleE0003(string method) {
+        DiagnosticBag bag = Check($$"""
+            s := "abc"
+            readonly v := s.{{method}}(5, "x", "y")
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+    }
+
+    [Fact]
+    public void PadLeft_WrongRequiredArgumentType_ReportsSingleE0004() {
+        DiagnosticBag bag = Check("""
+            s := "abc"
+            readonly v := s.padLeft("x")
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+    }
+
+    [Fact]
+    public void Truncate_WrongOptionalArgumentType_ReportsSingleE0004() {
+        DiagnosticBag bag = Check("""
+            s := "abc"
+            readonly v := s.truncate(5, 9)
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+    }
+
+    [Fact]
+    public void NamedArgument_OnDefaultParameterMethod_ReportsSingleE0011() {
+        DiagnosticBag bag = Check("""
+            s := "abc"
+            readonly v := s.padLeft(width: 5)
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
+    }
+
+    // -----------------------------------------------------------------------
     // Numeric-return-as-operand (D-362 threading) — CallExpr.ResolvedReturnType
     // must select the int arithmetic opcode downstream.
     // -----------------------------------------------------------------------

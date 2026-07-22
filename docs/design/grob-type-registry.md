@@ -14,10 +14,11 @@ time — no boxing, no vtable, no heap allocation.
 
 ---
 
-**Build-status note (D-363, updating D-362's doc-honesty correction).**
-The `string` section below is now **built**, except `padLeft`/`padRight`/`truncate`
-— those three carry default parameters and are pending D-358's default-argument
-call-site synthesis; every other member ships. `ResolveMemberAccessCall`
+**Build-status note (D-365, updating D-363's build-status note).**
+The `string` section below is now **fully built** — `padLeft`/`padRight`/`truncate`
+(D-365 wires D-364's `NativeDefaultArgumentFill` into the primitive-member call path,
+the second of its two designed consumers) join the 21 members D-363 shipped, closing
+the documented surface at 24 members (2 properties, 22 methods). `ResolveMemberAccessCall`
 (`TypeChecker.Expressions.cs`) gained a primitive-value-receiver arm keyed on
 `PrimitiveMemberRegistry` (`Grob.Core`, parallel to the `NamedTypeRegistry` shape),
 and `VisitCall`/`VisitMemberAccess` rewrite a resolved primitive-member access to a
@@ -50,10 +51,10 @@ increments prove it out.
 | `indexOf(s: string)`                               | method   | `→ int`      | First occurrence; -1 if not found                           |
 | `lastIndexOf(s: string)`                           | method   | `→ int`      | Last occurrence; -1 if not found                            |
 | `substring(start: int, length: int)`               | method   | `→ string`   | Zero-based start; throws `IndexError` if out of range       |
-| `padLeft(width: int, char: string = " ")`          | method   | `→ string`   | Pads to total width on the left                             |
-| `padRight(width: int, char: string = " ")`         | method   | `→ string`   | Pads to total width on the right                            |
+| `padLeft(width: int, char: string = " ")`          | method   | `→ string`   | Pads to total width on the left; `width <= length` (including negative) is a no-op; a multi-character `char` uses its first character, an empty one falls back to a space (D-365) |
+| `padRight(width: int, char: string = " ")`         | method   | `→ string`   | Pads to total width on the right; same edge-case rules as `padLeft` (D-365)  |
 | `repeat(count: int)`                               | method   | `→ string`   | Repeats the string n times                                  |
-| `truncate(maxLength: int, suffix: string = "...")` | method   | `→ string`   | Truncates to max length; appends suffix if truncated        |
+| `truncate(maxLength: int, suffix: string = "...")` | method   | `→ string`   | `maxLength` is the total result length including the suffix; when `maxLength` does not exceed the suffix's own length (including negative), returns the suffix clamped to `maxLength` characters (D-365) |
 | `left(n: int)`                                     | method   | `→ string`   | First `n` characters. Throws `IndexError` if n > length     |
 | `right(n: int)`                                    | method   | `→ string`   | Last `n` characters. Throws `IndexError` if n > length      |
 | `toString()`                                       | method   | `→ string`   | Returns the string unchanged — identity for type uniformity |

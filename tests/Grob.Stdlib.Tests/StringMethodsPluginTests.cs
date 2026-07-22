@@ -30,14 +30,14 @@ public sealed class StringMethodsPluginTests {
     }
 
     [Fact]
-    public void Register_AddsExactlyTheTwentyOneQualifiedNatives() {
+    public void Register_AddsExactlyTheTwentyFourQualifiedNatives() {
         var vm = new VirtualMachine(new StringWriter());
         new StringMethodsPlugin().Register(vm);
 
         foreach (string name in PrimitiveMemberRegistry.AllQualifiedNativeNames) {
             Assert.True(vm.Globals.ContainsKey(name), $"missing native registration: {name}");
         }
-        Assert.Equal(21, vm.Globals.Count);
+        Assert.Equal(24, vm.Globals.Count);
     }
 
     // -----------------------------------------------------------------------
@@ -284,5 +284,152 @@ public sealed class StringMethodsPluginTests {
         var vm = NewRegisteredVm();
         vm.Run(BuildCallChunk("string.toString", GrobValue.FromString("hi")));
         Assert.Equal(GrobValue.FromString("hi"), vm.Stack.Peek());
+    }
+
+    // -----------------------------------------------------------------------
+    // padLeft / padRight / truncate (D-365) — the runtime native is always
+    // called at its full fixed arity; the compiler's default-argument-fill
+    // synthesis is a compile-time concern tested at the Compiler layer, not
+    // here. Pinned edge-case semantics: width/maxLength no larger than the
+    // input (or negative) is a no-op; a multi-character pad char uses only
+    // its first character; an empty pad char falls back to a space;
+    // `maxLength` for truncate is the total result length including the
+    // suffix, clamped to the suffix itself (or empty) when too small.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void PadLeft_ShorterThanWidth_PadsWithDefaultSpace() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.padLeft",
+            GrobValue.FromString("7"), GrobValue.FromInt(3), GrobValue.FromString(" ")));
+        Assert.Equal(GrobValue.FromString("  7"), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void PadLeft_ShorterThanWidth_PadsWithSuppliedChar() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.padLeft",
+            GrobValue.FromString("7"), GrobValue.FromInt(3), GrobValue.FromString("0")));
+        Assert.Equal(GrobValue.FromString("007"), vm.Stack.Peek());
+    }
+
+    [Theory]
+    [InlineData("hello", 3)]
+    [InlineData("hello", 5)]
+    [InlineData("hello", -1)]
+    public void PadLeft_WidthNoLargerThanInput_ReturnsInputUnchanged(string input, long width) {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.padLeft",
+            GrobValue.FromString(input), GrobValue.FromInt(width), GrobValue.FromString(" ")));
+        Assert.Equal(GrobValue.FromString(input), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void PadLeft_MultiCharacterPadChar_UsesFirstCharacterOnly() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.padLeft",
+            GrobValue.FromString("7"), GrobValue.FromInt(3), GrobValue.FromString("xy")));
+        Assert.Equal(GrobValue.FromString("xx7"), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void PadLeft_EmptyPadChar_FallsBackToSpace() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.padLeft",
+            GrobValue.FromString("7"), GrobValue.FromInt(3), GrobValue.FromString("")));
+        Assert.Equal(GrobValue.FromString("  7"), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void PadRight_ShorterThanWidth_PadsWithDefaultSpace() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.padRight",
+            GrobValue.FromString("7"), GrobValue.FromInt(3), GrobValue.FromString(" ")));
+        Assert.Equal(GrobValue.FromString("7  "), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void PadRight_ShorterThanWidth_PadsWithSuppliedChar() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.padRight",
+            GrobValue.FromString("7"), GrobValue.FromInt(3), GrobValue.FromString("0")));
+        Assert.Equal(GrobValue.FromString("700"), vm.Stack.Peek());
+    }
+
+    [Theory]
+    [InlineData("hello", 3)]
+    [InlineData("hello", 5)]
+    [InlineData("hello", -1)]
+    public void PadRight_WidthNoLargerThanInput_ReturnsInputUnchanged(string input, long width) {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.padRight",
+            GrobValue.FromString(input), GrobValue.FromInt(width), GrobValue.FromString(" ")));
+        Assert.Equal(GrobValue.FromString(input), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void PadRight_MultiCharacterPadChar_UsesFirstCharacterOnly() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.padRight",
+            GrobValue.FromString("7"), GrobValue.FromInt(3), GrobValue.FromString("xy")));
+        Assert.Equal(GrobValue.FromString("7xx"), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void PadRight_EmptyPadChar_FallsBackToSpace() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.padRight",
+            GrobValue.FromString("7"), GrobValue.FromInt(3), GrobValue.FromString("")));
+        Assert.Equal(GrobValue.FromString("7  "), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void Truncate_LongerThanMaxLength_CutsToMaxLengthIncludingSuffix() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.truncate",
+            GrobValue.FromString("hello world"), GrobValue.FromInt(8), GrobValue.FromString("...")));
+        Assert.Equal(GrobValue.FromString("hello..."), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void Truncate_LongerThanMaxLength_UsesSuppliedSuffix() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.truncate",
+            GrobValue.FromString("hello world"), GrobValue.FromInt(8), GrobValue.FromString("-")));
+        Assert.Equal(GrobValue.FromString("hello w-"), vm.Stack.Peek());
+    }
+
+    [Theory]
+    [InlineData("hi", 10)]
+    [InlineData("hi", 2)]
+    public void Truncate_MaxLengthNoShorterThanInput_ReturnsInputUnchanged(string input, long maxLength) {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.truncate",
+            GrobValue.FromString(input), GrobValue.FromInt(maxLength), GrobValue.FromString("...")));
+        Assert.Equal(GrobValue.FromString(input), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void Truncate_MaxLengthShorterThanSuffix_ReturnsSuffixClampedToMaxLength() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.truncate",
+            GrobValue.FromString("hello world"), GrobValue.FromInt(2), GrobValue.FromString("...")));
+        Assert.Equal(GrobValue.FromString(".."), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void Truncate_MaxLengthZero_ReturnsEmptyString() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.truncate",
+            GrobValue.FromString("hello world"), GrobValue.FromInt(0), GrobValue.FromString("...")));
+        Assert.Equal(GrobValue.FromString(""), vm.Stack.Peek());
+    }
+
+    [Fact]
+    public void Truncate_NegativeMaxLength_ReturnsEmptyString() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.truncate",
+            GrobValue.FromString("hello world"), GrobValue.FromInt(-1), GrobValue.FromString("...")));
+        Assert.Equal(GrobValue.FromString(""), vm.Stack.Peek());
     }
 }
