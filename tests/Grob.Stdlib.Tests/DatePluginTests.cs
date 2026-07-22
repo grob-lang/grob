@@ -223,17 +223,10 @@ public sealed class DatePluginTests {
     // -----------------------------------------------------------------------
     // parse()'s optional pattern argument (D-358) — arity 2, hand-built directly
     // (the compiler's default-fill for the 1-argument source form is exercised in
-    // Grob.Compiler.Tests, not here).
+    // Grob.Compiler.Tests, not here). The two-argument empty-pattern ISO path is
+    // already covered by Parse_IsoStringWithOffset_PreservesOffset above, which
+    // passes the same input and "" pattern (CodeRabbit review, PR #154).
     // -----------------------------------------------------------------------
-
-    [Fact]
-    public void Parse_TwoArgumentsEmptyPattern_StillParsesIso() {
-        var vm = NewRegisteredVm();
-        vm.Run(BuildGetPropertyOnCallChunk("date.parse", "utcOffset",
-            GrobValue.FromString("2026-04-05T14:30:00+02:00"), GrobValue.FromString("")));
-
-        Assert.Equal(120, vm.Stack.Peek().AsInt());
-    }
 
     [Fact]
     public void Parse_ExplicitPattern_ParsesViaParseExact() {

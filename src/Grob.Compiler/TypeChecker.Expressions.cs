@@ -1431,6 +1431,8 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckNativeCall(CallExpr node, string namespaceName, string memberName,
             NamespaceRegistry.NativeMember member, GrobType[] argTypes) {
+        if (RejectNamedNativeArgs(node, namespaceName, memberName)) return;
+
         if (member.VariadicElementType is GrobType variadicType) {
             CheckVariadicNativeCall(node, namespaceName, memberName, member, variadicType, argTypes);
             return;
@@ -1467,6 +1469,29 @@ public sealed partial class TypeChecker {
         if (member.ParameterDefaults is not { } defaults) return required;
         while (required > 0 && defaults[required - 1] is not null) required--;
         return required;
+    }
+
+    /// <summary>
+    /// Rejects named arguments on a namespace-native call with
+    /// <see cref="ErrorCatalog.E0011"/>. <see cref="NamespaceRegistry.NativeMember"/> carries
+    /// no parameter-name metadata and emission preserves source order, so a named argument
+    /// cannot bind — it would otherwise let <c>date.parse(pattern: "dd/MM/yyyy")</c> slot the
+    /// pattern into the <c>input</c> parameter and take the empty default (D-358). The
+    /// namespace-native counterpart of <see cref="RejectNamedPrimitiveArgs"/>. Returns
+    /// <c>true</c> when at least one named argument was found, so the caller suppresses the
+    /// downstream arity/type checks (one diagnostic per root cause).
+    /// </summary>
+    private bool RejectNamedNativeArgs(CallExpr node, string namespaceName, string memberName) {
+        bool rejected = false;
+        foreach (CallArgument arg in node.Arguments) {
+            if (arg.Name is not null) {
+                EmitError(ErrorCatalog.E0011,
+                    $"'{namespaceName}.{memberName}' does not accept named arguments; pass them positionally.",
+                    arg.Range);
+                rejected = true;
+            }
+        }
+        return rejected;
     }
 
     /// <summary>Returns the declared nominal struct name for fixed parameter <paramref name="index"/>, if any.</summary>

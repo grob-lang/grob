@@ -169,6 +169,8 @@ public sealed class TypeCheckerDateTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
         Assert.Equal("'date.parse' expects between 1 and 2 arguments, but 3 were supplied.", diag.Message);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -188,6 +190,24 @@ public sealed class TypeCheckerDateTests {
         Assert.Equal(
             "Argument 2 to 'date.parse' has type 'int', which is not assignable to parameter of type 'string'.",
             diag.Message);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(40, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Parse_NamedArgument_ReportsSingleE0011() {
+        // NativeMember carries no parameter names and emission preserves source order, so a
+        // named argument cannot bind — it would otherwise slot "dd/MM/yyyy" into the input
+        // parameter and let the pattern take its "" default (CodeRabbit review, PR #154).
+        // Reject with E0011 (positional-only), matching RejectNamedPrimitiveArgs.
+        DiagnosticBag bag = Check("""readonly x := date.parse(pattern: "dd/MM/yyyy")""");
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
+        Assert.Equal(
+            "'date.parse' does not accept named arguments; pass them positionally.",
+            diag.Message);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(26, diag.Range.Start.Column);
     }
 
     [Fact]

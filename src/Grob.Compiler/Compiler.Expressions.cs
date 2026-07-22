@@ -5,6 +5,10 @@ using Grob.Core;
 namespace Grob.Compiler;
 
 public sealed partial class Compiler {
+    /// <summary>The <see cref="ToByteOperand"/> descriptor for a <see cref="OpCode.Call"/>
+    /// argument-count operand — shared by every call-emission branch.</summary>
+    private const string CallArgumentCountOperand = "call argument count";
+
     // -----------------------------------------------------------------------
     // Literals
     // -----------------------------------------------------------------------
@@ -755,7 +759,7 @@ public sealed partial class Compiler {
                 EmitConstant(value, line);
             }
             _chunk.WriteOpCode(OpCode.Call, line);
-            _chunk.WriteByte(ToByteOperand(native.ParameterTypes.Count, "call argument count"), line);
+            _chunk.WriteByte(ToByteOperand(native.ParameterTypes.Count, CallArgumentCountOperand), line);
             return null;
         }
 
@@ -783,13 +787,13 @@ public sealed partial class Compiler {
             (node.Arguments.Any(a => a.Name is not null) || node.Arguments.Count != fn.Parameters.Count)) {
             EmitReorderedArguments(node, fn);
             _chunk.WriteOpCode(OpCode.Call, line);
-            _chunk.WriteByte(ToByteOperand(fn.Parameters.Count, "call argument count"), line);
+            _chunk.WriteByte(ToByteOperand(fn.Parameters.Count, CallArgumentCountOperand), line);
             return null;
         }
 
         foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
         _chunk.WriteOpCode(OpCode.Call, line);
-        _chunk.WriteByte(ToByteOperand(node.Arguments.Count, "call argument count"), line);
+        _chunk.WriteByte(ToByteOperand(node.Arguments.Count, CallArgumentCountOperand), line);
         return null;
     }
 
@@ -841,7 +845,7 @@ public sealed partial class Compiler {
         foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
 
         _chunk.WriteOpCode(OpCode.Call, line);
-        _chunk.WriteByte(ToByteOperand(node.Arguments.Count + 1, "call argument count"), line);
+        _chunk.WriteByte(ToByteOperand(node.Arguments.Count + 1, CallArgumentCountOperand), line);
     }
 
     /// <summary>

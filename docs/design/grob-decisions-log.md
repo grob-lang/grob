@@ -6384,7 +6384,7 @@ _accepts a required-to-full argument-count range instead of an exact match when 
 _native declares defaults — E0003 below the required count, unchanged exact-count_
 _wording for the other 50 existing entries with no defaults. VisitCall gains a_
 _namespace-native default-fill branch that emits the supplied arguments, then_
-_EmitConstants the missing trailing defaults, then Call with the native's full_
+_EmitConstant for each missing trailing default, then Call with the native's full_
 _declared arity — wired for the namespace-native path only. date.parse(input: string,_
 _pattern: string = "") is the proving case: empty pattern keeps the existing ISO-8601_
 _behaviour unchanged, a non-empty pattern selects DateTimeOffset.ParseExact; failure_
