@@ -361,6 +361,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-363 | July 2026                                                          | Compiler / Type checker / Runtime — primitive-method dispatch | Implements D-066's primitive-method-as-compile-time-sugar model, proven on `string` — the compile-time dispatch mechanism D-362 found entirely unbuilt. New `PrimitiveMemberRegistry` (`Grob.Core.PrimitiveMembers`), keyed on primitive `GrobType` × member name, parallel to `NamedTypeRegistry` (D-361) — its method entry mirrors `NamedTypeMethod`'s shape (including an inert `ParameterDefaults` field so D-358 lands additively) but drops `Bind`/`ReturnsNominalSelf` and the `NominalSelf` parameter kind, none applicable to a primitive receiver. `ResolveMemberAccessCall`/`VisitMemberAccess` gain a primitive-value-receiver arm; `VisitCall`/`VisitMemberAccess` (`Compiler.Expressions.cs`) rewrite a resolved access to `GetGlobal`-then-`Call` against the qualified native, receiver injected as arg[0] — the D-342 namespace-native shape, not D-356/D-361's `GetProperty`+`Bind` (primitives are never `GrobValueKind.Struct`). No new opcode. Delivers the 21-member no-default `string` surface (2 properties, 19 methods); `padLeft`/`padRight`/`truncate` deferred to D-358 (default parameters). `CallExpr.ResolvedReturnType`/`MemberAccessExpr.ResolvedFieldType` wired for every member, including `split`'s array-element type via the existing `_callResultArrayDescriptors` channel (D-351) so a chained index/for-in resolves `string`, not `Unknown`. `toInt`/`toFloat` return `int?`/`float?` (nil on parse failure, mirroring `env.get`); `substring`/`left`/`right` throw the existing `IndexError`/`E5101` through the native-throw seam — its first stdlib-plugin use, no new code. Undefined-member reuses `E1002`. New `StringMethodsPlugin` (`Grob.Stdlib`) registers the natives; `PrimitiveMemberRegistryAgreementTests` (`Grob.Integration.Tests`) diffs the compile-time table against live registration. Closes the release-gate blocker — the validation scripts' `.split`/`.replace`/`.contains` now dispatch. `int`/`float`/`bool` instance methods and `int.min`/`float.clamp` static functions are the same mechanism, follow-on increments. No new opcode, no new error code; count unchanged at 118 |
 | D-364 | July 2026                                                          | Compiler — native default arguments | Builds D-358's default-argument mechanism and lands `date.parse`'s optional `pattern` argument on it. `NamespaceRegistry.NativeMember` gains a `ParameterDefaults` field (mirroring `NamedTypeMethod`/`PrimitiveMemberMethod`, D-361/D-363's inert precedent). New `NativeDefaultArgumentFill` (`Grob.Compiler`) is the branch-agnostic `(supplied, arity, defaults)` synthesis helper, generalising D-344's `input()` one-off constant-fill arm and reusing D-345's `formatAs` synthesised-constant-injection shape. `CheckNativeCall` (`TypeChecker.Expressions.cs`) accepts a required-to-full argument-count range instead of an exact match when a native declares defaults — `E0003` below the required count, unchanged exact-count wording and behaviour for the other 50 existing entries with no defaults. `VisitCall` (`Compiler.Expressions.cs`) gains a namespace-native default-fill branch that emits the supplied arguments, then `EmitConstant`s the missing trailing defaults in order, then `Call` with the native's full declared arity — wired for the namespace-native path only. `date.parse(input: string, pattern: string = "")` is the proving case: empty pattern keeps the existing ISO-8601 `TryParse` behaviour unchanged, a non-empty pattern selects `DateTimeOffset.ParseExact`; failure reuses `E5702` (D-284) unchanged. The primitive-member and named-type-method branches can call the same helper once they carry default metadata of their own; `fs.copy`/`fs.move`'s `overwrite: bool = false` (Increment C) rides it next. No new opcode, no new error code; count unchanged at 118 |
 | D-365 | July 2026                                                          | Compiler / Type checker / Stdlib — primitive-member default arguments | Wires D-364's `NativeDefaultArgumentFill` into the primitive-member call path — the second of its three designed consumers to be wired — landing the three `string` methods D-363 deferred: `padLeft`/`padRight`/`truncate`. `PrimitiveMemberRegistry` populates their previously inert `ParameterDefaults`. `RequiredArgumentCount` (D-364) promoted from a `NamespaceRegistry.NativeMember`-only helper to `(fullArity, defaults)`, reused rather than duplicated; `CheckPrimitiveMemberArgs` gains a new shared `MemberArgCountInRange` (D-356's exact-match `MemberArgCountMatches` now a thin wrapper over it, unchanged behaviour), and its E0004 loop bound changes from declared arity to supplied count. `CallExpr.ResolvedPrimitiveParameterDefaults` (new side channel, mirrors `ResolvedPrimitiveNativeName`) carries the resolved defaults to `EmitPrimitiveMemberCall`, which computes the full arity, calls `NativeDefaultArgumentFill.Resolve`, and emits `Call` with the full arity plus receiver — a no-op change in shape for every no-default method. Pinned edge cases (registry silent): `truncate`'s `maxLength` is the total result length including the suffix, clamped to the suffix itself when `maxLength` doesn't exceed it (including negative); `padLeft`/`padRight`'s `width` no larger than the input (including negative) returns the input unchanged; a multi-character pad `char` uses its first character, an empty one falls back to a space. `string` surface now complete (24 members: 2 properties, 22 methods). No new opcode, no new error code; count unchanged at 118 |
+| D-366 | July 2026                                                          | Stdlib — native-seam size/count hardening | Closes the native-seam size/count class D-365's PR review flagged as out of scope for `string.repeat`: any native allocating proportionally to a user-supplied count/width/size must fault through the native-throw seam rather than let a hostile or accidental value escape as an uncoded host exception (D-353's "fails well" contract). Audit corrected the prompt's own framing: `repeat`'s existing `checked((int)(s.Length * count))` cast-overflow case is already safe — `VirtualMachine.cs`'s per-instruction dispatch loop catches `OverflowException` around the whole opcode switch (including the native-call branch) and already converts it to a catchable `E5001`/`ArithmeticError`. The real unguarded gap, for `repeat` and (newly confirmed) `padLeft`/`padRight` alike, is a _valid-but-enormous_ allocation — a count/width comfortably within `int` range that still asks `StringBuilder`/`.PadLeft`/`.PadRight` to allocate an unreasonable buffer, throwing an uncaught `OutOfMemoryException`. `truncate` (bounded by input/suffix length) and `substring`/`left`/`right` (bounded by explicit `> s.Length` comparisons) audited and confirmed already safe, including at `int.MaxValue` and negative inputs, now locked by regression tests. `guid`'s `RandomBytes`, `formatAs.*` and `strings.join` are not candidates — fixed/internal or array-derived sizes, never a raw user integer. New `MaxAllocationLength` constant (`StringMethodsPlugin`, `Grob.Stdlib`) — 10,000,000 characters, ~20 MB as UTF-16, a judgement call with no existing precedent to mirror — replaces `RejectOversizedWidth`'s `int.MaxValue` bound (subsuming the cast-safety case) and gates a new `RejectOversizedRepeat` guard checked via division so the guard itself cannot overflow. Both fault through the existing `NativeFaultException("IndexError", ErrorCatalog.E5101.Code, ...)` seam — no new error code, reusing D-365's leaf. No new opcode; count unchanged at 118 |
 
 
 ---
@@ -6234,6 +6235,71 @@ this and D-363 implement).
 
 ---
 
+### D-366 — Native-seam allocation-ceiling guard closes the size/count class: `repeat` joins `padLeft`/`padRight` (July 2026)
+
+Area: Stdlib — native-seam size/count hardening
+Supersedes: none
+Superseded by: none
+Refines: D-365, D-363, D-284, D-353
+
+**The decision.** Closes the native-seam size/count class the D-365 PR review flagged
+as out of scope for `string.repeat`: any native that allocates proportionally to a
+user-supplied count/width/size argument must fault through the native-throw seam rather
+than let a hostile or accidental value escape as an uncoded host exception — D-353's
+"fails well" contract, ahead of the Pillar 1 adversarial fuzzer. Sweeps every
+`Grob.Stdlib` native fitting that shape.
+
+**The audit's corrected finding.** D-365's `RejectOversizedWidth` guards `padLeft`/
+`padRight` only against the cast-overflow case (`width > int.MaxValue`, which would
+otherwise wrap to a negative `int` and let .NET's pad overloads throw an uncoded
+fault). Verified empirically, via `dotnet run` against the built CLI, that `repeat`'s
+existing `checked((int)(s.Length * count))` cast overflow is _already_ safe today:
+`VirtualMachine.cs`'s per-instruction dispatch loop wraps the whole opcode switch —
+including the native-call branch — in a `try` whose `catch (OverflowException)`
+(alongside the narrower `catch (NativeFaultException)` the native-throw seam proper
+uses) already converts a cast-overflowing count into a catchable `E5001`/
+`ArithmeticError`. The actual unguarded gap, for `repeat` and — newly confirmed —
+for `padLeft`/`padRight` alike, is the _valid-but-enormous_ allocation: a count/width
+comfortably within `int` range that still asks `StringBuilder`/`.PadLeft`/`.PadRight`
+to allocate an unreasonable buffer, throwing an uncaught `OutOfMemoryException` that
+neither existing catch handles.
+
+**Candidate sweep.** `string.truncate` (bounded — `maxLength` only ever slices the
+existing receiver/suffix, never allocates past input size) and `string.substring`/
+`left`/`right` (bounded by explicit `> s.Length` comparisons) audited and confirmed
+already safe, including at `int.MaxValue` and negative inputs, now locked by
+regression tests so a future change cannot silently reopen the gap. `guid`'s
+`RandomBytes(16)`/`RandomBytes(10)` calls are internal fixed sizes, never
+user-supplied. `formatAs.table`/`list`/`csv` and `strings.join` size their internal
+arrays from an already-materialised `GrobArray`/column list, not a raw user integer.
+No other stdlib native (`math`/`env`/`path`/`log`) takes a count/width/size argument.
+
+**The guard.** A new `MaxAllocationLength` constant (`StringMethodsPlugin`,
+`Grob.Stdlib`) — 10,000,000 characters, ~20 MB as UTF-16 — replaces
+`RejectOversizedWidth`'s `int.MaxValue` bound, subsuming the cast-safety case in the
+same guard, and gates a new `RejectOversizedRepeat` guard on `Repeat`, checked via
+division (`count > MaxAllocationLength / length`) rather than the multiplication
+itself, so the guard cannot overflow ahead of the `checked(...)` cast it protects.
+Both fault through the existing `NativeFaultException("IndexError",
+ErrorCatalog.E5101.Code, ...)` seam — no new error code, reusing the same leaf D-365
+already established for this class. `repeat(0)`/negative-count and the pad/truncate
+no-op-at-input-length semantics are unchanged.
+
+**Ceiling value.** No existing precedent anywhere in the codebase for an allocation
+ceiling; 10,000,000 characters is a judgement call — generous for any real script's
+output, cheap for an adversarial input to exceed, and small enough that a
+boundary-case test allocating right at the ceiling stays fast in CI.
+
+No new opcode. No new error code; count unchanged at 118.
+
+Full detail: `prompts/archive/sprint-9/increment-native-seam-size-guards.md` (the
+source prompt), D-365 (the `padLeft`/`padRight` cast-safety guard this generalises),
+D-363 (the `string` surface these natives belong to), D-284 (the ten `GrobError`
+leaves, `IndexError` among them), D-353 (the adversarial "fails well" contract this
+satisfies ahead of Pillar 1 fuzzing).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -6456,7 +6522,28 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Primitive-member default arguments: D-365 added. Wires D-364's_
+_July 2026 — Native-seam size/count hardening: D-366 added. Closes the class D-365's_
+_PR review flagged as out of scope for string.repeat — any native allocating_
+_proportionally to a user-supplied count/width/size must fault through the_
+_native-throw seam rather than escape as a host exception (D-353's "fails well"_
+_contract). Audit corrected the prompt's own framing: repeat's existing_
+_checked((int)(s.Length * count)) cast-overflow case is already safe — the VM's_
+_per-instruction dispatch loop already catches OverflowException around the whole_
+_opcode switch, including the native-call branch, and converts it to E5001/_
+_ArithmeticError. The real unguarded gap, for repeat and (newly confirmed)_
+_padLeft/padRight alike, is a valid-but-enormous allocation — a count/width that_
+_fits an int comfortably but still asks StringBuilder/.PadLeft/.PadRight to_
+_allocate an unreasonable buffer, throwing an uncaught OutOfMemoryException._
+_truncate/substring/left/right audited and confirmed already safe, including at_
+_int.MaxValue and negative inputs, now locked by regression tests. guid's_
+_RandomBytes, formatAs.*, strings.join are not candidates — fixed/internal or_
+_array-derived sizes. New MaxAllocationLength constant (10,000,000 characters, a_
+_judgement call with no existing precedent) replaces RejectOversizedWidth's_
+_int.MaxValue bound and gates a new RejectOversizedRepeat guard checked via_
+_division so it cannot overflow itself. Both fault through the existing_
+_NativeFaultException("IndexError", E5101) seam. No new opcode, no new error_
+_code; count unchanged at 118._
+_Previous: July 2026 — Primitive-member default arguments: D-365 added. Wires D-364's_
 _NativeDefaultArgumentFill into the primitive-member call path — the second of its three_
 _designed consumers to be wired — landing padLeft/padRight/truncate, the three string methods_
 _D-363 deferred. PrimitiveMemberRegistry populates their previously inert_

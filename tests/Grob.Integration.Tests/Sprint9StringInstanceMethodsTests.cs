@@ -119,6 +119,37 @@ public sealed class Sprint9StringInstanceMethodsTests {
     }
 
     // -----------------------------------------------------------------------
+    // repeat's native-seam allocation ceiling (D-366): a count that does not
+    // overflow the checked(...) cast but would still ask the CLR to allocate an
+    // unreasonable buffer must raise a catchable GrobError end to end, not an
+    // uncoded host exception.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Repeat_ExceedsAllocationCeiling_UncaughtIndexError_ExitsNonZero() {
+        (string stdout, string stderr, int exitCode) = RunSource("""print("a".repeat(500000000))""" + "\n");
+
+        Assert.NotEqual(0, exitCode);
+        Assert.Equal(string.Empty, stdout);
+        Assert.Contains(ErrorCatalog.E5101.Code, stderr);
+    }
+
+    [Fact]
+    public void Repeat_ExceedsAllocationCeiling_CaughtByTryCatch() {
+        (string stdout, string stderr, int exitCode) = RunSource("""
+            try {
+                print("a".repeat(500000000))
+            } catch (e: IndexError) {
+                print("caught")
+            }
+            """);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal("caught" + Environment.NewLine, stdout);
+    }
+
+    // -----------------------------------------------------------------------
     // padLeft/padRight/truncate (D-365) — end to end with and without the
     // optional trailing argument, proving the compiler's default-argument
     // fill against the real runtime natives.
