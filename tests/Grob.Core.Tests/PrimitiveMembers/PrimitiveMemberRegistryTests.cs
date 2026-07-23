@@ -14,7 +14,8 @@ namespace Grob.Core.Tests.PrimitiveMembers;
 public sealed class PrimitiveMemberRegistryTests {
     [Fact]
     public void TryGet_StringReceiver_ReturnsStringEntry() {
-        Assert.True(PrimitiveMemberRegistry.TryGet(GrobType.String, out PrimitiveMemberEntry entry));
+        Assert.True(PrimitiveMemberRegistry.TryGet(GrobType.String, out PrimitiveMemberEntry? entry));
+        Assert.NotNull(entry);
         Assert.Equal(GrobType.String, entry.ReceiverType);
         Assert.Same(PrimitiveMemberRegistry.String, entry);
     }
@@ -31,7 +32,8 @@ public sealed class PrimitiveMemberRegistryTests {
     [InlineData(GrobType.Float)]
     [InlineData(GrobType.Bool)]
     public void TryGet_NumericOrBoolReceiver_ReturnsRegisteredEntry(GrobType receiverType) {
-        Assert.True(PrimitiveMemberRegistry.TryGet(receiverType, out PrimitiveMemberEntry entry));
+        Assert.True(PrimitiveMemberRegistry.TryGet(receiverType, out PrimitiveMemberEntry? entry));
+        Assert.NotNull(entry);
         Assert.Equal(receiverType, entry.ReceiverType);
     }
 

@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Grob.Core.PrimitiveMembers;
 
 /// <summary>
@@ -24,6 +26,15 @@ public static class PrimitiveMemberRegistry {
 
     /// <summary>The <c>bool</c> instance-surface entry (D-369).</summary>
     public static PrimitiveMemberEntry Bool { get; } = BuildBoolEntry();
+
+    // Method names shared across receiver entries, named once (Sonar S1192): each is
+    // both the dictionary key and the PrimitiveMemberMethod.Name across two-to-four
+    // entries, so the bare literal would otherwise repeat past the analyzer threshold.
+    // The qualified native names ("string.toString" etc.) stay literal — each appears once.
+    private const string ToStringMethod = "toString";
+    private const string ToIntMethod = "toInt";
+    private const string ToFloatMethod = "toFloat";
+    private const string FormatMethod = "format";
 
     // Declared after String/Int/Float/Bool so their static-initializer values are
     // already set — C# initializes static fields/auto-properties in textual
@@ -54,11 +65,12 @@ public static class PrimitiveMemberRegistry {
 
     /// <summary>
     /// Looks up the registered entry for <paramref name="receiverType"/>. Returns
-    /// <c>false</c> when the type has no registered primitive-member surface yet
-    /// (every primitive besides <c>string</c>, today).
+    /// <c>false</c> for any receiver type that has no registered primitive-member surface
+    /// — every <see cref="GrobType"/> outside the registered set (<c>string</c>, <c>int</c>,
+    /// <c>float</c> and <c>bool</c>, today).
     /// </summary>
-    public static bool TryGet(GrobType receiverType, out PrimitiveMemberEntry entry) =>
-        _entries.TryGetValue(receiverType, out entry!);
+    public static bool TryGet(GrobType receiverType, [MaybeNullWhen(false)] out PrimitiveMemberEntry entry) =>
+        _entries.TryGetValue(receiverType, out entry);
 
     // -----------------------------------------------------------------------
     // string — grob-type-registry.md's `string` section, now complete (D-365
@@ -73,8 +85,8 @@ public static class PrimitiveMemberRegistry {
         };
 
         Dictionary<string, PrimitiveMemberMethod> methods = new(StringComparer.Ordinal) {
-            ["toInt"] = new PrimitiveMemberMethod("toInt", [], GrobType.NullableInt, "string.toInt"),
-            ["toFloat"] = new PrimitiveMemberMethod("toFloat", [], GrobType.NullableFloat, "string.toFloat"),
+            [ToIntMethod] = new PrimitiveMemberMethod(ToIntMethod, [], GrobType.NullableInt, "string.toInt"),
+            [ToFloatMethod] = new PrimitiveMemberMethod(ToFloatMethod, [], GrobType.NullableFloat, "string.toFloat"),
             ["trim"] = new PrimitiveMemberMethod("trim", [], GrobType.String, "string.trim"),
             ["trimStart"] = new PrimitiveMemberMethod("trimStart", [], GrobType.String, "string.trimStart"),
             ["trimEnd"] = new PrimitiveMemberMethod("trimEnd", [], GrobType.String, "string.trimEnd"),
@@ -93,7 +105,7 @@ public static class PrimitiveMemberRegistry {
             ["repeat"] = new PrimitiveMemberMethod("repeat", [GrobType.Int], GrobType.String, "string.repeat"),
             ["left"] = new PrimitiveMemberMethod("left", [GrobType.Int], GrobType.String, "string.left"),
             ["right"] = new PrimitiveMemberMethod("right", [GrobType.Int], GrobType.String, "string.right"),
-            ["toString"] = new PrimitiveMemberMethod("toString", [], GrobType.String, "string.toString"),
+            [ToStringMethod] = new PrimitiveMemberMethod(ToStringMethod, [], GrobType.String, "string.toString"),
             ["padLeft"] = new PrimitiveMemberMethod(
                 "padLeft", [GrobType.Int, GrobType.String], GrobType.String, "string.padLeft",
                 [null, GrobValue.FromString(" ")]),
@@ -115,10 +127,10 @@ public static class PrimitiveMemberRegistry {
 
     private static PrimitiveMemberEntry BuildIntEntry() {
         Dictionary<string, PrimitiveMemberMethod> methods = new(StringComparer.Ordinal) {
-            ["toString"] = new PrimitiveMemberMethod("toString", [], GrobType.String, "int.toString"),
-            ["toFloat"] = new PrimitiveMemberMethod("toFloat", [], GrobType.Float, "int.toFloat"),
+            [ToStringMethod] = new PrimitiveMemberMethod(ToStringMethod, [], GrobType.String, "int.toString"),
+            [ToFloatMethod] = new PrimitiveMemberMethod(ToFloatMethod, [], GrobType.Float, "int.toFloat"),
             ["abs"] = new PrimitiveMemberMethod("abs", [], GrobType.Int, "int.abs"),
-            ["format"] = new PrimitiveMemberMethod("format", [GrobType.String], GrobType.String, "int.format"),
+            [FormatMethod] = new PrimitiveMemberMethod(FormatMethod, [GrobType.String], GrobType.String, "int.format"),
         };
 
         return new PrimitiveMemberEntry(
@@ -133,14 +145,14 @@ public static class PrimitiveMemberRegistry {
 
     private static PrimitiveMemberEntry BuildFloatEntry() {
         Dictionary<string, PrimitiveMemberMethod> methods = new(StringComparer.Ordinal) {
-            ["toString"] = new PrimitiveMemberMethod("toString", [], GrobType.String, "float.toString"),
-            ["toInt"] = new PrimitiveMemberMethod("toInt", [], GrobType.Int, "float.toInt"),
+            [ToStringMethod] = new PrimitiveMemberMethod(ToStringMethod, [], GrobType.String, "float.toString"),
+            [ToIntMethod] = new PrimitiveMemberMethod(ToIntMethod, [], GrobType.Int, "float.toInt"),
             ["round"] = new PrimitiveMemberMethod("round", [], GrobType.Int, "float.round"),
             ["roundTo"] = new PrimitiveMemberMethod("roundTo", [GrobType.Int], GrobType.Float, "float.roundTo"),
             ["floor"] = new PrimitiveMemberMethod("floor", [], GrobType.Int, "float.floor"),
             ["ceil"] = new PrimitiveMemberMethod("ceil", [], GrobType.Int, "float.ceil"),
             ["abs"] = new PrimitiveMemberMethod("abs", [], GrobType.Float, "float.abs"),
-            ["format"] = new PrimitiveMemberMethod("format", [GrobType.String], GrobType.String, "float.format"),
+            [FormatMethod] = new PrimitiveMemberMethod(FormatMethod, [GrobType.String], GrobType.String, "float.format"),
         };
 
         return new PrimitiveMemberEntry(
@@ -154,7 +166,7 @@ public static class PrimitiveMemberRegistry {
 
     private static PrimitiveMemberEntry BuildBoolEntry() {
         Dictionary<string, PrimitiveMemberMethod> methods = new(StringComparer.Ordinal) {
-            ["toString"] = new PrimitiveMemberMethod("toString", [], GrobType.String, "bool.toString"),
+            [ToStringMethod] = new PrimitiveMemberMethod(ToStringMethod, [], GrobType.String, "bool.toString"),
         };
 
         return new PrimitiveMemberEntry(

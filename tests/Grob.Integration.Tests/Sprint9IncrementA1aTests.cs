@@ -246,6 +246,37 @@ public sealed class Sprint9IncrementA1aTests {
         Assert.StartsWith("caught:", stdout);
     }
 
+    [Fact]
+    public void IntFormat_InvalidPattern_IsCatchableAsArithmeticError() {
+        // A malformed numeric format string ("Z" is not a valid standard specifier)
+        // makes the native int.format raise FormatException; the seam translates it to
+        // a catchable ArithmeticError instead of escaping as a host exception.
+        string stdout = RunAndAssertSuccess("""
+            try {
+                n := 42
+                n.format("Z")
+            }
+            catch (e: ArithmeticError) {
+                print("caught: ${e.message}")
+            }
+            """);
+        Assert.StartsWith("caught:", stdout);
+    }
+
+    [Fact]
+    public void FloatFormat_InvalidPattern_IsCatchableAsArithmeticError() {
+        string stdout = RunAndAssertSuccess("""
+            try {
+                f := 3.5
+                f.format("Z")
+            }
+            catch (e: ArithmeticError) {
+                print("caught: ${e.message}")
+            }
+            """);
+        Assert.StartsWith("caught:", stdout);
+    }
+
     // -----------------------------------------------------------------------
     // Numeric-return-as-operand — D-362's ResolvedReturnType wiring, confirmed to
     // need zero changes for the new receivers.
@@ -318,7 +349,9 @@ public sealed class Sprint9IncrementA1aTests {
         var unit = Parser.Parse(tokens, bag);
         new TypeChecker(bag).Check(unit);
 
-        Assert.True(bag.HasErrors);
-        Assert.Contains(bag.Errors, d => d.Code == ErrorCatalog.E0003.Code);
+        Diagnostic diagnostic = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0003.Code, diagnostic.Code);
+        Assert.Equal(2, diagnostic.Range.Start.Line);
+        Assert.Equal(15, diagnostic.Range.Start.Column);
     }
 }

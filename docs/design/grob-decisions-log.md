@@ -6508,7 +6508,8 @@ dispatch arm anywhere. `grob-type-registry.md` and the wiki documented `int.toSt
 abs/format`, `float.toString/toInt/round/roundTo/floor/ceil/abs/format` and `bool.toString` as
 built surface; none of it compiled. The release-gate validation scripts in
 `grob-sample-scripts.md` call `.roundTo(2)`, `.roundTo(1)`, `someInt.toString()` and
-`someFloat.toFloat()`-shaped chains — this is the same class and severity of blocker as the
+`someInt.toFloat()`-shaped chains (`toFloat` is delivered on `int`, not `float`) — this is
+the same class and severity of blocker as the
 `string`-methods gap D-363 closed.
 
 **The decision.** Register `Int`, `Float` and `Bool` receiver entries in `PrimitiveMemberRegistry`

@@ -107,6 +107,19 @@ public sealed class NumericMethodsPluginTests {
         Assert.Equal(GrobValue.FromString(expected), vm.Stack.Peek());
     }
 
+    [Theory]
+    [InlineData("Z")]
+    [InlineData("Q9")]
+    public void IntFormat_InvalidPattern_ThrowsCatchableArithmeticError(string pattern) {
+        // A malformed numeric format string makes long.ToString raise FormatException;
+        // the native seam translates it to a catchable E5001/ArithmeticError rather than
+        // letting the host exception escape (D-353's "fails well" contract).
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("int.format", GrobValue.FromInt(1L), GrobValue.FromString(pattern))));
+        Assert.Equal(ErrorCatalog.E5001.Code, ex.Code);
+    }
+
     // -----------------------------------------------------------------------
     // float.toString — must reproduce ValueDisplay.FormatFloat exactly (print() parity).
     // -----------------------------------------------------------------------
@@ -260,6 +273,19 @@ public sealed class NumericMethodsPluginTests {
         var vm = NewRegisteredVm();
         vm.Run(BuildCallChunk("float.format", GrobValue.FromFloat(value), GrobValue.FromString(pattern)));
         Assert.Equal(GrobValue.FromString(expected), vm.Stack.Peek());
+    }
+
+    [Theory]
+    [InlineData("Z")]
+    [InlineData("Q9")]
+    public void FloatFormat_InvalidPattern_ThrowsCatchableArithmeticError(string pattern) {
+        // A malformed numeric format string makes double.ToString raise FormatException;
+        // the native seam translates it to a catchable E5001/ArithmeticError rather than
+        // letting the host exception escape (D-353's "fails well" contract).
+        var vm = NewRegisteredVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunk("float.format", GrobValue.FromFloat(1.5), GrobValue.FromString(pattern))));
+        Assert.Equal(ErrorCatalog.E5001.Code, ex.Code);
     }
 
     // -----------------------------------------------------------------------

@@ -49,6 +49,32 @@ public sealed class TypeCheckerPrimitiveMemberTests {
         public override Unit VisitErrorDecl(ErrorDecl node) => default;
     }
 
+    private sealed class IdentifierCollector : AstWalker {
+        public List<IdentifierExpr> Nodes { get; } = [];
+        public override Unit VisitIdentifier(IdentifierExpr node) {
+            Nodes.Add(node);
+            return base.VisitIdentifier(node);
+        }
+        public override Unit VisitErrorExpr(ErrorExpr node) => default;
+        public override Unit VisitErrorStmt(ErrorStmt node) => default;
+        public override Unit VisitErrorDecl(ErrorDecl node) => default;
+    }
+
+    // §3.1.1 invariant: after type checking every identifier node must carry a resolved,
+    // non-error type and a non-null Declaration (the LSP metadata hover/go-to-definition
+    // rely on). Asserted alongside the call-metadata checks so a numeric-member path cannot
+    // regress it silently. GrobType is a non-nullable enum, so the check is against its
+    // Error sentinel, not null.
+    private static void AssertAllIdentifiersResolved(CompilationUnit unit) {
+        var collector = new IdentifierCollector();
+        collector.Visit(unit);
+        Assert.NotEmpty(collector.Nodes);
+        Assert.All(collector.Nodes, id => {
+            Assert.NotEqual(GrobType.Error, id.ResolvedType);
+            Assert.NotNull(id.Declaration);
+        });
+    }
+
     private static List<CallExpr> CollectCalls(CompilationUnit unit) {
         var collector = new CallCollector();
         collector.Visit(unit);
@@ -402,6 +428,7 @@ public sealed class TypeCheckerPrimitiveMemberTests {
         CallExpr call = Assert.Single(CollectCalls(unit));
         Assert.Equal(expectedType, call.ResolvedReturnType);
         Assert.Equal(expectedNative, call.ResolvedPrimitiveNativeName);
+        AssertAllIdentifiersResolved(unit);
     }
 
     [Theory]
@@ -424,6 +451,7 @@ public sealed class TypeCheckerPrimitiveMemberTests {
         CallExpr call = Assert.Single(CollectCalls(unit));
         Assert.Equal(expectedType, call.ResolvedReturnType);
         Assert.Equal(expectedNative, call.ResolvedPrimitiveNativeName);
+        AssertAllIdentifiersResolved(unit);
     }
 
     [Fact]
@@ -437,6 +465,7 @@ public sealed class TypeCheckerPrimitiveMemberTests {
         CallExpr call = Assert.Single(CollectCalls(unit));
         Assert.Equal(GrobType.String, call.ResolvedReturnType);
         Assert.Equal("bool.toString", call.ResolvedPrimitiveNativeName);
+        AssertAllIdentifiersResolved(unit);
     }
 
     [Fact]

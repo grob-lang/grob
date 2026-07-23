@@ -72,8 +72,7 @@ public sealed class NumericMethodsPlugin : IGrobPlugin {
         registrar.RegisterNative("int.abs", new NativeFunction("int.abs", 1,
             (args, _) => GrobValue.FromInt(IntAbs(args[0].AsInt()))));
         registrar.RegisterNative("int.format", new NativeFunction("int.format", 2,
-            (args, _) => GrobValue.FromString(
-                args[0].AsInt().ToString(args[1].AsString(), CultureInfo.InvariantCulture))));
+            (args, _) => GrobValue.FromString(Format(args[0].AsInt(), args[1].AsString()))));
     }
 
     /// <summary>Pattern A: <c>checked(...)</c> — <c>-long.MinValue</c> is not representable,
@@ -101,8 +100,27 @@ public sealed class NumericMethodsPlugin : IGrobPlugin {
         registrar.RegisterNative("float.abs", new NativeFunction("float.abs", 1,
             (args, _) => GrobValue.FromFloat(Math.Abs(args[0].AsFloat()))));
         registrar.RegisterNative("float.format", new NativeFunction("float.format", 2,
-            (args, _) => GrobValue.FromString(
-                args[0].AsFloat().ToString(args[1].AsString(), CultureInfo.InvariantCulture))));
+            (args, _) => GrobValue.FromString(Format(args[0].AsFloat(), args[1].AsString()))));
+    }
+
+    /// <summary>
+    /// Applies a numeric format <paramref name="pattern"/> under the invariant culture,
+    /// translating the <see cref="FormatException"/> that <c>long</c>/<c>double</c>
+    /// <c>ToString</c> raise on a malformed specifier into a catchable
+    /// <c>E5001</c>/<c>ArithmeticError</c> — the pattern is user-supplied data that reaches
+    /// the native seam, so a host exception must not escape it (D-353's "fails well"
+    /// contract, the same range-guard reasoning <see cref="RoundTo"/> applies, reusing the
+    /// existing code rather than minting a new one). <paramref name="value"/> is boxed to
+    /// <see cref="IFormattable"/> so <c>int.format</c> and <c>float.format</c> share one
+    /// guard; neither is a hot path.
+    /// </summary>
+    private static string Format(IFormattable value, string pattern) {
+        try {
+            return value.ToString(pattern, CultureInfo.InvariantCulture);
+        } catch (FormatException) {
+            throw new NativeFaultException(ArithmeticErrorLeaf, ErrorCatalog.E5001.Code,
+                $"format: '{pattern}' is not a valid numeric format string.");
+        }
     }
 
     private static double RoundTo(double value, long decimals) {
