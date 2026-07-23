@@ -17,13 +17,19 @@
        ValueDisplay against a real (non-Null) registry — the "later increment" the D-336
        doc comments named, landing in Sprint 8 Increment D (guid's toString()). Grob.Vm
        already references Grob.Runtime per the DAG, so this widens internal visibility
-       on an existing edge rather than adding a new project reference. -->
+       on an existing edge rather than adding a new project reference. Grob.Stdlib gets
+       the same visibility (D-369) so float.toString() can reuse FormatFloat exactly,
+       rather than carrying a second, driftable copy of the formatting logic; Grob.Stdlib
+       already references Grob.Runtime per the DAG. -->
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Grob.Runtime.Tests</_Parameter1>
     </AssemblyAttribute>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Grob.Vm</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Grob.Stdlib</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
 

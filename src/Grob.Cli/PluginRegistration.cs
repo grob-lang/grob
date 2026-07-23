@@ -29,6 +29,8 @@ namespace Grob.Cli;
 /// instance per run, no new capability interface needed.
 /// Sprint 9 adds <see cref="StringMethodsPlugin"/> (D-066/D-363) — the <c>string</c>
 /// instance-method/property surface, no capability injection needed (pure).
+/// Sprint 9 Increment A1a adds <see cref="NumericMethodsPlugin"/> (D-066/D-369) — the
+/// <c>int</c>/<c>float</c>/<c>bool</c> instance-method surfaces, likewise pure.
 /// </summary>
 internal static class PluginRegistration {
     /// <summary>Registers every stdlib plugin against <paramref name="registrar"/>, in a fixed order.</summary>
@@ -53,6 +55,7 @@ internal static class PluginRegistration {
             new DatePlugin(new SystemClock()),
             new FormatAsPlugin(),
             new StringMethodsPlugin(),
+            new NumericMethodsPlugin(),
         ];
         foreach (IGrobPlugin plugin in plugins) plugin.Register(registrar);
     }

@@ -8,12 +8,13 @@ member is a compile error.
 | Member | Signature | Notes |
 |--------|-----------|-------|
 | `toString()` | `→ string` | |
-| `toInt()` | `→ int` | Truncates — does not round |
-| `round()` | `→ int` | Nearest integer |
-| `round(decimals: int)` | `→ float` | Round to N decimal places |
+| `toInt()` | `→ int` | Truncates — does not round; faults (`ArithmeticError`) out of range, `NaN` or `Infinity` |
+| `round()` | `→ int` | Nearest integer; `MidpointRounding.AwayFromZero` on a `.5` boundary |
+| `roundTo(decimals: int)` | `→ float` | Round to N decimal places; same away-from-zero midpoint rule (renamed from the overloaded `round(decimals)`, D-368) |
 | `floor()` | `→ int` | |
 | `ceil()` | `→ int` | |
 | `abs()` | `→ float` | |
+| `format(pattern: string)` | `→ string` | Format using .NET pattern string (e.g. `"N2"`, `"F4"`, `"P1"`, `"E3"`) |
 
 ## Static Functions
 
@@ -42,7 +43,10 @@ x.floor()                  // 3
 x.ceil()                   // 4
 
 ratio := 2.0 / 3.0
-ratio.round(2)             // 0.67
+ratio.roundTo(2)            // 0.67
+
+pi := 3.14159
+pi.format("F2")             // "3.14"
 
 float.clamp(1.5, 0.0, 1.0)  // 1.0
 ```

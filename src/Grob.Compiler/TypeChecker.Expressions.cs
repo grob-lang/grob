@@ -411,7 +411,7 @@ public sealed partial class TypeChecker {
         // rewritten to a qualified native call rather than a runtime GetProperty/Bind
         // (primitives are never GrobValueKind.Struct, so NamedTypeRegistry's shape below
         // does not apply). Checked ahead of the Struct-only arms since they never overlap.
-        if (PrimitiveMemberRegistry.TryGet(receiverType, out PrimitiveMemberEntry primitiveEntry)) {
+        if (PrimitiveMemberRegistry.TryGet(receiverType, out PrimitiveMemberEntry? primitiveEntry)) {
             return ValidatePrimitiveMemberCall(node, memberAccess, argTypes, primitiveEntry);
         }
 
@@ -978,7 +978,7 @@ public sealed partial class TypeChecker {
         // GrobTypeHelpers.IsNullable(targetType)) already reject or short-circuit a
         // nullable receiver before this point, so no extra nullable handling is needed
         // here (mirrors TryResolveKnownStructPropertyAccess's identical latitude).
-        if (PrimitiveMemberRegistry.TryGet(targetType, out PrimitiveMemberEntry primitiveEntry)) {
+        if (PrimitiveMemberRegistry.TryGet(targetType, out PrimitiveMemberEntry? primitiveEntry)) {
             return ResolvePrimitiveMemberPropertyAccess(node, primitiveEntry);
         }
 

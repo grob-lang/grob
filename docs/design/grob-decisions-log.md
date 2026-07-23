@@ -363,6 +363,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-365 | July 2026                                                          | Compiler / Type checker / Stdlib — primitive-member default arguments | Wires D-364's `NativeDefaultArgumentFill` into the primitive-member call path — the second of its three designed consumers to be wired — landing the three `string` methods D-363 deferred: `padLeft`/`padRight`/`truncate`. `PrimitiveMemberRegistry` populates their previously inert `ParameterDefaults`. `RequiredArgumentCount` (D-364) promoted from a `NamespaceRegistry.NativeMember`-only helper to `(fullArity, defaults)`, reused rather than duplicated; `CheckPrimitiveMemberArgs` gains a new shared `MemberArgCountInRange` (D-356's exact-match `MemberArgCountMatches` now a thin wrapper over it, unchanged behaviour), and its E0004 loop bound changes from declared arity to supplied count. `CallExpr.ResolvedPrimitiveParameterDefaults` (new side channel, mirrors `ResolvedPrimitiveNativeName`) carries the resolved defaults to `EmitPrimitiveMemberCall`, which computes the full arity, calls `NativeDefaultArgumentFill.Resolve`, and emits `Call` with the full arity plus receiver — a no-op change in shape for every no-default method. Pinned edge cases (registry silent): `truncate`'s `maxLength` is the total result length including the suffix, clamped to the suffix itself when `maxLength` doesn't exceed it (including negative); `padLeft`/`padRight`'s `width` no larger than the input (including negative) returns the input unchanged; a multi-character pad `char` uses its first character, an empty one falls back to a space. `string` surface now complete (24 members: 2 properties, 22 methods). No new opcode, no new error code; count unchanged at 118 |
 | D-366 | July 2026                                                          | Stdlib — native-seam size/count hardening | Closes the native-seam size/count class D-365's PR review flagged as out of scope for `string.repeat`: any native allocating proportionally to a user-supplied count/width/size must fault through the native-throw seam rather than let a hostile or accidental value escape as an uncoded host exception (D-353's "fails well" contract). Audit corrected the prompt's own framing: `repeat`'s existing `checked((int)(s.Length * count))` cast-overflow case is already safe — `VirtualMachine.cs`'s per-instruction dispatch loop catches `OverflowException` around the whole opcode switch (including the native-call branch) and already converts it to a catchable `E5001`/`ArithmeticError`. The real unguarded gap, for `repeat` and (newly confirmed) `padLeft`/`padRight` alike, is a _valid-but-enormous_ allocation — a count/width comfortably within `int` range that still asks `StringBuilder`/`.PadLeft`/`.PadRight` to allocate an unreasonable buffer, throwing an uncaught `OutOfMemoryException`. `truncate` (bounded by input/suffix length) and `substring`/`left`/`right` (bounded by explicit `> s.Length` comparisons) audited and confirmed already safe, including at `int.MaxValue` and negative inputs, now locked by regression tests. `guid`'s `RandomBytes`, `formatAs.*` and `strings.join` are not candidates — fixed/internal or array-derived sizes, never a raw user integer. New `MaxAllocationLength` constant (`StringMethodsPlugin`, `Grob.Stdlib`) — 10,000,000 characters, ~20 MB as UTF-16, a judgement call with no existing precedent to mirror — replaces `RejectOversizedWidth`'s `int.MaxValue` bound (subsuming the cast-safety case) and gates a new `RejectOversizedRepeat` guard checked via division so the guard itself cannot overflow. Both fault through the existing `NativeFaultException("IndexError", ErrorCatalog.E5101.Code, ...)` seam — no new error code, reusing D-365's leaf. No new opcode; count unchanged at 118 |
 | D-367 | July 2026                                                          | date module / VM — equality | Implements D-357: `date`-vs-`date` equality is now instant-based, matching `LessDate`/`GreaterDate`, restoring trichotomy (`date.now() == date.now().toUtc()` was false; empirically confirmed before and after). New `OpCode.EqualDate` (appended after `GreaterDate`, mirroring D-354's own append precedent; PR #157 review raised the resulting opcode-value shift as a wire-format concern and it was pushed back on — no `.grobc` reader/writer exists anywhere in the codebase yet, so there is no cached-file compatibility to break. No version bump needed) parses both `__value` strings via the existing `DateNatives.ToDateTimeOffset` and compares instants, nil-safely (a `date?`-vs-`date?` pair also selects `EqualDate`, so either operand may be `Nil` at runtime; checked before parsing, mirroring `GrobValue.Equals`' own kind-mismatch-first rule); `!=` lowers to `EqualDate` + `Not`, no dedicated `NotEqualDate`. New `BinaryExpr.IsDateEquality` annotation is the checker-to-compiler handoff the fix actually depends on: unlike the relational operators, whose `Struct`-vs-`Struct` acceptance is already gated to nominal `date` pairs, `==`/`!=` deliberately accepts any matching `Struct` (or `NullableStruct`) pair (D-169), so the compiler cannot safely infer `date` from the flat tag alone; the annotation covers both `Struct`-vs-`Struct` and `NullableStruct`-vs-`NullableStruct` nominal-date pairs. Ordering (`LessDate`/`GreaterDate`, `<=`/`>=` lowering) and `daysUntil`/`daysSince` (already instant-based) confirmed correct and locked, not changed. `guid` and every other struct type confirmed unchanged under D-169. Consolidates the round-trip format constant, triplicated across `Grob.Vm.DateNatives`/`Grob.Core.NamedTypes.NamedTypeRegistry`/`Grob.Stdlib.DatePlugin`, into a single `public const string NamedTypeRegistry.RoundTripFormat` in `Grob.Core` — no behaviour change. No new error code; count unchanged at 118 |
+| D-368 | July 2026                                                          | Type system / Stdlib — numeric member surface | Resolves the one arity-overloaded member in the documented surface: `float.round()` is recorded in both `grob-type-registry.md` and `wiki/Type-Registry/float.md` as `round() -> int` **and** `round(decimals: int) -> float` — arity-based overloading with a return-type change, which D-358 explicitly excludes, which the name-keyed registries (`NamespaceRegistry`, `NamedTypeRegistry`, `PrimitiveMemberRegistry`) cannot express, and which D-364's default-argument fill cannot express either (one function, one return type, optional trailing tail). Ratified: split the names — `round() -> int` (nearest integer) and `roundTo(decimals: int) -> float` (N decimal places). Chosen over `round(decimals = 0) -> float` because `floor()` and `ceil()` already return `int`, so an `int`-returning `round()` keeps all three rounding operations aligned — internal consistency over mimicking C#'s all-`double` surface — and over real arity overloading, which would rekey three registries for one member. Also avoids Python's documented `round(x)`/`round(x, n)` return-type gotcha. Corpus cost: two validation-script call sites and two doc rows. Flags forward that `CsvRow.get(name: string)` / `get(index: int)` is a **type**-overloaded pair (same arity) still unresolved, due at Sprint 9 Increment E. Implemented by increment A1a. No new error code; count unchanged at 118 |
+| D-369 | July 2026                                                          | Type system / Stdlib — numeric instance-member surface | Implements D-368: registers `int`/`float`/`bool` as `PrimitiveMemberRegistry` (D-363) receivers, closing the second release-gate blocker the advertised-vs-built audit found — `int.toString/toFloat/abs/format`, `float.toString/toInt/round/roundTo(decimals)/floor/ceil/abs/format` (`round`/`roundTo` per D-368's split) and `bool.toString`, via a new `Grob.Stdlib.NumericMethodsPlugin` mirroring `StringMethodsPlugin`'s pure-native pattern. Confirmed zero overlap with `MathPlugin` (no `abs`/`floor`/`ceil`/`round` there) — this is the first place these operations exist for Grob values. `int.format`, absent from the prompt's own scope list but present in `grob-type-registry.md`, built alongside `float.format` per corpus authority (both wiki pages had the same omission, both closed). `TypeChecker.Expressions.cs`'s `ValidatePrimitiveMemberCall`/property-access dispatch confirmed receiver-agnostic (D-362's `CallExpr.ResolvedReturnType` threading needed no change) — this increment is pure registry/native population, zero type-checker source changes. Pinned semantics: `toString()` matches `ValueDisplay.Render` exactly per receiver (`bool` → `"true"`/`"false"`, `int`/`float` → invariant-culture form); `float.toString()` reuses `ValueDisplay.FormatFloat`, promoted `private` → `internal static` with `Grob.Stdlib` added to `Grob.Runtime.csproj`'s `InternalsVisibleTo` (D-336's precedent for `Grob.Vm`), rather than carrying a second, driftable copy — proven identical to `print()` output including the pinned `NaN`/`Infinity`/`-Infinity` spellings and the trailing `.0`. `int.abs()` and `float.toInt()` fault via a plain `checked(...)` C# cast/negation ("Pattern A"), letting the VM's existing outer `catch (OverflowException)` (`VirtualMachine.cs`) convert it to `E5001`/`ArithmeticError` exactly as `NegateInt` and other checked-arithmetic opcodes already do — no manual `NativeFaultException` guard, no new error code. `round()`/`roundTo()` use `MidpointRounding.AwayFromZero` on a `.5` boundary — a fresh pinned decision with no prior codebase precedent (tested at both boundaries and on negative values). One gap found during implementation, outside the plan's explicit Pattern A scope but the same "fails well" class D-366 established: `Math.Round(double, int, MidpointRounding)` itself throws `ArgumentOutOfRangeException` for `decimals` outside `[0, 15]`, which is not an `OverflowException` and so would not have reached the VM's checked-arithmetic handler, leaking an uncatchable host exception. `roundTo` now range-checks `decimals` explicitly and faults through `NativeFaultException` reusing the same `ArithmeticError`/`E5001` leaf — no new code, no new guard class, just the existing D-366 idiom applied to a range this increment's own surface introduced. `int.MinValue`/`long.MinValue` has no literal spelling in Grob (the bare digit magnitude overflows `long.Parse` before any unary minus applies, confirmed empirically) — its `abs()`-overflow fault path is exercised via `-9223372036854775807 - 1`, constructed at runtime instead. `PrimitiveMemberRegistryAgreementTests`'s orphan-detection filter (`"string."`-only) extended to `"int."`/`"float."`/`"bool."`; `StringMethodsPluginTests`'s own registration-count assertion, which iterated the shared `AllQualifiedNativeNames` aggregate, corrected to `String`'s own entries now that the aggregate spans four receivers; one pre-existing `CompilerNullableTests` bytecode-shape test switched its plain-dot receiver from `int` (now a registered primitive with no bare properties, so `int.member` legitimately raises E1002) to `array` (the same permissive `GrobType.Unknown` fall-through the test always meant to exercise) — no test asserting int/float/bool member behaviour was touched. `int.min`/`max`/`clamp` and `float.min`/`max`/`clamp` (type-static, namespace-receiver calls) remain out of scope — Sprint 9 Increment A1b. No new opcode; error codes reused, count unchanged at 118. Cites D-363 (the registry this populates), D-364 (default-argument fill, not used here — every new parameter is required), D-365 (the primitive-member arg-count/default machinery proven receiver-agnostic), D-362 (the `ResolvedReturnType` threading confirmed unchanged), D-366 (the native-seam "fails well" contract the `roundTo` range guard extends), D-368 (the `round`/`roundTo` split this increment implements), D-284, D-066 (primitive methods as compile-time sugar), and the advertised-vs-built audit that found the gap |
 
 
 ---
@@ -6410,6 +6412,205 @@ added).
 
 ---
 
+### D-368 — `float.round`/`roundTo` name split: the documented arity overload resolved without overload resolution (July 2026)
+
+Area: Type system / Stdlib — numeric member surface
+Supersedes: none
+Superseded by: none
+Refines: D-358, D-363, D-066
+
+**The problem.** `grob-type-registry.md`'s `float` section and `wiki/Type-Registry/float.md`
+both document two `round` members:
+
+| `round()` | `-> int` | Nearest integer |
+| `round(decimals: int)` | `-> float` | Round to N decimal places |
+
+That is arity-based overloading **with a return-type change**, and three separate mechanisms
+forbid it:
+
+1. **D-358 excludes it explicitly** — "default arguments, not overload resolution. True
+   arity/type overloading remains unsupported and out of v1 scope."
+2. **The registries cannot express it.** `NamespaceRegistry`, `NamedTypeRegistry` and
+   `PrimitiveMemberRegistry` are all keyed by member **name**; two entries under `round` do not
+   fit without rekeying every one of them on (name, arity).
+3. **D-364's default-argument fill cannot express it.** That mechanism is one function with one
+   return type and an optional trailing tail of constant-defaulted parameters. It cannot produce
+   `int` at arity 0 and `float` at arity 1.
+
+The advertised-vs-built audit surfaced this while scoping the numeric instance-member surface
+(increment A1a), whose release-gate obligation includes `.round(2)` and `.round(1)` call sites in
+`grob-sample-scripts.md`.
+
+**The decision.** Split the names:
+
+- **`round() -> int`** — nearest integer.
+- **`roundTo(decimals: int) -> float`** — round to N decimal places.
+
+Both are single-arity and unambiguous. No overloading, no registry rekeying, no new mechanism.
+
+**Why this over the alternatives.**
+
+- **Over `round(decimals: int = 0) -> float`** (which would fit D-364's mechanism exactly and
+  match C#'s and Go's all-`double` rounding surface): `floor()` and `ceil()` already return `int`
+  in Grob's `float` registry. An `int`-returning `round()` keeps all three rounding operations
+  aligned; making `round` alone return `float` would leave it the odd one out. Consistency with
+  Grob's own established conventions outranks mimicking C#'s surface, and the `float`-returning
+  behaviour remains available as `roundTo`.
+- **Over real arity overloading**: rekeying three registries on (name, arity), plus the
+  corresponding type-checker and emission changes, is a substantial mechanism built for one
+  member — precisely the scope D-358 ruled out of v1.
+- **Python's precedent is a warning, not a model.** `round(x)` returning `int` while
+  `round(x, n)` returns `float` is a well-known source of confusion in a language Grob explicitly
+  positions against. The split names make the return type legible at the call site.
+
+**Corpus consequences** (applied by increment A1a): the `float` rows in
+`grob-type-registry.md` and `wiki/Type-Registry/float.md`; and `grob-sample-scripts.md`'s two
+call sites — line 215's `(f.size / 1024.0 / 1024.0).round(2)` and line 768's
+`((d.used.toFloat() / total.toFloat()) * 100.0).round(1)` — become `.roundTo(2)` and
+`.roundTo(1)`. The validation scripts are specification, not shipped code, so amending them is
+cheap. The full `.round(` call-site list is grepped at implementation time rather than assumed
+to be these two.
+
+**Scope — and one forward flag.** This decision is `float.round`-specific. The general v1 rule is
+unchanged and reaffirmed: **a member name maps to exactly one signature**; there is no overload
+resolution.
+
+The audit found exactly one other overloaded pair in the documented surface, and it is **not**
+resolved here: `CsvRow.get(name: string) -> string` and `CsvRow.get(index: int) -> string`
+(`grob-type-registry.md`, `wiki/Type-Registry/CsvRow.md`). That pair is **type**-overloaded at the
+same arity — harder for a name-keyed registry than `round` was, and not expressible as a name
+split without renaming one of two equally natural accessors. `CsvRow` is a Sprint 9 Increment E
+(`csv`) type and is not yet built, so the decision is deferred to that increment rather than
+pre-empted here — but it is recorded now so Increment E meets it as a known design question with
+this decision's reasoning available, rather than discovering it in plan-mode.
+
+No new opcode. No new error code; count unchanged at 118.
+
+Full detail: `grob-type-registry.md`'s `float` section, `wiki/Type-Registry/float.md`,
+`grob-advertised-vs-built-audit.md` (the audit that surfaced it), D-358 (the overload-resolution
+exclusion this respects), D-364 (the default-argument mechanism that cannot express the original
+pair), D-363 (the primitive-member registry A1a populates), D-066 (primitive methods as
+compile-time sugar).
+
+---
+
+### D-369 — `int`/`float`/`bool` instance-member surface built on `PrimitiveMemberRegistry` (July 2026)
+
+Area: Type system / Stdlib — numeric instance-member surface
+Supersedes: none
+Superseded by: none
+Refines: D-363, D-368, D-066
+
+**The problem.** The advertised-vs-built corpus audit found that `PrimitiveMemberRegistry`
+(D-363's primitive-member dispatch mechanism) had a `string` receiver entry only — `int` and
+`float` appeared there solely as _return_ types, and `int`/`float`/`bool` had no receiver
+dispatch arm anywhere. `grob-type-registry.md` and the wiki documented `int.toString/toFloat/
+abs/format`, `float.toString/toInt/round/roundTo/floor/ceil/abs/format` and `bool.toString` as
+built surface; none of it compiled. The release-gate validation scripts in
+`grob-sample-scripts.md` call `.roundTo(2)`, `.roundTo(1)`, `someInt.toString()` and
+`someInt.toFloat()`-shaped chains (`toFloat` is delivered on `int`, not `float`) — this is
+the same class and severity of blocker as the
+`string`-methods gap D-363 closed.
+
+**The decision.** Register `Int`, `Float` and `Bool` receiver entries in `PrimitiveMemberRegistry`
+(`Grob.Core`) alongside the existing `String` entry, and add a new `Grob.Stdlib.
+NumericMethodsPlugin` — mirroring `StringMethodsPlugin`'s pure, capability-free `RegisterNative`
+pattern exactly — wired into `PluginRegistration.RegisterAll`. This is pure surface population
+over D-363's existing mechanism, not a new subsystem: `TypeChecker.Expressions.cs`'s
+`ValidatePrimitiveMemberCall` and its property-access twin were confirmed receiver-agnostic by
+direct reading before implementation, and needed zero source changes — every type-checker and
+compiler test added for the new receivers passed against the existing dispatch code unchanged.
+
+**Surface delivered:**
+
+- **`int`** — `toString() -> string`, `toFloat() -> float` (always succeeds), `abs() -> int`,
+  `format(pattern: string) -> string`.
+- **`float`** — `toString() -> string`, `toInt() -> int` (truncates), `round() -> int`,
+  `roundTo(decimals: int) -> float` (D-368's split), `floor() -> int`, `ceil() -> int`,
+  `abs() -> float`, `format(pattern: string) -> string`.
+- **`bool`** — `toString() -> string`.
+
+`int.format`, present in `grob-type-registry.md`'s `int` section but absent from the originating
+prompt's own scope list and from `wiki/Type-Registry/int.md`, was built alongside `float.format`
+(also missing from its wiki page) per the corpus-wins rule — both wiki omissions closed in the
+same pass rather than one deferred.
+
+**`math`-module overlap.** Audited directly (`MathPlugin.cs`): zero matches for `abs`/`floor`/
+`ceil`/`round`/`Math.Round`/`Math.Abs`. This increment is the first place these operations exist
+for a Grob value — no divergence to reconcile, nothing delegated.
+
+**Pinned semantics, each a load-bearing implementation detail:**
+
+- **`toString()` parity with `print()`.** `bool.toString()` is `value ? "true" : "false"`,
+  matching `ValueDisplay.Render` exactly. `int.toString()` is invariant-culture decimal form.
+  `float.toString()` reuses `ValueDisplay.FormatFloat` directly rather than re-implementing it —
+  `FormatFloat` promoted from `private` to `internal static`, and `Grob.Stdlib` added to
+  `Grob.Runtime.csproj`'s `InternalsVisibleTo` list (the same grant `Grob.Vm` already holds for
+  the identical reason, D-336's precedent). One formatting implementation, not two that could
+  drift — pinned `NaN`/`Infinity`/`-Infinity` spellings and the trailing `.0` suffix stay
+  identical between `print(f)` and `f.toString()` by construction, not convention.
+- **Overflow faults — Pattern A, no new guard.** `int.abs()` and `float.toInt()` fault via a
+  plain `checked(...)` C# cast or negation. `-long.MinValue` and an out-of-range/`NaN`/`Infinity`
+  `double`-to-`long` cast both throw `OverflowException`, which the native-call inner `try`
+  (`VirtualMachine.cs`, only catches `NativeFaultException`) does not intercept — it propagates
+  unchanged to the existing outer `catch (OverflowException)` every other checked-arithmetic
+  opcode (`NegateInt` et al.) already relies on, converting to `E5001`/`ArithmeticError`. No
+  manual `NativeFaultException` guard, no new error code — confirmed by direct reading of the
+  dispatch loop before implementation, then proven by test.
+- **Rounding — `MidpointRounding.AwayFromZero`, freshly pinned.** No existing codebase precedent
+  for a `.5`-boundary rounding rule (confirmed by the `math`-overlap audit above finding no
+  `round` anywhere). `round()`/`roundTo()` both use away-from-zero rather than .NET's banker's-
+  rounding default — the convention most scripting-language users expect, and the one that would
+  least surprise a `2.5.round()` caller. Tested explicitly at both `.5` boundaries and on negative
+  values.
+- **`roundTo`'s `decimals` range — a gap found during implementation, closed with the same idiom
+  D-366 established.** `Math.Round(double, int, MidpointRounding)` itself throws
+  `ArgumentOutOfRangeException` for `decimals` outside `[0, 15]` — not an `OverflowException`, so
+  Pattern A's `checked(...)` cast alone does not cover it, and it would have reached the VM as an
+  uncatchable host exception, breaking D-353's "fails well" contract for a range this increment's
+  own new surface introduces (not a pre-existing gap D-366 audited). `roundTo` now range-checks
+  `decimals` explicitly before calling `Math.Round`, faulting through the existing
+  `NativeFaultException(ArithmeticError, E5001, …)` seam — the same reused leaf and code, no new
+  error code, no new guard _class_ (mirrors `StringMethodsPlugin`'s existing
+  `RejectOversizedWidth`/`RejectOversizedRepeat` shape for an analogous "valid C# call, invalid
+  Grob-level argument" case).
+- **`int.MinValue` has no literal spelling.** Grob's number-literal grammar parses the digit
+  string before any unary minus is applied (`Parser.ParseIntegerLexeme`), so the bare magnitude
+  `9223372036854775808` overflows `long.Parse` and fails at parse time (`E2001`) — confirmed
+  empirically — independent of the negation that would otherwise produce `long.MinValue`. Its
+  `abs()`-overflow fault path is exercised via `-9223372036854775807 - 1`, computed at runtime
+  instead; neither intermediate step itself overflows.
+
+**Test-suite corrections required by the additive registry change** (not behaviour changes to
+`string`/`math`): `PrimitiveMemberRegistryAgreementTests`'s orphan-detection filter, previously
+scoped to the `"string."` prefix only, extended to `"int."`/`"float."`/`"bool."` so the new
+receivers get the same live-registration/orphan protection. `StringMethodsPluginTests`'s own
+registration-count assertion, which iterated the now-four-receiver `AllQualifiedNativeNames`
+aggregate directly, corrected to iterate `PrimitiveMemberRegistry.String`'s own entries. One
+pre-existing `CompilerNullableTests` bytecode-shape test (`PlainDot_DoesNotEmitIsNilOrJumps`)
+used a bare `int` receiver to exercise the generic permissive-`Unknown` property-access
+fall-through incidentally — now that `int` is a registered primitive with no bare properties,
+`int.member` legitimately raises `E1002`, so the test's receiver moved to `array` (still
+unregistered, same fall-through, same assertion intent). No test asserting `string`/`math`
+behaviour was touched.
+
+**Out of scope, unchanged.** `int.min`/`max`/`clamp` and `float.min`/`max`/`clamp` are
+type-static, namespace-receiver calls (`NamespaceRegistry`, not `PrimitiveMemberRegistry`) —
+Sprint 9 Increment A1b's scope. No array or map instance members (C0a/C0b). No overload
+resolution added. No new opcode. Error codes reused throughout; count unchanged at 118.
+
+Full detail: `grob-type-registry.md`'s `int`/`float`/`bool` sections (now built, build-status
+note updated), `wiki/Type-Registry/{int,float}.md` (`format` rows added), D-363 (the registry
+this populates), D-364 (default-argument fill — not used here, every new parameter is required),
+D-365 (the primitive-member arg-count machinery, confirmed receiver-agnostic), D-362 (the
+`ResolvedReturnType` operand-typing threading, confirmed unchanged), D-366 (the native-seam
+"fails well" contract the `roundTo` range guard extends to a new case), D-368 (the `round`/
+`roundTo` split this increment implements), D-284, D-066 (primitive methods as compile-time
+sugar), and the advertised-vs-built audit that found the gap.
+
+---
+
+
 
 ## Post-MVP Decisions
 
@@ -6632,7 +6833,30 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — `date` equality lands on the instant basis: D-367 added, implementing_
+_July 2026 — Sprint 9 Increment A1a, numeric instance-member surface built: D-369 added._
+_Registers `int`/`float`/`bool` as `PrimitiveMemberRegistry` receivers (D-363), closing the_
+_second release-gate blocker the advertised-vs-built audit found. New `NumericMethodsPlugin`_
+_mirrors `StringMethodsPlugin`'s pure pattern; zero `math`-module overlap confirmed; zero_
+_type-checker source changes needed (dispatch proven receiver-agnostic). `float.toString()`_
+_reuses the promoted-`internal` `ValueDisplay.FormatFloat` rather than a second copy._
+_`int.abs()`/`float.toInt()` fault via Pattern A `checked(...)`, converted to E5001 by the_
+_VM's existing OverflowException handler. `round()`/`roundTo()` pin `MidpointRounding._
+_AwayFromZero` — fresh, no prior precedent. `roundTo`'s `decimals` range-guarded against_
+_`Math.Round`'s own `ArgumentOutOfRangeException`, a gap found during implementation and_
+_closed with D-366's existing native-seam-fault idiom, reusing the same E5001 leaf. No new_
+_opcode or error code; count unchanged at 118._
+_Previous: July 2026 — Consolidation planning, `float.round` arity overload resolved: D-368_
+_added. The documented `round() -> int` / `round(decimals) -> float` pair is arity overloading_
+_with a return-type change — excluded by D-358, inexpressible in the name-keyed registries, and_
+_inexpressible via D-364's default-argument fill. Ratified as a name split: `round() -> int`_
+_and `roundTo(decimals: int) -> float`. Chosen over `round(decimals = 0) -> float` because_
+_`floor()`/`ceil()` already return `int`, so all three rounding operations stay aligned;_
+_chosen over real arity overloading, which would rekey three registries for one member._
+_Corpus cost: two `grob-sample-scripts.md` call sites and two doc rows, applied by increment_
+_A1a. Records forward that `CsvRow.get(name)` / `get(index)` is a type-overloaded pair at the_
+_same arity, still unresolved, due at Sprint 9 Increment E. The general v1 rule is reaffirmed:_
+_a member name maps to exactly one signature. No new error code; count unchanged at 118._
+_Previous: July 2026 — `date` equality lands on the instant basis: D-367 added, implementing_
 _D-357. New OpCode.EqualDate (appended after GreaterDate; no .grobc version bump —_
 _the format has no reader/writer yet) restores trichotomy — date.now() ==_
 _date.now().toUtc() was false, confirmed empirically before the fix and true after._

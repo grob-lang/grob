@@ -14,7 +14,7 @@ time — no boxing, no vtable, no heap allocation.
 
 ---
 
-**Build-status note (D-365, updating D-363's build-status note).**
+**Build-status note (D-369, updating D-365's build-status note).**
 The `string` section below is now **fully built** — `padLeft`/`padRight`/`truncate`
 (D-365 wires D-364's `NativeDefaultArgumentFill` into the primitive-member call path,
 the second of its three designed consumers to be wired) join the 21 members D-363 shipped, closing
@@ -23,10 +23,18 @@ the documented surface at 24 members (2 properties, 22 methods). `ResolveMemberA
 `PrimitiveMemberRegistry` (`Grob.Core`, parallel to the `NamedTypeRegistry` shape),
 and `VisitCall`/`VisitMemberAccess` rewrite a resolved primitive-member access to a
 qualified native call at compile time (D-066), receiver injected as arg[0] — no
-`GetProperty`/`Bind` runtime dispatch, no new opcode. The `int`, `float` and `bool`
-sections below still describe the **target** surface only, not current behaviour —
-the same mechanism, unbuilt for those three primitives until their own follow-on
-increments prove it out.
+`GetProperty`/`Bind` runtime dispatch, no new opcode.
+The `int`, `float` and `bool` **instance-member** rows below are now also **fully
+built** (D-369, Sprint 9 Increment A1a) on the same mechanism, closing the second
+release-gate blocker the advertised-vs-built audit found — `int` (`toString`/
+`toFloat`/`abs`/`format`), `float` (`toString`/`toInt`/`round`/`roundTo`/`floor`/
+`ceil`/`abs`/`format`) and `bool` (`toString`). `float`'s previously arity-overloaded
+`round()`/`round(decimals: int)` pair is split per D-368 into `round() → int` and
+`roundTo(decimals: int) → float` (both rows below reflect the split, not the
+superseded overload). The `int.min`/`int.max`/`int.clamp`/`float.min`/`float.max`/
+`float.clamp` **type-static** rows remain target-surface only — those are namespace-
+receiver calls (`NamespaceRegistry`, not `PrimitiveMemberRegistry`) and are Sprint 9
+Increment A1b's scope, not this increment's.
 
 ---
 
@@ -67,7 +75,7 @@ increments prove it out.
 | ------------------------- | ------ | ----------------------- | -------------------------------------------------------------- |
 | `toString()`              | method | `→ string`              |                                                                |
 | `toFloat()`               | method | `→ float`               | Always succeeds                                                |
-| `abs()`                   | method | `→ int`                 |                                                                |
+| `abs()`                   | method | `→ int`                 | Faults (`ArithmeticError`) on `long.MinValue` — its magnitude is not representable |
 | `format(pattern: string)` | method | `→ string`              | Format using .NET pattern string (e.g. `"N2"`, `"X8"`, `"P1"`) |
 | `int.min(a, b)`           | static | `(int, int) → int`      |                                                                |
 | `int.max(a, b)`           | static | `(int, int) → int`      |                                                                |
@@ -80,9 +88,9 @@ increments prove it out.
 | Member                    | Kind   | Signature                       | Notes                                                                  |
 | ------------------------- | ------ | ------------------------------- | ---------------------------------------------------------------------- |
 | `toString()`              | method | `→ string`                      |                                                                        |
-| `toInt()`                 | method | `→ int`                         | Truncates — does not round                                             |
-| `round()`                 | method | `→ int`                         | Nearest integer                                                        |
-| `round(decimals: int)`    | method | `→ float`                       | Round to N decimal places                                              |
+| `toInt()`                 | method | `→ int`                         | Truncates — does not round; faults (`ArithmeticError`) out of range, `NaN` or `Infinity` |
+| `round()`                 | method | `→ int`                         | Nearest integer; `MidpointRounding.AwayFromZero` on a `.5` boundary (D-369)   |
+| `roundTo(decimals: int)`  | method | `→ float`                       | Round to N decimal places; same away-from-zero midpoint rule (D-368/D-369) |
 | `floor()`                 | method | `→ int`                         |                                                                        |
 | `ceil()`                  | method | `→ int`                         |                                                                        |
 | `abs()`                   | method | `→ float`                       |                                                                        |

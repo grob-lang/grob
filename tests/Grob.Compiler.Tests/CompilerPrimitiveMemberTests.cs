@@ -352,4 +352,80 @@ public sealed class CompilerPrimitiveMemberTests {
         Chunk chunk = SingleFunctionConstant(topLevel).Bytecode;
         Assert.Contains(Decode(chunk), i => i.Op == OpCode.MultiplyInt);
     }
+
+    // -----------------------------------------------------------------------
+    // int/float/bool instance members (Sprint 9 Increment A1a, D-369) — same
+    // qualified-native rewrite proven above for string, data-driven off the
+    // registry exactly as AllStringMembers does.
+    // -----------------------------------------------------------------------
+
+    public static IEnumerable<object[]> AllIntMembers() => AllMethodMembers(PrimitiveMemberRegistry.Int, "n", "5");
+    public static IEnumerable<object[]> AllFloatMembers() => AllMethodMembers(PrimitiveMemberRegistry.Float, "f", "3.5");
+    public static IEnumerable<object[]> AllBoolMembers() => AllMethodMembers(PrimitiveMemberRegistry.Bool, "b", "true");
+
+    private static IEnumerable<object[]> AllMethodMembers(PrimitiveMemberEntry entry, string receiverName, string receiverLiteral) {
+        foreach (PrimitiveMemberMethod m in entry.Methods.Values) {
+            string args = string.Join(", ", m.ParameterTypes.Select(ArgLiteral));
+            yield return [receiverName, receiverLiteral, $"{receiverName}.{m.Name}({args})", m.QualifiedNativeName, m.ParameterTypes.Count + 1];
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(AllIntMembers))]
+    [MemberData(nameof(AllFloatMembers))]
+    [MemberData(nameof(AllBoolMembers))]
+    public void EveryNumericRegistryMember_LowersToQualifiedNativeReceiverFirstCall(
+            string receiverName, string receiverLiteral, string statement, string qualifiedName, int expectedCallArity) {
+        Chunk chunk = SingleFunctionConstant(CompileSource($$"""
+            fn run(): void {
+                {{receiverName}} := {{receiverLiteral}}
+                {{statement}}
+            }
+            """)).Bytecode;
+        List<Instr> instrs = Decode(chunk);
+
+        Assert.DoesNotContain(instrs, i => i.Op == OpCode.GetProperty);
+
+        Instr getGlobal = Assert.Single(instrs, i => i.Op == OpCode.GetGlobal &&
+            chunk.ReadConstant(i.Arg).TryAsString(out string? s) && s == qualifiedName);
+        int idx = instrs.IndexOf(getGlobal);
+
+        Assert.Equal(OpCode.GetLocal, instrs[idx + 1].Op);
+
+        Instr call = Assert.Single(instrs, i => i.Op == OpCode.Call);
+        Assert.Equal(expectedCallArity, call.Arg);
+    }
+
+    [Fact]
+    public void IntAbsPlusOne_SelectsAddInt() {
+        Chunk topLevel = CompileSource("""
+            fn run(n: int): int {
+                return n.abs() + 1
+            }
+            """);
+        Chunk chunk = SingleFunctionConstant(topLevel).Bytecode;
+        Assert.Contains(Decode(chunk), i => i.Op == OpCode.AddInt);
+    }
+
+    [Fact]
+    public void FloatRoundTimesTwo_SelectsMultiplyInt() {
+        Chunk topLevel = CompileSource("""
+            fn run(f: float): int {
+                return f.round() * 2
+            }
+            """);
+        Chunk chunk = SingleFunctionConstant(topLevel).Bytecode;
+        Assert.Contains(Decode(chunk), i => i.Op == OpCode.MultiplyInt);
+    }
+
+    [Fact]
+    public void FloatAbsPlusFloat_SelectsAddFloat() {
+        Chunk topLevel = CompileSource("""
+            fn run(f: float): float {
+                return f.abs() + 1.0
+            }
+            """);
+        Chunk chunk = SingleFunctionConstant(topLevel).Bytecode;
+        Assert.Contains(Decode(chunk), i => i.Op == OpCode.AddFloat);
+    }
 }

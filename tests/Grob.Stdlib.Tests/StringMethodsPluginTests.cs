@@ -36,7 +36,12 @@ public sealed class StringMethodsPluginTests {
         var vm = new VirtualMachine(new StringWriter());
         new StringMethodsPlugin().Register(vm);
 
-        foreach (string name in PrimitiveMemberRegistry.AllQualifiedNativeNames) {
+        // Scoped to String's own entries rather than AllQualifiedNativeNames (Sprint 9
+        // Increment A1a/D-369 added Int/Float/Bool entries to that aggregate, which this
+        // string-only plugin correctly does not register).
+        IEnumerable<string> stringNames = PrimitiveMemberRegistry.String.Properties.Values.Select(p => p.QualifiedNativeName)
+            .Concat(PrimitiveMemberRegistry.String.Methods.Values.Select(m => m.QualifiedNativeName));
+        foreach (string name in stringNames) {
             Assert.True(vm.Globals.ContainsKey(name), $"missing native registration: {name}");
         }
         Assert.Equal(24, vm.Globals.Count);
