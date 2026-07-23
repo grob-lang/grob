@@ -148,7 +148,11 @@ public sealed class CompilerNullableTests {
     [Fact]
     public void PlainDot_DoesNotEmitIsNilOrJumps() {
         // Non-nullable '.' access emits only GetProperty, no nil-guard machinery.
-        Chunk chunk = CompileSource("x: int := 42\nx.member");
+        // Receiver is an array (not int) — Sprint 9 Increment A1a (D-369) registered
+        // int as a primitive-member receiver, so 'int.member' now legitimately raises
+        // E1002 for an unknown property; array stays in the generic Unknown fall-through
+        // this test actually means to exercise.
+        Chunk chunk = CompileSource("x: int[] := [42]\nx.member");
 
         List<OpCode> ops = ReadOpcodes(chunk);
         Assert.DoesNotContain(OpCode.IsNil, ops);

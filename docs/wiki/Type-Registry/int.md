@@ -9,7 +9,8 @@ member is a compile error.
 |--------|-----------|-------|
 | `toString()` | `→ string` | |
 | `toFloat()` | `→ float` | Always succeeds |
-| `abs()` | `→ int` | |
+| `abs()` | `→ int` | Faults (`ArithmeticError`) on `long.MinValue` — its magnitude is not representable |
+| `format(pattern: string)` | `→ string` | Format using .NET pattern string (e.g. `"N2"`, `"X8"`, `"P1"`) |
 
 ## Static Functions
 
@@ -38,6 +39,9 @@ x := -42
 x.abs()                    // 42
 x.toString()               // "-42"
 x.toFloat()                // -42.0
+
+y := 255
+y.format("X8")             // "000000FF"
 
 int.min(10, 20)            // 10
 int.max(10, 20)            // 20

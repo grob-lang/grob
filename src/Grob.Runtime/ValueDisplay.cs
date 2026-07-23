@@ -147,7 +147,14 @@ public sealed class ValueDisplay {
     // Float — round-trip, decimal point, invariant culture, pinned non-finite spellings.
     // -----------------------------------------------------------------------
 
-    private static string FormatFloat(double value) {
+    /// <summary>
+    /// Internal (not private) so <c>Grob.Stdlib</c>'s <c>float.toString()</c> native can
+    /// reuse this exact formatting rather than carrying a second, driftable copy
+    /// (D-369) — <c>Grob.Runtime.csproj</c> grants <c>Grob.Stdlib</c> the same
+    /// <c>InternalsVisibleTo</c> access already granted to <c>Grob.Vm</c> for the
+    /// identical reason (D-336).
+    /// </summary>
+    internal static string FormatFloat(double value) {
         // Pinned literal spellings rather than InvariantCulture's NaN/Infinity symbols —
         // explicit and independent of any future change to those symbol tables.
         if (double.IsNaN(value)) return "NaN";

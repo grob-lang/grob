@@ -212,7 +212,7 @@ entries := fs.list(path, recursive: true)
     .map(f => FileEntry {
         name:    f.name
         folder:  f.directory
-        size_mb: (f.size / 1024.0 / 1024.0).round(2)
+        size_mb: (f.size / 1024.0 / 1024.0).roundTo(2)
     })
 
 print(
@@ -765,7 +765,7 @@ ps_drives := json.parse(drives).mapAs<PsDrive[]>()   // [ASSUMPTION] array from 
 
 for d in ps_drives {
     total    := d.used + d.free
-    used_pct := ((d.used.toFloat() / total.toFloat()) * 100.0).round(1)
+    used_pct := ((d.used.toFloat() / total.toFloat()) * 100.0).roundTo(1)
     status   := used_pct switch {
         >= crit_percent => "CRITICAL",
         >= warn_percent => "WARNING",
@@ -1034,7 +1034,7 @@ if (response.isSuccess) {
 |`fs.exists()`, `fs.ensureDir()`, `fs.delete()`                                    |Full `fs` module API specified — all confirmed                                               |
 |`File` type — properties and methods                                              |Built-in type registered by fs plugin. Full registry in decisions log.                       |
 |`.sort(fn, descending)` on arrays                                                 |Added to `T[]` registry                                                                      |
-|`float.round(decimals)`                                                           |Added to `float` registry — `round() → int`, `round(decimals) → float`                       |
+|`float.round(decimals)`                                                           |Split per D-368/D-369 (arity-overloaded return type, excluded by D-358) — `round() → int`, `roundTo(decimals) → float`|
 |`if/else if` as expression                                                        |Decided against. Use ternary `? :` or switch expression instead.                             |
 |`csv.parse(text, delimiter)`                                                      |Confirmed — `csv.parse()` for in-memory strings                                              |
 |Anonymous struct literals                                                         |Confirmed — `#{ field: value }` syntax, distinct from block `{ }`                            |

@@ -9,18 +9,33 @@ namespace Grob.Core.PrimitiveMembers;
 /// <see cref="NamedTypes.NamedTypeRegistry"/> (D-356), not an extension of it — a
 /// primitive is never <see cref="GrobValueKind.Struct"/>, so there is no
 /// <c>GetProperty</c>/<c>Bind</c> runtime dispatch here, only a compile-time rewrite.
-/// <c>string</c> is the only entry until the <c>int</c>/<c>float</c>/<c>bool</c>
-/// surfaces land in follow-on increments.
+/// <c>string</c>, <c>int</c>, <c>float</c> and <c>bool</c> (D-369) are the registered
+/// entries.
 /// </summary>
 public static class PrimitiveMemberRegistry {
     /// <summary>The <c>string</c> instance-surface entry.</summary>
     public static PrimitiveMemberEntry String { get; } = BuildStringEntry();
 
-    // Declared after String so its static-initializer value is already set — C#
-    // initializes static fields/auto-properties in textual declaration order
-    // (mirrors NamedTypeRegistry's identical Guid/Date-then-_entries ordering).
+    /// <summary>The <c>int</c> instance-surface entry (D-369).</summary>
+    public static PrimitiveMemberEntry Int { get; } = BuildIntEntry();
+
+    /// <summary>The <c>float</c> instance-surface entry (D-369).</summary>
+    public static PrimitiveMemberEntry Float { get; } = BuildFloatEntry();
+
+    /// <summary>The <c>bool</c> instance-surface entry (D-369).</summary>
+    public static PrimitiveMemberEntry Bool { get; } = BuildBoolEntry();
+
+    // Declared after String/Int/Float/Bool so their static-initializer values are
+    // already set — C# initializes static fields/auto-properties in textual
+    // declaration order (mirrors NamedTypeRegistry's identical Guid/Date-then-_entries
+    // ordering).
     private static readonly IReadOnlyDictionary<GrobType, PrimitiveMemberEntry> _entries =
-        new Dictionary<GrobType, PrimitiveMemberEntry> { [String.ReceiverType] = String };
+        new Dictionary<GrobType, PrimitiveMemberEntry> {
+            [String.ReceiverType] = String,
+            [Int.ReceiverType] = Int,
+            [Float.ReceiverType] = Float,
+            [Bool.ReceiverType] = Bool,
+        };
 
     /// <summary>
     /// Every registered qualified native name across every entry, flattened — the set
@@ -29,6 +44,12 @@ public static class PrimitiveMemberRegistry {
     public static IReadOnlyList<string> AllQualifiedNativeNames { get; } = [
         .. String.Properties.Values.Select(p => p.QualifiedNativeName),
         .. String.Methods.Values.Select(m => m.QualifiedNativeName),
+        .. Int.Properties.Values.Select(p => p.QualifiedNativeName),
+        .. Int.Methods.Values.Select(m => m.QualifiedNativeName),
+        .. Float.Properties.Values.Select(p => p.QualifiedNativeName),
+        .. Float.Methods.Values.Select(m => m.QualifiedNativeName),
+        .. Bool.Properties.Values.Select(p => p.QualifiedNativeName),
+        .. Bool.Methods.Values.Select(m => m.QualifiedNativeName),
     ];
 
     /// <summary>
@@ -85,5 +106,58 @@ public static class PrimitiveMemberRegistry {
         };
 
         return new PrimitiveMemberEntry(GrobType.String, properties, methods);
+    }
+
+    // -----------------------------------------------------------------------
+    // int — grob-type-registry.md's `int` section (D-369): toString/toFloat/abs/
+    // format(pattern). No properties.
+    // -----------------------------------------------------------------------
+
+    private static PrimitiveMemberEntry BuildIntEntry() {
+        Dictionary<string, PrimitiveMemberMethod> methods = new(StringComparer.Ordinal) {
+            ["toString"] = new PrimitiveMemberMethod("toString", [], GrobType.String, "int.toString"),
+            ["toFloat"] = new PrimitiveMemberMethod("toFloat", [], GrobType.Float, "int.toFloat"),
+            ["abs"] = new PrimitiveMemberMethod("abs", [], GrobType.Int, "int.abs"),
+            ["format"] = new PrimitiveMemberMethod("format", [GrobType.String], GrobType.String, "int.format"),
+        };
+
+        return new PrimitiveMemberEntry(
+            GrobType.Int, new Dictionary<string, PrimitiveMemberProperty>(StringComparer.Ordinal), methods);
+    }
+
+    // -----------------------------------------------------------------------
+    // float — grob-type-registry.md's `float` section (D-369): toString/toInt/round/
+    // roundTo(decimals)/floor/ceil/abs/format(pattern) — round/roundTo split per D-368.
+    // No properties.
+    // -----------------------------------------------------------------------
+
+    private static PrimitiveMemberEntry BuildFloatEntry() {
+        Dictionary<string, PrimitiveMemberMethod> methods = new(StringComparer.Ordinal) {
+            ["toString"] = new PrimitiveMemberMethod("toString", [], GrobType.String, "float.toString"),
+            ["toInt"] = new PrimitiveMemberMethod("toInt", [], GrobType.Int, "float.toInt"),
+            ["round"] = new PrimitiveMemberMethod("round", [], GrobType.Int, "float.round"),
+            ["roundTo"] = new PrimitiveMemberMethod("roundTo", [GrobType.Int], GrobType.Float, "float.roundTo"),
+            ["floor"] = new PrimitiveMemberMethod("floor", [], GrobType.Int, "float.floor"),
+            ["ceil"] = new PrimitiveMemberMethod("ceil", [], GrobType.Int, "float.ceil"),
+            ["abs"] = new PrimitiveMemberMethod("abs", [], GrobType.Float, "float.abs"),
+            ["format"] = new PrimitiveMemberMethod("format", [GrobType.String], GrobType.String, "float.format"),
+        };
+
+        return new PrimitiveMemberEntry(
+            GrobType.Float, new Dictionary<string, PrimitiveMemberProperty>(StringComparer.Ordinal), methods);
+    }
+
+    // -----------------------------------------------------------------------
+    // bool — grob-type-registry.md's `bool` section (D-369): toString only.
+    // No properties.
+    // -----------------------------------------------------------------------
+
+    private static PrimitiveMemberEntry BuildBoolEntry() {
+        Dictionary<string, PrimitiveMemberMethod> methods = new(StringComparer.Ordinal) {
+            ["toString"] = new PrimitiveMemberMethod("toString", [], GrobType.String, "bool.toString"),
+        };
+
+        return new PrimitiveMemberEntry(
+            GrobType.Bool, new Dictionary<string, PrimitiveMemberProperty>(StringComparer.Ordinal), methods);
     }
 }

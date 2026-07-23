@@ -379,4 +379,142 @@ public sealed class TypeCheckerPrimitiveMemberTests {
             """);
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
     }
+
+    // -----------------------------------------------------------------------
+    // int/float/bool instance members (Sprint 9 Increment A1a, D-369) — same
+    // ResolveMemberAccessCall/PrimitiveMemberRegistry dispatch proven above for
+    // string, confirmed receiver-agnostic (no branch change needed).
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("""n.toString()""", GrobType.String, "int.toString")]
+    [InlineData("""n.toFloat()""", GrobType.Float, "int.toFloat")]
+    [InlineData("""n.abs()""", GrobType.Int, "int.abs")]
+    [InlineData("""n.format("N2")""", GrobType.String, "int.format")]
+    public void IntMethod_ValidCall_ResolvesReturnTypeAndNativeName(
+            string callExpr, GrobType expectedType, string expectedNative) {
+        var (unit, bag) = TypeCheckSource($$"""
+            n := 5
+            readonly v := {{callExpr}}
+            """);
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(expectedType, call.ResolvedReturnType);
+        Assert.Equal(expectedNative, call.ResolvedPrimitiveNativeName);
+    }
+
+    [Theory]
+    [InlineData("""f.toString()""", GrobType.String, "float.toString")]
+    [InlineData("""f.toInt()""", GrobType.Int, "float.toInt")]
+    [InlineData("""f.round()""", GrobType.Int, "float.round")]
+    [InlineData("""f.roundTo(2)""", GrobType.Float, "float.roundTo")]
+    [InlineData("""f.floor()""", GrobType.Int, "float.floor")]
+    [InlineData("""f.ceil()""", GrobType.Int, "float.ceil")]
+    [InlineData("""f.abs()""", GrobType.Float, "float.abs")]
+    [InlineData("""f.format("N2")""", GrobType.String, "float.format")]
+    public void FloatMethod_ValidCall_ResolvesReturnTypeAndNativeName(
+            string callExpr, GrobType expectedType, string expectedNative) {
+        var (unit, bag) = TypeCheckSource($$"""
+            f := 3.5
+            readonly v := {{callExpr}}
+            """);
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(expectedType, call.ResolvedReturnType);
+        Assert.Equal(expectedNative, call.ResolvedPrimitiveNativeName);
+    }
+
+    [Fact]
+    public void BoolMethod_ToString_ResolvesReturnTypeAndNativeName() {
+        var (unit, bag) = TypeCheckSource("""
+            b := true
+            readonly v := b.toString()
+            """);
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.String, call.ResolvedReturnType);
+        Assert.Equal("bool.toString", call.ResolvedPrimitiveNativeName);
+    }
+
+    [Fact]
+    public void UnknownIntMethod_Call_ReportsSingleE1002() {
+        DiagnosticBag bag = Check("""
+            n := 5
+            readonly v := n.nope()
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E1002.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void RoundTo_NoArguments_ReportsSingleE0003() {
+        // roundTo's decimals parameter is required, not defaulted — confirms no
+        // accidental default was introduced (unlike padLeft/padRight/truncate).
+        DiagnosticBag bag = Check("""
+            f := 3.5
+            readonly v := f.roundTo()
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void RoundTo_WrongArgumentType_ReportsSingleE0004() {
+        DiagnosticBag bag = Check("""
+            f := 3.5
+            readonly v := f.roundTo("2")
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0004.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(25, diag.Range.Start.Column);
+    }
+
+    // -----------------------------------------------------------------------
+    // Numeric-return-as-operand (D-362) — int- and float-returning members used
+    // as arithmetic operands select the correct typed opcode downstream.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void IntAbsResult_UsedAsArithmeticOperand_ResolvesReturnTypeInt() {
+        var (unit, bag) = TypeCheckSource("""
+            n := -5
+            readonly v := n.abs() + 1
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.Int, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void FloatRoundResult_UsedAsArithmeticOperand_ResolvesReturnTypeInt() {
+        var (unit, bag) = TypeCheckSource("""
+            f := 3.5
+            readonly v := f.round() * 2
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.Int, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void FloatAbsResult_UsedAsArithmeticOperand_ResolvesReturnTypeFloat() {
+        var (unit, bag) = TypeCheckSource("""
+            f := -3.5
+            readonly v := f.abs() + 1.0
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.Float, call.ResolvedReturnType);
+    }
 }

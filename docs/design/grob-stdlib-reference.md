@@ -734,7 +734,7 @@ type registry as instance methods or static utilities (D-070, D-071):
 |------------------------|------------------------|-------------------------------|
 |Absolute value          |Instance method         |`(-5).abs()`, `(-3.14).abs()`  |
 |Round to integer        |Instance method on float|`(3.5).round()` → `int`        |
-|Round to N decimals     |Instance method on float|`(3.14159).round(2)` → `float` |
+|Round to N decimals     |Instance method on float|`(3.14159).roundTo(2)` → `float` (D-368: renamed from the overloaded `round(decimals)`) |
 |Floor                   |Instance method on float|`(3.7).floor()` → `int`        |
 |Ceil                    |Instance method on float|`(3.2).ceil()` → `int`         |
 |Truncate                |Instance method on float|`(3.9).toInt()` — truncates    |

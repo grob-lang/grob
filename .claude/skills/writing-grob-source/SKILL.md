@@ -95,7 +95,7 @@ entries := fs.list(path, recursive: true)
     .filter(f => f.size > threshold)
     .select(f => FileEntry {
         name:    f.name
-        size_mb: (f.size / 1024.0 / 1024.0).round(2)
+        size_mb: (f.size / 1024.0 / 1024.0).roundTo(2)
     })
     .sort(e => e.size_mb, descending: true)
 
@@ -131,7 +131,7 @@ Named arguments are idiomatic for optional or boolean parameters: `recursive: tr
   `csv`, `env`, `process`, `date`, `math`, `log`, `regex`, `path`, `formatAs`, `guid`.
 - The collection-to-string terminators are `formatAs.table()`, `formatAs.list()`,
   `formatAs.csv()`. Scalar formatting is instance methods on the value
-  (`n.round(2)`, `d.format("MM-MMMM")`), not `formatAs`. The module is `formatAs`,
+  (`n.roundTo(2)`, `d.format("MM-MMMM")`), not `formatAs`. The module is `formatAs`,
   never `format`. (D-282)
 
 ## Numerics

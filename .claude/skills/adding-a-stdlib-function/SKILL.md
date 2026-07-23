@@ -17,12 +17,12 @@ Grob deliberately splits these:
 
 - **Module function** — a free operation: `strings.join(...)`, `math.log10(...)`,
   `path.join(...)`, `fs.list(...)`.
-- **Instance method** — an operation on a value: `n.round(2)`, `d.format("MM-MMMM")`,
+- **Instance method** — an operation on a value: `n.roundTo(2)`, `d.format("MM-MMMM")`,
   `s.replace(a, b)`, `file.moveTo(dst)`.
 
 The dividing line matters. Most string operations are methods on `string`;
 `strings.join()` is the lone module function because it operates across a collection.
-Scalar formatting is instance methods (`n.round`, `d.format`), **not** the `formatAs`
+Scalar formatting is instance methods (`n.roundTo`, `d.format`), **not** the `formatAs`
 module — `formatAs` is narrowed to collection-to-string terminators only:
 `formatAs.table()`, `formatAs.list()`, `formatAs.csv()` (D-282). Putting a scalar
 formatter on `formatAs` is a design regression; do not do it.

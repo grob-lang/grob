@@ -13,9 +13,10 @@ namespace Grob.Integration.Tests;
 /// <c>NamedTypeRegistry</c> — except this diffs live <c>RegisterNative</c> qualified
 /// names (the runtime signal a primitive-member native actually registers) rather than
 /// <c>RegisterToString</c> type names, since primitive dispatch has no <c>ValueDisplay</c>
-/// renderer hook. The "orphan" side is scoped to the <c>"string."</c> prefix so it does
-/// not flag every unrelated native (<c>math.sqrt</c>, <c>date.now</c>, ...) registered by
-/// the same composition-root plugin list.
+/// renderer hook. The "orphan" side is scoped to the <c>"string."</c>/<c>"int."</c>/
+/// <c>"float."</c>/<c>"bool."</c> prefixes (Sprint 9 Increment A1a/D-369 added the latter
+/// three) so it does not flag every unrelated native (<c>math.sqrt</c>, <c>date.now</c>,
+/// ...) registered by the same composition-root plugin list.
 /// </summary>
 public sealed class PrimitiveMemberRegistryAgreementTests {
     private sealed class RecordingRegistrar : IPluginRegistrar {
@@ -47,14 +48,18 @@ public sealed class PrimitiveMemberRegistryAgreementTests {
             $"PrimitiveMemberRegistry entries with no live RegisterNative call: {string.Join(", ", missing)}");
     }
 
-    [Fact]
-    public void RegisteredNativeNames_HaveNoOrphanStringMemberEntry() {
+    [Theory]
+    [InlineData("string.")]
+    [InlineData("int.")]
+    [InlineData("float.")]
+    [InlineData("bool.")]
+    public void RegisteredNativeNames_HaveNoOrphanPrimitiveMemberEntry(string prefix) {
         List<string> registered = RegisterAllAndCaptureNativeNames();
 
-        var orphaned = registered.Where(n => n.StartsWith("string.", StringComparison.Ordinal))
+        var orphaned = registered.Where(n => n.StartsWith(prefix, StringComparison.Ordinal))
             .Except(PrimitiveMemberRegistry.AllQualifiedNativeNames)
             .OrderBy(n => n, StringComparer.Ordinal).ToList();
         Assert.True(orphaned.Count == 0,
-            $"Live 'string.*' RegisterNative calls with no PrimitiveMemberRegistry entry: {string.Join(", ", orphaned)}");
+            $"Live '{prefix}*' RegisterNative calls with no PrimitiveMemberRegistry entry: {string.Join(", ", orphaned)}");
     }
 }
