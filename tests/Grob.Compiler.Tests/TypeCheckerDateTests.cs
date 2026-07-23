@@ -644,8 +644,8 @@ public sealed class TypeCheckerDateTests {
     [Fact]
     public void NullableDateVsNil_Equality_ResolvesToBool_ButIsDateEqualityFalse() {
         // x == nil (§20) is the nil-literal comparison, not a date-vs-date pair —
-        // IsDateEquality must stay false so this never reaches EqualDate, which
-        // cannot handle a bare nil operand (AsStruct() would fault).
+        // IsDateEquality stays false because nil-literal comparisons retain
+        // generic equality semantics; EqualDate is reserved for nominal date pairs.
         var (unit, bag) = TypeCheckSource("""
             fn f(a: date?): bool {
                 return a == nil
