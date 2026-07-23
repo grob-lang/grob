@@ -10,6 +10,10 @@ namespace Grob.Core;
 /// <c>Less</c>/<c>Greater</c> family has no struct variant, and the compiler's
 /// opcode-selection default (anything non-<c>Float</c>/non-<c>String</c> falls to
 /// <c>Int</c>) would otherwise silently miscompile a <c>date</c> comparison.
+/// <c>EqualDate</c> (D-357) is the second: the generic <see cref="Equal"/> opcode's
+/// field-by-field <c>Struct</c> compare is offset-sensitive for <c>date</c>'s hidden
+/// <c>__value</c> string, so <c>date</c>-vs-<c>date</c> equality needs its own
+/// instant-based opcode too, matching <c>LessDate</c>/<c>GreaterDate</c>.
 /// Authority: grob-v1-requirements.md SS3.3.
 /// </summary>
 public enum OpCode : byte {
@@ -139,6 +143,20 @@ public enum OpCode : byte {
 
     /// <summary>date greater than date to bool — compares the underlying instant. See <see cref="LessDate"/>.</summary>
     GreaterDate,
+
+    /// <summary>
+    /// date equal to date to bool — compares the underlying instant (D-357/D-367),
+    /// matching <c>DateTimeOffset</c>'s own <c>==</c> operator semantics rather than
+    /// the generic <see cref="Equal"/> opcode's field-by-field <c>__value</c> string
+    /// compare, which is offset-sensitive and violates trichotomy for same-instant,
+    /// different-offset values (<c>date.now() == date.now().toUtc()</c> was false).
+    /// Appended (D-357), not inserted, so no existing opcode's implicit byte value
+    /// shifts, mirroring <see cref="LessDate"/>'s own precedent. <c>!=</c> has no
+    /// dedicated <c>NotEqualDate</c>: lowered to <c>EqualDate</c> + <see cref="Not"/>,
+    /// the smaller-growth choice mirroring the <c>&lt;=</c>/<c>&gt;=</c> lowering
+    /// already used for <see cref="LessDate"/>/<see cref="GreaterDate"/>.
+    /// </summary>
+    EqualDate,
 
     // -------------------------------------------------------------------------
     // Logic

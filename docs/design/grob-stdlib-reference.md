@@ -400,7 +400,11 @@ d.addMonths(3)
 d.addHours(2)
 d.addMinutes(30)
 
-// Comparison — operators and methods (D-354: LessDate/GreaterDate)
+// Comparison — operators and methods. Both ordering (D-354: LessDate/GreaterDate)
+// and equality (D-357/D-367: EqualDate) compare the underlying instant, matching
+// .NET DateTimeOffset's own operator semantics — two values of the same instant at
+// different offsets (e.g. d and d.toUtc()) are equal, and neither less nor greater,
+// so trichotomy holds. The offset-sensitive EqualsExact variant is not exposed.
 d1 < d2
 d1 > d2
 d1 == d2
@@ -433,7 +437,8 @@ d.utcOffset    // minutes as int
 d.toDateOnly()   // time zeroed, date and offset kept
 d.toTimeOnly()   // time kept, date anchored to the Unix epoch (1970-01-01)
 
-// Interval computation
+// Interval computation — instant-based (D-357/D-367): whole 86,400-second periods
+// between the two instants, not calendar days counted in either operand's own offset.
 created.daysUntil(date.today())   // positive if today is later
 date.today().daysSince(created)   // same result, different direction
 ```

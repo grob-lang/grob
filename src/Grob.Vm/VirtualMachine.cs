@@ -623,6 +623,27 @@ public sealed class VirtualMachine : IPluginRegistrar {
                             _stack.Push(GrobValue.FromBool(a != b), line);
                             break;
                         }
+                    case OpCode.EqualDate: {
+                            // D-357/D-367. Instant-based, restoring trichotomy with LessDate/
+                            // GreaterDate below: the generic Equal opcode above's field-by-field
+                            // __value string compare is offset-sensitive, so date == date must
+                            // not reach it. DateTimeOffset's own operator== already normalises
+                            // across offsets. !=  on dates lowers to EqualDate + Not — no
+                            // dedicated NotEqualDate.
+                            // date? is an already-supported nullable type (CodeRabbit review,
+                            // PR #157) and the type checker also selects EqualDate for a
+                            // date?-vs-date? pair, so either operand may genuinely be Nil at
+                            // runtime — AsStruct() faults on a kind mismatch, so nil is checked
+                            // first, mirroring GrobValue.Equals' own Kind-mismatch-first rule
+                            // (Nil == Nil is true; Nil vs a value is false; never parsed).
+                            GrobValue b = _stack.Pop();
+                            GrobValue a = _stack.Pop();
+                            bool datesEqual = a.IsNil || b.IsNil
+                                ? a.IsNil && b.IsNil
+                                : DateNatives.ToDateTimeOffset(a.AsStruct()) == DateNatives.ToDateTimeOffset(b.AsStruct());
+                            _stack.Push(GrobValue.FromBool(datesEqual), line);
+                            break;
+                        }
                     case OpCode.LessInt: {
                             long b = _stack.Pop().AsInt();
                             long a = _stack.Pop().AsInt();

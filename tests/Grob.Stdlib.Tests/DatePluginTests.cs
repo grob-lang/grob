@@ -568,6 +568,42 @@ public sealed class DatePluginTests {
         Assert.Equal(10, vm.Stack.Peek().AsInt());
     }
 
+    [Fact]
+    public void DaysUntil_AcrossOffsetBoundary_IsInstantBased_NotCalendarDateInEitherOperandsOffset() {
+        // D-357(2): daysUntil/daysSince are pinned to whole 86,400-second periods
+        // between the two INSTANTS, not calendar days read off either operand's own
+        // offset. 23:30 at +01:00 on Jan 1 is 22:30 UTC on Jan 1; 00:30 at +00:00 on
+        // Jan 2 is 00:30 UTC on Jan 2 — two hours later by instant, so 0 whole days.
+        // Reading the calendar-date component each string carries (Jan 1 vs Jan 2)
+        // would wrongly say 1 day — this locks the instant basis against that.
+        var vm = NewRegisteredVm();
+        var chunk = new Chunk();
+        int earlyIdx = chunk.AddConstant(GrobValue.FromString("2026-01-01T23:30:00+01:00"));
+        int lateIdx = chunk.AddConstant(GrobValue.FromString("2026-01-02T00:30:00+00:00"));
+        int parseIdx = chunk.AddConstant(GrobValue.FromString("date.parse"));
+        int emptyPatternIdx = chunk.AddConstant(GrobValue.FromString(""));
+
+        chunk.WriteOpCode(OpCode.GetGlobal, 1); chunk.WriteByte((byte)parseIdx, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)earlyIdx, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)emptyPatternIdx, 1);
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(2, 1);
+
+        int daysUntilIdx = chunk.AddConstant(GrobValue.FromString("daysUntil"));
+        chunk.WriteOpCode(OpCode.GetProperty, 1); chunk.WriteByte((byte)daysUntilIdx, 1);
+
+        chunk.WriteOpCode(OpCode.GetGlobal, 1); chunk.WriteByte((byte)parseIdx, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)lateIdx, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte((byte)emptyPatternIdx, 1);
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(2, 1);
+
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        vm.Run(chunk);
+
+        Assert.Equal(0, vm.Stack.Peek().AsInt());
+    }
+
     // -----------------------------------------------------------------------
     // Display — registered toString().
     // -----------------------------------------------------------------------

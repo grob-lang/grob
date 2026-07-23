@@ -192,6 +192,19 @@ public sealed partial class TypeChecker {
 
         // == and != accept same-type operands or mixed numeric operands.
         if (node.Operator == BinaryOperator.Equal || node.Operator == BinaryOperator.NotEqual) {
+            // D-357/D-367: annotate (never gate on) whether this is specifically a
+            // date-vs-date pair — the compiler's signal to select EqualDate instead of
+            // the generic Equal. Struct-vs-Struct acceptance below stays permissive for
+            // every other pairing (D-169); this is a pure annotation write. Covers both
+            // Struct-vs-Struct and NullableStruct-vs-NullableStruct (date? is an
+            // already-supported nullable type, CodeRabbit review PR #157) — but not a
+            // mixed Struct/NullableStruct or a nil-literal pairing, since `left == right`
+            // requires identical tags and IsNilComparison below is the nil-literal path;
+            // EqualDate's VM handler still nil-checks defensively (a date?-vs-date? pair
+            // can hold nil at runtime even though both operands share the same tag).
+            node.IsDateEquality = left == right
+                && (left == GrobType.Struct || left == GrobType.NullableStruct)
+                && IsDateStructPair(node);
             if (left == right || BothNumeric(left, right)) return GrobType.Bool;
             // A comparison against the nil literal is valid for any operand (§20:
             // `x == nil` resolves to bool). `x != nil` is the form flow-sensitive

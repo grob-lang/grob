@@ -136,4 +136,94 @@ public sealed class CompilerDateComparisonTests {
         Assert.Equal(OpCode.Return, (OpCode)chunk.ReadByte(20));
         Assert.Equal(21, chunk.Count);
     }
+
+    // -----------------------------------------------------------------------
+    // date-vs-date equality (D-357/D-367) — EqualDate, never the generic Equal;
+    // != lowers to EqualDate + Not, mirroring the <=/>= lowering above.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void DateEqual_EmitsExactGetGlobalGetGlobalEqualDateSequence_NeverEqual() {
+        Chunk chunk = CompileSource(TwoDates + "\nx := a == b");
+        AssertTwoDateBindingsPrologue(chunk);
+
+        Assert.Equal(OpCode.GetGlobal, (OpCode)chunk.ReadByte(12));
+        Assert.Equal(1, chunk.ReadByte(13));
+        Assert.Equal(OpCode.GetGlobal, (OpCode)chunk.ReadByte(14));
+        Assert.Equal(3, chunk.ReadByte(15));
+        Assert.Equal(OpCode.EqualDate, (OpCode)chunk.ReadByte(16));
+        Assert.Equal(OpCode.DefineGlobal, (OpCode)chunk.ReadByte(17));
+        Assert.Equal(4, chunk.ReadByte(18));
+        Assert.Equal(OpCode.Return, (OpCode)chunk.ReadByte(19));
+        Assert.Equal(20, chunk.Count);
+    }
+
+    [Fact]
+    public void DateNotEqual_EmitsExactEqualDateThenNotSequence_NeverNotEqual() {
+        Chunk chunk = CompileSource(TwoDates + "\nx := a != b");
+        AssertTwoDateBindingsPrologue(chunk);
+
+        Assert.Equal(OpCode.GetGlobal, (OpCode)chunk.ReadByte(12));
+        Assert.Equal(1, chunk.ReadByte(13));
+        Assert.Equal(OpCode.GetGlobal, (OpCode)chunk.ReadByte(14));
+        Assert.Equal(3, chunk.ReadByte(15));
+        Assert.Equal(OpCode.EqualDate, (OpCode)chunk.ReadByte(16));
+        Assert.Equal(OpCode.Not, (OpCode)chunk.ReadByte(17));
+        Assert.Equal(OpCode.DefineGlobal, (OpCode)chunk.ReadByte(18));
+        Assert.Equal(4, chunk.ReadByte(19));
+        Assert.Equal(OpCode.Return, (OpCode)chunk.ReadByte(20));
+        Assert.Equal(21, chunk.Count);
+    }
+
+    [Fact]
+    public void GuidEqual_StillEmitsGenericEqual_UnaffectedByDateCarveOut() {
+        // D-357 is date-scoped: a nominal guid == guid pair must keep emitting the
+        // generic Equal opcode, not EqualDate — confirmed by using guid.parse's own
+        // Struct-typed result rather than date's.
+        Chunk chunk = CompileSource("""
+            a := guid.parse("11111111-1111-1111-1111-111111111111")
+            b := guid.parse("11111111-1111-1111-1111-111111111111")
+            x := a == b
+            """);
+
+        Assert.Contains(OpCode.Equal, EmittedOpCodes(chunk));
+        Assert.DoesNotContain(OpCode.EqualDate, EmittedOpCodes(chunk));
+    }
+
+    [Fact]
+    public void UnrelatedStructEqual_StillEmitsGenericEqual_UnaffectedByDateCarveOut() {
+        Chunk chunk = CompileSource("""
+            type Config {
+                host: string
+            }
+            a := Config { host: "x" }
+            b := Config { host: "y" }
+            c := a == b
+            """);
+
+        Assert.Contains(OpCode.Equal, EmittedOpCodes(chunk));
+        Assert.DoesNotContain(OpCode.EqualDate, EmittedOpCodes(chunk));
+    }
+
+    // Walks the instruction stream skipping each opcode's real 1-byte operand width —
+    // Grob.Compiler.Tests has no dependency on Grob.Vm's Disassembler (the DAG: a test
+    // project references exactly one production project), so this is a small local
+    // table covering only the opcodes these two equality fixtures can emit. The other
+    // tests in this file assert exact byte-for-byte sequences; this one only needs
+    // "which opcode landed", not "at which offset".
+    private static IReadOnlyList<OpCode> EmittedOpCodes(Chunk chunk) {
+        var opCodes = new List<OpCode>();
+        int offset = 0;
+        while (offset < chunk.Count) {
+            var opCode = (OpCode)chunk.ReadByte(offset);
+            opCodes.Add(opCode);
+            offset += opCode switch {
+                OpCode.GetGlobal or OpCode.SetGlobal or OpCode.DefineGlobal
+                    or OpCode.GetLocal or OpCode.SetLocal
+                    or OpCode.Constant or OpCode.Call or OpCode.NewStruct => 2,
+                _ => 1,
+            };
+        }
+        return opCodes;
+    }
 }

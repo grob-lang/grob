@@ -483,6 +483,18 @@ public sealed partial class Compiler {
         if (rt == GrobType.Int && lt == GrobType.Float)
             _chunk.WriteOpCode(OpCode.IntToFloat, node.Right.Range.Start.Line);
 
+        // date-vs-date '==' and '!=' (D-357/D-367): IsDateEquality is the type checker's
+        // signal that both operands are nominally date — GrobType.Struct alone can't
+        // tell us that here, since == accepts ANY matching Struct pair (D-169) and only
+        // some of those are date. EqualDate replaces the generic Equal for exactly this
+        // case; '!=' lowers to EqualDate + Not (no dedicated NotEqualDate), mirroring
+        // the <=/>= lowering just below.
+        if (node.IsDateEquality) {
+            _chunk.WriteOpCode(OpCode.EqualDate, line);
+            if (node.Operator == BinaryOperator.NotEqual) _chunk.WriteOpCode(OpCode.Not, line);
+            return;
+        }
+
         // String and date '<=' and '>=' have no dedicated opcodes — the closed enum
         // provides only the strict forms (LessString/GreaterString; LessDate/GreaterDate,
         // Sprint 9 Increment B, D-354). Lower them to the strict comparison followed by

@@ -92,6 +92,7 @@ public static class Disassembler {
             OpCode.GreaterEqualFloat => SimpleInstruction(opCode, offset, writer),
             OpCode.LessDate => SimpleInstruction(opCode, offset, writer),
             OpCode.GreaterDate => SimpleInstruction(opCode, offset, writer),
+            OpCode.EqualDate => SimpleInstruction(opCode, offset, writer),
             OpCode.Not => SimpleInstruction(opCode, offset, writer),
             OpCode.Return => SimpleInstruction(opCode, offset, writer),
             OpCode.Print => SimpleInstruction(opCode, offset, writer),
