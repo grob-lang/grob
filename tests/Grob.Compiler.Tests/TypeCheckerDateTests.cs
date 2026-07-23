@@ -614,6 +614,51 @@ public sealed class TypeCheckerDateTests {
         Assert.True(comparison.IsDateEquality);
     }
 
+    // -----------------------------------------------------------------------
+    // Nullable date? equality (CodeRabbit review, PR #157): date? is an
+    // already-supported, already-tested type (NullableDateParameter_* below) — the
+    // NullableStruct-vs-NullableStruct pair must also set IsDateEquality, or a
+    // date?-vs-date? comparison silently falls back to the pre-D-357 offset-sensitive
+    // generic Equal for every nullable-typed date. The mixed date-vs-date? pairing
+    // (different GrobType tags) was already E0002 before this fix and stays that way —
+    // unaffected, so no test needed for it here.
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("==")]
+    [InlineData("!=")]
+    public void NullableDateVsNullableDate_EqualityOperator_SetsIsDateEqualityTrue(string op) {
+        var (unit, bag) = TypeCheckSource($$"""
+            fn f(a: date?, b: date?): bool {
+                return a {{op}} b
+            }
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+
+        var binaries = new BinaryExprCollector();
+        binaries.Visit(unit);
+        BinaryExpr comparison = Assert.Single(binaries.Nodes);
+        Assert.True(comparison.IsDateEquality);
+    }
+
+    [Fact]
+    public void NullableDateVsNil_Equality_ResolvesToBool_ButIsDateEqualityFalse() {
+        // x == nil (§20) is the nil-literal comparison, not a date-vs-date pair —
+        // IsDateEquality must stay false so this never reaches EqualDate, which
+        // cannot handle a bare nil operand (AsStruct() would fault).
+        var (unit, bag) = TypeCheckSource("""
+            fn f(a: date?): bool {
+                return a == nil
+            }
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+
+        var binaries = new BinaryExprCollector();
+        binaries.Visit(unit);
+        BinaryExpr comparison = Assert.Single(binaries.Nodes);
+        Assert.False(comparison.IsDateEquality);
+    }
+
     [Fact]
     public void DateVsUnrelatedStruct_Equality_ResolvesToBool_ButIsDateEqualityFalse() {
         // D-169's generic struct equality still type-checks two mismatched struct

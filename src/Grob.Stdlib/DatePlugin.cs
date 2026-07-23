@@ -17,11 +17,14 @@ namespace Grob.Stdlib;
 /// <see cref="DateTimeOffset"/> string, formatted with
 /// <see cref="NamedTypeRegistry.RoundTripFormat"/> (the shared, <c>Grob.Core</c>-resident
 /// constant D-357/D-367 consolidated this and <c>Grob.Vm.DateNatives</c>'s copy into) —
-/// this is the only place outside <c>DateNatives</c> that the field-layout convention is
-/// spelled out (the two cannot share code: <c>Grob.Stdlib</c> and <c>Grob.Vm</c> are DAG
-/// siblings, neither referencing the other), so <see cref="ValueFieldName"/>/
-/// <see cref="TypeName"/> must stay in lockstep with <c>DateNatives</c>'s equivalents by
-/// inspection. Registers exactly the qualified names listed in the
+/// this field-layout convention is spelled out independently in three places
+/// (CodeRabbit review, PR #157): here, in <c>DateNatives</c>, and in
+/// <c>NamedTypeRegistry</c> itself, which also constructs and parses the same hidden
+/// field for its instance property/method surface. None of the three can share this
+/// code (<c>Grob.Stdlib</c> and <c>Grob.Vm</c> are DAG siblings, neither referencing
+/// the other), so <see cref="ValueFieldName"/>/<see cref="TypeName"/> must stay in
+/// lockstep with the other two's equivalents by inspection. Registers exactly the
+/// qualified names listed in the
 /// compile-time twin, <c>NamespaceRegistry</c>'s <c>date</c> entry in <c>Grob.Compiler</c>.
 /// The instance property/method surface (<c>year</c>, <c>addDays</c>, ...) is dispatched
 /// entirely by <c>Grob.Vm</c>'s <c>OpCode.GetProperty</c> handler via <c>DateNatives</c> —

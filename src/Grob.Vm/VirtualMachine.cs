@@ -630,9 +630,18 @@ public sealed class VirtualMachine : IPluginRegistrar {
                             // not reach it. DateTimeOffset's own operator== already normalises
                             // across offsets. !=  on dates lowers to EqualDate + Not — no
                             // dedicated NotEqualDate.
-                            DateTimeOffset b = DateNatives.ToDateTimeOffset(_stack.Pop().AsStruct());
-                            DateTimeOffset a = DateNatives.ToDateTimeOffset(_stack.Pop().AsStruct());
-                            _stack.Push(GrobValue.FromBool(a == b), line);
+                            // date? is an already-supported nullable type (CodeRabbit review,
+                            // PR #157) and the type checker also selects EqualDate for a
+                            // date?-vs-date? pair, so either operand may genuinely be Nil at
+                            // runtime — AsStruct() faults on a kind mismatch, so nil is checked
+                            // first, mirroring GrobValue.Equals' own Kind-mismatch-first rule
+                            // (Nil == Nil is true; Nil vs a value is false; never parsed).
+                            GrobValue b = _stack.Pop();
+                            GrobValue a = _stack.Pop();
+                            bool datesEqual = a.IsNil || b.IsNil
+                                ? a.IsNil && b.IsNil
+                                : DateNatives.ToDateTimeOffset(a.AsStruct()) == DateNatives.ToDateTimeOffset(b.AsStruct());
+                            _stack.Push(GrobValue.FromBool(datesEqual), line);
                             break;
                         }
                     case OpCode.LessInt: {

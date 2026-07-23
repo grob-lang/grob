@@ -149,34 +149,110 @@ public sealed class VirtualMachineDateTests {
         Assert.False(vm.Stack.Peek().AsBool());
     }
 
-    [Fact]
-    public void EqualDate_SameInstant_ThreeDifferentOffsets_AllPairwiseEqual() {
+    [Theory]
+    [InlineData(0, 1)] // a vs b
+    [InlineData(1, 2)] // b vs c
+    [InlineData(0, 2)] // a vs c — CodeRabbit review, PR #157: the original test only
+                       // exercised a/b and b/c, inferring a/c transitively instead of
+                       // exercising EqualDate on that pair directly.
+    public void EqualDate_SameInstant_ThreeDifferentOffsets_AllPairwiseEqual(int leftIndex, int rightIndex) {
         // The trichotomy lock's third-offset variant (the D-357 prompt's own test
         // list): the same instant expressed at three different offsets is pairwise
         // equal under EqualDate, mirroring what toUtc()/toZone() produce at runtime.
         var atPlusOne = new DateTimeOffset(2026, 6, 15, 13, 0, 0, TimeSpan.FromHours(1));
         var atUtc = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
         var atMinusFive = new DateTimeOffset(2026, 6, 15, 7, 0, 0, TimeSpan.FromHours(-5));
+        DateTimeOffset[] instants = [atPlusOne, atUtc, atMinusFive];
 
         var chunk = new Chunk();
-        byte a = (byte)chunk.AddConstant(Date(atPlusOne));
-        byte b = (byte)chunk.AddConstant(Date(atUtc));
-        byte c = (byte)chunk.AddConstant(Date(atMinusFive));
+        byte left = (byte)chunk.AddConstant(Date(instants[leftIndex]));
+        byte right = (byte)chunk.AddConstant(Date(instants[rightIndex]));
 
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(a, 1);
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(b, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(left, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(right, 1);
         chunk.WriteOpCode(OpCode.EqualDate, 1);
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(b, 1);
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(c, 1);
-        chunk.WriteOpCode(OpCode.EqualDate, 1);
-        chunk.WriteOpCode(OpCode.NotEqual, 1); // pops the two bools; both true, so equal, so NotEqual is false
         chunk.WriteOpCode(OpCode.Return, 1);
 
         var (vm, _) = NewVm();
         vm.Run(chunk);
 
-        // Both EqualDate results were true; NotEqual on two equal bools is false.
+        Assert.True(vm.Stack.Peek().AsBool());
+    }
+
+    // -----------------------------------------------------------------------
+    // EqualDate nil-safety (CodeRabbit review, PR #157) — date? is an
+    // already-supported nullable type (TypeCheckerDateTests's
+    // NullableDateVsNullableDate_* tests); a date?-vs-date? equality now also
+    // selects EqualDate, so its handler must not fault when a nullable operand is
+    // actually nil at runtime — GrobValue.AsStruct() throws GrobInternalException on
+    // a kind mismatch, so EqualDate must check for Nil before parsing either side.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void EqualDate_BothNil_IsTrue() {
+        var chunk = new Chunk();
+        chunk.WriteOpCode(OpCode.Nil, 1);
+        chunk.WriteOpCode(OpCode.Nil, 1);
+        chunk.WriteOpCode(OpCode.EqualDate, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        Assert.True(vm.Stack.Peek().AsBool());
+    }
+
+    [Fact]
+    public void EqualDate_LeftNilRightValue_IsFalse() {
+        var chunk = new Chunk();
+        byte b = (byte)chunk.AddConstant(Date(SampleInstant));
+
+        chunk.WriteOpCode(OpCode.Nil, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(b, 1);
+        chunk.WriteOpCode(OpCode.EqualDate, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
         Assert.False(vm.Stack.Peek().AsBool());
+    }
+
+    [Fact]
+    public void EqualDate_LeftValueRightNil_IsFalse() {
+        var chunk = new Chunk();
+        byte a = (byte)chunk.AddConstant(Date(SampleInstant));
+
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(a, 1);
+        chunk.WriteOpCode(OpCode.Nil, 1);
+        chunk.WriteOpCode(OpCode.EqualDate, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        Assert.False(vm.Stack.Peek().AsBool());
+    }
+
+    [Fact]
+    public void EqualDate_BothNonNil_SameInstantDifferentOffsets_IsTrue() {
+        // The date?-vs-date? path, both actually holding a value — still instant-based.
+        var atPlusOne = new DateTimeOffset(2026, 1, 1, 13, 0, 0, TimeSpan.FromHours(1));
+        var atUtc = new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
+
+        var chunk = new Chunk();
+        byte a = (byte)chunk.AddConstant(Date(atPlusOne));
+        byte b = (byte)chunk.AddConstant(Date(atUtc));
+
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(a, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(b, 1);
+        chunk.WriteOpCode(OpCode.EqualDate, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        Assert.True(vm.Stack.Peek().AsBool());
     }
 
     [Fact]

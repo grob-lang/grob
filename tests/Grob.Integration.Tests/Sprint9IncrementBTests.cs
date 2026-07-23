@@ -162,6 +162,30 @@ public sealed class Sprint9IncrementBTests {
         Assert.Equal($"false{Environment.NewLine}true{Environment.NewLine}", stdout);
     }
 
+    // CodeRabbit review, PR #157: date? is an already-supported nullable type — its
+    // equality must also be instant-based, and must not crash when an operand is
+    // actually nil at runtime (the exact defect a naive fix would have reintroduced).
+    [Fact]
+    public void EqualityOperator_NullableDate_SameInstantAndNilCases_AllCorrect() {
+        (string stdout, string stderr, int exitCode) = RunSource("""
+            fn eq(a: date?, b: date?): bool {
+                return a == b
+            }
+            x := date.parse("2026-04-05T14:30:00+01:00")
+            y := x.toUtc()
+            print(eq(x, y))
+            print(eq(nil, nil))
+            print(eq(x, nil))
+            print(eq(nil, y))
+            """);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal(
+            $"true{Environment.NewLine}true{Environment.NewLine}false{Environment.NewLine}false{Environment.NewLine}",
+            stdout);
+    }
+
     // -----------------------------------------------------------------------
     // Display — print() and string interpolation render the canonical string.
     // -----------------------------------------------------------------------
