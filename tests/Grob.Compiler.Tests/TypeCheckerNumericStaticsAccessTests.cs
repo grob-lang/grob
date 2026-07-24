@@ -47,6 +47,19 @@ public sealed class TypeCheckerNumericStaticsAccessTests {
         return collector.Nodes;
     }
 
+    /// <summary>
+    /// Asserts the namespace-receiver identifier (the <c>int</c>/<c>float</c> before the
+    /// dot) was annotated by <c>TryAnnotateNamespaceReceiver</c>: a <c>Declaration</c> is
+    /// attached and the resolved type is not the <see cref="GrobType.Error"/> sentinel. A
+    /// valid-call test must not be able to pass while the receiver silently fell through
+    /// to an unresolved/error state (CodeRabbit PR #159).
+    /// </summary>
+    private static void AssertReceiverAnnotated(MemberAccessExpr ma) {
+        IdentifierExpr receiver = Assert.IsType<IdentifierExpr>(ma.Target);
+        Assert.NotNull(receiver.Declaration);
+        Assert.NotEqual(GrobType.Error, receiver.ResolvedType);
+    }
+
     // -----------------------------------------------------------------------
     // Valid calls — each of the six resolves to its declared return type,
     // no diagnostics.
@@ -58,6 +71,7 @@ public sealed class TypeCheckerNumericStaticsAccessTests {
 
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
         MemberAccessExpr ma = Assert.Single(CollectMemberAccesses(unit));
+        AssertReceiverAnnotated(ma);
         Assert.Equal(GrobType.Int, ma.ResolvedFieldType);
     }
 
@@ -67,6 +81,7 @@ public sealed class TypeCheckerNumericStaticsAccessTests {
 
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
         MemberAccessExpr ma = Assert.Single(CollectMemberAccesses(unit));
+        AssertReceiverAnnotated(ma);
         Assert.Equal(GrobType.Int, ma.ResolvedFieldType);
     }
 
@@ -76,6 +91,7 @@ public sealed class TypeCheckerNumericStaticsAccessTests {
 
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
         MemberAccessExpr ma = Assert.Single(CollectMemberAccesses(unit));
+        AssertReceiverAnnotated(ma);
         Assert.Equal(GrobType.Int, ma.ResolvedFieldType);
     }
 
@@ -85,6 +101,7 @@ public sealed class TypeCheckerNumericStaticsAccessTests {
 
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
         MemberAccessExpr ma = Assert.Single(CollectMemberAccesses(unit));
+        AssertReceiverAnnotated(ma);
         Assert.Equal(GrobType.Float, ma.ResolvedFieldType);
     }
 
@@ -94,6 +111,7 @@ public sealed class TypeCheckerNumericStaticsAccessTests {
 
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
         MemberAccessExpr ma = Assert.Single(CollectMemberAccesses(unit));
+        AssertReceiverAnnotated(ma);
         Assert.Equal(GrobType.Float, ma.ResolvedFieldType);
     }
 
@@ -103,6 +121,7 @@ public sealed class TypeCheckerNumericStaticsAccessTests {
 
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
         MemberAccessExpr ma = Assert.Single(CollectMemberAccesses(unit));
+        AssertReceiverAnnotated(ma);
         Assert.Equal(GrobType.Float, ma.ResolvedFieldType);
     }
 
@@ -206,6 +225,8 @@ public sealed class TypeCheckerNumericStaticsAccessTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1102.Code, diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------

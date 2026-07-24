@@ -31,6 +31,24 @@ public sealed class CompilerCallOperandTypingTests {
         return chunk;
     }
 
+    // One-byte-operand opcodes: the trailing byte is a pool/slot/count index, not a
+    // second opcode. Mirrors Disassembler's ByteOperandInstruction classification so
+    // the decoder advances past the operand rather than mis-reading it as the next
+    // instruction (CodeRabbit PR #159 — the arithmetic-selection assertions below are
+    // only meaningful if the decoder stays byte-aligned across GetGlobal/Call/etc.).
+    private static readonly HashSet<OpCode> OneByteOperand = [
+        OpCode.Constant, OpCode.Call, OpCode.GetGlobal, OpCode.SetGlobal, OpCode.DefineGlobal,
+        OpCode.GetLocal, OpCode.SetLocal, OpCode.GetUpvalue, OpCode.SetUpvalue,
+        OpCode.GetProperty, OpCode.SetProperty, OpCode.PopN, OpCode.NewArray, OpCode.BuildString,
+        OpCode.NewStruct, OpCode.NewAnonStruct, OpCode.Import, OpCode.TryBegin,
+        OpCode.IncrementInt, OpCode.DecrementInt, OpCode.IncrementFloat, OpCode.DecrementFloat,
+    ];
+
+    // Two-byte-operand opcodes: a 16-bit pool index or jump distance.
+    private static readonly HashSet<OpCode> TwoByteOperand = [
+        OpCode.ConstantLong, OpCode.Jump, OpCode.JumpIfFalse, OpCode.JumpIfTrue, OpCode.Loop,
+    ];
+
     private static List<OpCode> ReadOpcodes(Chunk chunk) {
         var result = new List<OpCode>();
         int offset = 0;
@@ -38,16 +56,18 @@ public sealed class CompilerCallOperandTypingTests {
             var op = (OpCode)chunk.ReadByte(offset);
             result.Add(op);
             offset++;
-            switch (op) {
-                case OpCode.Constant:
-                    offset += 1;
-                    break;
-                case OpCode.ConstantLong:
-                    offset += 2;
-                    break;
-                default:
-                    break;
+            if (op == OpCode.Closure) {
+                // Variable width: pool-index byte + UpvalueCount×2 capture descriptors.
+                byte fnIdx = chunk.ReadByte(offset);
+                offset += 1;
+                if (chunk.ReadConstant(fnIdx).TryAsFunction(out GrobFunction? gf) && gf is BytecodeFunction fn)
+                    offset += fn.UpvalueCount * 2;
+            } else if (TwoByteOperand.Contains(op)) {
+                offset += 2;
+            } else if (OneByteOperand.Contains(op)) {
+                offset += 1;
             }
+
             if (op == OpCode.Return) break;
         }
         return result;

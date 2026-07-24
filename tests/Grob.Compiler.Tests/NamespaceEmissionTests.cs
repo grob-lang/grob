@@ -130,6 +130,10 @@ public sealed class NamespaceEmissionTests {
         Assert.False(bag.HasErrors);
 
         List<Instr> instrs = Decode(chunk);
+        // Full chunk contract: callee GetGlobal, both arg Constants in order, Call 2, then
+        // the ExpressionStmt Pop and the trailing Return — no extra or misplaced bytecode.
+        Assert.Equal(6, instrs.Count);
+
         Assert.Equal(OpCode.GetGlobal, instrs[0].Op);
         Assert.Equal("int.min", chunk.ReadConstant(instrs[0].Arg).AsString());
 
@@ -140,6 +144,12 @@ public sealed class NamespaceEmissionTests {
 
         Assert.Equal(OpCode.Call, instrs[3].Op);
         Assert.Equal(2, instrs[3].Arg);
+
+        Assert.Equal(OpCode.Pop, instrs[4].Op);
+        Assert.Equal(OpCode.Return, instrs[5].Op);
+
+        // Exactly two Constants — both supplied arguments, no embedded-function Constant.
+        Assert.Equal(2, instrs.Count(i => i.Op == OpCode.Constant));
     }
 
     [Fact]
@@ -159,11 +169,25 @@ public sealed class NamespaceEmissionTests {
         Assert.False(bag.HasErrors);
 
         List<Instr> instrs = Decode(chunk);
+        // Full chunk contract: callee GetGlobal, all three arg Constants in order, Call 3,
+        // then the ExpressionStmt Pop and the trailing Return — no extra or misplaced bytecode.
+        Assert.Equal(7, instrs.Count);
+
         Assert.Equal(OpCode.GetGlobal, instrs[0].Op);
         Assert.Equal("float.clamp", chunk.ReadConstant(instrs[0].Arg).AsString());
 
+        Assert.Equal(OpCode.Constant, instrs[1].Op);
+        Assert.Equal(GrobValue.FromFloat(1.5), chunk.ReadConstant(instrs[1].Arg));
+        Assert.Equal(OpCode.Constant, instrs[2].Op);
+        Assert.Equal(GrobValue.FromFloat(0.0), chunk.ReadConstant(instrs[2].Arg));
+        Assert.Equal(OpCode.Constant, instrs[3].Op);
+        Assert.Equal(GrobValue.FromFloat(1.0), chunk.ReadConstant(instrs[3].Arg));
+
         Assert.Equal(OpCode.Call, instrs[4].Op);
         Assert.Equal(3, instrs[4].Arg);
+
+        Assert.Equal(OpCode.Pop, instrs[5].Op);
+        Assert.Equal(OpCode.Return, instrs[6].Op);
 
         // No second embedded-function Constant — GetGlobal is the qualified-native reference,
         // exactly three Constants (the three arguments).
