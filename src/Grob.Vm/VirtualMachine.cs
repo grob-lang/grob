@@ -874,6 +874,11 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                     _stack.Push(GrobValue.FromInt(array!.Count), line);
                                     break;
                                 }
+                                // Sprint 9 Increment C0a-1 (D-371).
+                                if (propertyName == "isEmpty") {
+                                    _stack.Push(GrobValue.FromBool(array!.Count == 0), line);
+                                    break;
+                                }
                                 // Sprint 5C: array higher-order method binding.
                                 // Capture the token at property-access time so the bound native
                                 // carries the live token through to InvokeCallable.

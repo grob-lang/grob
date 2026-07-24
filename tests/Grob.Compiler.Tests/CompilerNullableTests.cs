@@ -148,11 +148,18 @@ public sealed class CompilerNullableTests {
     [Fact]
     public void PlainDot_DoesNotEmitIsNilOrJumps() {
         // Non-nullable '.' access emits only GetProperty, no nil-guard machinery.
-        // Receiver is an array (not int) — Sprint 9 Increment A1a (D-369) registered
-        // int as a primitive-member receiver, so 'int.member' now legitimately raises
-        // E1002 for an unknown property; array stays in the generic Unknown fall-through
-        // this test actually means to exercise.
-        Chunk chunk = CompileSource("x: int[] := [42]\nx.member");
+        // Receiver history: originally 'int' (Sprint 3 Increment D); moved onto an array
+        // receiver when Sprint 9 Increment A1a (D-369) registered int as a
+        // primitive-member receiver, so 'int.member' legitimately raises E1002 for an
+        // unknown property; moved a second time here, onto a map receiver, when Sprint 9
+        // Increment C0a-1 (D-371) registered array's own length/isEmpty properties,
+        // which made 'array.member' legitimately raise E1002 too. 'map' is now the sole
+        // receiver kind left exercising the generic permissive-Unknown property-access
+        // fall-through this test has always meant to prove (confirmed: no
+        // GrobType.Map dispatch exists anywhere in TypeChecker.Expressions.cs) — until
+        // C0b registers map's own members. env.all() returns a map with no map-literal
+        // syntax needed (NamespaceRegistry.cs's "env" entry).
+        Chunk chunk = CompileSource("x := env.all()\nx.member");
 
         List<OpCode> ops = ReadOpcodes(chunk);
         Assert.DoesNotContain(OpCode.IsNil, ops);

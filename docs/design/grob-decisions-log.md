@@ -366,6 +366,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-368 | July 2026                                                          | Type system / Stdlib — numeric member surface | Resolves the one arity-overloaded member in the documented surface: `float.round()` is recorded in both `grob-type-registry.md` and `wiki/Type-Registry/float.md` as `round() -> int` **and** `round(decimals: int) -> float` — arity-based overloading with a return-type change, which D-358 explicitly excludes, which the name-keyed registries (`NamespaceRegistry`, `NamedTypeRegistry`, `PrimitiveMemberRegistry`) cannot express, and which D-364's default-argument fill cannot express either (one function, one return type, optional trailing tail). Ratified: split the names — `round() -> int` (nearest integer) and `roundTo(decimals: int) -> float` (N decimal places). Chosen over `round(decimals = 0) -> float` because `floor()` and `ceil()` already return `int`, so an `int`-returning `round()` keeps all three rounding operations aligned — internal consistency over mimicking C#'s all-`double` surface — and over real arity overloading, which would rekey three registries for one member. Also avoids Python's documented `round(x)`/`round(x, n)` return-type gotcha. Corpus cost: two validation-script call sites and two doc rows. Flags forward that `CsvRow.get(name: string)` / `get(index: int)` is a **type**-overloaded pair (same arity) still unresolved, due at Sprint 9 Increment E. Implemented by increment A1a. No new error code; count unchanged at 118 |
 | D-369 | July 2026                                                          | Type system / Stdlib — numeric instance-member surface | Implements D-368: registers `int`/`float`/`bool` as `PrimitiveMemberRegistry` (D-363) receivers, closing the second release-gate blocker the advertised-vs-built audit found — `int.toString/toFloat/abs/format`, `float.toString/toInt/round/roundTo(decimals)/floor/ceil/abs/format` (`round`/`roundTo` per D-368's split) and `bool.toString`, via a new `Grob.Stdlib.NumericMethodsPlugin` mirroring `StringMethodsPlugin`'s pure-native pattern. Confirmed zero overlap with `MathPlugin` (no `abs`/`floor`/`ceil`/`round` there) — this is the first place these operations exist for Grob values. `int.format`, absent from the prompt's own scope list but present in `grob-type-registry.md`, built alongside `float.format` per corpus authority (both wiki pages had the same omission, both closed). `TypeChecker.Expressions.cs`'s `ValidatePrimitiveMemberCall`/property-access dispatch confirmed receiver-agnostic (D-362's `CallExpr.ResolvedReturnType` threading needed no change) — this increment is pure registry/native population, zero type-checker source changes. Pinned semantics: `toString()` matches `ValueDisplay.Render` exactly per receiver (`bool` → `"true"`/`"false"`, `int`/`float` → invariant-culture form); `float.toString()` reuses `ValueDisplay.FormatFloat`, promoted `private` → `internal static` with `Grob.Stdlib` added to `Grob.Runtime.csproj`'s `InternalsVisibleTo` (D-336's precedent for `Grob.Vm`), rather than carrying a second, driftable copy — proven identical to `print()` output including the pinned `NaN`/`Infinity`/`-Infinity` spellings and the trailing `.0`. `int.abs()` and `float.toInt()` fault via a plain `checked(...)` C# cast/negation ("Pattern A"), letting the VM's existing outer `catch (OverflowException)` (`VirtualMachine.cs`) convert it to `E5001`/`ArithmeticError` exactly as `NegateInt` and other checked-arithmetic opcodes already do — no manual `NativeFaultException` guard, no new error code. `round()`/`roundTo()` use `MidpointRounding.AwayFromZero` on a `.5` boundary — a fresh pinned decision with no prior codebase precedent (tested at both boundaries and on negative values). One gap found during implementation, outside the plan's explicit Pattern A scope but the same "fails well" class D-366 established: `Math.Round(double, int, MidpointRounding)` itself throws `ArgumentOutOfRangeException` for `decimals` outside `[0, 15]`, which is not an `OverflowException` and so would not have reached the VM's checked-arithmetic handler, leaking an uncatchable host exception. `roundTo` now range-checks `decimals` explicitly and faults through `NativeFaultException` reusing the same `ArithmeticError`/`E5001` leaf — no new code, no new guard class, just the existing D-366 idiom applied to a range this increment's own surface introduced. `int.MinValue`/`long.MinValue` has no literal spelling in Grob (the bare digit magnitude overflows `long.Parse` before any unary minus applies, confirmed empirically) — its `abs()`-overflow fault path is exercised via `-9223372036854775807 - 1`, constructed at runtime instead. `PrimitiveMemberRegistryAgreementTests`'s orphan-detection filter (`"string."`-only) extended to `"int."`/`"float."`/`"bool."`; `StringMethodsPluginTests`'s own registration-count assertion, which iterated the shared `AllQualifiedNativeNames` aggregate, corrected to `String`'s own entries now that the aggregate spans four receivers; one pre-existing `CompilerNullableTests` bytecode-shape test switched its plain-dot receiver from `int` (now a registered primitive with no bare properties, so `int.member` legitimately raises E1002) to `array` (the same permissive `GrobType.Unknown` fall-through the test always meant to exercise) — no test asserting int/float/bool member behaviour was touched. `int.min`/`max`/`clamp` and `float.min`/`max`/`clamp` (type-static, namespace-receiver calls) remain out of scope — Sprint 9 Increment A1b. No new opcode; error codes reused, count unchanged at 118. Cites D-363 (the registry this populates), D-364 (default-argument fill, not used here — every new parameter is required), D-365 (the primitive-member arg-count/default machinery proven receiver-agnostic), D-362 (the `ResolvedReturnType` threading confirmed unchanged), D-366 (the native-seam "fails well" contract the `roundTo` range guard extends), D-368 (the `round`/`roundTo` split this increment implements), D-284, D-066 (primitive methods as compile-time sugar), and the advertised-vs-built audit that found the gap |
 | D-370 | July 2026                                                          | Type system / Stdlib — numeric type-static function surface | Sprint 9 Increment A1b, completing the numeric surface D-369 began: registers the six documented `int`/`float` type-static functions — `int.min(a, b)`, `int.max(a, b)`, `int.clamp(v, lo, hi)`, `float.min(a, b)`, `float.max(a, b)`, `float.clamp(v, lo, hi)` — as namespace-receiver calls (`NamespaceRegistry`, D-342), not instance members (`PrimitiveMemberRegistry`, D-363/D-369) — a genuinely different compile-time registry for a genuinely different call shape, even though both now register natives under the same `"int."`/`"float."` qualified-name prefix. No grammar change: `int`/`float`/`bool`/`string` are not keywords (`Lexer.LookupKeyword` has no entry for them, confirmed by direct reading), so `int.min(1, 2)` already lexed and parsed identically to `math.sqrt(9.0)` before this increment — type names are recognised only contextually, in annotation position, by `TypeChecker.ResolveSignatureType`'s literal string mapping, confirmed unaffected by the new namespace symbols (a `x: int`/struct-field/return-type annotation regression test locks this, the regression judged most likely to matter). Registering `int`/`float` as `NamespaceRegistry` names means they are also pre-registered `NamespaceDecl` symbols in the global scope (`TypeChecker.RegisterNamespaces`) exactly as `math`/`date`/`path` already are, so a top-level `int := 5`/`float := 5` now collides with the pre-registered symbol and raises `E1102` — the identical `math := 5` precedent, confirmed and locked with a test rather than treated as a regression to avoid; `int`/`float` are deliberately NOT added to `_reservedIdentifiers` (D-320), which is reserved for the separate `formatAs`/`select` reason, not for namespace status generally. `CallExpr.ResolvedReturnType` (D-362) is already set generically by `ResolveNamespaceMemberCall` for every namespace-native call, so `int.max(a, b) + 1`/`float.min(x, y) * 2.0` select the correct typed opcode with zero type-checker or compiler source changes — confirmed by sibling tests added to the existing `math.sqrt`-proving fixtures (`NamespaceEmissionTests`, `CompilerCallOperandTypingTests`, `TypeCheckerCallResolvedReturnTypeTests`) rather than a new mechanism. New `Grob.Stdlib.NumericStaticsPlugin` (registered after `NumericMethodsPlugin` in `PluginRegistration`) rather than folding into D-369's `NumericMethodsPlugin` — that class's own doc comment states it registers exactly `PrimitiveMemberRegistry`'s names, and mixing in namespace statics would falsify that and blur the one-plugin-per-registry-lineage pattern `MathPlugin`/`NumericMethodsPlugin` already establish; confirmed no `math`-module overlap (`MathPlugin` has no `min`/`max`/`clamp`). Pinned semantics: `min`/`max` never overflow (they select an existing operand, never compute), so neither pair carries a `checked(...)` guard; `clamp` guards an inverted range (`lo > hi`) explicitly before calling `Math.Clamp` (which otherwise throws an uncatchable `ArgumentException`), faulting through the D-366 native-throw-seam idiom as a catchable `ArithmeticError`/`E5001` — chosen deliberately over silently clamping to a plausible number, which would hide a caller bug; `float.min`/`float.max` defer entirely to .NET's `Math.Min`/`Math.Max(double, double)` with no special-casing — `NaN` in either argument position propagates to the result (IEEE 754, consistent with D-315's float-equality semantics) and `-0.0` sorts below `+0.0` — both pinned and tested in both argument positions/orders. Agreement-test reconciliation (the increment's own most important test): `NamespaceRegistry` gains `AllQualifiedNativeNames` (mirroring `PrimitiveMemberRegistry`'s identical-shaped field), `Grob.Compiler.csproj` grants `Grob.Integration.Tests` a second `InternalsVisibleTo` (previously only `Grob.Compiler.Tests` held one) so the reconciliation tests can read it, `PrimitiveMemberRegistryAgreementTests`' orphan-detection check gains a `.Except(NamespaceRegistry.AllQualifiedNativeNames)` term (confirmed still fails on a genuine orphan — verified directly by temporarily stripping the exclusion and observing the expected six false-positive failures, then restoring it), and new `NamespaceRegistryAgreementTests` adds the coverage-direction check (every `NamespaceRegistry.NativeMember` entry across every namespace, not only `int`/`float`, has a live `RegisterNative` call — confirmed load-bearing the same way, by temporarily removing the plugin registration and observing the expected six failures). No generic all-namespaces orphan check was added — it would need to special-case `formatAs` (D-342's deliberately unmodelled three members), out of scope here. No new opcode; no new error code (`E5001` reused for `clamp`'s fault); count unchanged at 118. Cites D-369 (the instance-member surface this completes), D-368 (the `round`/`roundTo` split D-369 implemented, same numeric surface), D-363 (`PrimitiveMemberRegistry`, the sibling registry these six deliberately do not join), D-342 (`NamespaceRegistry`, the registry these six do join, and the `math`-namespace shadowing precedent), D-362 (the `ResolvedReturnType` threading confirmed unchanged), D-366 (the native-seam fault idiom `clamp`'s guard reuses), D-315 (the float-equality/signed-zero semantics `float.min`/`max` stay consistent with), D-320 (`_reservedIdentifiers`, confirmed not extended), and the advertised-vs-built audit that first found the gap D-369 began closing |
+| D-371 | July 2026                                                          | Type system / Compiler / VM — array member surface | Sprint 9 Increment C0a-1: delivers five of the nine undispatched `T[]` members the advertised-vs-built audit found — `length`, `isEmpty`, `first()`, `last()`, `contains(v: T)` — plus `sort`'s missing `date`/`guid` `Comparable` key arms; `append`/`insert`/`remove`/`clear` and their mutation rejection stay C0a-2. Arrays stay structural (D-351/D-356/D-363) rather than joining either registry: `length`/`isEmpty` resolve directly in `VisitMemberAccess` (no descriptor needed), `first`/`last`/`contains` join the renamed `IsArrayMethod` (from `IsArrayHigherOrderMethod`) alongside the pre-existing `filter`/`select`/`sort`/`each`. `first()`/`last()`'s `T?` and `contains(v: T)`'s argument type are derived from the receiver's `ArrayTypeDescriptor` mirroring `VisitIndex` (D-351/D-359), not `select<U>`'s untracked-element precedent; the element's named-type/nested-array identity threads through `_callResultStructNames`/`_callResultArrayDescriptors` the same way `split()` already does, so chained access does not regress to `Unknown`. `GrobValueComparer` gains a `Struct` arm: `date` compares via `DateNatives.ToDateTimeOffset` (D-367's instant basis — never the raw `__value` string, which would reintroduce the trichotomy bug in a new comparison path), `guid` stays ordinal on its canonical string (D-357); proven directly against `LessDate` so the two paths cannot diverge, and the existing LINQ stability guarantee is locked with a dedicated test. `contains`'s native replicates `EqualDate`'s VM-level rule in a new `ValuesEqual` helper (falling to `GrobValue`'s own `operator==` for every non-`date` kind, including `guid`'s D-169 field-by-field equality) — the load-bearing test: a `date[]` containing `a`, `arr.contains(a.toUtc())` is `true`. `array` closes as a permissive-`Unknown` receiver; `map` is now the sole remaining one until C0b — `CompilerNullableTests`' `PlainDot_DoesNotEmitIsNilOrJumps` re-anchored a second time, from `int[]` onto a map receiver via `env.all()`. `E0004`'s taxonomy mismatch for a runtime comparator fault is logged as a finding, not fixed. No new opcode; no new error code; count unchanged at 118. Cites D-351, D-356, D-357, D-363, D-367, D-169, D-362, D-369, and the advertised-vs-built audit |
 
 
 ---
@@ -6733,6 +6734,145 @@ advertised-vs-built audit that first found the gap D-369 began closing.
 
 ---
 
+### D-371 — Array non-mutating query member surface lands: `length`/`isEmpty`/`first`/`last`/`contains`, plus `sort`'s `date`/`guid` comparer arms (Sprint 9 Increment C0a-1) (July 2026)
+
+Area: Type system / Compiler / VM — array member surface
+Supersedes: none
+Superseded by: none
+Refines: D-351, D-356, D-357, D-363, D-367, D-169, D-362, D-369
+
+**The problem.** `grob-type-registry.md`'s `T[]` section documented thirteen members;
+only four dispatched — `IsArrayHigherOrderMethod` (`TypeChecker.Expressions.cs`)
+recognised `filter`/`select`/`sort`/`each` only. The other nine were documented shipped
+surface that did not compile — found by the advertised-vs-built corpus audit. This
+increment delivers five of the nine: `length`, `isEmpty`, `first()`, `last()`,
+`contains(v: T)`. The remaining four (`append`, `insert`, `remove`, `clear`) are a
+genuinely different concern — in-place mutation, `const`/`readonly` rejection, aliasing
+semantics — and are C0a-2's.
+
+**Dispatch mechanism — arrays stay structural, not registry-routed.** D-351 gives arrays
+an `ArrayTypeDescriptor` rather than a flat type; D-356 and D-363 deliberately excluded
+arrays from `NamedTypeRegistry` and `PrimitiveMemberRegistry` respectively, because
+`first() → T?` and `contains(v: T) → bool` are generic in the receiver's element type —
+a registry entry cannot express that. This increment does not change that call: `length`/
+`isEmpty` are resolved by a dedicated `GrobType.Array` arm added directly to
+`VisitMemberAccess`, ahead of the final permissive-`Unknown` fall-through; `first`/`last`/
+`contains` join the pre-existing `filter`/`select`/`sort`/`each` in
+`ValidateArrayMethodCall`, now renamed from `IsArrayHigherOrderMethod`/its call site to
+`IsArrayMethod` — the three new members take no function argument, so "higher-order" no
+longer describes the whole recognised set. `ValidateArrayMethodCall`'s signature widened
+to take the `MemberAccessExpr` (not just the bare method name), so `first`/`last`/
+`contains` can reach `memberAccess.Target` for `ArrayDescriptorOf` — the receiver is
+already visited by the time this branch runs (`ResolveMemberAccessCall`), so this is safe.
+
+**Generic `T`-dependent signatures — mirrors `VisitIndex`, not `select<U>`.** `first()`/
+`last()` resolve `GrobTypeHelpers.ToNullable(ArrayDescriptorOf(memberAccess.Target)?.ElementKind
+?? GrobType.Unknown)` — the same `ArrayDescriptorOf(node.Target)?.ElementKind ??
+GrobType.Unknown` derivation `VisitIndex` already uses (D-351/D-359), not `select<U>`'s
+shape: confirmed by direct reading that `select`/`filter`/`sort`/`each` thread NO
+descriptor through `_callResultArrayDescriptors`/`_callResultStructNames` today, so they
+are not the precedent to copy. When the element itself is a named struct or a nested
+array, `ValidateArrayFirstLastCall` threads `ArrayTypeDescriptor.ElementNamedTypeName`/
+`ElementArrayDescriptor` into `_callResultStructNames`/`_callResultArrayDescriptors` — the
+same side channels `ValidatePrimitiveMemberCall` already populates for `split()` — so a
+chained access on the result (`arr.first()?.year`) resolves further instead of regressing
+to `Unknown`. A receiver whose descriptor is unavailable (an untyped `array`-typed
+parameter) stays permissive at `Unknown`, matching every other missing-descriptor
+fallback in this file — not a fault. `contains(v: T)` validates exactly one argument (E0003
+via the existing shared `MemberArgCountMatches` gate) whose type must be assignable to the
+element type when a descriptor is available (E0004 — the existing argument-type-mismatch
+code, never a new one); no descriptor available stays permissive. Always resolves
+`GrobType.Bool`. Both new call-resolving methods explicitly set `CallExpr.ResolvedReturnType`
+(D-362) — unlike the pre-existing `filter`/`select`/`sort` arms, which return their type
+directly from `ValidateArrayMethodCall` without ever persisting it onto the node, an
+existing gap named here and left alone (out of scope — not worsened, D-362's own
+completeness sweep did not reach the array higher-order arm because `ResolveMemberAccessCall`
+returns directly without falling through to `VisitCall`'s generic
+`node.ResolvedReturnType = resultKind` assignment).
+
+**`sort`'s `date`/`guid` comparer arms — the instant basis, not the round-trip string.**
+`GrobValueComparer.Compare` (`Grob.Vm/ArrayNatives.cs`) gains a `GrobValueKind.Struct` arm
+dispatching to a new `CompareStruct(GrobStruct, GrobStruct)`, discriminated by
+`TypeName`: `date` compares via `DateNatives.ToDateTimeOffset` — the same instant basis
+`LessDate`/`GreaterDate`/`EqualDate` already share (D-367) — and MUST NOT compare the raw
+`__value` round-trip string, which would order dates differently from `<` and reintroduce
+the exact trichotomy incoherence D-367 closed, in a second comparison path. `guid` stays
+ordinal on `GuidNatives.CanonicalString` (D-357's deliberate field-by-field/ordinal
+choice, unchanged). Any other `Struct` pairing — a user type, or a mixed `date`/`guid`
+pairing — still does not implement `Comparable` and throws. Proven directly against
+`LessDate`: an integration/VM test computes `LessDate(a, b)` for the same date pairs a
+`sort` call orders, so the two comparison paths cannot silently diverge. `GrobValueComparer`
+now covers exactly the six kinds the corpus advertises as `Comparable` (`int`, `float`,
+`string`, `bool`, `date`, `guid`) and no more. The existing LINQ `OrderBy`/`OrderByDescending`
+stability mechanism is untouched — locked with a dedicated stability test (elements encode
+`(key * 100) + id`, projected via truncating division, so a stable sort's relative-order
+guarantee is observable on otherwise-identical keys).
+
+**`contains`'s equality reuse — the date-parity guarantee.** `contains` must use the same
+equality `==` uses, or a `date[]` disagreeing with `==` would be the trichotomy bug in a
+new place. `date` equality is decided at COMPILE TIME (`BinaryExpr.IsDateEquality` →
+`OpCode.EqualDate`), so there is no single runtime "equals" entry point to call generically
+— `contains`'s native (`ArrayNatives.cs`, alongside `Filter`/`Select`/`Sort`/`Each`)
+replicates the VM-level rule `EqualDate`'s handler already encodes (`VirtualMachine.cs`) in
+a new `ValuesEqual(GrobValue, GrobValue)` helper: a `Struct`-vs-`Struct` `date` pair
+compares via `DateNatives.ToDateTimeOffset`; everything else — including `guid` (D-169's
+field-by-field struct equality) — falls to `GrobValue`'s own `operator==`, already correct.
+The load-bearing test: a `date[]` containing `a` (constructed at a non-UTC offset),
+`arr.contains(a.toUtc())` is `true` — the same instant at a different offset, exercised
+both as a direct VM-level test and end to end via the CLI. `first`/`last` return
+`GrobValue.Nil` on an empty array, mirroring `Each`'s existing `GrobValue.Nil` return for
+the void case.
+
+**Properties — bespoke, not registry-routed.** `length`/`isEmpty` need no
+`ArrayTypeDescriptor` at all (neither depends on the element type), so they are resolved
+directly in `VisitMemberAccess` rather than via `ValidateArrayMethodCall`. At runtime,
+`VirtualMachine.cs`'s `OpCode.GetProperty` handler already hardcoded `length` inline
+(pushing `array.Count`); `isEmpty` (`array.Count == 0`) is added the same way — it had no
+runtime implementation at all before this increment. No compiler-emission change was
+needed for bare property access or for the three new method calls: both already compile
+through the fully generic `GetProperty`-then-`Call` shape `filter`/`select`/`sort`/`each`
+already prove (`VisitCall`'s generic `Visit(node.Callee)` path, since none of `first`/
+`last`/`contains` match any of the special-cased rewrite arms ahead of it).
+`Compiler.ControlFlow.cs`'s synthetic `EmitGetProperty("length", ...)` calls (`for...in`
+loop bounds) bypass the type checker entirely and are untouched.
+
+**The permissive-`Unknown` fall-through, after this increment.** D-369 recorded that
+`array` was still unregistered and moved a `CompilerNullableTests` case
+(`PlainDot_DoesNotEmitIsNilOrJumps`) onto an `array` receiver specifically to exercise the
+generic permissive-`Unknown` property-access fall-through, after `int` became registered
+(D-369) and started raising E1002. Registering array's own `length`/`isEmpty` breaks that
+test's premise a second time: `x: int[] := [42]` then `x.member` now raises E1002 too.
+Confirmed by direct reading: zero `GrobType.Map` dispatch exists anywhere in
+`TypeChecker.Expressions.cs`, so `map` is now the sole remaining receiver kind reaching the
+generic fall-through, until C0b registers map's own members. Re-anchored onto a
+map-typed expression via `env.all()` (`NamespaceRegistry.cs`'s `"env"` entry — returns
+`GrobType.Map`, no map-literal syntax needed, D-351's own gap: maps have no source
+construction path in v1). The test's comment now records both moves (`int` → `array` →
+`map`) rather than only the most recent one. Method-call fall-through (`arr.append(1)`,
+`arr.garbage()`) is UNCHANGED — it stays permissively `Unknown` at compile time; C0a-2
+registers `append`/`insert`/`remove`/`clear` by name later. A bare (uncalled) reference to
+a method-family member (`xs.first`, no parens) now raises E1002 rather than staying
+`Unknown`, mirroring `ResolveNamedTypePropertyAccess`/`ResolvePrimitiveMemberPropertyAccess`'s
+identical rule for their own receivers — confirmed by corpus search that no existing test
+relied on that shape staying permissive.
+
+**`E0004` taxonomy finding — logged, not fixed.** `GrobValueComparer`'s uncomparable-kind
+fault reuses `E0004` ("argument type mismatch"), whose framing fits a call-site argument
+poorly for a runtime sort-comparator fault — pre-existing (the code already covered the
+pre-`date`/`guid` uncomparable case) and not worsened here. Named for a future correctness
+batch; no new code minted, per the increment's explicit budget.
+
+**Out of scope, confirmed.** `append`/`insert`/`remove`/`clear` and their `const`/
+`readonly` mutation rejection (C0a-2). Map members (C0b). No opcode change. No new error
+code — count unchanged at 118.
+
+Full detail: `grob-type-registry.md`'s `T[]` build-status note (five non-mutating members
+and `sort`'s full key set now built, the four mutating members pending C0a-2), and
+`wiki/Type-Registry/array.md` (matching properties/methods tables, `sort`'s
+`date`/`guid` note).
+
+---
+
 
 
 ## Post-MVP Decisions
@@ -6956,7 +7096,30 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 9 Increment A1b, numeric type-static surface built: D-370 added._
+_July 2026 — Sprint 9 Increment C0a-1, array non-mutating query member surface built:_
+_D-371 added. Delivers five of the nine undispatched `T[]` members the_
+_advertised-vs-built audit found — `length`, `isEmpty`, `first()`, `last()`,_
+_`contains(v: T)` — plus `sort`'s missing `date`/`guid` `Comparable` key arms;_
+_`append`/`insert`/`remove`/`clear` and their `const`/`readonly` mutation rejection stay_
+_C0a-2. Arrays stay structural (D-351/D-356/D-363), not registry-routed: `length`/`isEmpty`_
+_resolve directly in `VisitMemberAccess`; `first`/`last`/`contains` join the renamed_
+_`IsArrayMethod` (from `IsArrayHigherOrderMethod`) alongside `filter`/`select`/`sort`/`each`._
+_`first()`/`last()`'s `T?` and `contains(v: T)`'s argument type derive from the receiver's_
+_`ArrayTypeDescriptor`, mirroring `VisitIndex` (D-351/D-359) rather than `select<U>`'s_
+_untracked-element precedent; the element's named-type/nested-array identity threads_
+_through the same side channels `split()` already populates, so chained access does not_
+_regress to `Unknown`. `GrobValueComparer` gains a `Struct` arm: `date` compares via the_
+_instant basis (D-367, never the raw `__value` string, which would reintroduce the_
+_trichotomy bug in a new comparison path), `guid` stays ordinal (D-357); proven directly_
+_against `LessDate` so the two paths cannot diverge, and the LINQ stability guarantee is_
+_locked with a dedicated test. `contains` replicates `EqualDate`'s VM-level rule in a new_
+_`ValuesEqual` helper — the load-bearing test: a `date[]` containing `a`,_
+_`arr.contains(a.toUtc())` is `true`. `array` closes as a permissive-`Unknown` receiver;_
+_`map` is now the sole remaining one until C0b — `CompilerNullableTests`' plain-dot test_
+_re-anchored a second time, from `int[]` onto a map receiver via `env.all()`. `E0004`'s_
+_taxonomy mismatch for a runtime comparator fault is logged, not fixed. No new opcode or_
+_error code; count unchanged at 118._
+_Previous: July 2026 — Sprint 9 Increment A1b, numeric type-static surface built: D-370 added._
 _Completes the numeric surface Increment A1a/D-369 began: `int.min`/`max`/`clamp` and_
 _`float.min`/`max`/`clamp` registered as namespace-receiver calls on `NamespaceRegistry`_
 _(D-342), not instance members on `PrimitiveMemberRegistry` (D-363/D-369) — a genuinely_
