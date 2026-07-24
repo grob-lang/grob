@@ -1,0 +1,6 @@
+// Sprint 9 Increment A1b (D-370) — int.clamp(v, lo, hi) with lo > hi is uncaught:
+// the E5001 ArithmeticError fault (int.clamp's inverted-range guard, mirroring D-366's
+// native-throw-seam idiom) reaches the CLI's top-level formatting.
+
+x := int.clamp(5, 10, 0)
+print(x)

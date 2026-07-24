@@ -159,6 +159,29 @@ internal static class NamespaceRegistry {
                 ["fromUnixSeconds"] = new NativeMember([GrobType.Int], GrobType.Struct, NamedTypeName: "date"),
                 ["fromUnixMillis"] = new NativeMember([GrobType.Int], GrobType.Struct, NamedTypeName: "date"),
             },
+            // Sprint 9 Increment A1b: int/float type-static functions (D-370), completing
+            // the numeric surface D-369's instance-member registration began. min/max/clamp
+            // are namespace-receiver calls (int.min(a, b), not a.min(b)) so they belong here,
+            // not in PrimitiveMemberRegistry (Grob.Core) alongside D-369's instance methods —
+            // a different compile-time registry for a genuinely different call shape, even
+            // though both ultimately register a runtime native under the same "int."/"float."
+            // qualified-name prefix (reconciled by the agreement tests, see
+            // PrimitiveMemberRegistryAgreementTests and NamespaceRegistryAgreementTests).
+            // Registering "int"/"float" as namespace names here means a top-level `int := 5`
+            // now collides with the pre-registered NamespaceDecl symbol exactly as `math := 5`
+            // already does (E1102) — the same precedent, not a special case; int/float are
+            // deliberately NOT added to _reservedIdentifiers, which is reserved for the
+            // separate D-320 'formatAs'/'select' reason.
+            ["int"] = new Dictionary<string, object>(StringComparer.Ordinal) {
+                ["min"] = new NativeMember([GrobType.Int, GrobType.Int], GrobType.Int),
+                ["max"] = new NativeMember([GrobType.Int, GrobType.Int], GrobType.Int),
+                ["clamp"] = new NativeMember([GrobType.Int, GrobType.Int, GrobType.Int], GrobType.Int),
+            },
+            ["float"] = new Dictionary<string, object>(StringComparer.Ordinal) {
+                ["min"] = new NativeMember([GrobType.Float, GrobType.Float], GrobType.Float),
+                ["max"] = new NativeMember([GrobType.Float, GrobType.Float], GrobType.Float),
+                ["clamp"] = new NativeMember([GrobType.Float, GrobType.Float, GrobType.Float], GrobType.Float),
+            },
             // Sprint 8 Increment E: formatAs — registered as a namespace NAME only, so
             // IsNamespace/RegisterNamespaces seed the usual NamespaceDecl sentinel (bare
             // `x := formatAs` correctly falls through to the generic D-342 E1004 arm) and
@@ -182,6 +205,21 @@ internal static class NamespaceRegistry {
     /// compile.
     /// </summary>
     internal static readonly string[] NamespaceNames = [.. _namespaces.Keys];
+
+    /// <summary>
+    /// Every registered <see cref="NativeMember"/>'s qualified name (<c>"{namespace}.{member}"</c>),
+    /// flattened across every namespace — the set the agreement tests diff against live
+    /// plugin registration (mirrors <c>PrimitiveMemberRegistry.AllQualifiedNativeNames</c>'s
+    /// identical shape, D-370). A <see cref="ConstantMember"/> entry is skipped: it registers
+    /// via <c>RegisterConstant</c>, not <c>RegisterNative</c>, so it is a different runtime
+    /// signal this table's coverage-direction check should not expect a
+    /// <c>RegisterNative</c> call for.
+    /// </summary>
+    internal static readonly string[] AllQualifiedNativeNames = [
+        .. _namespaces.SelectMany(ns => ns.Value
+            .Where(member => member.Value is NativeMember)
+            .Select(member => $"{ns.Key}.{member.Key}")),
+    ];
 
     /// <summary>The number of registered namespaces, for global-scope dictionary pre-sizing.</summary>
     internal static int Count => _namespaces.Count;

@@ -18,11 +18,15 @@ member is a compile error.
 
 ## Static Functions
 
+Namespace-receiver calls (D-370), not instance methods — the same call shape as
+`math.sqrt(x)`, registered on `NamespaceRegistry` rather than the instance-member
+table above.
+
 | Member | Signature | Notes |
 |--------|-----------|-------|
-| `float.min(a, b)` | `(float, float) → float` | |
-| `float.max(a, b)` | `(float, float) → float` | |
-| `float.clamp(v, lo, hi)` | `(float, float, float) → float` | |
+| `float.min(a, b)` | `(float, float) → float` | Defers to .NET's `Math.Min` — `NaN` in either position propagates; `-0.0` sorts below `+0.0` |
+| `float.max(a, b)` | `(float, float) → float` | Defers to .NET's `Math.Max` — `NaN` in either position propagates; `+0.0` sorts above `-0.0` |
+| `float.clamp(v, lo, hi)` | `(float, float, float) → float` | Faults (`ArithmeticError`) if `lo > hi` — an inverted range is a caller bug, not silently clamped |
 
 ## Literals
 

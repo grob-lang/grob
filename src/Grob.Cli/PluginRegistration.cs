@@ -31,6 +31,11 @@ namespace Grob.Cli;
 /// instance-method/property surface, no capability injection needed (pure).
 /// Sprint 9 Increment A1a adds <see cref="NumericMethodsPlugin"/> (D-066/D-369) — the
 /// <c>int</c>/<c>float</c>/<c>bool</c> instance-method surfaces, likewise pure.
+/// Sprint 9 Increment A1b adds <see cref="NumericStaticsPlugin"/> (D-370) — the
+/// <c>int</c>/<c>float</c> type-static surface (<c>min</c>/<c>max</c>/<c>clamp</c>),
+/// completing the numeric surface Increment A1a began; a separate registry lineage
+/// (<c>NamespaceRegistry</c>, not <c>PrimitiveMemberRegistry</c>) so a separate plugin,
+/// likewise pure.
 /// </summary>
 internal static class PluginRegistration {
     /// <summary>Registers every stdlib plugin against <paramref name="registrar"/>, in a fixed order.</summary>
@@ -56,6 +61,7 @@ internal static class PluginRegistration {
             new FormatAsPlugin(),
             new StringMethodsPlugin(),
             new NumericMethodsPlugin(),
+            new NumericStaticsPlugin(),
         ];
         foreach (IGrobPlugin plugin in plugins) plugin.Register(registrar);
     }

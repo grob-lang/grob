@@ -82,6 +82,31 @@ public sealed class CompilerCallOperandTypingTests {
     }
 
     // -----------------------------------------------------------------------
+    // Sprint 9 Increment A1b (D-370): the int/float type-static namespace-native
+    // calls need zero type-checker or compiler changes for correct operand typing —
+    // ResolveNamespaceMemberCall already sets CallExpr.ResolvedReturnType generically
+    // for every namespace-native call (D-362), the same mechanism math.sqrt proves.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void IntMaxAsOperand_PlusOne_SelectsAddIntNotAddFloat() {
+        Chunk chunk = CompileSource("x := int.max(1, 2) + 1\n");
+        List<OpCode> ops = ReadOpcodes(chunk);
+
+        Assert.Contains(OpCode.AddInt, ops);
+        Assert.DoesNotContain(OpCode.AddFloat, ops);
+    }
+
+    [Fact]
+    public void FloatMinAsOperand_TimesTwo_SelectsMulFloatNotMulInt() {
+        Chunk chunk = CompileSource("x := float.min(1.0, 2.0) * 2.0\n");
+        List<OpCode> ops = ReadOpcodes(chunk);
+
+        Assert.Contains(OpCode.MultiplyFloat, ops);
+        Assert.DoesNotContain(OpCode.MultiplyInt, ops);
+    }
+
+    // -----------------------------------------------------------------------
     // Residue — all three documented permissive-Unknown sources still compile
     // under the Int assumption, not a compiler defect. None of these picks up
     // AddFloat (there is no float type information to recover), but none of

@@ -145,6 +145,30 @@ public sealed class TypeCheckerCallResolvedReturnTypeTests {
     }
 
     // -----------------------------------------------------------------------
+    // Sprint 9 Increment A1b (D-370): the int/float type-static namespace-native
+    // calls route through the same generic ResolveNamespaceMemberCall arm as
+    // math.sqrt above — no code change needed, confirmed by these sibling cases.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void NamespaceNative_IntMax_AnnotatesIntReturnType() {
+        var (unit, bag) = TypeCheckSource("x := int.max(1, 2)\n");
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.Int, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void NamespaceNative_FloatClamp_AnnotatesFloatReturnType() {
+        var (unit, bag) = TypeCheckSource("x := float.clamp(1.5, 0.0, 1.0)\n");
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.Float, call.ResolvedReturnType);
+    }
+
+    // -----------------------------------------------------------------------
     // Nominal-self-returning method (date.addDays returns date): resolves to
     // Struct via the ReturnsNominalSelf arm of ResolveNamedTypeMethodCall.
     // Complements the daysUntil (int) sub-case above so both nominal-method

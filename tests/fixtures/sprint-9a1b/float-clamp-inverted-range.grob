@@ -1,0 +1,5 @@
+// Sprint 9 Increment A1b (D-370) — float.clamp(v, lo, hi) with lo > hi is uncaught:
+// the same E5001 ArithmeticError fault as int.clamp's inverted-range guard.
+
+x := float.clamp(0.5, 1.0, 0.0)
+print(x)

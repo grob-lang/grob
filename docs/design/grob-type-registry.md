@@ -31,10 +31,20 @@ release-gate blocker the advertised-vs-built audit found — `int` (`toString`/
 `ceil`/`abs`/`format`) and `bool` (`toString`). `float`'s previously arity-overloaded
 `round()`/`round(decimals: int)` pair is split per D-368 into `round() → int` and
 `roundTo(decimals: int) → float` (both rows below reflect the split, not the
-superseded overload). The `int.min`/`int.max`/`int.clamp`/`float.min`/`float.max`/
-`float.clamp` **type-static** rows remain target-surface only — those are namespace-
-receiver calls (`NamespaceRegistry`, not `PrimitiveMemberRegistry`) and are Sprint 9
-Increment A1b's scope, not this increment's.
+superseded overload).
+
+**Build-status note (D-370, Sprint 9 Increment A1b).** The `int.min`/`int.max`/
+`int.clamp`/`float.min`/`float.max`/`float.clamp` **type-static** rows below are now
+also **fully built**, completing the numeric surface Increment A1a began — registered
+as namespace-receiver calls on `NamespaceRegistry` (D-342), not instance members on
+`PrimitiveMemberRegistry`, via a new `Grob.Stdlib.NumericStaticsPlugin` (a separate
+plugin from `NumericMethodsPlugin` — a different registry lineage). `min`/`max` never
+overflow (they select an existing operand, never compute); `clamp` faults
+(`ArithmeticError`/`E5001`, the D-366 idiom, no new code) when `lo > hi` rather than
+silently clamping to a plausible-looking number; `float.min`/`float.max` defer
+entirely to .NET's `Math.Min`/`Math.Max(double, double)` with no special-casing — `NaN`
+in either argument position propagates to the result, and `-0.0` sorts below `+0.0`,
+both pinned and tested exactly as .NET already behaves.
 
 ---
 

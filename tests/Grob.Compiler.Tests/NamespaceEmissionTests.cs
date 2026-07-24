@@ -113,6 +113,64 @@ public sealed class NamespaceEmissionTests {
     }
 
     [Fact]
+    public void IntMin_Call_DisassemblesToTwoArgConstants_GetGlobal_CallTwo() {
+        // Sprint 9 Increment A1b (D-370): int.min(a, b) is a plain 2-arity namespace-native
+        // call — the exact same GetGlobal + args + Call shape math.sqrt already proves, just
+        // with two arguments instead of one.
+        var callee = new MemberAccessExpr(SourceRange.Unknown, NamespaceIdent("int"), "min");
+        var call = new CallExpr(SourceRange.Unknown, callee, [
+            new CallArgument(SourceRange.Unknown, null, new IntLiteralExpr(SourceRange.Unknown, 3)),
+            new CallArgument(SourceRange.Unknown, null, new IntLiteralExpr(SourceRange.Unknown, 5)),
+        ]);
+        var unit = new CompilationUnit(SourceRange.Unknown,
+            [new ExpressionStmt(SourceRange.Unknown, call)]);
+
+        var bag = new DiagnosticBag();
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        Assert.False(bag.HasErrors);
+
+        List<Instr> instrs = Decode(chunk);
+        Assert.Equal(OpCode.GetGlobal, instrs[0].Op);
+        Assert.Equal("int.min", chunk.ReadConstant(instrs[0].Arg).AsString());
+
+        Assert.Equal(OpCode.Constant, instrs[1].Op);
+        Assert.Equal(GrobValue.FromInt(3), chunk.ReadConstant(instrs[1].Arg));
+        Assert.Equal(OpCode.Constant, instrs[2].Op);
+        Assert.Equal(GrobValue.FromInt(5), chunk.ReadConstant(instrs[2].Arg));
+
+        Assert.Equal(OpCode.Call, instrs[3].Op);
+        Assert.Equal(2, instrs[3].Arg);
+    }
+
+    [Fact]
+    public void FloatClamp_Call_DisassemblesToThreeArgConstants_GetGlobal_CallThree() {
+        // The three-arity sibling — proves the shape generalises to clamp's arg count too.
+        var callee = new MemberAccessExpr(SourceRange.Unknown, NamespaceIdent("float"), "clamp");
+        var call = new CallExpr(SourceRange.Unknown, callee, [
+            new CallArgument(SourceRange.Unknown, null, new FloatLiteralExpr(SourceRange.Unknown, 1.5)),
+            new CallArgument(SourceRange.Unknown, null, new FloatLiteralExpr(SourceRange.Unknown, 0.0)),
+            new CallArgument(SourceRange.Unknown, null, new FloatLiteralExpr(SourceRange.Unknown, 1.0)),
+        ]);
+        var unit = new CompilationUnit(SourceRange.Unknown,
+            [new ExpressionStmt(SourceRange.Unknown, call)]);
+
+        var bag = new DiagnosticBag();
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        Assert.False(bag.HasErrors);
+
+        List<Instr> instrs = Decode(chunk);
+        Assert.Equal(OpCode.GetGlobal, instrs[0].Op);
+        Assert.Equal("float.clamp", chunk.ReadConstant(instrs[0].Arg).AsString());
+
+        Assert.Equal(OpCode.Call, instrs[4].Op);
+        Assert.Equal(3, instrs[4].Arg);
+
+        // No second embedded-function Constant — GetGlobal is the qualified-native reference,
+        // exactly three Constants (the three arguments).
+        Assert.Equal(3, instrs.Count(i => i.Op == OpCode.Constant));
+    }
+
+    [Fact]
     public void GuidNamespacesDns_CompilesToBareGetGlobalAgainstFullyQualifiedName() {
         // Sprint 8 Increment D — the two-level namespace chain guid.namespaces.dns
         // compiles to a single GetGlobal against the fully qualified flat key
