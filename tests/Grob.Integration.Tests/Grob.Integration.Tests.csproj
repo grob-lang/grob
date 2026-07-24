@@ -133,6 +133,13 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Sprint 9 Increment A1b — int/float type-static (min/max/clamp) fixtures. -->
+  <ItemGroup>
+    <Content Include="..\fixtures\sprint-9a1b\*.grob"
+             Link="fixtures\sprint-9a1b\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>

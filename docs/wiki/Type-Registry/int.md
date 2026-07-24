@@ -14,11 +14,15 @@ member is a compile error.
 
 ## Static Functions
 
+Namespace-receiver calls (D-370), not instance methods — the same call shape as
+`math.sqrt(x)`, registered on `NamespaceRegistry` rather than the instance-member
+table above.
+
 | Member | Signature | Notes |
 |--------|-----------|-------|
-| `int.min(a, b)` | `(int, int) → int` | |
-| `int.max(a, b)` | `(int, int) → int` | |
-| `int.clamp(v, lo, hi)` | `(int, int, int) → int` | |
+| `int.min(a, b)` | `(int, int) → int` | Never overflows — selects an existing operand |
+| `int.max(a, b)` | `(int, int) → int` | Never overflows — selects an existing operand |
+| `int.clamp(v, lo, hi)` | `(int, int, int) → int` | Faults (`ArithmeticError`) if `lo > hi` — an inverted range is a caller bug, not silently clamped |
 
 ## Literals
 

@@ -21,4 +21,15 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <!-- Sprint 9 Increment A1b (D-370): allow Grob.Integration.Tests to read
+       NamespaceRegistry.AllQualifiedNativeNames directly, for the agreement-test
+       reconciliation between NamespaceRegistry and PrimitiveMemberRegistry (the
+       latter is public in Grob.Core, so its Integration.Tests-visible twin needs
+       no such grant — this one is internal to Grob.Compiler). -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Grob.Integration.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

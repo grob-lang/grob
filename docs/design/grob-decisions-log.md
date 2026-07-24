@@ -365,6 +365,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-367 | July 2026                                                          | date module / VM — equality | Implements D-357: `date`-vs-`date` equality is now instant-based, matching `LessDate`/`GreaterDate`, restoring trichotomy (`date.now() == date.now().toUtc()` was false; empirically confirmed before and after). New `OpCode.EqualDate` (appended after `GreaterDate`, mirroring D-354's own append precedent; PR #157 review raised the resulting opcode-value shift as a wire-format concern and it was pushed back on — no `.grobc` reader/writer exists anywhere in the codebase yet, so there is no cached-file compatibility to break. No version bump needed) parses both `__value` strings via the existing `DateNatives.ToDateTimeOffset` and compares instants, nil-safely (a `date?`-vs-`date?` pair also selects `EqualDate`, so either operand may be `Nil` at runtime; checked before parsing, mirroring `GrobValue.Equals`' own kind-mismatch-first rule); `!=` lowers to `EqualDate` + `Not`, no dedicated `NotEqualDate`. New `BinaryExpr.IsDateEquality` annotation is the checker-to-compiler handoff the fix actually depends on: unlike the relational operators, whose `Struct`-vs-`Struct` acceptance is already gated to nominal `date` pairs, `==`/`!=` deliberately accepts any matching `Struct` (or `NullableStruct`) pair (D-169), so the compiler cannot safely infer `date` from the flat tag alone; the annotation covers both `Struct`-vs-`Struct` and `NullableStruct`-vs-`NullableStruct` nominal-date pairs. Ordering (`LessDate`/`GreaterDate`, `<=`/`>=` lowering) and `daysUntil`/`daysSince` (already instant-based) confirmed correct and locked, not changed. `guid` and every other struct type confirmed unchanged under D-169. Consolidates the round-trip format constant, triplicated across `Grob.Vm.DateNatives`/`Grob.Core.NamedTypes.NamedTypeRegistry`/`Grob.Stdlib.DatePlugin`, into a single `public const string NamedTypeRegistry.RoundTripFormat` in `Grob.Core` — no behaviour change. No new error code; count unchanged at 118 |
 | D-368 | July 2026                                                          | Type system / Stdlib — numeric member surface | Resolves the one arity-overloaded member in the documented surface: `float.round()` is recorded in both `grob-type-registry.md` and `wiki/Type-Registry/float.md` as `round() -> int` **and** `round(decimals: int) -> float` — arity-based overloading with a return-type change, which D-358 explicitly excludes, which the name-keyed registries (`NamespaceRegistry`, `NamedTypeRegistry`, `PrimitiveMemberRegistry`) cannot express, and which D-364's default-argument fill cannot express either (one function, one return type, optional trailing tail). Ratified: split the names — `round() -> int` (nearest integer) and `roundTo(decimals: int) -> float` (N decimal places). Chosen over `round(decimals = 0) -> float` because `floor()` and `ceil()` already return `int`, so an `int`-returning `round()` keeps all three rounding operations aligned — internal consistency over mimicking C#'s all-`double` surface — and over real arity overloading, which would rekey three registries for one member. Also avoids Python's documented `round(x)`/`round(x, n)` return-type gotcha. Corpus cost: two validation-script call sites and two doc rows. Flags forward that `CsvRow.get(name: string)` / `get(index: int)` is a **type**-overloaded pair (same arity) still unresolved, due at Sprint 9 Increment E. Implemented by increment A1a. No new error code; count unchanged at 118 |
 | D-369 | July 2026                                                          | Type system / Stdlib — numeric instance-member surface | Implements D-368: registers `int`/`float`/`bool` as `PrimitiveMemberRegistry` (D-363) receivers, closing the second release-gate blocker the advertised-vs-built audit found — `int.toString/toFloat/abs/format`, `float.toString/toInt/round/roundTo(decimals)/floor/ceil/abs/format` (`round`/`roundTo` per D-368's split) and `bool.toString`, via a new `Grob.Stdlib.NumericMethodsPlugin` mirroring `StringMethodsPlugin`'s pure-native pattern. Confirmed zero overlap with `MathPlugin` (no `abs`/`floor`/`ceil`/`round` there) — this is the first place these operations exist for Grob values. `int.format`, absent from the prompt's own scope list but present in `grob-type-registry.md`, built alongside `float.format` per corpus authority (both wiki pages had the same omission, both closed). `TypeChecker.Expressions.cs`'s `ValidatePrimitiveMemberCall`/property-access dispatch confirmed receiver-agnostic (D-362's `CallExpr.ResolvedReturnType` threading needed no change) — this increment is pure registry/native population, zero type-checker source changes. Pinned semantics: `toString()` matches `ValueDisplay.Render` exactly per receiver (`bool` → `"true"`/`"false"`, `int`/`float` → invariant-culture form); `float.toString()` reuses `ValueDisplay.FormatFloat`, promoted `private` → `internal static` with `Grob.Stdlib` added to `Grob.Runtime.csproj`'s `InternalsVisibleTo` (D-336's precedent for `Grob.Vm`), rather than carrying a second, driftable copy — proven identical to `print()` output including the pinned `NaN`/`Infinity`/`-Infinity` spellings and the trailing `.0`. `int.abs()` and `float.toInt()` fault via a plain `checked(...)` C# cast/negation ("Pattern A"), letting the VM's existing outer `catch (OverflowException)` (`VirtualMachine.cs`) convert it to `E5001`/`ArithmeticError` exactly as `NegateInt` and other checked-arithmetic opcodes already do — no manual `NativeFaultException` guard, no new error code. `round()`/`roundTo()` use `MidpointRounding.AwayFromZero` on a `.5` boundary — a fresh pinned decision with no prior codebase precedent (tested at both boundaries and on negative values). One gap found during implementation, outside the plan's explicit Pattern A scope but the same "fails well" class D-366 established: `Math.Round(double, int, MidpointRounding)` itself throws `ArgumentOutOfRangeException` for `decimals` outside `[0, 15]`, which is not an `OverflowException` and so would not have reached the VM's checked-arithmetic handler, leaking an uncatchable host exception. `roundTo` now range-checks `decimals` explicitly and faults through `NativeFaultException` reusing the same `ArithmeticError`/`E5001` leaf — no new code, no new guard class, just the existing D-366 idiom applied to a range this increment's own surface introduced. `int.MinValue`/`long.MinValue` has no literal spelling in Grob (the bare digit magnitude overflows `long.Parse` before any unary minus applies, confirmed empirically) — its `abs()`-overflow fault path is exercised via `-9223372036854775807 - 1`, constructed at runtime instead. `PrimitiveMemberRegistryAgreementTests`'s orphan-detection filter (`"string."`-only) extended to `"int."`/`"float."`/`"bool."`; `StringMethodsPluginTests`'s own registration-count assertion, which iterated the shared `AllQualifiedNativeNames` aggregate, corrected to `String`'s own entries now that the aggregate spans four receivers; one pre-existing `CompilerNullableTests` bytecode-shape test switched its plain-dot receiver from `int` (now a registered primitive with no bare properties, so `int.member` legitimately raises E1002) to `array` (the same permissive `GrobType.Unknown` fall-through the test always meant to exercise) — no test asserting int/float/bool member behaviour was touched. `int.min`/`max`/`clamp` and `float.min`/`max`/`clamp` (type-static, namespace-receiver calls) remain out of scope — Sprint 9 Increment A1b. No new opcode; error codes reused, count unchanged at 118. Cites D-363 (the registry this populates), D-364 (default-argument fill, not used here — every new parameter is required), D-365 (the primitive-member arg-count/default machinery proven receiver-agnostic), D-362 (the `ResolvedReturnType` threading confirmed unchanged), D-366 (the native-seam "fails well" contract the `roundTo` range guard extends), D-368 (the `round`/`roundTo` split this increment implements), D-284, D-066 (primitive methods as compile-time sugar), and the advertised-vs-built audit that found the gap |
+| D-370 | July 2026                                                          | Type system / Stdlib — numeric type-static function surface | Sprint 9 Increment A1b, completing the numeric surface D-369 began: registers the six documented `int`/`float` type-static functions — `int.min(a, b)`, `int.max(a, b)`, `int.clamp(v, lo, hi)`, `float.min(a, b)`, `float.max(a, b)`, `float.clamp(v, lo, hi)` — as namespace-receiver calls (`NamespaceRegistry`, D-342), not instance members (`PrimitiveMemberRegistry`, D-363/D-369) — a genuinely different compile-time registry for a genuinely different call shape, even though both now register natives under the same `"int."`/`"float."` qualified-name prefix. No grammar change: `int`/`float`/`bool`/`string` are not keywords (`Lexer.LookupKeyword` has no entry for them, confirmed by direct reading), so `int.min(1, 2)` already lexed and parsed identically to `math.sqrt(9.0)` before this increment — type names are recognised only contextually, in annotation position, by `TypeChecker.ResolveSignatureType`'s literal string mapping, confirmed unaffected by the new namespace symbols (a `x: int`/struct-field/return-type annotation regression test locks this, the regression judged most likely to matter). Registering `int`/`float` as `NamespaceRegistry` names means they are also pre-registered `NamespaceDecl` symbols in the global scope (`TypeChecker.RegisterNamespaces`) exactly as `math`/`date`/`path` already are, so a top-level `int := 5`/`float := 5` now collides with the pre-registered symbol and raises `E1102` — the identical `math := 5` precedent, confirmed and locked with a test rather than treated as a regression to avoid; `int`/`float` are deliberately NOT added to `_reservedIdentifiers` (D-320), which is reserved for the separate `formatAs`/`select` reason, not for namespace status generally. `CallExpr.ResolvedReturnType` (D-362) is already set generically by `ResolveNamespaceMemberCall` for every namespace-native call, so `int.max(a, b) + 1`/`float.min(x, y) * 2.0` select the correct typed opcode with zero type-checker or compiler source changes — confirmed by sibling tests added to the existing `math.sqrt`-proving fixtures (`NamespaceEmissionTests`, `CompilerCallOperandTypingTests`, `TypeCheckerCallResolvedReturnTypeTests`) rather than a new mechanism. New `Grob.Stdlib.NumericStaticsPlugin` (registered after `NumericMethodsPlugin` in `PluginRegistration`) rather than folding into D-369's `NumericMethodsPlugin` — that class's own doc comment states it registers exactly `PrimitiveMemberRegistry`'s names, and mixing in namespace statics would falsify that and blur the one-plugin-per-registry-lineage pattern `MathPlugin`/`NumericMethodsPlugin` already establish; confirmed no `math`-module overlap (`MathPlugin` has no `min`/`max`/`clamp`). Pinned semantics: `min`/`max` never overflow (they select an existing operand, never compute), so neither pair carries a `checked(...)` guard; `clamp` guards an inverted range (`lo > hi`) explicitly before calling `Math.Clamp` (which otherwise throws an uncatchable `ArgumentException`), faulting through the D-366 native-throw-seam idiom as a catchable `ArithmeticError`/`E5001` — chosen deliberately over silently clamping to a plausible number, which would hide a caller bug; `float.min`/`float.max` defer entirely to .NET's `Math.Min`/`Math.Max(double, double)` with no special-casing — `NaN` in either argument position propagates to the result (IEEE 754, consistent with D-315's float-equality semantics) and `-0.0` sorts below `+0.0` — both pinned and tested in both argument positions/orders. Agreement-test reconciliation (the increment's own most important test): `NamespaceRegistry` gains `AllQualifiedNativeNames` (mirroring `PrimitiveMemberRegistry`'s identical-shaped field), `Grob.Compiler.csproj` grants `Grob.Integration.Tests` a second `InternalsVisibleTo` (previously only `Grob.Compiler.Tests` held one) so the reconciliation tests can read it, `PrimitiveMemberRegistryAgreementTests`' orphan-detection check gains a `.Except(NamespaceRegistry.AllQualifiedNativeNames)` term (confirmed still fails on a genuine orphan — verified directly by temporarily stripping the exclusion and observing the expected six false-positive failures, then restoring it), and new `NamespaceRegistryAgreementTests` adds the coverage-direction check (every `NamespaceRegistry.NativeMember` entry across every namespace, not only `int`/`float`, has a live `RegisterNative` call — confirmed load-bearing the same way, by temporarily removing the plugin registration and observing the expected six failures). No generic all-namespaces orphan check was added — it would need to special-case `formatAs` (D-342's deliberately unmodelled three members), out of scope here. No new opcode; no new error code (`E5001` reused for `clamp`'s fault); count unchanged at 118. Cites D-369 (the instance-member surface this completes), D-368 (the `round`/`roundTo` split D-369 implemented, same numeric surface), D-363 (`PrimitiveMemberRegistry`, the sibling registry these six deliberately do not join), D-342 (`NamespaceRegistry`, the registry these six do join, and the `math`-namespace shadowing precedent), D-362 (the `ResolvedReturnType` threading confirmed unchanged), D-366 (the native-seam fault idiom `clamp`'s guard reuses), D-315 (the float-equality/signed-zero semantics `float.min`/`max` stay consistent with), D-320 (`_reservedIdentifiers`, confirmed not extended), and the advertised-vs-built audit that first found the gap D-369 began closing |
 
 
 ---
@@ -6610,6 +6611,128 @@ sugar), and the advertised-vs-built audit that found the gap.
 
 ---
 
+### D-370 — `int`/`float` type-static function surface lands on `NamespaceRegistry`, completing the numeric surface (July 2026)
+
+Area: Type system / Stdlib — numeric type-static function surface
+Supersedes: none
+Superseded by: none
+Refines: D-369, D-368, D-363, D-342, D-362, D-366, D-315, D-320
+
+**The problem.** D-369 delivered the numeric *instance*-member surface (`int.abs()`,
+`float.roundTo()`, ...) on `PrimitiveMemberRegistry`, explicitly naming the six documented
+type-static functions — `int.min`, `int.max`, `int.clamp`, `float.min`, `float.max`,
+`float.clamp` — as out of scope, because they are namespace-receiver calls belonging to
+`NamespaceRegistry`, not instance members. Both `grob-type-registry.md` and the wiki
+(`wiki/Type-Registry/{int,float}.md`) already documented all six as target surface; none of
+them compiled before this increment.
+
+**The decision.** Register `int`/`float` entries in `NamespaceRegistry` (`Grob.Compiler`)
+alongside the existing `math`/`path`/`env`/... entries, and add a new
+`Grob.Stdlib.NumericStaticsPlugin` — a separate plugin from D-369's `NumericMethodsPlugin`,
+wired into `PluginRegistration.RegisterAll` immediately after it. Confirmed by direct reading
+before implementation: `MathPlugin` has no `min`/`max`/`clamp` (14 natives — `sqrt`, `pow`,
+`log`, the trig family, `random*`, `toDegrees`/`toRadians` — plus three `RegisterConstant`
+entries, none overlapping), so these six functions have no existing home and nothing to
+delegate to.
+
+**No grammar change.** `int`, `float`, `bool` and `string` are not keywords —
+`Lexer.LookupKeyword` has no entry for them, confirmed by direct reading, so they lex as
+plain identifiers. Type names are recognised only contextually, in annotation position, by
+`TypeChecker.ResolveSignatureType`'s literal string mapping (`"int" => GrobType.Int`, ...),
+which runs before ever touching `_scopes`/`LookupSymbol`. `int.min(1, 2)` therefore already
+lexed and parsed identically to `math.sqrt(9.0)` before this increment touched anything — this
+is namespace registration, not a parser or AST change. Confirmed by a regression test that
+`x: int`, a struct field typed `int`, and a function returning `float` all still resolve
+correctly — the regression judged most likely to matter, since it is the one place a shared
+identifier space could plausibly interfere with a completely different resolution path.
+
+**The shadowing consequence, adopted unchanged.** Registering `int`/`float` as
+`NamespaceRegistry` names means `TypeChecker.RegisterNamespaces` also pre-registers them as
+`NamespaceDecl` symbols in the global scope, exactly as `math`/`date`/`path`/... already are.
+A top-level `int := 5` or `float := 5` therefore now collides with the pre-registered symbol
+in `VisitVarDecl`'s same-scope check and raises `E1102` ("already declared"), where today it
+was legal. Confirmed this is exactly the behaviour `math := 5` already has — the same
+precedent, not a special case — and locked with an explicit test rather than treated as a
+regression to avoid. `int`/`float` are deliberately **not** added to `_reservedIdentifiers`
+(D-320): that set holds only `formatAs`/`select`, reserved for a distinct reason unrelated to
+namespace status — `math`, `date`, `path` and every other namespace are not reserved either.
+
+**Operand typing needs zero changes (D-362).** `CallExpr.ResolvedReturnType` is already set
+generically by `ResolveNamespaceMemberCall` for every namespace-native call, the same
+mechanism `math.sqrt` already proves — `int.max(a, b) + 1` selects `AddInt` and
+`float.min(x, y) * 2.0` selects `AddFloat` with no type-checker or compiler source changes,
+confirmed by sibling tests added directly to the existing `math.sqrt`-proving fixtures
+(`NamespaceEmissionTests`, `CompilerCallOperandTypingTests`,
+`TypeCheckerCallResolvedReturnTypeTests`) rather than a new mechanism built to prove it.
+
+**Plugin home — a separate lineage, not a fold-in.** `NumericMethodsPlugin`'s own doc comment
+states it registers exactly `PrimitiveMemberRegistry`'s names; mixing namespace statics into it
+would falsify that and blur the one-plugin-per-registry-lineage pattern `MathPlugin`/
+`NumericMethodsPlugin` already establish. `NumericStaticsPlugin` is therefore a new, separate,
+equally pure (no capability injection) plugin — even though both plugins register natives
+under the same `"int."`/`"float."` qualified-name prefix (`min`/`max`/`clamp` are distinct
+names from D-369's `toString`/`toFloat`/`abs`/etc., so there is no collision in the shared
+global native table).
+
+**Pinned semantics, each a load-bearing implementation detail:**
+
+- **`min`/`max` never overflow.** Both select an existing operand rather than computing a new
+  one, for both `int` and `float` — no `checked(...)` guard needed or added, unlike D-369's
+  `abs()`/`toInt()`.
+- **`clamp` with an inverted range (`lo > hi`) faults, deliberately.** `Math.Clamp` throws an
+  uncatchable `ArgumentException` for this case; both `int.clamp`/`float.clamp` guard it
+  explicitly before calling `Math.Clamp`, raising a catchable `ArithmeticError`/`E5001` through
+  the D-366 native-throw-seam idiom (reusing the existing leaf and code, no new one minted).
+  Chosen over silently clamping to a plausible-looking number, which would hide a genuine
+  caller bug — tested for both `int` and `float`, unhandled (CLI-level E5001, exit 1) and
+  caught (`try`/`catch`) alike.
+- **`float.min`/`float.max` defer entirely to .NET, no special-casing.** `Math.Min`/
+  `Math.Max(double, double)` propagate `NaN` to the result when either argument is `NaN`
+  (IEEE 754, consistent with D-315's float-equality semantics) and sort `-0.0` below `+0.0`.
+  Both pinned and tested explicitly, in both argument positions/orders — confirmed, not
+  assumed, since neither has a prior codebase precedent to mirror.
+
+**Agreement-test reconciliation — the increment's own most important test.** D-369 extended
+`PrimitiveMemberRegistryAgreementTests`'s orphan-detection filter to the `"int."`/`"float."`
+prefixes; registering `int.min` etc. through `NamespaceRegistry` puts a native under those same
+prefixes that is *deliberately* not a primitive member, which would otherwise misreport as
+drift. Reconciled rather than weakened: `NamespaceRegistry` gains `AllQualifiedNativeNames`
+(mirroring `PrimitiveMemberRegistry`'s identically shaped field), `Grob.Compiler.csproj` grants
+`Grob.Integration.Tests` a second `InternalsVisibleTo` entry (previously only
+`Grob.Compiler.Tests` held one, since `NamespaceRegistry` is `internal`, unlike the `public`
+`PrimitiveMemberRegistry`), the primitive-member orphan check gains a
+`.Except(NamespaceRegistry.AllQualifiedNativeNames)` term, and a new
+`NamespaceRegistryAgreementTests` adds the coverage-direction check (every
+`NamespaceRegistry.NativeMember` entry across every namespace — not only `int`/`float` — has a
+live `RegisterNative` call, catching every pre-existing namespace's entries as a free side
+effect of diffing the whole table). Both directions confirmed still load-bearing by direct
+experiment, not assumption: temporarily stripping the new `.Except` term reproduced exactly the
+six expected orphan failures (`int.min`/`max`/`clamp`, `float.min`/`max`/`clamp`), and
+temporarily removing `NumericStaticsPlugin` from `PluginRegistration` reproduced exactly the
+same six as coverage-direction failures — both reverted after confirming. No generic
+all-namespaces orphan check was added on the `NamespaceRegistry` side: it would need to
+special-case `formatAs`, whose three members are deliberately unmodelled in `NamespaceRegistry`
+(D-342's own comment on that entry), out of scope for this increment.
+
+**Out of scope, confirmed.** No `bool` or `string` statics — none are advertised. No array or
+map instance members (C0a/C0b). No new opcode — the existing `GetGlobal`-then-`Call`
+namespace-native shape, unchanged. No new error code — `clamp`'s fault reuses `E5001`/
+`ArithmeticError`; count unchanged at 118.
+
+Full detail: `grob-type-registry.md`'s `int`/`float` sections (build-status note updated to
+record the six statics as built, not target-surface-only), `wiki/Type-Registry/{int,float}.md`
+(pinned `clamp`/`NaN`/signed-zero semantics documented against each static row), D-369 (the
+instance-member surface this completes), D-368 (the `round`/`roundTo` split D-369 implemented,
+same numeric surface), D-363 (`PrimitiveMemberRegistry`, the sibling registry these six
+deliberately do not join), D-342 (`NamespaceRegistry`, the registry these six do join, and the
+`math`-namespace shadowing precedent this increment's own shadowing behaviour follows), D-362
+(the `ResolvedReturnType` threading confirmed unchanged), D-366 (the native-seam fault idiom
+`clamp`'s guard reuses), D-315 (the float-equality/signed-zero semantics `float.min`/`max` stay
+consistent with), D-320 (`_reservedIdentifiers`, confirmed not extended), and the
+advertised-vs-built audit that first found the gap D-369 began closing.
+
+---
+
 
 
 ## Post-MVP Decisions
@@ -6833,7 +6956,24 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Sprint 9 Increment A1a, numeric instance-member surface built: D-369 added._
+_July 2026 — Sprint 9 Increment A1b, numeric type-static surface built: D-370 added._
+_Completes the numeric surface Increment A1a/D-369 began: `int.min`/`max`/`clamp` and_
+_`float.min`/`max`/`clamp` registered as namespace-receiver calls on `NamespaceRegistry`_
+_(D-342), not instance members on `PrimitiveMemberRegistry` (D-363/D-369) — a genuinely_
+_different registry for a genuinely different call shape. No grammar change (type names_
+_lex as plain identifiers, confirmed unaffected in annotation position); the pre-existing_
+_`math := 5` shadowing precedent is adopted unchanged, so `int := 5`/`float := 5` now_
+_correctly raise E1102. `CallExpr.ResolvedReturnType` (D-362) needed zero changes for_
+_correct operand typing. New `Grob.Stdlib.NumericStaticsPlugin`, a separate plugin from_
+_`NumericMethodsPlugin` (registry-lineage separation, not a fold-in). `clamp` with an_
+_inverted range faults via the D-366 native-throw-seam idiom, reusing E5001; `float.min`/_
+_`max` pin .NET's NaN-propagation and signed-zero (`-0.0` < `+0.0`) semantics unchanged._
+_Reconciled the `int.`/`float.`-prefix agreement-test interaction D-369 created: new_
+_`NamespaceRegistry.AllQualifiedNativeNames`, a second `InternalsVisibleTo` grant to_
+_Grob.Integration.Tests, an `.Except` term on the primitive-member orphan check, and a new_
+_coverage-direction test — both directions confirmed still load-bearing by direct_
+_experiment. No new opcode or error code; count unchanged at 118._
+_Previous: July 2026 — Sprint 9 Increment A1a, numeric instance-member surface built: D-369 added._
 _Registers `int`/`float`/`bool` as `PrimitiveMemberRegistry` receivers (D-363), closing the_
 _second release-gate blocker the advertised-vs-built audit found. New `NumericMethodsPlugin`_
 _mirrors `StringMethodsPlugin`'s pure pattern; zero `math`-module overlap confirmed; zero_
