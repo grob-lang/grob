@@ -20,7 +20,7 @@ member is a compile error. Arrays are typed — all elements must be the same ty
 | `filter(fn: T → bool)` | `→ T[]` | |
 | `select(fn: T → U)` | `→ U[]` | Projection — maps elements to a new shape |
 | `each(fn: T → void)` | `→ void` | |
-| `sort(fn: T → U, descending: bool = false)` | `→ T[]` | Returns new sorted array. **Stable.** `U` must be `int`, `float`, `string`, `bool`, `date`, or `guid` (D-371) |
+| `sort(fn: T → U, descending: bool = false)` | `→ T[]` | Returns new sorted array. **Stable.** `U` must be `int`, `float`, `string`, `bool`, `date` or `guid` (D-371) |
 | `mapAs<T>()` | `→ T[]` | Typed deserialisation from JSON or CSV result sets |
 
 `.select()` is the projection method for arrays. It reads naturally in data

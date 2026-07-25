@@ -520,6 +520,13 @@ public sealed partial class TypeChecker {
     private GrobType ValidateArrayFirstLastCall(CallExpr node, MemberAccessExpr memberAccess) {
         ArrayTypeDescriptor? descriptor = ArrayDescriptorOf(memberAccess.Target);
         GrobType resultType = GrobTypeHelpers.ToNullable(descriptor?.ElementKind ?? GrobType.Unknown);
+        // first()/last() take no argument; reject any supplied arg (E0003) through the same
+        // shared gate contains()/the named-type/primitive paths use — the bound VM natives
+        // declare arity 0 and would otherwise silently discard it.
+        if (!MemberArgCountMatches(node, memberAccess, node.Arguments.Count, 0)) {
+            node.ResolvedReturnType = resultType;
+            return resultType;
+        }
         if (descriptor?.ElementNamedTypeName is string elementNamedTypeName) {
             _callResultStructNames[node] = elementNamedTypeName;
         }
@@ -535,7 +542,11 @@ public sealed partial class TypeChecker {
     /// same shared <see cref="MemberArgCountMatches"/> gate the named-type/primitive
     /// member paths already use), whose type must match the receiver's element type
     /// (D-351, <see cref="ArrayTypeDescriptor"/>) — a mismatch is E0004, the existing
-    /// argument-type-mismatch code, never a new one. A receiver whose descriptor is
+    /// argument-type-mismatch code, never a new one. The match is nominal, not merely the
+    /// flat <see cref="GrobType"/> tag: a named-struct element (date/guid, D-303) checks
+    /// the argument's struct name via <see cref="IsStructNominalMismatch"/>, and a nested-
+    /// array element (int[][]) checks descriptor identity via <see cref="ArrayElementAssignable"/>,
+    /// mirroring the typed-function-argument checks. A receiver whose descriptor is
     /// unavailable stays permissive (no argument-type check runs). Always resolves to
     /// <see cref="GrobType.Bool"/>.
     /// </summary>
@@ -546,11 +557,30 @@ public sealed partial class TypeChecker {
             return GrobType.Bool;
         }
         ArrayTypeDescriptor? descriptor = ArrayDescriptorOf(memberAccess.Target);
-        if (descriptor is not null && argTypes[0] != GrobType.Error && argTypes[0] != GrobType.Unknown &&
-                !TypesAreAssignable(argTypes[0], descriptor.ElementKind)) {
+        if (descriptor is null || argTypes[0] == GrobType.Error || argTypes[0] == GrobType.Unknown) {
+            return GrobType.Bool;
+        }
+        Expression argExpr = node.Arguments[0].Value;
+        bool compatible = TypesAreAssignable(argTypes[0], descriptor.ElementKind);
+        // Nested-array element identity (D-351): the flat GrobType.Array tag does not
+        // distinguish int[][] from string[][], so int[][].contains(string[]) must be
+        // rejected — mirroring the typed-function array-argument check (CheckArgument).
+        if (compatible && descriptor.ElementKind is GrobType.Array or GrobType.NullableArray &&
+                !ArrayElementAssignable(ArrayDescriptorOf(argExpr), descriptor.ElementArrayDescriptor)) {
+            compatible = false;
+        }
+        // Struct nominal identity (D-303): the flat GrobType.Struct tag does not distinguish
+        // date from guid from a user struct, so date[].contains(guid) must be rejected —
+        // mirroring the typed-function nominal check (IsStructNominalMismatch, PR #133).
+        if (compatible && IsStructNominalMismatch(descriptor.ElementKind, descriptor.ElementNamedTypeName, argExpr)) {
+            compatible = false;
+        }
+        if (!compatible) {
+            string argDisplay = GetStructTypeName(argExpr) ?? TypeName(argTypes[0]);
+            string elementDisplay = descriptor.ElementNamedTypeName ?? TypeName(descriptor.ElementKind);
             EmitError(ErrorCatalog.E0004,
-                $"Argument to 'contains' has type '{TypeName(argTypes[0])}', which is not assignable to element type '{TypeName(descriptor.ElementKind)}'.",
-                node.Arguments[0].Value.Range);
+                $"Argument to 'contains' has type '{argDisplay}', which is not assignable to element type '{elementDisplay}'.",
+                argExpr.Range);
         }
         return GrobType.Bool;
     }

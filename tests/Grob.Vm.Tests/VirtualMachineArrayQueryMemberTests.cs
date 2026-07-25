@@ -340,35 +340,23 @@ public sealed class VirtualMachineArrayQueryMemberTests {
     // sort — still-uncomparable kinds (E0004 unchanged).
     // -----------------------------------------------------------------------
 
-    [Fact]
-    public void Sort_ByArrayKey_ThrowsE0004() {
-        GrobValue[] elements = [
-            GrobValue.FromArray(new GrobArray([GrobValue.FromInt(1)])),
-            GrobValue.FromArray(new GrobArray([GrobValue.FromInt(2)])),
-        ];
-
-        var (vm, _) = NewVm();
-        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(
-            () => vm.Run(BuildSortChunk(elements, BuildIdentityLambda())));
-        Assert.Equal("E0004", ex.Code);
-    }
-
-    [Fact]
-    public void Sort_ByMapKey_ThrowsE0004() {
-        GrobValue[] elements = [GrobValue.FromMap(new GrobMap()), GrobValue.FromMap(new GrobMap())];
-
-        var (vm, _) = NewVm();
-        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(
-            () => vm.Run(BuildSortChunk(elements, BuildIdentityLambda())));
-        Assert.Equal("E0004", ex.Code);
-    }
-
-    [Fact]
-    public void Sort_ByUserStructKey_ThrowsE0004() {
-        GrobValue[] elements = [
-            GrobValue.FromStruct(new GrobStruct("Config", [])),
-            GrobValue.FromStruct(new GrobStruct("Config", [])),
-        ];
+    [Theory]
+    [InlineData("array")]
+    [InlineData("map")]
+    [InlineData("struct")]
+    public void Sort_ByUncomparableKey_ThrowsE0004(string elementKind) {
+        GrobValue[] elements = elementKind switch {
+            "array" => [
+                GrobValue.FromArray(new GrobArray([GrobValue.FromInt(1)])),
+                GrobValue.FromArray(new GrobArray([GrobValue.FromInt(2)])),
+            ],
+            "map" => [GrobValue.FromMap(new GrobMap()), GrobValue.FromMap(new GrobMap())],
+            "struct" => [
+                GrobValue.FromStruct(new GrobStruct("Config", [])),
+                GrobValue.FromStruct(new GrobStruct("Config", [])),
+            ],
+            _ => throw new ArgumentOutOfRangeException(nameof(elementKind)),
+        };
 
         var (vm, _) = NewVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(

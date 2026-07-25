@@ -86,26 +86,17 @@ public sealed class CompilerArrayQueryMemberTests {
     // length / isEmpty — properties, generic GetProperty emission.
     // -----------------------------------------------------------------------
 
-    [Fact]
-    public void Length_EmitsGetProperty_WithLengthName() {
-        Chunk chunk = CompileSource("xs: int[] := [1, 2, 3]\nreadonly n := xs.length\n");
+    [Theory]
+    [InlineData("readonly n := xs.length\n", "length")]
+    [InlineData("readonly e := xs.isEmpty\n", "isEmpty")]
+    public void Property_EmitsGetProperty_WithMemberName(string tail, string expectedName) {
+        Chunk chunk = CompileSource("xs: int[] := [1, 2, 3]\n" + tail);
 
         List<Instr> instrs = Decode(chunk);
         int idx = instrs.FindIndex(i => i.Op == OpCode.GetProperty);
         Assert.True(idx >= 0, "no GetProperty instruction found");
         GrobValue nameConst = chunk.ReadConstant(instrs[idx].Arg);
-        Assert.Equal("length", nameConst.AsString());
-    }
-
-    [Fact]
-    public void IsEmpty_EmitsGetProperty_WithIsEmptyName() {
-        Chunk chunk = CompileSource("xs: int[] := [1, 2, 3]\nreadonly e := xs.isEmpty\n");
-
-        List<Instr> instrs = Decode(chunk);
-        int idx = instrs.FindIndex(i => i.Op == OpCode.GetProperty);
-        Assert.True(idx >= 0, "no GetProperty instruction found");
-        GrobValue nameConst = chunk.ReadConstant(instrs[idx].Arg);
-        Assert.Equal("isEmpty", nameConst.AsString());
+        Assert.Equal(expectedName, nameConst.AsString());
     }
 
     [Fact]

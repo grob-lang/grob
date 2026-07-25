@@ -112,32 +112,27 @@ public sealed class TypeCheckerArrayQueryMemberTests {
     // first() / last() — generic T? typing, proven for two distinct element types.
     // -----------------------------------------------------------------------
 
-    [Fact]
-    public void First_OnIntArray_ResolvesToNullableInt() {
-        var (unit, bag) = TypeCheckSource("xs: int[] := [1, 2, 3]\nx := xs.first()\n");
+    [Theory]
+    [InlineData("xs: int[] := [1, 2, 3]\nx := xs.first()\n", GrobType.NullableInt)]
+    [InlineData("xs: string[] := [\"a\", \"b\"]\nx := xs.first()\n", GrobType.NullableString)]
+    [InlineData("xs: int[] := [1, 2, 3]\nx := xs.last()\n", GrobType.NullableInt)]
+    public void FirstLast_ResolvesToNullableElementType(string source, GrobType expected) {
+        var (unit, bag) = TypeCheckSource(source);
 
         Assert.False(bag.HasErrors, FormatErrors(bag));
         CallExpr call = Assert.Single(CollectCalls(unit));
-        Assert.Equal(GrobType.NullableInt, call.ResolvedReturnType);
+        Assert.Equal(expected, call.ResolvedReturnType);
     }
 
-    [Fact]
-    public void First_OnStringArray_ResolvesToNullableString() {
-        var (unit, bag) = TypeCheckSource(
-            "xs: string[] := [\"a\", \"b\"]\nx := xs.first()\n");
-
-        Assert.False(bag.HasErrors, FormatErrors(bag));
-        CallExpr call = Assert.Single(CollectCalls(unit));
-        Assert.Equal(GrobType.NullableString, call.ResolvedReturnType);
-    }
-
-    [Fact]
-    public void Last_OnIntArray_ResolvesToNullableInt() {
-        var (unit, bag) = TypeCheckSource("xs: int[] := [1, 2, 3]\nx := xs.last()\n");
-
-        Assert.False(bag.HasErrors, FormatErrors(bag));
-        CallExpr call = Assert.Single(CollectCalls(unit));
-        Assert.Equal(GrobType.NullableInt, call.ResolvedReturnType);
+    [Theory]
+    [InlineData("xs: int[] := [1, 2, 3]\nxs.first(1)\n")]
+    [InlineData("xs: int[] := [1, 2, 3]\nxs.last(1)\n")]
+    public void FirstLast_WithArgument_ReportsE0003(string source) {
+        // first()/last() take no argument (D-371); the bound VM natives declare arity 0
+        // and silently ignore any extra arg, so the type checker must reject it — via the
+        // same MemberArgCountMatches gate contains() already uses.
+        DiagnosticBag bag = Check(source);
+        AssertSingleError(bag, "E0003", 2, 1);
     }
 
     [Fact]
@@ -180,16 +175,31 @@ public sealed class TypeCheckerArrayQueryMemberTests {
         AssertSingleError(bag, "E0004", 2, 13);
     }
 
-    [Fact]
-    public void Contains_TooFewArguments_ReportsE0003() {
-        DiagnosticBag bag = Check("xs: int[] := [1, 2, 3]\nxs.contains()\n");
-        AssertSingleError(bag, "E0003", 2, 1);
+    [Theory]
+    [InlineData("xs: int[] := [1, 2, 3]\nxs.contains()\n")]
+    [InlineData("xs: int[] := [1, 2, 3]\nxs.contains(1, 2)\n")]
+    public void Contains_WrongArity_ReportsE0003(string source) {
+        AssertSingleError(Check(source), "E0003", 2, 1);
     }
 
     [Fact]
-    public void Contains_TooManyArguments_ReportsE0003() {
-        DiagnosticBag bag = Check("xs: int[] := [1, 2, 3]\nxs.contains(1, 2)\n");
-        AssertSingleError(bag, "E0003", 2, 1);
+    public void Contains_NominalStructMismatch_ReportsE0004() {
+        // date and guid are both flat GrobType.Struct; a flat TypesAreAssignable check
+        // would accept date[].contains(guid). Nominal identity (D-303) must reject it,
+        // mirroring the typed-function-argument nominal check (PR #133).
+        DiagnosticBag bag = Check(
+            "ds: date[] := [date.of(2026, 1, 1)]\ng := guid.newV4()\nx := ds.contains(g)\n");
+        AssertSingleError(bag, "E0004", 3, 18);
+    }
+
+    [Fact]
+    public void Contains_NestedArrayElementMismatch_ReportsE0004() {
+        // int[][] and string[][] are both flat GrobType.Array; nested-descriptor identity
+        // (D-351) must reject int[][].contains(string[]), mirroring the typed-function
+        // array-argument check.
+        DiagnosticBag bag = Check(
+            "xs: int[][] := [[1, 2], [3, 4]]\nys: string[] := [\"a\", \"b\"]\nx := xs.contains(ys)\n");
+        AssertSingleError(bag, "E0004", 3, 18);
     }
 
     [Fact]

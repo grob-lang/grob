@@ -4,19 +4,24 @@ using Grob.Core;
 namespace Grob.Vm;
 
 /// <summary>
-/// Factory for the array higher-order method natives: <c>filter</c>, <c>select</c>,
-/// <c>sort</c> and <c>each</c>.  Each method is bound to its receiver array at
-/// <see cref="OpCode.GetProperty"/> dispatch time, capturing the array and the
-/// <see cref="VmInvoker"/> callback in the returned <see cref="NativeFunction"/>
-/// delegate.  Sprint 5 Increment C; moved to <c>Grob.Stdlib</c> in Sprint 6+.
+/// Factory for the array method natives: the higher-order members <c>filter</c>,
+/// <c>select</c>, <c>sort</c> and <c>each</c>, plus the non-higher-order query members
+/// <c>first</c>, <c>last</c> and <c>contains</c> (Sprint 9 Increment C0a-1, D-371). Each
+/// method is bound to its receiver array at <see cref="OpCode.GetProperty"/> dispatch
+/// time, capturing the array in the returned <see cref="NativeFunction"/> delegate.  The
+/// <see cref="VmInvoker"/> callback is captured only by the members that run a lambda
+/// argument; <c>first</c>/<c>last</c>/<c>contains</c> take no function and ignore it.
+/// Sprint 5 Increment C; moved to <c>Grob.Stdlib</c> in Sprint 6+.
 /// </summary>
 internal static class ArrayNatives {
     /// <summary>
     /// Returns the bound <see cref="NativeFunction"/> for the given
     /// <paramref name="methodName"/> on <paramref name="receiver"/>, or
-    /// <see langword="null"/> when the name is not an array higher-order method.
-    /// The <paramref name="invoker"/> is captured in the native's delegate so
-    /// the implementation can call back into the VM to run the lambda argument.
+    /// <see langword="null"/> when the name is not an array method (higher-order or query).
+    /// The <paramref name="invoker"/> is captured in the native's delegate so a
+    /// higher-order member (<c>filter</c>/<c>select</c>/<c>sort</c>/<c>each</c>) can call
+    /// back into the VM to run its lambda argument; the query members
+    /// (<c>first</c>/<c>last</c>/<c>contains</c>) take no function and ignore it.
     /// </summary>
     internal static NativeFunction? GetMethod(
             string methodName, GrobArray receiver, VmInvoker invoker) =>
