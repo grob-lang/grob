@@ -46,6 +46,20 @@ entirely to .NET's `Math.Min`/`Math.Max(double, double)` with no special-casing 
 in either argument position propagates to the result, and `-0.0` sorts below `+0.0`,
 both pinned and tested exactly as .NET already behaves.
 
+**Build-status note (D-371, Sprint 9 Increment C0a-1).** The `T[]` section's `length`,
+`isEmpty`, `first()`, `last()` and `contains(v: T)` rows below are now **fully built** —
+five of the nine members that were previously documented but did not dispatch, found by
+the advertised-vs-built audit. Arrays stay structural (D-351/D-356/D-363) rather than
+joining `NamedTypeRegistry`/`PrimitiveMemberRegistry`: `length`/`isEmpty` resolve
+directly in the type checker's `VisitMemberAccess`; `first()`/`last()`/`contains(v: T)`
+derive their generic `T`-dependent signatures from the receiver's `ArrayTypeDescriptor`
+(D-351), mirroring index-access element-type resolution. `sort<U: Comparable>`'s full
+documented key set — `int`, `float`, `string`, `bool`, `date`, `guid` — is also now
+**fully built**: `date` orders by the instant basis (D-367, matching `<`/`>`), `guid`
+orders ordinally on its canonical string (D-357). `append`, `insert`, `remove` and
+`clear` (the mutating four, plus their `const`/`readonly` mutation rejection) remain
+**pending** — Increment C0a-2.
+
 ---
 
 ## `string`

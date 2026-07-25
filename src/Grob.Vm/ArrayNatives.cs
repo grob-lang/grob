@@ -4,19 +4,24 @@ using Grob.Core;
 namespace Grob.Vm;
 
 /// <summary>
-/// Factory for the array higher-order method natives: <c>filter</c>, <c>select</c>,
-/// <c>sort</c> and <c>each</c>.  Each method is bound to its receiver array at
-/// <see cref="OpCode.GetProperty"/> dispatch time, capturing the array and the
-/// <see cref="VmInvoker"/> callback in the returned <see cref="NativeFunction"/>
-/// delegate.  Sprint 5 Increment C; moved to <c>Grob.Stdlib</c> in Sprint 6+.
+/// Factory for the array method natives: the higher-order members <c>filter</c>,
+/// <c>select</c>, <c>sort</c> and <c>each</c>, plus the non-higher-order query members
+/// <c>first</c>, <c>last</c> and <c>contains</c> (Sprint 9 Increment C0a-1, D-371). Each
+/// method is bound to its receiver array at <see cref="OpCode.GetProperty"/> dispatch
+/// time, capturing the array in the returned <see cref="NativeFunction"/> delegate.  The
+/// <see cref="VmInvoker"/> callback is captured only by the members that run a lambda
+/// argument; <c>first</c>/<c>last</c>/<c>contains</c> take no function and ignore it.
+/// Sprint 5 Increment C; moved to <c>Grob.Stdlib</c> in Sprint 6+.
 /// </summary>
 internal static class ArrayNatives {
     /// <summary>
     /// Returns the bound <see cref="NativeFunction"/> for the given
     /// <paramref name="methodName"/> on <paramref name="receiver"/>, or
-    /// <see langword="null"/> when the name is not an array higher-order method.
-    /// The <paramref name="invoker"/> is captured in the native's delegate so
-    /// the implementation can call back into the VM to run the lambda argument.
+    /// <see langword="null"/> when the name is not an array method (higher-order or query).
+    /// The <paramref name="invoker"/> is captured in the native's delegate so a
+    /// higher-order member (<c>filter</c>/<c>select</c>/<c>sort</c>/<c>each</c>) can call
+    /// back into the VM to run its lambda argument; the query members
+    /// (<c>first</c>/<c>last</c>/<c>contains</c>) take no function and ignore it.
     /// </summary>
     internal static NativeFunction? GetMethod(
             string methodName, GrobArray receiver, VmInvoker invoker) =>
@@ -29,6 +34,14 @@ internal static class ArrayNatives {
                 (args, inv) => Sort(args, inv, receiver)),
             "each" => new NativeFunction("each", 1,
                 (args, inv) => Each(args, inv, receiver)),
+            // Sprint 9 Increment C0a-1 (D-371): the non-higher-order query members —
+            // none take a function argument, so each ignores the VmInvoker parameter.
+            "first" => new NativeFunction("first", 0,
+                (_, _) => First(receiver)),
+            "last" => new NativeFunction("last", 0,
+                (_, _) => Last(receiver)),
+            "contains" => new NativeFunction("contains", 1,
+                (args, _) => Contains(args, receiver)),
             _ => null,
         };
 
@@ -104,6 +117,47 @@ internal static class ArrayNatives {
             invoker(fn, [source[i]]);
         return GrobValue.Nil;
     }
+
+    // -----------------------------------------------------------------------
+    // first() → T?, last() → T? — nil on an empty array (Sprint 9 Increment C0a-1).
+    // -----------------------------------------------------------------------
+
+    private static GrobValue First(GrobArray source) =>
+        source.Count == 0 ? GrobValue.Nil : source[0];
+
+    private static GrobValue Last(GrobArray source) =>
+        source.Count == 0 ? GrobValue.Nil : source[source.Count - 1];
+
+    // -----------------------------------------------------------------------
+    // contains(v: T) → bool (Sprint 9 Increment C0a-1).
+    // -----------------------------------------------------------------------
+
+    private static GrobValue Contains(GrobValue[] args, GrobArray source) {
+        GrobValue needle = args[0];
+        for (int i = 0; i < source.Count; i++) {
+            if (ValuesEqual(source[i], needle)) return GrobValue.FromBool(true);
+        }
+        return GrobValue.FromBool(false);
+    }
+
+    /// <summary>
+    /// The same equality <c>==</c> uses at runtime, so <c>contains</c> can never
+    /// disagree with it — most notably for <c>date</c>, whose equality is
+    /// instant-based (D-367, <see cref="OpCode.EqualDate"/>'s VM handler) rather than
+    /// the field-by-field <c>__value</c> compare <see cref="GrobValue"/>'s own
+    /// <c>operator==</c> would otherwise apply. Every other kind, including <c>guid</c>
+    /// (D-169's field-by-field struct equality), is already correct via
+    /// <see cref="GrobValue"/>'s own operator.
+    /// </summary>
+    private static bool ValuesEqual(GrobValue a, GrobValue b) {
+        if (a.TryAsStruct(out GrobStruct? sa) && b.TryAsStruct(out GrobStruct? sb)
+                && sa!.TypeName == DateNatives.TypeName && sb!.TypeName == DateNatives.TypeName) {
+            return a.IsNil || b.IsNil
+                ? a.IsNil && b.IsNil
+                : DateNatives.ToDateTimeOffset(sa) == DateNatives.ToDateTimeOffset(sb);
+        }
+        return a == b;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -112,9 +166,12 @@ internal static class ArrayNatives {
 
 /// <summary>
 /// Orders <see cref="GrobValue"/> sort keys. Supports Int (long), Float (double),
-/// String (ordinal), and Bool (false &lt; true). Other kinds throw
-/// <see cref="GrobRuntimeException"/>; the type checker defers Comparable
-/// validation to Sprint 5 Increment D.
+/// String (ordinal), Bool (false &lt; true), and — Sprint 9 Increment C0a-1 (D-371) —
+/// the two <c>Struct</c>-kind named types the registry advertises as
+/// <c>Comparable</c>: <c>date</c> (instant basis, <see cref="DateNatives.ToDateTimeOffset"/>)
+/// and <c>guid</c> (ordinal on the canonical string). Every other kind, including any
+/// other <c>Struct</c> (a user type, or a mixed <c>date</c>/<c>guid</c> pairing) throws
+/// <see cref="GrobRuntimeException"/>.
 /// </summary>
 internal sealed class GrobValueComparer : IComparer<GrobValue> {
     internal static readonly GrobValueComparer Instance = new();
@@ -137,9 +194,32 @@ internal sealed class GrobValueComparer : IComparer<GrobValue> {
             GrobValueKind.Float => x.AsFloat().CompareTo(y.AsFloat()),
             GrobValueKind.String => string.CompareOrdinal(x.AsString(), y.AsString()),
             GrobValueKind.Bool => x.AsBool().CompareTo(y.AsBool()),
+            GrobValueKind.Struct => CompareStruct(x.AsStruct(), y.AsStruct()),
             _ => throw new GrobRuntimeException(
                      ErrorCatalog.E0004.Code, UnknownLine, UnknownColumn,
                      $"sort key type {x.Kind} does not implement Comparable"),
         };
+    }
+
+    /// <summary>
+    /// Orders two <c>Struct</c>-kind sort keys, discriminated by
+    /// <see cref="GrobStruct.TypeName"/>. <c>date</c> MUST compare via
+    /// <see cref="DateNatives.ToDateTimeOffset"/> — the same instant basis
+    /// <see cref="OpCode.LessDate"/>/<see cref="OpCode.GreaterDate"/>/
+    /// <see cref="OpCode.EqualDate"/> already share (D-367) — never the raw
+    /// <c>__value</c> string, which would order dates differently from <c>&lt;</c> and
+    /// reintroduce the exact trichotomy incoherence D-367 closed. <c>guid</c> stays
+    /// ordinal on its canonical string (D-357). Any other pairing — a user struct, or a
+    /// mixed <c>date</c>/<c>guid</c> pairing — does not implement <c>Comparable</c>.
+    /// </summary>
+    private static int CompareStruct(GrobStruct a, GrobStruct b) {
+        if (a.TypeName == DateNatives.TypeName && b.TypeName == DateNatives.TypeName) {
+            return DateNatives.ToDateTimeOffset(a).CompareTo(DateNatives.ToDateTimeOffset(b));
+        }
+        if (a.TypeName == GuidNatives.TypeName && b.TypeName == GuidNatives.TypeName) {
+            return string.CompareOrdinal(GuidNatives.CanonicalString(a), GuidNatives.CanonicalString(b));
+        }
+        throw new GrobRuntimeException(ErrorCatalog.E0004.Code, UnknownLine, UnknownColumn,
+            $"sort key type {a.TypeName} does not implement Comparable");
     }
 }

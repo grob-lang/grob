@@ -403,8 +403,8 @@ public sealed partial class TypeChecker {
         for (int i = 0; i < node.Arguments.Count; i++)
             argTypes[i] = Visit(node.Arguments[i].Value);
 
-        if (receiverType == GrobType.Array && IsArrayHigherOrderMethod(memberAccess.Member)) {
-            return ValidateArrayMethodCall(node, memberAccess.Member, argTypes);
+        if (receiverType == GrobType.Array && IsArrayMethod(memberAccess.Member)) {
+            return ValidateArrayMethodCall(node, memberAccess, argTypes);
         }
 
         // D-066: primitive instance-method dispatch (string first) — compile-time sugar,
@@ -442,18 +442,28 @@ public sealed partial class TypeChecker {
         return GrobType.Unknown;
     }
 
-    private static bool IsArrayHigherOrderMethod(string name) =>
-        name is "filter" or "select" or "sort" or "each";
+    // Sprint 9 Increment C0a-1 (D-371): "first"/"last"/"contains" joined the four
+    // pre-existing higher-order members. Renamed from IsArrayHigherOrderMethod — the
+    // three new members take no function argument, so "higher-order" no longer
+    // describes the whole recognised set.
+    private static bool IsArrayMethod(string name) =>
+        name is "filter" or "select" or "sort" or "each" or "first" or "last" or "contains";
 
     /// <summary>
-    /// Validates an array higher-order method call and returns the result type.
-    /// Emits E0004 when a <c>filter</c> predicate's inferred return type is known
-    /// to be non-bool (neither <see cref="GrobType.Unknown"/> nor
-    /// <see cref="GrobType.Error"/> — those are permissive).
+    /// Validates an array method call and returns the result type. <c>filter</c>/
+    /// <c>select</c>/<c>sort</c>/<c>each</c> are the pre-existing higher-order members,
+    /// unchanged. <c>first</c>/<c>last</c>/<c>contains</c> (Sprint 9 Increment C0a-1,
+    /// D-371) are not higher-order — no function argument — so their signatures are
+    /// generic in the receiver's element type (D-351) rather than a lambda's inferred
+    /// return type, resolved via <see cref="ValidateArrayFirstLastCall"/>/
+    /// <see cref="ValidateArrayContainsCall"/>. Emits E0004 when a <c>filter</c>
+    /// predicate's inferred return type is known to be non-bool (neither
+    /// <see cref="GrobType.Unknown"/> nor <see cref="GrobType.Error"/> — those are
+    /// permissive).
     /// </summary>
     private GrobType ValidateArrayMethodCall(
-            CallExpr node, string methodName, GrobType[] argTypes) {
-        switch (methodName) {
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
+        switch (memberAccess.Member) {
             case "filter": {
                     // First argument must be a predicate returning bool.
                     if (node.Arguments.Count >= 1 &&
@@ -481,9 +491,98 @@ public sealed partial class TypeChecker {
                 return GrobType.Array;
             case "each":
                 return GrobType.Unknown; // void
+            case "first":
+            case "last":
+                return ValidateArrayFirstLastCall(node, memberAccess);
+            case "contains":
+                return ValidateArrayContainsCall(node, memberAccess, argTypes);
             default:
                 return GrobType.Unknown;
         }
+    }
+
+    /// <summary>
+    /// Validates a <c>first()</c>/<c>last()</c> call and resolves its <c>T?</c> return
+    /// type from the receiver's <see cref="ArrayTypeDescriptor"/> (D-351) — mirroring
+    /// <see cref="VisitIndex"/>'s <c>ArrayDescriptorOf(node.Target)?.ElementKind</c>
+    /// derivation, not <c>select</c>'s untracked-element precedent (no descriptor is
+    /// threaded through <c>select</c>/<c>filter</c>/<c>sort</c>/<c>each</c> today, so
+    /// they are not the shape to copy). A receiver whose descriptor is unavailable (an
+    /// untyped or externally-sourced array) stays permissive at
+    /// <see cref="GrobType.Unknown"/>, matching every other missing-descriptor
+    /// fallback in this file. When the element itself is a named struct or a nested
+    /// array, its name/nested descriptor is threaded through <c>_callResultStructNames</c>/
+    /// <c>_callResultArrayDescriptors</c> — the same side channels
+    /// <see cref="ValidatePrimitiveMemberCall"/> already populates for <c>split()</c> —
+    /// so a chained access on the result (<c>arr.first()?.year</c>) resolves further
+    /// rather than regressing to <see cref="GrobType.Unknown"/>.
+    /// </summary>
+    private GrobType ValidateArrayFirstLastCall(CallExpr node, MemberAccessExpr memberAccess) {
+        ArrayTypeDescriptor? descriptor = ArrayDescriptorOf(memberAccess.Target);
+        GrobType resultType = GrobTypeHelpers.ToNullable(descriptor?.ElementKind ?? GrobType.Unknown);
+        // first()/last() take no argument; reject any supplied arg (E0003) through the same
+        // shared gate contains()/the named-type/primitive paths use — the bound VM natives
+        // declare arity 0 and would otherwise silently discard it.
+        if (!MemberArgCountMatches(node, memberAccess, node.Arguments.Count, 0)) {
+            node.ResolvedReturnType = resultType;
+            return resultType;
+        }
+        if (descriptor?.ElementNamedTypeName is string elementNamedTypeName) {
+            _callResultStructNames[node] = elementNamedTypeName;
+        }
+        if (descriptor?.ElementArrayDescriptor is ArrayTypeDescriptor elementArrayDescriptor) {
+            _callResultArrayDescriptors[node] = elementArrayDescriptor;
+        }
+        node.ResolvedReturnType = resultType;
+        return resultType;
+    }
+
+    /// <summary>
+    /// Validates a <c>contains(v: T)</c> call: exactly one argument (E0003, via the
+    /// same shared <see cref="MemberArgCountMatches"/> gate the named-type/primitive
+    /// member paths already use), whose type must match the receiver's element type
+    /// (D-351, <see cref="ArrayTypeDescriptor"/>) — a mismatch is E0004, the existing
+    /// argument-type-mismatch code, never a new one. The match is nominal, not merely the
+    /// flat <see cref="GrobType"/> tag: a named-struct element (date/guid, D-303) checks
+    /// the argument's struct name via <see cref="IsStructNominalMismatch"/>, and a nested-
+    /// array element (int[][]) checks descriptor identity via <see cref="ArrayElementAssignable"/>,
+    /// mirroring the typed-function-argument checks. A receiver whose descriptor is
+    /// unavailable stays permissive (no argument-type check runs). Always resolves to
+    /// <see cref="GrobType.Bool"/>.
+    /// </summary>
+    private GrobType ValidateArrayContainsCall(
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
+        node.ResolvedReturnType = GrobType.Bool;
+        if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, 1)) {
+            return GrobType.Bool;
+        }
+        ArrayTypeDescriptor? descriptor = ArrayDescriptorOf(memberAccess.Target);
+        if (descriptor is null || argTypes[0] == GrobType.Error || argTypes[0] == GrobType.Unknown) {
+            return GrobType.Bool;
+        }
+        Expression argExpr = node.Arguments[0].Value;
+        bool compatible = TypesAreAssignable(argTypes[0], descriptor.ElementKind);
+        // Nested-array element identity (D-351): the flat GrobType.Array tag does not
+        // distinguish int[][] from string[][], so int[][].contains(string[]) must be
+        // rejected — mirroring the typed-function array-argument check (CheckArgument).
+        if (compatible && descriptor.ElementKind is GrobType.Array or GrobType.NullableArray &&
+                !ArrayElementAssignable(ArrayDescriptorOf(argExpr), descriptor.ElementArrayDescriptor)) {
+            compatible = false;
+        }
+        // Struct nominal identity (D-303): the flat GrobType.Struct tag does not distinguish
+        // date from guid from a user struct, so date[].contains(guid) must be rejected —
+        // mirroring the typed-function nominal check (IsStructNominalMismatch, PR #133).
+        if (compatible && IsStructNominalMismatch(descriptor.ElementKind, descriptor.ElementNamedTypeName, argExpr)) {
+            compatible = false;
+        }
+        if (!compatible) {
+            string argDisplay = GetStructTypeName(argExpr) ?? TypeName(argTypes[0]);
+            string elementDisplay = descriptor.ElementNamedTypeName ?? TypeName(descriptor.ElementKind);
+            EmitError(ErrorCatalog.E0004,
+                $"Argument to 'contains' has type '{argDisplay}', which is not assignable to element type '{elementDisplay}'.",
+                argExpr.Range);
+        }
+        return GrobType.Bool;
     }
 
     /// <summary>
@@ -993,9 +1092,42 @@ public sealed partial class TypeChecker {
             return ResolveStructFieldAccess(node);
         }
 
+        // Sprint 9 Increment C0a-1 (D-371): array properties (length/isEmpty). Arrays
+        // stay structural (D-351/D-356/D-363) rather than joining either registry — no
+        // ArrayTypeDescriptor is even needed for these two, since neither depends on the
+        // element type — so they are resolved directly here, the last receiver-specific
+        // arm before the generic permissive fall-through below. 'map' is now the sole
+        // remaining receiver reaching that fall-through (until C0b) — confirmed no
+        // GrobType.Map dispatch exists anywhere else in this file.
+        if (targetType == GrobType.Array) {
+            return ResolveArrayPropertyAccess(node);
+        }
+
         // For '?.' chains or Unknown-typed targets the result type is Unknown so
         // downstream '??' operators remain permissive and do not emit false positives.
         return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Resolves a bare (non-call) property access on an array receiver — <c>length</c>
+    /// and <c>isEmpty</c>, the two properties in the Sprint 9 Increment C0a-1 (D-371)
+    /// surface. Method-family members (<c>first</c>, <c>filter</c>, ...) are resolved
+    /// only via a call (<see cref="ValidateArrayMethodCall"/>); a bare reference to one
+    /// here is an unrecognised member, mirroring
+    /// <see cref="ResolveNamedTypePropertyAccess"/>/<see cref="ResolvePrimitiveMemberPropertyAccess"/>'s
+    /// identical rule for their own receivers.
+    /// </summary>
+    private GrobType ResolveArrayPropertyAccess(MemberAccessExpr node) {
+        if (node.Member == "length") {
+            node.ResolvedFieldType = GrobType.Int;
+            return GrobType.Int;
+        }
+        if (node.Member == "isEmpty") {
+            node.ResolvedFieldType = GrobType.Bool;
+            return GrobType.Bool;
+        }
+        return EmitErrorAndReturn(ErrorCatalog.E1002,
+            $"Type 'T[]' has no member '{node.Member}'.", node.Range);
     }
 
     /// <summary>
