@@ -21,6 +21,10 @@ member is a compile error. Arrays are typed — all elements must be the same ty
 | `select(fn: T → U)` | `→ U[]` | Projection — maps elements to a new shape |
 | `each(fn: T → void)` | `→ void` | |
 | `sort(fn: T → U, descending: bool = false)` | `→ T[]` | Returns new sorted array. **Stable.** `U` must be `int`, `float`, `string`, `bool`, `date` or `guid` (D-371) |
+| `append(value: T)` | `→ void` | Appends one element. Mutates in place. Binding must not be `const` or `readonly` (D-373) |
+| `insert(index: int, value: T)` | `→ void` | Inserts before index. `index == length` is a valid append-position insert; out of range otherwise throws `IndexError` (D-373) |
+| `remove(index: int)` | `→ void` | Removes element at index. Throws `IndexError` if out of range — including `index == length`, unlike `insert` (D-373) |
+| `clear()` | `→ void` | Removes all elements. Mutates in place. Binding must not be `const` or `readonly` (D-373) |
 | `mapAs<T>()` | `→ T[]` | Typed deserialisation from JSON or CSV result sets |
 
 `.select()` is the projection method for arrays. It reads naturally in data
@@ -30,11 +34,24 @@ not used in Grob — use `.select()` for projection.
 `.mapAs<T>()` is distinct: it is a typed-deserialisation operation on JSON and
 CSV result sets, not a general projection.
 
-**Pending (Increment C0a-2):** `append(value: T)`, `insert(index: int, value: T)`,
-`remove(index: int)`, `clear()` — the four mutating members, plus rejecting a
-mutation call on a `const`- or `readonly`-bound array. `first`, `last`, `contains`,
-`length` and `isEmpty` above are the non-mutating members Increment C0a-1 (D-371)
-already built.
+## Aliasing semantics
+
+Array assignment and argument-passing are **reference semantics**, not value/copy
+semantics (D-372): `b := a` and passing `a` to a function both bind the same
+underlying array instance, not a clone. Mutation through any binding is visible
+through every other binding aliasing the same array:
+
+```grob
+a := [1, 2]
+b := a
+b.append(3)
+print(a.length)  // 3 — a and b are the same array
+```
+
+This makes `readonly`'s mutation rejection **binding-scoped, not object-scoped**:
+`readonly a := [1, 2]; b := a; b.append(3)` is not caught — the type checker can only
+reject mutation reached through the `readonly` name itself, the same guarantee C#'s
+`readonly` and JavaScript's `const` give.
 
 ## Formatting
 
@@ -55,7 +72,7 @@ items[items.length - 1]  // last element
 matrix[r][c]        // multi-dimensional via chained indexing
 ```
 
-Zero-based. Out-of-range access throws `IndexError` (E5002).
+Zero-based. Out-of-range access throws `IndexError` (E5101).
 
 ## Examples
 
@@ -82,6 +99,14 @@ summaries := users.select(u => #{ name: u.name, active: u.isActive })
 type User { name: string, email: string }
 users := json.read("C:\\data\\users.json").mapAs<User>()
 ```
+
+*Updated July 2026 — `append(value: T)`, `insert(index: int, value: T)`,
+`remove(index: int)` and `clear()` built (Sprint 9 Increment C0a-2, D-373), completing
+the thirteen-member `T[]` surface. Aliasing semantics section added, citing D-372
+(reference semantics — mutation through any binding is visible through every other
+binding aliasing the same array). Corrected a stray `IndexError (E5002)` reference under
+Indexing to the actual code, `E5101` (matching the VM's array indexer and
+`StringMethodsPlugin`'s native-throw seam, both of which use `ErrorCatalog.E5101.Code`).*
 
 *Updated July 2026 — `length`, `isEmpty`, `first()`, `last()` and `contains(v: T)`
 built (Sprint 9 Increment C0a-1, D-371); `sort`'s documented `Comparable` key set

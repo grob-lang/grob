@@ -46,19 +46,25 @@ entirely to .NET's `Math.Min`/`Math.Max(double, double)` with no special-casing 
 in either argument position propagates to the result, and `-0.0` sorts below `+0.0`,
 both pinned and tested exactly as .NET already behaves.
 
-**Build-status note (D-371, Sprint 9 Increment C0a-1).** The `T[]` section's `length`,
-`isEmpty`, `first()`, `last()` and `contains(v: T)` rows below are now **fully built** —
-five of the nine members that were previously documented but did not dispatch, found by
-the advertised-vs-built audit. Arrays stay structural (D-351/D-356/D-363) rather than
-joining `NamedTypeRegistry`/`PrimitiveMemberRegistry`: `length`/`isEmpty` resolve
-directly in the type checker's `VisitMemberAccess`; `first()`/`last()`/`contains(v: T)`
-derive their generic `T`-dependent signatures from the receiver's `ArrayTypeDescriptor`
-(D-351), mirroring index-access element-type resolution. `sort<U: Comparable>`'s full
-documented key set — `int`, `float`, `string`, `bool`, `date`, `guid` — is also now
-**fully built**: `date` orders by the instant basis (D-367, matching `<`/`>`), `guid`
-orders ordinally on its canonical string (D-357). `append`, `insert`, `remove` and
-`clear` (the mutating four, plus their `const`/`readonly` mutation rejection) remain
-**pending** — Increment C0a-2.
+**Build-status note (D-371/D-373, Sprint 9 Increments C0a-1/C0a-2).** All thirteen `T[]`
+members documented below are now **fully built**. D-371 (Increment C0a-1) delivered
+`length`, `isEmpty`, `first()`, `last()` and `contains(v: T)` — five of the nine members
+that were previously documented but did not dispatch, found by the advertised-vs-built
+audit — plus `sort<U: Comparable>`'s full documented key set (`int`, `float`, `string`,
+`bool`, `date`, `guid`): `date` orders by the instant basis (D-367, matching `<`/`>`),
+`guid` orders ordinally on its canonical string (D-357). D-373 (Increment C0a-2)
+completes the surface with the four in-place-mutating members — `append`, `insert`,
+`remove`, `clear` — and their compile-time `const`/`readonly` mutation rejection.
+Arrays stay structural (D-351/D-356/D-363) rather than joining
+`NamedTypeRegistry`/`PrimitiveMemberRegistry`: `length`/`isEmpty` resolve directly in the
+type checker's `VisitMemberAccess`; `first()`/`last()`/`contains(v: T)`/`append(value:
+T)`/`insert(index: int, value: T)` derive their generic `T`-dependent signatures from
+the receiver's `ArrayTypeDescriptor` (D-351), mirroring index-access element-type
+resolution. Array, map and struct assignment and argument-passing are reference
+semantics (D-372) — a binding and every alias of it share the same underlying instance,
+so a mutating call is visible through every binding aliasing the array, and `readonly`'s
+mutation rejection is binding-scoped rather than object-scoped (D-372's clarification
+of D-291 §4).
 
 ---
 

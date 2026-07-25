@@ -1857,10 +1857,29 @@ Semantics:
   level, `readonly` bindings are evaluated in source order (see §19.1). Inside
   a function body, evaluation happens at the point of execution.
 - The binding cannot be reassigned: `TOKEN = "other"` is a compile error.
-- The value cannot be mutated. For containers and structs, any operation that
-  would mutate the bound value is a compile error — `ITEMS.append(4)`,
-  `ITEMS[0] = 99`, `CONFIG["port"] = "8080"`, `point.x = 5` (where `point` is
-  `readonly`), `++counter` on a `readonly int`, `counter += 1`.
+- The value cannot be mutated **through the `readonly` binding itself**. For
+  containers and structs, any operation that would mutate the bound value via
+  that name is a compile error — `ITEMS.append(4)`, `ITEMS[0] = 99`,
+  `CONFIG["port"] = "8080"`, `point.x = 5` (where `point` is `readonly`),
+  `++counter` on a `readonly int`, `counter += 1`.
+- **This guarantee is binding-scoped, not object-scoped (D-372).** Arrays,
+  maps and structs are reference types at runtime (D-372): assigning a
+  `readonly` container to a second binding, or passing it as a function
+  argument, does not clone it — both names refer to the same underlying
+  instance. Mutation reached through that _other_ binding is not caught:
+
+  ```grob
+  readonly ITEMS := [1, 2, 3]
+  copy := ITEMS
+  copy.append(4)     // compiles — 'copy' is not readonly
+  print(ITEMS.length) // 4 — the same array, mutated through the other name
+  ```
+
+  This is the same guarantee C#'s `readonly` and JavaScript's `const` give —
+  the name cannot be used to mutate, but the guarantee does not follow the
+  value through every alias of it. Object-level freezing (rejecting mutation
+  regardless of which binding is used) is a stronger guarantee this mechanism
+  does not provide; see D-372.
 - The binding must be initialised at declaration. No deferred initialisation
   syntax exists, consistent with §9 (no uninitialised variables).
 

@@ -29,4 +29,23 @@ public sealed class GrobArray {
 
     /// <summary>Appends <paramref name="value"/> to the end of the array.</summary>
     public void Add(GrobValue value) => _elements.Add(value);
+
+    /// <summary>
+    /// Inserts <paramref name="value"/> before <paramref name="index"/>. Thin wrapper
+    /// over <see cref="List{T}.Insert"/> — no bounds-checking here (Sprint 9 Increment
+    /// C0a-2, D-373); the native layer (<c>Grob.Vm.ArrayNatives</c>) checks bounds so
+    /// the <c>IndexError</c>/<c>E5101</c> message and catchability stay consistent with
+    /// every other array/string bounds fault in the codebase.
+    /// </summary>
+    public void Insert(int index, GrobValue value) => _elements.Insert(index, value);
+
+    /// <summary>
+    /// Removes the element at <paramref name="index"/>. Thin wrapper over
+    /// <see cref="List{T}.RemoveAt"/> — no bounds-checking here (Sprint 9 Increment
+    /// C0a-2, D-373); see <see cref="Insert"/>'s remark.
+    /// </summary>
+    public void RemoveAt(int index) => _elements.RemoveAt(index);
+
+    /// <summary>Removes every element, leaving an empty array (Sprint 9 Increment C0a-2, D-373).</summary>
+    public void Clear() => _elements.Clear();
 }
