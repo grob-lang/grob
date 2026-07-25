@@ -37,6 +37,12 @@ public sealed class GrobArray {
     /// the <c>IndexError</c>/<c>E5101</c> message and catchability stay consistent with
     /// every other array/string bounds fault in the codebase.
     /// </summary>
+    /// <param name="index">Zero-based position to insert before; valid range is
+    /// <c>0</c> to <see cref="Count"/> inclusive (<see cref="Count"/> appends at the end).</param>
+    /// <param name="value">The value to insert.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is less than
+    /// <c>0</c> or greater than <see cref="Count"/> — raised by the underlying
+    /// <see cref="List{T}.Insert"/> when a caller bypasses the native bounds check.</exception>
     public void Insert(int index, GrobValue value) => _elements.Insert(index, value);
 
     /// <summary>
@@ -44,6 +50,11 @@ public sealed class GrobArray {
     /// <see cref="List{T}.RemoveAt"/> — no bounds-checking here (Sprint 9 Increment
     /// C0a-2, D-373); see <see cref="Insert"/>'s remark.
     /// </summary>
+    /// <param name="index">Zero-based position of the element to remove; valid range is
+    /// <c>0</c> to <see cref="Count"/> exclusive.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is less than
+    /// <c>0</c> or greater than or equal to <see cref="Count"/> — raised by the underlying
+    /// <see cref="List{T}.RemoveAt"/> when a caller bypasses the native bounds check.</exception>
     public void RemoveAt(int index) => _elements.RemoveAt(index);
 
     /// <summary>Removes every element, leaving an empty array (Sprint 9 Increment C0a-2, D-373).</summary>

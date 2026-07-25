@@ -44,6 +44,30 @@ public sealed class VirtualMachineArrayMutatingMemberTests {
     private static GrobValue[] Ints(params long[] values) =>
         [.. values.Select(GrobValue.FromInt)];
 
+    /// <summary>
+    /// <c>first.append(appended)</c> through the first reference, discards the nil result,
+    /// then loads the second reference and returns it on the stack — the two references
+    /// are separate constants in the pool (<c>AddConstant</c> never dedupes), so this
+    /// models two distinct Grob-visible bindings over one array, not one CLR alias.
+    /// </summary>
+    private static Chunk BuildAppendThroughFirstThenLoadSecond(
+            GrobValue first, GrobValue second, GrobValue appended) {
+        var chunk = new Chunk();
+        chunk.WriteOpCode(OpCode.Constant, 1);
+        chunk.WriteByte(ConstByte(chunk, first), 1);
+        chunk.WriteOpCode(OpCode.GetProperty, 1);
+        chunk.WriteByte(ConstByte(chunk, GrobValue.FromString("append")), 1);
+        chunk.WriteOpCode(OpCode.Constant, 1);
+        chunk.WriteByte(ConstByte(chunk, appended), 1);
+        chunk.WriteOpCode(OpCode.Call, 1);
+        chunk.WriteByte(1, 1);
+        chunk.WriteOpCode(OpCode.Pop, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1);
+        chunk.WriteByte(ConstByte(chunk, second), 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+        return chunk;
+    }
+
     // -----------------------------------------------------------------------
     // append(value)
     // -----------------------------------------------------------------------
@@ -166,17 +190,27 @@ public sealed class VirtualMachineArrayMutatingMemberTests {
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void Append_ThroughOneGrobArrayReference_VisibleThroughAnother() {
-        // b := a; b.append(3) — a and b are the SAME GrobArray instance under reference
-        // semantics (D-372). Constructing a single GrobArray and passing it to two
-        // separate chunk constants proves this at the runtime-representation level.
+    public void Append_ThroughOneGrobReference_VisibleThroughAnother() {
+        // a := [1, 2]; b := a; a.append(3) — under reference semantics (D-372) a and b
+        // wrap the SAME GrobArray, so the mutation made through a is observable through b.
+        // The two references are modelled as two independent GrobValues — separate
+        // constants in the pool — not a CLR-level `alias = shared`, which would be a
+        // tautology. The mutation runs through the first constant; the second is loaded
+        // by the VM itself and observed on the stack.
         var shared = new GrobArray(Ints(1, 2));
-        GrobArray aliasBeforeMutation = shared;
+        GrobValue referenceA = GrobValue.FromArray(shared);
+        GrobValue referenceB = GrobValue.FromArray(shared);
 
         var (vm, _) = NewVm();
-        vm.Run(BuildMethodChunk(shared, "append", GrobValue.FromInt(3)));
+        vm.Run(BuildAppendThroughFirstThenLoadSecond(referenceA, referenceB, GrobValue.FromInt(3)));
 
-        Assert.Same(shared, aliasBeforeMutation);
-        Assert.Equal(3, aliasBeforeMutation.Count);
+        GrobValue observedThroughB = vm.Stack.Peek();
+        Assert.True(observedThroughB.TryAsArray(out GrobArray? throughB));
+        Assert.Equal(3, throughB!.Count);
+        Assert.Equal(GrobValue.FromInt(3), throughB[2]);
+
+        // Both references denote the one underlying instance — reference, not value.
+        Assert.True(referenceA.TryAsArray(out GrobArray? throughA));
+        Assert.Same(throughA, throughB);
     }
 }

@@ -641,11 +641,15 @@ public sealed partial class TypeChecker {
     /// </summary>
     private GrobType ValidateArrayMutatingMethodCall(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
+        // E0204 (readonly receiver) and the arity/argument-type diagnostics are
+        // independent root causes, so emit E0204 then fall through to the arity and
+        // per-argument checks rather than returning early — collecting both, as the
+        // "no cap on compile-time errors" invariant requires and as the
+        // assignment-target readonly path (VisitAssignment) already does.
         if (FindReadonlyRoot(memberAccess.Target) is not null) {
             EmitError(ErrorCatalog.E0204,
                 $"Cannot call mutating method '{memberAccess.Member}' on `readonly` binding.",
                 memberAccess.Range);
-            return GrobType.Unknown;
         }
         ArrayTypeDescriptor? descriptor = ArrayDescriptorOf(memberAccess.Target);
         switch (memberAccess.Member) {
