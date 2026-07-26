@@ -321,4 +321,20 @@ public enum OpCode : byte {
 
     /// <summary>Load a plugin module (1-byte name index).</summary>
     Import,
+
+    // -------------------------------------------------------------------------
+    // Map operations
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Create map instance from N key/value pairs (1-byte count operand). Stack layout
+    /// before this opcode (bottom→top): <c>key₁, val₁, key₂, val₂, …, keyₙ, valₙ</c> — pops
+    /// <c>2×count</c> values in LIFO <c>(key: string, value)</c> pairs and pushes the new
+    /// <c>GrobMap</c> (D-376). No existing opcode can allocate a fresh map: <c>SetIndex</c>
+    /// only mutates one that already exists. Appended after <see cref="Import"/> (the
+    /// enum's previous last case), not inserted, so no existing opcode's implicit byte
+    /// value shifts — the same precedent as <see cref="LessDate"/>/<see cref="GreaterDate"/>/
+    /// <see cref="EqualDate"/> above.
+    /// </summary>
+    NewMap,
 }

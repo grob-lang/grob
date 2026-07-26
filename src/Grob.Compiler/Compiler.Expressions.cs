@@ -1115,6 +1115,28 @@ public sealed partial class Compiler {
     }
 
     // -----------------------------------------------------------------------
+    // Map literal construction (D-376).
+    //
+    // For each entry in source order: emit the key string constant then the value
+    // expression. Finish with NewMap(entry-count). The VM pops entry-count key/value
+    // pairs from the stack in LIFO order — mirrors VisitAnonStruct exactly.
+    // -----------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public override object? VisitMapLiteral(MapLiteralExpr node) {
+        int line = node.Range.Start.Line;
+        foreach (MapEntry entry in node.Entries) {
+            int keyIdx = _chunk.AddConstant(GrobValue.FromString(entry.Key));
+            _chunk.WriteOpCode(OpCode.Constant, line);
+            _chunk.WriteByte((byte)keyIdx, line);
+            Visit(entry.Value);
+        }
+        _chunk.WriteOpCode(OpCode.NewMap, line);
+        _chunk.WriteByte(ToByteOperand(node.Entries.Count, "map literal entry count"), line);
+        return null;
+    }
+
+    // -----------------------------------------------------------------------
     // Type helpers
     // -----------------------------------------------------------------------
 

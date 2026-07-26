@@ -166,6 +166,13 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly Dictionary<ArrayLiteralExpr, ArrayTypeDescriptor> _arrayLiteralDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
+    // _mapLiteralDescriptors mirrors _arrayLiteralDescriptors for map<K, V>{ ... } literals
+    // (D-376), keyed by reference identity for the same reason. Populated by VisitMapLiteral;
+    // consulted wherever a map-typed binding, indexer or for...in loop needs to resolve its
+    // value type from a literal initialiser rather than an identifier's carried descriptor.
+    private readonly Dictionary<MapLiteralExpr, MapTypeDescriptor> _mapLiteralDescriptors =
+        new(ReferenceEqualityComparer.Instance);
+
     // -----------------------------------------------------------------------
     // Flow-sensitive narrowing (Sprint 5 Increment E; §6, §19.1 narrowing rule).
     //
@@ -504,17 +511,17 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     };
 
     /// <summary>
-    /// Returns the value-type descriptor of an arbitrary map-typed expression (Sprint 9
-    /// Increment C0b-1) — an identifier bound to a map-typed symbol, or a parenthesised
-    /// grouping of one. Mirrors <see cref="ArrayDescriptorOf"/>'s shape, narrower: v1 has no
-    /// map literal to carry a per-node descriptor and no non-trivial map-returning native
-    /// call to carry a call-result descriptor (<c>env.all()</c> is flat <c>map&lt;string,
-    /// string&gt;</c> with no consumer needing its value identity), so only the two tiers
-    /// with a real producer today are handled. The expression must already have been visited
-    /// so its descriptor is recorded.
+    /// Returns the value-type descriptor of an arbitrary map-typed expression — an
+    /// identifier bound to a map-typed symbol, a map literal (D-376), or a parenthesised
+    /// grouping of either. Mirrors <see cref="ArrayDescriptorOf"/>'s shape. There is still no
+    /// non-trivial map-returning native call to carry a call-result descriptor (<c>env.all()</c>
+    /// is flat <c>map&lt;string, string&gt;</c> with no consumer needing its value identity), so
+    /// only these three tiers are handled. The expression must already have been visited so its
+    /// descriptor is recorded.
     /// </summary>
     private MapTypeDescriptor? MapDescriptorOf(Expression expr) => expr switch {
         IdentifierExpr id => LookupSymbol(id.Name)?.MapDescriptor,
+        MapLiteralExpr literal => _mapLiteralDescriptors.GetValueOrDefault(literal),
         GroupingExpr grp => MapDescriptorOf(grp.Inner),
         _ => null,
     };

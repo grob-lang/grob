@@ -175,18 +175,17 @@ arrays' `ArrayTypeDescriptor` (D-351), with only `V` inferred since v1 keys are
 annotation now consults `TypeRef.TypeArguments[1]` and produces a real `V`; the indexer
 `m[k]` types as `V?` (nil if absent, matching the Members table below) instead of
 `Unknown`; `for k, v in m` binds `v` as `V` (`k` as `string`); `m[k] += 1`/`m[k]++` stay
-legal on the unwrapped `V`. **Not yet built:** the query member surface below
-(`length`/`isEmpty`/`keys`/`values`/`get`/`contains`) has no dispatch — `map` has no
-`GrobType.Map` arm in the type checker's member-access resolution at all, so every
-member access documented in this section still fails to compile; scheduled as a
+legal on the unwrapped `V`. **Built (D-376):** map-literal construction syntax
+(`map<K, V>{...}`, shown below) — the grammar and `map<K, V>{` disambiguation, the
+`MapLiteralExpr`/`MapEntry` AST, `MapDescriptorOf`'s third (literal) tier, and the
+`NewMap` opcode. A literal's entries are checked against `V` (E0004 on mismatch) and
+against each other for duplicate keys (E0016). **Not yet built:** the query member
+surface below (`length`/`isEmpty`/`keys`/`values`/`get`/`contains`) has no dispatch —
+`map` has no `GrobType.Map` arm in the type checker's member-access resolution at all, so
+every member access documented in this section still fails to compile; scheduled as a
 follow-on increment to D-374. `set`/`remove`/`clear` and their `readonly` mutation
-rejection are a separate, later increment (C0b-2). **Also not yet built, discovered
-during D-374:** map-literal construction syntax (`map<K, V>{...}`, shown below) has no
-parser or AST production anywhere in the codebase, despite being documented here and in
-`grob-language-fundamentals.md` as settled syntax — maps can be consumed via a typed
-parameter/field/`var` annotation, but not yet constructed from a literal; a genuine
-grammar decision, not scheduled. Users consume maps through typed parameters, fields and
-`var` annotations; literal construction remains deferred (above). They cannot declare
+rejection are a separate, later increment (C0b-2). Users consume maps through typed
+parameters, fields, `var` annotations and literal construction. They cannot declare
 generic map types of their own (same constrained-generics model as arrays). In v1, keys
 must be `string` — non-string keys are deferred post-MVP.
 
@@ -196,10 +195,10 @@ must be `string` — non-string keys are deferred post-MVP.
 // Empty map with explicit type annotation
 headers: map<string, string> := map<string, string>{}
 
-// Map literal with initial entries — newline-separated
+// Map literal with initial entries — comma-separated
 headers := map<string, string>{
-    "Content-Type":  "application/json"
-    "X-Api-Version": "2024-01-01"
+    "Content-Type": "application/json",
+    "X-Api-Version": "2024-01-01",
 }
 
 // Single-line form with commas
@@ -212,10 +211,13 @@ hdrs  := response.headers    // map<string, string>
 
 **Map literal separator rules:**
 
-- Entries are separated by newlines or commas. Both are valid.
+- Entries are separated by commas. Newlines inside the braces are insignificant
+  (skipped) — matching every other literal form in the language (D-375).
 - Trailing commas are permitted.
 - Each entry is `key: value` — colon separates key from value (not `=`).
-- Keys are string literals in v1 (non-string keys post-MVP).
+- Keys are string literals in v1 (non-string keys post-MVP). The key must be a plain
+  double-quoted string — not raw (backtick), not interpolated.
+- Duplicate keys are a compile error (E0016).
 
 **Iteration:**
 

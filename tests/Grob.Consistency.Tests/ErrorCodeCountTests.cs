@@ -60,8 +60,9 @@ public sealed class ErrorCodeCountTests {
         // and E2213 (duplicate catch for the same type): 114 -> 116.
         // D-342 (Sprint 8 Increment A) added E1004 (namespace used as a value): 116 -> 117.
         // D-149 (Sprint 8 Increment D) added E0601 (invalid guid string literal): 117 -> 118.
-        Assert.Equal(118, ConsistencyChecks.ActualErrorCatalogCount());
-        Assert.Equal(118, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
-        Assert.Equal(118, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
+        // D-376 (map-literal construction) added E0016 (duplicate key in map literal): 118 -> 119.
+        Assert.Equal(119, ConsistencyChecks.ActualErrorCatalogCount());
+        Assert.Equal(119, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
+        Assert.Equal(119, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
     }
 }

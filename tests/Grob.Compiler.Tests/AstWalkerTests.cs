@@ -105,6 +105,18 @@ public class AstWalkerTests {
     }
 
     [Fact]
+    public void Walker_RecursesIntoMapLiteralEntryValues() {
+        TypeRef mapType = new(R, "map", [new TypeRef(R, "string", [], false), new TypeRef(R, "string", [], false)], false);
+        MapLiteralExpr map = new(R, mapType, [
+            new MapEntry(R, "a", Id("va")),
+            new MapEntry(R, "b", Id("vb")),
+        ]);
+        IdentifierCollector c = new();
+        c.Visit(map);
+        Assert.Equal(["va", "vb"], c.Names);
+    }
+
+    [Fact]
     public void Walker_DefaultErrorHook_DoesNotRecurseFurther() {
         ErrorExpr err = new(R, ErrDiag());
         IdentifierCollector c = new();
