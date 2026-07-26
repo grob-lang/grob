@@ -38,7 +38,9 @@ indexer — `map` has no member-access dispatch in the type checker at all, so
 `length`/`isEmpty`/`keys`/`values`/`get()`/`contains()`/`set()`/`remove()`/`clear()`
 all fail to compile today. Scheduled as a follow-on increment.
 
-Mutation methods are a compile error on `const`-bound maps.
+The `const`-bound readonly mutation rejection for `set`/`remove`/`clear` is deferred to
+C0b-2 (D-374) — not yet implemented, since map has no member-access dispatch at all today
+(above).
 
 ## Indexing and iteration — built (D-374)
 

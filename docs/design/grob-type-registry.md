@@ -185,7 +185,8 @@ during D-374:** map-literal construction syntax (`map<K, V>{...}`, shown below) 
 parser or AST production anywhere in the codebase, despite being documented here and in
 `grob-language-fundamentals.md` as settled syntax — maps can be consumed via a typed
 parameter/field/`var` annotation, but not yet constructed from a literal; a genuine
-grammar decision, not scheduled. Users consume and construct maps; they cannot declare
+grammar decision, not scheduled. Users consume maps through typed parameters, fields and
+`var` annotations; literal construction remains deferred (above). They cannot declare
 generic map types of their own (same constrained-generics model as arrays). In v1, keys
 must be `string` — non-string keys are deferred post-MVP.
 

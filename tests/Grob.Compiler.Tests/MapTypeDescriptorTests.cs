@@ -113,17 +113,18 @@ public sealed class MapTypeDescriptorTests {
     }
 
     [Fact]
-    public void IndexRead_OnMapStringIntArray_WrongNestedElementType_ReportsE0104() {
+    public void IndexRead_OnMapStringIntArray_WrongNestedElementType_ReportsE0001() {
         // The nested element type (int[] vs string[]) is a distinct mismatch from the
         // outer nullable widening — this proves ValueArrayDescriptor.ElementKind threads
-        // correctly, not merely the outer Array/NullableArray flat tag.
+        // correctly, not merely the outer Array/NullableArray flat tag. Both sides are
+        // nullable, so PickAssignabilityError yields E0001 (not E0104) — the test name now
+        // matches the asserted code.
         DiagnosticBag bag = Check("""
             fn f(m: map<string, int[]>): void {
             xs: string[]? := m["k"]
             }
             """);
-        Diagnostic nestedError = Assert.Single(bag.Errors);
-        Assert.Equal("E0001", nestedError.Code);
+        AssertSingleError(bag, "E0001", 2, 18);
     }
 
     // ------------------------------------------------------------------
@@ -231,8 +232,7 @@ public sealed class MapTypeDescriptorTests {
             m["k"] += "x"
             }
             """);
-        Diagnostic error = Assert.Single(bag.Errors);
-        Assert.Equal("E0002", error.Code);
+        AssertSingleError(bag, "E0002", 2, 1);
     }
 
     // ------------------------------------------------------------------
@@ -256,8 +256,103 @@ public sealed class MapTypeDescriptorTests {
             m["k"] = "x"
             }
             """);
-        Diagnostic error = Assert.Single(bag.Errors);
-        Assert.Equal("E0001", error.Code);
+        AssertSingleError(bag, "E0001", 2, 10);
+    }
+
+    // ------------------------------------------------------------------
+    // Write-side value identity — m[k] = v enforces the map value's real
+    // nested/nominal identity, mirroring the already-tested read side.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void MapIndexWrite_OnMapStringIntArray_WrongNestedElementType_ReportsE0001() {
+        // Write-side mirror of IndexRead_OnMapStringIntArray_WrongNestedElementType: the
+        // map value's own ArrayTypeDescriptor (int[]) must reject a string[] RHS, the same
+        // way the read side does — otherwise value identity is enforced on read yet silently
+        // dropped on write.
+        DiagnosticBag bag = Check("""
+            fn f(m: map<string, int[]>, bad: string[]): void {
+            m["k"] = bad
+            }
+            """);
+        AssertSingleError(bag, "E0001", 2, 10);
+    }
+
+    [Fact]
+    public void MapIndexWrite_OnMapStringStruct_WrongStructType_ReportsE0001() {
+        // Write-side nominal identity: a map<string, A> value rejects a B RHS via the map
+        // value's ValueNamedTypeName, mirroring the array-element struct-nominal check.
+        DiagnosticBag bag = Check("""
+            type A { x: int }
+            type B { x: int }
+            fn f(m: map<string, A>, b: B): void {
+            m["k"] = b
+            }
+            """);
+        AssertSingleError(bag, "E0001", 4, 10);
+    }
+
+    [Fact]
+    public void MapIndexWrite_OnMapStringIntArray_CorrectNestedElementType_NoDiagnostic() {
+        // Guard against over-rejection: a value-identical nested array binds cleanly.
+        DiagnosticBag bag = Check("""
+            fn f(m: map<string, int[]>, good: int[]): void {
+            m["k"] = good
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    // ------------------------------------------------------------------
+    // Annotated ':=' binding value identity — a map<string, V1> is not
+    // assignable to a map<string, V2> annotation when V1 != V2.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void AnnotatedBinding_MapValueMismatch_ReportsE0001() {
+        // The flat Map tag matches, but the value identity (int vs string) must still be
+        // checked — mirroring the array-element gate already in ResolveBindingFull.
+        DiagnosticBag bag = Check("""
+            fn f(a: map<string, int>): void {
+            c: map<string, string> := a
+            }
+            """);
+        AssertSingleError(bag, "E0001", 2, 27);
+    }
+
+    [Fact]
+    public void AnnotatedBinding_MapNestedArrayValueMismatch_ReportsE0001() {
+        DiagnosticBag bag = Check("""
+            fn f(a: map<string, int[]>): void {
+            c: map<string, string[]> := a
+            }
+            """);
+        AssertSingleError(bag, "E0001", 2, 29);
+    }
+
+    [Fact]
+    public void AnnotatedBinding_MapStructValueMismatch_ReportsE0001() {
+        // Covers MapValueAssignable's nominal branch: a map<string, A> is not assignable to
+        // a map<string, B> annotation even though both values are flat Struct.
+        DiagnosticBag bag = Check("""
+            type A { x: int }
+            type B { x: int }
+            fn f(a: map<string, A>): void {
+            c: map<string, B> := a
+            }
+            """);
+        AssertSingleError(bag, "E0001", 4, 22);
+    }
+
+    [Fact]
+    public void AnnotatedBinding_MatchingMapValue_NoDiagnostic() {
+        // Guard against over-rejection: a value-identical map binds cleanly.
+        DiagnosticBag bag = Check("""
+            fn f(a: map<string, int>): void {
+            c: map<string, int> := a
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
     }
 
     // ------------------------------------------------------------------

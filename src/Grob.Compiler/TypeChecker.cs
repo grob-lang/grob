@@ -404,11 +404,20 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
         bool isFunctionAnnotation = annotated == GrobType.Function || annotated == GrobType.NullableFunction;
         bool isArrayAnnotation = annotated == GrobType.Array || annotated == GrobType.NullableArray;
+        bool isMapAnnotation = annotated == GrobType.Map;
         bool compatible = isFunctionAnnotation
             ? TypesAreAssignable(initType, annotated, initDescriptor, annotatedDesc)
             : TypesAreAssignable(initType, annotated);
 
         if (compatible && isArrayAnnotation && !ArrayElementAssignable(initArrayDescriptor, annotatedArrayDesc)) {
+            compatible = false;
+        }
+
+        // Sprint 9 Increment C0b-1: the flat Map tag matches on both sides, so the map's
+        // value identity (V) is checked here the same way the array element gate above
+        // checks T — otherwise map<string, int> would bind cleanly to a map<string, string>
+        // annotation, silently defeating the value-type identity this increment introduced.
+        if (compatible && isMapAnnotation && !MapValueAssignable(initMapDescriptor, annotatedMapDesc)) {
             compatible = false;
         }
 
@@ -822,6 +831,27 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         if (to.ElementNamedTypeName is not null && from.ElementNamedTypeName != to.ElementNamedTypeName) return false;
         if (to.ElementKind is GrobType.Array or GrobType.NullableArray) {
             return ArrayElementAssignable(from.ElementArrayDescriptor, to.ElementArrayDescriptor);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Sprint 9 Increment C0b-1: the value-identity counterpart of
+    /// <see cref="ArrayElementAssignable"/> for <c>map&lt;string, V&gt;</c> — decides whether
+    /// a map whose value descriptor is <paramref name="from"/> is assignable where a map with
+    /// value descriptor <paramref name="to"/> is expected. Mirrors the array helper's
+    /// permissive-on-missing/Unknown shape (an unresolved or bare map stays permissive,
+    /// exactly as a bare array does), then compares the value's flat kind, its struct/guid
+    /// nominal name and, for a <c>map&lt;string, T[]&gt;</c> value, its nested array element
+    /// descriptor.
+    /// </summary>
+    private static bool MapValueAssignable(MapTypeDescriptor? from, MapTypeDescriptor? to) {
+        if (from is null || to is null) return true;
+        if (from.ValueKind == GrobType.Unknown || to.ValueKind == GrobType.Unknown) return true;
+        if (from.ValueKind != to.ValueKind) return false;
+        if (to.ValueNamedTypeName is not null && from.ValueNamedTypeName != to.ValueNamedTypeName) return false;
+        if (to.ValueKind is GrobType.Array or GrobType.NullableArray) {
+            return ArrayElementAssignable(from.ValueArrayDescriptor, to.ValueArrayDescriptor);
         }
         return true;
     }

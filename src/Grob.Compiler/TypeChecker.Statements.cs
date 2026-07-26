@@ -589,11 +589,22 @@ public sealed partial class TypeChecker {
     /// </summary>
     private bool IsIndexRhsCompatible(GrobType elementType, IndexExpr indexTarget, Expression valueExpr, GrobType valueType) {
         ArrayTypeDescriptor? receiverElementDescriptor = ArrayDescriptorOf(indexTarget.Target);
+        // Sprint 9 Increment C0b-1: for a map receiver the value's real shape lives on
+        // Symbol.MapDescriptor, not ArrayDescriptor, so fall back to it exactly as the read
+        // side (ArrayDescriptorOf's IndexExpr arm) already does — otherwise a nested-array or
+        // struct map-value write (m["k"] = wrongArray / wrongStruct) is silently accepted
+        // while the equivalent read is correctly rejected. Only one channel ever applies (an
+        // array target is never a map target), so the fallback never masks an array descriptor.
+        MapTypeDescriptor? receiverMapDescriptor = MapDescriptorOf(indexTarget.Target);
         bool compatible = TypesAreAssignable(valueType, elementType);
         if (compatible && elementType is GrobType.Array or GrobType.NullableArray) {
-            compatible = ArrayElementAssignable(ArrayDescriptorOf(valueExpr), receiverElementDescriptor?.ElementArrayDescriptor);
+            ArrayTypeDescriptor? expectedArrayDescriptor =
+                receiverElementDescriptor?.ElementArrayDescriptor ?? receiverMapDescriptor?.ValueArrayDescriptor;
+            compatible = ArrayElementAssignable(ArrayDescriptorOf(valueExpr), expectedArrayDescriptor);
         }
-        if (compatible && IsStructNominalMismatch(elementType, receiverElementDescriptor?.ElementNamedTypeName, valueExpr)) {
+        string? expectedNamedTypeName =
+            receiverElementDescriptor?.ElementNamedTypeName ?? receiverMapDescriptor?.ValueNamedTypeName;
+        if (compatible && IsStructNominalMismatch(elementType, expectedNamedTypeName, valueExpr)) {
             compatible = false;
         }
         return compatible;

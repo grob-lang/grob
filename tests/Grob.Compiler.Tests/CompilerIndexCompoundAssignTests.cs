@@ -501,13 +501,21 @@ public sealed class CompilerIndexCompoundAssignTests {
         BytecodeFunction fn = SingleFunctionConstant(outer);
         List<OpCode> ops = Opcodes(fn.Bytecode);
 
-        Assert.Contains(OpCode.AddFloat, ops);
-        Assert.DoesNotContain(OpCode.AddInt, ops);
-
-        List<Instr> instrs = Decode(fn.Bytecode);
-        Instr addFloat = instrs.Single(i => i.Op == OpCode.AddFloat);
-        // The RHS int literal (1) is coerced to float immediately before the typed op.
-        Assert.Equal(OpCode.IntToFloat, instrs[instrs.IndexOf(addFloat) - 1].Op);
+        // Full ordered read-modify-write shape (mirrors the class's exact-sequence
+        // convention, e.g. MapIndexCompoundAssign_HandBuiltTarget_EmitsExactEvaluateOnceShape):
+        // the map<string, float> element selects AddFloat and coerces the int RHS via
+        // IntToFloat immediately before it — not merely "contains AddFloat somewhere".
+        Assert.Equal(
+            [
+                OpCode.GetLocal, OpCode.Constant,                   // Ra = m (param), Ia = "k"
+                OpCode.GetLocal, OpCode.GetLocal,
+                OpCode.GetLocal, OpCode.GetLocal, OpCode.GetIndex,
+                OpCode.Constant, OpCode.IntToFloat, OpCode.AddFloat,
+                OpCode.SetIndex,
+                OpCode.PopN,
+                OpCode.Nil, OpCode.Return,                         // implicit 'return nil' (void fn)
+            ],
+            ops);
     }
 
     [Fact]
@@ -516,9 +524,17 @@ public sealed class CompilerIndexCompoundAssignTests {
         BytecodeFunction fn = SingleFunctionConstant(outer);
         List<OpCode> ops = Opcodes(fn.Bytecode);
 
-        Assert.Contains(OpCode.AddInt, ops);
-        Assert.DoesNotContain(OpCode.AddFloat, ops);
-        Assert.DoesNotContain(OpCode.IntToFloat, ops);
+        Assert.Equal(
+            [
+                OpCode.GetLocal, OpCode.Constant,
+                OpCode.GetLocal, OpCode.GetLocal,
+                OpCode.GetLocal, OpCode.GetLocal, OpCode.GetIndex,
+                OpCode.Constant, OpCode.AddInt,                     // int element: no IntToFloat
+                OpCode.SetIndex,
+                OpCode.PopN,
+                OpCode.Nil, OpCode.Return,                         // implicit 'return nil' (void fn)
+            ],
+            ops);
     }
 
     [Fact]
@@ -527,7 +543,16 @@ public sealed class CompilerIndexCompoundAssignTests {
         BytecodeFunction fn = SingleFunctionConstant(outer);
         List<OpCode> ops = Opcodes(fn.Bytecode);
 
-        Assert.Contains(OpCode.AddInt, ops);
-        Assert.DoesNotContain(OpCode.AddFloat, ops);
+        Assert.Equal(
+            [
+                OpCode.GetLocal, OpCode.Constant,
+                OpCode.GetLocal, OpCode.GetLocal,
+                OpCode.GetLocal, OpCode.GetLocal, OpCode.GetIndex,
+                OpCode.Constant, OpCode.AddInt,
+                OpCode.SetIndex,
+                OpCode.PopN,
+                OpCode.Nil, OpCode.Return,                         // implicit 'return nil' (void fn)
+            ],
+            ops);
     }
 }
