@@ -220,4 +220,48 @@ public sealed class ParserMapLiteralTests {
         Assert.Equal("x", tail.Name);
         Assert.Equal(2L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
     }
+
+    [Fact]
+    public void MalformedEntry_InterpolatedStringKey_RecoversAndParsingContinues() {
+        // "${x}" lexes as StringStart/InterpStart/.../InterpEnd/StringEnd — a genuine
+        // TokenKind.StringStart run — so ParseMapEntryKey takes the *second* rejection
+        // branch: ParseInterpolatedString() runs to completion (consuming the whole
+        // key, cursor left sitting on the ':' that follows it), and only then does the
+        // parts.All(p is StringTextPart) check fail (the key has a StringExpressionPart),
+        // raising E2001 via FailAt at the key's start location. That still leaves the
+        // cursor behind the map literal's own unclosed '}': Synchronise (§29) walks
+        // forward from ':' through '1' and stops at that '}' as its brace anchor,
+        // producing the same two-diagnostic shape as the identifier-key case above (the
+        // leftover '}' immediately fails again as "unexpected token '}'") — the anchor
+        // is reached regardless of which branch inside ParseMapEntryKey threw, since
+        // both leave the cursor before the literal's closing brace.
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("m := map<string, int>{\"${x}\": 1}\nx := 2\n");
+        Assert.Equal(2, bag.Diagnostics.Count);
+        Assert.All(bag.Diagnostics, d => Assert.Equal("E2001", d.Code));
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("x", tail.Name);
+        Assert.Equal(2L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
+    }
+
+    [Fact]
+    public void MalformedEntry_RawStringKey_RecoversAndParsingContinues() {
+        // A backtick literal lexes as the single TokenKind.RawStringLiteral token — not
+        // a StringStart/StringEnd run at all — so ParseMapEntryKey fails at its *first*
+        // guard (!Check(TokenKind.StringStart)) before any string parsing starts, the
+        // same branch the plain-identifier key case exercises above; the doc comment on
+        // ParseMapEntryKey groups "an identifier, a raw string, or a genuinely
+        // interpolated string" together as E2001, but a raw string in fact shares the
+        // identifier case's code path, not the interpolated case's. The cursor sits on
+        // the untouched raw-string token when Fail() fires, and Synchronise (§29) walks
+        // forward through ':' and '1' to the map literal's own '}' anchor exactly as in
+        // the other malformed-key cases, giving the same two-diagnostic cascade.
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("m := map<string, int>{`k`: 1}\nx := 2\n");
+        Assert.Equal(2, bag.Diagnostics.Count);
+        Assert.All(bag.Diagnostics, d => Assert.Equal("E2001", d.Code));
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("x", tail.Name);
+        Assert.Equal(2L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
+    }
 }
