@@ -59,6 +59,16 @@ jobs:
       # step.  GITHUB_TOKEN enables inline PR-decoration on github.com.
       # sonar.qualitygate.wait must be passed to begin (not end) so the
       # .NET SonarScanner honours it as an analysis property.
+      #
+      # e10 — csharpsquid:S8969 ("remove this null-forgiving operator") on
+      # NamedTypeRegistry.cs. Confirmed false positive, verified by removing the '!'
+      # and rebuilding: Dictionary.TryGetValue's [MaybeNullWhen(false)] annotation on
+      # its own out parameter does not propagate through TryGet's forwarding
+      # 'out NamedTypeEntry entry' (which carries no such annotation), so dropping the
+      # '!' is a genuine CS8601 under TreatWarningsAsErrors. The file-wide resourceKey
+      # is effectively single-site: NamedTypeRegistry.cs contains exactly one
+      # null-forgiving operator (line 61), so no other S8969 finding can hide behind
+      # this entry today. Revisit the scope if a second one is ever added.
       - name: Begin SonarCloud scan
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
