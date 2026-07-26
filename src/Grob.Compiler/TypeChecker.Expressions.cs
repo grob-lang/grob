@@ -445,9 +445,11 @@ public sealed partial class TypeChecker {
     // Sprint 9 Increment C0a-1 (D-371): "first"/"last"/"contains" joined the four
     // pre-existing higher-order members. Renamed from IsArrayHigherOrderMethod — the
     // three new members take no function argument, so "higher-order" no longer
-    // describes the whole recognised set.
+    // describes the whole recognised set. Sprint 9 Increment C0a-2 (D-373): the four
+    // in-place-mutating members complete the T[] surface.
     private static bool IsArrayMethod(string name) =>
-        name is "filter" or "select" or "sort" or "each" or "first" or "last" or "contains";
+        name is "filter" or "select" or "sort" or "each" or "first" or "last" or "contains"
+            or "append" or "insert" or "remove" or "clear";
 
     /// <summary>
     /// Validates an array method call and returns the result type. <c>filter</c>/
@@ -456,8 +458,10 @@ public sealed partial class TypeChecker {
     /// D-371) are not higher-order — no function argument — so their signatures are
     /// generic in the receiver's element type (D-351) rather than a lambda's inferred
     /// return type, resolved via <see cref="ValidateArrayFirstLastCall"/>/
-    /// <see cref="ValidateArrayContainsCall"/>. Emits E0004 when a <c>filter</c>
-    /// predicate's inferred return type is known to be non-bool (neither
+    /// <see cref="ValidateArrayContainsCall"/>. <c>append</c>/<c>insert</c>/<c>remove</c>/
+    /// <c>clear</c> (Sprint 9 Increment C0a-2, D-373) are the in-place-mutating members,
+    /// resolved via <see cref="ValidateArrayMutatingMethodCall"/>. Emits E0004 when a
+    /// <c>filter</c> predicate's inferred return type is known to be non-bool (neither
     /// <see cref="GrobType.Unknown"/> nor <see cref="GrobType.Error"/> — those are
     /// permissive).
     /// </summary>
@@ -496,6 +500,11 @@ public sealed partial class TypeChecker {
                 return ValidateArrayFirstLastCall(node, memberAccess);
             case "contains":
                 return ValidateArrayContainsCall(node, memberAccess, argTypes);
+            case "append":
+            case "insert":
+            case "remove":
+            case "clear":
+                return ValidateArrayMutatingMethodCall(node, memberAccess, argTypes);
             default:
                 return GrobType.Unknown;
         }
@@ -557,11 +566,28 @@ public sealed partial class TypeChecker {
             return GrobType.Bool;
         }
         ArrayTypeDescriptor? descriptor = ArrayDescriptorOf(memberAccess.Target);
-        if (descriptor is null || argTypes[0] == GrobType.Error || argTypes[0] == GrobType.Unknown) {
-            return GrobType.Bool;
+        CheckArrayElementArgument(memberAccess, argTypes[0], node.Arguments[0].Value, descriptor);
+        return GrobType.Bool;
+    }
+
+    /// <summary>
+    /// Checks a single array-method argument against the receiver's element type (D-351,
+    /// <see cref="ArrayTypeDescriptor"/>) — the shared compatibility rule <c>contains(v:
+    /// T)</c> (D-371) established and <c>append(value: T)</c>/<c>insert(index: int,
+    /// value: T)</c> (Sprint 9 Increment C0a-2, D-373) reuse verbatim rather than
+    /// duplicate. A mismatch is E0004 (never a new code); no descriptor available stays
+    /// permissive (no check runs). The match is nominal, not merely the flat
+    /// <see cref="GrobType"/> tag: a named-struct element (date/guid, D-303) checks the
+    /// argument's struct name via <see cref="IsStructNominalMismatch"/>, and a nested-
+    /// array element (int[][]) checks descriptor identity via
+    /// <see cref="ArrayElementAssignable"/>, mirroring the typed-function-argument checks.
+    /// </summary>
+    private void CheckArrayElementArgument(
+            MemberAccessExpr memberAccess, GrobType argType, Expression argExpr, ArrayTypeDescriptor? descriptor) {
+        if (descriptor is null || argType == GrobType.Error || argType == GrobType.Unknown) {
+            return;
         }
-        Expression argExpr = node.Arguments[0].Value;
-        bool compatible = TypesAreAssignable(argTypes[0], descriptor.ElementKind);
+        bool compatible = TypesAreAssignable(argType, descriptor.ElementKind);
         // Nested-array element identity (D-351): the flat GrobType.Array tag does not
         // distinguish int[][] from string[][], so int[][].contains(string[]) must be
         // rejected — mirroring the typed-function array-argument check (CheckArgument).
@@ -576,13 +602,78 @@ public sealed partial class TypeChecker {
             compatible = false;
         }
         if (!compatible) {
-            string argDisplay = GetStructTypeName(argExpr) ?? TypeName(argTypes[0]);
+            string argDisplay = GetStructTypeName(argExpr) ?? TypeName(argType);
             string elementDisplay = descriptor.ElementNamedTypeName ?? TypeName(descriptor.ElementKind);
             EmitError(ErrorCatalog.E0004,
-                $"Argument to 'contains' has type '{argDisplay}', which is not assignable to element type '{elementDisplay}'.",
+                $"Argument to '{memberAccess.Member}' has type '{argDisplay}', which is not assignable to element type '{elementDisplay}'.",
                 argExpr.Range);
         }
-        return GrobType.Bool;
+    }
+
+    /// <summary>
+    /// Checks that a single argument (e.g. <c>insert</c>/<c>remove</c>'s <c>index</c>
+    /// parameter, Sprint 9 Increment C0a-2, D-373) is <c>int</c> — E0004 if not. Unlike
+    /// <see cref="CheckArrayElementArgument"/>, this is never descriptor-dependent: an
+    /// <c>index: int</c> parameter's type is always statically known regardless of the
+    /// receiver's element type.
+    /// </summary>
+    private void CheckArrayIntArgument(MemberAccessExpr memberAccess, GrobType argType, Expression argExpr, string parameterLabel) {
+        if (argType == GrobType.Error || argType == GrobType.Unknown || argType == GrobType.Int) {
+            return;
+        }
+        EmitError(ErrorCatalog.E0004,
+            $"Argument '{parameterLabel}' to '{memberAccess.Member}' has type '{TypeName(argType)}', which is not assignable to parameter of type 'int'.",
+            argExpr.Range);
+    }
+
+    /// <summary>
+    /// Validates one of the four in-place-mutating array members — <c>append(value: T)</c>,
+    /// <c>insert(index: int, value: T)</c>, <c>remove(index: int)</c>, <c>clear()</c>
+    /// (Sprint 9 Increment C0a-2, D-373) — completing the <c>T[]</c> surface D-371 began.
+    /// All four reuse <see cref="FindReadonlyRoot"/> (<c>TypeChecker.Statements.cs</c>) —
+    /// its first call from a method-call site rather than an assignment/compound-
+    /// assignment/increment target — to reject mutation reached through a <c>readonly</c>
+    /// binding (E0204) before any arity/type validation runs. No <c>const</c> path is
+    /// needed: D-289 already bars array literals as <c>const</c> right-hand sides, so no
+    /// <c>const</c>-bound array can exist to check. All four resolve
+    /// <see cref="GrobType.Unknown"/> (void), matching <c>each</c>'s existing precedent
+    /// (D-362) rather than setting <see cref="CallExpr.ResolvedReturnType"/>.
+    /// </summary>
+    private GrobType ValidateArrayMutatingMethodCall(
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
+        // E0204 (readonly receiver) and the arity/argument-type diagnostics are
+        // independent root causes, so emit E0204 then fall through to the arity and
+        // per-argument checks rather than returning early — collecting both, as the
+        // "no cap on compile-time errors" invariant requires and as the
+        // assignment-target readonly path (VisitAssignment) already does.
+        if (FindReadonlyRoot(memberAccess.Target) is not null) {
+            EmitError(ErrorCatalog.E0204,
+                $"Cannot call mutating method '{memberAccess.Member}' on `readonly` binding.",
+                memberAccess.Range);
+        }
+        ArrayTypeDescriptor? descriptor = ArrayDescriptorOf(memberAccess.Target);
+        switch (memberAccess.Member) {
+            case "append":
+                if (MemberArgCountMatches(node, memberAccess, argTypes.Length, 1)) {
+                    CheckArrayElementArgument(memberAccess, argTypes[0], node.Arguments[0].Value, descriptor);
+                }
+                break;
+            case "insert":
+                if (MemberArgCountMatches(node, memberAccess, argTypes.Length, 2)) {
+                    CheckArrayIntArgument(memberAccess, argTypes[0], node.Arguments[0].Value, "index");
+                    CheckArrayElementArgument(memberAccess, argTypes[1], node.Arguments[1].Value, descriptor);
+                }
+                break;
+            case "remove":
+                if (MemberArgCountMatches(node, memberAccess, argTypes.Length, 1)) {
+                    CheckArrayIntArgument(memberAccess, argTypes[0], node.Arguments[0].Value, "index");
+                }
+                break;
+            case "clear":
+                MemberArgCountMatches(node, memberAccess, argTypes.Length, 0);
+                break;
+        }
+        return GrobType.Unknown;
     }
 
     /// <summary>

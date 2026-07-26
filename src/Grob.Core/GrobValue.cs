@@ -183,6 +183,12 @@ public readonly struct GrobValue : IEquatable<GrobValue> {
     /// Use <c>==</c> for IEEE 754 semantics.
     /// </para>
     /// </summary>
+    [SuppressMessage("Major Bug", "S1244:Floating point numbers should not be tested for equality",
+        Justification = "Intentional exact comparison for the Equals contract: double.Equals gives " +
+            "NaN.Equals(NaN) == true so collections can locate a NaN key. IEEE 754 semantics " +
+            "(NaN != NaN) live on operator ==, suppressed separately below. A tolerance range " +
+            "would make 0.1 + 0.2 == 0.3 true in Grob and is the script author's judgement, " +
+            "not the runtime's (D-315).")]
     public bool Equals(GrobValue other) {
         if (_kind != other._kind) return false;
         return _kind switch {

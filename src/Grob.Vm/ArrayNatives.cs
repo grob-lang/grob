@@ -5,23 +5,30 @@ namespace Grob.Vm;
 
 /// <summary>
 /// Factory for the array method natives: the higher-order members <c>filter</c>,
-/// <c>select</c>, <c>sort</c> and <c>each</c>, plus the non-higher-order query members
-/// <c>first</c>, <c>last</c> and <c>contains</c> (Sprint 9 Increment C0a-1, D-371). Each
-/// method is bound to its receiver array at <see cref="OpCode.GetProperty"/> dispatch
-/// time, capturing the array in the returned <see cref="NativeFunction"/> delegate.  The
+/// <c>select</c>, <c>sort</c> and <c>each</c>; the non-higher-order query members
+/// <c>first</c>, <c>last</c> and <c>contains</c> (Sprint 9 Increment C0a-1, D-371); and
+/// the in-place-mutating members <c>append</c>, <c>insert</c>, <c>remove</c>, <c>clear</c>
+/// (Sprint 9 Increment C0a-2, D-373), completing the <c>T[]</c> surface. Each method is
+/// bound to its receiver array at <see cref="OpCode.GetProperty"/> dispatch time,
+/// capturing the array in the returned <see cref="NativeFunction"/> delegate. The
 /// <see cref="VmInvoker"/> callback is captured only by the members that run a lambda
-/// argument; <c>first</c>/<c>last</c>/<c>contains</c> take no function and ignore it.
-/// Sprint 5 Increment C; moved to <c>Grob.Stdlib</c> in Sprint 6+.
+/// argument; every other member takes no function and ignores it. Sprint 5 Increment C;
+/// moved to <c>Grob.Stdlib</c> in Sprint 6+.
 /// </summary>
 internal static class ArrayNatives {
+    /// <summary>The <c>GrobError</c> leaf <c>insert</c>/<c>remove</c> raise through the
+    /// native-throw seam on an out-of-range index — the same leaf the array indexer and
+    /// <c>StringMethodsPlugin</c>'s range-bound members already use (D-373).</summary>
+    private const string IndexErrorLeaf = "IndexError";
+
     /// <summary>
     /// Returns the bound <see cref="NativeFunction"/> for the given
     /// <paramref name="methodName"/> on <paramref name="receiver"/>, or
-    /// <see langword="null"/> when the name is not an array method (higher-order or query).
-    /// The <paramref name="invoker"/> is captured in the native's delegate so a
-    /// higher-order member (<c>filter</c>/<c>select</c>/<c>sort</c>/<c>each</c>) can call
-    /// back into the VM to run its lambda argument; the query members
-    /// (<c>first</c>/<c>last</c>/<c>contains</c>) take no function and ignore it.
+    /// <see langword="null"/> when the name is not a recognised array method. The
+    /// <paramref name="invoker"/> is captured in the native's delegate so a higher-order
+    /// member (<c>filter</c>/<c>select</c>/<c>sort</c>/<c>each</c>) can call back into
+    /// the VM to run its lambda argument; every other member takes no function and
+    /// ignores it.
     /// </summary>
     internal static NativeFunction? GetMethod(
             string methodName, GrobArray receiver, VmInvoker invoker) =>
@@ -42,6 +49,16 @@ internal static class ArrayNatives {
                 (_, _) => Last(receiver)),
             "contains" => new NativeFunction("contains", 1,
                 (args, _) => Contains(args, receiver)),
+            // Sprint 9 Increment C0a-2 (D-373): the in-place-mutating members — none
+            // take a function argument either.
+            "append" => new NativeFunction("append", 1,
+                (args, _) => Append(args, receiver)),
+            "insert" => new NativeFunction("insert", 2,
+                (args, _) => Insert(args, receiver)),
+            "remove" => new NativeFunction("remove", 1,
+                (args, _) => Remove(args, receiver)),
+            "clear" => new NativeFunction("clear", 0,
+                (_, _) => Clear(receiver)),
             _ => null,
         };
 
@@ -157,6 +174,58 @@ internal static class ArrayNatives {
                 : DateNatives.ToDateTimeOffset(sa) == DateNatives.ToDateTimeOffset(sb);
         }
         return a == b;
+    }
+
+    // -----------------------------------------------------------------------
+    // append(value: T) -> void — mutates in place (Sprint 9 Increment C0a-2, D-373).
+    // Reference semantics (D-372): the receiver GrobArray is the same instance every
+    // other binding aliasing it observes, so the mutation is visible everywhere.
+    // -----------------------------------------------------------------------
+
+    private static GrobValue Append(GrobValue[] args, GrobArray receiver) {
+        receiver.Add(args[0]);
+        return GrobValue.Nil;
+    }
+
+    // -----------------------------------------------------------------------
+    // insert(index: int, value: T) -> void — mutates in place (D-373). Pinned boundary
+    // rule: index == receiver.Count is a VALID append-position insert (matches
+    // List<T>.Insert's own convention, and Python/JS array-insert conventions); index < 0
+    // or index > Count throws IndexError/E5101.
+    // -----------------------------------------------------------------------
+
+    private static GrobValue Insert(GrobValue[] args, GrobArray receiver) {
+        long index = args[0].AsInt();
+        if (index < 0 || index > receiver.Count) {
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
+                $"insert: index {index} is out of range for an array of length {receiver.Count}.");
+        }
+        receiver.Insert((int)index, args[1]);
+        return GrobValue.Nil;
+    }
+
+    // -----------------------------------------------------------------------
+    // remove(index: int) -> void — mutates in place (D-373). Strict bounds: unlike
+    // insert, index == receiver.Count is OUT of range — there is no element there.
+    // -----------------------------------------------------------------------
+
+    private static GrobValue Remove(GrobValue[] args, GrobArray receiver) {
+        long index = args[0].AsInt();
+        if (index < 0 || index >= receiver.Count) {
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
+                $"remove: index {index} is out of range for an array of length {receiver.Count}.");
+        }
+        receiver.RemoveAt((int)index);
+        return GrobValue.Nil;
+    }
+
+    // -----------------------------------------------------------------------
+    // clear() -> void — mutates in place (D-373).
+    // -----------------------------------------------------------------------
+
+    private static GrobValue Clear(GrobArray receiver) {
+        receiver.Clear();
+        return GrobValue.Nil;
     }
 }
 
