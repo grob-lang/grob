@@ -1025,8 +1025,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// </summary>
     private void FinalizeTopLevelBinding(
         string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode, SourceRange range,
-        FunctionTypeDescriptor? functionDescriptor = null, ArrayTypeDescriptor? arrayDescriptor = null,
-        MapTypeDescriptor? mapDescriptor = null) {
+        SymbolTypeIdentity typeIdentity = default) {
         // Sprint 8 Increment E: 'formatAs' is both a reserved identifier (E1103, D-320) and
         // a pre-registered NamespaceDecl symbol (D-342) — the first reserved identifier to
         // be a namespace ('select' is reserved but not a namespace). Skipping the collision
@@ -1039,8 +1038,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
                 range);
             return;
         }
-        RegisterSymbol(name, type, declaredAt, declarationNode,
-            typeIdentity: new(functionDescriptor, ArrayDescriptor: arrayDescriptor, MapDescriptor: mapDescriptor));
+        RegisterSymbol(name, type, declaredAt, declarationNode, typeIdentity: typeIdentity);
     }
 
     /// <summary>
