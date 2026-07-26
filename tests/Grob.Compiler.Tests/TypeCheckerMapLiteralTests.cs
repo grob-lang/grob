@@ -79,6 +79,49 @@ public sealed class TypeCheckerMapLiteralTests {
     }
 
     // -----------------------------------------------------------------------
+    // Forward reference — phase 1.5 must carry the map descriptor onto the
+    // provisional symbol, or a function body checked before the binding is
+    // finalised sees the map's value type as Unknown and skips every check.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void IndexRead_OnMapBindingDeclaredAfterFunction_StillTypesAsNullableValue() {
+        // 'get' is checked in pass 2 before the binding below it is finalised, so 'm' is
+        // still the provisional symbol phase 1.5 produced. m["a"] is int? — binding it to a
+        // non-nullable int is E0104. Before the descriptor was carried onto the provisional
+        // symbol the value type degraded to Unknown, which is permissive: this whole
+        // program type-checked clean, silently skipping the check.
+        DiagnosticBag bag = Check("""
+            fn get(): int {
+            n: int := m["a"]
+            return n
+            }
+            readonly m := map<string, int>{"a": 1}
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0104", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(11, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void IndexRead_OnAnnotatedMapBindingDeclaredAfterFunction_StillTypesAsNullableValue() {
+        // The annotated-binding arm of the same path: the descriptor comes from the
+        // 'map<string, int>' annotation rather than the literal's type-argument list.
+        DiagnosticBag bag = Check("""
+            fn get(): int {
+            n: int := m["a"]
+            return n
+            }
+            readonly m: map<string, int> := map<string, int>{"a": 1}
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0104", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(11, diag.Range.Start.Column);
+    }
+
+    // -----------------------------------------------------------------------
     // Value-type mismatch — E0004
     // -----------------------------------------------------------------------
 

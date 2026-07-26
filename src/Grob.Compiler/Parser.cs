@@ -1391,10 +1391,18 @@ public sealed class Parser {
     /// <see cref="Advance"/>/<see cref="Expect"/>/<see cref="Match"/>, so it can never
     /// emit a diagnostic and never needs a rewind. Tracks <c>&lt;</c>/<c>&gt;</c> nesting
     /// depth over a token run that looks like an identifier-only type-argument list
-    /// (identifiers, optional <c>[</c>/<c>]</c> for an array-typed value argument, and
-    /// commas) — succeeds only when the matching top-level <c>&gt;</c> is immediately
-    /// followed by <c>{</c>. Called only when <c>_pos</c> is at the <c>map</c> identifier
-    /// and the following token is already known to be <see cref="TokenKind.Less"/>.
+    /// (identifiers, optional <c>[</c>/<c>]</c> for an array-typed value argument, the
+    /// <c>?</c> nullable suffix D-327's <see cref="ParseTypeRef"/> loop accepts on any
+    /// type, and commas) — succeeds only when the matching top-level <c>&gt;</c> is
+    /// immediately followed by <c>{</c>. Called only when <c>_pos</c> is at the <c>map</c>
+    /// identifier and the following token is already known to be
+    /// <see cref="TokenKind.Less"/>.
+    /// <para>
+    /// <see cref="TokenKind.Colon"/> is deliberately absent from the accepted run: admitting
+    /// it alongside <c>?</c> would make <c>map &lt; a ? b : c &gt; { … }</c> — a comparison
+    /// feeding a ternary — scan as a map literal. Rejecting <c>:</c> keeps that form an
+    /// ordinary expression.
+    /// </para>
     /// </summary>
     private bool LooksLikeMapLiteral() {
         int i = _pos + 2; // first token after 'map' '<'
@@ -1416,6 +1424,7 @@ public sealed class Parser {
                 case TokenKind.Comma:
                 case TokenKind.LeftBracket:
                 case TokenKind.RightBracket:
+                case TokenKind.Question:
                     i++;
                     break;
                 default:

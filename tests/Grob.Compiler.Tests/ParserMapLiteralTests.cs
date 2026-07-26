@@ -94,6 +94,44 @@ public sealed class ParserMapLiteralTests {
     }
 
     // -----------------------------------------------------------------------
+    // Nullable value type argument — 'map<K, V?>' (D-327's '?' suffix)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MapLiteral_NullableValueTypeArgument_Parses() {
+        // ParseTypeRef's suffix loop (D-327) accepts '?' on any type, so 'map<string, int?>'
+        // is a well-formed type-argument list. The literal lookahead must admit the '?'
+        // token or the whole literal silently degrades to a 'map' identifier comparison.
+        Expression e = ExprOf(ParseOk("map<string, int?>{ \"a\": 1 }\n"));
+        MapLiteralExpr map = Assert.IsType<MapLiteralExpr>(e);
+        Assert.Equal(2, map.TypeArguments.TypeArguments.Count);
+        Assert.Equal("int", map.TypeArguments.TypeArguments[1].Name);
+        Assert.True(map.TypeArguments.TypeArguments[1].IsNullable);
+        Assert.Equal("a", Assert.Single(map.Entries).Key);
+    }
+
+    [Fact]
+    public void MapLiteral_NullableArrayValueTypeArgument_Parses() {
+        Expression e = ExprOf(ParseOk("map<string, int[]?>{ \"a\": [1] }\n"));
+        MapLiteralExpr map = Assert.IsType<MapLiteralExpr>(e);
+        Assert.Equal(2, map.TypeArguments.TypeArguments.Count);
+        Assert.True(map.TypeArguments.TypeArguments[1].IsNullable);
+    }
+
+    [Fact]
+    public void MapAsIdentifier_TernaryComparison_StillParsesAsComparison() {
+        // Guards the '?' widening above: 'map < a ? b : c' is a comparison feeding a
+        // ternary, not a map literal. The lookahead admits '?' but not ':', so the scan
+        // still bails out and 'map' stays an ordinary identifier.
+        CompilationUnit unit = ParseOk("map := 5\na := 1\nb := 2\nc := 3\nr := map < a ? b : c\n");
+        VarDeclStmt rDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[4]);
+        TernaryExpr ternary = Assert.IsType<TernaryExpr>(rDecl.Initializer);
+        BinaryExpr cmp = Assert.IsType<BinaryExpr>(ternary.Condition);
+        Assert.Equal(BinaryOperator.Less, cmp.Operator);
+        Assert.Equal("map", Assert.IsType<IdentifierExpr>(cmp.Left).Name);
+    }
+
+    // -----------------------------------------------------------------------
     // Malformed map literal — no following '{' after the type-argument list
     // -----------------------------------------------------------------------
 

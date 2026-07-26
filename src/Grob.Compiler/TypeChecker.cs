@@ -1049,12 +1049,19 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// still permits re-registration when it finalises the binding.
     /// No-ops when the existing symbol is non-provisional (e.g. an fn or type
     /// declaration whose name is re-used by a value binding — pass 2 handles E1102).
+    /// <para>
+    /// Takes the whole <see cref="SymbolTypeIdentity"/> rather than a bare
+    /// <see cref="FunctionTypeDescriptor"/>: a provisional symbol that drops its
+    /// side-channel descriptor degrades to a flat kind, so a function body checked before
+    /// the binding is finalised sees e.g. a <c>map</c>'s value type as
+    /// <see cref="GrobType.Unknown"/> and silently skips every value-type check (D-376).
+    /// </para>
     /// </summary>
-    private void UpdateProvisionalType(string name, GrobType type, FunctionTypeDescriptor? functionDescriptor = null) {
+    private void UpdateProvisionalType(string name, GrobType type, SymbolTypeIdentity typeIdentity = default) {
         if (!_scopes.Peek().TryGetValue(name, out Symbol? existing)) return;
         if (!existing.Provisional) return;
         RegisterSymbol(name, type, existing.DeclaredAt, existing.DeclarationNode,
-            provisional: true, typeIdentity: new(FunctionDescriptor: functionDescriptor));
+            provisional: true, typeIdentity: typeIdentity);
     }
 
     /// <summary>Emits an error diagnostic and returns <see cref="GrobType.Error"/>.</summary>
