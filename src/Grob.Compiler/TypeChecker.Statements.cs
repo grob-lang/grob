@@ -46,10 +46,10 @@ public sealed partial class TypeChecker {
 
         GrobType initType = Visit(node.Initializer);
         FunctionTypeDescriptor? initDesc = InitialiserDescriptor(node.Initializer);
-        (GrobType symbolType, FunctionTypeDescriptor? symbolDesc, ArrayTypeDescriptor? symbolArrayDesc) =
+        (GrobType symbolType, FunctionTypeDescriptor? symbolDesc, ArrayTypeDescriptor? symbolArrayDesc, MapTypeDescriptor? symbolMapDesc) =
             ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Initializer.Range, node.Initializer);
         RegisterSymbol(node.Name, symbolType, node.Range.Start, node,
-            typeIdentity: new(symbolDesc, ArrayDescriptor: symbolArrayDesc));
+            typeIdentity: new(symbolDesc, ArrayDescriptor: symbolArrayDesc, MapDescriptor: symbolMapDesc));
         return GrobType.Unknown;
     }
 
@@ -286,11 +286,13 @@ public sealed partial class TypeChecker {
     /// (<c>arr[i] += v</c>). Mirrors <see cref="VisitIndexAssignmentTarget"/>'s shape:
     /// visiting the target resolves the receiver's real element type (D-351) via the
     /// existing <c>VisitIndex</c> path (permissively <see cref="GrobType.Unknown"/> for a
-    /// map receiver — the same honest gap D-350/D-351 already carry), <see
+    /// receiver whose element/value type could not be determined), <see
     /// cref="FindReadonlyRoot"/> raises <see cref="ErrorCatalog.E0204"/> exactly as the
     /// plain-assignment path does, and the operator/operand check reuses
     /// <see cref="EmitCompoundOperatorTypeCheck"/> — the identical rule the
-    /// identifier-target path already applies.
+    /// identifier-target path already applies. Sprint 9 Increment C0b-1: the RHS is checked
+    /// against a known map element's unwrapped <c>V</c>, not its nullable <c>V?</c> — see
+    /// <see cref="UnwrapMapElementTypeForMutation"/> for the shared carve-out rationale.
     /// </summary>
     private GrobType VisitIndexCompoundAssignmentTarget(CompoundAssignmentStmt node, IndexExpr indexTarget) {
         GrobType elementType = Visit(indexTarget);
@@ -300,11 +302,29 @@ public sealed partial class TypeChecker {
                 "Cannot mutate element of `readonly` binding.",
                 node.Range);
         }
-        if (elementType != GrobType.Unknown) {
-            EmitCompoundOperatorTypeCheck(elementType, valueType, node.Operator, node.Range);
+        GrobType checkType = UnwrapMapElementTypeForMutation(elementType, indexTarget);
+        if (checkType != GrobType.Unknown) {
+            EmitCompoundOperatorTypeCheck(checkType, valueType, node.Operator, node.Range);
         }
         return GrobType.Unknown;
     }
+
+    /// <summary>
+    /// Sprint 9 Increment C0b-1: the D-359 map-element carve-out shared by
+    /// <see cref="VisitIndexCompoundAssignmentTarget"/> and <see cref="VisitIndexIncrementTarget"/>
+    /// — a map element types as <c>V?</c> (nullable) once its <see cref="MapTypeDescriptor"/>
+    /// is known, but an in-place index mutation assumes present-or-faults-at-runtime
+    /// (consistent with <c>GetIndex</c>'s existing nil-on-miss runtime permissiveness), so
+    /// both callers check their operator/operand rule against the unwrapped <c>V</c>, not
+    /// <c>V?</c>. Detected via <see cref="MapDescriptorOf"/> on the target (non-null only for
+    /// a genuine map receiver with a known value type) rather than a bare nullable check, so a
+    /// real <c>T?[]</c> array element — a different, already-nullable declared shape, not this
+    /// carve-out's concern — is not silently unwrapped too.
+    /// </summary>
+    private GrobType UnwrapMapElementTypeForMutation(GrobType elementType, IndexExpr indexTarget) =>
+        MapDescriptorOf(indexTarget.Target) is not null
+            ? GrobTypeHelpers.ElementType(elementType)
+            : elementType;
 
     /// <summary>
     /// Sprint 9 Increment A4b (D-360): struct field compound-assignment target
@@ -426,9 +446,15 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Sprint 9 Increment A4 (D-359): array/map index increment/decrement target
     /// (<c>arr[i]++</c>/<c>--</c>). Mirrors the identifier-target int-only rule, except a
-    /// map receiver's <see cref="GrobType.Unknown"/> element stays permissive (D-350's
-    /// established map-write gap) rather than being rejected — the same latitude
-    /// <see cref="VisitIndexCompoundAssignmentTarget"/> gives compound assignment.
+    /// receiver whose element/value type could not be determined stays permissive rather
+    /// than being rejected — the same latitude <see cref="VisitIndexCompoundAssignmentTarget"/>
+    /// gives compound assignment. Sprint 9 Increment C0b-1: a known map element unwraps its
+    /// <c>V?</c> to <c>V</c> before this check via <see cref="UnwrapMapElementTypeForMutation"/>
+    /// — the same carve-out <see cref="VisitIndexCompoundAssignmentTarget"/> applies — so
+    /// <c>m[k]++</c> on a <c>map&lt;string, int&gt;</c> stays legal exactly as it compiled
+    /// before this increment's nullable typing landed, while a genuinely unsupported value
+    /// type (e.g. <c>map&lt;string, float&gt;</c>, which has no <c>++</c> operator) now
+    /// correctly rejects where it was silently permissive before.
     /// </summary>
     private GrobType VisitIndexIncrementTarget(IncrementStmt node, IndexExpr indexTarget) {
         GrobType elementType = Visit(indexTarget);
@@ -438,13 +464,15 @@ public sealed partial class TypeChecker {
                 node.Range);
         }
 
+        GrobType checkType = UnwrapMapElementTypeForMutation(elementType, indexTarget);
+
         string opSym = node.Kind == IncrementKind.Increment ? "++" : "--";
-        if (elementType == GrobType.Float) {
+        if (checkType == GrobType.Float) {
             EmitError(ErrorCatalog.E0002,
                 $"Operator '{opSym}' cannot be applied to type 'float'.", node.Range);
-        } else if (elementType != GrobType.Int && elementType != GrobType.Unknown && elementType != GrobType.Error) {
+        } else if (checkType != GrobType.Int && checkType != GrobType.Unknown && checkType != GrobType.Error) {
             EmitError(ErrorCatalog.E0002,
-                $"Operator '{opSym}' cannot be applied to type '{TypeName(elementType)}'.", node.Range);
+                $"Operator '{opSym}' cannot be applied to type '{TypeName(checkType)}'.", node.Range);
         }
 
         return GrobType.Unknown;
@@ -526,10 +554,15 @@ public sealed partial class TypeChecker {
     /// read for a chained target like <c>matrix[r][c]</c>), setting
     /// <c>ResolvedType</c>/<c>Declaration</c> there exactly as the read side (D-348)
     /// already does, and now also resolving the receiver's real element type (D-351) —
-    /// closing the A2 gap: <c>arr[0] = "x"</c> on an <c>int[]</c> is a mismatch. A map
-    /// target (or any array whose element type could not be determined) resolves the
-    /// target's element type as <see cref="GrobType.Unknown"/> and stays permissive,
-    /// exactly as before.
+    /// closing the A2 gap: <c>arr[0] = "x"</c> on an <c>int[]</c> is a mismatch. A receiver
+    /// whose element/value type could not be determined resolves the target's element type
+    /// as <see cref="GrobType.Unknown"/> and stays permissive, exactly as before. Sprint 9
+    /// Increment C0b-1: a map with a known value type now types its target as <c>V?</c>, so
+    /// <c>m[k] = v</c> validates too — <c>V</c> is assignable to <c>V?</c> under the ordinary
+    /// nullable-widening rule (no special-case unwrap needed here, unlike the compound-
+    /// assignment carve-out at <see cref="VisitIndexCompoundAssignmentTarget"/>: a plain
+    /// store simply overwrites the slot, so there is no present-or-fault RHS to reconcile
+    /// against a narrower type).
     /// </summary>
     private GrobType VisitIndexAssignmentTarget(AssignmentStmt node, IndexExpr indexTarget) {
         GrobType elementType = Visit(indexTarget);

@@ -369,6 +369,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-371 | July 2026                                                          | Type system / Compiler / VM — array member surface | Sprint 9 Increment C0a-1: delivers five of the nine undispatched `T[]` members the advertised-vs-built audit found — `length`, `isEmpty`, `first()`, `last()`, `contains(v: T)` — plus `sort`'s missing `date`/`guid` `Comparable` key arms; `append`/`insert`/`remove`/`clear` and their mutation rejection stay C0a-2. Arrays stay structural (D-351/D-356/D-363) rather than joining either registry: `length`/`isEmpty` resolve directly in `VisitMemberAccess` (no descriptor needed), `first`/`last`/`contains` join the renamed `IsArrayMethod` (from `IsArrayHigherOrderMethod`) alongside the pre-existing `filter`/`select`/`sort`/`each`. `first()`/`last()`'s `T?` and `contains(v: T)`'s argument type are derived from the receiver's `ArrayTypeDescriptor` mirroring `VisitIndex` (D-351/D-359), not `select<U>`'s untracked-element precedent; the element's named-type/nested-array identity threads through `_callResultStructNames`/`_callResultArrayDescriptors` the same way `split()` already does, so chained access does not regress to `Unknown`. `GrobValueComparer` gains a `Struct` arm: `date` compares via `DateNatives.ToDateTimeOffset` (D-367's instant basis — never the raw `__value` string, which would reintroduce the trichotomy bug in a new comparison path), `guid` stays ordinal on its canonical string (D-357); proven directly against `LessDate` so the two paths cannot diverge, and the existing LINQ stability guarantee is locked with a dedicated test. `contains`'s native replicates `EqualDate`'s VM-level rule in a new `ValuesEqual` helper (falling to `GrobValue`'s own `operator==` for every non-`date` kind, including `guid`'s D-169 field-by-field equality) — the load-bearing test: a `date[]` containing `a`, `arr.contains(a.toUtc())` is `true`. `array` closes as a permissive-`Unknown` receiver; `map` is now the sole remaining one until C0b — `CompilerNullableTests`' `PlainDot_DoesNotEmitIsNilOrJumps` re-anchored a second time, from `int[]` onto a map receiver via `env.all()`. `E0004`'s taxonomy mismatch for a runtime comparator fault is logged as a finding, not fixed. No new opcode; no new error code; count unchanged at 118. Cites D-351, D-356, D-357, D-363, D-367, D-169, D-362, D-369, and the advertised-vs-built audit |
 | D-372 | July 2026                                                          | Language semantics — aliasing | Ratifies reference semantics for array, map and struct assignment and argument-passing: `b := a` and passing either to a function bind the same underlying instance, no clone — not a new mechanism, ratifying the runtime's existing de facto behaviour (`GrobArray`/`GrobMap`/`GrobStruct` are all `sealed class`, and `GrobValue.SetLocal` already copies only the value wrapper). Records the pre-existing equality asymmetry (Array/Map/Function by `ReferenceEquals`, Struct field-by-field, D-169) unchanged. Clarifies `readonly` is binding-scoped, not object-scoped (`readonly a := [1, 2]; b := a; b.append(3)` is not caught — refines D-291's "deep immutability" phrasing without editing D-291 itself). Records the reachable gap predates this increment (D-350's index-assignment path already exposed it). No new opcode, no new error code; count unchanged at 118 |
 | D-373 | July 2026                                                          | Type system / Compiler / VM — array member surface | Sprint 9 Increment C0a-2: delivers the four in-place-mutating `T[]` members D-371 deferred — `append(value: T)`, `insert(index: int, value: T)`, `remove(index: int)`, `clear()` — completing the 13-member `T[]` surface. Implements D-372's reference semantics directly: `a := [1, 2]; b := a; b.append(3)` then `a.length == 3`, tested end to end (`Sprint9IncrementC0a2Tests.Append_ThroughSecondBinding_VisibleThroughFirst`), plus an argument-passing case where a function mutates its array parameter and the caller observes it after return. `FindReadonlyRoot` (`TypeChecker.Statements.cs`) is reused a seventh time — its first call from a method-call site rather than an assignment/compound-assignment/increment target — rejecting all four with E0204 when the receiver chain roots in a `readonly` binding, confirmed to walk `MemberAccessExpr`/`IndexExpr` chains. `append`/`insert`'s value argument reuses `contains(v: T)`'s element-type-compatibility check verbatim, extracted into a new shared `CheckArrayElementArgument` helper (E0004 on mismatch, permissive with no descriptor); `insert`/`remove`'s `index` argument is checked as `int` regardless of descriptor availability. `insert`/`remove` throw the existing `IndexError`/`E5101` native-throw seam (`StringMethodsPlugin`'s precedent) on an out-of-range index — pinned boundary rule: `index == length` is a valid append-position insert (matching `List<T>.Insert`), but strictly out of range for `remove` (no element there); both directions tested, including `remove` on an empty array. `GrobArray` (`Grob.Core`) gains `Insert`/`RemoveAt`/`Clear`, thin wrappers with no bounds-checking of their own (bounds live at the native layer so the fault is consistent with every other array/string bounds fault). All four resolve `GrobType.Unknown` (void), matching `each`'s precedent (D-362) rather than setting `CallExpr.ResolvedReturnType`. Two findings recorded, not fixed: an unrecognised array method name (`arr.garbage()`) still resolves permissively to `Unknown` at compile time — recommended, not built, tightening to E1002 to match the existing bare-property precedent; and `Compiler.ControlFlow.cs`'s array `for...in` loop bound is re-read via a fresh `GetProperty("length")` every iteration rather than captured once, so a loop body mutating the array it iterates changes the loop's own bound dynamically — logged for the pending correctness batch alongside D-371's `E0004` taxonomy finding. No new opcode, no new error code; count unchanged at 118. Cites D-371, D-372, D-291, D-350, D-289, D-351, D-362 |
+| D-374 | July 2026                                                          | Type system / Compiler — map member surface substrate | Sprint 9 Increment C0b-1, rescoped after its own plan-mode gate: delivers only the `MapTypeDescriptor` substrate, not the six query members the original prompt bundled — a plan-mode investigation found a genuinely new descriptor-carriage mechanism, a map-literal-grammar gap, and a D-359 scope contradiction, and the maintainer chose to split rather than absorb all three into one increment; the query-member surface (`length`/`isEmpty`/`keys`/`values`/`get`/`contains`) is a follow-on increment. `MapTypeDescriptor` (`Grob.Compiler`) mirrors D-351's `ArrayTypeDescriptor` shape — `ValueKind`/`ValueNamedTypeName`/`ValueArrayDescriptor`, no `K` field (v1 keys fixed `string`) — carried on `Symbol.MapDescriptor` and recovered via a new `MapDescriptorOf`, narrowed to the two tiers with a real producer today (identifier, via `LookupSymbol`; grouping, via recursion) — no literal tier (no map literal exists, see below) and no call-result tier (no non-trivial-`V` native call exists to populate one; `env.all()` stays flat `map<string, string>`, YAGNI). New `ResolveMapValueDescriptor(TypeRef)` mirrors `ResolveArrayElementDescriptor`, wired into `ResolveTypeRef`/`ResolveTypeRefFull`/`ResolveSignatureType`/`ResolveFieldAnnotationType` so a `map<K, V>` parameter, field or `var`-declaration annotation now actually consults `TypeRef.TypeArguments[1]` instead of routing through the flat builtin-name switch untouched, closing the F5-1 gap `TypeArguments` names as parsed-not-consulted. `VisitIndex` now types `m[k]` as nullable `V` (`V?`, nil if absent, per `grob-type-registry.md`) instead of `Unknown` when a `MapTypeDescriptor` is available — closing the map-element source of D-362's three permissive-`Unknown`-reaching-`EmitArithmetic` sources, narrowing it to two. Deliberately decoupled from `IndexExpr.ElementType`, which keeps storing the flat unwrapped `V`: the compiler's read-modify-write emission (`Compiler.Statements.cs`) reads that field directly for opcode selection and needs the runtime category, not the nullable distinction — proven necessary by a red/green experiment showing the naive unified design silently mis-selects `AddInt` over `AddFloat` (and skips `IntToFloat` coercion) for `map<string, float>` compound-assignment. `ResolveIterationVariableTypes`'s `Map` case now returns the descriptor's real `ValueKind`/`ValueNamedTypeName`/`ValueArrayDescriptor` instead of `Unknown` — closes F5-1's stated `for k, v in m` defect directly (`k` was already correctly `string`). Explicit maintainer decision on the resulting D-359 scope tension (typing the element as `V?` would otherwise start rejecting `m[k] += 1`/`m[k]++`, silently permissive today): kept legal by unwrapping `V?` to `V` at the compound-assignment and increment/decrement type-check gates before D-359's existing checks run — the identical regression mechanism, so the carve-out is applied uniformly to both, not just the compound-assignment form the prompt named. A related, narrower question — `map<int, string>`'s non-`string` key type-argument — is left silently permissive, matching `ResolveArrayElementDescriptor`'s own unrecognised-sub-form convention; `E0401`/`E0402` are reserved for D-080's constrained-generics arity/constraint checks, not a home for this, so no code was invented — locked with a test, not fixed. Two things the plan-mode gate surfaced and this increment does not resolve, recorded rather than silently absorbed: (1) map-literal construction syntax (`map<K, V>{...}`) is documented as settled in `grob-type-registry.md` and `grob-language-fundamentals.md` but has no parser/AST production anywhere in the codebase, confirmed by direct reading — predates this increment (it is why D-350/D-351/D-371's map tests already rely on hand-built AST/VM-level constructions and `fn`-parameter annotations rather than real source) and stays that way here; a genuine `extending-the-grammar` decision for whoever picks up map construction. (2) the "advertised-vs-built audit" cited repeatedly across the corpus as `grob-advertised-vs-built-audit.md` does not exist in the repository — a citation-hygiene gap, flagged so future landings stop citing a dead path. Scope confirmed: no query members, no mutation (`set`/`remove`/`clear`), no map-literal grammar, no opcode or VM change. `CompilerNullableTests.PlainDot_DoesNotEmitIsNilOrJumps` (D-371's map re-anchor) is unchanged — no `GrobType.Map` arm was added to `ResolveMemberAccessCall`/`VisitMemberAccess`'s dispatch, so map remains the sole receiver reaching the permissive property fall-through until the follow-on increment registers its members, at which point that test needs re-anchoring again. No new opcode, no new error code; count unchanged at 118. Cites D-351, D-350, D-359, D-362, D-371, D-373, D-080, F5-1's note |
 
 
 ---
@@ -7029,6 +7030,127 @@ D-372).
 
 ---
 
+### D-374 — `MapTypeDescriptor` substrate lands: indexer and for-in typing (Sprint 9 Increment C0b-1, rescoped) (July 2026)
+
+Area: Type system / Compiler — map member surface substrate
+Supersedes: none
+Superseded by: none
+Refines: D-351, D-350, D-359, D-362, D-371, D-373, D-080
+
+**Rescoped at the plan-mode gate.** The original Increment C0b-1 prompt bundled the
+`MapTypeDescriptor` substrate with all six non-mutating query members
+(`length`/`isEmpty`/`keys`/`values`/`get`/`contains`). Its own required plan-mode
+investigation (read-only, before any source edit) found three things the prompt had not
+anticipated: a genuinely new descriptor-carriage mechanism needed for `m.keys.first()`/
+`m.values.contains(x)` composition (a fourth, `MemberAccessExpr`-keyed tier beyond
+D-351's three), a map-literal-grammar gap blocking several of the prompt's own required
+end-to-end tests, and a scope contradiction in D-359's compound-assignment gate. Put to
+the maintainer as three explicit decisions: substitute hand-built AST/VM-level and
+`fn`-parameter-annotation tests for the missing map literal (matching the D-350/D-373
+precedent, map-literal grammar deferred to its own `extending-the-grammar` decision);
+keep `m[k] += 1`/`m[k]++` legal rather than let D-359's gate newly reject it; split the
+increment — this entry records the descriptor substrate only. The six query members are
+a follow-on increment, matching F5-2's own scheduling latitude ("C0b or dedicated
+increment").
+
+**The descriptor.** `MapTypeDescriptor` (`Grob.Compiler`) mirrors D-351's
+`ArrayTypeDescriptor` shape — `ValueKind` (flat `GrobType`), `ValueNamedTypeName`,
+`ValueArrayDescriptor` (for `map<string, T[]>`) — with no `K` field, since v1 keys are
+fixed `string`. Carried on `Symbol.MapDescriptor`, populated the same way
+`Symbol.ArrayDescriptor` is (`SymbolTypeIdentity`/`RegisterSymbol`), and recovered via a
+new `MapDescriptorOf(Expression)`. Unlike `ArrayDescriptorOf`'s five arms,
+`MapDescriptorOf` has only the two tiers with a real producer today — `IdentifierExpr`
+(via `LookupSymbol`) and `GroupingExpr` (recursion). No literal-node tier is built (no
+map literal exists in the parser to populate one) and no call-result tier is built (no
+native call returns a non-trivial-`V` map; `env.all()` stays flat `map<string, string>`
+and gains no descriptor threading — YAGNI, nothing would consume it).
+
+**`TypeArguments` consumption.** New `ResolveMapValueDescriptor(TypeRef)` mirrors
+`ResolveArrayElementDescriptor` (D-351), reading `TypeArguments[1]` for `V`. Wired into
+`ResolveTypeRef`, `ResolveTypeRefFull`, `ResolveSignatureType` (parameters/returns) and
+`ResolveFieldAnnotationType`/`ResolveNamedFieldType` (struct fields) — all four
+previously routed `"map"` through a flat builtin-name switch with zero inspection of
+`typeRef.TypeArguments`, exactly the gap F5-1's build-status note named
+(`TypeRef.TypeArguments` "is parsed and not yet consulted"). A `map<string, int>`
+parameter, field or `var`-declaration annotation now produces a populated
+`MapTypeDescriptor`.
+
+**Indexer typing — `m[k]` is now `V?`, closing a D-362 permissive-`Unknown` source.**
+`VisitIndex` types a map-receiver index expression as nullable `V` (`V?`, nil if absent
+— `grob-type-registry.md`'s documented indexer semantics) when a `MapTypeDescriptor` is
+available, instead of the unconditional `Unknown` every map receiver produced before this
+increment. This closes the map-element source among D-362's three permissive-`Unknown`
+operands reaching `EmitArithmetic` (`Compiler.Expressions.cs`'s comment there narrowed
+from three sources to two).
+
+**A deliberate decoupling, proven by a genuine red/green cycle.** `IndexExpr.ElementType`
+keeps storing the _flat, unwrapped_ `V`, while `VisitIndex`'s own return value is the
+_nullable_ `V?` — the array era never needed this split, since `VisitIndex` stashed and
+returned the same value for arrays. The split exists because `Compiler.Statements.cs`'s
+read-modify-write emission (`EmitIndexReadModifyWrite`/`EmitIndexIncrement`) reads
+`ElementType` directly for opcode selection and needs the runtime category, not the
+nullable distinction. Verified, not assumed: the implementer temporarily used the naive
+unified design, confirmed a `map<string, float>` compound-assignment test failed for the
+predicted reason (`AddInt` wrongly selected over `AddFloat`, `IntToFloat` coercion
+skipped), then restored the decoupled design and watched the same test pass. A future
+reader of `IndexExpr.ElementType` should not assume it equals the expression's static
+type for a map receiver — it deliberately does not, and the field's XML remarks say so.
+
+**`for k, v in m` — F5-1's stated defect, fixed.** `ResolveIterationVariableTypes`'s
+`Map` case now returns the descriptor's real `ValueKind`/`ValueNamedTypeName`/
+`ValueArrayDescriptor` for `v` instead of `Unknown` (`k` was already correctly typed
+`string`). No change to `VisitForIn` itself — it already threads the third/fourth tuple
+slots onto the value variable's symbol.
+
+**D-359's compound-assignment/increment carve-out — kept legal by maintainer decision.**
+Once a map element carries a real (nullable) type instead of `Unknown`,
+`VisitIndexCompoundAssignmentTarget`'s existing gate (only runs D-359's operand check
+when `elementType != GrobType.Unknown`) would mechanically start rejecting
+`m[k] += 1`/`m[k]++` on a typed map — a previously silent, permissive case. The
+maintainer's explicit call: keep it legal, by unwrapping `V?` to `V` before the D-359
+check runs, on the theory that indexed compound-assignment/increment assumes-present-or-
+faults-at-runtime, consistent with `GetIndex`'s existing nil-on-miss runtime
+permissiveness. Applied uniformly to both `VisitIndexCompoundAssignmentTarget` and
+`VisitIndexIncrementTarget` — the identical regression mechanism on the identical
+opcode-selection path, not just the compound-assignment form the original prompt named.
+
+**A narrower, related question left permissive.** A non-`string` map key type-argument
+(`map<int, string>`) has no error-code home — `E0401`/`E0402` are reserved for D-080's
+constrained-generics arity/constraint checks, a different mechanism from map's fixed
+`K = string` rule — so it is left silently permissive, matching
+`ResolveArrayElementDescriptor`'s own convention for an unrecognised sub-form, and locked
+with a test rather than guessed at with an invented code.
+
+**Two findings surfaced by the plan-mode gate, not resolved here.** (1) Map-literal
+construction syntax (`map<K, V>{...}`) is documented as settled in
+`grob-type-registry.md` and `grob-language-fundamentals.md`, but no parser or AST
+production for it exists anywhere in the codebase — confirmed by direct reading. This
+predates this increment; it is the reason D-350's, D-351's and D-371's map tests already
+rely on hand-built AST/VM-level constructions and `fn`-parameter annotations rather than
+real source, and this increment continues that convention rather than closing the gap. A
+genuine `extending-the-grammar` decision, for whoever picks up map construction next. (2)
+The "advertised-vs-built audit" cited repeatedly across the corpus (this log,
+`grob-type-registry.md`) as `grob-advertised-vs-built-audit.md` does not exist in the
+repository — a citation-hygiene gap, not a blocker, flagged so a future landing entry
+does not keep citing a dead path.
+
+**Out of scope, confirmed.** The six query members (`length`/`isEmpty`/`keys`/`values`/
+`get`/`contains` — a follow-on increment). Mutation (`set`/`remove`/`clear`, C0b-2).
+Map-literal grammar. No opcode change, no VM change (`VirtualMachine.cs`/`GrobMap.cs`
+untouched). `CompilerNullableTests.PlainDot_DoesNotEmitIsNilOrJumps` (D-371's map
+re-anchor) is unchanged — no `GrobType.Map` arm was added to `ResolveMemberAccessCall`/
+`VisitMemberAccess`'s member-access dispatch, so map remains the sole receiver kind
+reaching the permissive property fall-through until the follow-on increment registers its
+members, at which point that test needs re-anchoring a third time. No new opcode, no new
+error code; count unchanged at 118.
+
+Full detail: `grob-type-registry.md`'s `map<K, V>` build-status note narrowed (indexer
+and `for...in` typing now built; query-member dispatch and literal construction still
+pending), and `wiki/Type-Registry/map.md` updated to match. Cites D-351, D-350, D-359,
+D-362, D-371, D-373, D-080, F5-1's note, and the (missing) advertised-vs-built audit.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -7250,6 +7372,17 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
+_July 2026 — Sprint 9 Increment C0b-1 (rescoped), `MapTypeDescriptor` substrate built:_
+_D-374 added. Delivers the descriptor and its three-tier carriage (mirroring D-351),_
+_`TypeArguments` consumption for `map<K, V>` annotations, `m[k]` typed `V?` instead of_
+_`Unknown` (closing a D-362 permissive-`Unknown` source), and `for k, v in m` binding `v`_
+_as `V` (closing F5-1's stated defect) — but not the six query members, split off to a_
+_follow-on increment after the plan-mode gate found a new descriptor-carriage mechanism,_
+_a map-literal-grammar gap and a D-359 scope question the original prompt hadn't_
+_anticipated. `m[k] += 1`/`m[k]++` kept legal by maintainer decision, unwrapping `V?` to_
+_`V` before D-359's check runs. Map-literal construction syntax confirmed absent from the_
+_parser despite being documented as settled — deferred, not fixed. No new opcode, no new_
+_error code; count unchanged at 118._
 _July 2026 — Sprint 9 Increment C0a-2, array mutating member surface built: D-373 added._
 _Delivers the four in-place-mutating `T[]` members D-371 deferred — `append(value: T)`,_
 _`insert(index: int, value: T)`, `remove(index: int)`, `clear()` — completing the_

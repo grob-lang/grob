@@ -473,4 +473,61 @@ public sealed class CompilerIndexCompoundAssignTests {
             ],
             ops);
     }
+
+    /// <summary>Returns the single <see cref="BytecodeFunction"/> constant in a chunk's pool.</summary>
+    private static BytecodeFunction SingleFunctionConstant(Chunk chunk) {
+        var functions = new List<BytecodeFunction>();
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            GrobValue v = chunk.ReadConstant(i);
+            if (v.IsFunction && v.AsFunction() is BytecodeFunction bf) functions.Add(bf);
+        }
+        return Assert.Single(functions);
+    }
+
+    // -----------------------------------------------------------------------
+    // Sprint 9 Increment C0b-1 — a map with a known value type (MapTypeDescriptor)
+    // compiled through the real TypeChecker (not the hand-built-AST bypass above).
+    // VisitIndex now stores the map's unwrapped, flat V on IndexExpr.ElementType (D-359's
+    // field, read by the read-modify-write lowering below) while returning the nullable
+    // V? to its own caller (the type checker's nullable-typing consumers) — this pins the
+    // opcode-selection consequence of that split: a map<string, float> element must still
+    // select AddFloat and coerce an int RHS via IntToFloat, not silently default to AddInt
+    // the way an actually-Unknown map element already safely does above.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MapIndexCompoundAssign_OnMapStringFloat_SelectsAddFloatAndCoercesIntRhs() {
+        Chunk outer = CompileSource("fn f(m: map<string, float>): void {\nm[\"k\"] += 1\n}\n");
+        BytecodeFunction fn = SingleFunctionConstant(outer);
+        List<OpCode> ops = Opcodes(fn.Bytecode);
+
+        Assert.Contains(OpCode.AddFloat, ops);
+        Assert.DoesNotContain(OpCode.AddInt, ops);
+
+        List<Instr> instrs = Decode(fn.Bytecode);
+        Instr addFloat = instrs.Single(i => i.Op == OpCode.AddFloat);
+        // The RHS int literal (1) is coerced to float immediately before the typed op.
+        Assert.Equal(OpCode.IntToFloat, instrs[instrs.IndexOf(addFloat) - 1].Op);
+    }
+
+    [Fact]
+    public void MapIndexCompoundAssign_OnMapStringInt_SelectsAddIntNoCoercion() {
+        Chunk outer = CompileSource("fn f(m: map<string, int>): void {\nm[\"k\"] += 1\n}\n");
+        BytecodeFunction fn = SingleFunctionConstant(outer);
+        List<OpCode> ops = Opcodes(fn.Bytecode);
+
+        Assert.Contains(OpCode.AddInt, ops);
+        Assert.DoesNotContain(OpCode.AddFloat, ops);
+        Assert.DoesNotContain(OpCode.IntToFloat, ops);
+    }
+
+    [Fact]
+    public void MapIndexIncrement_OnMapStringInt_SelectsAddInt() {
+        Chunk outer = CompileSource("fn f(m: map<string, int>): void {\nm[\"k\"]++\n}\n");
+        BytecodeFunction fn = SingleFunctionConstant(outer);
+        List<OpCode> ops = Opcodes(fn.Bytecode);
+
+        Assert.Contains(OpCode.AddInt, ops);
+        Assert.DoesNotContain(OpCode.AddFloat, ops);
+    }
 }

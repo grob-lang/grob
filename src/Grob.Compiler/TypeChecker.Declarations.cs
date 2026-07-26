@@ -35,14 +35,14 @@ public sealed partial class TypeChecker {
             // A reserved identifier (formatAs, select) may not be a parameter name
             // (E1103, D-320).
             CheckReservedBindingName(p.Name, p.Range);
-            (GrobType paramType, string? paramStructName, FunctionTypeDescriptor? paramDesc, ArrayTypeDescriptor? paramArrayDesc) =
-                p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null, null);
+            (GrobType paramType, string? paramStructName, FunctionTypeDescriptor? paramDesc, ArrayTypeDescriptor? paramArrayDesc, MapTypeDescriptor? paramMapDesc) =
+                p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null, null, null);
             // Use the owning FnDecl as the declaring node — Parameter is not an AstNode.
-            // The struct name/array descriptor travel on the symbol itself (not recoverable
-            // from DeclarationNode alone) so a struct-typed or T[]-typed parameter resolves
-            // inside the function body the same way a `:=`-inferred local does.
+            // The struct name/array/map descriptor travel on the symbol itself (not recoverable
+            // from DeclarationNode alone) so a struct-typed, T[]-typed or map<string, V>-typed
+            // parameter resolves inside the function body the same way a `:=`-inferred local does.
             RegisterSymbol(p.Name, paramType, p.Range.Start, node,
-                typeIdentity: new(paramDesc, paramStructName, paramArrayDesc));
+                typeIdentity: new(paramDesc, paramStructName, paramArrayDesc, paramMapDesc));
         }
 
         // Track the declared return type so VisitReturn can check returned values
@@ -51,8 +51,11 @@ public sealed partial class TypeChecker {
         // _functionReturnStructNames is pushed in lockstep for named-struct returns
         // (fix/compiler-struct-nominal-identity, Site C) — never pushed for a lambda, see
         // that stack's declaration comment. _functionReturnArrayDescriptors mirrors it for
-        // T[] returns (D-351).
-        (GrobType returnKind, string? returnStructName, FunctionTypeDescriptor? returnDesc, ArrayTypeDescriptor? returnArrayDesc) =
+        // T[] returns (D-351). ResolveSignatureType's 5th tuple element (Sprint 9 Increment
+        // C0b-1's map value descriptor) is discarded here — no consumer needs a returned
+        // map's value identity yet; there is no equivalent _functionReturnMapDescriptors
+        // stack to push it onto.
+        (GrobType returnKind, string? returnStructName, FunctionTypeDescriptor? returnDesc, ArrayTypeDescriptor? returnArrayDesc, MapTypeDescriptor? _) =
             ResolveSignatureType(node.ReturnType);
         _functionReturnTypes.Push(returnKind);
         _functionReturnDescriptors.Push(returnDesc);
@@ -84,8 +87,8 @@ public sealed partial class TypeChecker {
             // Resolve the parameter type with its structural descriptor so a function-type
             // parameter default (action: fn(): int = () => "s") is checked structurally,
             // not merely as fn-to-fn (D-326; Fix H).
-            (GrobType paramType, string? paramStructName, FunctionTypeDescriptor? paramDesc, ArrayTypeDescriptor? paramArrayDesc) =
-                p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null, null);
+            (GrobType paramType, string? paramStructName, FunctionTypeDescriptor? paramDesc, ArrayTypeDescriptor? paramArrayDesc, MapTypeDescriptor? _) =
+                p.Type is not null ? ResolveSignatureType(p.Type) : (GrobType.Unknown, null, null, null, null);
             if (paramType != GrobType.Unknown && defaultType != GrobType.Error &&
                     !IsParameterDefaultCompatible(paramType, paramStructName, paramDesc, paramArrayDesc, defaultType, p.DefaultValue)) {
                 EmitError(ErrorCatalog.E0004,
@@ -570,11 +573,11 @@ public sealed partial class TypeChecker {
         // annotation (readonly f: fn(): int := () => 1, or := makeCounter()) is checked
         // structurally and the descriptor is stored on the symbol (D-326; Fixes G and I).
         FunctionTypeDescriptor? initDesc = InitialiserDescriptor(node.Value);
-        (GrobType symbolType, FunctionTypeDescriptor? symbolDesc, ArrayTypeDescriptor? symbolArrayDesc) =
+        (GrobType symbolType, FunctionTypeDescriptor? symbolDesc, ArrayTypeDescriptor? symbolArrayDesc, MapTypeDescriptor? symbolMapDesc) =
             ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Value.Range, node.Value);
         // Finalise the pass-1 provisional entry (D-324). Detects collisions with prior
         // real bindings and registers as real when free.
-        FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range, symbolDesc, symbolArrayDesc);
+        FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range, symbolDesc, symbolArrayDesc, symbolMapDesc);
         return GrobType.Unknown;
     }
 

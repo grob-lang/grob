@@ -178,10 +178,10 @@ public sealed partial class TypeChecker {
     /// (E0501/E0502/E0503) as it goes. Returns a 4-tuple; <c>Second</c> is unused for
     /// single-variable forms. <c>ItemNamedTypeName</c>/<c>ItemArrayDescriptor</c> (D-351)
     /// carry the item variable's own struct name or array descriptor — from the array's
-    /// element descriptor — so a struct- or array-element for...in item resolves member
-    /// access or further indexing the same way a <c>:=</c>-inferred local does; both are
-    /// <see langword="null"/> for a scalar element, a numeric range, or a map (whose
-    /// value type tracking is out of D-351's scope, mirroring the pre-existing gap).
+    /// element descriptor, or (Sprint 9 Increment C0b-1) the map's value descriptor — so a
+    /// struct- or array-element for...in item resolves member access or further indexing the
+    /// same way a <c>:=</c>-inferred local does; both are <see langword="null"/> for a scalar
+    /// element, a numeric range, or a map whose value type could not be determined.
     /// </summary>
     private (GrobType First, GrobType Second, string? ItemNamedTypeName, ArrayTypeDescriptor? ItemArrayDescriptor)
             ResolveIterationVariableTypes(ForInStmt node) {
@@ -211,9 +211,15 @@ public sealed partial class TypeChecker {
                         node.Iterable.Range);
                     return (GrobType.Error, GrobType.Error, null, null);
                 }
-                // Map keys are strings; value type tracking is out of D-351's scope
-                // (the map analogue of the array gap this decision closes — arrays only).
-                return (GrobType.String, GrobType.Unknown, null, null);
+                // Map keys are strings. The value 'v' binds as the map's own value kind
+                // (Sprint 9 Increment C0b-1, closing the F5-1 note's stated defect) — plain
+                // V, not V?: unlike an index read on a possibly-absent key, iteration only
+                // ever yields entries that are actually present, so there is no absent-key
+                // case to make nullable here (mirrors the type registry's 'values → V[]',
+                // not 'V?[]', asymmetry). An unresolved map's value stays Unknown.
+                MapTypeDescriptor? mapDescriptor = MapDescriptorOf(node.Iterable);
+                return (GrobType.String, mapDescriptor?.ValueKind ?? GrobType.Unknown,
+                    mapDescriptor?.ValueNamedTypeName, mapDescriptor?.ValueArrayDescriptor);
 
             case GrobType.Error:
                 return (GrobType.Error, GrobType.Error, null, null); // cascade suppression

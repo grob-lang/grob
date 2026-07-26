@@ -75,4 +75,18 @@ public sealed class Symbol {
     /// determined (an empty literal with no annotation stays permissive elsewhere).
     /// </summary>
     public ArrayTypeDescriptor? ArrayDescriptor { get; init; }
+
+    /// <summary>
+    /// When <see cref="Type"/> is <see cref="GrobType.Map"/>, carries the map's value-type
+    /// identity (Sprint 9 Increment C0b-1) — the map analogue of <see cref="ArrayDescriptor"/>.
+    /// v1 keys are <c>string</c>-only, so only the value channel is carried (no key channel).
+    /// Set for a <c>map&lt;string, V&gt;</c>-annotated parameter (whose declaration node is
+    /// the owning <c>FnDecl</c> rather than the <c>Parameter</c>, mirroring why
+    /// <see cref="ArrayDescriptor"/> is threaded onto the symbol) and for a <c>:=</c>-inferred
+    /// or explicitly annotated map local, whose value shape is resolved from the initialiser
+    /// expression or the annotation itself. <see langword="null"/> when the value type could
+    /// not be determined (a bare <c>map</c> annotation with no type arguments stays permissive
+    /// elsewhere, mirroring the array analogue).
+    /// </summary>
+    public MapTypeDescriptor? MapDescriptor { get; init; }
 }
