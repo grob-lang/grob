@@ -473,4 +473,86 @@ public sealed class CompilerIndexCompoundAssignTests {
             ],
             ops);
     }
+
+    /// <summary>Returns the single <see cref="BytecodeFunction"/> constant in a chunk's pool.</summary>
+    private static BytecodeFunction SingleFunctionConstant(Chunk chunk) {
+        var functions = new List<BytecodeFunction>();
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            GrobValue v = chunk.ReadConstant(i);
+            if (v.IsFunction && v.AsFunction() is BytecodeFunction bf) functions.Add(bf);
+        }
+        return Assert.Single(functions);
+    }
+
+    // -----------------------------------------------------------------------
+    // Sprint 9 Increment C0b-1 — a map with a known value type (MapTypeDescriptor)
+    // compiled through the real TypeChecker (not the hand-built-AST bypass above).
+    // VisitIndex now stores the map's unwrapped, flat V on IndexExpr.ElementType (D-359's
+    // field, read by the read-modify-write lowering below) while returning the nullable
+    // V? to its own caller (the type checker's nullable-typing consumers) — this pins the
+    // opcode-selection consequence of that split: a map<string, float> element must still
+    // select AddFloat and coerce an int RHS via IntToFloat, not silently default to AddInt
+    // the way an actually-Unknown map element already safely does above.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MapIndexCompoundAssign_OnMapStringFloat_SelectsAddFloatAndCoercesIntRhs() {
+        Chunk outer = CompileSource("fn f(m: map<string, float>): void {\nm[\"k\"] += 1\n}\n");
+        BytecodeFunction fn = SingleFunctionConstant(outer);
+        List<OpCode> ops = Opcodes(fn.Bytecode);
+
+        // Full ordered read-modify-write shape (mirrors the class's exact-sequence
+        // convention, e.g. MapIndexCompoundAssign_HandBuiltTarget_EmitsExactEvaluateOnceShape):
+        // the map<string, float> element selects AddFloat and coerces the int RHS via
+        // IntToFloat immediately before it — not merely "contains AddFloat somewhere".
+        Assert.Equal(
+            [
+                OpCode.GetLocal, OpCode.Constant,                   // Ra = m (param), Ia = "k"
+                OpCode.GetLocal, OpCode.GetLocal,
+                OpCode.GetLocal, OpCode.GetLocal, OpCode.GetIndex,
+                OpCode.Constant, OpCode.IntToFloat, OpCode.AddFloat,
+                OpCode.SetIndex,
+                OpCode.PopN,
+                OpCode.Nil, OpCode.Return,                         // implicit 'return nil' (void fn)
+            ],
+            ops);
+    }
+
+    [Fact]
+    public void MapIndexCompoundAssign_OnMapStringInt_SelectsAddIntNoCoercion() {
+        Chunk outer = CompileSource("fn f(m: map<string, int>): void {\nm[\"k\"] += 1\n}\n");
+        BytecodeFunction fn = SingleFunctionConstant(outer);
+        List<OpCode> ops = Opcodes(fn.Bytecode);
+
+        Assert.Equal(
+            [
+                OpCode.GetLocal, OpCode.Constant,
+                OpCode.GetLocal, OpCode.GetLocal,
+                OpCode.GetLocal, OpCode.GetLocal, OpCode.GetIndex,
+                OpCode.Constant, OpCode.AddInt,                     // int element: no IntToFloat
+                OpCode.SetIndex,
+                OpCode.PopN,
+                OpCode.Nil, OpCode.Return,                         // implicit 'return nil' (void fn)
+            ],
+            ops);
+    }
+
+    [Fact]
+    public void MapIndexIncrement_OnMapStringInt_SelectsAddInt() {
+        Chunk outer = CompileSource("fn f(m: map<string, int>): void {\nm[\"k\"]++\n}\n");
+        BytecodeFunction fn = SingleFunctionConstant(outer);
+        List<OpCode> ops = Opcodes(fn.Bytecode);
+
+        Assert.Equal(
+            [
+                OpCode.GetLocal, OpCode.Constant,
+                OpCode.GetLocal, OpCode.GetLocal,
+                OpCode.GetLocal, OpCode.GetLocal, OpCode.GetIndex,
+                OpCode.Constant, OpCode.AddInt,
+                OpCode.SetIndex,
+                OpCode.PopN,
+                OpCode.Nil, OpCode.Return,                         // implicit 'return nil' (void fn)
+            ],
+            ops);
+    }
 }

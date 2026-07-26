@@ -168,17 +168,27 @@ of D-291 §4).
 
 ## `map<K, V>`
 
-A first-class built-in type. Maps are *intended* to be statically typed by key and
-value — `map<string, string>` and `map<string, int>` as distinct types — but **this
-typing is not yet implemented (D-351)**: `TypeRef.TypeArguments` is parsed and not yet
-consulted, `map` resolves to the flat `GrobType.Map` tag everywhere, and a
-`for k, v in m` loop binds `v` as `Unknown`. Value-type inference — mirroring arrays'
-`ArrayTypeDescriptor` (D-351) as a `MapTypeDescriptor`, with only `V` inferred since
-v1 keys are `string`-only — is scheduled before v1; until it lands, the per-key and
-per-value typing described in this section is the **target** surface, not current
-behaviour. Users consume and construct maps; they cannot declare generic map types of
-their own (same constrained-generics model as arrays). In v1, keys must be `string` —
-non-string keys are deferred post-MVP.
+A first-class built-in type. Maps are statically typed by value — `map<string, string>`
+and `map<string, int>` are distinct types — via `MapTypeDescriptor` (D-374), mirroring
+arrays' `ArrayTypeDescriptor` (D-351), with only `V` inferred since v1 keys are
+`string`-only. **Built (D-374):** a `map<K, V>` parameter, field or `var`-declaration
+annotation now consults `TypeRef.TypeArguments[1]` and produces a real `V`; the indexer
+`m[k]` types as `V?` (nil if absent, matching the Members table below) instead of
+`Unknown`; `for k, v in m` binds `v` as `V` (`k` as `string`); `m[k] += 1`/`m[k]++` stay
+legal on the unwrapped `V`. **Not yet built:** the query member surface below
+(`length`/`isEmpty`/`keys`/`values`/`get`/`contains`) has no dispatch — `map` has no
+`GrobType.Map` arm in the type checker's member-access resolution at all, so every
+member access documented in this section still fails to compile; scheduled as a
+follow-on increment to D-374. `set`/`remove`/`clear` and their `readonly` mutation
+rejection are a separate, later increment (C0b-2). **Also not yet built, discovered
+during D-374:** map-literal construction syntax (`map<K, V>{...}`, shown below) has no
+parser or AST production anywhere in the codebase, despite being documented here and in
+`grob-language-fundamentals.md` as settled syntax — maps can be consumed via a typed
+parameter/field/`var` annotation, but not yet constructed from a literal; a genuine
+grammar decision, not scheduled. Users consume maps through typed parameters, fields and
+`var` annotations; literal construction remains deferred (above). They cannot declare
+generic map types of their own (same constrained-generics model as arrays). In v1, keys
+must be `string` — non-string keys are deferred post-MVP.
 
 **Construction:**
 

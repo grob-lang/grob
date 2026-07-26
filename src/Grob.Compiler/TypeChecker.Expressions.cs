@@ -360,7 +360,7 @@ public sealed partial class TypeChecker {
         // additionally recognises a struct-typed return (Sprint 6 close) and flows the
         // declared name via _callResultStructNames so `box := makeBox()` resolves field
         // access the same way a direct struct-construction initialiser already does.
-        (GrobType resultKind, string? resultStructName, FunctionTypeDescriptor? resultDesc, ArrayTypeDescriptor? resultArrayDesc) =
+        (GrobType resultKind, string? resultStructName, FunctionTypeDescriptor? resultDesc, ArrayTypeDescriptor? resultArrayDesc, MapTypeDescriptor? _) =
             ResolveSignatureType(fn.ReturnType);
         if (resultDesc is not null) _callResultDescriptors[node] = resultDesc;
         if (resultStructName is not null) _callResultStructNames[node] = resultStructName;
@@ -1026,9 +1026,9 @@ public sealed partial class TypeChecker {
         // annotation resolves to a concrete struct kind instead of Unknown; otherwise a
         // non-struct argument to a struct parameter (takesConfig(1)) silently bypasses E0004
         // because the permissive Unknown short-circuits the assignability check (Sprint 6 close).
-        (GrobType paramType, string? paramNamedTypeName, FunctionTypeDescriptor? paramDesc, ArrayTypeDescriptor? paramArrayDesc) = fn.Parameters[paramIndex].Type is not null
+        (GrobType paramType, string? paramNamedTypeName, FunctionTypeDescriptor? paramDesc, ArrayTypeDescriptor? paramArrayDesc, MapTypeDescriptor? _) = fn.Parameters[paramIndex].Type is not null
             ? ResolveSignatureType(fn.Parameters[paramIndex].Type!)
-            : (GrobType.Unknown, null, null, null);
+            : (GrobType.Unknown, null, null, null, null);
         bool isFunctionParam = paramType == GrobType.Function || paramType == GrobType.NullableFunction;
         bool isArrayParam = paramType == GrobType.Array || paramType == GrobType.NullableArray;
         bool compatible;
@@ -1980,21 +1980,44 @@ public sealed partial class TypeChecker {
     /// Resolves to the receiver's element type (D-351) via <see cref="ArrayDescriptorOf"/>,
     /// which already handles a chained target (<c>matrix[r][c]</c>, D-112) by recursing
     /// into <see cref="ArrayTypeDescriptor.ElementArrayDescriptor"/> for a nested
-    /// <c>IndexExpr</c>. A map receiver (or any target whose element type could not be
-    /// determined) stays <see cref="GrobType.Unknown"/> — maps carry the same
-    /// unparameterised-value gap arrays had before this decision and are out of its scope.
+    /// <c>IndexExpr</c>. A map receiver with a known value type (Sprint 9 Increment C0b-1,
+    /// via <see cref="MapDescriptorOf"/>) resolves to the <em>nullable</em> widening of its
+    /// value kind — <c>m[key] → V?</c>, nil when the key is absent, per the type registry —
+    /// unlike an array read, which is never wrapped nullable by the indexer itself. A target
+    /// whose element/value type could not be determined (an unresolved map, or any other
+    /// receiver) stays <see cref="GrobType.Unknown"/>.
+    /// <para>
     /// §3.1.1 does not extend to <c>IndexExpr</c> (D-348) — no <c>ResolvedType</c>/
-    /// <c>Declaration</c> is set here. The result is also stashed on
-    /// <see cref="IndexExpr.ElementType"/> (Sprint 9 Increment A4, D-359) so the
-    /// compiler's <c>GetExprType</c> can select the right typed opcode for an index
-    /// operand — mirroring <see cref="MemberAccessExpr.ResolvedFieldType"/>.
+    /// <c>Declaration</c> is set here. This method's return value (the expression's static
+    /// type, nullable for a map) is deliberately not what is stashed on
+    /// <see cref="IndexExpr.ElementType"/> (Sprint 9 Increment A4, D-359): that field feeds
+    /// the compiler's <c>GetExprType</c>, which needs the flat runtime category
+    /// (<c>Int</c>/<c>Float</c>/<c>String</c>/...) for typed-opcode selection in the
+    /// evaluate-once compound-assignment/increment lowering, not a static nullable
+    /// distinction — mirroring how an already-nullable array element (<c>int?[]</c>) has
+    /// always stashed its flat <see cref="ArrayTypeDescriptor.ElementKind"/> unchanged. A map
+    /// element therefore stashes its unwrapped <c>V</c> on the node while returning <c>V?</c>
+    /// to its caller.
+    /// </para>
     /// </remarks>
     public override GrobType VisitIndex(IndexExpr node) {
         Visit(node.Target);
         Visit(node.Index);
-        GrobType elementType = ArrayDescriptorOf(node.Target)?.ElementKind ?? GrobType.Unknown;
-        node.ElementType = elementType;
-        return elementType;
+
+        ArrayTypeDescriptor? arrayDescriptor = ArrayDescriptorOf(node.Target);
+        if (arrayDescriptor is not null) {
+            node.ElementType = arrayDescriptor.ElementKind;
+            return arrayDescriptor.ElementKind;
+        }
+
+        MapTypeDescriptor? mapDescriptor = MapDescriptorOf(node.Target);
+        if (mapDescriptor is not null) {
+            node.ElementType = mapDescriptor.ValueKind;
+            return GrobTypeHelpers.ToNullable(mapDescriptor.ValueKind);
+        }
+
+        node.ElementType = GrobType.Unknown;
+        return GrobType.Unknown;
     }
 
     /// <inheritdoc/>

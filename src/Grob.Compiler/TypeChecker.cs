@@ -381,30 +381,43 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// struct-annotated binding whose initialiser is a differently-named struct — see
     /// <see cref="IsStructNominalMismatch"/>.
     /// </param>
-    private (GrobType Type, FunctionTypeDescriptor? Descriptor, ArrayTypeDescriptor? ArrayDescriptor) ResolveBindingFull(
+    private (GrobType Type, FunctionTypeDescriptor? Descriptor, ArrayTypeDescriptor? ArrayDescriptor, MapTypeDescriptor? MapDescriptor) ResolveBindingFull(
         TypeRef? annotation, GrobType initType, FunctionTypeDescriptor? initDescriptor, SourceRange initRange,
         Expression? initExpr) {
         ArrayTypeDescriptor? initArrayDescriptor = initExpr is not null ? ArrayDescriptorOf(initExpr) : null;
-        if (annotation is null) return (initType, initDescriptor, initArrayDescriptor);
+        // Sprint 9 Increment C0b-1: mirrors initArrayDescriptor above — a ':='-inferred map
+        // local (x := m, where m is a map<string, V>-typed identifier) carries its value
+        // descriptor through binding the same way an inferred array local already does.
+        MapTypeDescriptor? initMapDescriptor = initExpr is not null ? MapDescriptorOf(initExpr) : null;
+        if (annotation is null) return (initType, initDescriptor, initArrayDescriptor, initMapDescriptor);
 
         // ResolveSignatureType (not ResolveTypeRefFull) so a user-defined struct annotation
         // resolves to a concrete struct kind and carries its declared name — otherwise every
         // struct-typed binding annotation resolves to Unknown and is never checked against
         // its initialiser at all, flatly or nominally (fix/compiler-struct-nominal-identity,
         // Site B; mirrors the parameter/field/native-argument sites, Sprint 6 close onward).
-        (GrobType annotated, string? annotatedNamedTypeName, FunctionTypeDescriptor? annotatedDesc, ArrayTypeDescriptor? annotatedArrayDesc) =
+        (GrobType annotated, string? annotatedNamedTypeName, FunctionTypeDescriptor? annotatedDesc, ArrayTypeDescriptor? annotatedArrayDesc, MapTypeDescriptor? annotatedMapDesc) =
             ResolveSignatureType(annotation);
-        if (annotated == GrobType.Unknown) return (initType, initDescriptor, initArrayDescriptor); // unrecognised — permissive
+        if (annotated == GrobType.Unknown) return (initType, initDescriptor, initArrayDescriptor, initMapDescriptor); // unrecognised — permissive
 
-        if (initType == GrobType.Error) return (GrobType.Error, null, null); // cascade suppression
+        if (initType == GrobType.Error) return (GrobType.Error, null, null, null); // cascade suppression
 
         bool isFunctionAnnotation = annotated == GrobType.Function || annotated == GrobType.NullableFunction;
         bool isArrayAnnotation = annotated == GrobType.Array || annotated == GrobType.NullableArray;
+        bool isMapAnnotation = annotated == GrobType.Map;
         bool compatible = isFunctionAnnotation
             ? TypesAreAssignable(initType, annotated, initDescriptor, annotatedDesc)
             : TypesAreAssignable(initType, annotated);
 
         if (compatible && isArrayAnnotation && !ArrayElementAssignable(initArrayDescriptor, annotatedArrayDesc)) {
+            compatible = false;
+        }
+
+        // Sprint 9 Increment C0b-1: the flat Map tag matches on both sides, so the map's
+        // value identity (V) is checked here the same way the array element gate above
+        // checks T — otherwise map<string, int> would bind cleanly to a map<string, string>
+        // annotation, silently defeating the value-type identity this increment introduced.
+        if (compatible && isMapAnnotation && !MapValueAssignable(initMapDescriptor, annotatedMapDesc)) {
             compatible = false;
         }
 
@@ -416,11 +429,11 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             EmitError(PickAssignabilityError(initType, annotated),
                 $"Cannot assign value of type '{TypeName(initType)}' to binding of type '{TypeName(annotated)}'.",
                 initRange);
-            return (GrobType.Error, null, null);
+            return (GrobType.Error, null, null, null);
         }
 
         // Annotation wins (e.g. int → float widening is recorded as float).
-        return (annotated, annotatedDesc, annotatedArrayDesc);
+        return (annotated, annotatedDesc, annotatedArrayDesc, annotatedMapDesc);
     }
 
     /// <summary>
@@ -470,13 +483,39 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// symbol, or a chained index into a <c>T[][]</c> value. Mirrors
     /// <see cref="ExpressionDescriptor"/>'s shape for the function-descriptor channel. The
     /// expression must already have been visited so its descriptor is recorded.
+    /// <para>
+    /// The <c>IndexExpr</c> arm also falls back to <see cref="MapDescriptorOf"/>'s
+    /// <c>ValueArrayDescriptor</c> (Sprint 9 Increment C0b-1) so <c>m["k"]</c> on a
+    /// <c>map&lt;string, T[]&gt;</c> recovers its value's own element descriptor —
+    /// composing the two descriptor systems at the one AST shape (<c>IndexExpr</c>) both
+    /// can produce, the same way <c>ElementArrayDescriptor</c> composes a <c>T[][]</c>
+    /// chain. Only one of the two ever applies to a given index target (an array cannot
+    /// also be a map), so the fallback never masks a genuine array-chain descriptor.
+    /// </para>
     /// </summary>
     private ArrayTypeDescriptor? ArrayDescriptorOf(Expression expr) => expr switch {
         ArrayLiteralExpr literal => _arrayLiteralDescriptors.GetValueOrDefault(literal),
         CallExpr call => _callResultArrayDescriptors.GetValueOrDefault(call),
         IdentifierExpr id => LookupSymbol(id.Name)?.ArrayDescriptor,
         GroupingExpr grp => ArrayDescriptorOf(grp.Inner),
-        IndexExpr index => ArrayDescriptorOf(index.Target)?.ElementArrayDescriptor,
+        IndexExpr index => ArrayDescriptorOf(index.Target)?.ElementArrayDescriptor
+            ?? MapDescriptorOf(index.Target)?.ValueArrayDescriptor,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Returns the value-type descriptor of an arbitrary map-typed expression (Sprint 9
+    /// Increment C0b-1) — an identifier bound to a map-typed symbol, or a parenthesised
+    /// grouping of one. Mirrors <see cref="ArrayDescriptorOf"/>'s shape, narrower: v1 has no
+    /// map literal to carry a per-node descriptor and no non-trivial map-returning native
+    /// call to carry a call-result descriptor (<c>env.all()</c> is flat <c>map&lt;string,
+    /// string&gt;</c> with no consumer needing its value identity), so only the two tiers
+    /// with a real producer today are handled. The expression must already have been visited
+    /// so its descriptor is recorded.
+    /// </summary>
+    private MapTypeDescriptor? MapDescriptorOf(Expression expr) => expr switch {
+        IdentifierExpr id => LookupSymbol(id.Name)?.MapDescriptor,
+        GroupingExpr grp => MapDescriptorOf(grp.Inner),
         _ => null,
     };
 
@@ -555,20 +594,24 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// named-type identity needs the instance-level <see cref="TryGetNamedStructTypeName"/>,
     /// which the static <see cref="ResolveTypeRefFull"/> cannot call.
     /// </summary>
-    private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor, ArrayTypeDescriptor? ArrayDescriptor)
+    private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor, ArrayTypeDescriptor? ArrayDescriptor, MapTypeDescriptor? MapDescriptor)
             ResolveSignatureType(TypeRef typeRef) {
         if (typeRef is ArrayTypeRef arrayRef) {
             GrobType arrayKind = arrayRef.IsNullable ? GrobType.NullableArray : GrobType.Array;
-            return (arrayKind, null, null, ResolveArrayElementDescriptor(arrayRef.ElementType));
+            return (arrayKind, null, null, ResolveArrayElementDescriptor(arrayRef.ElementType), null);
         }
 
         if (typeRef is FunctionTypeRef) {
             (GrobType kind, FunctionTypeDescriptor? desc) = ResolveTypeRefFull(typeRef);
-            return (kind, null, desc, null);
+            return (kind, null, desc, null, null);
         }
 
         GrobType builtin = ResolveTypeRef(typeRef);
-        if (builtin != GrobType.Unknown) return (builtin, null, null, null);
+        // Sprint 9 Increment C0b-1: 'map' additionally resolves its value-type descriptor
+        // from typeRef.TypeArguments[1] — the same TypeArguments the array branch above
+        // has consulted since D-327, now read for the first time on this builtin.
+        if (builtin == GrobType.Map) return (builtin, null, null, null, ResolveMapValueDescriptor(typeRef));
+        if (builtin != GrobType.Unknown) return (builtin, null, null, null, null);
 
         // D-356: a registered nominal type (guid, date, ...) is a primitive type
         // distinct from string, never constructed via '{ }' braces, so it does not get
@@ -581,15 +624,15 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // which is what makes e.g. 'guid == string' fail as an ordinary type mismatch
         // (D-149).
         if (TryResolveRegisteredNamedType(typeRef) is (GrobType namedKind, string namedName)) {
-            return (namedKind, namedName, null, null);
+            return (namedKind, namedName, null, null, null);
         }
 
         if (LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl) {
             GrobType structKind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
-            return (structKind, typeRef.Name, null, null);
+            return (structKind, typeRef.Name, null, null, null);
         }
 
-        return (GrobType.Unknown, null, null, null);
+        return (GrobType.Unknown, null, null, null, null);
     }
 
     /// <summary>
@@ -643,6 +686,47 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             }
         }
         return new ArrayTypeDescriptor(kind);
+    }
+
+    /// <summary>
+    /// Resolves a <c>map&lt;K, V&gt;</c> type reference's value-type argument to its
+    /// <see cref="MapTypeDescriptor"/> (Sprint 9 Increment C0b-1) — mirrors
+    /// <see cref="ResolveArrayElementDescriptor"/>'s shape and quiet-Unknown-fallback
+    /// convention, reading <c>typeRef.TypeArguments[1]</c> (<c>V</c>) rather than an array's
+    /// single element type. <see langword="null"/> when <paramref name="typeRef"/> carries
+    /// fewer than two type arguments — a bare <c>map</c> annotation with no type arguments,
+    /// which stays permissively <see cref="GrobType.Unknown"/>-valued elsewhere, mirroring
+    /// the array analogue.
+    /// <para>
+    /// <c>K</c> (<c>typeRef.TypeArguments[0]</c>) is not validated here — v1 keys are
+    /// <c>string</c>-only by decision, and no existing diagnostic covers a non-<c>string</c>
+    /// key type-argument (<c>map&lt;int, string&gt;</c>); this is a known, reported gap, not
+    /// a silent design choice (see the landing notes for this increment).
+    /// </para>
+    /// </summary>
+    private MapTypeDescriptor? ResolveMapValueDescriptor(TypeRef typeRef) {
+        if (typeRef.TypeArguments.Count < 2) return null;
+        TypeRef valueType = typeRef.TypeArguments[1];
+
+        if (valueType is ArrayTypeRef arrayRef) {
+            GrobType arrayKind = arrayRef.IsNullable ? GrobType.NullableArray : GrobType.Array;
+            return new MapTypeDescriptor(arrayKind, null, ResolveArrayElementDescriptor(arrayRef.ElementType));
+        }
+
+        if (valueType is FunctionTypeRef) {
+            (GrobType functionKind, _) = ResolveTypeRefFull(valueType);
+            return new MapTypeDescriptor(functionKind);
+        }
+
+        GrobType kind = ResolveTypeRef(valueType);
+        if (kind == GrobType.Unknown) {
+            string? namedTypeName = TryGetNamedStructTypeName(valueType);
+            if (namedTypeName is not null) {
+                GrobType structKind = valueType.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
+                return new MapTypeDescriptor(structKind, namedTypeName);
+            }
+        }
+        return new MapTypeDescriptor(kind);
     }
 
     /// <summary>
@@ -747,6 +831,27 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         if (to.ElementNamedTypeName is not null && from.ElementNamedTypeName != to.ElementNamedTypeName) return false;
         if (to.ElementKind is GrobType.Array or GrobType.NullableArray) {
             return ArrayElementAssignable(from.ElementArrayDescriptor, to.ElementArrayDescriptor);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Sprint 9 Increment C0b-1: the value-identity counterpart of
+    /// <see cref="ArrayElementAssignable"/> for <c>map&lt;string, V&gt;</c> — decides whether
+    /// a map whose value descriptor is <paramref name="from"/> is assignable where a map with
+    /// value descriptor <paramref name="to"/> is expected. Mirrors the array helper's
+    /// permissive-on-missing/Unknown shape (an unresolved or bare map stays permissive,
+    /// exactly as a bare array does), then compares the value's flat kind, its struct/guid
+    /// nominal name and, for a <c>map&lt;string, T[]&gt;</c> value, its nested array element
+    /// descriptor.
+    /// </summary>
+    private static bool MapValueAssignable(MapTypeDescriptor? from, MapTypeDescriptor? to) {
+        if (from is null || to is null) return true;
+        if (from.ValueKind == GrobType.Unknown || to.ValueKind == GrobType.Unknown) return true;
+        if (from.ValueKind != to.ValueKind) return false;
+        if (to.ValueNamedTypeName is not null && from.ValueNamedTypeName != to.ValueNamedTypeName) return false;
+        if (to.ValueKind is GrobType.Array or GrobType.NullableArray) {
+            return ArrayElementAssignable(from.ValueArrayDescriptor, to.ValueArrayDescriptor);
         }
         return true;
     }
@@ -867,7 +972,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly record struct SymbolTypeIdentity(
         FunctionTypeDescriptor? FunctionDescriptor = null,
         string? NamedStructTypeName = null,
-        ArrayTypeDescriptor? ArrayDescriptor = null);
+        ArrayTypeDescriptor? ArrayDescriptor = null,
+        MapTypeDescriptor? MapDescriptor = null);
 
     private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode,
                                bool provisional = false, SymbolTypeIdentity typeIdentity = default) {
@@ -880,6 +986,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             FunctionDescriptor = typeIdentity.FunctionDescriptor,
             NamedStructTypeName = typeIdentity.NamedStructTypeName,
             ArrayDescriptor = typeIdentity.ArrayDescriptor,
+            MapDescriptor = typeIdentity.MapDescriptor,
         };
     }
 
@@ -911,7 +1018,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// </summary>
     private void FinalizeTopLevelBinding(
         string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode, SourceRange range,
-        FunctionTypeDescriptor? functionDescriptor = null, ArrayTypeDescriptor? arrayDescriptor = null) {
+        FunctionTypeDescriptor? functionDescriptor = null, ArrayTypeDescriptor? arrayDescriptor = null,
+        MapTypeDescriptor? mapDescriptor = null) {
         // Sprint 8 Increment E: 'formatAs' is both a reserved identifier (E1103, D-320) and
         // a pre-registered NamespaceDecl symbol (D-342) — the first reserved identifier to
         // be a namespace ('select' is reserved but not a namespace). Skipping the collision
@@ -925,7 +1033,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             return;
         }
         RegisterSymbol(name, type, declaredAt, declarationNode,
-            typeIdentity: new(functionDescriptor, ArrayDescriptor: arrayDescriptor));
+            typeIdentity: new(functionDescriptor, ArrayDescriptor: arrayDescriptor, MapDescriptor: mapDescriptor));
     }
 
     /// <summary>

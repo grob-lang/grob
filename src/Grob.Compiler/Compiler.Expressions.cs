@@ -542,12 +542,20 @@ public sealed partial class Compiler {
         // resultType: Float if either operand is float; Unknown operands default to Int —
         // the same optimistic convention used in ComparisonCategory. This is a documented
         // permissive assumption for the residue GetExprType (below) cannot resolve
-        // statically: an untyped lambda-parameter identifier, a map-element IndexExpr
-        // (D-359), an Unknown-receiver-field MemberAccessExpr (D-360), and a
-        // void-returning CallExpr such as arr.each(...) (D-362) — a VM-level type fault is
-        // the fallback if the runtime value disagrees. When baseType is Unknown both
-        // operands are non-float by construction, so the Unknown fallback can only ever be
-        // Int.
+        // statically: an untyped lambda-parameter identifier, an Unknown-receiver-field
+        // MemberAccessExpr (D-360), and a void-returning CallExpr such as arr.each(...)
+        // (D-362) — a VM-level type fault is the fallback if the runtime value disagrees.
+        // The third source D-362 named — a map-element IndexExpr (D-359) — closed in
+        // Sprint 9 Increment C0b-1: a map element with a known value type (via
+        // MapTypeDescriptor) now types as V? (nullable) rather than Unknown, and
+        // ResolveArithmetic (TypeChecker.Expressions.cs) rejects it there — the same
+        // combinatorial fallback E0002 that already rejects any other unmatched operand
+        // pair — before compilation ever reaches this method; a valid program only reaches
+        // here with the unwrapped, non-nullable V (e.g. via '??'). A map element whose
+        // value type could not be determined (no MapTypeDescriptor for the receiver) still
+        // reaches here as Unknown, same as before this increment. When baseType is Unknown
+        // both operands are non-float by construction, so the Unknown fallback can only
+        // ever be Int.
         GrobType baseType = (lt == GrobType.Float || rt == GrobType.Float) ? GrobType.Float : lt;
         GrobType resultType = baseType == GrobType.Unknown ? GrobType.Int : baseType;
 
