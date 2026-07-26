@@ -10,14 +10,24 @@ forms. This is the territory the advertised-vs-built audit (July 2026) did **not
 that audit swept type members, stdlib functions, error codes and keywords, and explicitly
 noted grammar as unswept.
 
+> **Status: partly superseded — this is a dated snapshot, not a live tracker.**
+> The findings below record the corpus as it stood at **D-374** and are kept verbatim as the
+> record of why the follow-on work was commissioned. Since then:
+> **G1 (map literal construction unbuilt) is closed by D-376**, which built the parser
+> production, the `MapLiteralExpr`/`MapEntry` AST nodes, type checking and the `NewMap`
+> opcode; **G2 (separator convention) is settled by D-375** — comma-separated, newlines
+> skipped, trailing comma permitted, matching every other literal form. **G3 remains open.**
+> The decisions log is the authority for current state; check it before using this document
+> for release planning.
+
 ---
 
 ## Summary
 
 | # | Finding | Class | Priority |
 |---|---------|-------|----------|
-| G1 | Map literal construction has no parser or AST production — **release-gate blocker** | Advertised-but-unbuilt | **P1** |
-| G2 | Map literal's documented separator convention contradicts every other literal form in the language | Design contradiction | **P1** |
+| G1 | Map literal construction has no parser or AST production — **release-gate blocker** *(closed by D-376)* | Advertised-but-unbuilt | **P1** |
+| G2 | Map literal's documented separator convention contradicts every other literal form in the language *(settled by D-375)* | Design contradiction | **P1** |
 | G3 | Scientific notation: `grob-language-fundamentals.md` defers it post-MVP, `wiki/Type-Registry/float.md` documents it as valid | Doc-vs-doc contradiction | P2 |
 | ✓ | Regex literals — **built**, contrary to earlier assumption | Correctly built | — |
 | ✓ | Nullable type suffixes, function types, array types, grouped types | Correctly built | — |

@@ -8,6 +8,16 @@ Claims verified against source, not against other documents.
 registry. CLI/tooling and plugin-ecosystem docs excluded by agreement (phased future work
 by design).
 
+> **Status: partly superseded — this is a dated snapshot, not a live tracker.**
+> The findings below record the corpus as it stood at **D-367** and are kept verbatim as the
+> record of why the follow-on work was commissioned. Since then: **A1 (numeric instance
+> methods) is closed by D-369**; the error-code registry is at **119 codes**, not 118, after
+> D-376 added **E0016** (duplicate key in map literal); and `map`'s **construction** syntax,
+> unbuilt when B1/B2 were written, is built by **D-376** — its query/mutation members
+> (`length`/`keys`/`values`/`get`/`set`/…) remain unbuilt and are still correctly scheduled
+> as C0b-2. The decisions log is the authority for current state; check it before using this
+> document for release planning.
+
 ---
 
 ## Summary
@@ -20,7 +30,7 @@ by design).
 | B2 | `map` member surface entirely unbuilt (correctly scheduled as C0b; wiki unmarked) | Advertised-but-unbuilt | P2 |
 | C1 | `array` member surface partially built — 4 of ~8 advertised members dispatch (correctly scheduled as C0a; wiki unmarked) | Advertised-but-unbuilt | P3 |
 | C2 | `grob-stdlib-reference.md` has no detailed section for `path`, `log`, `strings`, `csv`, `regex` | Structural | P3 |
-| ✓ | Error-code registry: 118 codes, no dead codes, no undocumented codes thrown | **Correctly-marked** | — |
+| ✓ | Error-code registry: 118 codes, no dead codes, no undocumented codes thrown *(119 since D-376 added E0016)* | **Correctly-marked** | — |
 | ✓ | Language constructs: all twenty keywords present in lexer and parser | **Correctly-marked** | — |
 | ✓ | `array.select()` / `.map()` naming: doc and source agree, `.map()` deliberately absent | **Correctly-marked** | — |
 
