@@ -209,7 +209,7 @@ threshold := threshold_mb * 1024 * 1024
 
 entries := fs.list(path, recursive: true)
     .filter(f => f.size > threshold)
-    .map(f => FileEntry {
+    .select(f => FileEntry {
         name:    f.name
         folder:  f.directory
         size_mb: (f.size / 1024.0 / 1024.0).roundTo(2)
@@ -218,15 +218,15 @@ entries := fs.list(path, recursive: true)
 print(
     entries
         .sort(e => e.size_mb, descending: true)
-        .format.table()
+        .formatAs.table()
 )
 ```
 
 **What this demonstrates:**
 
 - Typed struct projection via `type` and inline construction
-- Fluent chain — `filter`, `map`, `sort`, `format.table()`
-- `format.table()` as the output step — replaces PS’s `Format-Table -AutoSize`
+- Fluent chain — `filter`, `select`, `sort`, `formatAs.table()`
+- `formatAs.table()` as the output step — replaces PS’s `Format-Table -AutoSize`
 - Named parameter `descending: true` on sort
 - No error suppression needed — `fs.list()` throws `IoError` on access denied,
   catchable if needed
@@ -380,7 +380,7 @@ print(
         .filter(e => e.department == department && e.salary < max_salary)
         .select(e => #{ name: e.name, job_title: e.job_title, salary: e.salary, start_date: e.start_date })
         .sort(e => e.salary, descending: true)
-        .format.table()
+        .formatAs.table()
 )
 ```
 
@@ -388,7 +388,7 @@ print(
 
 - `csv.read()` as primary file input — no pipe syntax needed
 - `mapAs<Employee>()` — typed deserialisation from CSV, int fields auto-converted
-- Fluent `filter`, `select`, `sort`, `format.table()` chain
+- Fluent `filter`, `select`, `sort`, `formatAs.table()` chain
 - `select()` as a typed projection — equivalent to PS `Select-Object`
 - `#{ }` anonymous struct literal syntax in projection
 - Significantly less ceremony than the PS equivalent — no type casts, no `-and`
@@ -587,7 +587,7 @@ print(
             age:    date.parse(i.created_at).daysUntil(date.today())
             author: i.user.login
         })
-        .format.table()
+        .formatAs.table()
 )
 ```
 
@@ -598,7 +598,7 @@ print(
 - `date` comparison directly — no string manipulation needed
 - `daysUntil()` for clean age-in-days computation
 - `.select()` projection with renamed/computed fields
-- `format.table()` replacing `jq | column -t`
+- `formatAs.table()` replacing `jq | column -t`
 - No `jq` dependency — json is core, HTTP is a first-party plugin
 
 **Gaps noted:** None — nested struct access (`i.user.login`) confirmed in decisions log.
@@ -663,7 +663,7 @@ print(
     raw.stdout
         .split("\n")
         .filter(line => line.length > 0)
-        .map(line => {
+        .select(line => {
             parts  := line.split("|")
             BranchInfo {
                 branch: parts[0],
@@ -672,7 +672,7 @@ print(
             }
         })
         .filter(b => !b.branch.contains("HEAD") && date.parse(b.date) < cutoff)
-        .format.table()
+        .formatAs.table()
 )
 ```
 
@@ -680,7 +680,7 @@ print(
 
 - `process.runOrFail()` capturing stdout
 - String split and inline processing
-- Named struct construction inside `.map()` lambda
+- Named struct construction inside `.select()` lambda
 - Array indexing `parts[0]`
 - Chained filter, map, filter pattern
 - `date.parse()` on an ISO string from git output
@@ -1043,7 +1043,7 @@ if (response.isSuccess) {
 |Lambda closures                                                                   |Confirmed — upvalue mechanism follows clox design                                            |
 |`Grob.Http` API shape — all methods including PATCH, `Response` type, `download()`|Full API specified in decisions log. Scripts 4, 7, 10 confirmed against it.                  |
 |`Grob.Http.Auth` as separate plugin                                               |Retired. `auth.*` is a sub-namespace of `Grob.Http`. Single `import Grob.Http` suffices.     |
-|`format` module calling convention                                                |`.format.table()` chained form confirmed. Compiler namespace rewrite — no runtime object.    |
+|`formatAs` module calling convention                                                |`.formatAs.table()` chained form confirmed. Compiler namespace rewrite — no runtime object.    |
 |`date.daysUntil()` — interval between two dates                                   |`daysUntil(other: date) → int` and `daysSince(other: date) → int` added to `date` registry.  |
 |`http.get(url, token).asJson()` chaining                                          |Confirmed — `Response.asJson()` returns `json.Node`.                                         |
 |`http.download(url, path)`                                                        |Confirmed — streaming to disk, does not load into memory.                                    |
@@ -1073,7 +1073,21 @@ if (response.isSuccess) {
 
 -----
 
-*Last updated: April 2026 — pre-implementation review: Script 11 fixed*
+*Last updated: July 2026 — consolidation correctness pass, docs-only: two stale API*
+*names corrected against the live decisions log. `.map()` → `.select()` per D-280*
+*(`map()` dropped; `select()` is the sole `T[]` transformation primitive) — Script 3*
+*and Script 8 code fences plus the Script 3 and Script 8 prose bullets. `format.*` →*
+*`formatAs.*` per D-282 (module renamed) and D-345 (landed, Sprint 8 Increment E) —*
+*Scripts 3, 5, 7 and 8 code fences, their prose bullets, and the `format` module*
+*calling-convention row in the Resolved Gaps table, which still asserted*
+*`.format.table()` as confirmed. Thirteen lines changed. The chained receiver form*
+*(`results.formatAs.table()`) is unchanged and correct per `grob-stdlib-reference.md`;*
+*`mapAs<T>()` on `csv.Table` and `json.Node` is a distinct current member and was*
+*deliberately left untouched. The April 2026 entry below retains its original*
+*`.format.table()` wording: footer changelog entries are an append-only historical*
+*record of what each session did, and rewriting them would falsify it.*
+
+*Previous: April 2026 — pre-implementation review: Script 11 fixed*
 *(`json.encode()` added before `http.put()` — body must be string per locked API);*
 *Scripts 3, 5, 7, 8 fixed (dangling `.format.table()` wrapped in `print()`);*
 *Script 4 `[ASSUMPTION]` tag on `fs.ensureDir()` cleared (confirmed);*
