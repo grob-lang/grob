@@ -151,15 +151,18 @@ public sealed class CompilerNullableTests {
         // Receiver history: originally 'int' (Sprint 3 Increment D); moved onto an array
         // receiver when Sprint 9 Increment A1a (D-369) registered int as a
         // primitive-member receiver, so 'int.member' legitimately raises E1002 for an
-        // unknown property; moved a second time here, onto a map receiver, when Sprint 9
-        // Increment C0a-1 (D-371) registered array's own length/isEmpty properties,
-        // which made 'array.member' legitimately raise E1002 too. 'map' is now the sole
-        // receiver kind left exercising the generic permissive-Unknown property-access
-        // fall-through this test has always meant to prove (confirmed: no
-        // GrobType.Map dispatch exists anywhere in TypeChecker.Expressions.cs) — until
-        // C0b registers map's own members. env.all() returns a map with no map-literal
-        // syntax needed (NamespaceRegistry.cs's "env" entry).
-        Chunk chunk = CompileSource("x := env.all()\nx.member");
+        // unknown property; moved onto a map receiver when Sprint 9 Increment C0a-1
+        // (D-371) registered array's own length/isEmpty properties, making
+        // 'array.member' legitimately raise E1002 too; moved a third time here, onto a
+        // function-typed receiver, when Sprint 9 Increment C0b-2a (D-377) registered
+        // map's own query members, making 'map.member' legitimately raise E1002 too.
+        // Confirmed by direct read of every GrobType arm in VisitMemberAccess (D-377):
+        // 'fn(...): R' is the sole remaining receiver kind reaching this fall-through,
+        // and — unlike int/array/map, each "not yet built" — it is terminal:
+        // grob-type-registry.md states permanently "Members. None. A function type has
+        // no properties, no methods and no constructor syntax," so no future increment
+        // will register function members and force a fourth move.
+        Chunk chunk = CompileSource("f: fn(): int := () => 1\nf.member");
 
         List<OpCode> ops = ReadOpcodes(chunk);
         Assert.DoesNotContain(OpCode.IsNil, ops);

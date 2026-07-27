@@ -893,15 +893,42 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                     break;
                                 }
                             }
-                            if (receiver.TryAsMap(out GrobMap? map) && propertyName == "keys") {
-                                // No LINQ on the dispatch path: build the keys array with a
-                                // manual indexed loop over the live ordered-key view.
-                                IReadOnlyList<string> keyView = map!.InsertionOrderKeys;
-                                var elements = new GrobValue[keyView.Count];
-                                for (int i = 0; i < keyView.Count; i++)
-                                    elements[i] = GrobValue.FromString(keyView[i]);
-                                _stack.Push(GrobValue.FromArray(new GrobArray(elements)), line);
-                                break;
+                            if (receiver.TryAsMap(out GrobMap? map)) {
+                                // Sprint 9 Increment C0b-2a (D-377).
+                                if (propertyName == "length") {
+                                    _stack.Push(GrobValue.FromInt(map!.Entries.Count), line);
+                                    break;
+                                }
+                                if (propertyName == "isEmpty") {
+                                    _stack.Push(GrobValue.FromBool(map!.Entries.Count == 0), line);
+                                    break;
+                                }
+                                if (propertyName == "keys") {
+                                    // No LINQ on the dispatch path: build the keys array with a
+                                    // manual indexed loop over the live ordered-key view.
+                                    IReadOnlyList<string> keyView = map!.InsertionOrderKeys;
+                                    var keyElements = new GrobValue[keyView.Count];
+                                    for (int i = 0; i < keyView.Count; i++)
+                                        keyElements[i] = GrobValue.FromString(keyView[i]);
+                                    _stack.Push(GrobValue.FromArray(new GrobArray(keyElements)), line);
+                                    break;
+                                }
+                                if (propertyName == "values") {
+                                    IReadOnlyList<GrobValue> valueView = map!.InsertionOrderValues;
+                                    var valueElements = new GrobValue[valueView.Count];
+                                    for (int i = 0; i < valueView.Count; i++)
+                                        valueElements[i] = valueView[i];
+                                    _stack.Push(GrobValue.FromArray(new GrobArray(valueElements)), line);
+                                    break;
+                                }
+                                // No invoker callback: neither get(key) nor contains(key)
+                                // takes a function argument, so binding one would allocate a
+                                // closure per dispatch for a parameter nothing reads.
+                                NativeFunction? mapMethod = MapNatives.GetMethod(propertyName, map!);
+                                if (mapMethod is not null) {
+                                    _stack.Push(GrobValue.FromFunction(mapMethod), line);
+                                    break;
+                                }
                             }
                             if (receiver.TryAsStruct(out GrobStruct? grobStruct)) {
                                 // D-356: instance properties/methods on a registered named type

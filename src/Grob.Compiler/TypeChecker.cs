@@ -173,6 +173,15 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly Dictionary<MapLiteralExpr, MapTypeDescriptor> _mapLiteralDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
+    // _memberAccessArrayDescriptors mirrors _callResultArrayDescriptors for a property
+    // access that itself resolves to an array (D-377): map's 'keys'/'values' are the
+    // first such case (K[]/V[]), composed from the receiver's MapTypeDescriptor in
+    // ResolveMapPropertyAccess. Keyed by reference identity, matching the dictionaries
+    // above, so a chained call on the result (m.keys.first(), m.values.contains(x))
+    // resolves its element type rather than degrading to Unknown.
+    private readonly Dictionary<MemberAccessExpr, ArrayTypeDescriptor> _memberAccessArrayDescriptors =
+        new(ReferenceEqualityComparer.Instance);
+
     // -----------------------------------------------------------------------
     // Flow-sensitive narrowing (Sprint 5 Increment E; §6, §19.1 narrowing rule).
     //
@@ -503,6 +512,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private ArrayTypeDescriptor? ArrayDescriptorOf(Expression expr) => expr switch {
         ArrayLiteralExpr literal => _arrayLiteralDescriptors.GetValueOrDefault(literal),
         CallExpr call => _callResultArrayDescriptors.GetValueOrDefault(call),
+        // Sprint 9 Increment C0b-2a (D-377): 'keys'/'values' are the first property
+        // access whose own result is array-typed — resolved by ResolveMapPropertyAccess.
+        MemberAccessExpr member => _memberAccessArrayDescriptors.GetValueOrDefault(member),
         IdentifierExpr id => LookupSymbol(id.Name)?.ArrayDescriptor,
         GroupingExpr grp => ArrayDescriptorOf(grp.Inner),
         IndexExpr index => ArrayDescriptorOf(index.Target)?.ElementArrayDescriptor
@@ -525,6 +537,15 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         GroupingExpr grp => MapDescriptorOf(grp.Inner),
         _ => null,
     };
+
+    /// <summary>
+    /// Derives a map value-lookup's result type — the nullable widening of the value
+    /// kind, <see cref="GrobType.Unknown"/> when no descriptor is available — shared by
+    /// <see cref="VisitIndex"/>'s <c>m[k]</c> typing and <c>get(key)</c>'s call-form
+    /// typing (Sprint 9 Increment C0b-2a, D-377), so the two stay provably in agreement.
+    /// </summary>
+    private static GrobType MapValueResultType(MapTypeDescriptor? descriptor) =>
+        GrobTypeHelpers.ToNullable(descriptor?.ValueKind ?? GrobType.Unknown);
 
     /// <summary>
     /// Maps a syntactic <see cref="TypeRef"/> to a <see cref="GrobType"/>,

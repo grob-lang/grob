@@ -36,14 +36,14 @@ separately validated.
 | `[key: K]` | indexer | `→ V?` | Sugar for `get(key)` — built (D-374) |
 | `[key: K] = value` | indexer | `→ void` | Sugar for `set(key, value)` |
 
-**Not yet built (D-374):** every member in the table above except the `[key: K]`
-indexer — `map` has no member-access dispatch in the type checker at all, so
-`length`/`isEmpty`/`keys`/`values`/`get()`/`contains()`/`set()`/`remove()`/`clear()`
-all fail to compile today. Scheduled as a follow-on increment.
+**Built (D-377):** `length`/`isEmpty`/`keys`/`values`/`get()`/`contains()` — the six
+non-mutating query members. `keys`/`values` carry a populated element descriptor, so a
+chained call (`m.keys.first()`, `m.values.contains(x)`) resolves correctly. `get(key)`
+agrees with the indexer `m[k]` on type and value. `contains(key)` is key-membership,
+distinct from the array's value-membership `contains(v)`.
 
-The `const`-bound readonly mutation rejection for `set`/`remove`/`clear` is deferred to
-C0b-2 (D-374) — not yet implemented, since map has no member-access dispatch at all today
-(above).
+**Not yet built:** `set()`/`remove()`/`clear()` — deferred to the separate C0b-2b
+increment, along with the `const`-/`readonly`-bound mutation rejection for those three.
 
 ## Indexing and iteration — built (D-374)
 
@@ -61,12 +61,18 @@ check runs, matching pre-D-374 behaviour rather than newly rejecting it.
 
 *Updated July 2026 — `MapTypeDescriptor` substrate built (Sprint 9 Increment C0b-1,
 rescoped, D-374): the indexer types `V?` and `for k, v in m` binds `v` as the map's real
-`V`, both previously `Unknown`. The six query members remain unbuilt — split off after
-the increment's own plan-mode gate found the query-member surface needs a new
-descriptor-carriage mechanism.*
+`V`, both previously `Unknown`. The six query members were split off after the
+increment's own plan-mode gate found the query-member surface needs a new
+descriptor-carriage mechanism — **superseded: they are built by D-377, below.***
 
 *Updated July 2026 — map-literal construction lands (D-376): the grammar (with a
 non-consuming lookahead disambiguating `map<K, V>{` from the relational comparison
 `map < x`), the `MapLiteralExpr`/`MapEntry` AST, `MapDescriptorOf`'s third (literal)
-tier, and the `NewMap` opcode. Duplicate keys are E0016. The six query members and
-mutation (`set`/`remove`/`clear`) remain unbuilt, per the note above.*
+tier, and the `NewMap` opcode. Duplicate keys are E0016. **Superseded in part: the six
+query members are built by D-377, below; only mutation (`set`/`remove`/`clear`) remains
+unbuilt.***
+
+*Updated July 2026 — map query member surface lands (Sprint 9 Increment C0b-2a, D-377):
+`length`/`isEmpty`/`keys`/`values`/`get()`/`contains()`, mirroring the array query-member
+dispatch (D-371) exactly. `set`/`remove`/`clear` and their `readonly` mutation rejection
+remain unbuilt, deferred to C0b-2b.*

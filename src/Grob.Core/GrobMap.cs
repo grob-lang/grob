@@ -21,6 +21,13 @@ public sealed class GrobMap {
     /// </summary>
     public IReadOnlyList<string> InsertionOrderKeys => _entries.Keys;
 
+    /// <summary>
+    /// The map's values in insertion order, index-aligned with <see cref="InsertionOrderKeys"/>
+    /// (Sprint 9 Increment C0b-2a, D-377). The live ordered-value view of the backing
+    /// dictionary, not a copy — mirrors <see cref="InsertionOrderKeys"/>'s identical contract.
+    /// </summary>
+    public IReadOnlyList<GrobValue> InsertionOrderValues => _entries.Values;
+
     /// <summary>Gets or sets the value associated with <paramref name="key"/>.</summary>
     public GrobValue this[string key] {
         get => _entries[key];

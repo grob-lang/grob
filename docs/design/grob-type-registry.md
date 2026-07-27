@@ -179,12 +179,14 @@ legal on the unwrapped `V`. **Built (D-376):** map-literal construction syntax
 (`map<K, V>{...}`, shown below) — the grammar and `map<K, V>{` disambiguation, the
 `MapLiteralExpr`/`MapEntry` AST, `MapDescriptorOf`'s third (literal) tier, and the
 `NewMap` opcode. A literal's entries are checked against `V` (E0004 on mismatch) and
-against each other for duplicate keys (E0016). **Not yet built:** the query member
-surface below (`length`/`isEmpty`/`keys`/`values`/`get`/`contains`) has no dispatch —
-`map` has no `GrobType.Map` arm in the type checker's member-access resolution at all, so
-every member access documented in this section still fails to compile; scheduled as a
-follow-on increment to D-374. `set`/`remove`/`clear` and their `readonly` mutation
-rejection are a separate, later increment (C0b-2). Users consume maps through typed
+against each other for duplicate keys (E0016). **Built (D-377):** the six non-mutating
+query members — `length`/`isEmpty`/`keys`/`values` (properties) and `get(key)`/
+`contains(key)` (methods). `keys`/`values` carry a populated element descriptor, so a
+chained call (`m.keys.first()`, `m.values.contains(x)`) resolves correctly rather than
+degrading to `Unknown`. `get(key)` agrees with the indexer `m[k]` on both type and value.
+`contains(key)` is key-membership, distinct from the array's value-membership
+`contains(v)`. **Not yet built:** `set`/`remove`/`clear` and their `readonly` mutation
+rejection are a separate, later increment (C0b-2b). Users consume maps through typed
 parameters, fields, `var` annotations and literal construction. They cannot declare
 generic map types of their own (same constrained-generics model as arrays). In v1, keys
 must be `string` — non-string keys are deferred post-MVP.
