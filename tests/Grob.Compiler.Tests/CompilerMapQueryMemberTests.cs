@@ -76,34 +76,60 @@ public sealed class CompilerMapQueryMemberTests {
         return result;
     }
 
+    // Renders every emitted instruction as "OpCode:operand@line", so an assertion pins
+    // the exact opcode sequence, the exact operand bytes and the line-number array in
+    // one comparison, per tests/CLAUDE.md's full-Chunk-contract rule (CodeRabbit review,
+    // PR #165 — the earlier FindIndex-based assertions only located instructions).
+    private static string[] Describe(Chunk chunk) =>
+        Decode(chunk).Select(i => $"{i.Op}:{i.Arg}@{chunk.GetLine(i.Offset)}").ToArray();
+
+    // Renders the constant pool as "Kind:value", so an assertion pins both the entry
+    // order the operands above index into and each entry's runtime kind.
+    private static string[] DescribePool(Chunk chunk) =>
+        Enumerable.Range(0, chunk.ConstantCount)
+            .Select(i => $"{chunk.ReadConstant(i).Kind}:{chunk.ReadConstant(i)}")
+            .ToArray();
+
+    // Every case below compiles this prologue on line 1, so its four instructions and
+    // its first three pool entries ("a", 1, "m") are shared by all of them.
+    private const string MapPrologue = "m := map<string, int>{\"a\": 1}\n";
+
     // -----------------------------------------------------------------------
     // length / isEmpty / keys / values — properties, generic GetProperty emission.
     // -----------------------------------------------------------------------
 
     [Theory]
-    [InlineData("readonly n := m.length\n", "length")]
-    [InlineData("readonly e := m.isEmpty\n", "isEmpty")]
-    [InlineData("readonly k := m.keys\n", "keys")]
-    [InlineData("readonly v := m.values\n", "values")]
-    public void Property_EmitsGetProperty_WithMemberName(string tail, string expectedName) {
-        Chunk chunk = CompileSource("m := map<string, int>{\"a\": 1}\n" + tail);
+    [InlineData("length")]
+    [InlineData("isEmpty")]
+    [InlineData("keys")]
+    [InlineData("values")]
+    public void Property_EmitsGetProperty_WithMemberName(string memberName) {
+        Chunk chunk = CompileSource(MapPrologue + $"readonly r := m.{memberName}\n");
 
-        List<Instr> instrs = Decode(chunk);
-        int idx = instrs.FindIndex(i => i.Op == OpCode.GetProperty);
-        Assert.True(idx >= 0, "no GetProperty instruction found");
-        GrobValue nameConst = chunk.ReadConstant(instrs[idx].Arg);
-        Assert.Equal(expectedName, nameConst.AsString());
+        Assert.Equal([
+            "Constant:0@1", "Constant:1@1", "NewMap:1@1", "DefineGlobal:2@1",
+            "GetGlobal:2@2", "GetProperty:3@2", "DefineGlobal:4@2",
+            "Return:0@3",
+        ], Describe(chunk));
+        Assert.Equal([
+            "String:a", "Int:1", "String:m", $"String:{memberName}", "String:r",
+        ], DescribePool(chunk));
     }
 
     [Fact]
     public void Length_UsesResolvedFieldType_ForTypedOpcodeSelection() {
-        // m.length + 1 must emit AddInt, proving the compiler reads
+        // m.length + 1 must emit AddInt (not the untyped Add), proving the compiler reads
         // MemberAccessExpr.ResolvedFieldType rather than falling back to Unknown.
-        Chunk chunk = CompileSource("m := map<string, int>{\"a\": 1}\nreadonly n := m.length + 1\n");
+        Chunk chunk = CompileSource(MapPrologue + "readonly n := m.length + 1\n");
 
-        List<Instr> instrs = Decode(chunk);
-        Assert.Contains(instrs, i => i.Op == OpCode.GetProperty);
-        Assert.Contains(instrs, i => i.Op == OpCode.AddInt);
+        Assert.Equal([
+            "Constant:0@1", "Constant:1@1", "NewMap:1@1", "DefineGlobal:2@1",
+            "GetGlobal:2@2", "GetProperty:3@2", "Constant:4@2", "AddInt:0@2",
+            "DefineGlobal:5@2", "Return:0@3",
+        ], Describe(chunk));
+        Assert.Equal([
+            "String:a", "Int:1", "String:m", "String:length", "Int:1", "String:n",
+        ], DescribePool(chunk));
     }
 
     // -----------------------------------------------------------------------
@@ -111,33 +137,21 @@ public sealed class CompilerMapQueryMemberTests {
     // compiler-emission change needed.
     // -----------------------------------------------------------------------
 
-    [Fact]
-    public void Get_EmitsGetPropertyThenArgumentThenCallWithOneArgument() {
-        Chunk chunk = CompileSource("m := map<string, int>{\"a\": 1}\nreadonly g := m.get(\"a\")\n");
+    [Theory]
+    [InlineData("get", "g")]
+    [InlineData("contains", "b")]
+    public void Method_EmitsGetPropertyThenArgumentThenCallWithOneArgument(
+            string memberName, string bindingName) {
+        Chunk chunk = CompileSource(MapPrologue + $"readonly {bindingName} := m.{memberName}(\"a\")\n");
 
-        List<Instr> instrs = Decode(chunk);
-        int propIdx = instrs.FindIndex(i => i.Op == OpCode.GetProperty);
-        Assert.True(propIdx >= 0, "no GetProperty instruction found");
-        Assert.Equal("get", chunk.ReadConstant(instrs[propIdx].Arg).AsString());
-
-        int callIdx = instrs.FindIndex(propIdx, i => i.Op == OpCode.Call);
-        Assert.True(callIdx >= 0, "no Call instruction found after GetProperty");
-        Assert.Equal(1, instrs[callIdx].Arg);
-        Assert.True(propIdx < callIdx);
-    }
-
-    [Fact]
-    public void Contains_EmitsGetPropertyThenArgumentThenCallWithOneArgument() {
-        Chunk chunk = CompileSource("m := map<string, int>{\"a\": 1}\nreadonly b := m.contains(\"a\")\n");
-
-        List<Instr> instrs = Decode(chunk);
-        int propIdx = instrs.FindIndex(i => i.Op == OpCode.GetProperty);
-        Assert.True(propIdx >= 0, "no GetProperty instruction found");
-        Assert.Equal("contains", chunk.ReadConstant(instrs[propIdx].Arg).AsString());
-
-        int callIdx = instrs.FindIndex(propIdx, i => i.Op == OpCode.Call);
-        Assert.True(callIdx >= 0, "no Call instruction found after GetProperty");
-        Assert.Equal(1, instrs[callIdx].Arg);
-        Assert.True(propIdx < callIdx);
+        Assert.Equal([
+            "Constant:0@1", "Constant:1@1", "NewMap:1@1", "DefineGlobal:2@1",
+            "GetGlobal:2@2", "GetProperty:3@2", "Constant:4@2", "Call:1@2",
+            "DefineGlobal:5@2", "Return:0@3",
+        ], Describe(chunk));
+        Assert.Equal([
+            "String:a", "Int:1", "String:m", $"String:{memberName}", "String:a",
+            $"String:{bindingName}",
+        ], DescribePool(chunk));
     }
 }

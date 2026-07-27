@@ -9,8 +9,10 @@ namespace Grob.Vm;
 /// properties, resolved directly at <see cref="OpCode.GetProperty"/> dispatch time
 /// alongside <c>keys</c>'s pre-existing handling). Each method is bound to its receiver
 /// map at dispatch time, mirroring <see cref="ArrayNatives.GetMethod"/>. Neither member
-/// takes a function argument, so the <see cref="VmInvoker"/> callback is accepted only
-/// for signature parity with <see cref="ArrayNatives.GetMethod"/> and is unused.
+/// takes a function argument, so — unlike <see cref="ArrayNatives.GetMethod"/> — no
+/// <see cref="VmInvoker"/> callback is accepted: taking one purely for signature parity
+/// would make the VM allocate a capturing delegate and a <c>FinallyContext</c> on every
+/// map property dispatch for a parameter nothing reads (CodeRabbit review, PR #165).
 /// </summary>
 internal static class MapNatives {
     /// <summary>
@@ -18,8 +20,7 @@ internal static class MapNatives {
     /// <paramref name="methodName"/> on <paramref name="receiver"/>, or
     /// <see langword="null"/> when the name is not a recognised map method.
     /// </summary>
-    internal static NativeFunction? GetMethod(
-            string methodName, GrobMap receiver, VmInvoker invoker) =>
+    internal static NativeFunction? GetMethod(string methodName, GrobMap receiver) =>
         methodName switch {
             "get" => new NativeFunction("get", 1, (args, _) => Get(args, receiver)),
             "contains" => new NativeFunction("contains", 1, (args, _) => Contains(args, receiver)),

@@ -61,15 +61,16 @@ check runs, matching pre-D-374 behaviour rather than newly rejecting it.
 
 *Updated July 2026 — `MapTypeDescriptor` substrate built (Sprint 9 Increment C0b-1,
 rescoped, D-374): the indexer types `V?` and `for k, v in m` binds `v` as the map's real
-`V`, both previously `Unknown`. The six query members remain unbuilt — split off after
-the increment's own plan-mode gate found the query-member surface needs a new
-descriptor-carriage mechanism.*
+`V`, both previously `Unknown`. The six query members were split off after the
+increment's own plan-mode gate found the query-member surface needs a new
+descriptor-carriage mechanism — **superseded: they are built by D-377, below.***
 
 *Updated July 2026 — map-literal construction lands (D-376): the grammar (with a
 non-consuming lookahead disambiguating `map<K, V>{` from the relational comparison
 `map < x`), the `MapLiteralExpr`/`MapEntry` AST, `MapDescriptorOf`'s third (literal)
-tier, and the `NewMap` opcode. Duplicate keys are E0016. The six query members and
-mutation (`set`/`remove`/`clear`) remain unbuilt, per the note above.*
+tier, and the `NewMap` opcode. Duplicate keys are E0016. **Superseded in part: the six
+query members are built by D-377, below; only mutation (`set`/`remove`/`clear`) remains
+unbuilt.***
 
 *Updated July 2026 — map query member surface lands (Sprint 9 Increment C0b-2a, D-377):
 `length`/`isEmpty`/`keys`/`values`/`get()`/`contains()`, mirroring the array query-member

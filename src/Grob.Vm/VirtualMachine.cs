@@ -921,12 +921,10 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                     _stack.Push(GrobValue.FromArray(new GrobArray(valueElements)), line);
                                     break;
                                 }
-                                CancellationToken mapCt = _cancellationToken;
-                                var mapFinallyContext = new FinallyContext(
-                                    boundedFinally, finallyBoundaryFloor, finallyBoundaryStart);
-                                NativeFunction? mapMethod = MapNatives.GetMethod(
-                                    propertyName, map!,
-                                    (callable, args) => InvokeCallable(callable, args, line, column, mapCt, mapFinallyContext));
+                                // No invoker callback: neither get(key) nor contains(key)
+                                // takes a function argument, so binding one would allocate a
+                                // closure per dispatch for a parameter nothing reads.
+                                NativeFunction? mapMethod = MapNatives.GetMethod(propertyName, map!);
                                 if (mapMethod is not null) {
                                     _stack.Push(GrobValue.FromFunction(mapMethod), line);
                                     break;
