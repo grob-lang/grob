@@ -960,10 +960,10 @@ log.info("  cosmos:   ${cosmosId}")
 
 // Build deployment tags as a map
 tags := map<string, string>{
-    "environment": environment
-    "deployedBy":  "grob"
-    "storageId":   storageId.toString()
-    "functionId":  functionId.toString()
+    "environment": environment,
+    "deployedBy":  "grob",
+    "storageId":   storageId.toString(),
+    "functionId":  functionId.toString(),
 }
 
 log.info("Deployment tags:")

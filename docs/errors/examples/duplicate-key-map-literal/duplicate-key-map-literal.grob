@@ -1,0 +1,8 @@
+// E0016 — the same string-literal key supplied twice in a map literal
+// Eventual path: docs/errors/examples/duplicate-key-map-literal/duplicate-key-map-literal.grob
+m := map<string, int>{
+    "environment": 1,
+    "environment": 2,
+}
+
+print(m)

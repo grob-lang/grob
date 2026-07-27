@@ -118,6 +118,7 @@ public static class Disassembler {
             OpCode.Call => ByteOperandInstruction(opCode, chunk, offset, writer),
             OpCode.NewStruct => NewStructInstruction(chunk, offset, writer),
             OpCode.NewAnonStruct => ByteOperandInstruction(opCode, chunk, offset, writer),
+            OpCode.NewMap => ByteOperandInstruction(opCode, chunk, offset, writer),
 
             // 1-byte operand: slot/name index
             OpCode.GetLocal => ByteOperandInstruction(opCode, chunk, offset, writer),

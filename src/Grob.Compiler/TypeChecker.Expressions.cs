@@ -2123,6 +2123,80 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     /// <remarks>
+    /// Resolves to <see cref="GrobType.Map"/> (D-376). The literal's value-type descriptor is
+    /// resolved via the existing, unchanged <see cref="ResolveMapValueDescriptor"/> from
+    /// <c>node.TypeArguments</c> — the same producer a <c>map&lt;K, V&gt;</c> parameter/field/
+    /// <c>var</c> annotation already uses — and stored in <see cref="_mapLiteralDescriptors"/>
+    /// (mirroring <see cref="_arrayLiteralDescriptors"/>) so <see cref="MapDescriptorOf"/>'s
+    /// literal tier can recover it for indexer and <c>for...in</c> typing. A malformed
+    /// <c>map&lt;X&gt;</c> literal (fewer than two type arguments) resolves no descriptor —
+    /// permissive, matching the array-literal analogue's missing-descriptor convention: no
+    /// per-entry value check runs, but nothing crashes.
+    /// </remarks>
+    public override GrobType VisitMapLiteral(MapLiteralExpr node) {
+        MapTypeDescriptor? descriptor = ResolveMapValueDescriptor(node.TypeArguments);
+        if (descriptor is not null) {
+            _mapLiteralDescriptors[node] = descriptor;
+        }
+
+        // E<duplicate-key> — collect seen keys; report the second occurrence, mirroring
+        // TypeChecker.Declarations.cs's E2208 duplicate-field-name pattern.
+        HashSet<string> seenKeys = new(StringComparer.Ordinal);
+        foreach (MapEntry entry in node.Entries) {
+            if (!seenKeys.Add(entry.Key)) {
+                EmitError(ErrorCatalog.E0016,
+                    $"Duplicate key '{entry.Key}' in map literal.",
+                    entry.Range);
+            }
+
+            // Every entry's value is visited regardless of duplicate-key status — its own
+            // identifiers/types must resolve, and a later pass walking the fully-annotated
+            // tree still needs it, exactly as an array literal's later elements are visited
+            // even after an earlier element failed unification.
+            GrobType valueType = Visit(entry.Value);
+            CheckMapEntryValue(entry, valueType, descriptor);
+        }
+
+        return GrobType.Map;
+    }
+
+    /// <summary>
+    /// Checks a single map-literal entry's value against the literal's value-type descriptor
+    /// (D-376) — built from the same primitives <see cref="CheckArrayElementArgument"/> uses
+    /// (<see cref="TypesAreAssignable(GrobType, GrobType)"/>, <see cref="ArrayElementAssignable"/>,
+    /// <see cref="IsStructNominalMismatch"/>), but for a map-entry context rather than a
+    /// method-call argument — there is no <see cref="MemberAccessExpr"/> receiver to phrase the
+    /// diagnostic around, so this is not a call to that method. A mismatch is E0004 (never a new
+    /// code, matching D-376's decision to reuse the existing argument-type-mismatch code). No
+    /// descriptor available (a malformed <c>map&lt;X&gt;</c> literal) stays permissive.
+    /// </summary>
+    private void CheckMapEntryValue(MapEntry entry, GrobType argType, MapTypeDescriptor? descriptor) {
+        if (descriptor is null || argType == GrobType.Error || argType == GrobType.Unknown) {
+            return;
+        }
+        bool compatible = TypesAreAssignable(argType, descriptor.ValueKind);
+        // Nested-array value identity (D-351-style): the flat GrobType.Array tag does not
+        // distinguish int[] from string[], so map<string, int[]>{"a": ["x"]} must be rejected.
+        if (compatible && descriptor.ValueKind is GrobType.Array or GrobType.NullableArray &&
+                !ArrayElementAssignable(ArrayDescriptorOf(entry.Value), descriptor.ValueArrayDescriptor)) {
+            compatible = false;
+        }
+        // Struct nominal identity (D-303-style): the flat GrobType.Struct tag does not
+        // distinguish one user type from another (or from date/guid).
+        if (compatible && IsStructNominalMismatch(descriptor.ValueKind, descriptor.ValueNamedTypeName, entry.Value)) {
+            compatible = false;
+        }
+        if (!compatible) {
+            string argDisplay = GetStructTypeName(entry.Value) ?? TypeName(argType);
+            string valueDisplay = descriptor.ValueNamedTypeName ?? TypeName(descriptor.ValueKind);
+            EmitError(ErrorCatalog.E0004,
+                $"Value for key '{entry.Key}' has type '{argDisplay}', which is not assignable to the map's value type '{valueDisplay}'.",
+                entry.Value.Range);
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// Validates the condition is <c>bool</c> (E0001), visits both arms, and
     /// unifies their types via <see cref="UnifyTernaryArms"/> (E0001 on mismatch).
     /// </remarks>

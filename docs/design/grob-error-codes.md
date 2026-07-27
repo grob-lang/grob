@@ -67,6 +67,7 @@ read by `grob --explain Exxxx`.
 | E0013 | field default references sibling field              | Type              | pre-release           |
 | E0014 | throw operand is not a GrobError subtype             | Type              | pre-release           |
 | E0015 | catch type is not a GrobError subtype              | Type              | pre-release           |
+| E0016 | duplicate key in map literal                       | Type              | pre-release           |
 | E0101 | nil dereference without `?.` or `??`               | Type              | pre-release           |
 | E0102 | nullable interpolation                             | Type              | pre-release           |
 | E0103 | non-nullable field requires initialiser            | Type              | pre-release           |
@@ -320,6 +321,16 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** A typed `catch (<n>: <Type>)` clause named a type that is not `GrobError` or one of its ten leaves (D-284). `catch (e: int)` and similar are rejected here. Dedicated over folding into E0001 (general type mismatch), matching E0014's precedent for the throw-operand family — the catch-type surface is distinct and more actionable with its own code.
 - **Source:** `grob-language-fundamentals.md` §27; D-274.
+
+---
+
+### E0016 — duplicate key in map literal
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A `map<K, V>{ ... }` literal listed the same string-literal key more than once. Mirrors E2208 (duplicate field name in a `type` declaration) and E0010 (duplicate named argument) in shape — a distinct construction-site surface earns its own code rather than folding into either, since neither is a map-literal entry.
+- **Source decision:** D-376.
 
 ---
 
@@ -1362,7 +1373,7 @@ None as of v1.
 
 ---
 
-**Total: 118 codes across 7 categories.** This is the canonical current count;
+**Total: 119 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
@@ -1391,3 +1402,5 @@ _Updated July 2026 — Sprint 7 Increment B added two codes: E0015 (catch type i
 _Updated July 2026 — Sprint 8 Increment A added one code: E1004 (namespace used as a value) in the E10xx sub-block of the Name resolution category, bringing the total from 116 to 117. The increment's other new-diagnostic arm (`math.nope()`, unknown namespace member) folds into the pre-existing, previously-unused E1003 ("undefined module") rather than allocating a new code — confirmed against `allocating-an-error-code`'s Step 1 before minting E1004. Source decision D-342._
 
 _Updated July 2026 — Sprint 8 Increment D added one code: E0601 (invalid `guid` string literal) — the first entry in the previously empty E06xx sub-block of the Type category, bringing the total from 117 to 118. Dedicated rather than folded into E5701 (the existing `guid.parse` runtime `ParseError` code): E5701 is `Runtime` category and ADR-0014's category scheme forbids reusing a runtime code for a compile-time diagnostic — the fold-versus-new judgement the increment's own kickoff prompt surfaced and leaned dedicated on. Source decision D-149._
+
+_Updated July 2026 — map-literal construction (`map<K, V>{ ... }`) added one code: E0016 (duplicate key in map literal) in the E00xx sub-block of the Type category, bringing the total from 118 to 119. Dedicated rather than folded into E0010 (duplicate named argument, call-site only), E2208 (duplicate field name, `type` declaration only) or E2213 (duplicate `catch`, exception-handling only) — none of the three existing duplicate-entry codes covers a map-literal entry, confirmed against the live registry before allocating, per the E0014/E0015 precedent for a distinct, more-actionable construction-site code. Source decision D-376._

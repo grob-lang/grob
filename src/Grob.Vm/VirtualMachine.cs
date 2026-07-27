@@ -1188,6 +1188,30 @@ public sealed class VirtualMachine : IPluginRegistrar {
                             break;
                         }
 
+                    // --- Map literal construction (D-376) ---
+                    // Stack layout before this opcode (bottom→top):
+                    //   key₁, val₁, key₂, val₂, …, keyₙ, valₙ
+                    // Operand: entry count (byte). Pop pairs in LIFO order into a
+                    // source-ordered array, then insert into a fresh GrobMap in that source
+                    // order — a duplicate key (E0016 at compile time; unenforced here, the
+                    // VM stays permissive) simply lets the later entry overwrite the earlier
+                    // one, matching GrobMap.Set's own last-write-wins semantics.
+                    case OpCode.NewMap: {
+                            byte entryCount = _activeChunk.ReadByte(_ip++);
+                            var pairs = new (string Key, GrobValue Value)[entryCount];
+                            for (int i = entryCount - 1; i >= 0; i--) {
+                                GrobValue value = _stack.Pop();
+                                string key = _stack.Pop().AsString();
+                                pairs[i] = (key, value);
+                            }
+                            var map = new GrobMap();
+                            for (int i = 0; i < entryCount; i++) {
+                                map.Set(pairs[i].Key, pairs[i].Value);
+                            }
+                            _stack.Push(GrobValue.FromMap(map), line);
+                            break;
+                        }
+
                     // --- try / catch / throw (Sprint 7 Increment B; A: throw + top-level) ---
 
                     // Structural markers only — the handler table (built by the
@@ -1508,6 +1532,7 @@ public sealed class VirtualMachine : IPluginRegistrar {
                 case OpCode.Call:
                 case OpCode.NewStruct:
                 case OpCode.NewAnonStruct:
+                case OpCode.NewMap:
                 case OpCode.GetLocal:
                 case OpCode.SetLocal:
                 case OpCode.GetGlobal:

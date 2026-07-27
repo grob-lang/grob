@@ -29,6 +29,7 @@ public class AstVisitorDispatchTests {
         public override string VisitGrouping(GroupingExpr node) => nameof(VisitGrouping);
         public override string VisitTernary(TernaryExpr node) => nameof(VisitTernary);
         public override string VisitArrayLiteral(ArrayLiteralExpr node) => nameof(VisitArrayLiteral);
+        public override string VisitMapLiteral(MapLiteralExpr node) => nameof(VisitMapLiteral);
         public override string VisitIndex(IndexExpr node) => nameof(VisitIndex);
         public override string VisitMemberAccess(MemberAccessExpr node) => nameof(VisitMemberAccess);
         public override string VisitCall(CallExpr node) => nameof(VisitCall);
@@ -68,6 +69,8 @@ public class AstVisitorDispatchTests {
 
     private static readonly BlockStmt _emptyBlock = new(R, []);
     private static readonly TypeRef _intType = new(R, "int", [], false);
+    private static readonly TypeRef _mapStringStringType = new(
+        R, "map", [new TypeRef(R, "string", [], false), new TypeRef(R, "string", [], false)], false);
     private static readonly HookNameVisitor _visitor = new();
 
     public static IEnumerable<object[]> ExpressionCases => [
@@ -85,6 +88,7 @@ public class AstVisitorDispatchTests {
         [new GroupingExpr(R, Int(1)), nameof(HookNameVisitor.VisitGrouping)],
         [new TernaryExpr(R, Id("c"), Int(1), Int(2)), nameof(HookNameVisitor.VisitTernary)],
         [new ArrayLiteralExpr(R, []), nameof(HookNameVisitor.VisitArrayLiteral)],
+        [new MapLiteralExpr(R, _mapStringStringType, []), nameof(HookNameVisitor.VisitMapLiteral)],
         [new IndexExpr(R, Id("a"), Int(0)), nameof(HookNameVisitor.VisitIndex)],
         [new MemberAccessExpr(R, Id("a"), "m"), nameof(HookNameVisitor.VisitMemberAccess)],
         [new CallExpr(R, Id("f"), []), nameof(HookNameVisitor.VisitCall)],

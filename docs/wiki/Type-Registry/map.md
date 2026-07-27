@@ -8,14 +8,17 @@ through the indexer and `for...in`.
 
 ```grob
 headers := map<string, string>{
-    "Content-Type":  "application/json"
-    "X-Api-Version": "2024-01-01"
+    "Content-Type": "application/json",
+    "X-Api-Version": "2024-01-01",
 }
 ```
 
-**Not yet built (D-374):** this literal construction syntax has no parser support —
-maps can be consumed via a typed parameter, field or `var` annotation, but not yet
-constructed from a `map<K, V>{...}` literal in source.
+**Built (D-376):** map-literal construction. Entries are separated by commas —
+newlines inside the braces are insignificant (skipped), matching every other literal
+form in the language. A trailing comma is permitted. Each key must be a plain
+double-quoted string literal (not raw, not interpolated); duplicate keys are a compile
+error. `V` is checked against each entry's value; `K` (fixed `string` in v1) is not
+separately validated.
 
 ## Members
 
@@ -58,7 +61,12 @@ check runs, matching pre-D-374 behaviour rather than newly rejecting it.
 
 *Updated July 2026 — `MapTypeDescriptor` substrate built (Sprint 9 Increment C0b-1,
 rescoped, D-374): the indexer types `V?` and `for k, v in m` binds `v` as the map's real
-`V`, both previously `Unknown`. The six query members and map-literal construction
-syntax remain unbuilt — split off after the increment's own plan-mode gate found the
-former needs a new descriptor-carriage mechanism and the latter has no parser support at
-all, despite being documented above as working syntax.*
+`V`, both previously `Unknown`. The six query members remain unbuilt — split off after
+the increment's own plan-mode gate found the query-member surface needs a new
+descriptor-carriage mechanism.*
+
+*Updated July 2026 — map-literal construction lands (D-376): the grammar (with a
+non-consuming lookahead disambiguating `map<K, V>{` from the relational comparison
+`map < x`), the `MapLiteralExpr`/`MapEntry` AST, `MapDescriptorOf`'s third (literal)
+tier, and the `NewMap` opcode. Duplicate keys are E0016. The six query members and
+mutation (`set`/`remove`/`clear`) remain unbuilt, per the note above.*
