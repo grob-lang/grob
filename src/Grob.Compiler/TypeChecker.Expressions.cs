@@ -407,6 +407,11 @@ public sealed partial class TypeChecker {
             return ValidateArrayMethodCall(node, memberAccess, argTypes);
         }
 
+        // Sprint 9 Increment C0b-2a (D-377): the map method-family members — get/contains.
+        if (receiverType == GrobType.Map && IsMapMethod(memberAccess.Member)) {
+            return ValidateMapMethodCall(node, memberAccess, argTypes);
+        }
+
         // D-066: primitive instance-method dispatch (string first) — compile-time sugar,
         // rewritten to a qualified native call rather than a runtime GetProperty/Bind
         // (primitives are never GrobValueKind.Struct, so NamedTypeRegistry's shape below
@@ -674,6 +679,69 @@ public sealed partial class TypeChecker {
                 break;
         }
         return GrobType.Unknown;
+    }
+
+    // Sprint 9 Increment C0b-2a (D-377): the map method-family members — get(key) and
+    // contains(key). length/isEmpty/keys/values are properties, resolved separately via
+    // ResolveMapPropertyAccess.
+    private static bool IsMapMethod(string name) => name is "get" or "contains";
+
+    /// <summary>
+    /// Validates a <c>get(key)</c>/<c>contains(key)</c> call (Sprint 9 Increment C0b-2a,
+    /// D-377) and returns its result type. <c>get</c>'s result type is derived by
+    /// <see cref="MapValueResultType"/> — the same derivation <see cref="VisitIndex"/>
+    /// uses for <c>m[k]</c> — so the two are provably in agreement. <c>contains</c> is
+    /// key-membership (unlike the array's <c>contains(v: T)</c>, which is
+    /// value-membership, D-371) — a deliberate asymmetry, not an oversight. Both take a
+    /// single <c>K</c> (<c>string</c>, fixed in v1) argument, checked by
+    /// <see cref="CheckMapKeyArgument"/>; a mismatch is <see cref="ErrorCatalog.E0004"/>,
+    /// never a new code.
+    /// </summary>
+    private GrobType ValidateMapMethodCall(CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
+        MapTypeDescriptor? descriptor = MapDescriptorOf(memberAccess.Target);
+        switch (memberAccess.Member) {
+            case "get": {
+                    GrobType resultType = MapValueResultType(descriptor);
+                    node.ResolvedReturnType = resultType;
+                    if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, 1)) {
+                        return resultType;
+                    }
+                    CheckMapKeyArgument(memberAccess, argTypes[0], node.Arguments[0].Value);
+                    if (descriptor?.ValueNamedTypeName is string namedTypeName) {
+                        _callResultStructNames[node] = namedTypeName;
+                    }
+                    if (descriptor?.ValueArrayDescriptor is ArrayTypeDescriptor valueArrayDescriptor) {
+                        _callResultArrayDescriptors[node] = valueArrayDescriptor;
+                    }
+                    return resultType;
+                }
+            case "contains":
+                node.ResolvedReturnType = GrobType.Bool;
+                if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, 1)) {
+                    return GrobType.Bool;
+                }
+                CheckMapKeyArgument(memberAccess, argTypes[0], node.Arguments[0].Value);
+                return GrobType.Bool;
+            default:
+                return GrobType.Unknown;
+        }
+    }
+
+    /// <summary>
+    /// Checks a single map-method key argument's type — <c>K</c> is fixed <c>string</c>
+    /// in v1 (Sprint 9 Increment C0b-2a, D-377). A mismatch is <see cref="ErrorCatalog.E0004"/>,
+    /// never a new code; permissive on <see cref="GrobType.Unknown"/>/<see cref="GrobType.Error"/>,
+    /// mirroring <see cref="CheckArrayElementArgument"/>'s identical latitude. This is a
+    /// call-site argument check, unrelated to <see cref="ResolveMapValueDescriptor"/>'s
+    /// separate, deliberate non-validation of a type annotation's <c>K</c> argument.
+    /// </summary>
+    private void CheckMapKeyArgument(MemberAccessExpr memberAccess, GrobType argType, Expression argExpr) {
+        if (argType is GrobType.Error or GrobType.Unknown or GrobType.String) {
+            return;
+        }
+        EmitError(ErrorCatalog.E0004,
+            $"Argument to '{memberAccess.Member}' has type '{TypeName(argType)}', which is not assignable to key type 'string'.",
+            argExpr.Range);
     }
 
     /// <summary>
@@ -1183,20 +1251,74 @@ public sealed partial class TypeChecker {
             return ResolveStructFieldAccess(node);
         }
 
-        // Sprint 9 Increment C0a-1 (D-371): array properties (length/isEmpty). Arrays
-        // stay structural (D-351/D-356/D-363) rather than joining either registry — no
-        // ArrayTypeDescriptor is even needed for these two, since neither depends on the
-        // element type — so they are resolved directly here, the last receiver-specific
-        // arm before the generic permissive fall-through below. 'map' is now the sole
-        // remaining receiver reaching that fall-through (until C0b) — confirmed no
-        // GrobType.Map dispatch exists anywhere else in this file.
-        if (targetType == GrobType.Array) {
-            return ResolveArrayPropertyAccess(node);
+        // Sprint 9 Increment C0a-1 (D-371) / C0b-2a (D-377): array and map properties —
+        // the last receiver-specific arm before the generic permissive fall-through
+        // below. 'fn(...): R' (GrobType.Function) is now the sole remaining receiver
+        // reaching that fall-through — and terminally so: grob-type-registry.md records
+        // function types as permanently memberless, so no future increment registers
+        // another arm here.
+        if (ResolveCollectionPropertyAccess(node, targetType) is GrobType collectionResult) {
+            return collectionResult;
         }
 
         // For '?.' chains or Unknown-typed targets the result type is Unknown so
         // downstream '??' operators remain permissive and do not emit false positives.
         return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Resolves a bare property access on an array or map receiver, or
+    /// <see langword="null"/> when <paramref name="targetType"/> is neither — the shared
+    /// dispatch <see cref="VisitMemberAccess"/> consults, extracted (alongside
+    /// <see cref="TryResolveKnownStructPropertyAccess"/>'s identical shape) to keep its
+    /// own cognitive complexity under the analyser bar. Arrays stay structural
+    /// (D-351/D-356/D-363, C0a-1/D-371) rather than joining either registry; maps
+    /// (C0b-2a/D-377) mirror that shape.
+    /// </summary>
+    private GrobType? ResolveCollectionPropertyAccess(MemberAccessExpr node, GrobType targetType) {
+        if (targetType == GrobType.Array) return ResolveArrayPropertyAccess(node);
+        if (targetType == GrobType.Map) return ResolveMapPropertyAccess(node);
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves a bare (non-call) property access on a map receiver — <c>length</c>,
+    /// <c>isEmpty</c>, <c>keys</c> and <c>values</c>, the Sprint 9 Increment C0b-2a
+    /// (D-377) query-property surface. <c>keys</c>/<c>values</c> additionally populate
+    /// <see cref="_memberAccessArrayDescriptors"/> so a chained access on the result
+    /// (<c>m.keys.first()</c>, <c>m.values.contains(x)</c>) resolves its element type
+    /// instead of degrading to <see cref="GrobType.Unknown"/>. Method-family members
+    /// (<c>get</c>, <c>contains</c>) are resolved only via a call
+    /// (<see cref="ValidateMapMethodCall"/>); a bare reference to one here is an
+    /// unrecognised member, mirroring <see cref="ResolveArrayPropertyAccess"/>'s
+    /// identical rule.
+    /// </summary>
+    private GrobType ResolveMapPropertyAccess(MemberAccessExpr node) {
+        if (node.Member == "length") {
+            node.ResolvedFieldType = GrobType.Int;
+            return GrobType.Int;
+        }
+        if (node.Member == "isEmpty") {
+            node.ResolvedFieldType = GrobType.Bool;
+            return GrobType.Bool;
+        }
+        if (node.Member == "keys") {
+            node.ResolvedFieldType = GrobType.Array;
+            // K is always 'string' in v1 (ResolveMapValueDescriptor never validates K).
+            _memberAccessArrayDescriptors[node] = new ArrayTypeDescriptor(GrobType.String);
+            return GrobType.Array;
+        }
+        if (node.Member == "values") {
+            node.ResolvedFieldType = GrobType.Array;
+            MapTypeDescriptor? descriptor = MapDescriptorOf(node.Target);
+            if (descriptor is not null) {
+                _memberAccessArrayDescriptors[node] = new ArrayTypeDescriptor(
+                    descriptor.ValueKind, descriptor.ValueNamedTypeName, descriptor.ValueArrayDescriptor);
+            }
+            return GrobType.Array;
+        }
+        return EmitErrorAndReturn(ErrorCatalog.E1002,
+            $"Type 'map<string, V>' has no member '{node.Member}'.", node.Range);
     }
 
     /// <summary>
@@ -2013,7 +2135,7 @@ public sealed partial class TypeChecker {
         MapTypeDescriptor? mapDescriptor = MapDescriptorOf(node.Target);
         if (mapDescriptor is not null) {
             node.ElementType = mapDescriptor.ValueKind;
-            return GrobTypeHelpers.ToNullable(mapDescriptor.ValueKind);
+            return MapValueResultType(mapDescriptor);
         }
 
         node.ElementType = GrobType.Unknown;
