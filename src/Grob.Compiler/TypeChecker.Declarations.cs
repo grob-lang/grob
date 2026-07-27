@@ -577,7 +577,8 @@ public sealed partial class TypeChecker {
             ResolveBindingFull(node.AnnotatedType, initType, initDesc, node.Value.Range, node.Value);
         // Finalise the pass-1 provisional entry (D-324). Detects collisions with prior
         // real bindings and registers as real when free.
-        FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range, symbolDesc, symbolArrayDesc, symbolMapDesc);
+        FinalizeTopLevelBinding(node.Name, symbolType, node.Range.Start, node, node.Range,
+            new SymbolTypeIdentity(symbolDesc, ArrayDescriptor: symbolArrayDesc, MapDescriptor: symbolMapDesc));
         return GrobType.Unknown;
     }
 

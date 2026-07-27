@@ -86,8 +86,8 @@ public sealed partial class TypeChecker {
             // Visited: already resolved — nothing to do.
         }
 
-        (GrobType resolvedType, FunctionTypeDescriptor? desc) = SilentInferTypeFromBinding(bindings[name]);
-        UpdateProvisionalType(name, resolvedType, desc);
+        (GrobType resolvedType, SymbolTypeIdentity identity) = SilentInferTypeFromBinding(bindings[name]);
+        UpdateProvisionalType(name, resolvedType, identity);
         colors[name] = BindingResolutionColor.Visited;
     }
 
@@ -154,7 +154,14 @@ public sealed partial class TypeChecker {
         }
     }
 
-    private (GrobType, FunctionTypeDescriptor?) SilentInferTypeFromBinding(AstNode binding) {
+    /// <summary>
+    /// Infers a top-level value binding's provisional type and the side-channel descriptors
+    /// that carry its type identity. The <see cref="MapTypeDescriptor"/> is resolved straight
+    /// from the syntactic <c>map&lt;K, V&gt;</c> type-argument list — of the annotation, or of a
+    /// map-literal initialiser — rather than via <c>MapDescriptorOf</c>, because phase 1.5 runs
+    /// before pass 2 has visited the literal and recorded it (D-376).
+    /// </summary>
+    private (GrobType, SymbolTypeIdentity) SilentInferTypeFromBinding(AstNode binding) {
         TypeRef? annotation = binding switch {
             ReadonlyDecl ro => ro.AnnotatedType,
             VarDeclStmt vd => vd.AnnotatedType,
@@ -167,20 +174,35 @@ public sealed partial class TypeChecker {
         };
 
         GrobType initType = initializer is not null ? SilentInferType(initializer) : GrobType.Unknown;
+        MapTypeDescriptor? initMapDesc = SilentMapDescriptorOf(initializer);
 
-        if (annotation is null) return (initType, null);
+        if (annotation is null) return (initType, new(MapDescriptor: initMapDesc));
 
         // Use ResolveTypeRefFull so FunctionTypeRef annotations produce GrobType.Function
         // (plus the structural descriptor) rather than Unknown. The static ResolveTypeRef
         // path does not handle FunctionTypeRef and would cause forward-reference bindings
         // annotated with a function type to stay Unknown through phase 1.5 (D-326).
         (GrobType annotated, FunctionTypeDescriptor? desc) = ResolveTypeRefFull(annotation);
-        if (annotated == GrobType.Unknown) return (initType, null);
-        if (initType == GrobType.Error) return (GrobType.Error, null);
-        if (initType == GrobType.Unknown) return (annotated, desc);
-        if (TypesAreAssignable(initType, annotated)) return (annotated, desc);
-        return (GrobType.Error, null);
+        if (annotated == GrobType.Unknown) return (initType, new(MapDescriptor: initMapDesc));
+        if (initType == GrobType.Error) return (GrobType.Error, default);
+
+        SymbolTypeIdentity identity = new(FunctionDescriptor: desc,
+                                          MapDescriptor: ResolveMapValueDescriptor(annotation) ?? initMapDesc);
+        if (initType == GrobType.Unknown) return (annotated, identity);
+        if (TypesAreAssignable(initType, annotated)) return (annotated, identity);
+        return (GrobType.Error, default);
     }
+
+    /// <summary>
+    /// The phase-1.5 counterpart of <c>MapDescriptorOf</c>'s literal tier — resolves a map
+    /// literal's value descriptor from its own type-argument list, with no dependency on
+    /// pass-2 state (D-376).
+    /// </summary>
+    private MapTypeDescriptor? SilentMapDescriptorOf(Expression? expr) => expr switch {
+        MapLiteralExpr literal => ResolveMapValueDescriptor(literal.TypeArguments),
+        GroupingExpr grp => SilentMapDescriptorOf(grp.Inner),
+        _ => null,
+    };
 
     private GrobType SilentInferType(Expression expr) => expr switch {
         IntLiteralExpr => GrobType.Int,
@@ -191,6 +213,10 @@ public sealed partial class TypeChecker {
         BoolLiteralExpr => GrobType.Bool,
         NilLiteralExpr => GrobType.Nil,
         IdentifierExpr id => LookupSymbol(id.Name)?.Type ?? GrobType.Unknown,
+        // D-376: without this arm a map-literal binding stays Unknown through phase 1.5, so a
+        // function declared above it sees the whole binding — not merely its value type — as
+        // Unknown.
+        MapLiteralExpr => GrobType.Map,
         CallExpr call => SilentInferCallType(call),
         BinaryExpr bin => SilentInferBinaryType(bin),
         UnaryExpr un => SilentInferUnaryType(un),

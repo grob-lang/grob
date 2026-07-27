@@ -463,13 +463,27 @@ public sealed class Parser {
         Token name = Expect(TokenKind.Identifier, _e2001, "expected type name");
         List<TypeRef> args = [];
         if (Match(TokenKind.Less)) {
-            args.Add(ParseTypeRef());
-            while (Match(TokenKind.Comma)) {
-                args.Add(ParseTypeRef());
-            }
-            Expect(TokenKind.Greater, _e2001, "expected '>' to close generic arguments");
+            args = ParseTypeArgumentList();
         }
         return new TypeRef(RangeFrom(start), name.Lexeme, args, IsNullable: false);
+    }
+
+    /// <summary>
+    /// Parses a generic type-argument list's contents — one <c>TypeRef</c>, then any
+    /// number of comma-separated further ones — up to and including the closing
+    /// <c>'&gt;'</c>. The opening <c>'&lt;'</c> must already be consumed by the caller
+    /// (D-376): shared between <see cref="ParseTypePrimary"/>'s ordinary generic-argument
+    /// position and the map-literal path (<see cref="ParseMapLiteral"/>), which needs the
+    /// identical production for <c>map&lt;K, V&gt;</c>'s header before its own <c>{ }</c>
+    /// body.
+    /// </summary>
+    private List<TypeRef> ParseTypeArgumentList() {
+        List<TypeRef> args = [ParseTypeRef()];
+        while (Match(TokenKind.Comma)) {
+            args.Add(ParseTypeRef());
+        }
+        Expect(TokenKind.Greater, _e2001, "expected '>' to close generic arguments");
+        return args;
     }
 
     // -----------------------------------------------------------------------
@@ -1140,6 +1154,15 @@ public sealed class Parser {
                 }
             case TokenKind.StringStart: return ParseInterpolatedString();
             case TokenKind.Identifier: {
+                    // map<K, V>{ ... } — map-literal construction (D-376). 'map' is an
+                    // ordinary bindable identifier (map := 5 is legal, D-375's own note),
+                    // so a following '<' is ambiguous with the relational comparison
+                    // 'map < x'. LooksLikeMapLiteral() is a pure, non-consuming lookahead —
+                    // it never calls Advance/Expect/Match — so a failed check leaves _pos
+                    // untouched and this falls through to the identifier case unchanged.
+                    if (t.Lexeme == "map" && PeekAt(1).Kind == TokenKind.Less && LooksLikeMapLiteral()) {
+                        return ParseMapLiteral(t.Location);
+                    }
                     Advance();
                     return new IdentifierExpr(new SourceRange(t.Location, t.Location), t.Lexeme);
                 }
@@ -1212,6 +1235,66 @@ public sealed class Parser {
         }
         Token closeBrace = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close anonymous struct literal");
         return new AnonStructExpr(new SourceRange(start, closeBrace.Location), fields);
+    }
+
+    // map<K, V>{ "key": value, … } — map-literal construction (D-376). Reached only
+    // after LooksLikeMapLiteral() has already confirmed the shape from ParsePrimary,
+    // so every Expect below is expected to succeed on well-formed input; a malformed
+    // literal (e.g. a missing '}') still fails cleanly through the ordinary
+    // Fail()/recovery path like every other literal form.
+    private MapLiteralExpr ParseMapLiteral(SourceLocation start) {
+        Advance(); // consume 'map'
+        Expect(TokenKind.Less, _e2001, "expected '<' to open map type arguments");
+        List<TypeRef> typeArgs = ParseTypeArgumentList();
+        TypeRef typeRef = new(RangeFrom(start), "map", typeArgs, IsNullable: false);
+
+        Expect(TokenKind.LeftBrace, _e2001, "expected '{' to open map literal");
+        SkipNewlines();
+        List<MapEntry> entries = [];
+        if (!Check(TokenKind.RightBrace)) {
+            entries.Add(ParseMapEntry());
+            while (Match(TokenKind.Comma)) {
+                SkipNewlines();
+                if (Check(TokenKind.RightBrace)) break; // trailing comma
+                entries.Add(ParseMapEntry());
+            }
+            SkipNewlines();
+        }
+        Token closeBrace = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close map literal");
+        return new MapLiteralExpr(new SourceRange(start, closeBrace.Location), typeRef, entries);
+    }
+
+    private MapEntry ParseMapEntry() {
+        SourceLocation entryStart = Current.Location;
+        string key = ParseMapEntryKey();
+        SkipNewlines();
+        Expect(TokenKind.Colon, _e2001, "expected ':' after map entry key");
+        SkipNewlines();
+        Expression value = ParseExpression();
+        return new MapEntry(RangeBetween(entryStart, value.Range.End), key, value);
+    }
+
+    /// <summary>
+    /// Parses a map-literal entry's key: a plain double-quoted string literal only —
+    /// not raw (backtick), not interpolated. A double-quoted string always lexes as a
+    /// <see cref="TokenKind.StringStart"/>/.../<see cref="TokenKind.StringEnd"/> run (there
+    /// is no dedicated plain-string token kind, even for a literal with no interpolation
+    /// at all), so this parses it via <see cref="ParseInterpolatedString"/> and then
+    /// requires every part to be plain text — mirroring the constant-folding check
+    /// <c>EvalConstantExpr</c> (<c>Compiler.cs</c>) already uses to recognise a
+    /// non-interpolated double-quoted string. Anything else — an identifier, a raw
+    /// string, or a genuinely interpolated string — is E2001.
+    /// </summary>
+    private string ParseMapEntryKey() {
+        if (!Check(TokenKind.StringStart)) {
+            throw Fail(_e2001, "expected string literal key");
+        }
+        SourceLocation keyStart = Current.Location;
+        Expression keyExpr = ParseInterpolatedString();
+        if (keyExpr is InterpolatedStringExpr { Parts: var parts } && parts.All(p => p is StringTextPart)) {
+            return string.Concat(parts.OfType<StringTextPart>().Select(p => p.Text));
+        }
+        throw FailAt(keyStart, _e2001, "expected string literal key");
     }
 
     private FieldInit ParseOneFieldInit() {
@@ -1297,6 +1380,58 @@ public sealed class Parser {
         while (i < _tokens.Count && _tokens[i].Kind == TokenKind.Newline) i++;
         if (i >= _tokens.Count) return false;
         return _tokens[i].Kind == TokenKind.Colon;
+    }
+
+    /// <summary>
+    /// Peeks ahead from the '&lt;' following a 'map' identifier to decide whether it
+    /// opens a map-literal type-argument list (<c>map&lt;K, V&gt;{ ... }</c>) rather than
+    /// a relational comparison (<c>map &lt; x</c>) on the ordinary bindable identifier
+    /// <c>map</c> (D-376). A pure index scan over <c>_tokens[_pos...]</c> — mirrors
+    /// <see cref="LooksLikeStructConstruction"/>'s peek-only style: it never calls
+    /// <see cref="Advance"/>/<see cref="Expect"/>/<see cref="Match"/>, so it can never
+    /// emit a diagnostic and never needs a rewind. Tracks <c>&lt;</c>/<c>&gt;</c> nesting
+    /// depth over a token run that looks like an identifier-only type-argument list
+    /// (identifiers, optional <c>[</c>/<c>]</c> for an array-typed value argument, the
+    /// <c>?</c> nullable suffix D-327's <see cref="ParseTypeRef"/> loop accepts on any
+    /// type, and commas) — succeeds only when the matching top-level <c>&gt;</c> is
+    /// immediately followed by <c>{</c>. Called only when <c>_pos</c> is at the <c>map</c>
+    /// identifier and the following token is already known to be
+    /// <see cref="TokenKind.Less"/>.
+    /// <para>
+    /// <see cref="TokenKind.Colon"/> is deliberately absent from the accepted run: admitting
+    /// it alongside <c>?</c> would make <c>map &lt; a ? b : c &gt; { … }</c> — a comparison
+    /// feeding a ternary — scan as a map literal. Rejecting <c>:</c> keeps that form an
+    /// ordinary expression.
+    /// </para>
+    /// </summary>
+    private bool LooksLikeMapLiteral() {
+        int i = _pos + 2; // first token after 'map' '<'
+        int depth = 1;
+        while (i < _tokens.Count) {
+            switch (_tokens[i].Kind) {
+                case TokenKind.Less:
+                    depth++;
+                    i++;
+                    break;
+                case TokenKind.Greater:
+                    depth--;
+                    i++;
+                    if (depth == 0) {
+                        return i < _tokens.Count && _tokens[i].Kind == TokenKind.LeftBrace;
+                    }
+                    break;
+                case TokenKind.Identifier:
+                case TokenKind.Comma:
+                case TokenKind.LeftBracket:
+                case TokenKind.RightBracket:
+                case TokenKind.Question:
+                    i++;
+                    break;
+                default:
+                    return false;
+            }
+        }
+        return false;
     }
 
     private bool NextNonNewlineIs(int from, TokenKind kind) {

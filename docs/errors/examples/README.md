@@ -267,6 +267,7 @@ than a fatal `error[Exxxx]:`.
 | E0009 | `named-argument-names-required-parameter` | Type |
 | E0010 | `duplicate-named-argument` | Type |
 | E0011 | `unknown-parameter-name` | Type |
+| E0016 | `duplicate-key-map-literal` | Type |
 | E0101 | `nil-deref-method-call` | Type |
 | E0102 | `nullable-interpolation` | Type |
 | E0201 | `const-reassignment` | Type |
@@ -324,3 +325,6 @@ than a fatal `error[Exxxx]:`.
 
 *Sprint 5 Increment 5: 2 examples (E2001 × 2, array type-ref syntax errors —*
 *unterminated bracket and fixed-size array), June 2026. Source decision D-327.*
+
+*Map-literal construction: 1 example (E0016, duplicate key in a map literal),*
+*July 2026. Source decision D-376.*

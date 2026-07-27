@@ -14,9 +14,12 @@ namespace Grob.Compiler.Tests;
 /// indexer types <c>m[key]</c> as nullable <c>V?</c>, and <c>for k, v in m</c> binds <c>v</c>
 /// as the map's real value type rather than <c>Unknown</c>.
 /// <para>
-/// No map literal exists in the v1 parser, so every map value in this file is threaded through
-/// a <c>fn</c> parameter annotation (D-350/D-373's established convention for exercising map
-/// typing without construction syntax).
+/// Written when no map literal existed in the v1 parser, so every map value in most of this
+/// file is threaded through a <c>fn</c> parameter annotation (D-350/D-373's established
+/// convention for exercising map typing without construction syntax). D-376 landed map-literal
+/// construction; the final section below re-drives a couple of these same scenarios through
+/// real parsed literal source instead of a hand-built annotation, per D-374's own noted
+/// follow-on (dedicated literal-specific coverage lives in <c>TypeCheckerMapLiteralTests</c>).
 /// </para>
 /// </summary>
 public sealed class MapTypeDescriptorTests {
@@ -407,5 +410,33 @@ public sealed class MapTypeDescriptorTests {
             }
             """);
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    // ------------------------------------------------------------------
+    // D-376 follow-on: the same indexer/for-in scenarios above, now driven through a
+    // real map<K, V>{...} literal rather than a fn-parameter annotation.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void IndexRead_OnMapLiteralStringInt_ResolvesToNullableInt() {
+        DiagnosticBag bag = Check("""
+            m := map<string, int>{"k": 1}
+            n: int := m["k"]
+            """);
+        AssertSingleError(bag, "E0104", 2, 11);
+    }
+
+    [Fact]
+    public void ForInMapLiteral_BindsKeyAsString_ValueAsIntNotUnknown() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            m := map<string, int>{"k": 1}
+            for k, v in m {
+            print(k)
+            print(v)
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+        Assert.Equal(GrobType.String, FindIdentifier(unit, "k").ResolvedType);
+        Assert.Equal(GrobType.Int, FindIdentifier(unit, "v").ResolvedType);
     }
 }

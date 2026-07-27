@@ -144,6 +144,14 @@ public abstract class AstWalker : AstVisitor<Unit> {
         return default;
     }
 
+    /// <inheritdoc/>
+    public override Unit VisitMapLiteral(MapLiteralExpr node) {
+        foreach (MapEntry entry in node.Entries) {
+            Visit(entry.Value);
+        }
+        return default;
+    }
+
     // -----------------------------------------------------------------------
     // Statements with children
     // -----------------------------------------------------------------------

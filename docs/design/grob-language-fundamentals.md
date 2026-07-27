@@ -631,6 +631,32 @@ fn foo(): string[] {
 items := []             // compile error — element type cannot be inferred
 ```
 
+### Map literals
+
+```grob
+map<string, string>{ "host": "example.com", "port": "8080" }   // single-line
+map<string, int>{}                                              // empty map literal
+
+// Multi-line — commas required, newlines insignificant (skipped) inside the braces
+tags := map<string, string>{
+    "environment": environment,
+    "deployedBy": "grob",
+}
+```
+
+`map<K, V>{ "key": value, … }` constructs a map value directly (D-376). Disambiguated
+from `map < x` (a relational comparison on the ordinary bindable identifier `map` — see
+§19 on reserved identifiers, of which `map` is not one) by a parser lookahead: `map`
+immediately followed by `<` only opens a map literal when the matching `>` is
+immediately followed by `{`; any other shape falls through to ordinary expression
+parsing, so `map < 10` and any other genuine comparison are unaffected.
+
+Entries are separated by commas; a trailing comma is permitted. Newlines inside the
+braces are insignificant — matching every other literal form in the language (D-375).
+Each key must be a plain double-quoted string literal — not raw (backtick), not
+interpolated. Duplicate keys are a compile error. `V` (the map's value type) is checked
+against each entry's value; `K` (fixed `string` in v1) is not separately validated.
+
 ---
 
 ## 9. Type Annotations

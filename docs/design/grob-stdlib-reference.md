@@ -652,7 +652,7 @@ id1 != id2
 
 // Map key pattern (v1 — keys must be string)
 tags := map<string, string>{
-    "storageId": storageId.toString()
+    "storageId": storageId.toString(),
 }
 ```
 

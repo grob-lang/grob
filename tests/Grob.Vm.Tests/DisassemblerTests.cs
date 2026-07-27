@@ -308,7 +308,7 @@ public sealed class DisassemblerTests {
         OpCode.Constant => 2,
         OpCode.ConstantLong => 3,
         OpCode.PopN or OpCode.NewArray or OpCode.BuildString or OpCode.Call
-            or OpCode.NewStruct or OpCode.NewAnonStruct
+            or OpCode.NewStruct or OpCode.NewAnonStruct or OpCode.NewMap
             or OpCode.GetLocal or OpCode.SetLocal
             or OpCode.GetGlobal or OpCode.SetGlobal or OpCode.DefineGlobal
             or OpCode.GetUpvalue or OpCode.SetUpvalue or OpCode.Closure

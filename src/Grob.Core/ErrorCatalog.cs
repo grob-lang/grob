@@ -152,6 +152,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>duplicate key in map literal</summary>
+    public static readonly ErrorDescriptor E0016 = new(
+        Code: "E0016",
+        Title: "duplicate key in map literal",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>nil dereference without `?.` or `??`</summary>
     public static readonly ErrorDescriptor E0101 = new(
         Code: "E0101",
@@ -1108,6 +1117,7 @@ public static class ErrorCatalog {
         E0013,
         E0014,
         E0015,
+        E0016,
         E0101,
         E0102,
         E0103,

@@ -166,6 +166,13 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly Dictionary<ArrayLiteralExpr, ArrayTypeDescriptor> _arrayLiteralDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
+    // _mapLiteralDescriptors mirrors _arrayLiteralDescriptors for map<K, V>{ ... } literals
+    // (D-376), keyed by reference identity for the same reason. Populated by VisitMapLiteral;
+    // consulted wherever a map-typed binding, indexer or for...in loop needs to resolve its
+    // value type from a literal initialiser rather than an identifier's carried descriptor.
+    private readonly Dictionary<MapLiteralExpr, MapTypeDescriptor> _mapLiteralDescriptors =
+        new(ReferenceEqualityComparer.Instance);
+
     // -----------------------------------------------------------------------
     // Flow-sensitive narrowing (Sprint 5 Increment E; §6, §19.1 narrowing rule).
     //
@@ -504,17 +511,17 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     };
 
     /// <summary>
-    /// Returns the value-type descriptor of an arbitrary map-typed expression (Sprint 9
-    /// Increment C0b-1) — an identifier bound to a map-typed symbol, or a parenthesised
-    /// grouping of one. Mirrors <see cref="ArrayDescriptorOf"/>'s shape, narrower: v1 has no
-    /// map literal to carry a per-node descriptor and no non-trivial map-returning native
-    /// call to carry a call-result descriptor (<c>env.all()</c> is flat <c>map&lt;string,
-    /// string&gt;</c> with no consumer needing its value identity), so only the two tiers
-    /// with a real producer today are handled. The expression must already have been visited
-    /// so its descriptor is recorded.
+    /// Returns the value-type descriptor of an arbitrary map-typed expression — an
+    /// identifier bound to a map-typed symbol, a map literal (D-376), or a parenthesised
+    /// grouping of either. Mirrors <see cref="ArrayDescriptorOf"/>'s shape. There is still no
+    /// non-trivial map-returning native call to carry a call-result descriptor (<c>env.all()</c>
+    /// is flat <c>map&lt;string, string&gt;</c> with no consumer needing its value identity), so
+    /// only these three tiers are handled. The expression must already have been visited so its
+    /// descriptor is recorded.
     /// </summary>
     private MapTypeDescriptor? MapDescriptorOf(Expression expr) => expr switch {
         IdentifierExpr id => LookupSymbol(id.Name)?.MapDescriptor,
+        MapLiteralExpr literal => _mapLiteralDescriptors.GetValueOrDefault(literal),
         GroupingExpr grp => MapDescriptorOf(grp.Inner),
         _ => null,
     };
@@ -1018,8 +1025,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// </summary>
     private void FinalizeTopLevelBinding(
         string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode, SourceRange range,
-        FunctionTypeDescriptor? functionDescriptor = null, ArrayTypeDescriptor? arrayDescriptor = null,
-        MapTypeDescriptor? mapDescriptor = null) {
+        SymbolTypeIdentity typeIdentity = default) {
         // Sprint 8 Increment E: 'formatAs' is both a reserved identifier (E1103, D-320) and
         // a pre-registered NamespaceDecl symbol (D-342) — the first reserved identifier to
         // be a namespace ('select' is reserved but not a namespace). Skipping the collision
@@ -1032,8 +1038,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
                 range);
             return;
         }
-        RegisterSymbol(name, type, declaredAt, declarationNode,
-            typeIdentity: new(functionDescriptor, ArrayDescriptor: arrayDescriptor, MapDescriptor: mapDescriptor));
+        RegisterSymbol(name, type, declaredAt, declarationNode, typeIdentity: typeIdentity);
     }
 
     /// <summary>
@@ -1044,12 +1049,19 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// still permits re-registration when it finalises the binding.
     /// No-ops when the existing symbol is non-provisional (e.g. an fn or type
     /// declaration whose name is re-used by a value binding — pass 2 handles E1102).
+    /// <para>
+    /// Takes the whole <see cref="SymbolTypeIdentity"/> rather than a bare
+    /// <see cref="FunctionTypeDescriptor"/>: a provisional symbol that drops its
+    /// side-channel descriptor degrades to a flat kind, so a function body checked before
+    /// the binding is finalised sees e.g. a <c>map</c>'s value type as
+    /// <see cref="GrobType.Unknown"/> and silently skips every value-type check (D-376).
+    /// </para>
     /// </summary>
-    private void UpdateProvisionalType(string name, GrobType type, FunctionTypeDescriptor? functionDescriptor = null) {
+    private void UpdateProvisionalType(string name, GrobType type, SymbolTypeIdentity typeIdentity = default) {
         if (!_scopes.Peek().TryGetValue(name, out Symbol? existing)) return;
         if (!existing.Provisional) return;
         RegisterSymbol(name, type, existing.DeclaredAt, existing.DeclarationNode,
-            provisional: true, typeIdentity: new(FunctionDescriptor: functionDescriptor));
+            provisional: true, typeIdentity: typeIdentity);
     }
 
     /// <summary>Emits an error diagnostic and returns <see cref="GrobType.Error"/>.</summary>
