@@ -44,4 +44,14 @@ public sealed class GrobMap {
 
     /// <summary>Sets (or overwrites) the entry at <paramref name="key"/> to <paramref name="value"/>.</summary>
     public void Set(string key, GrobValue value) => _entries[key] = value;
+
+    /// <summary>
+    /// Removes the entry at <paramref name="key"/>, if present (Sprint 9 Increment
+    /// C0b-2b, D-378). No-op if absent — the opposite of the array's bounds-checked,
+    /// throwing <c>remove(index)</c> (D-373).
+    /// </summary>
+    public void Remove(string key) => _entries.Remove(key);
+
+    /// <summary>Removes all entries (Sprint 9 Increment C0b-2b, D-378).</summary>
+    public void Clear() => _entries.Clear();
 }

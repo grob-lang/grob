@@ -14,12 +14,12 @@ by design).
 > methods) is fully closed** — instance members by **D-369**, type-statics by **D-370**;
 > **C1 (`array` members) is fully closed** — query members by **D-371**, mutating members by
 > **D-373**; the error-code registry is at **119 codes**, not 118, after D-376 added
-> **E0016** (duplicate key in map literal); `map`'s **construction** syntax, unbuilt when
-> B1/B2 were written, is built by **D-376**; and its **query members**
-> (`length`/`isEmpty`/`keys`/`values`/`get`/`contains`) are built by **D-377** — only the
-> mutating members (`set`/`remove`/`clear`) and their `readonly` rejection remain unbuilt,
-> still correctly scheduled as C0b-2b. Every superseded row in the Summary below carries the
-> same note inline. The
+> **E0016** (duplicate key in map literal); **B2 (`map` member surface) is fully closed** —
+> **construction** syntax by **D-376**, **query members**
+> (`length`/`isEmpty`/`keys`/`values`/`get`/`contains`) by **D-377**, and **mutating members**
+> (`set`/`remove`/`clear`, with their `readonly` rejection) by **D-378**. Every superseded row
+> in the Summary below carries the same note inline. Only the documentation findings
+> (**A2**, **B1**, **C2**) remain open. The
 > decisions log is the authority for current state; check it before using this document for
 > release planning.
 
@@ -32,7 +32,7 @@ by design).
 | A1 | Numeric instance methods (`int`/`float`/`bool`) advertised, unbuilt, unscheduled — **used by release-gate scripts** *(closed since: instance members by D-369, type-statics by D-370)* | Advertised-but-unbuilt | **P1** |
 | A2 | The wiki — the user-facing surface — carries essentially no build-status markings | Structural | **P1** |
 | B1 | `grob-stdlib-reference.md`'s Status column reads "Specified" for all thirteen modules, including eight now built | Documented-and-divergent | P2 |
-| B2 | `map` member surface entirely unbuilt (correctly scheduled as C0b; wiki unmarked) *(construction built since by D-376; query members built since by D-377; mutating members remain, still scheduled C0b-2b)* | Advertised-but-unbuilt | P2 |
+| B2 | `map` member surface entirely unbuilt (correctly scheduled as C0b; wiki unmarked) *(fully closed since: construction by D-376, query members by D-377, mutating members by D-378)* | Advertised-but-unbuilt | P2 |
 | C1 | `array` member surface partially built — 4 of ~8 advertised members dispatch (correctly scheduled as C0a; wiki unmarked) *(closed since: query members by D-371, mutating members by D-373)* | Advertised-but-unbuilt | P3 |
 | C2 | `grob-stdlib-reference.md` has no detailed section for `path`, `log`, `strings`, `csv`, `regex` | Structural | P3 |
 | ✓ | Error-code registry: 118 codes, no dead codes, no undocumented codes thrown *(119 since D-376 added E0016)* | **Correctly-marked** | — |
@@ -195,8 +195,8 @@ and `.select()` is the projection method; source agrees (`IsArrayHigherOrderMeth
 
 > **Dated:** these are the D-367 snapshot's own recommendations, kept verbatim — not a live
 > plan. Items 1 and 4 have since been actioned: A1 by D-369 and D-370, C1 by D-371 and
-> D-373, and `map` construction by D-376 and its query members by D-377. Only `map`'s
-> mutating members (C0b-2b) and the documentation items (A2, B1, C2) remain open. See the
+> D-373, and `map` (B2) fully closed — construction by D-376, query members by D-377,
+> mutating members by D-378. Only the documentation items (A2, B1, C2) remain open. See the
 > status banner at the top.
 
 1. **A1 — numeric instance methods:** its own increment, before Increment C. Release-gate
