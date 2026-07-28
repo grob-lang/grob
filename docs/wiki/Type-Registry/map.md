@@ -42,8 +42,12 @@ chained call (`m.keys.first()`, `m.values.contains(x)`) resolves correctly. `get
 agrees with the indexer `m[k]` on type and value. `contains(key)` is key-membership,
 distinct from the array's value-membership `contains(v)`.
 
-**Not yet built:** `set()`/`remove()`/`clear()` — deferred to the separate C0b-2b
-increment, along with the `const`-/`readonly`-bound mutation rejection for those three.
+**Built (D-378):** `set()`/`remove()`/`clear()` — the three in-place-mutating members,
+completing the `map<K, V>` surface. `set` shares its write path with the `[k] = v`
+indexer (`GrobMap.Set`), preserving the insertion-order guarantee (new key last,
+overwritten key's position unchanged). `remove` is a no-op if the key is absent — the
+opposite of the array's throwing `remove(index)`. Calling any of the three on a
+`const`-/`readonly`-bound map is a compile error (E0204).
 
 ## Indexing and iteration — built (D-374)
 
@@ -74,5 +78,13 @@ unbuilt.***
 
 *Updated July 2026 — map query member surface lands (Sprint 9 Increment C0b-2a, D-377):
 `length`/`isEmpty`/`keys`/`values`/`get()`/`contains()`, mirroring the array query-member
-dispatch (D-371) exactly. `set`/`remove`/`clear` and their `readonly` mutation rejection
-remain unbuilt, deferred to C0b-2b.*
+dispatch (D-371) exactly. **Superseded in part: `set`/`remove`/`clear` are built by
+D-378, below.***
+
+*Updated July 2026 — map mutating member surface lands (Sprint 9 Increment C0b-2b,
+D-378): `set()`/`remove()`/`clear()`, mirroring the array mutating-member dispatch
+(D-373) exactly, including the `readonly` rejection (E0204) at the method-call site.
+`set` and the `[k] = v` indexer share their write path (`GrobMap.Set`), so they can
+never drift. `remove` is a no-op on an absent key, the deliberate opposite of the
+array's throwing `remove(index)`. This completes the `map<K, V>` member surface and,
+with it, the collection surface as a whole (arrays, maps, strings, numerics).*

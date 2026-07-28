@@ -682,9 +682,12 @@ public sealed partial class TypeChecker {
     }
 
     // Sprint 9 Increment C0b-2a (D-377): the map method-family members — get(key) and
-    // contains(key). length/isEmpty/keys/values are properties, resolved separately via
+    // contains(key). Sprint 9 Increment C0b-2b (D-378): the three in-place-mutating
+    // members — set(key, value)/remove(key)/clear() — complete the surface.
+    // length/isEmpty/keys/values are properties, resolved separately via
     // ResolveMapPropertyAccess.
-    private static bool IsMapMethod(string name) => name is "get" or "contains";
+    private static bool IsMapMethod(string name) =>
+        name is "get" or "contains" or "set" or "remove" or "clear";
 
     /// <summary>
     /// Validates a <c>get(key)</c>/<c>contains(key)</c> call (Sprint 9 Increment C0b-2a,
@@ -722,9 +725,51 @@ public sealed partial class TypeChecker {
                 }
                 CheckMapKeyArgument(memberAccess, argTypes[0], node.Arguments[0].Value);
                 return GrobType.Bool;
+            case "set":
+            case "remove":
+            case "clear":
+                return ValidateMapMutatingMethodCall(node, memberAccess, argTypes);
             default:
                 return GrobType.Unknown;
         }
+    }
+
+    /// <summary>
+    /// Validates one of the three in-place-mutating map members — <c>set(key: K, value:
+    /// V)</c>, <c>remove(key: K)</c>, <c>clear()</c> (Sprint 9 Increment C0b-2b, D-378) —
+    /// completing the <c>map&lt;K, V&gt;</c> surface D-374/D-376/D-377 began. Mirrors
+    /// <see cref="ValidateArrayMutatingMethodCall"/> exactly: <see cref="FindReadonlyRoot"/>
+    /// (<c>TypeChecker.Statements.cs</c>) rejects mutation reached through a
+    /// <c>readonly</c> binding (E0204) before any arity/type validation runs, without
+    /// early-returning, so an independent arity/argument-type diagnostic (E0003/E0004)
+    /// can still be collected alongside it. All three resolve
+    /// <see cref="GrobType.Unknown"/> (void), matching the array precedent.
+    /// </summary>
+    private GrobType ValidateMapMutatingMethodCall(
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
+        if (FindReadonlyRoot(memberAccess.Target) is not null) {
+            EmitError(ErrorCatalog.E0204,
+                $"Cannot call mutating method '{memberAccess.Member}' on `readonly` binding.",
+                memberAccess.Range);
+        }
+        MapTypeDescriptor? descriptor = MapDescriptorOf(memberAccess.Target);
+        switch (memberAccess.Member) {
+            case "set":
+                if (MemberArgCountMatches(node, memberAccess, argTypes.Length, 2)) {
+                    CheckMapKeyArgument(memberAccess, argTypes[0], node.Arguments[0].Value);
+                    CheckMapValueArgument(memberAccess, argTypes[1], node.Arguments[1].Value, descriptor);
+                }
+                break;
+            case "remove":
+                if (MemberArgCountMatches(node, memberAccess, argTypes.Length, 1)) {
+                    CheckMapKeyArgument(memberAccess, argTypes[0], node.Arguments[0].Value);
+                }
+                break;
+            case "clear":
+                MemberArgCountMatches(node, memberAccess, argTypes.Length, 0);
+                break;
+        }
+        return GrobType.Unknown;
     }
 
     /// <summary>
@@ -742,6 +787,59 @@ public sealed partial class TypeChecker {
         EmitError(ErrorCatalog.E0004,
             $"Argument to '{memberAccess.Member}' has type '{TypeName(argType)}', which is not assignable to key type 'string'.",
             argExpr.Range);
+    }
+
+    /// <summary>
+    /// Checks a <c>set(key, value)</c> call's <c>value</c> argument against the
+    /// receiver's <see cref="MapTypeDescriptor"/> (Sprint 9 Increment C0b-2b, D-378) —
+    /// the call-site-argument mirror of <see cref="CheckArrayElementArgument"/>, but
+    /// delegating to <see cref="IsMapValueCompatible"/> — the same predicate
+    /// <see cref="CheckMapEntryValue"/> (D-376) calls — so the map-literal and
+    /// <c>set</c> value checks can never diverge in what they accept; only the
+    /// diagnostic wording differs. A mismatch is <see cref="ErrorCatalog.E0004"/>,
+    /// never a new code; no descriptor available stays permissive (no check runs).
+    /// </summary>
+    private void CheckMapValueArgument(
+            MemberAccessExpr memberAccess, GrobType argType, Expression argExpr, MapTypeDescriptor? descriptor) {
+        if (descriptor is null || IsMapValueCompatible(argType, argExpr, descriptor)) {
+            return;
+        }
+        string argDisplay = GetStructTypeName(argExpr) ?? TypeName(argType);
+        string valueDisplay = descriptor.ValueNamedTypeName ?? TypeName(descriptor.ValueKind);
+        EmitError(ErrorCatalog.E0004,
+            $"Argument to '{memberAccess.Member}' has type '{argDisplay}', which is not assignable to the map's value type '{valueDisplay}'.",
+            argExpr.Range);
+    }
+
+    /// <summary>
+    /// The single map-value assignability predicate, shared by
+    /// <see cref="CheckMapEntryValue"/> (map-literal entries, D-376) and
+    /// <see cref="CheckMapValueArgument"/> (<c>set(key, value)</c> arguments, D-378) so
+    /// the two can never diverge in what they accept. Built from the same primitives
+    /// <see cref="CheckArrayElementArgument"/> uses: <see cref="TypesAreAssignable(GrobType, GrobType)"/>,
+    /// then nested-array element identity via <see cref="ArrayElementAssignable"/>
+    /// (D-351-style — the flat <see cref="GrobType.Array"/> tag does not distinguish
+    /// <c>int[]</c> from <c>string[]</c>), then struct nominal identity via
+    /// <see cref="IsStructNominalMismatch"/> (D-303-style — the flat
+    /// <see cref="GrobType.Struct"/> tag does not distinguish one user type from
+    /// another, or from <c>date</c>/<c>guid</c>). Permissive on
+    /// <see cref="GrobType.Error"/>/<see cref="GrobType.Unknown"/>, mirroring
+    /// <see cref="CheckMapKeyArgument"/>'s identical latitude. Callers own the
+    /// null-descriptor guard and their own diagnostic wording.
+    /// </summary>
+    private bool IsMapValueCompatible(GrobType argType, Expression valueExpr, MapTypeDescriptor descriptor) {
+        if (argType is GrobType.Error or GrobType.Unknown) {
+            return true;
+        }
+        bool compatible = TypesAreAssignable(argType, descriptor.ValueKind);
+        if (compatible && descriptor.ValueKind is GrobType.Array or GrobType.NullableArray &&
+                !ArrayElementAssignable(ArrayDescriptorOf(valueExpr), descriptor.ValueArrayDescriptor)) {
+            compatible = false;
+        }
+        if (compatible && IsStructNominalMismatch(descriptor.ValueKind, descriptor.ValueNamedTypeName, valueExpr)) {
+            compatible = false;
+        }
+        return compatible;
     }
 
     /// <summary>
@@ -2284,37 +2382,24 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Checks a single map-literal entry's value against the literal's value-type descriptor
-    /// (D-376) — built from the same primitives <see cref="CheckArrayElementArgument"/> uses
-    /// (<see cref="TypesAreAssignable(GrobType, GrobType)"/>, <see cref="ArrayElementAssignable"/>,
-    /// <see cref="IsStructNominalMismatch"/>), but for a map-entry context rather than a
-    /// method-call argument — there is no <see cref="MemberAccessExpr"/> receiver to phrase the
-    /// diagnostic around, so this is not a call to that method. A mismatch is E0004 (never a new
-    /// code, matching D-376's decision to reuse the existing argument-type-mismatch code). No
+    /// (D-376), delegating the assignability rules to <see cref="IsMapValueCompatible"/> —
+    /// the same predicate <see cref="CheckMapValueArgument"/> calls, so a map literal and a
+    /// <c>set(key, value)</c> call can never diverge in what they accept. Only the diagnostic
+    /// wording differs: a map entry has no <see cref="MemberAccessExpr"/> receiver to phrase
+    /// the message around, which is why this is a separate method rather than a call to
+    /// <see cref="CheckArrayElementArgument"/>. A mismatch is E0004 (never a new code,
+    /// matching D-376's decision to reuse the existing argument-type-mismatch code). No
     /// descriptor available (a malformed <c>map&lt;X&gt;</c> literal) stays permissive.
     /// </summary>
     private void CheckMapEntryValue(MapEntry entry, GrobType argType, MapTypeDescriptor? descriptor) {
-        if (descriptor is null || argType == GrobType.Error || argType == GrobType.Unknown) {
+        if (descriptor is null || IsMapValueCompatible(argType, entry.Value, descriptor)) {
             return;
         }
-        bool compatible = TypesAreAssignable(argType, descriptor.ValueKind);
-        // Nested-array value identity (D-351-style): the flat GrobType.Array tag does not
-        // distinguish int[] from string[], so map<string, int[]>{"a": ["x"]} must be rejected.
-        if (compatible && descriptor.ValueKind is GrobType.Array or GrobType.NullableArray &&
-                !ArrayElementAssignable(ArrayDescriptorOf(entry.Value), descriptor.ValueArrayDescriptor)) {
-            compatible = false;
-        }
-        // Struct nominal identity (D-303-style): the flat GrobType.Struct tag does not
-        // distinguish one user type from another (or from date/guid).
-        if (compatible && IsStructNominalMismatch(descriptor.ValueKind, descriptor.ValueNamedTypeName, entry.Value)) {
-            compatible = false;
-        }
-        if (!compatible) {
-            string argDisplay = GetStructTypeName(entry.Value) ?? TypeName(argType);
-            string valueDisplay = descriptor.ValueNamedTypeName ?? TypeName(descriptor.ValueKind);
-            EmitError(ErrorCatalog.E0004,
-                $"Value for key '{entry.Key}' has type '{argDisplay}', which is not assignable to the map's value type '{valueDisplay}'.",
-                entry.Value.Range);
-        }
+        string argDisplay = GetStructTypeName(entry.Value) ?? TypeName(argType);
+        string valueDisplay = descriptor.ValueNamedTypeName ?? TypeName(descriptor.ValueKind);
+        EmitError(ErrorCatalog.E0004,
+            $"Value for key '{entry.Key}' has type '{argDisplay}', which is not assignable to the map's value type '{valueDisplay}'.",
+            entry.Value.Range);
     }
 
     /// <inheritdoc/>

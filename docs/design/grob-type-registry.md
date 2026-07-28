@@ -185,8 +185,14 @@ query members — `length`/`isEmpty`/`keys`/`values` (properties) and `get(key)`
 chained call (`m.keys.first()`, `m.values.contains(x)`) resolves correctly rather than
 degrading to `Unknown`. `get(key)` agrees with the indexer `m[k]` on both type and value.
 `contains(key)` is key-membership, distinct from the array's value-membership
-`contains(v)`. **Not yet built:** `set`/`remove`/`clear` and their `readonly` mutation
-rejection are a separate, later increment (C0b-2b). Users consume maps through typed
+`contains(v)`. **Built (D-378):** the three in-place-mutating members — `set(key,
+value)`, `remove(key)`, `clear()` — completing the `map<K, V>` surface. `set` shares its
+write path with the `[k] = v` indexer via `GrobMap.Set`, so the two can never drift, and
+preserves the insertion-order guarantee (a new key appends last, an overwritten key's
+position is unchanged). `remove` is a no-op if the key is absent — the opposite of the
+array's throwing, bounds-checked `remove(index)`. Calling any of the three on a
+`readonly`-bound map is a compile error (E0204). This completes the collection surface
+as a whole (arrays, maps, strings, numerics). Users consume maps through typed
 parameters, fields, `var` annotations and literal construction. They cannot declare
 generic map types of their own (same constrained-generics model as arrays). In v1, keys
 must be `string` — non-string keys are deferred post-MVP.
