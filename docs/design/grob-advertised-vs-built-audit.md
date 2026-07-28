@@ -29,11 +29,11 @@ by design).
 
 | # | Finding | Class | Priority |
 |---|---------|-------|----------|
-| A1 | Numeric instance methods (`int`/`float`/`bool`) advertised, unbuilt, unscheduled — **used by release-gate scripts** *(closed since: instance members by D-369, type-statics by D-370)* | Advertised-but-unbuilt | **P1** |
+| A1 | Numeric instance methods (`int`/`float`/`bool`) advertised, unbuilt, unscheduled — **used by release-gate scripts** *(closed since — instance members by D-369, type-statics by D-370)* | Advertised-but-unbuilt | **P1** |
 | A2 | The wiki — the user-facing surface — carries essentially no build-status markings | Structural | **P1** |
 | B1 | `grob-stdlib-reference.md`'s Status column reads "Specified" for all thirteen modules, including eight now built | Documented-and-divergent | P2 |
-| B2 | `map` member surface entirely unbuilt (correctly scheduled as C0b; wiki unmarked) *(fully closed since: construction by D-376, query members by D-377, mutating members by D-378)* | Advertised-but-unbuilt | P2 |
-| C1 | `array` member surface partially built — 4 of ~8 advertised members dispatch (correctly scheduled as C0a; wiki unmarked) *(closed since: query members by D-371, mutating members by D-373)* | Advertised-but-unbuilt | P3 |
+| B2 | `map` member surface entirely unbuilt (correctly scheduled as C0b; wiki unmarked) *(fully closed since — construction by D-376, query members by D-377, mutating members by D-378)* | Advertised-but-unbuilt | P2 |
+| C1 | `array` member surface partially built — 4 of ~8 advertised members dispatch (correctly scheduled as C0a; wiki unmarked) *(closed since — query members by D-371, mutating members by D-373)* | Advertised-but-unbuilt | P3 |
 | C2 | `grob-stdlib-reference.md` has no detailed section for `path`, `log`, `strings`, `csv`, `regex` | Structural | P3 |
 | ✓ | Error-code registry: 118 codes, no dead codes, no undocumented codes thrown *(119 since D-376 added E0016)* | **Correctly-marked** | — |
 | ✓ | Language constructs: all twenty keywords present in lexer and parser | **Correctly-marked** | — |

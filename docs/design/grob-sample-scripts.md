@@ -682,7 +682,7 @@ print(
 - String split and inline processing
 - Named struct construction inside `.select()` lambda
 - Array indexing `parts[0]`
-- Chained filter, map, filter pattern
+- Chained filter, select, filter pattern
 - `date.parse()` on an ISO string from git output
 
 **Note:** This script could also be written using `csv.parse(raw.stdout, delimiter: "|")`
