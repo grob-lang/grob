@@ -376,6 +376,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-378 | July 2026 | Type system / Compiler / VM — map mutating member surface | Builds the three in-place-mutating `map<K, V>` members D-377 deferred — `set(key: K, value: V)`, `remove(key: K)`, `clear()` — completing the `map<K, V>` surface and, with it, the collection surface as a whole (arrays D-371/D-373, maps D-374/D-376/D-377/D-378, strings D-363/D-365, numerics D-369/D-370). Mirrors D-373's array mutating-member increment exactly — no new pattern was invented; the two deliberate semantic divergences (`remove`'s absent-key no-op, the `for...in` snapshot) are recorded below. `IsMapMethod` extended to recognise all three; a new `ValidateMapMutatingMethodCall` calls `FindReadonlyRoot(memberAccess.Target)` first, emitting **E0204** without early-returning so an independent E0003/E0004 diagnostic is still collected alongside it — `FindReadonlyRoot` itself needed no change, since it already walks arbitrary `MemberAccessExpr`/`IndexExpr` nesting by AST shape, covering a map-valued struct field chain the same as a bare identifier. `remove`'s and `set`'s key argument reuse `CheckMapKeyArgument` (D-377) verbatim; `set`'s value argument needed a new `CheckMapValueArgument` — `CheckArrayElementArgument`'s call-site shape, since a `MapEntry`-shaped helper could not be called from a method-call site — with D-376's compatibility rules extracted into a shared `IsMapValueCompatible` predicate that both it and `CheckMapEntryValue` call, so the two can never diverge. `MapNatives.Set` calls the same `GrobMap.Set` `OpCode.SetIndex`'s map arm already uses (D-350), so `m.set(k, v)` and `m[k] = v` can never drift — proven identical for both a new and an existing key. Insertion order (a new key appends last, an overwritten key's position is unchanged) is inherited for free through `GrobMap.Set`'s existing `OrderedDictionary` contract — no bookkeeping added; the load-bearing ordering test locks both directions. `GrobMap` gains `Remove`/`Clear`, thin unguarded wrappers mirroring `GrobArray`'s precedent; `remove` is a no-op on an absent key (no `NativeFaultException`), the deliberate opposite of the array's throwing, bounds-checked `remove(index)` (D-373) — recorded alongside D-377's `contains` asymmetry so neither gets "corrected" later. No new opcode — `GetProperty`/`Call` already sufficient. Investigated the `for k, v in m`-during-mutation question rather than assuming the array's answer: `EmitMapForIn` materialises `keys` **once** (unlike the array's fresh `arr.length` read every iteration), so the loop's iteration count stays fixed under mutation, but a removed/cleared key's value read degrades to `nil` rather than throwing or skipping — reported for the correctness batch, not fixed, pinned by an integration test. D-372's aliasing ratification pinned for maps by a VM-layer `Assert.Same` test and two end-to-end tests (second binding, function parameter), mirroring D-373's array aliasing tests. No new opcode, no new error code; count stays 119. Cites D-377, D-376, D-374, D-373, D-372, D-350, D-291, `grob-advertised-vs-built-audit.md` (finding B2, now fully closed). |
 | D-379 | July 2026 | Language semantics / Compiler — iteration | Settles the `for...in` mutation-during-iteration semantics, which arrays and maps currently implement **differently** — neither deliberately chosen, both fallen out of independent implementations. `EmitArrayForIn` re-reads the bound via a fresh `GetProperty("length")` on **every** iteration (D-373), so a body calling `append` changes the loop's own bound mid-flight and can iterate unboundedly; `EmitMapForIn` materialises the `keys` array **once** into a synthetic local before the loop and walks a counter against its fixed length (D-378), so the iteration count is fixed at entry. Ratified: **snapshot at loop entry, for every collection type** — arrays align to maps. Chosen because Go's `range`, the precedent Grob's own `for...in` syntax leans on, evaluates its range expression once; because a fixed count cannot iterate unboundedly, which is the safer default for a scripting language; and because one rule across both collection types beats two discovered by experiment. Mutation during iteration stays **permitted** — this fixes the count, it does not forbid the mutation — so a key removed mid-loop is still visited and its value read degrades to `nil` (D-378's confirmed behaviour, consistent with `get`'s miss semantics), and an element appended mid-loop is not visited this time round. Rejected: aligning maps to arrays (a live bound admits unbounded iteration and is the more surprising direction); and throwing on mutation during iteration, C#/Python-dict style (needs runtime modification tracking and a new error code, and D-378 confirmed no live `IEnumerator` ever crosses Grob bytecode, so there is no enumerator to invalidate). Changes shipped array behaviour — the implementing increment must enumerate and report every affected test. No new error code; count unchanged at 119 |
 | D-380 | July 2026 | Compiler — type checking / bytecode emission | Closes two permissive-`Unknown` findings from the correctness batch (D-362 void-in-arithmetic, D-373 unrecognised method call on a known receiver), mirroring D-377's property-path tightening onto the method-call path. Empirical sweep first: several of D-373's named gaps were already closed incidentally by later increments — `string`/`int`/`float`/`bool` method calls already raise E1002 via `PrimitiveMemberRegistry` (D-369 registered `int`/`float`/`bool` after D-373 was logged; D-363 registered `string`), and registered named-type method calls already raise E1002 (D-356) — so the only receivers still open were **array and map**. Both `ValidateArrayMethodCall`/`ValidateMapMethodCall` already had a `switch` with a `default: return GrobType.Unknown;` arm, dead code because the outer dispatch gate (`receiverType == GrobType.Array && IsArrayMethod(...)`, similarly for Map) filtered an unrecognised name out before the switch ever saw it. The fix drops the `IsArrayMethod`/`IsMapMethod` name-gate (both now-unused helpers deleted) so every `Array`/`Map`-receiver call reaches the switch regardless of name, and turns the two `default` arms into **E1002**, reusing `ResolveArrayPropertyAccess`'s/`ResolveMapPropertyAccess`'s exact message shape (`Type 'T[]' has no member '{name}'.` / `Type 'map<string, V>' has no member '{name}'.`) — reuse of D-377's mechanism, not a parallel one. `Unknown`-typed receivers (untyped lambda parameters — always `Unknown` in v1, `VisitLambda` registers every parameter that way unconditionally) and `?.` chains on a nullable receiver stay permissive for free: neither ever matches the exact `receiverType == GrobType.Array`/`GrobType.Map` check (a nullable array/map is a distinct `GrobType` variant), so no dedicated nullable guard was needed on this path. Void-in-arithmetic: `GrobType` has no `Void` variant (void is `Unknown` by convention), so a new `CallExpr.IsVoidReturn` bool (mirroring the `ResolvedReturnType`/`ResolvedPrimitiveNativeName` settable-annotation convention D-362 established on the same node) distinguishes a genuinely void call from the other permissive-`Unknown` sources — set at the three sites that resolve void (`ValidateArrayMethodCall`'s `each` case, and the tails of `ValidateArrayMutatingMethodCall`/`ValidateMapMutatingMethodCall`, covering `each`/`append`/`insert`/`remove`/`clear`/`set`). `ResolveArithmetic` gains a guard-clause helper, `RejectVoidArithmeticOperand` (extracted to keep cognitive complexity under the S3776 bar), checked ahead of the existing `Unknown` pass-through: either operand being a void `CallExpr` now raises **E0002** with the same message template the Struct/Function combinatorial reject already uses, substituting the literal string `"void"` for the void side (there is no real type name to print) — e.g. `arr.each(fn) + 1` now reports `Operator '+' cannot be applied to types 'void' and 'int'.` Both operand checks look **through** enclosing `GroupingExpr` layers (recursively, so nesting depth is irrelevant): `GroupingExpr` is a real parser node, so the first cut matched only a bare `CallExpr` and `(arr.each(f)) + 1` walked past the reject into the permissive `Unknown` pass-through and still crashed the VM with the exact `GrobValue kind mismatch` internal error this entry exists to eliminate — found in CodeRabbit's review of PR #167, fixed there, and covered by grouped/nested/map-mutating regression tests plus an over-reject control (`(arr.length) + 1` still compiles). The unwrap mirrors the one `ExpressionDescriptor`/`ArrayDescriptorOf`/`CheckCondition` already perform. A void call as a bare statement is unaffected (proven by a dedicated regression test) — this only rejects the arithmetic-operand position. `EmitArithmetic`'s belt-and-braces defensive guard (`ThrowIfStructOrLambdaOperand` → renamed `ThrowIfStructLambdaOrVoidOperand`) is extended with the same `IsVoidReturn` check, mirroring the existing Struct/Lambda precedent. **D-362's permissive-`Unknown` catalogue, corrected, not just reduced.** The kickoff prompt assumed the live count was "two now, one after" (void plus the Unknown-receiver field). The actual code comment named **three** active sources — the untyped lambda-parameter identifier, the Unknown-receiver-field `MemberAccessExpr` (D-360), and the void-returning `CallExpr` (D-362) — plus a fourth, already-closed source (a map element with a known value type, closed by **D-374**, mis-cited in the comment as "D-359"; D-359 is actually "index-target compound assignment and increment/decrement", unrelated). Closing the void source here reduces the count to **two** (lambda-parameter identifier, Unknown-receiver-field), not one; the comment is rewritten to name exactly those two and the D-359→D-374 citation is corrected in the same edit. Empirical before/after, confirmed via the CLI: `arr.each(fn) + 1`/`arr.garbage()`/`m.garbage()` previously type-checked cleanly and crashed the VM at runtime with an internal "opcode not yet implemented"/"kind mismatch" error — now rejected at compile time with E0002/E1002 as designed. New findings surfaced, not fixed here (each is its own, smaller gap than the ones this increment closes): the method-call path has no generic nullable guard mirroring `VisitMemberAccess`'s (a non-optional `.` on a nullable array/primitive/ordinary-struct receiver doesn't get the `E0101` nil-dereference diagnostic the property path gives it); an ordinary user `type` struct's method call is permissive regardless of name (v1 gives structs no method surface at all, unlike the property path's `ResolveStructFieldAccess`, which already raises E1002 for an unrecognised field); `AnonStruct`/`NullableAnonStruct` method calls, same; no `Error`-receiver cascade-suppression arm on the call path (unlike `VisitMemberAccess:1294`); and, found during the CLI spot-check, `?.` short-circuiting is wired at the VM level for property access but **not** for method calls — `xs?.first()` on a nil `int[]?` crashes with "Call target is not a function (kind: Nil)" even though `first` is a recognised method, proving the gap is a runtime dispatch omission unrelated to this increment's type-checker-only change. Tests: one existing test updated for the breaking change (`CompilerCallOperandTypingTests.VoidReturningCallAsOperand_ArrayEach_StillCompilesUnderIntAssumption` → `..._ReportsE0002`, now asserting the E0002 diagnostic instead of a clean compile) — the only breaking-change hit found in a full corpus sweep (no gold master, validation script, or `Grob.Integration.Tests` case combines a void call with arithmetic or exercises `arr.garbage()`/`m.garbage()`). New tests: the array/map unrecognised-method-call E1002 cases and their required-permissive survivors (untyped lambda parameter, `?.` on nullable), six void-in-arithmetic E0002 cases (`+`/`-`/`*`/`/`/`%`, both operand positions, plus the mutating-member sources), a bare-void-statement-still-compiles regression, and `float`/`bool` unrecognised-method-call E1002 cases that were missing alongside the pre-existing `string`/`int` ones. No new opcode. No new error code — `E0002` and `E1002` both existed; count stays **119**. Cites D-362, D-373, D-377, D-374, D-369, D-363, D-356. |
+| D-381 | July 2026 | Compiler — type checking | `print`/`exit` are opcode-only sugar with no runtime representation outside the exact bare-statement shape `Compiler.Statements.cs` recognises structurally — unlike `input()`, a genuine global-backed native. Every other use (wrong arity even in statement position, a call whose result is consumed, or a bare reference with no call) previously type-checked permissively and crashed the VM at runtime with a misleading `Undefined global` fault. `VisitCall` gains a `CheckPrintExitCall` arm (arity via **E0003**, mirroring `CheckInputCall`; value-position use via **E1004**, mirroring `VisitIdentifier`'s namespace-as-value arm) using two one-shot context flags rather than threading a parameter through every `Visit` call — `_isStatementPositionCall` (also covering a lambda's expression-body and a lambda block's final implicit-return statement, via a shared `VisitStatementPositionExpression` helper, so `xs.each(x => print(x))` — the load-bearing existing idiom — is not newly rejected) and `_isCallCalleePosition` (so `VisitIdentifier`'s new bare-reference rejection fires only for a genuine bare reference, never the identifier being visited as its own call's callee). `input` is untouched — proven unaffected by a direct empirical check. No new opcode, no new error code; count unchanged at 119. Cites D-380 (found alongside, while triaging PR #167's review). |
 
 ---
 
@@ -7863,6 +7864,74 @@ dispatch).
 
 ---
 
+### D-381 — `print`/`exit` misuse rejected at compile time, not a runtime crash (July 2026)
+
+Area: Compiler — type checking
+Supersedes: none
+Superseded by: none
+Refines: none
+
+**The decision.** `print`/`exit` are opcode-only sugar — `Compiler.Statements.cs`'s
+`VisitExpressionStmt` emits the dedicated `Print`/`Exit` opcodes only for the exact
+bare-statement shape it recognises structurally (the right name, the right arity), and
+neither builtin has any other runtime representation: unlike `input()` (a genuine
+global-backed native, callable from any position), there is no global ever registered
+for `print`/`exit`. Before this entry the type checker validated neither the shape nor
+the arity, so every other use — a malformed arity even in statement position
+(`print()`, `print("a", "b")`), a call whose result is consumed (`y := print("x")`,
+`1 + print(x)`), or a bare reference with no call at all (`y := print`) — type-checked
+permissively and fell through to a generic global lookup at runtime, crashing the VM
+with a confusing `error[E1001]: Undefined global 'print'.` fault that named the wrong
+problem entirely (`print` is not undefined; it cannot be used that way). Found while
+triaging PR #167's review pass (a diagnostic-quality gap surfaced, not fixed, in that
+pass) and fixed here as its own concern.
+
+**The fix.** `VisitCall` (`TypeChecker.Expressions.cs`) gains a `CheckPrintExitCall` arm
+alongside the existing `input()` arm, checked first: arity (`print` exactly 1 argument,
+`exit` 0 or 1), reusing **E0003** — the same code and message shape
+`CheckInputCall` already uses for the other no-namespace-native builtin. A call whose
+result is not the direct, statement-level expression is **E1004** — the same code
+`VisitIdentifier`'s namespace-as-value arm already uses for the identical shape of
+mistake, a compile-time-only construct referenced where a runtime value is expected;
+no new code for either check. Position is tracked by two one-shot context flags rather
+than threading a parameter through every `Visit` call: `_isStatementPositionCall` is set
+only around the direct top-level expression of an `ExpressionStmt` (and, after the first
+red-then-green cycle exposed the gap, also around a lambda's expression-body and a
+lambda block's final implicit-return statement — both now routed through a shared
+`VisitStatementPositionExpression` helper — because `xs.each(x => print(x))` is the
+load-bearing existing idiom across the integration-test suite and a lambda's return
+value is never surfaced to user code by a void-consuming higher-order method like
+`each`, exactly like a bare statement's discarded result); `_isCallCalleePosition` is set
+only around the synchronous `Visit(node.Callee)` call in `VisitCall`, so
+`VisitIdentifier`'s new bare-reference rejection (mirroring the `NamespaceDecl`-as-value
+arm exactly, same `E1004` code, same `Error`/`UnresolvedDecl` §3.1.1 shape) fires only
+for a genuine bare reference, never for the identifier being visited as its own call's
+callee. Both flags are one-shot — consumed immediately at the top of `VisitCall` — so a
+nested call (`print(foo())`) never inherits the outer position. `input` is untouched:
+it is a real global and was never affected by this bug class.
+
+**Scope, deliberately narrow.** Only `print`/`exit` are touched — `input()` already has
+a correct arity/type check and a genuine runtime value, proven unaffected by a direct
+empirical check (`y := input` compiles and runs cleanly, unlike the identical shape for
+`print`). No other builtin or user function has this "no runtime representation outside
+one recognised shape" property, so the fix does not generalise past these two names.
+
+**Empirical before/after, confirmed via the CLI.** `y := print("x")`, `print()`,
+`print("a", "b")`, `y := print` — each previously crashed the VM at runtime with
+`error[E1001]: Undefined global 'print'.`; each now reports a compile-time `E0003`
+(arity) or `E1004` (value position) pointing at the actual mistake. The valid shapes —
+`print("hello")` as a bare statement, `xs.each(x => print(x))` — are unaffected,
+confirmed by the full integration-test suite (`Sprint5IncrementCTests` exercises the
+`each`/`filter`-then-`each` idiom end-to-end) and a fresh CLI run.
+
+No new opcode. No new error code — `E0003` and `E1004` both existed already; count stays
+**119**.
+
+Full detail: D-380 (the sibling correctness-batch increment this was found alongside),
+the Sprint 8 Increment C `input()` arity/type check this mirrors.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -8084,7 +8153,18 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Type-checker tightening lands: D-380 added. Closes D-362 (void-in-arithmetic)_
+_July 2026 — print/exit misuse rejected at compile time: D-381 added. Neither builtin has_
+_a runtime representation outside the exact bare-statement shape the compiler recognises_
+_structurally (unlike input(), a genuine global-backed native), so every other use — wrong_
+_arity, a consumed call result, or a bare reference — previously crashed the VM at runtime_
+_with a misleading "Undefined global" fault. VisitCall gains arity (E0003, mirroring_
+_input()'s check) and value-position (E1004, mirroring the namespace-as-value arm)_
+_validation, via two one-shot context flags rather than threading a parameter through every_
+_Visit call. The first cut broke xs.each(x => print(x)), the load-bearing existing idiom —_
+_fixed by also treating a lambda's expression-body and a block-body's final implicit-return_
+_statement as statement position. No new opcode, no new error code; count unchanged at 119._
+_Found while triaging PR #167's review pass._
+_Previous: July 2026 — Type-checker tightening lands: D-380 added. Closes D-362 (void-in-arithmetic)_
 _and D-373 (unrecognised method call on a known receiver), mirroring D-377's property-path_
 _tightening onto the method-call path. An empirical sweep found most of D-373's scope already_
 _closed incidentally by D-369 (int/float/bool), D-363 (string) and D-356 (named types) —_

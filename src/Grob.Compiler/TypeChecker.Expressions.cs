@@ -98,6 +98,22 @@ public sealed partial class TypeChecker {
             return GrobType.Error;
         }
 
+        // D-381 — a bare reference to print/exit (no call at all, e.g. `y := print`).
+        // _isCallCalleePosition is true only for the synchronous instant VisitCall visits
+        // its own callee, so reaching here with it false means this is a genuine bare
+        // reference, never a call — the call shape gets its own, more specific diagnostic
+        // from CheckPrintExitCall. Same E1004 code and Error/UnresolvedDecl shape as the
+        // NamespaceDecl arm above: a compile-time-only construct used where a value is
+        // expected.
+        if (symbol.DeclarationNode is BuiltinDecl { BuiltinName: "print" or "exit" } && !_isCallCalleePosition) {
+            EmitError(ErrorCatalog.E1004,
+                $"'{node.Name}' cannot be used as a value; it is only valid as a call, e.g. '{node.Name}(...)'.",
+                node.Range);
+            node.ResolvedType = GrobType.Error;
+            node.Declaration = UnresolvedDecl.Instance;
+            return GrobType.Error;
+        }
+
         // Flow-sensitive narrowing (§6): inside an `if (x != nil)` block a binding
         // is narrowed from T? to T. Use the narrowed type when one is active for
         // this name; the declaration is unchanged (§3.1.1 still holds).
@@ -359,6 +375,11 @@ public sealed partial class TypeChecker {
     /// type. Built-in and unresolved callees stay permissive.
     /// </remarks>
     public override GrobType VisitCall(CallExpr node) {
+        // D-381: one-shot, consumed immediately so it can never leak into a nested call
+        // visited below (e.g. the inner call in print(foo())'s argument list).
+        bool isStatementPositionCall = _isStatementPositionCall;
+        _isStatementPositionCall = false;
+
         // Sprint 5C: array higher-order method calls (filter/select/sort/each).
         // The callee is a member access on an array receiver; we visit the target
         // directly (not the whole MemberAccessExpr) so we can branch on the receiver type
@@ -367,27 +388,38 @@ public sealed partial class TypeChecker {
             return ResolveMemberAccessCall(node, memberAccess);
         }
 
+        // D-381: marks this identifier as being visited in call-callee position, so
+        // VisitIdentifier's print/exit-as-value rejection stays silent here — this method's
+        // own checks below give the more specific arity/value-position diagnostic instead.
+        _isCallCalleePosition = true;
         Visit(node.Callee);
+        _isCallCalleePosition = false;
         var callArgTypes = new GrobType[node.Arguments.Count];
         for (int i = 0; i < node.Arguments.Count; i++) {
             callArgTypes[i] = Visit(node.Arguments[i].Value);
         }
 
+        // D-381: print/exit get their own arity/value-position validation, mirroring
+        // input()'s shape below but adding the value-position check neither builtin's
+        // permissive predecessor had — see CheckPrintExitCall.
+        if (node.Callee is IdentifierExpr { Declaration: BuiltinDecl { BuiltinName: "print" or "exit" } } printExitCallee) {
+            return CheckPrintExitCall(node, printExitCallee, callArgTypes, isStatementPositionCall);
+        }
+
         // Sprint 8 Increment C: input() gets its own arity/type validation ahead of the
         // permissive built-in fallback below (D-342 — the one no-namespace native this
-        // checker validates). print/exit stay fully permissive — both are void and stay
-        // on their own dedicated opcodes, never reaching this call-checking machinery.
+        // checker validates).
         if (node.Callee is IdentifierExpr { Declaration: BuiltinDecl { BuiltinName: "input" } }) {
             return CheckInputCall(node, callArgTypes);
         }
 
-        // Only user-defined functions are checked positionally here. Built-ins
-        // (print/exit) are permissive. A callee bound to a function-typed value
-        // (D-362) still resolves a return type — via its descriptor rather than a
-        // declared FnDecl signature — so GetExprType can pick the right typed
-        // opcode when the call is used as an arithmetic operand; no argument
-        // validation is added for this shape, that stays out of scope. Any other
-        // unresolved callee is permissive.
+        // Only user-defined functions are checked positionally here — print/exit and
+        // input are validated above, each with its own shape (D-381, Sprint 8 Increment
+        // C). A callee bound to a function-typed value (D-362) still resolves a return
+        // type — via its descriptor rather than a declared FnDecl signature — so
+        // GetExprType can pick the right typed opcode when the call is used as an
+        // arithmetic operand; no argument validation is added for this shape, that stays
+        // out of scope. Any other unresolved callee is permissive.
         if (node.Callee is not IdentifierExpr { Declaration: FnDecl fn }) {
             if (ExpressionDescriptor(node.Callee) is FunctionTypeDescriptor calleeDescriptor) {
                 node.ResolvedReturnType = calleeDescriptor.ReturnType;
@@ -410,6 +442,24 @@ public sealed partial class TypeChecker {
         if (resultArrayDesc is not null) _callResultArrayDescriptors[node] = resultArrayDesc;
         node.ResolvedReturnType = resultKind;
         return resultKind;
+    }
+
+    /// <summary>
+    /// Visits an expression whose result is implicitly discarded, or is a lambda's own
+    /// implicit return (D-276) — the class of position print/exit (D-381) may legally
+    /// appear in beyond a literal bare statement. Shared by <see
+    /// cref="TypeChecker.VisitExpressionStmt"/> and the lambda expression-body/
+    /// block-final-statement shapes below, so <c>xs.each(x => print(x))</c> — the
+    /// load-bearing existing idiom, proven by the pre-existing integration-test suite —
+    /// is not newly rejected: the lambda's own return value is never surfaced to user
+    /// code by a void-consuming higher-order method like <c>each</c>, exactly like a bare
+    /// statement's discarded result.
+    /// </summary>
+    private GrobType VisitStatementPositionExpression(Expression expr) {
+        _isStatementPositionCall = expr is CallExpr { Callee: IdentifierExpr };
+        GrobType result = Visit(expr);
+        _isStatementPositionCall = false;
+        return result;
     }
 
     /// <summary>
@@ -1902,6 +1952,50 @@ public sealed partial class TypeChecker {
     };
 
     // -----------------------------------------------------------------------
+    // print() / exit() (D-381).
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Validates a <c>print(...)</c>/<c>exit(...)</c> call. Neither builtin has any runtime
+    /// representation outside the dedicated <c>Print</c>/<c>Exit</c> opcodes
+    /// <c>Compiler.Statements.cs</c>'s <c>VisitExpressionStmt</c> emits for the exact
+    /// bare-statement shape it recognises structurally (the same name and arity checked
+    /// here) — any other use previously fell through to a generic global lookup for a
+    /// global that was never defined, crashing the VM at runtime with a confusing
+    /// "Undefined global" fault instead of a compile error. Arity reuses <see
+    /// cref="ErrorCatalog.E0003"/>, mirroring <see cref="CheckInputCall"/>'s shape for the
+    /// other no-namespace-native builtin — checked first and independently of the
+    /// value-position check below, so a malformed call in statement position (<c>print()</c>
+    /// with no argument) gets the arity diagnostic, not a spurious value-position one. A
+    /// non-statement-position use — a call whose result is consumed, or (via <see
+    /// cref="VisitIdentifier"/>) a bare reference with no call at all — is <see
+    /// cref="ErrorCatalog.E1004"/>, the same code the namespace-as-value arm there already
+    /// uses for the identical shape of mistake: a compile-time-only construct referenced
+    /// where a value is expected.
+    /// </summary>
+    private GrobType CheckPrintExitCall(
+            CallExpr node, IdentifierExpr callee, GrobType[] argTypes, bool isStatementPositionCall) {
+        string name = callee.Name;
+        bool arityOk = name == "print" ? argTypes.Length == 1 : argTypes.Length <= 1;
+        if (!arityOk) {
+            string expected = name == "print" ? "1 argument" : "0 or 1 arguments";
+            EmitError(ErrorCatalog.E0003,
+                $"'{name}' expects {expected}, but {argTypes.Length} were supplied.",
+                node.Range);
+        }
+
+        if (!isStatementPositionCall) {
+            EmitError(ErrorCatalog.E1004,
+                $"'{name}(...)' cannot be used as a value; it is only valid as a standalone statement.",
+                node.Range);
+            return GrobType.Error;
+        }
+
+        node.IsVoidReturn = true;
+        return GrobType.Unknown;
+    }
+
+    // -----------------------------------------------------------------------
     // input() — the one no-namespace native validated here (Sprint 8 Increment C).
     // -----------------------------------------------------------------------
 
@@ -2700,7 +2794,7 @@ public sealed partial class TypeChecker {
 
         // Infer the body type and store it for callers (e.g. ValidateArrayMethodCall).
         GrobType bodyType = node.Body switch {
-            LambdaExpressionBody exprBody => Visit(exprBody.Expression),
+            LambdaExpressionBody exprBody => VisitStatementPositionExpression(exprBody.Expression),
             LambdaBlockBody blockBody => VisitLambdaBlock(blockBody),
             _ => GrobType.Unknown,
         };
@@ -2737,7 +2831,7 @@ public sealed partial class TypeChecker {
         // The last statement determines the implicit return type.
         AstNode last = stmts[stmts.Count - 1];
         if (last is ExpressionStmt exprStmt)
-            return Visit(exprStmt.Expression); // implicit return value; don't emit Pop
+            return VisitStatementPositionExpression(exprStmt.Expression); // implicit return value; don't emit Pop
         Visit(last);
         return GrobType.Nil;
     }
