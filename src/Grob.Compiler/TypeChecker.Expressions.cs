@@ -98,6 +98,22 @@ public sealed partial class TypeChecker {
             return GrobType.Error;
         }
 
+        // D-381 — a bare reference to print/exit (no call at all, e.g. `y := print`).
+        // _isCallCalleePosition is true only for the synchronous instant VisitCall visits
+        // its own callee, so reaching here with it false means this is a genuine bare
+        // reference, never a call — the call shape gets its own, more specific diagnostic
+        // from CheckPrintExitCall. Same E1004 code and Error/UnresolvedDecl shape as the
+        // NamespaceDecl arm above: a compile-time-only construct used where a value is
+        // expected.
+        if (symbol.DeclarationNode is BuiltinDecl { BuiltinName: "print" or "exit" } && !_isCallCalleePosition) {
+            EmitError(ErrorCatalog.E1004,
+                $"'{node.Name}' cannot be used as a value; it is only valid as a call, e.g. '{node.Name}(...)'.",
+                node.Range);
+            node.ResolvedType = GrobType.Error;
+            node.Declaration = UnresolvedDecl.Instance;
+            return GrobType.Error;
+        }
+
         // Flow-sensitive narrowing (§6): inside an `if (x != nil)` block a binding
         // is narrowed from T? to T. Use the narrowed type when one is active for
         // this name; the declaration is unchanged (§3.1.1 still holds).
@@ -171,6 +187,14 @@ public sealed partial class TypeChecker {
             return GrobType.Float;
         }
 
+        // D-380: a void-returning call (arr.each(...), a mutating array/map member) is
+        // statically Unknown like any other unresolvable operand, but it is never a
+        // legitimate arithmetic operand — reject before the permissive Unknown pass-through
+        // below, joining the Struct/Function combinatorial reject with the same code and
+        // message shape. Extracted to a guard-clause helper to keep this method's cognitive
+        // complexity under the analyser bar.
+        if (RejectVoidArithmeticOperand(node, left, right) is GrobType voidRejection) return voidRejection;
+
         // One or both operands are of unknown type (e.g. a lambda parameter whose type
         // is inferred at the call site, or a deferred member type).  Be permissive and
         // propagate Unknown — the VM will validate types at runtime.  This mirrors the
@@ -181,6 +205,41 @@ public sealed partial class TypeChecker {
         return EmitErrorAndReturn(ErrorCatalog.E0002,
             $"Operator '{OperatorSymbol(node.Operator)}' cannot be applied to types '{TypeName(left)}' and '{TypeName(right)}'.",
             node.Range);
+    }
+
+    /// <summary>
+    /// Rejects a void-returning <see cref="CallExpr"/> arithmetic operand (D-380) —
+    /// <c>arr.each(...)</c>, or one of the array/map mutating members — with E0002, or
+    /// returns <see langword="null"/> when neither operand is void so
+    /// <see cref="ResolveArithmetic"/> falls through to its permissive Unknown pass-through
+    /// unchanged. <see cref="CallExpr.IsVoidReturn"/> is the only way to distinguish a
+    /// genuinely void call from the other permissive-Unknown operand sources, since
+    /// <see cref="GrobType"/> has no <c>Void</c> variant.
+    /// </summary>
+    private GrobType? RejectVoidArithmeticOperand(BinaryExpr node, GrobType left, GrobType right) {
+        bool leftVoid = IsVoidCall(node.Left);
+        bool rightVoid = IsVoidCall(node.Right);
+        if (!leftVoid && !rightVoid) return null;
+
+        return EmitErrorAndReturn(ErrorCatalog.E0002,
+            $"Operator '{OperatorSymbol(node.Operator)}' cannot be applied to types " +
+            $"'{(leftVoid ? "void" : TypeName(left))}' and '{(rightVoid ? "void" : TypeName(right))}'.",
+            node.Range);
+    }
+
+    /// <summary>
+    /// Reports whether <paramref name="expr"/> is a void-returning <see cref="CallExpr"/>
+    /// (D-380), looking through any number of enclosing <see cref="GroupingExpr"/> layers.
+    /// The unwrap matters: <c>GroupingExpr</c> is a real node the parser emits, so
+    /// <c>(arr.each(f)) + 1</c> would otherwise slip past the void reject into the
+    /// permissive <c>Unknown</c> pass-through and crash the VM at runtime — the precise
+    /// failure D-380 closes for the unparenthesised form (CodeRabbit review, PR #167).
+    /// Mirrors the grouping unwrap <c>ExpressionDescriptor</c>/<c>ArrayDescriptorOf</c>
+    /// and <c>CheckCondition</c> already perform.
+    /// </summary>
+    private static bool IsVoidCall(Expression expr) {
+        while (expr is GroupingExpr grouping) expr = grouping.Inner;
+        return expr is CallExpr { IsVoidReturn: true };
     }
 
     private GrobType ResolveComparison(BinaryExpr node, GrobType left, GrobType right) {
@@ -316,6 +375,11 @@ public sealed partial class TypeChecker {
     /// type. Built-in and unresolved callees stay permissive.
     /// </remarks>
     public override GrobType VisitCall(CallExpr node) {
+        // D-381: one-shot, consumed immediately so it can never leak into a nested call
+        // visited below (e.g. the inner call in print(foo())'s argument list).
+        bool isStatementPositionCall = _isStatementPositionCall;
+        _isStatementPositionCall = false;
+
         // Sprint 5C: array higher-order method calls (filter/select/sort/each).
         // The callee is a member access on an array receiver; we visit the target
         // directly (not the whole MemberAccessExpr) so we can branch on the receiver type
@@ -324,27 +388,38 @@ public sealed partial class TypeChecker {
             return ResolveMemberAccessCall(node, memberAccess);
         }
 
+        // D-381: marks this identifier as being visited in call-callee position, so
+        // VisitIdentifier's print/exit-as-value rejection stays silent here — this method's
+        // own checks below give the more specific arity/value-position diagnostic instead.
+        _isCallCalleePosition = true;
         Visit(node.Callee);
+        _isCallCalleePosition = false;
         var callArgTypes = new GrobType[node.Arguments.Count];
         for (int i = 0; i < node.Arguments.Count; i++) {
             callArgTypes[i] = Visit(node.Arguments[i].Value);
         }
 
+        // D-381: print/exit get their own arity/value-position validation, mirroring
+        // input()'s shape below but adding the value-position check neither builtin's
+        // permissive predecessor had — see CheckPrintExitCall.
+        if (node.Callee is IdentifierExpr { Declaration: BuiltinDecl { BuiltinName: "print" or "exit" } } printExitCallee) {
+            return CheckPrintExitCall(node, printExitCallee, callArgTypes, isStatementPositionCall);
+        }
+
         // Sprint 8 Increment C: input() gets its own arity/type validation ahead of the
         // permissive built-in fallback below (D-342 — the one no-namespace native this
-        // checker validates). print/exit stay fully permissive — both are void and stay
-        // on their own dedicated opcodes, never reaching this call-checking machinery.
+        // checker validates).
         if (node.Callee is IdentifierExpr { Declaration: BuiltinDecl { BuiltinName: "input" } }) {
             return CheckInputCall(node, callArgTypes);
         }
 
-        // Only user-defined functions are checked positionally here. Built-ins
-        // (print/exit) are permissive. A callee bound to a function-typed value
-        // (D-362) still resolves a return type — via its descriptor rather than a
-        // declared FnDecl signature — so GetExprType can pick the right typed
-        // opcode when the call is used as an arithmetic operand; no argument
-        // validation is added for this shape, that stays out of scope. Any other
-        // unresolved callee is permissive.
+        // Only user-defined functions are checked positionally here — print/exit and
+        // input are validated above, each with its own shape (D-381, Sprint 8 Increment
+        // C). A callee bound to a function-typed value (D-362) still resolves a return
+        // type — via its descriptor rather than a declared FnDecl signature — so
+        // GetExprType can pick the right typed opcode when the call is used as an
+        // arithmetic operand; no argument validation is added for this shape, that stays
+        // out of scope. Any other unresolved callee is permissive.
         if (node.Callee is not IdentifierExpr { Declaration: FnDecl fn }) {
             if (ExpressionDescriptor(node.Callee) is FunctionTypeDescriptor calleeDescriptor) {
                 node.ResolvedReturnType = calleeDescriptor.ReturnType;
@@ -367,6 +442,24 @@ public sealed partial class TypeChecker {
         if (resultArrayDesc is not null) _callResultArrayDescriptors[node] = resultArrayDesc;
         node.ResolvedReturnType = resultKind;
         return resultKind;
+    }
+
+    /// <summary>
+    /// Visits an expression whose result is implicitly discarded, or is a lambda's own
+    /// implicit return (D-276) — the class of position print/exit (D-381) may legally
+    /// appear in beyond a literal bare statement. Shared by <see
+    /// cref="TypeChecker.VisitExpressionStmt"/> and the lambda expression-body/
+    /// block-final-statement shapes below, so <c>xs.each(x => print(x))</c> — the
+    /// load-bearing existing idiom, proven by the pre-existing integration-test suite —
+    /// is not newly rejected: the lambda's own return value is never surfaced to user
+    /// code by a void-consuming higher-order method like <c>each</c>, exactly like a bare
+    /// statement's discarded result.
+    /// </summary>
+    private GrobType VisitStatementPositionExpression(Expression expr) {
+        _isStatementPositionCall = expr is CallExpr { Callee: IdentifierExpr };
+        GrobType result = Visit(expr);
+        _isStatementPositionCall = false;
+        return result;
     }
 
     /// <summary>
@@ -403,12 +496,16 @@ public sealed partial class TypeChecker {
         for (int i = 0; i < node.Arguments.Count; i++)
             argTypes[i] = Visit(node.Arguments[i].Value);
 
-        if (receiverType == GrobType.Array && IsArrayMethod(memberAccess.Member)) {
+        // D-380: dispatches unconditionally on receiver type, not gated on a recognised
+        // name — ValidateArrayMethodCall's/ValidateMapMethodCall's own switch raises E1002
+        // for an unrecognised name, mirroring how every other arm below resolves its own
+        // unrecognised-member diagnostic rather than relying on a name allow-list upstream.
+        if (receiverType == GrobType.Array) {
             return ValidateArrayMethodCall(node, memberAccess, argTypes);
         }
 
         // Sprint 9 Increment C0b-2a (D-377): the map method-family members — get/contains.
-        if (receiverType == GrobType.Map && IsMapMethod(memberAccess.Member)) {
+        if (receiverType == GrobType.Map) {
             return ValidateMapMethodCall(node, memberAccess, argTypes);
         }
 
@@ -446,15 +543,6 @@ public sealed partial class TypeChecker {
         }
         return GrobType.Unknown;
     }
-
-    // Sprint 9 Increment C0a-1 (D-371): "first"/"last"/"contains" joined the four
-    // pre-existing higher-order members. Renamed from IsArrayHigherOrderMethod — the
-    // three new members take no function argument, so "higher-order" no longer
-    // describes the whole recognised set. Sprint 9 Increment C0a-2 (D-373): the four
-    // in-place-mutating members complete the T[] surface.
-    private static bool IsArrayMethod(string name) =>
-        name is "filter" or "select" or "sort" or "each" or "first" or "last" or "contains"
-            or "append" or "insert" or "remove" or "clear";
 
     /// <summary>
     /// Validates an array method call and returns the result type. <c>filter</c>/
@@ -499,6 +587,7 @@ public sealed partial class TypeChecker {
                 }
                 return GrobType.Array;
             case "each":
+                node.IsVoidReturn = true;
                 return GrobType.Unknown; // void
             case "first":
             case "last":
@@ -511,7 +600,8 @@ public sealed partial class TypeChecker {
             case "clear":
                 return ValidateArrayMutatingMethodCall(node, memberAccess, argTypes);
             default:
-                return GrobType.Unknown;
+                return EmitErrorAndReturn(ErrorCatalog.E1002,
+                    $"Type 'T[]' has no member '{memberAccess.Member}'.", memberAccess.Range);
         }
     }
 
@@ -678,6 +768,7 @@ public sealed partial class TypeChecker {
                 MemberArgCountMatches(node, memberAccess, argTypes.Length, 0);
                 break;
         }
+        node.IsVoidReturn = true;
         return GrobType.Unknown;
     }
 
@@ -686,8 +777,6 @@ public sealed partial class TypeChecker {
     // members — set(key, value)/remove(key)/clear() — complete the surface.
     // length/isEmpty/keys/values are properties, resolved separately via
     // ResolveMapPropertyAccess.
-    private static bool IsMapMethod(string name) =>
-        name is "get" or "contains" or "set" or "remove" or "clear";
 
     /// <summary>
     /// Validates a <c>get(key)</c>/<c>contains(key)</c> call (Sprint 9 Increment C0b-2a,
@@ -730,7 +819,8 @@ public sealed partial class TypeChecker {
             case "clear":
                 return ValidateMapMutatingMethodCall(node, memberAccess, argTypes);
             default:
-                return GrobType.Unknown;
+                return EmitErrorAndReturn(ErrorCatalog.E1002,
+                    $"Type 'map<string, V>' has no member '{memberAccess.Member}'.", memberAccess.Range);
         }
     }
 
@@ -769,6 +859,7 @@ public sealed partial class TypeChecker {
                 MemberArgCountMatches(node, memberAccess, argTypes.Length, 0);
                 break;
         }
+        node.IsVoidReturn = true;
         return GrobType.Unknown;
     }
 
@@ -1861,6 +1952,50 @@ public sealed partial class TypeChecker {
     };
 
     // -----------------------------------------------------------------------
+    // print() / exit() (D-381).
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Validates a <c>print(...)</c>/<c>exit(...)</c> call. Neither builtin has any runtime
+    /// representation outside the dedicated <c>Print</c>/<c>Exit</c> opcodes
+    /// <c>Compiler.Statements.cs</c>'s <c>VisitExpressionStmt</c> emits for the exact
+    /// bare-statement shape it recognises structurally (the same name and arity checked
+    /// here) — any other use previously fell through to a generic global lookup for a
+    /// global that was never defined, crashing the VM at runtime with a confusing
+    /// "Undefined global" fault instead of a compile error. Arity reuses <see
+    /// cref="ErrorCatalog.E0003"/>, mirroring <see cref="CheckInputCall"/>'s shape for the
+    /// other no-namespace-native builtin — checked first and independently of the
+    /// value-position check below, so a malformed call in statement position (<c>print()</c>
+    /// with no argument) gets the arity diagnostic, not a spurious value-position one. A
+    /// non-statement-position use — a call whose result is consumed, or (via <see
+    /// cref="VisitIdentifier"/>) a bare reference with no call at all — is <see
+    /// cref="ErrorCatalog.E1004"/>, the same code the namespace-as-value arm there already
+    /// uses for the identical shape of mistake: a compile-time-only construct referenced
+    /// where a value is expected.
+    /// </summary>
+    private GrobType CheckPrintExitCall(
+            CallExpr node, IdentifierExpr callee, GrobType[] argTypes, bool isStatementPositionCall) {
+        string name = callee.Name;
+        bool arityOk = name == "print" ? argTypes.Length == 1 : argTypes.Length <= 1;
+        if (!arityOk) {
+            string expected = name == "print" ? "1 argument" : "0 or 1 arguments";
+            EmitError(ErrorCatalog.E0003,
+                $"'{name}' expects {expected}, but {argTypes.Length} were supplied.",
+                node.Range);
+        }
+
+        if (!isStatementPositionCall) {
+            EmitError(ErrorCatalog.E1004,
+                $"'{name}(...)' cannot be used as a value; it is only valid as a standalone statement.",
+                node.Range);
+            return GrobType.Error;
+        }
+
+        node.IsVoidReturn = true;
+        return GrobType.Unknown;
+    }
+
+    // -----------------------------------------------------------------------
     // input() — the one no-namespace native validated here (Sprint 8 Increment C).
     // -----------------------------------------------------------------------
 
@@ -2659,7 +2794,7 @@ public sealed partial class TypeChecker {
 
         // Infer the body type and store it for callers (e.g. ValidateArrayMethodCall).
         GrobType bodyType = node.Body switch {
-            LambdaExpressionBody exprBody => Visit(exprBody.Expression),
+            LambdaExpressionBody exprBody => VisitStatementPositionExpression(exprBody.Expression),
             LambdaBlockBody blockBody => VisitLambdaBlock(blockBody),
             _ => GrobType.Unknown,
         };
@@ -2696,7 +2831,7 @@ public sealed partial class TypeChecker {
         // The last statement determines the implicit return type.
         AstNode last = stmts[stmts.Count - 1];
         if (last is ExpressionStmt exprStmt)
-            return Visit(exprStmt.Expression); // implicit return value; don't emit Pop
+            return VisitStatementPositionExpression(exprStmt.Expression); // implicit return value; don't emit Pop
         Visit(last);
         return GrobType.Nil;
     }

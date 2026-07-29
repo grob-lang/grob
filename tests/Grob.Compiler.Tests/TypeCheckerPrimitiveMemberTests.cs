@@ -481,6 +481,34 @@ public sealed class TypeCheckerPrimitiveMemberTests {
         Assert.Equal(15, diag.Range.Start.Column);
     }
 
+    /// <summary>D-380: float had no unrecognised-method-call regression test, unlike string/int.</summary>
+    [Fact]
+    public void UnknownFloatMethod_Call_ReportsSingleE1002() {
+        DiagnosticBag bag = Check("""
+            f := 3.5
+            readonly v := f.nope()
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E1002.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
+    }
+
+    /// <summary>D-380: bool had no unrecognised-method-call regression test, unlike string/int.</summary>
+    [Fact]
+    public void UnknownBoolMethod_Call_ReportsSingleE1002() {
+        DiagnosticBag bag = Check("""
+            b := true
+            readonly v := b.nope()
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E1002.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
+    }
+
     [Fact]
     public void RoundTo_NoArguments_ReportsSingleE0003() {
         // roundTo's decimals parameter is required, not defaulted — confirms no

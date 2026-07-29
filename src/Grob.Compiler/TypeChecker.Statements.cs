@@ -55,7 +55,7 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitExpressionStmt(ExpressionStmt node) {
-        Visit(node.Expression);
+        VisitStatementPositionExpression(node.Expression);
         return GrobType.Unknown;
     }
 

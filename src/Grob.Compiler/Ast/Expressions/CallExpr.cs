@@ -36,6 +36,19 @@ public sealed record CallExpr(
     public GrobType ResolvedReturnType { get; set; } = GrobType.Unknown;
 
     /// <summary>
+    /// Set by the type checker (D-380) when this call is one of the array/map methods
+    /// with no meaningful return value — <c>each</c>, the array mutating members
+    /// (<c>append</c>/<c>insert</c>/<c>remove</c>/<c>clear</c>) and the map mutating
+    /// members (<c>set</c>/<c>remove</c>/<c>clear</c>). <see cref="ResolvedReturnType"/>
+    /// alone cannot distinguish a genuinely void call from any other statically
+    /// unresolvable call (both default to <see cref="GrobType.Unknown"/>), so
+    /// <c>ResolveArithmetic</c> consults this flag to reject a void call used as an
+    /// arithmetic operand (E0002) while staying permissive for the other Unknown sources.
+    /// <see langword="false"/> for every other call.
+    /// </summary>
+    public bool IsVoidReturn { get; set; }
+
+    /// <summary>
     /// Set by the type checker when this call resolves to a primitive-receiver
     /// instance-method call (D-066's compile-time-sugar model, <c>PrimitiveMemberRegistry</c>) —
     /// the qualified native name (e.g. <c>"string.split"</c>) the compiler rewrites the

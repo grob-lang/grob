@@ -132,6 +132,18 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly Dictionary<LambdaExpr, FunctionTypeDescriptor> _lambdaDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
+    // D-381: print/exit have no runtime representation outside the dedicated Print/Exit
+    // opcodes Compiler.Statements.cs emits for the exact bare-statement-call shape. These
+    // two one-shot context flags let VisitCall/VisitIdentifier (TypeChecker.Expressions.cs)
+    // distinguish that valid shape from every other use (wrong arity even in statement
+    // position, or any use where a value is expected) without threading a parameter through
+    // every Visit call. _isStatementPositionCall is set true only around the direct
+    // top-level CallExpr of an ExpressionStmt; _isCallCalleePosition is set true only around
+    // the synchronous Visit(node.Callee) call in VisitCall, so a bare (non-call) reference to
+    // print/exit is still rejected in VisitIdentifier.
+    private bool _isStatementPositionCall;
+    private bool _isCallCalleePosition;
+
     // _callResultDescriptors maps a call expression to the structural descriptor of its
     // result, when the callee's declared return type is a function type (D-326; Fix I).
     // VisitVarDecl / VisitReadonlyDecl read it the same way they read _lambdaDescriptors
