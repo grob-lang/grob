@@ -103,9 +103,9 @@ jobs:
             /d:sonar.issue.ignore.multicriteria.e9.ruleKey="csharpsquid:S1215" \
             /d:sonar.issue.ignore.multicriteria.e9.resourceKey="bench/Grob.Benchmarks/Stability/StabilityRunner.cs" \
             /d:sonar.issue.ignore.multicriteria.e10.ruleKey="csharpsquid:S8969" \
-            /d:sonar.issue.ignore.multicriteria.e10.resourceKey="src/Grob.Core/NamedTypes/NamedTypeRegistry.cs"
+            /d:sonar.issue.ignore.multicriteria.e10.resourceKey="src/Grob.Core/NamedTypes/NamedTypeRegistry.cs" \
             /d:sonar.issue.ignore.multicriteria.e11.ruleKey="csharpsquid:S1192" \
-            /d:sonar.issue.ignore.multicriteria.e11.resourceKey="src/Grob.Compiler/TypeChecker.Expressions.cs" \
+            /d:sonar.issue.ignore.multicriteria.e11.resourceKey="src/Grob.Compiler/TypeChecker.Expressions.cs"
       - name: Restore dependencies
         run: dotnet restore --locked-mode
 
