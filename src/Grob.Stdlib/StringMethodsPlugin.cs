@@ -100,6 +100,11 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
     /// the native-throw seam (Sonar S1192: one spelling, not five literal repetitions).</summary>
     private const string IndexErrorLeaf = "IndexError";
 
+    /// <summary>The <c>GrobError</c> leaf an allocation-ceiling breach raises through the
+    /// native-throw seam — a size limit, not a bounds violation, so it is <c>RuntimeError</c>
+    /// (<c>E5905</c>), not <c>IndexError</c> (correctness batch, D-382).</summary>
+    private const string RuntimeErrorLeaf = "RuntimeError";
+
     private static GrobValue PadLeft(GrobValue receiver, GrobValue widthArg, GrobValue charArg) {
         string s = receiver.AsString();
         long width = widthArg.AsInt();
@@ -122,11 +127,11 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
     /// wraps to a negative value, whereupon .NET's pad overloads throw an uncoded CLR fault)
     /// and the case that fits an <c>int</c> comfortably but would still ask .NET to allocate
     /// an unreasonable buffer (D-366). Routing either through <see cref="NativeFaultException"/>
-    /// surfaces the same <c>IndexError</c>/<c>E5101</c> the other range-bound string members
-    /// raise.</summary>
+    /// surfaces <c>RuntimeError</c>/<c>E5905</c> — a size limit, not an array/substring bounds
+    /// violation, so it is not <c>IndexError</c>/<c>E5101</c> (correctness batch, D-382).</summary>
     private static void RejectOversizedWidth(string method, long width) {
         if (width > MaxAllocationLength) {
-            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(RuntimeErrorLeaf, ErrorCatalog.E5905.Code,
                 $"{method}: width {width} exceeds the maximum supported value {MaxAllocationLength}.");
         }
     }
@@ -188,10 +193,11 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
     /// <see cref="MaxAllocationLength"/> (D-366) — checked via division rather than computing
     /// <c>length * count</c> directly, so the guard itself cannot overflow ahead of the
     /// existing <c>checked(...)</c> cast it guards. Mirrors <see cref="RejectOversizedWidth"/>'s
-    /// treatment of the same allocation-ceiling class for <c>padLeft</c>/<c>padRight</c>.</summary>
+    /// treatment of the same allocation-ceiling class for <c>padLeft</c>/<c>padRight</c>,
+    /// including the <c>RuntimeError</c>/<c>E5905</c> leaf (correctness batch, D-382).</summary>
     private static void RejectOversizedRepeat(int length, long count) {
         if (length > 0 && count > MaxAllocationLength / length) {
-            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(RuntimeErrorLeaf, ErrorCatalog.E5905.Code,
                 $"repeat: result length exceeds the maximum supported value {MaxAllocationLength}.");
         }
     }

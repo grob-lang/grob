@@ -202,4 +202,28 @@ public sealed class Sprint9IncrementC0a1Tests {
             "33333333-3333-3333-3333-333333333333" + NL,
             stdout);
     }
+
+    // -----------------------------------------------------------------------
+    // sort — uncomparable key kind is a catchable GrobError (correctness batch, D-382).
+    // Previously the comparator's fault bypassed the native-throw seam entirely and
+    // could not be caught from Grob source at all; it is now routed through the same
+    // seam array insert/remove and the string natives already use.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Sort_ByUncomparableArrayKey_CaughtByTryCatch() {
+        (string stdout, string stderr, int exitCode) = RunSource("""
+            xs := [[1], [2]]
+            try {
+                sorted := xs.sort(x => x)
+                print(sorted[0][0])
+            } catch (e: RuntimeError) {
+                print("caught")
+            }
+            """);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal("caught" + NL, stdout);
+    }
 }

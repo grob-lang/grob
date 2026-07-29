@@ -300,7 +300,7 @@ public sealed class StringMethodsPluginTests {
     }
 
     [Fact]
-    public void Repeat_CountExceedsAllocationCeiling_ThrowsCatchableIndexError() {
+    public void Repeat_CountExceedsAllocationCeiling_ThrowsCatchableRuntimeError() {
         // A count whose product with the receiver's length does not overflow the
         // checked(...) cast to int (so the VM's generic OverflowException handler never
         // gets a chance to help) but is still large enough to ask StringBuilder to
@@ -309,19 +309,19 @@ public sealed class StringMethodsPluginTests {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.repeat", GrobValue.FromString("a"), GrobValue.FromInt(500_000_000))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5905.Code, ex.Code);
     }
 
     [Fact]
-    public void Repeat_CountOverflowsCastEntirely_StillThrowsCatchableIndexError() {
+    public void Repeat_CountOverflowsCastEntirely_StillThrowsCatchableRuntimeError() {
         // A count large enough to overflow the checked(...) cast outright. Confirms the
-        // new ceiling guard fires first and the fault is E5101/IndexError, not the
+        // new ceiling guard fires first and the fault is E5905/RuntimeError, not the
         // generic E5001/ArithmeticError the VM's OverflowException catch would otherwise
         // produce.
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.repeat", GrobValue.FromString("ab"), GrobValue.FromInt(long.MaxValue))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5905.Code, ex.Code);
     }
 
     [Fact]
@@ -512,19 +512,19 @@ public sealed class StringMethodsPluginTests {
     }
 
     [Fact]
-    public void PadLeft_WidthAboveIntMax_ThrowsIndexError() {
+    public void PadLeft_WidthAboveIntMax_ThrowsRuntimeError() {
         // width is a 64-bit int; a value above int.MaxValue would wrap to a negative
         // on the unchecked cast to .NET's PadLeft overload and throw an uncoded CLR
-        // fault that bypasses the native-throw seam. The guard rejects it as E5101 first.
+        // fault that bypasses the native-throw seam. The guard rejects it as E5905 first.
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.padLeft",
                 GrobValue.FromString("7"), GrobValue.FromInt((long)int.MaxValue + 1), GrobValue.FromString(" "))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5905.Code, ex.Code);
     }
 
     [Fact]
-    public void PadLeft_WidthExceedsAllocationCeiling_ThrowsIndexError() {
+    public void PadLeft_WidthExceedsAllocationCeiling_ThrowsRuntimeError() {
         // A width that fits comfortably in an int (nowhere near int.MaxValue, so the
         // cast-safety half of the guard would let it through) but is still large enough
         // that .NET's PadLeft would allocate an unreasonable buffer. The allocation
@@ -533,25 +533,25 @@ public sealed class StringMethodsPluginTests {
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.padLeft",
                 GrobValue.FromString("7"), GrobValue.FromInt(500_000_000), GrobValue.FromString(" "))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5905.Code, ex.Code);
     }
 
     [Fact]
-    public void PadRight_WidthAboveIntMax_ThrowsIndexError() {
+    public void PadRight_WidthAboveIntMax_ThrowsRuntimeError() {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.padRight",
                 GrobValue.FromString("7"), GrobValue.FromInt((long)int.MaxValue + 1), GrobValue.FromString(" "))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5905.Code, ex.Code);
     }
 
     [Fact]
-    public void PadRight_WidthExceedsAllocationCeiling_ThrowsIndexError() {
+    public void PadRight_WidthExceedsAllocationCeiling_ThrowsRuntimeError() {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.padRight",
                 GrobValue.FromString("7"), GrobValue.FromInt(500_000_000), GrobValue.FromString(" "))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5905.Code, ex.Code);
     }
 
     [Fact]

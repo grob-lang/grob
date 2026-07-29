@@ -47,7 +47,7 @@ public sealed class ErrorCodeCountTests {
     }
 
     [Fact]
-    public void Corpus_HasTheExpectedLiveCountOf118() {
+    public void Corpus_HasTheExpectedLiveCountOf121() {
         // A standing anchor: if the count legitimately changes, this and the
         // canonical footer line move together, by intent, in the same change.
         // D-320 added E1103 (reserved identifier used as a binding name): 107 -> 108.
@@ -61,8 +61,10 @@ public sealed class ErrorCodeCountTests {
         // D-342 (Sprint 8 Increment A) added E1004 (namespace used as a value): 116 -> 117.
         // D-149 (Sprint 8 Increment D) added E0601 (invalid guid string literal): 117 -> 118.
         // D-376 (map-literal construction) added E0016 (duplicate key in map literal): 118 -> 119.
-        Assert.Equal(119, ConsistencyChecks.ActualErrorCatalogCount());
-        Assert.Equal(119, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
-        Assert.Equal(119, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
+        // D-382 (correctness batch, runtime error taxonomy) added E5905 (result exceeds
+        // maximum size) and E5906 (sort key type does not implement Comparable): 119 -> 121.
+        Assert.Equal(121, ConsistencyChecks.ActualErrorCatalogCount());
+        Assert.Equal(121, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
+        Assert.Equal(121, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
     }
 }

@@ -337,14 +337,17 @@ public sealed class VirtualMachineArrayQueryMemberTests {
     }
 
     // -----------------------------------------------------------------------
-    // sort — still-uncomparable kinds (E0004 unchanged).
+    // sort — still-uncomparable kinds. Correctness batch (D-382): repointed from the
+    // compile-time E0004 to the runtime E5906, and now routed through the
+    // NativeFaultException seam so the fault is catchable via try/catch (see the
+    // Grob-source-level fixture in Sprint9IncrementC0a1Tests).
     // -----------------------------------------------------------------------
 
     [Theory]
     [InlineData("array")]
     [InlineData("map")]
     [InlineData("struct")]
-    public void Sort_ByUncomparableKey_ThrowsE0004(string elementKind) {
+    public void Sort_ByUncomparableKey_ThrowsE5906(string elementKind) {
         GrobValue[] elements = elementKind switch {
             "array" => [
                 GrobValue.FromArray(new GrobArray([GrobValue.FromInt(1)])),
@@ -361,6 +364,6 @@ public sealed class VirtualMachineArrayQueryMemberTests {
         var (vm, _) = NewVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(
             () => vm.Run(BuildSortChunk(elements, BuildIdentityLambda())));
-        Assert.Equal("E0004", ex.Code);
+        Assert.Equal("E5906", ex.Code);
     }
 }
