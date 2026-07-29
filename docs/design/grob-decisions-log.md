@@ -7974,12 +7974,12 @@ from the live tail:
   `NativeFaultException(RuntimeErrorLeaf, E5905, ...)`.
 - **`E5906` — "sort key type does not implement Comparable."** Repoints all three
   throw sites in `GrobValueComparer` (`src/Grob.Vm/ArrayNatives.cs`) — `Compare`'s
-  kind-mismatch arm, `Compare`'s non-Comparable-kind arm, and `CompareStruct`'s
+  kind-mismatch arm, `Compare`'s non-Comparable-kind arm and `CompareStruct`'s
   fallback for any `Struct` pairing that is not `date`/`date` or `guid`/`guid`.
 
 `E5101` and `E0004` are **not retired** — both keep every legitimate call site.
 `E5101`: `ArrayNatives.Insert`/`Remove` bounds, `VirtualMachine`'s `GetIndex`/`SetIndex`
-array-receiver bounds checks, and `StringMethodsPlugin`'s `Substring`/`Left`/`Right`
+array-receiver bounds checks and `StringMethodsPlugin`'s `Substring`/`Left`/`Right`
 range checks (a real bounds violation, not an allocation ceiling — untouched). `E0004`:
 all fifteen compile-time `TypeChecker` argument-type-mismatch call sites (array/map
 element and key arguments, `filter`/`sort`'s `descending` argument, named-type and
@@ -8036,7 +8036,7 @@ still `pre-release`, the last point at which the taxonomy could be corrected rat
 than carried permanently.
 
 Cites D-366 (allocation-ceiling guard, the source of the `E5101` misuse), D-371 (sort
-comparator, the source of the `E0004` misuse, and the array query-member surface the
+comparator, the source of the `E0004` misuse and the array query-member surface the
 comparator belongs to), D-284 (the ten-leaf `GrobError` hierarchy — `RuntimeError` is
 the correct leaf for both), ADR-0017 (error-code immutability once shipped — the
 reason this had a deadline), ADR-0014 (the `E5xxx` Runtime category range and

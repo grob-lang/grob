@@ -1361,7 +1361,7 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Throws:** `RuntimeError`
 - **Description:** A native operation's result would exceed the allocation ceiling the native-throw seam enforces on user-supplied count/width/size arguments (`string.repeat`, `string.padLeft`, `string.padRight`) — a size limit, not an array or substring bounds violation.
-- **Source decision:** D-382. Correctness batch — repoints the three D-366 allocation-ceiling throws, which previously (and wrongly) reused `E5101`.
+- **Source decision:** D-382. Correctness batch — repoints the two D-366 allocation-ceiling throws — `RejectOversizedWidth` (guarding `padLeft`/`padRight`) and `RejectOversizedRepeat` (guarding `repeat`) — which previously (and wrongly) reused `E5101`.
 
 ---
 
@@ -1371,7 +1371,7 @@ read by `grob --explain Exxxx`.
 - **Introduced:** v1
 - **Status:** pre-release
 - **Throws:** `RuntimeError`
-- **Description:** Array `sort`'s key comparator was given a key type that does not implement `Comparable` — a kind mismatch between two keys, a kind with no ordering (`array`, `map`), or a `Struct` pairing that is not `date`/`date` or `guid`/`guid`.
+- **Description:** Array `sort`'s key comparator was given a key type that does not implement `Comparable` — a kind mismatch between two keys, a kind with no ordering (`array`, `map`) or a `Struct` pairing that is not `date`/`date` or `guid`/`guid`.
 - **Source decision:** D-382. Correctness batch — repoints `GrobValueComparer`'s three throw sites, which previously (and wrongly) reused the compile-time `E0004`, and routes the fault through the native-throw seam so it is catchable from Grob source.
 
 ---
