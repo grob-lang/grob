@@ -201,14 +201,29 @@ public sealed partial class TypeChecker {
     /// <see cref="GrobType"/> has no <c>Void</c> variant.
     /// </summary>
     private GrobType? RejectVoidArithmeticOperand(BinaryExpr node, GrobType left, GrobType right) {
-        bool leftVoid = node.Left is CallExpr { IsVoidReturn: true };
-        bool rightVoid = node.Right is CallExpr { IsVoidReturn: true };
+        bool leftVoid = IsVoidCall(node.Left);
+        bool rightVoid = IsVoidCall(node.Right);
         if (!leftVoid && !rightVoid) return null;
 
         return EmitErrorAndReturn(ErrorCatalog.E0002,
             $"Operator '{OperatorSymbol(node.Operator)}' cannot be applied to types " +
             $"'{(leftVoid ? "void" : TypeName(left))}' and '{(rightVoid ? "void" : TypeName(right))}'.",
             node.Range);
+    }
+
+    /// <summary>
+    /// Reports whether <paramref name="expr"/> is a void-returning <see cref="CallExpr"/>
+    /// (D-380), looking through any number of enclosing <see cref="GroupingExpr"/> layers.
+    /// The unwrap matters: <c>GroupingExpr</c> is a real node the parser emits, so
+    /// <c>(arr.each(f)) + 1</c> would otherwise slip past the void reject into the
+    /// permissive <c>Unknown</c> pass-through and crash the VM at runtime — the precise
+    /// failure D-380 closes for the unparenthesised form (CodeRabbit review, PR #167).
+    /// Mirrors the grouping unwrap <c>ExpressionDescriptor</c>/<c>ArrayDescriptorOf</c>
+    /// and <c>CheckCondition</c> already perform.
+    /// </summary>
+    private static bool IsVoidCall(Expression expr) {
+        while (expr is GroupingExpr grouping) expr = grouping.Inner;
+        return expr is CallExpr { IsVoidReturn: true };
     }
 
     private GrobType ResolveComparison(BinaryExpr node, GrobType left, GrobType right) {

@@ -773,7 +773,9 @@ public sealed class TypeCheckerTests {
         (_, DiagnosticBag bag) = TypeCheckSource(
             "arr := [1, 2, 3]\nx := arr.each((v) => v) - 1\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     [Fact]
@@ -781,7 +783,9 @@ public sealed class TypeCheckerTests {
         (_, DiagnosticBag bag) = TypeCheckSource(
             "arr := [1, 2, 3]\nx := arr.each((v) => v) * 1\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     [Fact]
@@ -789,7 +793,9 @@ public sealed class TypeCheckerTests {
         (_, DiagnosticBag bag) = TypeCheckSource(
             "arr := [1, 2, 3]\nx := arr.each((v) => v) / 1\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     [Fact]
@@ -797,7 +803,9 @@ public sealed class TypeCheckerTests {
         (_, DiagnosticBag bag) = TypeCheckSource(
             "arr := [1, 2, 3]\nx := arr.each((v) => v) % 1\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     /// <summary>The mutating-member void sources (append/insert/remove/clear, set) also reject.</summary>
@@ -806,7 +814,9 @@ public sealed class TypeCheckerTests {
         (_, DiagnosticBag bag) = TypeCheckSource(
             "arr := [1, 2, 3]\nx := arr.append(4) + 1\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     [Fact]
@@ -814,7 +824,68 @@ public sealed class TypeCheckerTests {
         (_, DiagnosticBag bag) = TypeCheckSource(
             "m := map<string, int>{\"a\": 1}\nx := m.set(\"b\", 2) + 1\n");
         Assert.True(bag.HasErrors);
-        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
+    }
+
+    // -----------------------------------------------------------------------
+    // Parenthesised void operands (CodeRabbit review, PR #167). A GroupingExpr
+    // is a real AST node, so '(arr.each(f)) + 1' presented the void CallExpr to
+    // ResolveArithmetic wrapped, slipped past the D-380 reject and the emission
+    // guard alike, and crashed the VM with the exact internal "GrobValue kind
+    // mismatch" error D-380 exists to eliminate. Grouping is unwrapped
+    // recursively, so arbitrary nesting rejects identically.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ArithmeticRule_GroupedVoidCallPlusInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\nx := (arr.each((v) => v)) + 1\n");
+        Assert.True(bag.HasErrors);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
+    }
+
+    [Fact]
+    public void ArithmeticRule_IntPlusGroupedVoidCall_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\nx := 1 + (arr.each((v) => v))\n");
+        Assert.True(bag.HasErrors);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
+    }
+
+    /// <summary>Nesting is unwrapped to any depth, not one level.</summary>
+    [Fact]
+    public void ArithmeticRule_NestedGroupedVoidCallPlusInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\nx := ((arr.each((v) => v))) + 1\n");
+        Assert.True(bag.HasErrors);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
+    }
+
+    /// <summary>The map mutating-member void source rejects when parenthesised too.</summary>
+    [Fact]
+    public void ArithmeticRule_GroupedMapSetVoidCallPlusInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "m := map<string, int>{\"a\": 1}\nx := (m.set(\"b\", 2)) + 1\n");
+        Assert.True(bag.HasErrors);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
+    }
+
+    /// <summary>A grouped non-void call is untouched — the unwrap must not over-reject.</summary>
+    [Fact]
+    public void ArithmeticRule_GroupedNonVoidCallPlusInt_StillCompiles() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\nx := (arr.length) + 1\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
     }
 
     /// <summary>A void call used as a bare statement — its normal use — still compiles.</summary>

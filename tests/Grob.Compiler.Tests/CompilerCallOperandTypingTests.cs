@@ -153,6 +153,7 @@ public sealed class CompilerCallOperandTypingTests {
 
         Diagnostic error = Assert.Single(bag.Errors);
         Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
 
     [Fact]

@@ -1223,11 +1223,25 @@ public sealed partial class Compiler {
     /// </summary>
     [ExcludeFromCodeCoverage(Justification = "The type checker rejects a struct/lambda/void arithmetic operand (E0002) before emission.")]
     private static void ThrowIfStructLambdaOrVoidOperand(BinaryExpr node) {
-        if (node.Left is StructConstructionExpr or LambdaExpr or CallExpr { IsVoidReturn: true } ||
-                node.Right is StructConstructionExpr or LambdaExpr or CallExpr { IsVoidReturn: true }) {
+        // Grouping is unwrapped first so a parenthesised operand cannot walk past the
+        // guard the way it once walked past the type checker's reject (CodeRabbit review,
+        // PR #167) — the guard must mirror RejectVoidArithmeticOperand exactly to stay a
+        // true belt-and-braces backstop rather than a shape-sensitive one.
+        if (IsStructLambdaOrVoidOperand(node.Left) || IsStructLambdaOrVoidOperand(node.Right)) {
             throw new InvalidOperationException(
                 "EmitArithmetic: struct/lambda/void operand should have been rejected at type-check (E0002) before reaching emission.");
         }
+    }
+
+    /// <summary>
+    /// Reports whether <paramref name="expr"/> is a struct-construction, lambda or
+    /// void-returning-call arithmetic operand, looking through enclosing
+    /// <see cref="GroupingExpr"/> layers.
+    /// </summary>
+    [ExcludeFromCodeCoverage(Justification = "The type checker rejects a struct/lambda/void arithmetic operand (E0002) before emission.")]
+    private static bool IsStructLambdaOrVoidOperand(Expression expr) {
+        while (expr is GroupingExpr grouping) expr = grouping.Inner;
+        return expr is StructConstructionExpr or LambdaExpr or CallExpr { IsVoidReturn: true };
     }
 
     /// <summary>
