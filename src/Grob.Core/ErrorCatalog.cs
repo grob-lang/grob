@@ -1089,6 +1089,24 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: GrobErrorLeaf.GrobError);
 
+    /// <summary>result exceeds maximum size</summary>
+    public static readonly ErrorDescriptor E5905 = new(
+        Code: "E5905",
+        Title: "result exceeds maximum size",
+        Category: ErrorCategory.Runtime,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: GrobErrorLeaf.RuntimeError);
+
+    /// <summary>sort key type does not implement Comparable</summary>
+    public static readonly ErrorDescriptor E5906 = new(
+        Code: "E5906",
+        Title: "sort key type does not implement Comparable",
+        Category: ErrorCategory.Runtime,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: GrobErrorLeaf.RuntimeError);
+
     // ---- Internal compiler error — E9001–E9999 ----
 
     /// <summary>internal compiler error — please report</summary>
@@ -1220,6 +1238,8 @@ public static class ErrorCatalog {
         E5902,
         E5903,
         E5904,
+        E5905,
+        E5906,
         E9001,
     };
 }

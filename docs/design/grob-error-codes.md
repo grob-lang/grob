@@ -170,6 +170,8 @@ read by `grob --explain Exxxx`.
 | E5902 | circular initialisation                            | Runtime           | pre-release           |
 | E5903 | runtime failure (residual catch-all)               | Runtime           | pre-release           |
 | E5904 | unhandled exception reached the top level          | Runtime           | pre-release           |
+| E5905 | result exceeds maximum size                        | Runtime           | pre-release           |
+| E5906 | sort key type does not implement Comparable        | Runtime           | pre-release           |
 | E9001 | internal compiler error — please report            | Internal          | pre-release           |
 
 ---
@@ -1352,6 +1354,28 @@ read by `grob --explain Exxxx`.
 
 ---
 
+### E5905 — result exceeds maximum size
+
+- **Category:** Runtime
+- **Introduced:** v1
+- **Status:** pre-release
+- **Throws:** `RuntimeError`
+- **Description:** A native operation's result would exceed the allocation ceiling the native-throw seam enforces on user-supplied count/width/size arguments (`string.repeat`, `string.padLeft`, `string.padRight`) — a size limit, not an array or substring bounds violation.
+- **Source decision:** D-382. Correctness batch — repoints the two D-366 allocation-ceiling throws — `RejectOversizedWidth` (guarding `padLeft`/`padRight`) and `RejectOversizedRepeat` (guarding `repeat`) — which previously (and wrongly) reused `E5101`.
+
+---
+
+### E5906 — sort key type does not implement Comparable
+
+- **Category:** Runtime
+- **Introduced:** v1
+- **Status:** pre-release
+- **Throws:** `RuntimeError`
+- **Description:** Array `sort`'s key comparator was given a key type that does not implement `Comparable` — a kind mismatch between two keys, a kind with no ordering (`array`, `map`) or a `Struct` pairing that is not `date`/`date` or `guid`/`guid`.
+- **Source decision:** D-382. Correctness batch — repoints `GrobValueComparer`'s three throw sites, which previously (and wrongly) reused the compile-time `E0004`, and routes the fault through the native-throw seam so it is catchable from Grob source.
+
+---
+
 ### E9001 — internal compiler error — please report
 
 - **Category:** Internal
@@ -1373,7 +1397,7 @@ None as of v1.
 
 ---
 
-**Total: 119 codes across 7 categories.** This is the canonical current count;
+**Total: 121 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
@@ -1404,3 +1428,5 @@ _Updated July 2026 — Sprint 8 Increment A added one code: E1004 (namespace use
 _Updated July 2026 — Sprint 8 Increment D added one code: E0601 (invalid `guid` string literal) — the first entry in the previously empty E06xx sub-block of the Type category, bringing the total from 117 to 118. Dedicated rather than folded into E5701 (the existing `guid.parse` runtime `ParseError` code): E5701 is `Runtime` category and ADR-0014's category scheme forbids reusing a runtime code for a compile-time diagnostic — the fold-versus-new judgement the increment's own kickoff prompt surfaced and leaned dedicated on. Source decision D-149._
 
 _Updated July 2026 — map-literal construction (`map<K, V>{ ... }`) added one code: E0016 (duplicate key in map literal) in the E00xx sub-block of the Type category, bringing the total from 118 to 119. Dedicated rather than folded into E0010 (duplicate named argument, call-site only), E2208 (duplicate field name, `type` declaration only) or E2213 (duplicate `catch`, exception-handling only) — none of the three existing duplicate-entry codes covers a map-literal entry, confirmed against the live registry before allocating, per the E0014/E0015 precedent for a distinct, more-actionable construction-site code. Source decision D-376._
+
+_Updated July 2026 — correctness batch (runtime error taxonomy) added two codes in the E59xx sub-block of the Runtime category: E5905 (result exceeds maximum size) and E5906 (sort key type does not implement Comparable), bringing the total from 119 to 121. Both repoint wrong-category misuses found while the two codes involved were still `pre-release`: D-366's allocation-ceiling guard (`string.repeat`/`padLeft`/`padRight`) had reused E5101 ("array index out of range") for a size limit, not a bounds violation; D-371's `GrobValueComparer` sort-key comparator had reused the compile-time E0004 ("argument type mismatch") for a runtime fault. E5101 and E0004 are retained, unretired, for their legitimate call sites. Neither existing code fit either condition (Step 1 of `allocating-an-error-code` — confirmed against the live registry before allocating). Source decision D-382._

@@ -114,11 +114,13 @@ internal static class ArrayNatives {
 
         // The underlying sort wraps a comparer exception in InvalidOperationException
         // ("Failed to compare two elements in the array"). Unwrap so a key-type fault
-        // surfaces as the GrobRuntimeException the comparer raised, not a .NET internal.
+        // surfaces as the NativeFaultException the comparer raised (correctness batch,
+        // D-382), routing it through the same native-throw seam insert/remove and the
+        // string natives use, rather than a .NET internal.
         GrobValue[] elements;
         try {
             elements = sorted.Select(p => p.element).ToArray();
-        } catch (InvalidOperationException ex) when (ex.InnerException is GrobRuntimeException inner) {
+        } catch (InvalidOperationException ex) when (ex.InnerException is NativeFaultException inner) {
             throw inner;
         }
         return GrobValue.FromArray(new GrobArray(elements));
@@ -239,23 +241,22 @@ internal static class ArrayNatives {
 /// the two <c>Struct</c>-kind named types the registry advertises as
 /// <c>Comparable</c>: <c>date</c> (instant basis, <see cref="DateNatives.ToDateTimeOffset"/>)
 /// and <c>guid</c> (ordinal on the canonical string). Every other kind, including any
-/// other <c>Struct</c> (a user type, or a mixed <c>date</c>/<c>guid</c> pairing) throws
-/// <see cref="GrobRuntimeException"/>.
+/// other <c>Struct</c> (a user type, or a mixed <c>date</c>/<c>guid</c> pairing) raises
+/// <c>RuntimeError</c>/<c>E5906</c> through <see cref="NativeFaultException"/>
+/// (correctness batch, D-382 — previously the compile-time <c>E0004</c>, and previously
+/// bypassed the native-throw seam entirely).
 /// </summary>
 internal sealed class GrobValueComparer : IComparer<GrobValue> {
     internal static readonly GrobValueComparer Instance = new();
 
-    // The comparer runs deep inside LINQ's sort and has no access to the call site's
-    // source location, so faults carry the minimum valid line (1) and column 0.
-    // GrobRuntimeException requires line >= 1; once Increment D adds compile-time
-    // Comparable validation these runtime faults become unreachable in well-typed code.
-    private const int UnknownLine = 1;
-    private const int UnknownColumn = 0;
+    // The GrobError leaf an uncomparable sort key raises through the native-throw seam
+    // (correctness batch, D-382): a runtime type failure with no better-fitting domain
+    // family, not the compile-time E0004 the comparer previously (and wrongly) reused.
+    private const string RuntimeErrorLeaf = "RuntimeError";
 
     public int Compare(GrobValue x, GrobValue y) {
         if (x.Kind != y.Kind)
-            throw new GrobRuntimeException(
-                ErrorCatalog.E0004.Code, UnknownLine, UnknownColumn,
+            throw new NativeFaultException(RuntimeErrorLeaf, ErrorCatalog.E5906.Code,
                 $"sort key type mismatch: cannot compare {x.Kind} with {y.Kind}");
 
         return x.Kind switch {
@@ -264,8 +265,7 @@ internal sealed class GrobValueComparer : IComparer<GrobValue> {
             GrobValueKind.String => string.CompareOrdinal(x.AsString(), y.AsString()),
             GrobValueKind.Bool => x.AsBool().CompareTo(y.AsBool()),
             GrobValueKind.Struct => CompareStruct(x.AsStruct(), y.AsStruct()),
-            _ => throw new GrobRuntimeException(
-                     ErrorCatalog.E0004.Code, UnknownLine, UnknownColumn,
+            _ => throw new NativeFaultException(RuntimeErrorLeaf, ErrorCatalog.E5906.Code,
                      $"sort key type {x.Kind} does not implement Comparable"),
         };
     }
@@ -288,7 +288,7 @@ internal sealed class GrobValueComparer : IComparer<GrobValue> {
         if (a.TypeName == GuidNatives.TypeName && b.TypeName == GuidNatives.TypeName) {
             return string.CompareOrdinal(GuidNatives.CanonicalString(a), GuidNatives.CanonicalString(b));
         }
-        throw new GrobRuntimeException(ErrorCatalog.E0004.Code, UnknownLine, UnknownColumn,
+        throw new NativeFaultException(RuntimeErrorLeaf, ErrorCatalog.E5906.Code,
             $"sort key type {a.TypeName} does not implement Comparable");
     }
 }

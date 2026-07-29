@@ -377,6 +377,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-379 | July 2026 | Language semantics / Compiler — iteration | Settles the `for...in` mutation-during-iteration semantics, which arrays and maps currently implement **differently** — neither deliberately chosen, both fallen out of independent implementations. `EmitArrayForIn` re-reads the bound via a fresh `GetProperty("length")` on **every** iteration (D-373), so a body calling `append` changes the loop's own bound mid-flight and can iterate unboundedly; `EmitMapForIn` materialises the `keys` array **once** into a synthetic local before the loop and walks a counter against its fixed length (D-378), so the iteration count is fixed at entry. Ratified: **snapshot at loop entry, for every collection type** — arrays align to maps. Chosen because Go's `range`, the precedent Grob's own `for...in` syntax leans on, evaluates its range expression once; because a fixed count cannot iterate unboundedly, which is the safer default for a scripting language; and because one rule across both collection types beats two discovered by experiment. Mutation during iteration stays **permitted** — this fixes the count, it does not forbid the mutation — so a key removed mid-loop is still visited and its value read degrades to `nil` (D-378's confirmed behaviour, consistent with `get`'s miss semantics), and an element appended mid-loop is not visited this time round. Rejected: aligning maps to arrays (a live bound admits unbounded iteration and is the more surprising direction); and throwing on mutation during iteration, C#/Python-dict style (needs runtime modification tracking and a new error code, and D-378 confirmed no live `IEnumerator` ever crosses Grob bytecode, so there is no enumerator to invalidate). Changes shipped array behaviour — the implementing increment must enumerate and report every affected test. No new error code; count unchanged at 119 |
 | D-380 | July 2026 | Compiler — type checking / bytecode emission | Closes two permissive-`Unknown` findings from the correctness batch (D-362 void-in-arithmetic, D-373 unrecognised method call on a known receiver), mirroring D-377's property-path tightening onto the method-call path. Empirical sweep first: several of D-373's named gaps were already closed incidentally by later increments — `string`/`int`/`float`/`bool` method calls already raise E1002 via `PrimitiveMemberRegistry` (D-369 registered `int`/`float`/`bool` after D-373 was logged; D-363 registered `string`), and registered named-type method calls already raise E1002 (D-356) — so the only receivers still open were **array and map**. Both `ValidateArrayMethodCall`/`ValidateMapMethodCall` already had a `switch` with a `default: return GrobType.Unknown;` arm, dead code because the outer dispatch gate (`receiverType == GrobType.Array && IsArrayMethod(...)`, similarly for Map) filtered an unrecognised name out before the switch ever saw it. The fix drops the `IsArrayMethod`/`IsMapMethod` name-gate (both now-unused helpers deleted) so every `Array`/`Map`-receiver call reaches the switch regardless of name, and turns the two `default` arms into **E1002**, reusing `ResolveArrayPropertyAccess`'s/`ResolveMapPropertyAccess`'s exact message shape (`Type 'T[]' has no member '{name}'.` / `Type 'map<string, V>' has no member '{name}'.`) — reuse of D-377's mechanism, not a parallel one. `Unknown`-typed receivers (untyped lambda parameters — always `Unknown` in v1, `VisitLambda` registers every parameter that way unconditionally) and `?.` chains on a nullable receiver stay permissive for free: neither ever matches the exact `receiverType == GrobType.Array`/`GrobType.Map` check (a nullable array/map is a distinct `GrobType` variant), so no dedicated nullable guard was needed on this path. Void-in-arithmetic: `GrobType` has no `Void` variant (void is `Unknown` by convention), so a new `CallExpr.IsVoidReturn` bool (mirroring the `ResolvedReturnType`/`ResolvedPrimitiveNativeName` settable-annotation convention D-362 established on the same node) distinguishes a genuinely void call from the other permissive-`Unknown` sources — set at the three sites that resolve void (`ValidateArrayMethodCall`'s `each` case, and the tails of `ValidateArrayMutatingMethodCall`/`ValidateMapMutatingMethodCall`, covering `each`/`append`/`insert`/`remove`/`clear`/`set`). `ResolveArithmetic` gains a guard-clause helper, `RejectVoidArithmeticOperand` (extracted to keep cognitive complexity under the S3776 bar), checked ahead of the existing `Unknown` pass-through: either operand being a void `CallExpr` now raises **E0002** with the same message template the Struct/Function combinatorial reject already uses, substituting the literal string `"void"` for the void side (there is no real type name to print) — e.g. `arr.each(fn) + 1` now reports `Operator '+' cannot be applied to types 'void' and 'int'.` Both operand checks look **through** enclosing `GroupingExpr` layers (recursively, so nesting depth is irrelevant): `GroupingExpr` is a real parser node, so the first cut matched only a bare `CallExpr` and `(arr.each(f)) + 1` walked past the reject into the permissive `Unknown` pass-through and still crashed the VM with the exact `GrobValue kind mismatch` internal error this entry exists to eliminate — found in CodeRabbit's review of PR #167, fixed there, and covered by grouped/nested/map-mutating regression tests plus an over-reject control (`(arr.length) + 1` still compiles). The unwrap mirrors the one `ExpressionDescriptor`/`ArrayDescriptorOf`/`CheckCondition` already perform. A void call as a bare statement is unaffected (proven by a dedicated regression test) — this only rejects the arithmetic-operand position. `EmitArithmetic`'s belt-and-braces defensive guard (`ThrowIfStructOrLambdaOperand` → renamed `ThrowIfStructLambdaOrVoidOperand`) is extended with the same `IsVoidReturn` check, mirroring the existing Struct/Lambda precedent. **D-362's permissive-`Unknown` catalogue, corrected, not just reduced.** The kickoff prompt assumed the live count was "two now, one after" (void plus the Unknown-receiver field). The actual code comment named **three** active sources — the untyped lambda-parameter identifier, the Unknown-receiver-field `MemberAccessExpr` (D-360), and the void-returning `CallExpr` (D-362) — plus a fourth, already-closed source (a map element with a known value type, closed by **D-374**, mis-cited in the comment as "D-359"; D-359 is actually "index-target compound assignment and increment/decrement", unrelated). Closing the void source here reduces the count to **two** (lambda-parameter identifier, Unknown-receiver-field), not one; the comment is rewritten to name exactly those two and the D-359→D-374 citation is corrected in the same edit. Empirical before/after, confirmed via the CLI: `arr.each(fn) + 1`/`arr.garbage()`/`m.garbage()` previously type-checked cleanly and crashed the VM at runtime with an internal "opcode not yet implemented"/"kind mismatch" error — now rejected at compile time with E0002/E1002 as designed. New findings surfaced, not fixed here (each is its own, smaller gap than the ones this increment closes): the method-call path has no generic nullable guard mirroring `VisitMemberAccess`'s (a non-optional `.` on a nullable array/primitive/ordinary-struct receiver doesn't get the `E0101` nil-dereference diagnostic the property path gives it); an ordinary user `type` struct's method call is permissive regardless of name (v1 gives structs no method surface at all, unlike the property path's `ResolveStructFieldAccess`, which already raises E1002 for an unrecognised field); `AnonStruct`/`NullableAnonStruct` method calls, same; no `Error`-receiver cascade-suppression arm on the call path (unlike `VisitMemberAccess:1294`); and, found during the CLI spot-check, `?.` short-circuiting is wired at the VM level for property access but **not** for method calls — `xs?.first()` on a nil `int[]?` crashes with "Call target is not a function (kind: Nil)" even though `first` is a recognised method, proving the gap is a runtime dispatch omission unrelated to this increment's type-checker-only change. Tests: one existing test updated for the breaking change (`CompilerCallOperandTypingTests.VoidReturningCallAsOperand_ArrayEach_StillCompilesUnderIntAssumption` → `..._ReportsE0002`, now asserting the E0002 diagnostic instead of a clean compile) — the only breaking-change hit found in a full corpus sweep (no gold master, validation script, or `Grob.Integration.Tests` case combines a void call with arithmetic or exercises `arr.garbage()`/`m.garbage()`). New tests: the array/map unrecognised-method-call E1002 cases and their required-permissive survivors (untyped lambda parameter, `?.` on nullable), six void-in-arithmetic E0002 cases (`+`/`-`/`*`/`/`/`%`, both operand positions, plus the mutating-member sources), a bare-void-statement-still-compiles regression, and `float`/`bool` unrecognised-method-call E1002 cases that were missing alongside the pre-existing `string`/`int` ones. No new opcode. No new error code — `E0002` and `E1002` both existed; count stays **119**. Cites D-362, D-373, D-377, D-374, D-369, D-363, D-356. |
 | D-381 | July 2026 | Compiler — type checking | `print`/`exit` are opcode-only sugar with no runtime representation outside the exact bare-statement shape `Compiler.Statements.cs` recognises structurally — unlike `input()`, a genuine global-backed native. Every other use (wrong arity even in statement position, a call whose result is consumed, or a bare reference with no call) previously type-checked permissively and crashed the VM at runtime with a misleading `Undefined global` fault. `VisitCall` gains a `CheckPrintExitCall` arm (arity via **E0003**, mirroring `CheckInputCall`; value-position use via **E1004**, mirroring `VisitIdentifier`'s namespace-as-value arm) using two one-shot context flags rather than threading a parameter through every `Visit` call — `_isStatementPositionCall` (also covering a lambda's expression-body and a lambda block's final implicit-return statement, via a shared `VisitStatementPositionExpression` helper, so `xs.each(x => print(x))` — the load-bearing existing idiom — is not newly rejected) and `_isCallCalleePosition` (so `VisitIdentifier`'s new bare-reference rejection fires only for a genuine bare reference, never the identifier being visited as its own call's callee). `input` is untouched — proven unaffected by a direct empirical check. No new opcode, no new error code; count unchanged at 119. Cites D-380 (found alongside, while triaging PR #167's review). |
+| D-382 | July 2026 | Runtime — error taxonomy | Correctness batch, ADR-0017-deadline finding: D-366's allocation-ceiling guard (`repeat`/`padLeft`/`padRight`) wrongly reused `E5101` ("array index out of range") for a size limit, and D-371's `GrobValueComparer` sort-key comparator wrongly reused the compile-time `E0004` for a runtime fault. Registers **E5905** (result exceeds maximum size) and **E5906** (sort key type does not implement Comparable), both `RuntimeError`-leaf E59xx codes, and repoints all five throw sites; `E5101`/`E0004` retained for their legitimate call sites. The sort-comparator throws also move from a bare `GrobRuntimeException` to `NativeFaultException`, routing the fault through the native-throw seam so it becomes catchable via `try`/`catch` from Grob source for the first time. Records a user-visible behaviour change: the allocation-ceiling fault's leaf moves `IndexError` → `RuntimeError`, breaking (and updating) an existing typed-catch fixture. Count 119 → 121. Cites D-366, D-371, D-284, ADR-0017, ADR-0014. |
 
 ---
 
@@ -7932,6 +7933,117 @@ the Sprint 8 Increment C `input()` arity/type check this mirrors.
 
 ---
 
+### D-382 — Runtime error taxonomy corrected: `E5905`/`E5906` replace two wrong-category `E5101`/`E0004` reuses (July 2026)
+
+Area: Runtime — error taxonomy
+
+Supersedes: none
+Superseded by: none
+Refines: D-366, D-371
+
+**The decision.** Two runtime conditions raised error codes documented as meaning
+something else. Both codes involved were still `pre-release` — the last chance to fix
+the taxonomy before ADR-0017 makes them immutable — so this is the correctness batch's
+one deadline-bound finding.
+
+**Finding 1 — the allocation-ceiling guard was raising `E5101`.** D-366's native-seam
+hardening (`string.repeat`/`padLeft`/`padRight`, when the result would exceed the
+10,000,000-character allocation ceiling) reused `E5101` ("array index out of range").
+A size limit is not an index and not a bounds violation — `--explain E5101` told
+someone who asked for a fifty-million-character string that their array index was out
+of range.
+
+**Finding 2 — the sort comparator was raising `E0004`.** D-371's `GrobValueComparer`
+(`Grob.Vm/ArrayNatives.cs`) raised `E0004` ("argument type mismatch") when a sort key's
+type does not implement `Comparable`. `E0004` is a compile-time Type-category code
+(`E0001`–`E0999`); a runtime fault using a compile-time code is a category error, not
+merely an imprecise label.
+
+**Ladder outcome.** Nothing in the live registry fit either condition (Step 1 of
+`allocating-an-error-code` — the E51xx bounds sub-block holds only `E5101`/`E5102`,
+neither a size limit; the E59xx general-runtime sub-block's four existing codes —
+`E5901` call stack overflow, `E5902` circular initialisation, `E5903` runtime failure
+residual, `E5904` unhandled exception reached the top level — cover none of this).
+Two codes registered in the E59xx sub-block, leaf `RuntimeError`, next free numbers
+from the live tail:
+
+- **`E5905` — "result exceeds maximum size."** Repoints the two allocation-ceiling
+  throw sites in `src/Grob.Stdlib/StringMethodsPlugin.cs`: `RejectOversizedWidth`
+  (guards `padLeft`/`padRight`) and `RejectOversizedRepeat` (guards `repeat`) — both
+  moved from `NativeFaultException(IndexErrorLeaf, E5101, ...)` to
+  `NativeFaultException(RuntimeErrorLeaf, E5905, ...)`.
+- **`E5906` — "sort key type does not implement Comparable."** Repoints all three
+  throw sites in `GrobValueComparer` (`src/Grob.Vm/ArrayNatives.cs`) — `Compare`'s
+  kind-mismatch arm, `Compare`'s non-Comparable-kind arm and `CompareStruct`'s
+  fallback for any `Struct` pairing that is not `date`/`date` or `guid`/`guid`.
+
+`E5101` and `E0004` are **not retired** — both keep every legitimate call site.
+`E5101`: `ArrayNatives.Insert`/`Remove` bounds, `VirtualMachine`'s `GetIndex`/`SetIndex`
+array-receiver bounds checks and `StringMethodsPlugin`'s `Substring`/`Left`/`Right`
+range checks (a real bounds violation, not an allocation ceiling — untouched). `E0004`:
+all fifteen compile-time `TypeChecker` argument-type-mismatch call sites (array/map
+element and key arguments, `filter`/`sort`'s `descending` argument, named-type and
+primitive-member arguments, `formatAs` shape checks, `input()`'s prompt argument,
+native-call argument checks, map-literal entry values, parameter defaults) — none
+touched.
+
+**A seam fix required to satisfy the sort-comparator's own acceptance test.**
+`GrobValueComparer`'s three throws used `GrobRuntimeException` directly, not
+`NativeFaultException` — they bypassed the native-throw seam entirely.
+`ArrayNatives.Sort` unwrapped LINQ's wrapping `InvalidOperationException` and rethrew
+the raw exception without ever calling `TryRaiseRuntimeGrobError`, so a Grob script
+could not catch a sort-comparator fault with `try`/`catch` at all; only a C#-level
+`Assert.Throws<GrobRuntimeException>` ever saw it. Repointing the code alone would not
+have satisfied the requirement that "sorting by a key that is an array, a map or a
+user struct" be catchable as a `GrobError` from Grob source, so the three throw sites
+were also switched to `NativeFaultException`, and `Sort`'s unwrap-catch type pattern
+was switched from `is GrobRuntimeException inner` to `is NativeFaultException inner`.
+The fault now propagates out of `Sort`'s `Implementation` call, is caught by
+`VirtualMachine.cs`'s `Call`-opcode handler, and `TryRaiseRuntimeGrobError` makes it
+catchable via `try`/`catch (e: RuntimeError)`, falling back to a top-level
+`GrobRuntimeException` carrying `E5906` when uncaught. This is a **behaviour
+improvement** (previously-uncatchable → catchable), proven by a new
+`Sort_ByUncomparableArrayKey_CaughtByTryCatch` integration test
+(`Sprint9IncrementC0a1Tests.cs`) — no equivalent Grob-source fixture existed before
+this entry.
+
+**A user-visible behaviour change, recorded rather than silently absorbed.**
+`Sprint9StringInstanceMethodsTests.cs`'s `Repeat_ExceedsAllocationCeiling_CaughtByTryCatch`
+caught the allocation-ceiling fault as `catch (e: IndexError)`. Moving the leaf from
+`IndexError` to `RuntimeError` breaks that fixture as written — a Grob script written
+against the old (wrong) taxonomy that specifically catches `IndexError` around a
+`repeat`/`padLeft`/`padRight` call would stop catching the fault. Updated to
+`catch (e: RuntimeError)` in the same commit. `Substring_OutOfRange_CaughtByTryCatch`
+and the array `insert`/`remove` bounds catch fixtures are unaffected — those stay on
+the genuine `E5101`/`IndexError` path.
+
+**A pre-existing, unrelated finding — reported, not fixed.** `E5102` ("substring
+bounds out of range") is defined in `ErrorCatalog` and the registry but has no throw
+site: `Substring`/`Left`/`Right` all reuse `E5101` instead. Out of scope here (not one
+of the two named findings); noted for a future correctness pass rather than folded
+into this one.
+
+**Registration.** Three-location lockstep in `docs/design/grob-error-codes.md`
+(summary index rows, full `### E5905`/`### E5906` entries citing this decision,
+canonical total line) and the `ErrorCatalog` descriptors (`Grob.Core`) — count moves
+**119 → 121**, re-verified green by the D-316 consistency gate
+(`Grob.Consistency.Tests`), including its standing anchor test
+(`ErrorCodeCountTests.Corpus_HasTheExpectedLiveCountOf121`, renamed and updated in the
+same commit).
+
+This closes the correctness batch's only ADR-0017-deadline item — both codes were
+still `pre-release`, the last point at which the taxonomy could be corrected rather
+than carried permanently.
+
+Cites D-366 (allocation-ceiling guard, the source of the `E5101` misuse), D-371 (sort
+comparator, the source of the `E0004` misuse and the array query-member surface the
+comparator belongs to), D-284 (the ten-leaf `GrobError` hierarchy — `RuntimeError` is
+the correct leaf for both), ADR-0017 (error-code immutability once shipped — the
+reason this had a deadline), ADR-0014 (the `E5xxx` Runtime category range and
+numbering scheme).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -8153,7 +8265,23 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — print/exit misuse rejected at compile time: D-381 added. Neither builtin has_
+_July 2026 — runtime error taxonomy corrected: D-382 added. D-366's allocation-ceiling_
+_guard (repeat/padLeft/padRight) wrongly reused E5101 ("array index out of range") for a_
+_size limit, and D-371's GrobValueComparer sort-key comparator wrongly reused the_
+_compile-time E0004 for a runtime fault — both codes still pre-release, the last chance_
+_to fix the taxonomy before ADR-0017 makes them immutable. Registers E5905 (result_
+_exceeds maximum size) and E5906 (sort key type does not implement Comparable), both_
+_RuntimeError-leaf E59xx codes, and repoints all five throw sites; E5101/E0004 retained_
+_for their legitimate call sites. The sort-comparator throws also move from a bare_
+_GrobRuntimeException to NativeFaultException, routing the fault through the_
+_native-throw seam so it becomes catchable via try/catch from Grob source for the first_
+_time. Records a user-visible behaviour change: the allocation-ceiling fault's leaf_
+_moves IndexError to RuntimeError, breaking (and updating) an existing typed-catch_
+_fixture. Also reports, without fixing, a pre-existing unrelated finding: E5102_
+_("substring bounds out of range") is registered but has no throw site — substring/_
+_left/right all reuse E5101 instead. Count 119 to 121. Closes the correctness batch's_
+_only ADR-0017-deadline item._
+_Previous: July 2026 — print/exit misuse rejected at compile time: D-381 added. Neither builtin has_
 _a runtime representation outside the exact bare-statement shape the compiler recognises_
 _structurally (unlike input(), a genuine global-backed native), so every other use — wrong_
 _arity, a consumed call result, or a bare reference — previously crashed the VM at runtime_

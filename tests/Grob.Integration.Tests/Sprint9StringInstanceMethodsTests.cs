@@ -126,12 +126,12 @@ public sealed class Sprint9StringInstanceMethodsTests {
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void Repeat_ExceedsAllocationCeiling_UncaughtIndexError_ExitsNonZero() {
+    public void Repeat_ExceedsAllocationCeiling_UncaughtRuntimeError_ExitsNonZero() {
         (string stdout, string stderr, int exitCode) = RunSource("""print("a".repeat(500000000))""" + "\n");
 
         Assert.NotEqual(0, exitCode);
         Assert.Equal(string.Empty, stdout);
-        Assert.Contains(ErrorCatalog.E5101.Code, stderr);
+        Assert.Contains(ErrorCatalog.E5905.Code, stderr);
     }
 
     [Fact]
@@ -139,7 +139,7 @@ public sealed class Sprint9StringInstanceMethodsTests {
         (string stdout, string stderr, int exitCode) = RunSource("""
             try {
                 print("a".repeat(500000000))
-            } catch (e: IndexError) {
+            } catch (e: RuntimeError) {
                 print("caught")
             }
             """);
