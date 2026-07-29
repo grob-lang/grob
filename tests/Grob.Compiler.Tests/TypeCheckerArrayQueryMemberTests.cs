@@ -108,6 +108,32 @@ public sealed class TypeCheckerArrayQueryMemberTests {
         AssertSingleError(bag, "E1002", 2, 1);
     }
 
+    [Fact]
+    public void UnrecognisedArrayMethodCall_ReportsE1002() {
+        // D-380, mirroring D-371's property-path tightening onto the method-call path:
+        // an unrecognised name reaches ValidateArrayMethodCall's default arm (previously
+        // dead code, since IsArrayMethod gated it out before the switch ever saw it).
+        DiagnosticBag bag = Check("xs: int[] := [1, 2, 3]\nxs.garbage()\n");
+        AssertSingleError(bag, "E1002", 2, 1);
+    }
+
+    [Fact]
+    public void UntypedLambdaParameterArrayMethodCall_StaysPermissive() {
+        // The required survivor (D-380 scope boundary): an Unknown-typed receiver — here
+        // an untyped lambda parameter — must keep compiling, never tightened by this change.
+        DiagnosticBag bag = Check("xs: int[][] := [[1], [2]]\nxs.each(x => x.whatever())\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+    }
+
+    [Fact]
+    public void OptionalChainOnNullableArrayMethodCall_StaysPermissive() {
+        // The other required survivor: '?.' on a nullable receiver stays permissive,
+        // including for a name that would otherwise be unrecognised — NullableArray never
+        // matches the tightened Array-receiver arm.
+        DiagnosticBag bag = Check("xs: int[]? := nil\nxs?.garbage()\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+    }
+
     // -----------------------------------------------------------------------
     // first() / last() — generic T? typing, proven for two distinct element types.
     // -----------------------------------------------------------------------

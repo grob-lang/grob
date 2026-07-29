@@ -740,4 +740,88 @@ public sealed class TypeCheckerTests {
         Assert.Equal("E0002", error.Code);
         Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
     }
+
+    // -----------------------------------------------------------------------
+    // Void-in-arithmetic (D-380, closing D-362's residue). A void-returning
+    // array/map method call — 'each', or one of the mutating members — used as
+    // an arithmetic operand is a compile error, joining the Struct/Function
+    // combinatorial reject. A void call as a bare statement is unaffected.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ArithmeticRule_VoidCallPlusInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\nx := arr.each((v) => v) + 1\n");
+        Assert.True(bag.HasErrors);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
+    }
+
+    [Fact]
+    public void ArithmeticRule_IntPlusVoidCall_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\nx := 1 + arr.each((v) => v)\n");
+        Assert.True(bag.HasErrors);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
+        Assert.Equal((2, 6), (error.Range.Start.Line, error.Range.Start.Column));
+    }
+
+    [Fact]
+    public void ArithmeticRule_VoidCallMinusInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\nx := arr.each((v) => v) - 1\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    [Fact]
+    public void ArithmeticRule_VoidCallTimesInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\nx := arr.each((v) => v) * 1\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    [Fact]
+    public void ArithmeticRule_VoidCallDividedByInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\nx := arr.each((v) => v) / 1\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    [Fact]
+    public void ArithmeticRule_VoidCallModuloInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\nx := arr.each((v) => v) % 1\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    /// <summary>The mutating-member void sources (append/insert/remove/clear, set) also reject.</summary>
+    [Fact]
+    public void ArithmeticRule_ArrayAppendVoidCallPlusInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\nx := arr.append(4) + 1\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    [Fact]
+    public void ArithmeticRule_MapSetVoidCallPlusInt_IsCompileError() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "m := map<string, int>{\"a\": 1}\nx := m.set(\"b\", 2) + 1\n");
+        Assert.True(bag.HasErrors);
+        Assert.Equal("E0002", Assert.Single(bag.Errors).Code);
+    }
+
+    /// <summary>A void call used as a bare statement — its normal use — still compiles.</summary>
+    [Fact]
+    public void VoidCall_AsBareStatement_StillCompiles() {
+        (_, DiagnosticBag bag) = TypeCheckSource(
+            "arr := [1, 2, 3]\narr.each((v) => v)\n");
+        Assert.False(bag.HasErrors, ParserTestHelpers.FormatDiagnostics(bag));
+    }
 }

@@ -530,32 +530,30 @@ public sealed partial class Compiler {
 
     // Arithmetic — coerce either operand from int → float as needed, then the typed op.
     private void EmitArithmetic(BinaryExpr node, GrobType lt, GrobType rt, int line) {
-        // Defensive guard (D-362): ResolveArithmetic (TypeChecker.Expressions.cs) rejects a
-        // Struct/Function-typed operand with E0002 before emission ever runs, so a
-        // StructConstructionExpr/LambdaExpr operand reaching here is a compiler defect, not
-        // a state a valid program can produce — belt-and-braces, mirroring
+        // Defensive guard (D-362, extended D-380): ResolveArithmetic (TypeChecker.Expressions.cs)
+        // rejects a Struct/Function-typed operand, or a void-returning CallExpr, with E0002
+        // before emission ever runs, so any of the three reaching here is a compiler defect,
+        // not a state a valid program can produce — belt-and-braces, mirroring
         // ThrowUnsupportedBinaryOp below.
-        ThrowIfStructOrLambdaOperand(node);
+        ThrowIfStructLambdaOrVoidOperand(node);
 
         bool leftNeedsCoerce = lt == GrobType.Int && rt == GrobType.Float;
         bool rightNeedsCoerce = rt == GrobType.Int && lt == GrobType.Float;
         // resultType: Float if either operand is float; Unknown operands default to Int —
         // the same optimistic convention used in ComparisonCategory. This is a documented
         // permissive assumption for the residue GetExprType (below) cannot resolve
-        // statically: an untyped lambda-parameter identifier, an Unknown-receiver-field
-        // MemberAccessExpr (D-360), and a void-returning CallExpr such as arr.each(...)
-        // (D-362) — a VM-level type fault is the fallback if the runtime value disagrees.
-        // The third source D-362 named — a map-element IndexExpr (D-359) — closed in
-        // Sprint 9 Increment C0b-1: a map element with a known value type (via
-        // MapTypeDescriptor) now types as V? (nullable) rather than Unknown, and
-        // ResolveArithmetic (TypeChecker.Expressions.cs) rejects it there — the same
-        // combinatorial fallback E0002 that already rejects any other unmatched operand
-        // pair — before compilation ever reaches this method; a valid program only reaches
-        // here with the unwrapped, non-nullable V (e.g. via '??'). A map element whose
-        // value type could not be determined (no MapTypeDescriptor for the receiver) still
-        // reaches here as Unknown, same as before this increment. When baseType is Unknown
-        // both operands are non-float by construction, so the Unknown fallback can only
-        // ever be Int.
+        // statically: an untyped lambda-parameter identifier, and an Unknown-receiver-field
+        // MemberAccessExpr (D-360) — a VM-level type fault is the fallback if the runtime
+        // value disagrees. Two further sources named when this catalogue was first drawn up
+        // are now closed: a void-returning CallExpr such as arr.each(...) (D-362) is now
+        // rejected at type-check (E0002, D-380) before reaching this method; a map-element
+        // IndexExpr with a known value type (via MapTypeDescriptor, D-374) now types as V?
+        // (nullable) and is rejected there too, before compilation ever reaches this method —
+        // a valid program only reaches here with the unwrapped, non-nullable V (e.g. via
+        // '??'). A map element whose value type could not be determined (no
+        // MapTypeDescriptor for the receiver) still reaches here as Unknown, same as before
+        // D-374. When baseType is Unknown both operands are non-float by construction, so
+        // the Unknown fallback can only ever be Int.
         GrobType baseType = (lt == GrobType.Float || rt == GrobType.Float) ? GrobType.Float : lt;
         GrobType resultType = baseType == GrobType.Unknown ? GrobType.Int : baseType;
 
@@ -1215,18 +1213,20 @@ public sealed partial class Compiler {
             $"Operator {op} with result type {type} is not supported in Sprint 2.");
 
     /// <summary>
-    /// Throws for a Struct/Function-typed arithmetic operand (D-362). The type checker's
-    /// <c>ResolveArithmetic</c> rejects that combination with E0002 before compilation ever
-    /// reaches emission, so both the predicate and the throw are unreachable from a valid
-    /// program — a belt-and-braces guard against the operand-typing class recurring, not a
-    /// live diagnostic path. The predicate lives here (rather than at the call site) so the
-    /// whole never-taken branch is excluded from coverage as one unit.
+    /// Throws for a Struct/Function-typed arithmetic operand (D-362), or a void-returning
+    /// <see cref="CallExpr"/> operand (D-380). The type checker's <c>ResolveArithmetic</c>
+    /// rejects every one of these combinations with E0002 before compilation ever reaches
+    /// emission, so both the predicate and the throw are unreachable from a valid program —
+    /// a belt-and-braces guard against the operand-typing class recurring, not a live
+    /// diagnostic path. The predicate lives here (rather than at the call site) so the whole
+    /// never-taken branch is excluded from coverage as one unit.
     /// </summary>
-    [ExcludeFromCodeCoverage(Justification = "The type checker rejects a struct/lambda arithmetic operand (E0002) before emission.")]
-    private static void ThrowIfStructOrLambdaOperand(BinaryExpr node) {
-        if (node.Left is StructConstructionExpr or LambdaExpr || node.Right is StructConstructionExpr or LambdaExpr) {
+    [ExcludeFromCodeCoverage(Justification = "The type checker rejects a struct/lambda/void arithmetic operand (E0002) before emission.")]
+    private static void ThrowIfStructLambdaOrVoidOperand(BinaryExpr node) {
+        if (node.Left is StructConstructionExpr or LambdaExpr or CallExpr { IsVoidReturn: true } ||
+                node.Right is StructConstructionExpr or LambdaExpr or CallExpr { IsVoidReturn: true }) {
             throw new InvalidOperationException(
-                "EmitArithmetic: struct/lambda operand should have been rejected at type-check (E0002) before reaching emission.");
+                "EmitArithmetic: struct/lambda/void operand should have been rejected at type-check (E0002) before reaching emission.");
         }
     }
 
@@ -1253,8 +1253,10 @@ public sealed partial class Compiler {
         // A call's return type is annotated by the type checker (D-362) at every shape
         // whose type is statically known: a direct FnDecl call, a function-typed-variable
         // call, a namespace-qualified native call, and a registered-named-type
-        // instance-method call. A genuinely unresolvable call (a void-returning array
-        // higher-order method, or a call on an Unknown-typed receiver) stays Unknown.
+        // instance-method call. A call on an Unknown-typed receiver stays Unknown. A
+        // genuinely void call (arr.each(...), a mutating array/map member) is rejected at
+        // type-check when used as an arithmetic operand (E0002, D-380) and so never reaches
+        // this method in a valid program.
         CallExpr c => c.ResolvedReturnType,
         MemberAccessExpr ma => ma.ResolvedFieldType,
         IndexExpr idx => idx.ElementType,

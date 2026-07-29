@@ -127,18 +127,32 @@ public sealed class CompilerCallOperandTypingTests {
     }
 
     // -----------------------------------------------------------------------
-    // Residue — all three documented permissive-Unknown sources still compile
-    // under the Int assumption, not a compiler defect. None of these picks up
-    // AddFloat (there is no float type information to recover), but none of
-    // them crashes the compiler either.
+    // Residue — the untyped-lambda-parameter identifier and the
+    // Unknown-receiver-field MemberAccessExpr (D-360) are the two sources still
+    // permissive after D-380 closed the third (a void-returning CallExpr, e.g.
+    // arr.each(...) — now E0002, see VoidReturningCallAsOperand_ArrayEach_ReportsE0002
+    // below) and D-374 closed the fourth (a map element with a known value type).
+    // A map element with no MapTypeDescriptor for the receiver (env.all(), an
+    // untracked native return) still reaches EmitArithmetic as Unknown. None of
+    // these picks up AddFloat (there is no float type information to recover),
+    // but none of them crashes the compiler either.
     // -----------------------------------------------------------------------
 
+    /// <summary>
+    /// D-380: a void-returning array method call (each) used as a '+' operand is now a
+    /// compile error (E0002) at type-check, before compilation ever reaches emission — the
+    /// counterpart to VoidCall_AsBareStatement_StillCompiles in TypeCheckerTests.cs, which
+    /// confirms the same call as a bare statement is unaffected.
+    /// </summary>
     [Fact]
-    public void VoidReturningCallAsOperand_ArrayEach_StillCompilesUnderIntAssumption() {
-        Chunk chunk = CompileSource("arr := [1, 2, 3]\nx := arr.each((v) => v) + 1\n");
-        List<OpCode> ops = ReadOpcodes(chunk);
+    public void VoidReturningCallAsOperand_ArrayEach_ReportsE0002() {
+        var bag = new DiagnosticBag();
+        var tokens = Lexer.Scan("arr := [1, 2, 3]\nx := arr.each((v) => v) + 1\n", bag);
+        var unit = Parser.Parse(tokens, bag);
+        new TypeChecker(bag).Check(unit);
 
-        Assert.Contains(OpCode.AddInt, ops);
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", error.Code);
     }
 
     [Fact]

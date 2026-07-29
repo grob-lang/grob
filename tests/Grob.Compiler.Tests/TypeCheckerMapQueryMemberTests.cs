@@ -106,6 +106,24 @@ public sealed class TypeCheckerMapQueryMemberTests {
         AssertSingleError(bag, "E1002", 2, 1);
     }
 
+    [Fact]
+    public void UnrecognisedMapMethodCall_ReportsE1002() {
+        // D-380, mirroring D-377's property-path tightening onto the method-call path:
+        // an unrecognised name reaches ValidateMapMethodCall's default arm (previously
+        // dead code, since IsMapMethod gated it out before the switch ever saw it).
+        DiagnosticBag bag = Check("m := map<string, int>{\"a\": 1}\nm.garbage()\n");
+        AssertSingleError(bag, "E1002", 2, 1);
+    }
+
+    [Fact]
+    public void UntypedLambdaParameterReceiverMapMethodCall_StaysPermissive() {
+        // The required survivor (D-380 scope boundary): an Unknown-typed receiver — a
+        // lambda parameter, always Unknown in v1 (no contextual inference, VisitLambda) —
+        // must keep compiling regardless of what member is called on it.
+        DiagnosticBag bag = Check("f := (x) => x.garbage()\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+    }
+
     // -----------------------------------------------------------------------
     // keys / values — the load-bearing descriptor-composition tests: the result must
     // carry a POPULATED ArrayTypeDescriptor, not a bare one.

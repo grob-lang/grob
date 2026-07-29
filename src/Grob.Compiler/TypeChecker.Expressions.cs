@@ -171,6 +171,14 @@ public sealed partial class TypeChecker {
             return GrobType.Float;
         }
 
+        // D-380: a void-returning call (arr.each(...), a mutating array/map member) is
+        // statically Unknown like any other unresolvable operand, but it is never a
+        // legitimate arithmetic operand — reject before the permissive Unknown pass-through
+        // below, joining the Struct/Function combinatorial reject with the same code and
+        // message shape. Extracted to a guard-clause helper to keep this method's cognitive
+        // complexity under the analyser bar.
+        if (RejectVoidArithmeticOperand(node, left, right) is GrobType voidRejection) return voidRejection;
+
         // One or both operands are of unknown type (e.g. a lambda parameter whose type
         // is inferred at the call site, or a deferred member type).  Be permissive and
         // propagate Unknown — the VM will validate types at runtime.  This mirrors the
@@ -180,6 +188,26 @@ public sealed partial class TypeChecker {
         // All other combinations are type errors — e.g. int + string.
         return EmitErrorAndReturn(ErrorCatalog.E0002,
             $"Operator '{OperatorSymbol(node.Operator)}' cannot be applied to types '{TypeName(left)}' and '{TypeName(right)}'.",
+            node.Range);
+    }
+
+    /// <summary>
+    /// Rejects a void-returning <see cref="CallExpr"/> arithmetic operand (D-380) —
+    /// <c>arr.each(...)</c>, or one of the array/map mutating members — with E0002, or
+    /// returns <see langword="null"/> when neither operand is void so
+    /// <see cref="ResolveArithmetic"/> falls through to its permissive Unknown pass-through
+    /// unchanged. <see cref="CallExpr.IsVoidReturn"/> is the only way to distinguish a
+    /// genuinely void call from the other permissive-Unknown operand sources, since
+    /// <see cref="GrobType"/> has no <c>Void</c> variant.
+    /// </summary>
+    private GrobType? RejectVoidArithmeticOperand(BinaryExpr node, GrobType left, GrobType right) {
+        bool leftVoid = node.Left is CallExpr { IsVoidReturn: true };
+        bool rightVoid = node.Right is CallExpr { IsVoidReturn: true };
+        if (!leftVoid && !rightVoid) return null;
+
+        return EmitErrorAndReturn(ErrorCatalog.E0002,
+            $"Operator '{OperatorSymbol(node.Operator)}' cannot be applied to types " +
+            $"'{(leftVoid ? "void" : TypeName(left))}' and '{(rightVoid ? "void" : TypeName(right))}'.",
             node.Range);
     }
 
@@ -403,12 +431,16 @@ public sealed partial class TypeChecker {
         for (int i = 0; i < node.Arguments.Count; i++)
             argTypes[i] = Visit(node.Arguments[i].Value);
 
-        if (receiverType == GrobType.Array && IsArrayMethod(memberAccess.Member)) {
+        // D-380: dispatches unconditionally on receiver type, not gated on a recognised
+        // name — ValidateArrayMethodCall's/ValidateMapMethodCall's own switch raises E1002
+        // for an unrecognised name, mirroring how every other arm below resolves its own
+        // unrecognised-member diagnostic rather than relying on a name allow-list upstream.
+        if (receiverType == GrobType.Array) {
             return ValidateArrayMethodCall(node, memberAccess, argTypes);
         }
 
         // Sprint 9 Increment C0b-2a (D-377): the map method-family members — get/contains.
-        if (receiverType == GrobType.Map && IsMapMethod(memberAccess.Member)) {
+        if (receiverType == GrobType.Map) {
             return ValidateMapMethodCall(node, memberAccess, argTypes);
         }
 
@@ -446,15 +478,6 @@ public sealed partial class TypeChecker {
         }
         return GrobType.Unknown;
     }
-
-    // Sprint 9 Increment C0a-1 (D-371): "first"/"last"/"contains" joined the four
-    // pre-existing higher-order members. Renamed from IsArrayHigherOrderMethod — the
-    // three new members take no function argument, so "higher-order" no longer
-    // describes the whole recognised set. Sprint 9 Increment C0a-2 (D-373): the four
-    // in-place-mutating members complete the T[] surface.
-    private static bool IsArrayMethod(string name) =>
-        name is "filter" or "select" or "sort" or "each" or "first" or "last" or "contains"
-            or "append" or "insert" or "remove" or "clear";
 
     /// <summary>
     /// Validates an array method call and returns the result type. <c>filter</c>/
@@ -499,6 +522,7 @@ public sealed partial class TypeChecker {
                 }
                 return GrobType.Array;
             case "each":
+                node.IsVoidReturn = true;
                 return GrobType.Unknown; // void
             case "first":
             case "last":
@@ -511,7 +535,8 @@ public sealed partial class TypeChecker {
             case "clear":
                 return ValidateArrayMutatingMethodCall(node, memberAccess, argTypes);
             default:
-                return GrobType.Unknown;
+                return EmitErrorAndReturn(ErrorCatalog.E1002,
+                    $"Type 'T[]' has no member '{memberAccess.Member}'.", memberAccess.Range);
         }
     }
 
@@ -678,6 +703,7 @@ public sealed partial class TypeChecker {
                 MemberArgCountMatches(node, memberAccess, argTypes.Length, 0);
                 break;
         }
+        node.IsVoidReturn = true;
         return GrobType.Unknown;
     }
 
@@ -686,8 +712,6 @@ public sealed partial class TypeChecker {
     // members — set(key, value)/remove(key)/clear() — complete the surface.
     // length/isEmpty/keys/values are properties, resolved separately via
     // ResolveMapPropertyAccess.
-    private static bool IsMapMethod(string name) =>
-        name is "get" or "contains" or "set" or "remove" or "clear";
 
     /// <summary>
     /// Validates a <c>get(key)</c>/<c>contains(key)</c> call (Sprint 9 Increment C0b-2a,
@@ -730,7 +754,8 @@ public sealed partial class TypeChecker {
             case "clear":
                 return ValidateMapMutatingMethodCall(node, memberAccess, argTypes);
             default:
-                return GrobType.Unknown;
+                return EmitErrorAndReturn(ErrorCatalog.E1002,
+                    $"Type 'map<string, V>' has no member '{memberAccess.Member}'.", memberAccess.Range);
         }
     }
 
@@ -769,6 +794,7 @@ public sealed partial class TypeChecker {
                 MemberArgCountMatches(node, memberAccess, argTypes.Length, 0);
                 break;
         }
+        node.IsVoidReturn = true;
         return GrobType.Unknown;
     }
 
