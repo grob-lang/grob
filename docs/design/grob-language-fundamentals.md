@@ -297,7 +297,7 @@ A formal iterable protocol is post-MVP. The compiler architecture accommodates
 it without rework — the three special cases become the first implementors of the
 protocol when it is defined.
 
-**Contents snapshot at loop entry (D-383).** `for...in` iterates exactly the
+**Contents snapshot at loop entry (D-383, landed by D-384).** `for...in` iterates exactly the
 contents present when the loop started, for both arrays and maps — mutating the
 collection during iteration is permitted but has no effect on what that loop
 visits:

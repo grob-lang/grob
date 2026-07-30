@@ -379,6 +379,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-381 | July 2026 | Compiler — type checking | `print`/`exit` are opcode-only sugar with no runtime representation outside the exact bare-statement shape `Compiler.Statements.cs` recognises structurally — unlike `input()`, a genuine global-backed native. Every other use (wrong arity even in statement position, a call whose result is consumed, or a bare reference with no call) previously type-checked permissively and crashed the VM at runtime with a misleading `Undefined global` fault. `VisitCall` gains a `CheckPrintExitCall` arm (arity via **E0003**, mirroring `CheckInputCall`; value-position use via **E1004**, mirroring `VisitIdentifier`'s namespace-as-value arm) using two one-shot context flags rather than threading a parameter through every `Visit` call — `_isStatementPositionCall` (also covering a lambda's expression-body and a lambda block's final implicit-return statement, via a shared `VisitStatementPositionExpression` helper, so `xs.each(x => print(x))` — the load-bearing existing idiom — is not newly rejected) and `_isCallCalleePosition` (so `VisitIdentifier`'s new bare-reference rejection fires only for a genuine bare reference, never the identifier being visited as its own call's callee). `input` is untouched — proven unaffected by a direct empirical check. No new opcode, no new error code; count unchanged at 119. Cites D-380 (found alongside, while triaging PR #167's review). |
 | D-382 | July 2026 | Runtime — error taxonomy | Correctness batch, ADR-0017-deadline finding: D-366's allocation-ceiling guard (`repeat`/`padLeft`/`padRight`) wrongly reused `E5101` ("array index out of range") for a size limit, and D-371's `GrobValueComparer` sort-key comparator wrongly reused the compile-time `E0004` for a runtime fault. Registers **E5905** (result exceeds maximum size) and **E5906** (sort key type does not implement Comparable), both `RuntimeError`-leaf E59xx codes, and repoints all five throw sites; `E5101`/`E0004` retained for their legitimate call sites. The sort-comparator throws also move from a bare `GrobRuntimeException` to `NativeFaultException`, routing the fault through the native-throw seam so it becomes catchable via `try`/`catch` from Grob source for the first time. Records a user-visible behaviour change: the allocation-ceiling fault's leaf moves `IndexError` → `RuntimeError`, breaking (and updating) an existing typed-catch fixture. Count 119 → 121. Cites D-366, D-371, D-284, ADR-0017, ADR-0014. |
 | D-383 | July 2026 | Language semantics / Compiler — iteration | Refines D-379, which ratified "snapshot the bound at loop entry" without distinguishing snapshotting the **count** from snapshotting the **contents** — a distinction that is immaterial for maps and decisive for arrays. A count-only array snapshot indexes a **live** array, so `for x in xs { xs.remove(0) }` reads past the shrunken end and raises `E5905`-era `E5101` mid-loop, a crash the current live bound handles gracefully. Investigating that exposed a second, larger problem: D-378's map behaviour materialises **keys only** and reads each value live, so a key removed mid-loop is still visited and `v` — bound as **non-nullable `V`** (D-374) — degrades to `nil`, violating the foundational guarantee that non-nullable types are never nil. Ratified: **`for...in` snapshots the contents at loop entry, for both collection types** — arrays copy the element sequence, maps copy key-**value** pairs rather than keys alone. One rule, statable without knowing which collection is held: *you iterate exactly what was present when the loop started*. No crash, no skipped element, and no `nil` in a non-nullable binding. The copy is **shallow** — under D-372's reference semantics the copied references are the same objects, so mutating an element's or value's own contents is visible inside the loop; only the sequence and the entry set are frozen. Rejected: count-only with a live read (replicates the unsoundness and either crashes or forces `nil` into a non-nullable binding); leaving arrays live (keeps the inconsistency D-379 exists to remove); keys-only for maps (the status-quo soundness hole). Costs one array copy per array loop and one extra value copy per map loop; the implementing increment must measure against D-313's benchmark gate and surface a breach rather than absorb it. Changes shipped behaviour on both paths. No new error code; count unchanged at 121 |
+| D-384 | July 2026 | Compiler / VM — iteration | Lands D-383 (PR #169). Arrays: `EmitArrayForIn` snapshots the element sequence via a new internal `"$snapshot"` `GetProperty` case (`VirtualMachine.cs`, `new GrobArray(array.Elements)`) — a `$`-prefixed name the lexer can never produce as a Grob identifier, so it is reachable only from the compiler's own emission, never user source; no new opcode, the same technique already used for maps' `keys`/`values`. Maps: `EmitMapForIn` adds a second, parallel `values` snapshot alongside the existing `keys` one, reusing the VM's pre-existing, already index-aligned `values` `GetProperty` case (D-377/D-378) — **zero VM changes** on the map side, the least-new-machinery option against an array-of-pairs or a copied `GrobMap`. Synthetic-local lifetime, nesting, break/continue and closure capture needed no change to the shared `EmitForInLoop` machine — proven, not just reasoned, by new nesting/break/continue/closure tests. Closes the soundness hole: `v` can no longer be `nil` in a non-nullable `V` binding (D-378/D-374), proven by a test spanning both `remove` and `clear` mid-loop; the pre-existing test recording the old `nil`-degrade as accepted behaviour is corrected in place. Shallow-copy semantics (D-372) proven by test. Full breaking-change list: the corrected map soundness test, two renamed/re-asserted compiler bytecode-shape tests (a CodeRabbit-caught vacuous-assertion bug in the new tests themselves — anchored on `OpCode.Loop`'s own offset rather than the decoded loop target — fixed in the same PR), a new 11-test integration file; no gold master, error example or validation script affected. Numeric-range `for...in` confirmed untouched. Benchmark obligation discharged by direct local before/after measurement (no prior baseline existed for these two new benchmarks): array `for...in` +3.8% time / +4.4% allocated, map `for...in` −6.5% time (noise) / +4.6% allocated — both well under D-313's 5%/12% thresholds, no breach. No new opcode, no new error code; count confirmed unchanged at 121 against the live registry. Cites D-383, D-379, D-378, D-374, D-373, D-372, D-313. |
 
 ---
 
@@ -8147,6 +8148,141 @@ which should state the contents-snapshot guarantee once the increment lands.
 
 ---
 
+### D-384 — `for...in` contents-snapshot lands: arrays and maps (July 2026)
+
+Area: Compiler / VM — iteration
+Supersedes: none
+Superseded by: none
+Refines: D-383, D-379, D-378, D-374, D-373, D-372
+
+Lands what D-383 ratified. PR #169.
+
+**Array mechanism.** `EmitArrayForIn` (`Compiler.ControlFlow.cs`) no longer keeps a synthetic
+local holding the live array reference. Immediately after visiting the iterable expression it
+emits a new internal `GetProperty` case, `"$snapshot"` (`VirtualMachine.cs`), and stores *that*
+result in the synthetic local instead — `new GrobArray(array.Elements)`, a genuine shallow copy
+via `GrobArray`'s existing copying constructor. The synthetic-local count is unchanged (2:
+snapshot array, counter) — the live-reference local is repurposed to hold the copy instead.
+`"$snapshot"` is deliberately unreachable from Grob source: the lexer's `IsIdentStart` forbids `$`
+from starting an identifier, so no `MemberAccessExpr` the parser produces can ever address it —
+it cannot leak into D-373's recorded array method-fallthrough gap as an accidental user-visible
+feature. No new opcode: `GetProperty` already exists, and adding a dispatch case to it is the same
+technique already used for maps' `keys`/`values`. Rejected: a public `arr.copy()`/`clone()` method,
+which would need type-checker arity/type-argument wiring for a purely internal compiler concern —
+more machinery than the one concern needed.
+
+**Map mechanism — reuses, adds no VM code.** `EmitMapForIn` already materialised `keys` once into
+a synthetic local (D-378); this lands a second, parallel materialisation of `values` (`$values`),
+taken back-to-back with `$keys` before the loop starts so no mutation can occur between the two
+snapshots and the two arrays stay index-aligned. This reuses the VM's **pre-existing** `"values"`
+`GetProperty` case for maps (built for D-377's query-member surface, already index-aligned with
+`"keys"` per D-378) — so the map side needed **zero VM changes**, only the compiler emission. Each
+iteration's value read moves from a live `map[k]` (`GetIndex` against the live `GrobMap`) to
+`values[i]` (`GetIndex` against the snapshot). `$map` itself stays a synthetic local for the whole
+loop even though nothing reads it again after the two materialisation calls — kept for
+slot-contiguity simplicity rather than adding an inner scope to release it early. Synthetic count
+goes from 3 (`$map`, `$keys`, counter) to 4 (`$map`, `$keys`, `$values`, counter). Considered and
+rejected: an array-of-pairs snapshot (needs a new VM/native tuple-building mechanism, no existing
+precedent) and a copied `GrobMap` (needs a new clone mechanism for `GrobMap`'s backing
+`OrderedDictionary`, heavier than two flat arrays). The parallel-arrays option reused what already
+existed and added no new machinery — the "least new machinery" criterion the D-383 plan-mode gate
+asked to weigh.
+
+**Synthetic-local lifetime, nesting, closures, break/continue — no change needed to the shared
+machine.** `EmitForInLoop`'s while-machine already treats synthetic locals as ordinary `LocalVar`
+entries in `_localScopes`/`_nextSlot`, generically handling any `syntheticCount` and cleaning up
+with one `EmitScopeCleanup` call at loop exit; `break`/`continue` already route through
+`LocalsAboveBaseSlot(ctx.BaseSlot)`/`EmitScopeCleanup`, whose per-local `Captured` check already
+emits `CloseUpvalue` rather than a blind pop for any captured slot, synthetic or iteration
+variable alike. None of this needed to change — it was proven, not just reasoned about, by new
+tests: same-array and array-inside-map nesting (no synthetic-local collision), break/continue over
+both new lowerings (clean exit, no stack residue) and a new map closure-capture test
+(`MapForInBodyCapture_PerIterationValueClosesOnBodyExit`) against the form's now-four-synthetic-
+local shape. The pre-existing Sprint 5 Increment D array closure/break-capture tests
+(`ForInBodyCapture_PerIterationItemClosesOnBodyExit`, `BreakWithCapture_ClosesCapturedLocalOnEarlyExit`)
+continued to pass unmodified against the new array lowering.
+
+**The soundness hole is closed.** `v` can no longer be `nil` in `for k, v in m`'s non-nullable `V`
+binding (D-378's recorded degradation, D-374's binding). `MapSoundness_RemovingAndClearingDuringIteration_ValueNeverDegradesToNil`
+proves it across both `m.remove(k)` and `m.clear()` in the same iteration body — every iteration's
+`v` is read from the entry-time values snapshot, unaffected by any live mutation. The pre-existing
+Sprint 9 Increment C0b-2b test that had recorded the old `nil`-degrade as accepted, permissive
+behaviour was itself updated to assert the corrected behaviour end to end.
+
+**Shallow-copy semantics, proven by test.** `ShallowCopy_MutatingElementContentsVisible_AppendingOuterArrayNotVisited`:
+`rows := [[1], [2]]; for r in rows { r.append(9); rows.append([3]) }` — `r.append(9)` mutates the
+*same* underlying `GrobArray` reference `rows` holds (visible: both `rows[0][1]` and `rows[1][1]`
+read `9` afterwards), while `rows.append([3])` inside the body is never visited by the loop itself
+(it still runs exactly the entry-time count, 2 iterations) even though it grows the live `rows` to
+4 elements by the time the loop finishes.
+
+**Full breaking-change list.**
+
+- `tests/Grob.Integration.Tests/Sprint9IncrementC0b2bTests.cs`:
+  `ForIn_RemovingCurrentMapDuringIteration_KeepsFixedIterationCount_ValueReadsNilForRemovedKey`
+  renamed to `..._ValueReadsEntryTimeValue`; expected stdout changed from `"1\nnil\n2\n"` to
+  `"1\n2\n2\n"`; the doc comment recording the `nil`-degrade as accepted behaviour rewritten to
+  describe the corrected guarantee.
+- `tests/Grob.Compiler.Tests/CompilerForInTests.cs`: `Map_MaterialisesKeysOnceBeforeTheLoop`
+  renamed `Map_MaterialisesKeysAndValuesOnceBeforeTheLoop`, its exact `GetProperty` count
+  assertion changed 2 → 3 (keys, values, length); `Map_ReadsKeyThenValueByIndex` renamed
+  `Map_ReadsKeyThenValueByIndex_BothFromTheSnapshotArrays`, same `GetIndex` count (2) but now
+  asserted against the snapshot-array operand source rather than the live map; new test
+  `ArraySingle_MaterialisesSnapshotOnceBeforeTheLoop` added for the array form's new shape.
+  During PR review CodeRabbit correctly found both new/changed materialisation-offset assertions
+  anchored against `OpCode.Loop`'s own offset — vacuously true, since `Loop` is emitted after the
+  entire condition and body, so any in-loop instruction satisfies "before the loop". Fixed in the
+  same PR before merge with a `LoopTop` helper decoding the actual backward-jump target, plus
+  explicit `PropertyName` assertions on the `GetProperty` constant operands.
+- New file `tests/Grob.Integration.Tests/ForInContentsSnapshotTests.cs` (11 tests): array
+  append/removal during iteration, the map soundness case, a mid-loop map value update, the
+  shallow-copy case above, same-array and array-inside-map nesting, break/continue over both new
+  lowerings, the map closure-capture case and an explicit numeric-range-unaffected regression.
+- No gold-master/error-example fixture pair and no validation/smoke-gate `.grob` script mutates a
+  collection inside its own `for...in` body — confirmed by a full-repo search; nothing else
+  required updating. The pre-existing array bytecode-shape tests (`ArraySingle_UsesLessIntAndArrayOps`,
+  `ArrayIndex_UsesLessIntAndArrayOps`) assert opcode presence rather than exact counts and needed
+  no change; confirmed still green against the new `$snapshot` emission.
+
+**Numeric range confirmed untouched.** `EmitRangeForIn` received no code change. A new explicit
+regression test (`NumericRangeForIn_UnaffectedByTheSnapshotChange`) and the pre-existing Sprint 4
+Increment C range tests all continued to pass unmodified.
+
+**Benchmark delta, measured against D-313's gate — the hard obligation D-383 set.** Two new VM
+benchmarks (`Run_ArrayForIn`, `Run_MapForIn`, `bench/Grob.Benchmarks/Vm/VmBenchmarks.cs`) plus
+fixtures (a 1,000-element array, a 1,000-entry map) land with this increment. Neither benchmark
+existed before this change, so there was no prior committed baseline for a CI run to compare
+against; the delta was instead measured directly and locally — the same fixtures run once against
+the pre-fix compiler/VM code (isolated via `git stash` of only the two production files) and once
+against the fix, back to back on the same machine (`dotnet run --configuration Release --project
+bench/Grob.Benchmarks -- --filter '*ForIn*'`):
+
+- Array `for...in` (1,000 elements): Mean 534.2 µs → 554.5 µs (**+3.8%**); Allocated 546.31 KB →
+  570.61 KB (**+4.4%**).
+- Map `for...in` (1,000 entries): Mean 859.6 µs → 803.5 µs (**−6.5%**, faster — within measurement
+  noise, not a real improvement); Allocated 1015.74 KB → 1062.89 KB (**+4.6%**).
+
+Both comfortably under D-313's 5%-per-sprint / 12%-cumulative thresholds and D-333's 10%
+allocation axis — no breach to surface. This was a **local, ad hoc measurement**, not a run
+through the canonical `benchmark.yml` CI workflow, and no committed baseline JSON was hand-edited
+(D-313's ratchet-trap rule) — the two new benchmarks' first *committed* baseline is established by
+the next `benchmark.yml` run, as for any newly introduced benchmark. Recorded precisely because it
+matters to the obligation: at the time of this change the `vm` benchmark category is
+`"gating": false` in `bench/Grob.Benchmarks/baseline/policy.json`, so this obligation was
+discharged by direct measurement and this log entry, not by an automatic CI gate.
+
+No new opcode. No new error code; count confirmed unchanged at **121** against the live registry
+at landing time.
+
+Full detail: D-383 (the decision this lands), D-379 (the bound-only snapshot it refines), D-378
+(the map's keys-only materialisation and the recorded `nil`-degradation this closes), D-374 (`v`'s
+non-nullable binding, the guarantee at stake), D-373 (the array live-bound finding), D-372
+(reference semantics, hence the shallow copy), D-313 (the benchmark gate measured against), and
+`grob-language-fundamentals.md`'s `for...in` section (updated alongside D-383 to state the
+contents-snapshot guarantee and the shallow-copy consequence).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -8369,7 +8505,16 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — `for...in` snapshot semantics corrected: D-383 added, refining D-379. D-379's_
+_July 2026 — `for...in` contents-snapshot lands: D-384 added, landing D-383 (PR #169). Arrays_
+_snapshot via a new internal `$snapshot` `GetProperty` case, unreachable from Grob source; maps_
+_add a parallel `values` snapshot reusing the pre-existing `values` property, no VM change needed._
+_Closes the soundness hole — `v` can no longer be nil in a non-nullable `V` binding — and proves_
+_the shallow-copy semantics by test. Synthetic-local lifetime, nesting, break/continue and closure_
+_capture needed no change to the shared loop machine, proven by new tests. Benchmark obligation_
+_discharged by direct local measurement (no prior baseline existed): array +3.8% time / +4.4%_
+_allocated, map −6.5% time (noise) / +4.6% allocated, both well under D-313's 5%/12% gate. No new_
+_opcode, no new error code. Count unchanged at 121._
+_Previous: July 2026 — `for...in` snapshot semantics corrected: D-383 added, refining D-379. D-379's_
 _"snapshot the bound" conflated the count with the contents — immaterial for maps, decisive for_
 _arrays, where a count-only snapshot indexes a live array and `for x in xs { xs.remove(0) }`_
 _would fault mid-loop on a case the current live bound handles gracefully. Investigating that_
