@@ -277,10 +277,12 @@ is a compile error.
 
 1. **Numeric range** (`for i in 0..10`) — lowered to `while`. See numeric range
    section below.
-2. **`T[]` array** — lowered to an index-based `while` loop. Both
-   single-identifier and two-identifier forms supported.
-3. **`map<K, V>`** — iterates keys in insertion order. The **two-identifier form
-   is required** (`for k, v in myMap`). The single-identifier form on a map is a
+2. **`T[]` array** — lowered to an index-based `while` loop over a snapshot of
+   the array's elements taken at loop entry (see below). Both single-identifier
+   and two-identifier forms supported.
+3. **`map<K, V>`** — iterates key-value pairs in insertion order, over a
+   snapshot taken at loop entry (see below). The **two-identifier form is
+   required** (`for k, v in myMap`). The single-identifier form on a map is a
    compile error:
 
     ```
@@ -289,11 +291,42 @@ is a compile error.
     or `for k in myMap.keys` to iterate keys only.
     ```
 
-    Lowered to a `while` loop over an internal keys array.
+    Lowered to a `while` loop over internal keys and values snapshot arrays.
 
 A formal iterable protocol is post-MVP. The compiler architecture accommodates
 it without rework — the three special cases become the first implementors of the
 protocol when it is defined.
+
+**Contents snapshot at loop entry (D-383).** `for...in` iterates exactly the
+contents present when the loop started, for both arrays and maps — mutating the
+collection during iteration is permitted but has no effect on what that loop
+visits:
+
+```grob
+xs := [1, 2, 3]
+for x in xs {
+    xs.append(99)   // does not extend this loop — it still visits 1, 2, 3
+    xs.remove(0)     // does not shrink this loop either, and never faults
+}
+```
+
+Arrays copy the element sequence into a synthetic local before the loop; maps
+copy key-value pairs (not keys alone) the same way. This closes two defects:
+a live array bound let an appending body iterate unboundedly and a removing
+body end early, and a live map value read let a key removed mid-loop degrade
+its `v` to `nil` — a contradiction of `v`'s non-nullable binding.
+
+The copy is **shallow** (§24, reference semantics): the copied entries hold the
+*same* underlying array/map/struct references, so mutating an element's own
+contents is visible inside the loop, even though the sequence itself is frozen:
+
+```grob
+rows := [[1], [2]]
+for r in rows {
+    r.append(9)         // visible — same underlying array
+    rows.append([3])    // not visited — the outer sequence is frozen
+}
+```
 
 ### Numeric range iteration
 

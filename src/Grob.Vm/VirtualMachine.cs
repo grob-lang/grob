@@ -879,6 +879,15 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                     _stack.Push(GrobValue.FromBool(array!.Count == 0), line);
                                     break;
                                 }
+                                // D-383: for...in's array lowering snapshots the element
+                                // sequence at loop entry. `$` cannot start a Grob identifier
+                                // (Lexer.IsIdentStart), so this property is reachable only from
+                                // the compiler's own direct EmitGetProperty emission, never from
+                                // user source.
+                                if (propertyName == "$snapshot") {
+                                    _stack.Push(GrobValue.FromArray(new GrobArray(array!.Elements)), line);
+                                    break;
+                                }
                                 // Sprint 5C: array higher-order method binding.
                                 // Capture the token at property-access time so the bound native
                                 // carries the live token through to InvokeCallable.
