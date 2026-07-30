@@ -8072,7 +8072,7 @@ for x in xs {
 
 With the length captured as 3 and the array shrinking beneath it, the third iteration reads
 `xs[2]` on a one-element array and faults mid-loop. The **current** live bound handles this
-gracefully — the loop simply ends early. So D-379 as written would have made removal-during-
+gracefully — the loop ends early. So D-379 as written would have made removal-during-
 iteration crash where it does not today: a regression introduced by a decision intended to
 improve predictability.
 
@@ -8095,7 +8095,7 @@ So the map path had a soundness hole, and D-379 would have propagated it to arra
 
 The resulting rule is statable without knowing which collection is held: **you iterate exactly
 what was present when the loop started.** No crash, no silently skipped element, and no `nil`
-entering a non-nullable binding. Mutation during iteration remains permitted; it simply has no
+entering a non-nullable binding. Mutation during iteration remains permitted; it has no
 effect on what this loop visits.
 
 **The copy is shallow, deliberately.** Under D-372's reference semantics the copied entries hold
