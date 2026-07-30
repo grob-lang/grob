@@ -13,9 +13,10 @@ namespace Grob.Integration.Tests;
 /// through the full pipeline (lex -> parse -> type-check -> compile -> VM, stdlib plugins
 /// auto-registered at startup). Also proves D-372's aliasing ratification end to end, the
 /// compile-time <c>readonly</c> rejection (E0204) at a method-call site, and the
-/// <c>for k, v in m</c> mutation-during-iteration behaviour (reported, not fixed — see
-/// D-378: the loop's iteration count is fixed by a one-time <c>keys</c> snapshot, unlike
-/// the array's shifting bound, but a removed/cleared key still yields a nil value read).
+/// <c>for k, v in m</c> mutation-during-iteration behaviour — D-383 (refining D-378):
+/// both the loop's iteration count and its key-value pairs are fixed by a one-time
+/// snapshot of the map's contents, so a key removed mid-loop is still visited with
+/// its entry-time value, never a degraded <c>nil</c>.
 /// </summary>
 public sealed class Sprint9IncrementC0b2bTests {
     private static (string Stdout, string Stderr, int ExitCode) RunSource(string source) {
@@ -189,15 +190,15 @@ public sealed class Sprint9IncrementC0b2bTests {
     }
 
     // -----------------------------------------------------------------------
-    // for k, v in m during mutation — reported behaviour, not a bug fix. Unlike the
-    // array's for...in (which re-reads its bound every iteration, D-373), the map's
-    // for...in materialises `keys` ONCE, so the iteration count here stays fixed at 2
-    // even though `remove` shrinks the map mid-loop — but the removed key's value read
-    // degrades to nil rather than the loop skipping it or throwing.
+    // for k, v in m during mutation — D-383 (refining D-378): both keys and values
+    // are snapshotted at loop entry, so a key removed mid-loop is still visited with
+    // its entry-time value. This closes the soundness hole the pre-D-383 behaviour
+    // recorded: `v` is bound non-nullable (D-374), so a live read degrading to nil
+    // was a contradiction of that guarantee.
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void ForIn_RemovingCurrentMapDuringIteration_KeepsFixedIterationCount_ValueReadsNilForRemovedKey() {
+    public void ForIn_RemovingCurrentMapDuringIteration_KeepsFixedIterationCount_ValueReadsEntryTimeValue() {
         (string stdout, string stderr, int exitCode) = RunSource("""
             m := map<string, int>{"a": 1, "b": 2}
             count := 0
@@ -211,9 +212,9 @@ public sealed class Sprint9IncrementC0b2bTests {
 
         Assert.Equal(0, exitCode);
         Assert.Equal("", stderr);
-        // Both iterations run (count reaches 2, the keys snapshot's original size), but
-        // the second iteration's `v` (for key "b", removed on the first iteration) reads
-        // nil rather than 2.
-        Assert.Equal("1" + NL + "nil" + NL + "2" + NL, stdout);
+        // Both iterations run (count reaches 2, the entry-time snapshot's size), and
+        // the second iteration's `v` (for key "b") reads its entry-time value 2, never
+        // nil, even though "b" was removed from the live map on the first iteration.
+        Assert.Equal("1" + NL + "2" + NL + "2" + NL, stdout);
     }
 }

@@ -1,0 +1,12 @@
+// D-383 benchmark fixture: map for...in over a 1,000-entry map.
+// Exercises the extra values-array snapshot this correctness fix adds
+// alongside the pre-existing keys snapshot.
+m := map<string, int>{}
+for i in 1..1000 {
+    m.set("k${i}", i)
+}
+total := 0
+for k, v in m {
+    total = total + v
+}
+print(total)

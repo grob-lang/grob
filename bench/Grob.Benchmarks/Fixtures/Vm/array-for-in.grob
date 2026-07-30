@@ -1,0 +1,12 @@
+// D-383 benchmark fixture: array for...in over a 1,000-element array.
+// Exercises the contents-snapshot copy this correctness fix adds to the
+// previously copy-free array for...in path.
+xs: int[] := []
+for i in 1..1000 {
+    xs.append(i)
+}
+total := 0
+for x in xs {
+    total = total + x
+}
+print(total)

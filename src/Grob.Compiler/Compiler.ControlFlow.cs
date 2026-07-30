@@ -205,14 +205,20 @@ public sealed partial class Compiler {
 
     /// <summary>
     /// Array lowering for both the single form (<c>for item in arr</c>) and the
-    /// index form (<c>for i, item in arr</c>). A synthetic array local and counter
-    /// drive <c>i &lt; arr.length</c>; <c>item</c> is re-bound from <c>arr[i]</c>
-    /// each iteration. In the index form the counter is the visible <c>i</c>.
+    /// index form (<c>for i, item in arr</c>). D-383: the element sequence is
+    /// snapshotted into a synthetic local at loop entry (the internal
+    /// <c>$snapshot</c> property, a shallow <see cref="GrobArray"/> copy) and the
+    /// loop iterates the copy, not the live array — a live re-read of
+    /// <c>arr.length</c> let an appending body iterate unboundedly and a removing
+    /// body end early. A synthetic counter drives <c>i &lt; snapshot.length</c>;
+    /// <c>item</c> is re-bound from <c>snapshot[i]</c> each iteration. In the index
+    /// form the counter is the visible <c>i</c>.
     /// </summary>
     private void EmitArrayForIn(ForInStmt node, int line) {
         bool indexForm = node.Variables.Count == 2;
         Visit(node.Iterable);
-        int array = DeclareLocalSlot("$arr");
+        EmitGetProperty("$snapshot", line);
+        int snapshot = DeclareLocalSlot("$snapshotArr");
 
         EmitConstant(GrobValue.FromInt(0L), line);
         int counter = DeclareLocalSlot(indexForm ? node.Variables[0] : "$i");
@@ -221,12 +227,12 @@ public sealed partial class Compiler {
         EmitForInLoop(node, syntheticCount: 2, line,
             emitCondition: () => {
                 EmitGetLocal(counter, line);
-                EmitGetLocal(array, line);
+                EmitGetLocal(snapshot, line);
                 EmitGetProperty("length", line);
                 _chunk.WriteOpCode(OpCode.LessInt, line);
             },
             emitIteratorBindings: () => {
-                EmitGetLocal(array, line);
+                EmitGetLocal(snapshot, line);
                 EmitGetLocal(counter, line);
                 _chunk.WriteOpCode(OpCode.GetIndex, line);
                 DeclareLocalSlot(itemName);
@@ -235,10 +241,15 @@ public sealed partial class Compiler {
     }
 
     /// <summary>
-    /// Map lowering (<c>for k, v in m</c>). The map and its insertion-order keys
-    /// array are materialised once into for-scope locals before the loop; the
-    /// counter walks the keys array. Each iteration binds <c>k = keys[i]</c> then
-    /// <c>v = m[k]</c>.
+    /// Map lowering (<c>for k, v in m</c>). D-383: both the insertion-order keys
+    /// array and the insertion-order values array are materialised once into
+    /// for-scope locals before the loop — the parallel, index-aligned snapshot the
+    /// map's own <c>keys</c>/<c>values</c> properties already produce — and the
+    /// counter walks them. Each iteration binds <c>k = keys[i]</c> then
+    /// <c>v = values[i]</c>, both from the entry-time snapshot rather than a live
+    /// map read: a live <c>v = m[k]</c> let a key removed mid-loop degrade its
+    /// value to <c>nil</c>, unsound against <c>v</c>'s non-nullable binding
+    /// (D-374).
     /// </summary>
     private void EmitMapForIn(ForInStmt node, int line) {
         Visit(node.Iterable);
@@ -248,13 +259,17 @@ public sealed partial class Compiler {
         EmitGetProperty("keys", line); // materialise the keys array exactly once
         int keys = DeclareLocalSlot("$keys");
 
+        EmitGetLocal(map, line);
+        EmitGetProperty("values", line); // materialise the values array exactly once
+        int values = DeclareLocalSlot("$values");
+
         EmitConstant(GrobValue.FromInt(0L), line);
         int counter = DeclareLocalSlot("$i");
 
         string keyName = node.Variables[0];
         string valueName = node.Variables[1];
 
-        EmitForInLoop(node, syntheticCount: 3, line,
+        EmitForInLoop(node, syntheticCount: 4, line,
             emitCondition: () => {
                 EmitGetLocal(counter, line);
                 EmitGetLocal(keys, line);
@@ -265,10 +280,10 @@ public sealed partial class Compiler {
                 EmitGetLocal(keys, line);
                 EmitGetLocal(counter, line);
                 _chunk.WriteOpCode(OpCode.GetIndex, line);
-                int keySlot = DeclareLocalSlot(keyName);
+                DeclareLocalSlot(keyName);
 
-                EmitGetLocal(map, line);
-                EmitGetLocal(keySlot, line);
+                EmitGetLocal(values, line);
+                EmitGetLocal(counter, line);
                 _chunk.WriteOpCode(OpCode.GetIndex, line);
                 DeclareLocalSlot(valueName);
             },

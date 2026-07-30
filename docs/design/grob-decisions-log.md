@@ -378,6 +378,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-380 | July 2026 | Compiler — type checking / bytecode emission | Closes two permissive-`Unknown` findings from the correctness batch (D-362 void-in-arithmetic, D-373 unrecognised method call on a known receiver), mirroring D-377's property-path tightening onto the method-call path. Empirical sweep first: several of D-373's named gaps were already closed incidentally by later increments — `string`/`int`/`float`/`bool` method calls already raise E1002 via `PrimitiveMemberRegistry` (D-369 registered `int`/`float`/`bool` after D-373 was logged; D-363 registered `string`), and registered named-type method calls already raise E1002 (D-356) — so the only receivers still open were **array and map**. Both `ValidateArrayMethodCall`/`ValidateMapMethodCall` already had a `switch` with a `default: return GrobType.Unknown;` arm, dead code because the outer dispatch gate (`receiverType == GrobType.Array && IsArrayMethod(...)`, similarly for Map) filtered an unrecognised name out before the switch ever saw it. The fix drops the `IsArrayMethod`/`IsMapMethod` name-gate (both now-unused helpers deleted) so every `Array`/`Map`-receiver call reaches the switch regardless of name, and turns the two `default` arms into **E1002**, reusing `ResolveArrayPropertyAccess`'s/`ResolveMapPropertyAccess`'s exact message shape (`Type 'T[]' has no member '{name}'.` / `Type 'map<string, V>' has no member '{name}'.`) — reuse of D-377's mechanism, not a parallel one. `Unknown`-typed receivers (untyped lambda parameters — always `Unknown` in v1, `VisitLambda` registers every parameter that way unconditionally) and `?.` chains on a nullable receiver stay permissive for free: neither ever matches the exact `receiverType == GrobType.Array`/`GrobType.Map` check (a nullable array/map is a distinct `GrobType` variant), so no dedicated nullable guard was needed on this path. Void-in-arithmetic: `GrobType` has no `Void` variant (void is `Unknown` by convention), so a new `CallExpr.IsVoidReturn` bool (mirroring the `ResolvedReturnType`/`ResolvedPrimitiveNativeName` settable-annotation convention D-362 established on the same node) distinguishes a genuinely void call from the other permissive-`Unknown` sources — set at the three sites that resolve void (`ValidateArrayMethodCall`'s `each` case, and the tails of `ValidateArrayMutatingMethodCall`/`ValidateMapMutatingMethodCall`, covering `each`/`append`/`insert`/`remove`/`clear`/`set`). `ResolveArithmetic` gains a guard-clause helper, `RejectVoidArithmeticOperand` (extracted to keep cognitive complexity under the S3776 bar), checked ahead of the existing `Unknown` pass-through: either operand being a void `CallExpr` now raises **E0002** with the same message template the Struct/Function combinatorial reject already uses, substituting the literal string `"void"` for the void side (there is no real type name to print) — e.g. `arr.each(fn) + 1` now reports `Operator '+' cannot be applied to types 'void' and 'int'.` Both operand checks look **through** enclosing `GroupingExpr` layers (recursively, so nesting depth is irrelevant): `GroupingExpr` is a real parser node, so the first cut matched only a bare `CallExpr` and `(arr.each(f)) + 1` walked past the reject into the permissive `Unknown` pass-through and still crashed the VM with the exact `GrobValue kind mismatch` internal error this entry exists to eliminate — found in CodeRabbit's review of PR #167, fixed there, and covered by grouped/nested/map-mutating regression tests plus an over-reject control (`(arr.length) + 1` still compiles). The unwrap mirrors the one `ExpressionDescriptor`/`ArrayDescriptorOf`/`CheckCondition` already perform. A void call as a bare statement is unaffected (proven by a dedicated regression test) — this only rejects the arithmetic-operand position. `EmitArithmetic`'s belt-and-braces defensive guard (`ThrowIfStructOrLambdaOperand` → renamed `ThrowIfStructLambdaOrVoidOperand`) is extended with the same `IsVoidReturn` check, mirroring the existing Struct/Lambda precedent. **D-362's permissive-`Unknown` catalogue, corrected, not just reduced.** The kickoff prompt assumed the live count was "two now, one after" (void plus the Unknown-receiver field). The actual code comment named **three** active sources — the untyped lambda-parameter identifier, the Unknown-receiver-field `MemberAccessExpr` (D-360), and the void-returning `CallExpr` (D-362) — plus a fourth, already-closed source (a map element with a known value type, closed by **D-374**, mis-cited in the comment as "D-359"; D-359 is actually "index-target compound assignment and increment/decrement", unrelated). Closing the void source here reduces the count to **two** (lambda-parameter identifier, Unknown-receiver-field), not one; the comment is rewritten to name exactly those two and the D-359→D-374 citation is corrected in the same edit. Empirical before/after, confirmed via the CLI: `arr.each(fn) + 1`/`arr.garbage()`/`m.garbage()` previously type-checked cleanly and crashed the VM at runtime with an internal "opcode not yet implemented"/"kind mismatch" error — now rejected at compile time with E0002/E1002 as designed. New findings surfaced, not fixed here (each is its own, smaller gap than the ones this increment closes): the method-call path has no generic nullable guard mirroring `VisitMemberAccess`'s (a non-optional `.` on a nullable array/primitive/ordinary-struct receiver doesn't get the `E0101` nil-dereference diagnostic the property path gives it); an ordinary user `type` struct's method call is permissive regardless of name (v1 gives structs no method surface at all, unlike the property path's `ResolveStructFieldAccess`, which already raises E1002 for an unrecognised field); `AnonStruct`/`NullableAnonStruct` method calls, same; no `Error`-receiver cascade-suppression arm on the call path (unlike `VisitMemberAccess:1294`); and, found during the CLI spot-check, `?.` short-circuiting is wired at the VM level for property access but **not** for method calls — `xs?.first()` on a nil `int[]?` crashes with "Call target is not a function (kind: Nil)" even though `first` is a recognised method, proving the gap is a runtime dispatch omission unrelated to this increment's type-checker-only change. Tests: one existing test updated for the breaking change (`CompilerCallOperandTypingTests.VoidReturningCallAsOperand_ArrayEach_StillCompilesUnderIntAssumption` → `..._ReportsE0002`, now asserting the E0002 diagnostic instead of a clean compile) — the only breaking-change hit found in a full corpus sweep (no gold master, validation script, or `Grob.Integration.Tests` case combines a void call with arithmetic or exercises `arr.garbage()`/`m.garbage()`). New tests: the array/map unrecognised-method-call E1002 cases and their required-permissive survivors (untyped lambda parameter, `?.` on nullable), six void-in-arithmetic E0002 cases (`+`/`-`/`*`/`/`/`%`, both operand positions, plus the mutating-member sources), a bare-void-statement-still-compiles regression, and `float`/`bool` unrecognised-method-call E1002 cases that were missing alongside the pre-existing `string`/`int` ones. No new opcode. No new error code — `E0002` and `E1002` both existed; count stays **119**. Cites D-362, D-373, D-377, D-374, D-369, D-363, D-356. |
 | D-381 | July 2026 | Compiler — type checking | `print`/`exit` are opcode-only sugar with no runtime representation outside the exact bare-statement shape `Compiler.Statements.cs` recognises structurally — unlike `input()`, a genuine global-backed native. Every other use (wrong arity even in statement position, a call whose result is consumed, or a bare reference with no call) previously type-checked permissively and crashed the VM at runtime with a misleading `Undefined global` fault. `VisitCall` gains a `CheckPrintExitCall` arm (arity via **E0003**, mirroring `CheckInputCall`; value-position use via **E1004**, mirroring `VisitIdentifier`'s namespace-as-value arm) using two one-shot context flags rather than threading a parameter through every `Visit` call — `_isStatementPositionCall` (also covering a lambda's expression-body and a lambda block's final implicit-return statement, via a shared `VisitStatementPositionExpression` helper, so `xs.each(x => print(x))` — the load-bearing existing idiom — is not newly rejected) and `_isCallCalleePosition` (so `VisitIdentifier`'s new bare-reference rejection fires only for a genuine bare reference, never the identifier being visited as its own call's callee). `input` is untouched — proven unaffected by a direct empirical check. No new opcode, no new error code; count unchanged at 119. Cites D-380 (found alongside, while triaging PR #167's review). |
 | D-382 | July 2026 | Runtime — error taxonomy | Correctness batch, ADR-0017-deadline finding: D-366's allocation-ceiling guard (`repeat`/`padLeft`/`padRight`) wrongly reused `E5101` ("array index out of range") for a size limit, and D-371's `GrobValueComparer` sort-key comparator wrongly reused the compile-time `E0004` for a runtime fault. Registers **E5905** (result exceeds maximum size) and **E5906** (sort key type does not implement Comparable), both `RuntimeError`-leaf E59xx codes, and repoints all five throw sites; `E5101`/`E0004` retained for their legitimate call sites. The sort-comparator throws also move from a bare `GrobRuntimeException` to `NativeFaultException`, routing the fault through the native-throw seam so it becomes catchable via `try`/`catch` from Grob source for the first time. Records a user-visible behaviour change: the allocation-ceiling fault's leaf moves `IndexError` → `RuntimeError`, breaking (and updating) an existing typed-catch fixture. Count 119 → 121. Cites D-366, D-371, D-284, ADR-0017, ADR-0014. |
+| D-383 | July 2026 | Language semantics / Compiler — iteration | Refines D-379, which ratified "snapshot the bound at loop entry" without distinguishing snapshotting the **count** from snapshotting the **contents** — a distinction that is immaterial for maps and decisive for arrays. A count-only array snapshot indexes a **live** array, so `for x in xs { xs.remove(0) }` reads past the shrunken end and raises `E5905`-era `E5101` mid-loop, a crash the current live bound handles gracefully. Investigating that exposed a second, larger problem: D-378's map behaviour materialises **keys only** and reads each value live, so a key removed mid-loop is still visited and `v` — bound as **non-nullable `V`** (D-374) — degrades to `nil`, violating the foundational guarantee that non-nullable types are never nil. Ratified: **`for...in` snapshots the contents at loop entry, for both collection types** — arrays copy the element sequence, maps copy key-**value** pairs rather than keys alone. One rule, statable without knowing which collection is held: *you iterate exactly what was present when the loop started*. No crash, no skipped element, and no `nil` in a non-nullable binding. The copy is **shallow** — under D-372's reference semantics the copied references are the same objects, so mutating an element's or value's own contents is visible inside the loop; only the sequence and the entry set are frozen. Rejected: count-only with a live read (replicates the unsoundness and either crashes or forces `nil` into a non-nullable binding); leaving arrays live (keeps the inconsistency D-379 exists to remove); keys-only for maps (the status-quo soundness hole). Costs one array copy per array loop and one extra value copy per map loop; the implementing increment must measure against D-313's benchmark gate and surface a breach rather than absorb it. Changes shipped behaviour on both paths. No new error code; count unchanged at 121 |
 
 ---
 
@@ -8044,6 +8045,109 @@ numbering scheme).
 
 ---
 
+### D-383 — `for...in` snapshots contents, not just the count, for both collection types (July 2026)
+
+Area: Language semantics / Compiler — iteration
+Supersedes: none
+Superseded by: none
+Refines: D-379, D-378
+
+**Why D-379 needed refining.** D-379 ratified "snapshot the bound at loop entry" and aligned
+arrays to maps. The phrasing hid a distinction that turns out to be decisive: **snapshotting the
+count is not the same as snapshotting the contents**, and the two collection types were doing
+different things.
+
+- `EmitMapForIn` materialises a **copy of the keys** into a synthetic local, then reads each
+  value live from the live map (D-378).
+- A count-only array snapshot would capture the length but index into the **live** array.
+
+For maps the difference looked immaterial. For arrays it is not:
+
+```grob
+xs := [1, 2, 3]
+for x in xs {
+    xs.remove(0)
+}
+```
+
+With the length captured as 3 and the array shrinking beneath it, the third iteration reads
+`xs[2]` on a one-element array and faults mid-loop. The **current** live bound handles this
+gracefully — the loop ends early. So D-379 as written would have made removal-during-
+iteration crash where it does not today: a regression introduced by a decision intended to
+improve predictability.
+
+**The larger problem that investigation exposed.** D-378 recorded, as accepted permissive
+behaviour, that a key removed mid-loop is **still visited** and its `v = m[k]` read **degrades to
+`nil`**. But `for k, v in m` binds `v` as **non-nullable `V`** (D-374). A `nil` flowing into a
+non-nullable binding contradicts one of Grob's foundational guarantees — *non-nullable types are
+guaranteed non-nil* — and it is exactly the class of unsoundness explicit nullability exists to
+prevent. A count-only array snapshot would have replicated it (an out-of-range read would need to
+yield `nil` into a non-nullable `x`, or crash).
+
+So the map path had a soundness hole, and D-379 would have propagated it to arrays.
+
+**The decision.** `for...in` **snapshots the contents at loop entry, for both collection types.**
+
+- **Arrays** copy the element sequence into a synthetic local before the loop and iterate the
+  copy.
+- **Maps** copy key-**value** pairs, not keys alone — extending `EmitMapForIn`'s existing
+  materialisation rather than replacing it.
+
+The resulting rule is statable without knowing which collection is held: **you iterate exactly
+what was present when the loop started.** No crash, no silently skipped element, and no `nil`
+entering a non-nullable binding. Mutation during iteration remains permitted; it has no
+effect on what this loop visits.
+
+**The copy is shallow, deliberately.** Under D-372's reference semantics the copied entries hold
+the *same* `GrobArray`/`GrobMap`/`GrobStruct` references. Mutating an element's or a value's own
+contents **is** visible inside the loop:
+
+```grob
+rows := [[1], [2]]
+for r in rows {
+    r.append(9)        // visible — same GrobArray
+    rows.append([3])   // not visited — sequence frozen at entry
+}
+```
+
+Only the sequence and the entry set are frozen. This follows from D-372 and is stated here so it
+is not mistaken for an oversight or "fixed" into a deep copy later.
+
+**Rejected alternatives.**
+
+- **Count-only snapshot with a live read.** Replicates the map's unsoundness on the array path
+  and must either fault out of range or force `nil` into a non-nullable binding. The truest
+  mirror of the map's *current* behaviour, and rejected precisely because that behaviour is the
+  defect.
+- **Leave arrays live.** Graceful on removal, but keeps the two-rule inconsistency D-379 exists
+  to remove.
+- **Keys-only for maps.** The status quo, and the source of the soundness hole.
+
+**Cost, and the obligation to measure it.** This adds one array copy per array loop and one
+additional value copy per map loop (the keys copy already exists). For large collections that is
+a real allocation cost against a previously copy-free array path. The implementing increment
+**must** run the benchmark suite and report the delta against D-313's two-axis gate — 5% per
+sprint, 12% cumulative — and **surface a breach rather than absorb it**. If the cost is
+unacceptable on measurement, that is a finding to bring back, not a reason to weaken the
+semantics quietly: D-313's standing rule is that a baseline is never updated to absorb a known
+regression.
+
+**Implementation consequence.** Both paths change shipped behaviour. The increment must enumerate
+every test, fixture and validation script whose behaviour changes and report the list before
+editing — a test may be updated to assert the new correct behaviour, never weakened to
+accommodate it.
+
+No new opcode. No new error code; count unchanged at **121**.
+
+Full detail: D-379 (the decision this refines), D-378 (the map materialisation and the recorded
+`nil`-degradation this closes), D-373 (the array live-bound finding), D-374 (`v` bound as
+non-nullable `V`), D-372 (reference semantics, hence the shallow copy), D-313 (the benchmark
+gate this must be measured against), and `grob-language-fundamentals.md`'s `for...in` section,
+which should state the contents-snapshot guarantee once the increment lands.
+
+---
+
+
 ## Post-MVP Decisions
 
 ---
@@ -8265,7 +8369,19 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — runtime error taxonomy corrected: D-382 added. D-366's allocation-ceiling_
+_July 2026 — `for...in` snapshot semantics corrected: D-383 added, refining D-379. D-379's_
+_"snapshot the bound" conflated the count with the contents — immaterial for maps, decisive for_
+_arrays, where a count-only snapshot indexes a live array and `for x in xs { xs.remove(0) }`_
+_would fault mid-loop on a case the current live bound handles gracefully. Investigating that_
+_exposed a soundness hole in the map path: D-378's keys-only materialisation reads values live,_
+_so a key removed mid-loop is still visited and `v` — bound non-nullable `V` (D-374) — degrades_
+_to `nil`, contradicting the guarantee that non-nullable types are never nil. Ratified: snapshot_
+_the contents for both types — arrays copy the element sequence, maps copy key-value pairs, not_
+_keys alone. One statable rule: you iterate exactly what was present when the loop started. The_
+_copy is shallow, so under D-372 mutating an element's own contents stays visible; only the_
+_sequence is frozen. Costs one copy per loop; the implementing increment must measure against_
+_D-313's gate and surface a breach rather than absorb it. Count unchanged at 121._
+_Previous: July 2026 — runtime error taxonomy corrected: D-382 added. D-366's allocation-ceiling_
 _guard (repeat/padLeft/padRight) wrongly reused E5101 ("array index out of range") for a_
 _size limit, and D-371's GrobValueComparer sort-key comparator wrongly reused the_
 _compile-time E0004 for a runtime fault — both codes still pre-release, the last chance_

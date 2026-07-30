@@ -18,6 +18,8 @@ public class VmBenchmarks {
     private string _declAndArith = null!;
     private string _interpolation = null!;
     private string _controlFlow = null!;
+    private string _arrayForIn = null!;
+    private string _mapForIn = null!;
 
     /// <summary>Reads benchmark fixture files from disk once before any benchmark run.</summary>
     [GlobalSetup]
@@ -29,6 +31,8 @@ public class VmBenchmarks {
         _declAndArith = File.ReadAllText(Path.Join(fixturesDir, "decl-and-arith.grob"));
         _interpolation = File.ReadAllText(Path.Join(fixturesDir, "interpolation.grob"));
         _controlFlow = File.ReadAllText(Path.Join(fixturesDir, "control-flow.grob"));
+        _arrayForIn = File.ReadAllText(Path.Join(fixturesDir, "array-for-in.grob"));
+        _mapForIn = File.ReadAllText(Path.Join(fixturesDir, "map-for-in.grob"));
     }
 
     /// <summary>Execute a declarations-and-arithmetic script (warm path, minimal).</summary>
@@ -46,6 +50,22 @@ public class VmBenchmarks {
     /// </summary>
     [Benchmark]
     public void Run_ControlFlow() => RunSource(_controlFlow);
+
+    /// <summary>
+    /// Execute an array <c>for...in</c> over 1,000 elements (D-383). Measures the
+    /// cost of the contents-snapshot copy added to the previously copy-free array
+    /// <c>for...in</c> path — see D-313's benchmark obligation.
+    /// </summary>
+    [Benchmark]
+    public void Run_ArrayForIn() => RunSource(_arrayForIn);
+
+    /// <summary>
+    /// Execute a map <c>for...in</c> over 1,000 entries (D-383). Measures the cost
+    /// of the extra values-array snapshot added alongside the pre-existing keys
+    /// snapshot — see D-313's benchmark obligation.
+    /// </summary>
+    [Benchmark]
+    public void Run_MapForIn() => RunSource(_mapForIn);
 
     private static void RunSource(string source) {
         var bag = new DiagnosticBag();

@@ -95,6 +95,27 @@ public sealed class CompilerForInTests {
 
     private static List<OpCode> Opcodes(Chunk chunk) => Decode(chunk).Select(i => i.Op).ToList();
 
+    /// <summary>
+    /// Chunk offset the loop's backward <see cref="OpCode.Loop"/> jumps back to —
+    /// the first byte of the condition, which is the top of the loop.
+    /// </summary>
+    /// <remarks>
+    /// <c>EmitLoop</c> writes <c>offset = (chunk.Count + 2) - loopStart</c> with
+    /// <c>chunk.Count</c> sitting just past the opcode byte, so
+    /// <c>loopEnd = loop.Offset + 3</c> and <c>loopStart = loopEnd - offset</c>.
+    /// Asserting against the <see cref="OpCode.Loop"/> instruction's own offset
+    /// instead would be vacuous: it sits *after* the condition and the body, so
+    /// code emitted inside the loop precedes it too.
+    /// </remarks>
+    private static int LoopTop(List<Instr> instrs) {
+        Instr loop = instrs.Single(i => i.Op == OpCode.Loop);
+        return loop.Offset + 3 - loop.Arg;
+    }
+
+    /// <summary>Reads the property name a <see cref="OpCode.GetProperty"/> operand points at.</summary>
+    private static string PropertyName(Chunk chunk, Instr getProperty) =>
+        chunk.ReadConstant(getProperty.Arg).AsString();
+
     // -----------------------------------------------------------------------
     // Array forms — i < arr.length, IncrementInt counter
     // -----------------------------------------------------------------------
@@ -183,28 +204,60 @@ public sealed class CompilerForInTests {
     }
 
     [Fact]
-    public void Map_MaterialisesKeysOnceBeforeTheLoop() {
+    public void Map_MaterialisesKeysAndValuesOnceBeforeTheLoop() {
         Chunk chunk = CompileMapForIn(new BlockStmt(SourceRange.Unknown, []));
         List<Instr> instrs = Decode(chunk);
 
-        // Two GetProperty: the keys materialisation (once, pre-loop) and the
-        // keys.length read inside the condition.
+        // Three GetProperty: the keys materialisation, the values materialisation
+        // (both once, pre-loop, D-383) and the keys.length read inside the condition.
         List<Instr> getProps = instrs.Where(i => i.Op == OpCode.GetProperty).ToList();
-        Assert.Equal(2, getProps.Count);
+        Assert.Equal(3, getProps.Count);
+        Assert.Equal("keys", PropertyName(chunk, getProps[0]));
+        Assert.Equal("values", PropertyName(chunk, getProps[1]));
+        Assert.Equal("length", PropertyName(chunk, getProps[2]));
 
-        // The keys materialisation must sit before the loop's backward Jump.
-        int loopOffset = instrs.Single(i => i.Op == OpCode.Loop).Offset;
-        Assert.True(getProps[0].Offset < loopOffset);
+        // Both materialisations sit before the top of the loop, so they run exactly
+        // once; the length read sits at or after it, inside the per-iteration
+        // condition. Comparing against the Loop instruction's own offset would not
+        // distinguish the two — it is emitted after the body.
+        int loopTop = LoopTop(instrs);
+        Assert.True(getProps[0].Offset < loopTop, "keys materialisation must precede the loop top");
+        Assert.True(getProps[1].Offset < loopTop, "values materialisation must precede the loop top");
+        Assert.True(getProps[2].Offset >= loopTop, "keys.length must be read inside the loop condition");
     }
 
     [Fact]
-    public void Map_ReadsKeyThenValueByIndex() {
+    public void Map_ReadsKeyThenValueByIndex_BothFromTheSnapshotArrays() {
         Chunk chunk = CompileMapForIn(new BlockStmt(SourceRange.Unknown, []));
         List<OpCode> ops = Opcodes(chunk);
 
-        // k = keys[i] and v = map[k] — two index reads per iteration.
+        // k = keys[i] and v = values[i] — two index reads per iteration, both off
+        // the entry-time snapshot arrays rather than a live map read (D-383).
         Assert.Equal(2, ops.Count(o => o == OpCode.GetIndex));
         Assert.Contains(OpCode.LessInt, ops); // i < keys.length
         Assert.Contains(OpCode.IncrementInt, ops);
+    }
+
+    // -----------------------------------------------------------------------
+    // Array form — D-383 contents snapshot via the internal $snapshot property.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ArraySingle_MaterialisesSnapshotOnceBeforeTheLoop() {
+        Chunk chunk = CompileSource("for item in [1, 2, 3] {\nprint(item)\n}");
+        List<Instr> instrs = Decode(chunk);
+
+        // Two GetProperty: the snapshot materialisation (once, pre-loop) and the
+        // snapshot.length read inside the condition.
+        List<Instr> getProps = instrs.Where(i => i.Op == OpCode.GetProperty).ToList();
+        Assert.Equal(2, getProps.Count);
+        Assert.Equal("$snapshot", PropertyName(chunk, getProps[0]));
+        Assert.Equal("length", PropertyName(chunk, getProps[1]));
+
+        // The snapshot copy sits before the top of the loop — it must run exactly
+        // once — while the length read sits inside the per-iteration condition.
+        int loopTop = LoopTop(instrs);
+        Assert.True(getProps[0].Offset < loopTop, "$snapshot copy must precede the loop top");
+        Assert.True(getProps[1].Offset >= loopTop, "snapshot.length must be read inside the loop condition");
     }
 }
