@@ -1,6 +1,7 @@
 using BenchmarkDotNet.Attributes;
 using Grob.Compiler;
 using Grob.Core;
+using Grob.Stdlib;
 using Grob.Vm;
 
 namespace Grob.Benchmarks.Vm;
@@ -20,6 +21,10 @@ public class VmBenchmarks {
     private string _controlFlow = null!;
     private string _arrayForIn = null!;
     private string _mapForIn = null!;
+    private string _attrEmpty = null!;
+    private string _attrRange = null!;
+    private string _attrNative = null!;
+    private string _attrBuild = null!;
 
     /// <summary>Reads benchmark fixture files from disk once before any benchmark run.</summary>
     [GlobalSetup]
@@ -33,6 +38,10 @@ public class VmBenchmarks {
         _controlFlow = File.ReadAllText(Path.Join(fixturesDir, "control-flow.grob"));
         _arrayForIn = File.ReadAllText(Path.Join(fixturesDir, "array-for-in.grob"));
         _mapForIn = File.ReadAllText(Path.Join(fixturesDir, "map-for-in.grob"));
+        _attrEmpty = File.ReadAllText(Path.Join(fixturesDir, "attr-empty.grob"));
+        _attrRange = File.ReadAllText(Path.Join(fixturesDir, "attr-range.grob"));
+        _attrNative = File.ReadAllText(Path.Join(fixturesDir, "attr-native.grob"));
+        _attrBuild = File.ReadAllText(Path.Join(fixturesDir, "attr-build.grob"));
     }
 
     /// <summary>Execute a declarations-and-arithmetic script (warm path, minimal).</summary>
@@ -67,6 +76,38 @@ public class VmBenchmarks {
     [Benchmark]
     public void Run_MapForIn() => RunSource(_mapForIn);
 
+    /// <summary>
+    /// Phase 1 allocation-attribution fixture (throwaway,
+    /// <c>prompts/archive/sprint-9/phase1-allocation-attribution.md</c>): pipeline +
+    /// VM setup floor, no loop, no native calls.
+    /// </summary>
+    [Benchmark]
+    public void Run_AttrEmpty() => RunSource(_attrEmpty);
+
+    /// <summary>
+    /// Phase 1 allocation-attribution fixture (throwaway): 1,000-iteration numeric
+    /// range <c>for...in</c> with an empty body — isolates range-loop machinery from
+    /// native-call cost.
+    /// </summary>
+    [Benchmark]
+    public void Run_AttrRange() => RunSource(_attrRange);
+
+    /// <summary>
+    /// Phase 1 allocation-attribution fixture (throwaway): 1,000 native calls with no
+    /// collection growth — isolates per-native-call dispatch overhead (the args array
+    /// and <c>VmInvoker</c> closure built on every native call).
+    /// </summary>
+    [Benchmark]
+    public void Run_AttrNative() => RunSource(_attrNative);
+
+    /// <summary>
+    /// Phase 1 allocation-attribution fixture (throwaway): 1,000 native calls that
+    /// also grow a <c>GrobArray</c> via <c>append</c> — isolates array-growth cost
+    /// from bare native-call dispatch cost.
+    /// </summary>
+    [Benchmark]
+    public void Run_AttrBuild() => RunSource(_attrBuild);
+
     private static void RunSource(string source) {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan(source, bag);
@@ -76,6 +117,15 @@ public class VmBenchmarks {
         // TextWriter.Null discards print() output — we benchmark VM execution,
         // not I/O throughput.
         var vm = new VirtualMachine(TextWriter.Null);
+        // Phase 1 allocation-attribution (throwaway,
+        // prompts/archive/sprint-9/phase1-allocation-attribution.md): registered
+        // uniformly, on every fixture including the pre-existing five, so its one-time
+        // cost cancels out of every pairwise subtraction the attribution note derives.
+        // StringMethodsPlugin is pure (no capability injection) and is the only stdlib
+        // plugin any attr-*.grob fixture calls into ("x".upper() in attr-native.grob) —
+        // Grob.Cli.RunCommand is the composition root that registers the full stdlib
+        // set for real script runs; this harness deliberately stays minimal.
+        new StringMethodsPlugin().Register(vm);
         vm.Run(chunk);
     }
 }
