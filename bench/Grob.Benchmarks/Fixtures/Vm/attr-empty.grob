@@ -1,4 +1,0 @@
-// Allocation-attribution fixture (phase 1, throwaway): pipeline + VM setup floor.
-// No loop, no native calls — isolates the cost every RunSource invocation pays
-// regardless of the program under test.
-print(0)

@@ -5,8 +5,9 @@
   "lohTripwireBytes": 85000,
   "timeSignificanceK": 3.0,
   "categories": [
-    { "name": "compile",  "namespacePrefix": "Grob.Benchmarks.Compile",  "baseline": "compile.json",  "gating": true  },
-    { "name": "vm",       "namespacePrefix": "Grob.Benchmarks.Vm",       "baseline": "vm.json",       "gating": false },
-    { "name": "endToEnd", "namespacePrefix": "Grob.Benchmarks.EndToEnd", "baseline": "endToEnd.json", "gating": false }
+    { "name": "compile",     "namespacePrefix": "Grob.Benchmarks.Compile",     "baseline": "compile.json",     "gating": true  },
+    { "name": "vm",          "namespacePrefix": "Grob.Benchmarks.Vm",          "baseline": "vm.json",          "gating": false },
+    { "name": "attribution", "namespacePrefix": "Grob.Benchmarks.Attribution", "baseline": "attribution.json", "gating": false },
+    { "name": "endToEnd",    "namespacePrefix": "Grob.Benchmarks.EndToEnd",    "baseline": "endToEnd.json",    "gating": false }
   ]
 }

@@ -1,8 +1,0 @@
-// Allocation-attribution fixture (phase 1, throwaway): native calls plus
-// array growth. Same 1,000-iteration shape as attr-native.grob, but the
-// native call is xs.append(i) (two arguments) instead of "x".upper() (one),
-// which also grows the backing GrobArray via doubling.
-xs: int[] := []
-for i in 1..1000 {
-    xs.append(i)
-}

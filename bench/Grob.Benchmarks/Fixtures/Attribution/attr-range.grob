@@ -1,0 +1,4 @@
+// Allocation-attribution fixture (attribution category, D-385/D-386): range-loop
+// machinery. 1,000-iteration numeric range for...in with an empty body — isolates
+// loop setup/teardown and iteration bookkeeping from any native call cost.
+for i in 1..1000 { }

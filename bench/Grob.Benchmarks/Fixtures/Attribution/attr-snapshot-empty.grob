@@ -1,0 +1,14 @@
+// Allocation-attribution fixture (attribution category, D-385/D-386): the same
+// 1,000-append build loop as attr-build.grob, plus an empty-body for...in over
+// the built array. attr-snapshot-empty minus attr-build isolates the pure
+// contents-snapshot copy (D-383) from any iteration-body cost — testing D-386's
+// doubling hypothesis: GrobArray's IEnumerable<GrobValue> constructor copies via
+// [.. elements] with no statically-known count, so the snapshot may grow by
+// doubling (~49 KB of waste) on the way to the final ~24 KB array, predicting
+// ~73-80 KB against the 80,015 B array-for-in minus attr-build measured in
+// phase 1. Report the number; no action taken here (D-386).
+xs: int[] := []
+for i in 1..1000 {
+    xs.append(i)
+}
+for x in xs { }

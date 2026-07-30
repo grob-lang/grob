@@ -1,7 +1,0 @@
-// Allocation-attribution fixture (phase 1, throwaway): 1,000 native calls,
-// no collection growth. Isolates per-native-call dispatch overhead — the
-// args array plus VmInvoker closure built on every native call in
-// VirtualMachine.cs — from array/map growth cost.
-for i in 1..1000 {
-    "x".upper()
-}
