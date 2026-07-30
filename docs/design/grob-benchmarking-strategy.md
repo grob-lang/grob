@@ -66,6 +66,7 @@ Grob.sln
 │   └── Grob.Benchmarks/         ← Console app — BenchmarkDotNet entry point
 │       ├── Compile/             ← Lex/parse/typecheck/emit benchmarks
 │       ├── Vm/                  ← Hand-constructed chunk execution benchmarks
+│       ├── Attribution/         ← Differential allocation-attribution fixtures
 │       ├── EndToEnd/            ← Validation suite full-pipeline benchmarks
 │       ├── Stability/           ← Long-run stability test (separate cadence)
 │       └── baseline/            ← Committed baseline JSON results
@@ -117,6 +118,13 @@ A regression in VM execution time on a tight arithmetic loop tells
 you something very different from a regression in the same workload
 when measured end-to-end.
 
+**Implementation note (D-385/D-386/D-387).** `VmBenchmarks.RunSource` drifted
+from this definition for several sprints, running the full pipeline (lex,
+parse, type-check, compile, execute) inside the measured region. D-387
+corrected it: compilation now happens once in `[GlobalSetup]`, and each
+`[Benchmark]` method is exactly `vm.Run(chunk)`, restoring the definition
+above.
+
 Patterns measured:
 
 - Arithmetic-heavy tight loop — integer and float
@@ -130,6 +138,35 @@ Patterns measured:
 These are the micro-benchmarks. They will not predict real-world
 performance on their own, but a regression in any of them flags
 something worth understanding.
+
+### 4.2a Attribution Benchmarks (`bench/Grob.Benchmarks/Attribution/`)
+
+**Question answered:** where, specifically, does a whole script's allocation
+go?
+
+A dedicated, permanent, **non-gating** (`policy.json`: `"gating": false`)
+category added by D-385/D-386 (phase 1 findings:
+`docs/design/bench-allocation-attribution.md`). The `attr-*` fixtures are
+**instruments, not guards** — they measure the pipeline floor, loop
+machinery and per-native-call overhead by differencing successive
+whole-script fixtures that differ by exactly one thing, not features anyone
+should gate on. A regression in `attr-empty` means "the compiler pipeline
+allocates more", which is already `compile`'s job to catch — gating on it
+here would gate on the wrong category.
+
+Whole-script by design: perfect isolation of a fragment inside its own
+measured region is unattainable, so every fixture in this category measures
+the full lex/parse/type-check/compile/run pipeline, and the differential
+technique does the isolating instead of `[GlobalSetup]`.
+
+Fixture set: `attr-empty` (pipeline + VM setup floor), `attr-range`
+(range-loop machinery), `attr-native` (native-call dispatch), `attr-build`
+(native call plus array growth), `attr-map-build` (map construction only),
+`attr-snapshot-empty` (the `attr-build` loop plus an empty-body `for...in`,
+isolating the D-383 contents-snapshot copy from any iteration-body cost).
+`StringMethodsPlugin` is registered uniformly across every fixture in this
+category (D-385 Q4) so its one-time registration cost cancels out of every
+pairwise subtraction.
 
 ### 4.3 End-to-End Script Benchmarks (`bench/Grob.Benchmarks/EndToEnd/`)
 
@@ -277,7 +314,8 @@ bench/Grob.Benchmarks/
 │   │   └── … (eleven more)
 │   ├── Compile/
 │   │   └── synthetic-large.grob   ← Auto-generated, gitignored, deterministic
-│   └── Vm/                        ← (Empty — VM benchmarks build chunks in code)
+│   ├── Vm/                        ← Fixtures compiled once in [GlobalSetup] (D-387)
+│   └── Attribution/                ← Differential allocation-attribution fixtures
 ├── Generators/
 │   └── SyntheticLargeGenerator.cs ← Generates synthetic-large.grob deterministically
 └── …
@@ -417,7 +455,8 @@ numbers stop meaning anything. The right answer differs by category.
 bench/Grob.Benchmarks/baseline/
 ├── compile.json        ← BenchmarkDotNet JSON for compile-time category
 ├── vm.json             ← BenchmarkDotNet JSON for VM execution category
-├── endToEnd.json       ← BenchmarkDotNet JSON for end-to-end category
+├── attribution.json    ← BenchmarkDotNet JSON for the attribution category (declared, not yet committed — D-387)
+├── endToEnd.json       ← BenchmarkDotNet JSON for end-to-end category (declared, not yet committed — F8)
 └── stability.json      ← Calibration values + last passing result
 ```
 
@@ -456,10 +495,20 @@ bench/Grob.Benchmarks/baseline/
 ├── compile.origin.json    ← frozen origin: the cumulative anchor
 ├── vm.json
 ├── vm.origin.json
-├── endToEnd.json
+├── attribution.json       ← declared in policy.json, not yet committed (D-387)
+├── attribution.origin.json
+├── endToEnd.json          ← declared in policy.json, not yet committed (F8)
 ├── endToEnd.origin.json
 └── stability.json
 ```
+
+**`vm.json`/`vm.origin.json` currently describe a stale measurement.** D-387
+rebuilt the `vm` category to measure `vm.Run(chunk)` alone rather than the
+full pipeline (D-385/D-386 Q1'). The committed `vm.json`/`vm.origin.json`
+predate that rebuild and still hold full-pipeline numbers — informational
+only under the current gating matrix (§9.1), but not comparable to a fresh
+`vm.Run(chunk)`-only run until both files are deliberately re-captured via
+the `benchmark.yml` workflow (§8.1).
 
 BenchmarkDotNet produces JSON output natively. Committing it gives:
 
@@ -720,6 +769,35 @@ headroom against the cumulative ceiling, which is the point.
 An hour of automated benchmarking at the close of a two-week sprint is
 rounding-error overhead against the cost of catching regressions late.
 
+### 9.1 Gating Matrix (D-385/D-386 Q6, made explicit by D-387)
+
+The matrix above is stated here explicitly rather than left for a reader to
+reconstruct from `policy.json` plus separate decisions:
+
+| Category      | Time, per-sprint | Time, cumulative                          | Allocation (%) | LOH tripwire |
+|----------------|-------------------|--------------------------------------------|-----------------|--------------|
+| `compile`      | Gates             | Gates *(informational until `compile.origin.json` is re-captured — see below)* | Gates | Gates |
+| `vm`           | Informational     | Informational                              | Informational   | Gates        |
+| `attribution`  | Informational     | Informational                              | Informational   | Gates        |
+| `endToEnd`     | Informational (empty — F8 open) | Informational                | Informational   | Gates        |
+
+The LOH tripwire (§ above) ignores the `gating` flag entirely — it fires on
+any benchmark, in any category, per D-333.
+
+**Compile's cumulative axis is documented but not currently enforceable.**
+`compile.origin.json`'s `HostEnvironmentInfo.ProcessorName` reads `"Unknown
+processor"` (a pre-D-333 BenchmarkDotNet 0.14.0 capture); `BenchCheck.SameCpu`
+never treats that placeholder as a match to anything (§9, CPU identity), so
+the 12% cumulative ceiling reads informational in practice until someone
+deliberately re-captures that file. This was already logged at D-333 and
+re-confirmed at D-385 Q3 — stated here so a reader of this document alone is
+not told a guarantee the current data cannot deliver.
+
+**Flip condition.** When `endToEnd` carries the full validation-suite corpus
+(§4.3, not yet built — F8), it becomes the primary gate and `compile`/`vm`
+drop to informational. This is a deliberate, logged `policy.json` edit, never
+an automatic change.
+
 ---
 
 ## 10. No CLI Surface
@@ -798,5 +876,10 @@ _This document is the authoritative reference for Grob's benchmarking_
 _strategy. D-302 records the original decision. D-309 (May 2026) refines_
 _the baseline production mechanism: baselines are produced via the_
 _`benchmark.yml` GitHub Actions workflow with `windows-latest` as the_
-_canonical runner. `grob-v1-requirements.md` §12 and_
-_`grob-solution-architecture.md` cite this document for detail._
+_canonical runner. D-385/D-386/D-387 (July 2026) correct implementation_
+_drift found by the phase 1 allocation-attribution session: `vm` rebuilt_
+_to match §4.2's since-inception hand-off-isolated intent (§4.2), the_
+_`attr-*` differential fixtures given a dedicated, permanent, non-gating_
+_`attribution` category (§4.2a), and §9's gating matrix and compile's_
+_cumulative-axis caveat stated explicitly (§9.1). `grob-v1-requirements.md`_
+_§12 and `grob-solution-architecture.md` cite this document for detail._
