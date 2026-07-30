@@ -223,6 +223,57 @@ public class BenchCheckTests {
         Assert.Equal(AllocClass.LohTripwireBreach, delta.AllocClass);
     }
 
+    // --- attribution category (D-385/D-386 Q5', phase 3a) ---
+
+    [Fact]
+    public void Attribution_category_large_regression_is_informational() {
+        // The attr-* fixtures are instruments, not guards (D-386 Q5') — proves a
+        // deliberately large time+alloc delta in the "attribution" category never
+        // fails the gate, the same way Non_gating_category_regression_is_reported_not_failed
+        // proves it generically, but naming the real category this increment adds.
+        var policy = new Policy(5.0, 12.0, 10.0, 85000, 3.0,
+            [new PolicyCategory("attribution", "Grob.Benchmarks.Attribution", "attribution.json", Gating: false)]);
+        var name = "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrNative";
+
+        var report = BenchCheck.Evaluate(
+            policy,
+            fresh: new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(200, bytes: 20000) }), // +100% time, +100% alloc
+            _ => new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 10000) }));
+
+        Assert.Equal(Outcome.Pass, report.Outcome);
+        var delta = Assert.Single(report.Deltas);
+        Assert.Equal(TimeClass.Informational, delta.TimeClass);
+        Assert.Equal(AllocClass.Informational, delta.AllocClass);
+    }
+
+    [Fact]
+    public void Attribution_new_fixtures_report_as_new_benchmark() {
+        // attr-map-build and the empty-body snapshot fixture join four pre-existing
+        // attr-* fixtures in this increment. Against a rolling baseline that only
+        // knows the four, the two new ones must classify as NewBenchmark, not a
+        // regression — the same path BenchCheck already handles correctly (phase 2's
+        // "Correctly working, do not fix" note).
+        var policy = new Policy(5.0, 12.0, 10.0, 85000, 3.0,
+            [new PolicyCategory("attribution", "Grob.Benchmarks.Attribution", "attribution.json", Gating: false)]);
+        const string prefix = "Grob.Benchmarks.Attribution.AttributionBenchmarks.";
+        var existing = new[] { "Run_AttrEmpty", "Run_AttrRange", "Run_AttrNative", "Run_AttrBuild" };
+        var rollingMeasurements = existing.ToDictionary(n => prefix + n, _ => M(100, bytes: 10000));
+        var rolling = new BaselineSide(_epyc, rollingMeasurements);
+
+        var freshMeasurements = new Dictionary<string, BenchmarkMeasurement>(rollingMeasurements) {
+            [prefix + "Run_AttrMapBuild"] = M(150, bytes: 15000),
+            [prefix + "Run_AttrSnapshotEmpty"] = M(120, bytes: 12000),
+        };
+        var fresh = new BaselineSide(_epyc, freshMeasurements);
+
+        var report = BenchCheck.Evaluate(policy, fresh, _ => rolling);
+
+        Assert.Equal(Outcome.Pass, report.Outcome);
+        Assert.Contains(report.Deltas, d => d.FullName == prefix + "Run_AttrMapBuild" && d.TimeClass == TimeClass.NewBenchmark && d.AllocClass == AllocClass.NewBenchmark);
+        Assert.Contains(report.Deltas, d => d.FullName == prefix + "Run_AttrSnapshotEmpty" && d.TimeClass == TimeClass.NewBenchmark && d.AllocClass == AllocClass.NewBenchmark);
+        Assert.All(existing, n => Assert.Contains(report.Deltas, d => d.FullName == prefix + n && d.TimeClass == TimeClass.Informational));
+    }
+
     // --- time significance (D-333, test rows 4-5) ---
 
     [Fact]
