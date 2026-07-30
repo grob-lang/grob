@@ -1,56 +1,65 @@
 using BenchmarkDotNet.Attributes;
 using Grob.Compiler;
 using Grob.Core;
-using Grob.Stdlib;
 using Grob.Vm;
 
 namespace Grob.Benchmarks.Vm;
 
 /// <summary>
-/// VM-execution category benchmarks (Sprint 3 baseline, D-309).
-/// Measures the full pipeline — lex, parse, type-check, compile, VM execute —
-/// for representative programmes.  The baseline JSON for this category is
-/// produced via the <c>benchmark.yml</c> GitHub Actions workflow (D-309) on a
-/// <c>windows-latest</c> runner; the committed <c>baseline/vm.json</c> must
-/// not be replaced with a locally-produced file.
+/// VM-execution category benchmarks (Sprint 3 baseline, D-309; rebuilt in place by
+/// D-385/D-386/D-387). Measures <c>vm.Run(chunk)</c> alone, against a <c>Chunk</c>
+/// compiled once in <see cref="Setup"/> — restoring <c>grob-benchmarking-strategy.md</c>
+/// §4.2's always-standing definition ("hand-constructed <c>Chunk</c> instances — the
+/// compiler is not involved") from which the previous full-pipeline implementation had
+/// drifted. The baseline JSON for this category is produced via the
+/// <c>benchmark.yml</c> GitHub Actions workflow (D-309) on a <c>windows-latest</c>
+/// runner; the committed <c>baseline/vm.json</c> must not be replaced with a
+/// locally-produced file. Because this rebuild changes what the category measures,
+/// <c>vm.json</c>/<c>vm.origin.json</c> as committed before D-387 describe a different
+/// quantity and need a deliberate re-capture before they mean anything again (D-387).
 /// </summary>
 [MemoryDiagnoser]
 public class VmBenchmarks {
-    private string _declAndArith = null!;
-    private string _interpolation = null!;
-    private string _controlFlow = null!;
-    private string _arrayForIn = null!;
-    private string _mapForIn = null!;
-    private string _attrEmpty = null!;
-    private string _attrRange = null!;
-    private string _attrNative = null!;
-    private string _attrBuild = null!;
+    private Chunk _declAndArith = null!;
+    private Chunk _interpolation = null!;
+    private Chunk _controlFlow = null!;
+    private Chunk _arrayForIn = null!;
+    private Chunk _mapForIn = null!;
+    private VirtualMachine _vm = null!;
 
-    /// <summary>Reads benchmark fixture files from disk once before any benchmark run.</summary>
+    /// <summary>Compiles every fixture to a <c>Chunk</c> once, before any benchmark run.
+    /// Compilation is not part of the measured region (D-385/D-386 Q1').</summary>
     [GlobalSetup]
     public void Setup() {
         // Path.Join is used here (not Path.Combine) — Path.Join never resets
         // the path on a rooted later argument, which avoids the CodeQL
         // cs/path-injection concern that Path.Combine carries.
         string fixturesDir = Path.Join(AppContext.BaseDirectory, "Fixtures", "Vm");
-        _declAndArith = File.ReadAllText(Path.Join(fixturesDir, "decl-and-arith.grob"));
-        _interpolation = File.ReadAllText(Path.Join(fixturesDir, "interpolation.grob"));
-        _controlFlow = File.ReadAllText(Path.Join(fixturesDir, "control-flow.grob"));
-        _arrayForIn = File.ReadAllText(Path.Join(fixturesDir, "array-for-in.grob"));
-        _mapForIn = File.ReadAllText(Path.Join(fixturesDir, "map-for-in.grob"));
-        _attrEmpty = File.ReadAllText(Path.Join(fixturesDir, "attr-empty.grob"));
-        _attrRange = File.ReadAllText(Path.Join(fixturesDir, "attr-range.grob"));
-        _attrNative = File.ReadAllText(Path.Join(fixturesDir, "attr-native.grob"));
-        _attrBuild = File.ReadAllText(Path.Join(fixturesDir, "attr-build.grob"));
+        _declAndArith = CompileFixture(Path.Join(fixturesDir, "decl-and-arith.grob"));
+        _interpolation = CompileFixture(Path.Join(fixturesDir, "interpolation.grob"));
+        _controlFlow = CompileFixture(Path.Join(fixturesDir, "control-flow.grob"));
+        _arrayForIn = CompileFixture(Path.Join(fixturesDir, "array-for-in.grob"));
+        _mapForIn = CompileFixture(Path.Join(fixturesDir, "map-for-in.grob"));
     }
+
+    /// <summary>
+    /// Constructs a fresh <see cref="VirtualMachine"/> before every iteration. Several
+    /// fixtures (<c>array-for-in</c>, <c>map-for-in</c>) mutate global state via the same
+    /// reused <c>Chunk</c>, so a VM shared across iterations would compound that state
+    /// (array/map growth) run over run and invalidate the measurement — the mechanism
+    /// D-385's own text assumes remains necessary. TextWriter.Null discards print()
+    /// output — this category benchmarks VM execution, not I/O throughput.
+    /// </summary>
+    [IterationSetup]
+    public void IterationSetup() => _vm = new VirtualMachine(TextWriter.Null);
 
     /// <summary>Execute a declarations-and-arithmetic script (warm path, minimal).</summary>
     [Benchmark(Baseline = true)]
-    public void Run_DeclAndArith() => RunSource(_declAndArith);
+    public void Run_DeclAndArith() => _vm.Run(_declAndArith);
 
     /// <summary>Execute a string-interpolation script (exercises BuildString opcode).</summary>
     [Benchmark]
-    public void Run_Interpolation() => RunSource(_interpolation);
+    public void Run_Interpolation() => _vm.Run(_interpolation);
 
     /// <summary>
     /// Execute a Sprint 4 control-flow script: 100-iteration <c>while</c> loop with
@@ -58,7 +67,7 @@ public class VmBenchmarks {
     /// chains together).
     /// </summary>
     [Benchmark]
-    public void Run_ControlFlow() => RunSource(_controlFlow);
+    public void Run_ControlFlow() => _vm.Run(_controlFlow);
 
     /// <summary>
     /// Execute an array <c>for...in</c> over 1,000 elements (D-383). Measures the
@@ -66,7 +75,7 @@ public class VmBenchmarks {
     /// <c>for...in</c> path — see D-313's benchmark obligation.
     /// </summary>
     [Benchmark]
-    public void Run_ArrayForIn() => RunSource(_arrayForIn);
+    public void Run_ArrayForIn() => _vm.Run(_arrayForIn);
 
     /// <summary>
     /// Execute a map <c>for...in</c> over 1,000 entries (D-383). Measures the cost
@@ -74,58 +83,13 @@ public class VmBenchmarks {
     /// snapshot — see D-313's benchmark obligation.
     /// </summary>
     [Benchmark]
-    public void Run_MapForIn() => RunSource(_mapForIn);
+    public void Run_MapForIn() => _vm.Run(_mapForIn);
 
-    /// <summary>
-    /// Phase 1 allocation-attribution fixture (throwaway,
-    /// <c>prompts/archive/sprint-9/phase1-allocation-attribution.md</c>): pipeline +
-    /// VM setup floor, no loop, no native calls.
-    /// </summary>
-    [Benchmark]
-    public void Run_AttrEmpty() => RunSource(_attrEmpty);
-
-    /// <summary>
-    /// Phase 1 allocation-attribution fixture (throwaway): 1,000-iteration numeric
-    /// range <c>for...in</c> with an empty body — isolates range-loop machinery from
-    /// native-call cost.
-    /// </summary>
-    [Benchmark]
-    public void Run_AttrRange() => RunSource(_attrRange);
-
-    /// <summary>
-    /// Phase 1 allocation-attribution fixture (throwaway): 1,000 native calls with no
-    /// collection growth — isolates per-native-call dispatch overhead (the args array
-    /// and <c>VmInvoker</c> closure built on every native call).
-    /// </summary>
-    [Benchmark]
-    public void Run_AttrNative() => RunSource(_attrNative);
-
-    /// <summary>
-    /// Phase 1 allocation-attribution fixture (throwaway): 1,000 native calls that
-    /// also grow a <c>GrobArray</c> via <c>append</c> — isolates array-growth cost
-    /// from bare native-call dispatch cost.
-    /// </summary>
-    [Benchmark]
-    public void Run_AttrBuild() => RunSource(_attrBuild);
-
-    private static void RunSource(string source) {
+    private static Chunk CompileFixture(string path) {
         var bag = new DiagnosticBag();
-        var tokens = Lexer.Scan(source, bag);
+        var tokens = Lexer.Scan(File.ReadAllText(path), bag);
         var unit = Parser.Parse(tokens, bag);
         new TypeChecker(bag).Check(unit);
-        Chunk chunk = Grob.Compiler.Compiler.Compile(unit, bag);
-        // TextWriter.Null discards print() output — we benchmark VM execution,
-        // not I/O throughput.
-        var vm = new VirtualMachine(TextWriter.Null);
-        // Phase 1 allocation-attribution (throwaway,
-        // prompts/archive/sprint-9/phase1-allocation-attribution.md): registered
-        // uniformly, on every fixture including the pre-existing five, so its one-time
-        // cost cancels out of every pairwise subtraction the attribution note derives.
-        // StringMethodsPlugin is pure (no capability injection) and is the only stdlib
-        // plugin any attr-*.grob fixture calls into ("x".upper() in attr-native.grob) —
-        // Grob.Cli.RunCommand is the composition root that registers the full stdlib
-        // set for real script runs; this harness deliberately stays minimal.
-        new StringMethodsPlugin().Register(vm);
-        vm.Run(chunk);
+        return Grob.Compiler.Compiler.Compile(unit, bag);
     }
 }
