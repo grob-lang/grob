@@ -383,6 +383,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-385 | July 2026 | Tooling — benchmarking | Decision-only session (no source/harness changes) resolving six correctness gaps the `Benchmarks` CI run on `0125bae` exposed, evidenced by `docs/design/bench-allocation-attribution.md` (phase 1). **Q1 (category semantics):** the `vm` category (`Grob.Benchmarks.Vm.VmBenchmarks`) measures the entire pipeline (`Lexer→Parser→TypeChecker→Compiler→vm.Run`) under a name that promises VM-only cost, while `grob-benchmarking-strategy.md` §4.2 already specifies hand-off-isolated `Chunk` execution for `vm` and §4.3's `endToEnd` category has never been implemented (no `Grob.Benchmarks.EndToEnd` namespace exists) — F8 stays open, not silently renamed away. Decided: rename the current nine full-pipeline benchmarks to `endToEnd` (real content against F8, not the full validation-suite corpus §4.3 envisions — that is follow-on work, staged separately below); rebuild `vm` to hoist compilation into `[GlobalSetup]`/a pre-built `Chunk` so it measures `vm.Run(chunk)` alone, restoring §4.2's already-standing intent. **Q2 (LOH tripwire):** D-333's `lohTripwireBytes` (85,000 B) already functions, and is already documented, as a total-per-operation allocation ceiling, not a single-large-object detector — the gap is a single fixed constant across categories with structurally different legitimate allocation shapes (phase 1: both `for...in` benchmarks sit 6–12× over it after D-383's contents-snapshot). Decided: keep the mechanism, redocument its name/rationale plainly as a ceiling (not an LOH detector), and require phase 3 to derive a per-category or per-shape threshold from phase 1's measured values rather than one borrowed CLR constant. Rejected: implementing genuine large-object detection (BDN summary output carries no such signal) and removing the check outright (D-332's defect-class is real and this is the only mechanical catch for it). **Q3 (time axis under CPU heterogeneity):** D-333's per-baseline CPU-identity guard is correct and already causes `compile.origin.json`'s inert cumulative axis (`"Unknown processor"`) — already a "known, logged gap (D-333), not a silent one" per that entry's own text, not a fresh finding. Decided: record an amendment to D-313 in this entry (`Refines: D-313`; D-313's own entry is never edited) stating the compile category's cumulative axis is inert on GitHub-hosted runners until `compile.origin.json` is deliberately re-captured, so a reader of D-313 alone is not told a guarantee current data cannot deliver — closing the ADR-0018-style "documented gate = enforced gate" gap this session cites that precedent for. Rejected: a self-hosted/pinned runner (disproportionate to the problem D-333 already solved correctly) and a between-benchmark CPU-independent ratio signal (interesting, not needed to close this gap; out of scope here). **Q4 (composition-root fidelity):** phase 1's uniform `StringMethodsPlugin` registration (vs. the CLI's full twelve-plugin `PluginRegistration.RegisterAll`, four of which need capability injection benchmarks have no use for) is ratified as the permanent approach rather than left as an undocumented stopgap — array/map instance-method dispatch (`ArrayNatives`, fresh closure per call) is documented as the structurally distinct, more expensive native path phase 1 found, separate from the Stdlib-plugin path `StringMethodsPlugin` represents. Rejected: mirroring the full CLI composition root (harness complexity — capability-interface fakes — for no signal any VM-dispatch benchmark needs). **Q5 (fixture design):** whole-script benchmarks are documented as whole-script (perfect isolation is unattainable); phase 1's `attr-*` differential fixtures — despite their doc comments currently marking them "throwaway" — become permanent companions under whichever category ends up hosting them post-Q1; `attr-map-build` and an empty-body snapshot fixture (phase 1's two named gaps) are added. **Q6 (gating matrix):** current `policy.json` (`compile: gating=true`, `vm`/`endToEnd`: `gating=false`, allocation axis always gating) already matches D-313/§9's documented build-out stand-in, not a bug; this entry states the matrix explicitly and the flip condition (full-corpus `endToEnd` becomes the gate, `compile`/`vm` drop to informational, a deliberate `policy.json` edit) so corpus and enforcement stay the same thing. **F8:** partially resolved (Q1's rename gives `endToEnd` real content) but not closed — full resolution needs the validation-suite corpus, proposed as a separate, later increment given its size. **No baseline is rebaselined and no threshold is loosened by this entry** — D-313's ratchet-trap rule holds; every change either corrects what a category is named/measures or documents an existing, already-correct mechanism more honestly. No implementation performed; phase 3 applies this. Refines D-313 (Q3's explicit compile-cumulative-inert statement, Q6's explicit gating matrix), D-333 (Q2's tripwire redocumentation) — cites ADR-0018 for the documented-gate-equals-enforced-gate precedent. Cites D-302, D-309, D-383. |
 | D-386 | July 2026 | Benchmarking — categories and fixtures | Refines D-385 on two of its six sub-decisions; Q2, Q3, Q4 and Q6 stand unchanged. **Q1':** D-385 proposed moving the nine current full-pipeline micro-script fixtures into the `endToEnd` category to give F8's never-captured baseline its first real content. Rejected: `grob-benchmarking-strategy.md` §4.3 defines `endToEnd` as the **validation-suite scripts through the real CLI**, so populating it with synthetic micro-scripts would give a category content contradicting its own specification — the documented-versus-built divergence this consolidation phase exists to eliminate — and would make F8 read as partially resolved while the thing F8 actually names still does not exist. It is also largely redundant: once `vm` measures execution per §4.2 and `compile` measures compilation, a third category measuring their sum adds baseline surface for little signal. Ratified instead: **`vm` is rebuilt in place** — same fixtures, compilation hoisted to `[GlobalSetup]`/a pre-built `Chunk` so the measured region is `vm.Run(chunk)` alone, restoring §4.2's standing intent from which the code had drifted — and **`endToEnd` stays empty with F8 stated as open**, to be built properly in its own increment against the real validation-suite corpus, now feasible since Sprint 9 unblocked most of those scripts. **Q5':** the `attr-*` differential fixtures become permanent as D-385 ratified, but in a **dedicated `attribution` category with `gating: false`** rather than folded into whichever category ends up hosting them. They are **instruments, not guards** — they measure the pipeline floor and per-native-call overhead, not features anyone should gate on — and they are whole-script by nature, so they need a whole-script home that is not a misnamed `endToEnd`. `attr-map-build` and the empty-body snapshot fixture join them. No new error code; count unchanged at 121 |
 | D-387 | July 2026 | Tooling — benchmarking (implementation) | Phase 3a — applies D-385/D-386 to `bench/`, `tooling/Grob.BenchCheck.Tests` and the corpus docs. `Grob.Benchmarks.Vm.VmBenchmarks` rebuilt in place (Q1'): `[GlobalSetup]` compiles the five existing fixtures to `Chunk` fields once; `[IterationSetup]` constructs a fresh `VirtualMachine` per iteration (needed because `array-for-in`/`map-for-in` mutate global state that must not compound across iterations sharing one `Chunk`); each `[Benchmark]` method is now exactly `vm.Run(chunk)`. `endToEnd` left untouched — still declared, still empty, **F8 stays open**. New `Grob.Benchmarks.Attribution.AttributionBenchmarks` class and `Fixtures/Attribution/` directory (Q5'): the four `attr-*` fixtures moved out of `vm`, doc comments losing "(phase 1, throwaway)" since they are permanent now, plus three new fixtures — `attr-map-build.grob` (map construction only, no second loop) and `attr-snapshot-empty.grob` (the `attr-build` build loop plus an empty-body `for...in`, isolating the pure contents-snapshot copy), both named as missing by phase 1/D-386, and `attr-array-dispatch.grob` (`xs.contains(i)` × 1,000, no growth — the growth-free control for `attr-build` that phase 1 §4 recorded as missing, added in PR #171 review). The same review removed unmatched terminal `print` calls from `attr-empty` (now deliberately statement-free, as the category's subtracted-against baseline) and `attr-map-build`. New `attribution` category added to `policy.json` (`gating: false`); two `BenchCheckTests` cases prove it reports informational, not a regression, and that the two new fixtures classify as `NewBenchmark` against a partial rolling baseline. Composition root ratified in code (D-385 Q4): `StringMethodsPlugin` registered uniformly across the attribution category's whole-pipeline runner; `ArrayNatives`/`MapNatives` instance-method dispatch documented as a structurally distinct, fresh-closure-per-call native path reachable without any plugin registration. `grob-benchmarking-strategy.md` amended (never editing D-313's or D-333's entries in place): new §4.2a for the attribution category, an implementation note on §4.2's vm-rebuild correction, §3/§7.1 fixture-tree entries, §8's baseline-file list gaining `attribution.json`/`attribution.origin.json` (declared, not yet committed) and a note that `vm.json`/`vm.origin.json` now describe a stale pre-rebuild measurement, and a new explicit §9.1 gating matrix plus the compile-cumulative-inert caveat (`compile.origin.json`'s `"Unknown processor"` capture), citing ADR-0018. **Local-machine measurement only, not a canonical baseline** (same Intel Core i5-8400 machine as phase 1's own run, `docs/design/bench-allocation-attribution.md`): `vm` category (execution only) — `Run_DeclAndArith` 28.97 μs / 2,344 B, `Run_Interpolation` 34.49 μs / 3,880 B, `Run_ControlFlow` 207.94 μs / 2,504 B, `Run_ArrayForIn` 1,244.41 μs / 531,616 B, `Run_MapForIn` 1,970.83 μs / 1,033,320 B; `attribution` category (whole pipeline) — `Run_AttrEmpty` 6.58 μs / 44,172 B, `Run_AttrRange` 75.34 μs / 46,149 B, `Run_AttrNative` 210.05 μs / 232,032 B, `Run_AttrBuild` 280.05 μs / 508,316 B, `Run_AttrMapBuild` 483.34 μs / 941,592 B, `Run_AttrSnapshotEmpty` 457.04 μs / 583,732 B. Derived: loop machinery 1,977 B, Stdlib-plugin per-native-call overhead ≈186 B/call, and — labelled precisely, per PR #171 review — the **combined** array-member-dispatch tax plus growth 276,284 B/1,000 appends, not array growth alone, since `attr-build` and `attr-native` sit on structurally different native paths (phase 1 §4); `attr-array-dispatch` is the control that isolates growth, its figure pending the canonical capture. All three reproduce phase 1's figures almost exactly on the same machine. New: pure contents-snapshot cost (`attr-snapshot-empty` − `attr-build`) = 75,416 B, inside D-386's ≈73–80 KB doubling-hypothesis prediction — **reported, no action taken**, any fix is a separate decision. Map-build split, using phase 1's frozen full-pipeline `Run_MapForIn` figure (1,092,413 B) as the comparison basis since the rebuilt `vm` category's `Run_MapForIn` no longer shares that basis: second-loop-plus-values-snapshot ≈150,821 B, map-build-loop-itself (interpolations + `map.set` + growth) ≈897,420 B. **Canonical `vm.json`/`vm.origin.json` re-capture and the first `attribution.json`/`attribution.origin.json` commit are a follow-up** — only the `benchmark.yml` workflow on `windows-latest` produces a committable baseline (§8.1/§8.2), and pushing/dispatching CI is the maintainer's action. Phase 3b (per-category allocation ceilings, D-385 Q2) is not addressed here — it needs this increment's numbers first. No `src/` change. No new error code; count unchanged at 121. Cites D-385, D-386, D-313, D-333, ADR-0018, `docs/design/bench-allocation-attribution.md`. |
+| D-388 | July 2026 | Core — `GrobArray` construction | Tests D-386's doubling hypothesis for `GrobArray`'s copy constructor by applying the proposed `ICollection<GrobValue>` fast-path branch and remeasuring. **Refuted**: before and after are byte-identical under both measurements, which are two distinct scopes and must not be conflated — the isolated `GC.GetAllocatedBytesForCurrentThread` constructor copy of a 1,000-element `List<GrobValue>` source at **24,080 B**, and the whole-pipeline `attr-snapshot-empty`/`attr-build` differential at **74,560 B**. The reason is that the compiler already lowers a single-spread `[.. elements]` targeting `List<T>` to `new List<T>(elements)`, and `List<T>`'s own `IEnumerable<T>` constructor already fast-paths any runtime-`ICollection<T>` source — which is what every production `GrobArray` construction site passes (a list or an array). Both halves are current compiler/BCL implementation behaviour rather than guaranteed contracts, and the refutation is scoped accordingly: a genuinely lazy, non-`ICollection<GrobValue>` source still grows by doubling (measured separately at 49,432 B), it is simply not what any production site passes today. No fix lands; the explicit branch was written, measured, found redundant and reverted, leaving only an explanatory comment and four new characterisation tests (`RuntimeTypesTests.cs`) covering equivalence-across-source-kinds, independence from source mutation and D-372's shallow-copy aliasing — coverage this type lacked before. That 74,560 B differential sits ≈850 B below D-387's committed 75,416 B, ordinary run-to-run variance between a short local job and a canonical one, not a second figure; D-387's number is the one of record. That cost is therefore not copy doubling — it is ≈3.1× a single isolated copy (24,080 B), while measured loop machinery is ≈2 B/iteration (`attr-range` − `attr-empty` = 1,977 B over 1,000 iterations) and cannot account for it, so the leading hypothesis is that the `for...in` snapshot path copies more than once — which would also explain why a constructor-level fix had no effect. Unattributed, left for a future, separately measured increment per this increment's own stop-on-refutation condition; **phase 3b must not derive a `Run_ArrayForIn` allocation ceiling until this residual is attributed**, or it commits ≈50 KB/1,000-element loop as expected behaviour that a later fix would need to lower a published threshold to remove. No `src/` behavioural change. No new error code; count unchanged at 121. Cites D-313, D-386, D-387, D-383, D-372, `docs/design/bench-allocation-attribution.md` §5. |
 
 ---
 
@@ -8712,6 +8713,125 @@ empirical figure this entry did not itself re-measure).
 
 ---
 
+### D-388 — `GrobArray`'s doubling-copy hypothesis refuted by direct measurement; no fix needed (July 2026)
+
+Area: Core — `GrobArray` construction
+Supersedes: none
+Superseded by: none
+Refines: D-386 (closes the snapshot-copy doubling hypothesis it recorded but did not test)
+
+**The hypothesis under test.** D-386/D-387 recorded that `GrobArray`'s constructor
+(`_elements = elements is null ? [] : [.. elements]`) might grow its copy by doubling because the
+parameter's *static* type is `IEnumerable<GrobValue>`, not `ICollection<GrobValue>` — predicting
+≈73–80 KB of discarded slots for a 1,000-element copy against a ≈24,576 B ideal, a figure D-387's
+`attr-snapshot-empty` − `attr-build` differential (75,416 B) landed inside. D-313 requires
+measurement before any optimisation; this increment was that measurement, planned as: apply an
+explicit `ICollection<GrobValue>` fast-path branch, remeasure and report confirmation or
+refutation rather than defending the branch regardless of the result.
+
+**Refuted.** The hypothesis is wrong. Applying the fast-path fix
+(`elements switch { null => [], ICollection<GrobValue> c => new List<GrobValue>(c), _ => [.. elements] }`)
+produced **byte-identical** allocation to the unmodified constructor under *both* measurements —
+but they are two different scopes and carry two different figures, which must not be conflated:
+
+- **Isolated constructor copy** — `GC.GetAllocatedBytesForCurrentThread` around the exact call
+  shape `VirtualMachine.cs`'s `$snapshot` property uses (`new GrobArray(existingArray.Elements)`,
+  `Elements`' runtime type always `List<GrobValue>`), 1,000-element source: **24,080 B** before and
+  24,080 B after — already inside the ≈24,576 B ideal, so there is no doubling to remove.
+- **Whole-pipeline differential** — `attr-snapshot-empty` − `attr-build`: **74,560 B** before and
+  74,560 B after (the table below). This is the *pipeline* cost the snapshot path pays, not the
+  constructor's own copy, and the fast path moved it by zero bytes.
+
+The existing, unmodified constructor was never doubling on the list and array sources every
+production construction path actually passes.
+
+**Root cause of the wrong prediction.** The C# compiler lowers a collection expression consisting
+of a *single* spread element (`[.. elements]`, nothing else) targeting a `List<T>`-typed
+destination directly to `new List<T>(elements)` — not an Add-per-element loop built from the
+spread source's *static* type. `List<T>`'s own `IEnumerable<T>` constructor then does its own
+*runtime* `is ICollection<T>` check: when the argument's actual type implements `ICollection<T>`
+(every production `GrobArray` construction site passes a `List<GrobValue>` or a `GrobValue[]` — see
+the site survey below), it reads `Count` and copies once via `CopyTo`; only a genuinely lazy,
+non-`ICollection` source (verified separately with a hand-rolled `yield return` iterator: 49,432 B,
+confirming the doubling growth path is real and reachable) falls back to incremental growth. That
+path is reachable from a test — `RuntimeTypesTests` deliberately constructs from a LINQ `Select` —
+but from no `src/` call site today. Both halves of the fast path are *current implementation
+behaviour* of Roslyn and the BCL, not contracts either one guarantees, so this refutation is scoped
+to today's toolchain and today's construction sources rather than asserted in general. D-386's
+static-type reasoning was correct about the *parameter's* declared type but did not account for the
+compiler's single-spread lowering or the BCL constructor's own internal fast path — the two
+together already deliver exactly the pre-sizing D-386 proposed adding explicitly.
+
+**No fix landed; the branch closes without one**, per this increment's own stop condition. The
+explicit `ICollection<GrobValue>` switch was written, measured, confirmed redundant and reverted
+— `src/Grob.Core/GrobArray.cs`'s constructor is unchanged from before this increment, now carrying
+a short comment recording this finding so a future reader (or agent) does not re-propose the same
+already-debunked branch.
+
+**Construction-site survey (unchanged by this entry, recorded since it was the investigation's
+main artefact).** Every `new GrobArray(...)` call in `src/` passing an existing collection was
+enumerated and every one already benefits from the BCL fast path above: `VirtualMachine.cs`'s `NewArray`
+opcode and the map `keys`/`values` properties (D-377) construct from a freshly-built
+`GrobValue[]`; the `$snapshot` property (D-383) constructs from `GrobArray.Elements`, whose
+runtime type is always `List<GrobValue>`; `ArrayNatives.Filter`/`Select`/`Sort` construct from a
+`List<GrobValue>` or `GrobValue[]`; `StringMethodsPlugin`'s `string.split` constructs from a
+`GrobValue[]` already built by an outer collection-expression spread. None mutates its source
+during or after construction. Semantics (order, independence from source mutation, D-372's
+shallow-copy element aliasing) were characterised with four new tests in
+`tests/Grob.Core.Tests/RuntimeTypesTests.cs` — coverage this type did not have before, kept as the
+increment's only landed change, since it fills a real gap regardless of the fix's fate.
+
+**Measurements (local machine, not a canonical baseline — see D-387's own caveat on why; the same
+`benchmark.yml`/`windows-latest` requirement applies).** `dotnet run -c Release --project
+bench/Grob.Benchmarks -- --filter "*AttrSnapshotEmpty*" "*AttrBuild*" --job short` on the same
+Intel Core i5-8400 machine as D-387, before and after applying (then reverting) the fast-path
+branch:
+
+| Benchmark | Before (unmodified) | After (explicit fast path) |
+|---|---:|---:|
+| `Run_AttrBuild` | 509,131 B/op (1,042,702,400 B / 2,048 ops) | 509,131 B/op (identical) |
+| `Run_AttrSnapshotEmpty` | 583,692 B/op (597,700,128 B / 1,024 ops) | 583,692 B/op (1,195,400,256 B / 2,048 ops — identical) |
+| Derived pure-snapshot cost | ≈74,560 B | ≈74,560 B (zero change) |
+
+The short-run figures differ slightly from D-387's canonical-job numbers (509,131 B vs 508,316 B;
+583,692 B vs 583,732 B; derived pure-snapshot cost 74,560 B vs D-387's committed 75,416 B) by
+≈850 B of ordinary run-to-run variance between a short local job and D-387's canonical job on the
+same machine, not by anything this entry changed — the before/after pair taken *on this branch* is
+what matters, and it shows zero movement. **D-387's 75,416 B remains the figure of record**; this
+entry's own 74,560 B is cited only to show its before/after pair, not as a competing measurement.
+
+**The residual, reattributed.** The ≈75 KB pure-snapshot cost is **not** array-copy doubling — a
+single isolated copy measures 24,080 B (above), so the residual is **≈3.1×** one copy. It is also
+not the `for...in` loop's own iteration machinery: `attr-range` − `attr-empty` (D-387) measures an
+*entire* compiled and executed 1,000-iteration range loop at 1,977 B, ≈2 B/iteration, while the
+unattributed residual here is ≈50 B/iteration — **twenty-five times** that. An empty-bodied array
+`for...in` lowers to an int counter, a comparison, a `GetIndex` returning a `GrobValue` struct and
+a `SetLocal`, none of which allocates, so loop machinery cannot plausibly account for a ≈3.1×
+multiple of a single copy. **The leading hypothesis is that the `for...in` snapshot path copies
+more than once** — which would also explain why a constructor-level fix had no effect: fixing the
+constructor's own pre-sizing does nothing if a second, unaccounted copy happens elsewhere on the
+same path. This is unattributed and left for a future, separately measured increment; identifying
+the second copy (or ruling it out) is not chased here, per this increment's explicit stop condition
+on a refuted hypothesis.
+
+**Why this still matters beyond a null result.** Phase 3b (D-385 Q2's per-category allocation
+ceilings) was the reason D-313 wanted this checked before, not after, a threshold was set.
+**Concretely: phase 3b must not derive a `Run_ArrayForIn` allocation ceiling until this residual is
+attributed.** Setting one now would commit ≈50 KB per thousand-element `for...in` loop as expected,
+gate-worthy behaviour; if the second-copy hypothesis above is later confirmed and fixed, removing
+that cost would then mean *lowering* a published threshold — exactly the ratchet trap D-313
+forbids in the other direction. This entry closes the doubling question so a ceiling is not derived
+from a cost that does not exist, and opens the residual question so one is not derived from a cost
+that might not need to exist either.
+
+No opcode change. No new error code; count unchanged at **121**. Cites D-313 (the measurement
+gate this satisfies), D-386 (the hypothesis this refutes), D-387 (the isolating measurement this
+starts from), D-383 (the `for...in` contents-snapshot this investigates), D-372 (the shallow-copy
+aliasing the characterisation tests protect) and `docs/design/bench-allocation-attribution.md` §5
+(phase 1's original, unexplained figure).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -8933,7 +9053,30 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — Benchmark harness restructure landed: D-387 added (phase 3a). Applies D-385/_
+_July 2026 — GrobArray copy pre-sizing investigated, D-388 added: D-386's doubling hypothesis_
+_for GrobArray's enumerable-sourced copy constructor was tested by applying the proposed_
+_collection-typed fast-path branch and remeasuring, and refuted — before and after are_
+_byte-identical under both measurement scopes: the isolated constructor copy of a 1,000-element_
+_list source at 24,080 B, and the whole-pipeline attr-snapshot-empty minus attr-build_
+_differential at 74,560 B. The cause is that the compiler already lowers a single-spread_
+_collection-expression copy targeting a List to the List's own collection constructor, which_
+_already fast-paths any runtime-collection-typed source — which is what every production_
+_GrobArray construction site passes. That is current compiler/BCL behaviour rather than a_
+_guaranteed contract, and a genuinely lazy non-collection source does still grow by doubling_
+_(49,432 B); it is simply not what any production site passes today. No fix lands — the branch_
+_was written, measured, found redundant and reverted, leaving an explanatory comment plus four_
+_new characterisation tests (RuntimeTypesTests.cs) covering source-kind equivalence,_
+_independence from source mutation and D-372's shallow-copy aliasing. D-387's 75,416 B_
+_pure-snapshot figure remains the figure of record; that cost is therefore not copy doubling —_
+_it is ~3.1 times a single isolated 24,080 B copy — and not for...in loop machinery either,_
+_since attr-range minus attr-empty measures an entire compiled and executed loop at_
+_~2 B/iteration while the residual is ~50 B/iteration, ~25 times that. Leading hypothesis is_
+_that the for...in snapshot path copies more than once,_
+_unattributed and left for a future, separately measured increment. Phase 3b must not derive an_
+_array-for-in allocation ceiling until this residual is attributed, or it commits ~50 KB per_
+_thousand-element loop as expected behaviour that a later fix would need to lower a published_
+_threshold to remove. No src/ behavioural change, no new error code, count unchanged at 121._
+_Previous: July 2026 — Benchmark harness restructure landed: D-387 added (phase 3a). Applies D-385/_
 _D-386 to bench/, tooling/Grob.BenchCheck.Tests and grob-benchmarking-strategy.md. vm rebuilt_
 _in place — GlobalSetup compiles each fixture to a Chunk once, IterationSetup gives every_
 _iteration a fresh VirtualMachine, each Benchmark method is exactly vm.Run(chunk). endToEnd_

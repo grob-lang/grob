@@ -51,6 +51,49 @@ public sealed class RuntimeTypesTests {
         Assert.Equal(GrobValue.FromInt(99), arr[0]);
     }
 
+    // D-388 investigated the constructor's copy for a pre-sizing gap and found none —
+    // see the constructor's own comment. These four tests were added as coverage
+    // discovered missing during that investigation: equivalence across source kinds,
+    // independence from source mutation and D-372's shallow-copy aliasing.
+
+    [Fact]
+    public void GrobArray_ConstructedFromListArrayLinqOrNull_ProduceEquivalentElements() {
+        var fromList = new GrobArray(new List<GrobValue> { GrobValue.FromInt(1), GrobValue.FromInt(2) });
+        var fromArray = new GrobArray(new[] { GrobValue.FromInt(1), GrobValue.FromInt(2) });
+        var fromLinq = new GrobArray(new long[] { 1, 2 }.Select(GrobValue.FromInt));
+        var fromNull = new GrobArray();
+
+        GrobValue[] expected = [GrobValue.FromInt(1), GrobValue.FromInt(2)];
+        Assert.Equal(expected, fromList.Elements);
+        Assert.Equal(expected, fromArray.Elements);
+        Assert.Equal(expected, fromLinq.Elements);
+        Assert.Empty(fromNull.Elements);
+    }
+
+    [Fact]
+    public void GrobArray_ConstructedFromCollection_IsIndependentOfSourceMutation() {
+        var source = new List<GrobValue> { GrobValue.FromInt(1), GrobValue.FromInt(2) };
+        var arr = new GrobArray(source);
+
+        source[0] = GrobValue.FromInt(999);
+        source.Add(GrobValue.FromInt(3));
+
+        Assert.Equal(2, arr.Count);
+        Assert.Equal(GrobValue.FromInt(1), arr.Elements[0]);
+        Assert.Equal(GrobValue.FromInt(2), arr.Elements[1]);
+    }
+
+    [Fact]
+    public void GrobArray_ConstructedFromCollection_CopiesElementReferencesShallowly() {
+        var inner = new GrobArray(new[] { GrobValue.FromInt(42) });
+        var source = new List<GrobValue> { GrobValue.FromArray(inner) };
+
+        var arr = new GrobArray(source);
+
+        Assert.True(arr.Elements[0].TryAsArray(out GrobArray? copiedInner));
+        Assert.Same(inner, copiedInner);
+    }
+
     // ----- GrobMap -----
 
     [Fact]
