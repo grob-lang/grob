@@ -54,7 +54,7 @@ public sealed class RuntimeTypesTests {
     // D-388 investigated the constructor's copy for a pre-sizing gap and found none —
     // see the constructor's own comment. These four tests were added as coverage
     // discovered missing during that investigation: equivalence across source kinds,
-    // independence from source mutation, and D-372's shallow-copy aliasing.
+    // independence from source mutation and D-372's shallow-copy aliasing.
 
     [Fact]
     public void GrobArray_ConstructedFromListArrayLinqOrNull_ProduceEquivalentElements() {

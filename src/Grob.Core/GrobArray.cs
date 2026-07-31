@@ -13,12 +13,15 @@ public sealed class GrobArray {
     /// </summary>
     public GrobArray(IEnumerable<GrobValue>? elements = null) {
         // D-388 investigated whether this single-spread copy grows by doubling for a
-        // statically-IEnumerable<T> source (it does not): the compiler lowers a
-        // single-spread `[.. elements]` targeting List<GrobValue> to
-        // `new List<GrobValue>(elements)`, and that BCL constructor already fast-paths
-        // any runtime-ICollection<T> source (List<T>, T[] — every real caller here) via
-        // its own internal check. A genuinely lazy, non-ICollection source still grows
-        // by doubling, but no construction site in this codebase passes one.
+        // statically-IEnumerable<T> source. Measured on the current toolchain, it does
+        // not: Roslyn lowers a single-spread `[.. elements]` targeting List<GrobValue>
+        // to `new List<GrobValue>(elements)`, and that BCL constructor fast-paths any
+        // source whose *runtime* type implements ICollection<T> (List<T>, T[]) via its
+        // own internal check — which is what every production construction site passes.
+        // Both halves are current implementation behaviour of the compiler and the BCL,
+        // not guaranteed contracts. A genuinely lazy, non-ICollection source (an
+        // iterator, or a LINQ Select as this constructor's tests cover) does still grow
+        // by doubling, so pre-sizing would matter again if one ever reached a hot path.
         _elements = elements is null ? [] : [.. elements];
     }
 
