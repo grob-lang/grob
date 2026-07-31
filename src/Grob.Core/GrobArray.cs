@@ -12,6 +12,13 @@ public sealed class GrobArray {
     /// <paramref name="elements"/>.
     /// </summary>
     public GrobArray(IEnumerable<GrobValue>? elements = null) {
+        // D-388 investigated whether this single-spread copy grows by doubling for a
+        // statically-IEnumerable<T> source (it does not): the compiler lowers a
+        // single-spread `[.. elements]` targeting List<GrobValue> to
+        // `new List<GrobValue>(elements)`, and that BCL constructor already fast-paths
+        // any runtime-ICollection<T> source (List<T>, T[] — every real caller here) via
+        // its own internal check. A genuinely lazy, non-ICollection source still grows
+        // by doubling, but no construction site in this codebase passes one.
         _elements = elements is null ? [] : [.. elements];
     }
 
