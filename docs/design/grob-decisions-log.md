@@ -380,6 +380,9 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-382 | July 2026 | Runtime — error taxonomy | Correctness batch, ADR-0017-deadline finding: D-366's allocation-ceiling guard (`repeat`/`padLeft`/`padRight`) wrongly reused `E5101` ("array index out of range") for a size limit, and D-371's `GrobValueComparer` sort-key comparator wrongly reused the compile-time `E0004` for a runtime fault. Registers **E5905** (result exceeds maximum size) and **E5906** (sort key type does not implement Comparable), both `RuntimeError`-leaf E59xx codes, and repoints all five throw sites; `E5101`/`E0004` retained for their legitimate call sites. The sort-comparator throws also move from a bare `GrobRuntimeException` to `NativeFaultException`, routing the fault through the native-throw seam so it becomes catchable via `try`/`catch` from Grob source for the first time. Records a user-visible behaviour change: the allocation-ceiling fault's leaf moves `IndexError` → `RuntimeError`, breaking (and updating) an existing typed-catch fixture. Count 119 → 121. Cites D-366, D-371, D-284, ADR-0017, ADR-0014. |
 | D-383 | July 2026 | Language semantics / Compiler — iteration | Refines D-379, which ratified "snapshot the bound at loop entry" without distinguishing snapshotting the **count** from snapshotting the **contents** — a distinction that is immaterial for maps and decisive for arrays. A count-only array snapshot indexes a **live** array, so `for x in xs { xs.remove(0) }` reads past the shrunken end and raises `E5905`-era `E5101` mid-loop, a crash the current live bound handles gracefully. Investigating that exposed a second, larger problem: D-378's map behaviour materialises **keys only** and reads each value live, so a key removed mid-loop is still visited and `v` — bound as **non-nullable `V`** (D-374) — degrades to `nil`, violating the foundational guarantee that non-nullable types are never nil. Ratified: **`for...in` snapshots the contents at loop entry, for both collection types** — arrays copy the element sequence, maps copy key-**value** pairs rather than keys alone. One rule, statable without knowing which collection is held: *you iterate exactly what was present when the loop started*. No crash, no skipped element, and no `nil` in a non-nullable binding. The copy is **shallow** — under D-372's reference semantics the copied references are the same objects, so mutating an element's or value's own contents is visible inside the loop; only the sequence and the entry set are frozen. Rejected: count-only with a live read (replicates the unsoundness and either crashes or forces `nil` into a non-nullable binding); leaving arrays live (keeps the inconsistency D-379 exists to remove); keys-only for maps (the status-quo soundness hole). Costs one array copy per array loop and one extra value copy per map loop; the implementing increment must measure against D-313's benchmark gate and surface a breach rather than absorb it. Changes shipped behaviour on both paths. No new error code; count unchanged at 121 |
 | D-384 | July 2026 | Compiler / VM — iteration | Lands D-383 (PR #169). Arrays: `EmitArrayForIn` snapshots the element sequence via a new internal `"$snapshot"` `GetProperty` case (`VirtualMachine.cs`, `new GrobArray(array.Elements)`) — a `$`-prefixed name the lexer can never produce as a Grob identifier, so it is reachable only from the compiler's own emission, never user source; no new opcode, the same technique already used for maps' `keys`/`values`. Maps: `EmitMapForIn` adds a second, parallel `values` snapshot alongside the existing `keys` one, reusing the VM's pre-existing, already index-aligned `values` `GetProperty` case (D-377/D-378) — **zero VM changes** on the map side, the least-new-machinery option against an array-of-pairs or a copied `GrobMap`. Synthetic-local lifetime, nesting, break/continue and closure capture needed no change to the shared `EmitForInLoop` machine — proven, not just reasoned, by new nesting/break/continue/closure tests. Closes the soundness hole: `v` can no longer be `nil` in a non-nullable `V` binding (D-378/D-374), proven by a test spanning both `remove` and `clear` mid-loop; the pre-existing test recording the old `nil`-degrade as accepted behaviour is corrected in place. Shallow-copy semantics (D-372) proven by test. Full breaking-change list: the corrected map soundness test, two renamed/re-asserted compiler bytecode-shape tests (a CodeRabbit-caught vacuous-assertion bug in the new tests themselves — anchored on `OpCode.Loop`'s own offset rather than the decoded loop target — fixed in the same PR), a new 11-test integration file; no gold master, error example or validation script affected. Numeric-range `for...in` confirmed untouched. Benchmark obligation discharged by direct local before/after measurement (no prior baseline existed for these two new benchmarks): array `for...in` +3.8% time / +4.4% allocated, map `for...in` −6.5% time (noise) / +4.6% allocated — both well under D-313's 5%/12% thresholds, no breach. No new opcode, no new error code; count confirmed unchanged at 121 against the live registry. Cites D-383, D-379, D-378, D-374, D-373, D-372, D-313. |
+| D-385 | July 2026 | Tooling — benchmarking | Decision-only session (no source/harness changes) resolving six correctness gaps the `Benchmarks` CI run on `0125bae` exposed, evidenced by `docs/design/bench-allocation-attribution.md` (phase 1). **Q1 (category semantics):** the `vm` category (`Grob.Benchmarks.Vm.VmBenchmarks`) measures the entire pipeline (`Lexer→Parser→TypeChecker→Compiler→vm.Run`) under a name that promises VM-only cost, while `grob-benchmarking-strategy.md` §4.2 already specifies hand-off-isolated `Chunk` execution for `vm` and §4.3's `endToEnd` category has never been implemented (no `Grob.Benchmarks.EndToEnd` namespace exists) — F8 stays open, not silently renamed away. Decided: rename the current nine full-pipeline benchmarks to `endToEnd` (real content against F8, not the full validation-suite corpus §4.3 envisions — that is follow-on work, staged separately below); rebuild `vm` to hoist compilation into `[GlobalSetup]`/a pre-built `Chunk` so it measures `vm.Run(chunk)` alone, restoring §4.2's already-standing intent. **Q2 (LOH tripwire):** D-333's `lohTripwireBytes` (85,000 B) already functions, and is already documented, as a total-per-operation allocation ceiling, not a single-large-object detector — the gap is a single fixed constant across categories with structurally different legitimate allocation shapes (phase 1: both `for...in` benchmarks sit 6–12× over it after D-383's contents-snapshot). Decided: keep the mechanism, redocument its name/rationale plainly as a ceiling (not an LOH detector), and require phase 3 to derive a per-category or per-shape threshold from phase 1's measured values rather than one borrowed CLR constant. Rejected: implementing genuine large-object detection (BDN summary output carries no such signal) and removing the check outright (D-332's defect-class is real and this is the only mechanical catch for it). **Q3 (time axis under CPU heterogeneity):** D-333's per-baseline CPU-identity guard is correct and already causes `compile.origin.json`'s inert cumulative axis (`"Unknown processor"`) — already a "known, logged gap (D-333), not a silent one" per that entry's own text, not a fresh finding. Decided: record an amendment to D-313 in this entry (`Refines: D-313`; D-313's own entry is never edited) stating the compile category's cumulative axis is inert on GitHub-hosted runners until `compile.origin.json` is deliberately re-captured, so a reader of D-313 alone is not told a guarantee current data cannot deliver — closing the ADR-0018-style "documented gate = enforced gate" gap this session cites that precedent for. Rejected: a self-hosted/pinned runner (disproportionate to the problem D-333 already solved correctly) and a between-benchmark CPU-independent ratio signal (interesting, not needed to close this gap; out of scope here). **Q4 (composition-root fidelity):** phase 1's uniform `StringMethodsPlugin` registration (vs. the CLI's full twelve-plugin `PluginRegistration.RegisterAll`, four of which need capability injection benchmarks have no use for) is ratified as the permanent approach rather than left as an undocumented stopgap — array/map instance-method dispatch (`ArrayNatives`, fresh closure per call) is documented as the structurally distinct, more expensive native path phase 1 found, separate from the Stdlib-plugin path `StringMethodsPlugin` represents. Rejected: mirroring the full CLI composition root (harness complexity — capability-interface fakes — for no signal any VM-dispatch benchmark needs). **Q5 (fixture design):** whole-script benchmarks are documented as whole-script (perfect isolation is unattainable); phase 1's `attr-*` differential fixtures — despite their doc comments currently marking them "throwaway" — become permanent companions under whichever category ends up hosting them post-Q1; `attr-map-build` and an empty-body snapshot fixture (phase 1's two named gaps) are added. **Q6 (gating matrix):** current `policy.json` (`compile: gating=true`, `vm`/`endToEnd`: `gating=false`, allocation axis always gating) already matches D-313/§9's documented build-out stand-in, not a bug; this entry states the matrix explicitly and the flip condition (full-corpus `endToEnd` becomes the gate, `compile`/`vm` drop to informational, a deliberate `policy.json` edit) so corpus and enforcement stay the same thing. **F8:** partially resolved (Q1's rename gives `endToEnd` real content) but not closed — full resolution needs the validation-suite corpus, proposed as a separate, later increment given its size. **No baseline is rebaselined and no threshold is loosened by this entry** — D-313's ratchet-trap rule holds; every change either corrects what a category is named/measures or documents an existing, already-correct mechanism more honestly. No implementation performed; phase 3 applies this. Refines D-313 (Q3's explicit compile-cumulative-inert statement, Q6's explicit gating matrix), D-333 (Q2's tripwire redocumentation) — cites ADR-0018 for the documented-gate-equals-enforced-gate precedent. Cites D-302, D-309, D-383. |
+| D-386 | July 2026 | Benchmarking — categories and fixtures | Refines D-385 on two of its six sub-decisions; Q2, Q3, Q4 and Q6 stand unchanged. **Q1':** D-385 proposed moving the nine current full-pipeline micro-script fixtures into the `endToEnd` category to give F8's never-captured baseline its first real content. Rejected: `grob-benchmarking-strategy.md` §4.3 defines `endToEnd` as the **validation-suite scripts through the real CLI**, so populating it with synthetic micro-scripts would give a category content contradicting its own specification — the documented-versus-built divergence this consolidation phase exists to eliminate — and would make F8 read as partially resolved while the thing F8 actually names still does not exist. It is also largely redundant: once `vm` measures execution per §4.2 and `compile` measures compilation, a third category measuring their sum adds baseline surface for little signal. Ratified instead: **`vm` is rebuilt in place** — same fixtures, compilation hoisted to `[GlobalSetup]`/a pre-built `Chunk` so the measured region is `vm.Run(chunk)` alone, restoring §4.2's standing intent from which the code had drifted — and **`endToEnd` stays empty with F8 stated as open**, to be built properly in its own increment against the real validation-suite corpus, now feasible since Sprint 9 unblocked most of those scripts. **Q5':** the `attr-*` differential fixtures become permanent as D-385 ratified, but in a **dedicated `attribution` category with `gating: false`** rather than folded into whichever category ends up hosting them. They are **instruments, not guards** — they measure the pipeline floor and per-native-call overhead, not features anyone should gate on — and they are whole-script by nature, so they need a whole-script home that is not a misnamed `endToEnd`. `attr-map-build` and the empty-body snapshot fixture join them. No new error code; count unchanged at 121 |
+| D-387 | July 2026 | Tooling — benchmarking (implementation) | Phase 3a — applies D-385/D-386 to `bench/`, `tooling/Grob.BenchCheck.Tests` and the corpus docs. `Grob.Benchmarks.Vm.VmBenchmarks` rebuilt in place (Q1'): `[GlobalSetup]` compiles the five existing fixtures to `Chunk` fields once; `[IterationSetup]` constructs a fresh `VirtualMachine` per iteration (needed because `array-for-in`/`map-for-in` mutate global state that must not compound across iterations sharing one `Chunk`); each `[Benchmark]` method is now exactly `vm.Run(chunk)`. `endToEnd` left untouched — still declared, still empty, **F8 stays open**. New `Grob.Benchmarks.Attribution.AttributionBenchmarks` class and `Fixtures/Attribution/` directory (Q5'): the four `attr-*` fixtures moved out of `vm`, doc comments losing "(phase 1, throwaway)" since they are permanent now, plus three new fixtures — `attr-map-build.grob` (map construction only, no second loop) and `attr-snapshot-empty.grob` (the `attr-build` build loop plus an empty-body `for...in`, isolating the pure contents-snapshot copy), both named as missing by phase 1/D-386, and `attr-array-dispatch.grob` (`xs.contains(i)` × 1,000, no growth — the growth-free control for `attr-build` that phase 1 §4 recorded as missing, added in PR #171 review). The same review removed unmatched terminal `print` calls from `attr-empty` (now deliberately statement-free, as the category's subtracted-against baseline) and `attr-map-build`. New `attribution` category added to `policy.json` (`gating: false`); two `BenchCheckTests` cases prove it reports informational, not a regression, and that the two new fixtures classify as `NewBenchmark` against a partial rolling baseline. Composition root ratified in code (D-385 Q4): `StringMethodsPlugin` registered uniformly across the attribution category's whole-pipeline runner; `ArrayNatives`/`MapNatives` instance-method dispatch documented as a structurally distinct, fresh-closure-per-call native path reachable without any plugin registration. `grob-benchmarking-strategy.md` amended (never editing D-313's or D-333's entries in place): new §4.2a for the attribution category, an implementation note on §4.2's vm-rebuild correction, §3/§7.1 fixture-tree entries, §8's baseline-file list gaining `attribution.json`/`attribution.origin.json` (declared, not yet committed) and a note that `vm.json`/`vm.origin.json` now describe a stale pre-rebuild measurement, and a new explicit §9.1 gating matrix plus the compile-cumulative-inert caveat (`compile.origin.json`'s `"Unknown processor"` capture), citing ADR-0018. **Local-machine measurement only, not a canonical baseline** (same Intel Core i5-8400 machine as phase 1's own run, `docs/design/bench-allocation-attribution.md`): `vm` category (execution only) — `Run_DeclAndArith` 28.97 μs / 2,344 B, `Run_Interpolation` 34.49 μs / 3,880 B, `Run_ControlFlow` 207.94 μs / 2,504 B, `Run_ArrayForIn` 1,244.41 μs / 531,616 B, `Run_MapForIn` 1,970.83 μs / 1,033,320 B; `attribution` category (whole pipeline) — `Run_AttrEmpty` 6.58 μs / 44,172 B, `Run_AttrRange` 75.34 μs / 46,149 B, `Run_AttrNative` 210.05 μs / 232,032 B, `Run_AttrBuild` 280.05 μs / 508,316 B, `Run_AttrMapBuild` 483.34 μs / 941,592 B, `Run_AttrSnapshotEmpty` 457.04 μs / 583,732 B. Derived: loop machinery 1,977 B, Stdlib-plugin per-native-call overhead ≈186 B/call, and — labelled precisely, per PR #171 review — the **combined** array-member-dispatch tax plus growth 276,284 B/1,000 appends, not array growth alone, since `attr-build` and `attr-native` sit on structurally different native paths (phase 1 §4); `attr-array-dispatch` is the control that isolates growth, its figure pending the canonical capture. All three reproduce phase 1's figures almost exactly on the same machine. New: pure contents-snapshot cost (`attr-snapshot-empty` − `attr-build`) = 75,416 B, inside D-386's ≈73–80 KB doubling-hypothesis prediction — **reported, no action taken**, any fix is a separate decision. Map-build split, using phase 1's frozen full-pipeline `Run_MapForIn` figure (1,092,413 B) as the comparison basis since the rebuilt `vm` category's `Run_MapForIn` no longer shares that basis: second-loop-plus-values-snapshot ≈150,821 B, map-build-loop-itself (interpolations + `map.set` + growth) ≈897,420 B. **Canonical `vm.json`/`vm.origin.json` re-capture and the first `attribution.json`/`attribution.origin.json` commit are a follow-up** — only the `benchmark.yml` workflow on `windows-latest` produces a committable baseline (§8.1/§8.2), and pushing/dispatching CI is the maintainer's action. Phase 3b (per-category allocation ceilings, D-385 Q2) is not addressed here — it needs this increment's numbers first. No `src/` change. No new error code; count unchanged at 121. Cites D-385, D-386, D-313, D-333, ADR-0018, `docs/design/bench-allocation-attribution.md`. |
 
 ---
 
@@ -8283,6 +8286,431 @@ contents-snapshot guarantee and the shallow-copy consequence).
 
 ---
 
+### D-385 — Benchmark harness correctness: category semantics, LOH tripwire, CPU-heterogeneity gap, composition-root fidelity, fixture design and the gating matrix (July 2026)
+
+Area: Tooling — benchmarking
+Supersedes: none
+Superseded by: none
+Refines: D-313, D-333, D-302, D-309
+
+**Type: decision-only session. No source changes, no harness changes were made under this entry —
+phase 3 applies what is decided here.** Runs against the corpus carrying D-356 through D-384, plus
+`docs/design/bench-allocation-attribution.md` (phase 1's findings note, committed on
+`bench/allocation-attribution` alongside this entry). Every empirical figure below is phase 1's,
+cited rather than restated from memory.
+
+**Context — why this decision exists.** The `Benchmarks` CI run on `0125bae` failed for a reason
+unrelated to the change under test. Investigation, deepened by phase 1's differential-fixture
+measurement, found six things wrong with what the gate measures or reports, not with the change it
+was run against.
+
+**Q1 — category semantics.** `VmBenchmarks.RunSource` (`bench/Grob.Benchmarks/Vm/VmBenchmarks.cs`)
+runs the entire pipeline — `Lexer.Scan → Parser.Parse → TypeChecker.Check → Compiler.Compile →
+vm.Run` — inside the `vm` category's measured region, so a compiler regression and a VM regression
+are currently indistinguishable in the same number. This is not an open design question:
+`grob-benchmarking-strategy.md` §4.2 already specifies the VM category uses "hand-constructed
+`Chunk` instances — the compiler is not involved"; the implementation drifted from a standing
+decision. Meanwhile §4.3's `endToEnd` category — the thirteen/eleven validation-suite scripts
+through the real pipeline, the *primary* gate per D-313/§9 — has never been implemented; no
+`Grob.Benchmarks.EndToEnd` namespace exists, and `policy.json`'s `endToEnd` category has always
+had zero fresh benchmarks to compare (F8). **Decided:** the current nine full-pipeline benchmarks
+(`Run_DeclAndArith` … `Run_MapForIn`, plus phase 1's `attr-*` fixtures) are renamed into a new
+`endToEnd` category — real pipeline-to-execution content against F8, not a cosmetic label, though
+narrower than §4.3's full validation-suite corpus. `vm` is rebuilt to hoist compilation into
+`[GlobalSetup]`/a pre-built `Chunk` so the benchmark method measures `vm.Run(chunk)` alone,
+restoring §4.2's already-documented intent — phase 3 must confirm a pre-built `Chunk` reused
+across BDN iterations does not carry state between runs that would invalidate the isolation (a
+fresh `VirtualMachine` per invocation, as today, is assumed to remain necessary). **Rejected:**
+maintaining both under the existing names with no semantic change (the size of the problem phase 1
+quantified — 86.4% of `Run_ArrayForIn`'s allocation is fixture setup — demands more than a label);
+building the full §4.3 validation-suite corpus inside this same decision's implementation (out of
+proportion to a "make categories honest" fix; staged below). **Cost:** the renamed `endToEnd`
+category does not yet match §4.3's description in full (it is nine representative scripts, not the
+validation suite), so F8 is *narrowed*, not closed, by this entry alone.
+
+**Q2 — the LOH tripwire.** `policy.json`'s `lohTripwireBytes` (85,000 B) is the .NET Large Object
+Heap's actual single-object promotion threshold, but `BenchCheck.BreachesLohTripwire`
+(`tooling/Grob.BenchCheck/BenchCheck.cs`) checks it against `Memory.BytesAllocatedPerOperation` —
+BenchmarkDotNet's summary output carries no per-object size data, so the check cannot and never
+could detect a large-object promotion; it is, and per D-333's own text was always documented as,
+"any benchmark, gating or not, whose fresh allocation meets or exceeds this fails outright" — a
+total-per-operation ceiling. The gap phase 1 quantified is not the mechanism's identity but its
+one-size-fits-all threshold: both `for...in` benchmarks, after D-383's contents-snapshot, sit
+574.54 KB / 1066.81 KB per operation — 6.9×/12.9× over 85,000 B — a shape the LOH byte count was
+never chosen to fit. **Decided:** keep the mechanism exactly as it functions today; redocument its
+name and rationale in `grob-benchmarking-strategy.md` §9 and this log as a **total-allocation
+ceiling**, explicitly not an LOH detector; phase 3 derives a per-category (or per-fixture-shape)
+threshold from phase 1's measured values — the pipeline floor (≈44 KB), per-native-call cost
+(≈186 B/call) and the two `for...in` figures above are the starting data — rather than one constant
+borrowed from an unrelated CLR concept. **Rejected:** implementing genuine large-object detection
+(would need a different diagnostic than `[MemoryDiagnoser]`'s summary output provides, a
+disproportionate cost for the signal gained); removing the tripwire outright (it is the only
+mechanical catch for a D-332-class defect — an informational category silently landing on
+oversized allocation — and phase 1 changed nothing about that need). **Cost:** phase 3 owns
+choosing and justifying the new threshold(s); until it lands, the tripwire keeps firing on the
+`for...in` benchmarks' legitimate allocation, which is why the CI run at `0125bae` failed on a
+change unrelated to it.
+
+**Q3 — the time axis under CPU heterogeneity.** The CI run reported "CPU mismatch — fresh 'AMD
+EPYC 7763' vs rolling baseline 'Intel Xeon Platinum 8370C'" for the `vm` category, and phase 1
+confirms `vm.json`/`vm.origin.json` are both captured on the Xeon while the fresh run landed on the
+EPYC — D-333's `SameCpu` guard working exactly as designed, degrading the time comparison to
+informational while allocation still gates. Separately, `compile.origin.json`'s
+`HostEnvironmentInfo.ProcessorName` reads `"Unknown processor"` (a pre-D-333, BenchmarkDotNet
+0.14.0 capture) — `BenchCheck.IsUnknownProcessor` never treats this as a match to anything, so the
+`compile` category's cumulative axis is permanently informational until someone deliberately
+re-captures that file. **This is not a fresh finding — D-333 already logged it explicitly**
+("a known, logged gap (D-333), not a silent one") and deliberately declined to re-freeze it in the
+same session. What D-313 itself does not yet say, read on its own, is that this gap exists at all;
+a reader of D-313 alone is told a 12%-cumulative guarantee the compile category currently cannot
+deliver. **Decided:** record an amendment to D-313 in this entry (`Refines: D-313`; D-313's own
+entry is never edited) stating plainly that the compile category's cumulative time axis is inert
+on GitHub-hosted runners pending a deliberate `compile.origin.json` re-capture — closing the gap this session cites ADR-0018's "documented gate = enforced gate"
+precedent for, without re-opening D-333's own, already-correct, CPU-identity mechanism. **Rejected:**
+pinning a self-hosted or dedicated-hardware runner (disproportionate — D-333's per-baseline CPU
+check already handles heterogeneity correctly; the problem is a documentation gap, not a mechanism
+gap); a CPU-independent between-benchmark ratio signal (a genuinely different, more invasive
+measurement technique with no demonstrated need here — out of scope for this entry). **Cost:**
+none beyond documentation — no code or baseline changes follow from this Q; `compile.origin.json`
+remains un-recaptured, by design, until a future deliberate act.
+
+**Q4 — benchmark fidelity: which composition root.** `VmBenchmarks.RunSource` constructs a bare
+`VirtualMachine` and, as of phase 1's branch, registers `new StringMethodsPlugin()` uniformly
+across every fixture (including the five pre-existing ones), rather than mirroring the CLI's
+`Grob.Cli.PluginRegistration.RegisterAll` (twelve plugins, four needing `IRandomSource`/
+`IEnvironment`/`IStandardStreams`/`IClock` injection). **Decided:** ratify phase 1's stopgap as the
+permanent approach — `StringMethodsPlugin` is pure (no capability injection) and its one-time
+registration cost cancels out of every pairwise fixture subtraction; mirroring the full composition
+root would require capability-interface fakes purely to satisfy registration, for natives no
+current VM-dispatch benchmark calls. Document, per phase 1 §4's finding, that array/map
+instance-method dispatch (`ArrayNatives.GetMethod`, a fresh `NativeFunction`/closure/display-class
+triple built on every call) is a structurally distinct and more expensive native-call path than the
+Stdlib-plugin path `StringMethodsPlugin` represents (cached delegate, looked up once via
+`GetGlobal`) — "bytes per native call" is not one number across Grob's ~99 natives, and any future
+benchmark or optimisation argument citing a native-call cost must say which path it means.
+**Rejected:** mirroring `RegisterAll` in full (harness complexity for capability interfaces no
+benchmark under this category exercises; a future increment that specifically wants to measure a
+capability-backed native — `date`, `fs`, `process` — can register that one plugin directly without
+adopting the whole composition root). **Cost:** none — this ratifies work already done on
+`bench/allocation-attribution` rather than commissioning new work.
+
+**Q5 — fixture design.** Whole-script benchmarks cannot build a fixture outside their own measured
+region, so perfect isolation is unattainable; phase 1's differential-fixture technique (subtracting
+successive fixtures differing by exactly one thing) is the working answer, not a compromise to
+improve on. **Decided:** every whole-script benchmark is documented as measuring the whole script,
+compilation included, unless and until Q1's `vm` rebuild lands; phase 1's `attr-empty`,
+`attr-range`, `attr-native` and `attr-build` fixtures — despite their doc comments today marking
+them "phase 1 allocation-attribution fixture (throwaway)" — become permanent companion fixtures
+under whichever category ends up hosting them post-Q1 (most naturally `endToEnd`, since they are
+full-pipeline runs); the two fixtures phase 1 named as missing are added: `attr-map-build` (map
+construction with no second loop, isolating the interpolation-vs-second-snapshot split
+§6 left unresolved for `Run_MapForIn`'s 504,084 B delta) and an empty-body snapshot fixture
+(isolating the unexplained ≈55 KB gap in phase 1 §5's ≈3.3×-over-prediction finding for
+`array-for-in`'s snapshot-plus-iteration cost). **Rejected:** discarding the `attr-*` fixtures as
+genuinely throwaway now that the harness redesign consumes their data directly — their doc comments
+are updated in phase 3 to drop "throwaway" once they are wired into the permanent suite.
+**Cost:** two new fixture files plus their benchmark methods; no fixture reduces existing coverage.
+
+**Q6 — what gates, what is informational.** `policy.json` today: `compile` gates (both time axes
+plus allocation), `vm`/`endToEnd` gate on allocation only (time informational). This already
+matches D-313/§9's documented build-out stand-in — "until end-to-end becomes live... compile-time
+gates cumulatively... VM execution stays informational" — it is not a bug, contrary to the initial
+framing that prompted this session. **Decided:** state the matrix explicitly in this entry (a second
+amendment recorded against D-313, not an edit to it) so it is asserted once rather than
+reconstructed by a reader from `policy.json` plus two
+separate decisions: **`compile`** gates on per-sprint time (significance-aware, D-333), cumulative
+time (until `compile.origin.json` is re-captured — Q3) and allocation (percent + LOH-ceiling, Q2);
+**`vm`/`endToEnd`** gate on allocation only, time informational, as the documented build-out stand-in.
+The flip condition already implied by §9 is stated explicitly: when `endToEnd` carries the full
+validation-suite corpus (Q1's follow-on), it becomes the gate and `compile`/`vm` drop to
+informational — a deliberate `policy.json` edit, never automatic. `stability` is confirmed as
+correctly outside this matrix entirely — `StabilityRunner`'s own `tolerancePercent`/
+`lastPassingHeapBytes` mechanism, never a `[Benchmark]` class `BenchCheck` compares, by design, not
+oversight. **Rejected:** flipping any `gating` flag in this entry (no baseline or threshold changes
+follow from a decision session; that is phase 3's, or later, deliberate act). **Cost:** none — this
+Q asserts the existing, already-correct matrix in the durable record rather than changing it.
+
+**F8 status.** Partially resolved: Q1's rename gives `endToEnd` real, if narrower-than-specified,
+content, ending the "zero fresh benchmarks matched" state the CI note recorded. Not closed: the
+full §4.3 validation-suite corpus is unbuilt. Proposed as a separate, later increment (see staging,
+below) rather than folded into phase 3, given its size relative to the rest of this decision.
+
+**Constraints honoured.** No baseline file is touched and no threshold is loosened by this entry —
+D-313's ratchet-trap rule holds throughout; every Q either corrects what a category is named or
+measures, or documents an existing, already-correct mechanism more honestly. The compile-benchmark
+cumulative drift phase 1's context flagged (`Compile_TwoExpressions` +65.2%, `Compile_TenPrints`
++37.9% against origin, both suppressed as CPU mismatch) is not silently rebaselined by this entry —
+it remains unmeasurable until `compile.origin.json` is deliberately re-captured (Q3), at which point
+it must be measured and reported, not assumed benign.
+
+**Staging — more than one increment.** This decision needs at least two: **phase 3** applies Q1–Q6
+mechanically (the `vm`/`endToEnd` rename and rebuild, the two new `attr-*` fixtures, the
+`policy.json`/strategy-doc redocumentation, the D-313/D-333 corpus amendments this entry makes) —
+scoped, small, no new benchmark corpus. A **later, separate increment** builds the full §4.3
+validation-suite `endToEnd` corpus that fully closes F8 and lets `endToEnd` become the actual
+primary gate — larger, gated on which of the eleven/thirteen validation scripts Sprint 9 has made
+runnable, and not assumed complete by this entry.
+
+Refines D-313 (Q3's explicit compile-cumulative-inert statement; Q6's explicit gating matrix) and
+D-333 (Q2's tripwire redocumentation as a total-allocation ceiling, not an LOH detector) — cites
+ADR-0018 for the "documented gate = enforced gate" precedent this session applies to both. Cites
+D-302, D-309 (the harness and baseline-production decisions D-313 itself refines), D-383 (the
+contents-snapshot change whose allocation growth is what pushed the `for...in` benchmarks over the
+LOH tripwire in the first place), and `docs/design/bench-allocation-attribution.md` for every
+empirical figure above.
+
+---
+
+### D-386 — `vm` rebuilt in place, `endToEnd` left empty, attribution fixtures get their own category (July 2026)
+
+Area: Benchmarking — categories and fixtures
+Supersedes: none
+Superseded by: none
+Refines: D-385
+
+D-385 settled six questions about the benchmark harness. Four of them — Q2 (per-category
+allocation ceilings), Q3 (refine D-313 from this entry rather than chase a stable runner), Q4 (minimal
+composition root, `StringMethodsPlugin` stopgap ratified) and Q6 (explicit gating matrix with a
+stated flip condition) — stand exactly as ratified and are not touched here. This entry refines
+the other two, both of which D-385's own author flagged as judgment calls rather than clean
+single answers.
+
+---
+
+**Q1' — `vm` is rebuilt in place; `endToEnd` stays empty and F8 stays open.**
+
+D-385 proposed moving the nine current full-pipeline fixtures (`Run_DeclAndArith` through
+`Run_MapForIn`) into the `endToEnd` category, giving F8's never-captured baseline its first real
+content, while `vm` was rebuilt to measure execution alone.
+
+The rebuild half is right and is kept. The rename half is rejected, for three reasons:
+
+1. **It contradicts `endToEnd`'s own specification.** `grob-benchmarking-strategy.md` §4.3
+   defines the category as the validation-suite scripts run through the real CLI pipeline.
+   `Run_DeclAndArith` and its siblings are synthetic micro-scripts. Filling a category with
+   content that does not match its documented definition is precisely the documented-versus-built
+   divergence this consolidation phase exists to remove — the same failure mode as the `string`
+   methods, the numeric surface, `map` literal construction and the `map<K, V>` typing note.
+2. **It obscures F8.** F8 names the validation-suite end-to-end baseline specifically. Recording
+   it as "partially resolved" when the artefact it names still does not exist makes the remaining
+   gap harder for a cold reader to see, not easier — and F8 has already survived several sprints
+   partly by being easy to overlook.
+3. **It is largely redundant.** Once `vm` measures execution per §4.2 and `compile` measures
+   compilation, a third category measuring approximately their sum on synthetic scripts adds
+   baseline surface, maintenance and noise for little additional signal.
+
+**Ratified:** `vm` is rebuilt **in place**. The same fixtures stay in the same category;
+compilation moves into `[GlobalSetup]` (or an equivalent pre-built `Chunk`) so the measured region
+is `vm.Run(chunk)` alone. This restores §4.2's standing intent — *"hand-constructed `Chunk`
+instances — the compiler is not involved"* — from which `VmBenchmarks.RunSource` had drifted. The
+drift, not the design, was the defect.
+
+`endToEnd` **stays empty**, and **F8 is recorded as open, not partially resolved**. It is built
+properly in its own increment, against the real validation-suite corpus — materially more feasible
+now that Sprint 9's consolidation has made most of those scripts runnable.
+
+---
+
+**Q5' — the attribution fixtures get a dedicated non-gating category.**
+
+D-385 ratified making phase 1's `attr-*` differential fixtures permanent, hosted "under `vm`
+(post-Q1 rebuild) or `endToEnd` (pre-rebuild, whichever category ends up hosting them)". Permanent
+is right — the differential-fixture technique is the answer to the isolation problem, not a
+workaround for it. The hosting is refined.
+
+The `attr-*` fixtures are **instruments, not guards**. They measure the pipeline floor, loop
+machinery and per-native-call overhead — diagnostic quantities, not features. Gating on them would
+gate on the wrong things, and a regression in `attr-empty` means "the compiler pipeline allocates
+more", which is already `compile`'s job to catch.
+
+They are also **whole-script by nature**, which is what made D-385 want a whole-script category to
+put them in. With Q1' leaving `endToEnd` empty, that home has to be something else.
+
+**Ratified:** a dedicated **`attribution` category, `gating: false`**, hosting the `attr-*`
+fixtures. The name states what they are; it gates nothing; and it leaves `endToEnd` free for its
+actual specified meaning. The two fixtures phase 1 identified as missing join them:
+`attr-map-build` (to split `Run_MapForIn`'s 1,000 `"k${i}"` interpolations from its second
+snapshot array) and an **empty-body snapshot fixture** (to isolate the unexplained ~55 KB in phase
+1 §5, where snapshot-plus-iteration measured ≈3.3× the predicted ~24 KB).
+
+On that ~55 KB: a candidate explanation worth testing when the empty-body fixture lands is that
+`GrobArray`'s only constructor takes `IEnumerable<GrobValue>` and copies via `[.. elements]`, with
+no statically-known count — so the snapshot copy may grow by doubling (≈2,044 discarded slots,
+≈49 KB) on the way to the final 1,000-element array (≈24 KB). That predicts ≈73–80 KB against
+80,015 B measured. **Untested inference, recorded as a hypothesis for measurement, not a finding.**
+
+---
+
+No new opcode. No new error code; count unchanged at **121**.
+
+Full detail: D-385 (the decision this refines, four of whose six answers stand unchanged),
+`grob-benchmarking-strategy.md` §4.2 and §4.3, `docs/design/bench-allocation-attribution.md`
+(phase 1's measured evidence), D-313 and D-333 (the gate this governs), and F8 in
+`grob-principal-review-sprint9b.md`.
+
+---
+
+### D-387 — Benchmark harness restructure landed: vm rebuilt, attribution category, gating matrix stated explicitly (July 2026)
+
+Area: Tooling — benchmarking (implementation)
+Supersedes: none
+Superseded by: none
+Refines: D-385, D-386
+
+**Phase 3a.** Applies D-385/D-386's ratified decisions to `bench/Grob.Benchmarks`,
+`tooling/Grob.BenchCheck.Tests` and `grob-benchmarking-strategy.md`, then captures and reports
+fresh numbers for the changed measurements. No `src/` change.
+
+**`vm` rebuilt in place (Q1').** `VmBenchmarks.RunSource`'s full-pipeline measurement is gone.
+`[GlobalSetup]` now compiles each of the five fixtures (`decl-and-arith`, `interpolation`,
+`control-flow`, `array-for-in`, `map-for-in`) to a `Chunk` field once, via the same
+`Lexer.Scan → Parser.Parse → TypeChecker.Check → Compiler.Compile` pipeline as before, just
+moved out of the measured region. `[IterationSetup]` constructs a fresh `VirtualMachine` before
+every iteration — the mechanism D-385's own text assumed would remain necessary, needed here
+because `array-for-in`/`map-for-in` mutate global state (`xs`/`m`) through the same reused
+`Chunk`, and a VM shared across iterations would compound that growth run over run. Each
+`[Benchmark]` method is now exactly `vm.Run(chunk)`, restoring `grob-benchmarking-strategy.md`
+§4.2's always-standing definition. Neither `Grob.Stdlib` nor `StringMethodsPlugin` is needed in
+`VmBenchmarks` any more — none of the five fixtures call a stdlib-registered native (`xs.append`/
+`m.set` are `ArrayNatives`/`MapNatives`-internal, bound directly by `GetProperty`); that
+registration moved with the fixtures that actually need it.
+
+**`endToEnd` untouched; F8 stays open (Q1').** Not populated, not renamed into. `policy.json`'s
+`endToEnd` category is left exactly as it already was — declared, `gating: false`, no committed
+baseline. Building it against the real validation-suite corpus is its own, later increment.
+
+**`attribution` category created, `gating: false` (Q5').** New
+`Grob.Benchmarks.Attribution.AttributionBenchmarks` (namespace `Grob.Benchmarks.Attribution`),
+carrying the moved `Run_Attr*` methods and the whole-pipeline `RunSource` helper the `vm`
+category used to share — the `attr-*` fixtures stay whole-script by design, since they are
+differential instruments, not features to gate on. Fixtures moved from `Fixtures/Vm/` to a new
+`Fixtures/Attribution/` directory; every doc comment drops "(phase 1, throwaway)" since D-385/
+D-386 made them permanent. Three fixtures added. Two are the ones phase 1/D-386 named as missing:
+`attr-map-build.grob` (map construction only, no second loop) and `attr-snapshot-empty.grob`
+(the `attr-build` build loop plus an empty-body `for...in` over the built array, isolating the
+pure contents-snapshot copy). The third, `attr-array-dispatch.grob` (`xs.contains(i)` × 1,000, no
+growth), is the growth-free control for `attr-build` that phase 1 §4 recorded as missing — added
+in PR #171 review, with the subtraction-hygiene rules it enforces set out under the measurements
+below. Two fixtures also lost an unmatched terminal operation in that review (`print(0)` from
+`attr-empty`, `print(m.length)` from `attr-map-build`): a fixture that ends with output its
+counterpart lacks makes every subtraction against it include or omit that output work, so
+`attr-empty` — the category's `Baseline = true` fixture, subtracted against by all six others — is
+now deliberately statement-free. `policy.json` gains
+`{ "name": "attribution", "namespacePrefix": "Grob.Benchmarks.Attribution", "baseline": "attribution.json", "gating": false }`.
+Two new `BenchCheckTests` cases prove the mechanism (already policy-data-driven, no
+`BenchCheck.cs` change needed): a deliberately large time+alloc delta in an `"attribution"`
+category classifies `Informational`/`Informational`, never a regression; and the two new
+fixtures classify `NewBenchmark`/`NewBenchmark` against a rolling baseline that only knows the
+four pre-existing ones — the same already-correct path phase 2 flagged as "correctly working, do
+not fix".
+
+**Composition root ratified in code (D-385 Q4).** `AttributionBenchmarks.RunSource` keeps
+`StringMethodsPlugin` registered uniformly across every fixture in the category, with an
+in-code comment recording why: it is pure (no capability injection), and its one-time
+registration cost cancels out of every pairwise subtraction. The comment also records phase 1
+§4's structural finding — `ArrayNatives`/`MapNatives` instance-method dispatch (`xs.append`/
+`m.set`) is reachable without any plugin registration at all, and builds a fresh
+`NativeFunction`/closure/display-class triple on every call, a structurally distinct and more
+expensive path than the cached, once-built `StringMethodsPlugin` natives.
+
+**Corpus amendments (never editing D-313's or D-333's entries in place — cited, not rewritten).**
+`grob-benchmarking-strategy.md`: new §4.2a documents the `attribution` category in full; §4.2
+gains an implementation note recording the vm-rebuild correction; §3 and §7.1's directory trees
+gain `Attribution/`; §8's baseline-file lists gain `attribution.json`/`attribution.origin.json`
+(declared in `policy.json`, not yet committed — the same status `endToEnd.json`/
+`endToEnd.origin.json` already have) plus a note that the committed `vm.json`/`vm.origin.json`
+now describe a stale, pre-rebuild measurement pending deliberate re-capture; new §9.1 states the
+gating matrix explicitly (category × time-per-sprint × time-cumulative × allocation × LOH
+tripwire, all four categories) and the flip condition, and states plainly that `compile`'s
+cumulative axis is inert while `compile.origin.json` carries `"Unknown processor"` — closing the
+ADR-0018-style "documented gate = enforced gate" gap D-385 Q3 opened. Footer citation extended.
+
+**The baseline distinction, stated explicitly.** Establishing a baseline for a changed
+measurement is legitimate; loosening a baseline to absorb a known regression is the ratchet trap
+D-313 forbids. This entry does the former only. Every number below is a **new-measurement
+baseline** for `vm` (which now measures something different than its committed `vm.json`/
+`vm.origin.json` ever did) and a **first measurement** for `attribution` (which has never had a
+committed baseline) — none is a revised threshold, and `compile`'s baselines are untouched.
+
+**Fresh numbers — local machine, not a canonical baseline.** Measured via
+`dotnet run -c Release --project bench/Grob.Benchmarks -- --filter '*VmBenchmarks*' '*AttributionBenchmarks*'`
+on the same machine phase 1 used (Intel Core i5-8400 CPU @ 2.80GHz, Coffee Lake, Windows 11
+10.0.26200.8875, .NET 10.0.10, BenchmarkDotNet 0.15.8) — **not** the canonical `windows-latest`
+`benchmark.yml` capture `grob-benchmarking-strategy.md` §8.1/§8.2 requires for a committed
+baseline. Per §8.2, local results are never committed as baselines; the maintainer pushing this
+branch and dispatching `benchmark.yml` is a deliberate follow-up action, out of scope here.
+
+`vm` (execution only, `vm.Run(chunk)`):
+
+| Benchmark | Mean | Allocated |
+|---|---:|---:|
+| `Run_DeclAndArith` | 28.97 μs | 2,344 B |
+| `Run_Interpolation` | 34.49 μs | 3,880 B |
+| `Run_ControlFlow` | 207.94 μs | 2,504 B |
+| `Run_ArrayForIn` | 1,244.41 μs | 531,616 B |
+| `Run_MapForIn` | 1,970.83 μs | 1,033,320 B |
+
+`attribution` (whole pipeline, `StringMethodsPlugin` registered):
+
+| Benchmark | Mean | Allocated |
+|---|---:|---:|
+| `Run_AttrEmpty` | 6.58 μs | 44,172 B |
+| `Run_AttrRange` | 75.34 μs | 46,149 B |
+| `Run_AttrNative` | 210.05 μs | 232,032 B |
+| `Run_AttrBuild` | 280.05 μs | 508,316 B |
+| `Run_AttrMapBuild` (new) | 483.34 μs | 941,592 B |
+| `Run_AttrSnapshotEmpty` (new) | 457.04 μs | 583,732 B |
+
+Derived, reproducing phase 1's figures almost exactly on the same machine: loop machinery
+(`attr-range` − `attr-empty`) = 1,977 B; Stdlib-plugin per-native-call overhead
+((`attr-native` − `attr-range`) ÷ 1000) ≈ 186 B/call; **combined array-member-dispatch tax plus
+growth** (`attr-build` − `attr-native`) = 276,284 B over 1,000 `append` calls.
+
+**That last figure is a combined cost, not array growth alone** — a correction to how the same
+subtraction was first labelled in this entry, caught in PR #171 review. Phase 1 §4 established
+that `attr-build` and `attr-native` sit on structurally different native paths: `"x".upper()` is a
+Stdlib-plugin native registered once and reached by `GetGlobal`, whereas `xs.append(i)` is bound
+fresh by `OpCode.GetProperty` on every call, allocating a `NativeFunction`/delegate/display-class
+triple each time. Differencing across that boundary therefore carries the dispatch tax as well as
+the growth, exactly as phase 1 warned ("not 'per-native-call overhead plus growth'… stated as
+inference, not measured directly"), and phase 1 recorded the absence of a dedicated fixture to
+separate them. **This entry closes that gap:** a seventh fixture, `attr-array-dispatch.grob`
+(`xs.contains(i)` × 1,000 on an array that never grows), is the growth-free control. `contains`
+and `append` are both arity-1 `ArrayNatives` bound by the same `GetProperty` path and capturing
+the receiver identically, so they pay the same per-call triple and `attr-build` −
+`attr-array-dispatch` isolates growth alone. **Its number is not yet measured** — no local
+re-run was taken for it, and only the `benchmark.yml` workflow produces a committable baseline —
+so the isolated array-growth figure lands with the canonical `attribution.json` capture, which is
+already a follow-up below.
+
+**New — the snapshot hypothesis, measured, no action taken.** Pure contents-snapshot cost
+(`attr-snapshot-empty` − `attr-build`) = **75,416 B**, inside D-386's ≈73–80 KB doubling-hypothesis
+prediction for `GrobArray`'s `IEnumerable<GrobValue>`-constructor copy. Subtracting this from
+phase 1's recorded `array-for-in − attr-build` figure (80,015 B) leaves ≈4,599 B (≈4.6 B/iteration)
+attributable to the iteration body itself (1,000 unboxed int accumulations) — small and plausible.
+This is consistent with, not proof of, the doubling explanation. **Reported; no action taken.**
+Any fix is a separate, measured decision.
+
+**New — the map-build split.** `attr-map-build` isolates the build loop alone (941,592 B). The
+rebuilt `vm` category's `Run_MapForIn` no longer shares a measurement basis with it (one excludes
+compilation, the other is whole-pipeline), so the split uses phase 1's frozen full-pipeline
+`Run_MapForIn` figure (1,092,413 B,
+`docs/design/bench-allocation-attribution.md`) as the comparison basis instead: second-loop-plus-
+values-snapshot ≈ 1,092,413 − 941,592 = **150,821 B**; the map-build loop itself (1,000
+interpolations, `map.set` calls and map growth) ≈ 941,592 − 44,172 = **897,420 B** over the
+pipeline floor.
+
+**Phase 3b is not addressed here.** Per-category allocation ceilings (D-385 Q2) need this
+increment's numbers first; the existing LOH tripwire is left exactly as it fires today.
+
+No new opcode. No new error code; count unchanged at **121**.
+
+Cites D-385, D-386 (the decisions this implements), D-313 and D-333 (the gate this governs),
+ADR-0018 (the documented-gate-equals-enforced-gate precedent), and
+`docs/design/bench-allocation-attribution.md` (phase 1's evidence, cited throughout for every
+empirical figure this entry did not itself re-measure).
+
+---
 
 ## Post-MVP Decisions
 
@@ -8505,7 +8933,62 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — `for...in` contents-snapshot lands: D-384 added, landing D-383 (PR #169). Arrays_
+_July 2026 — Benchmark harness restructure landed: D-387 added (phase 3a). Applies D-385/_
+_D-386 to bench/, tooling/Grob.BenchCheck.Tests and grob-benchmarking-strategy.md. vm rebuilt_
+_in place — GlobalSetup compiles each fixture to a Chunk once, IterationSetup gives every_
+_iteration a fresh VirtualMachine, each Benchmark method is exactly vm.Run(chunk). endToEnd_
+_untouched, F8 still open. New attribution category (gating: false) hosts the moved attr-*_
+_fixtures plus three new ones (attr-map-build, attr-snapshot-empty and attr-array-dispatch,_
+_the growth-free control phase 1 §4 recorded as missing); two new BenchCheckTests_
+_cases prove it reports informational, not a regression, and that the new fixtures classify_
+_as NewBenchmark. PR #171 review tightened the subtraction hygiene: attr-build − attr-native_
+_is relabelled the combined dispatch-plus-growth cost rather than array growth alone, and_
+_unmatched terminal print calls came out of attr-empty and attr-map-build._
+_Composition root ratified in code. Corpus amendments made by citation, never_
+_by editing D-313's or D-333's entries in place — an explicit §9.1 gating matrix and the_
+_compile-cumulative-inert caveat land in grob-benchmarking-strategy.md. Fresh vm/attribution_
+_numbers captured and reported, explicitly marked local-machine, not a canonical baseline —_
+_the empty-body snapshot fixture measured 75,416 B, inside D-386's doubling-hypothesis_
+_prediction, reported with no action taken. Canonical baseline capture (a windows-latest_
+_benchmark.yml run) is a follow-up. Count unchanged at 121._
+_Previous: July 2026 — Benchmark harness decision refined: D-386 added, refining D-385 on two of its_
+_six sub-decisions; Q2, Q3, Q4 and Q6 stand unchanged. Q1': D-385 proposed populating the_
+_never-captured `endToEnd` category with the nine current full-pipeline micro-script fixtures._
+_Rejected — §4.3 defines `endToEnd` as the validation-suite scripts through the real CLI, so_
+_synthetic micro-scripts would contradict the category's own specification, obscure F8 by_
+_reading as partially resolved, and largely duplicate `vm` plus `compile`. Ratified instead:_
+_`vm` is rebuilt in place with compilation hoisted to `[GlobalSetup]`, restoring §4.2's standing_
+_intent from which the code had drifted, and `endToEnd` stays empty with F8 recorded as open,_
+_to be built in its own increment against the real validation-suite corpus. Q5': the `attr-*`_
+_differential fixtures stay permanent but move to a dedicated `attribution` category with_
+_`gating: false` — they are instruments, not guards, and need a whole-script home that is not a_
+_misnamed `endToEnd`. `attr-map-build` and an empty-body snapshot fixture join them, the latter_
+_to test a recorded hypothesis about the unexplained ~55 KB in phase 1 §5. Count unchanged at 121._
+_Previous: July 2026 — Benchmark harness correctness decided: D-385 added (decision-only session, no source/_
+_harness changes; phase 3 applies it). Resolves six gaps the `Benchmarks` CI failure on `0125bae`_
+_exposed, evidenced by `docs/design/bench-allocation-attribution.md` (phase 1). `vm` measured the_
+_entire pipeline under a name promising VM-only cost, contrary to `grob-benchmarking-strategy.md`_
+_§4.2's already-standing hand-constructed-`Chunk` design; renamed to `endToEnd` (real content_
+_against F8, narrower than the full validation-suite corpus §4.3 envisions) and rebuilt to hoist_
+_compilation into `[GlobalSetup]` so `vm` measures `vm.Run(chunk)` alone. The LOH tripwire_
+_(85,000 B) already functions, and was already documented by D-333, as a total-allocation ceiling,_
+_not an LOH detector — kept as-is, redocumented plainly, threshold to be re-derived per category_
+_from phase 1's measured values rather than the one borrowed CLR constant. `compile.origin.json`'s_
+_"Unknown processor" making the compile category's cumulative axis permanently informational is_
+_not a fresh finding — D-333 already logged it — but D-313 itself did not say so; the amendment is_
+_recorded in this entry (never in D-313's) so_
+_the documented and enforced gates match (ADR-0018 precedent). Phase 1's uniform_
+_`StringMethodsPlugin` registration stopgap is ratified as the permanent benchmark composition_
+_root, documenting array/map instance-method dispatch as a structurally distinct, costlier native_
+_path than the Stdlib-plugin path. Whole-script fixtures stay documented as whole-script; phase 1's_
+_`attr-*` differential fixtures become permanent, with `attr-map-build` and an empty-body snapshot_
+_fixture added to close phase 1's two named gaps. The gating matrix (`compile` gates on both time_
+_axes plus allocation; `vm`/`endToEnd` gate on allocation only) is confirmed to already match_
+_D-313/§9's documented build-out stand-in and is stated explicitly, with its flip condition, rather_
+_than changed. F8 is narrowed, not closed — the full validation-suite `endToEnd` corpus is staged_
+_as a separate, later increment. No baseline touched, no threshold loosened. Refines D-313, D-333._
+_Cites ADR-0018, D-302, D-309, D-383._
+_Previous: July 2026 — `for...in` contents-snapshot lands: D-384 added, landing D-383 (PR #169). Arrays_
 _snapshot via a new internal `$snapshot` `GetProperty` case, unreachable from Grob source; maps_
 _add a parallel `values` snapshot reusing the pre-existing `values` property, no VM change needed._
 _Closes the soundness hole — `v` can no longer be nil in a non-nullable `V` binding — and proves_

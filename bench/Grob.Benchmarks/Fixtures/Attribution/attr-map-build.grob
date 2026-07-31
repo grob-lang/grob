@@ -1,0 +1,10 @@
+// Allocation-attribution fixture (attribution category, D-385/D-386): map
+// construction only, no second loop. Splits Run_MapForIn's 1,000 "k${i}"
+// interpolations from its second (values) snapshot array — phase 1 identified
+// this split as unresolved (bench-allocation-attribution.md §6). No terminal
+// print: every fixture in this category stops after its workload, so a pairwise
+// subtraction covers only the intended difference.
+m := map<string, int>{}
+for i in 1..1000 {
+    m.set("k${i}", i)
+}

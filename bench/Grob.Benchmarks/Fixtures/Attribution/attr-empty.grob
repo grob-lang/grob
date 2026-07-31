@@ -1,0 +1,5 @@
+// Allocation-attribution fixture (attribution category, D-385/D-386): pipeline +
+// VM setup floor. No loop, no native calls and — deliberately — no statements at
+// all, so the baseline every other fixture is subtracted against carries no
+// terminal operation those fixtures lack. Isolates the cost every RunSource
+// invocation pays regardless of the program under test.

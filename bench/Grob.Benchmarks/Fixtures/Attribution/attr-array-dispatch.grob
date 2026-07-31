@@ -1,0 +1,18 @@
+// Allocation-attribution fixture (attribution category, D-385/D-386): the
+// dispatch-equivalent, growth-free control for attr-build.grob — the dedicated
+// fixture phase 1 §4 named as missing ("this note has not isolated it with its
+// own dedicated fixture").
+//
+// xs.contains(i) and xs.append(i) are bound by the same OpCode.GetProperty path
+// through ArrayNatives.GetMethod, both as `new NativeFunction(name, 1, ...)`
+// capturing the receiver and ignoring the VmInvoker — so both pay the identical
+// per-call NativeFunction/delegate/display-class triple. The array stays empty,
+// so contains scans nothing and the backing GrobArray never grows.
+//
+// attr-build minus attr-array-dispatch therefore isolates array growth alone;
+// attr-build minus attr-native does not, because attr-native runs the
+// structurally cheaper Stdlib-plugin path (registered once, GetGlobal per call).
+xs: int[] := []
+for i in 1..1000 {
+    xs.contains(i)
+}
