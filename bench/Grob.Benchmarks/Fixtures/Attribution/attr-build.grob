@@ -1,7 +1,12 @@
-// Allocation-attribution fixture (attribution category, D-385/D-386): native
-// calls plus array growth. Same 1,000-iteration shape as attr-native.grob, but
-// the native call is xs.append(i) instead of "x".upper(), which also grows the
-// backing GrobArray via doubling.
+// Allocation-attribution fixture (attribution category, D-385/D-386): array
+// member dispatch plus array growth. Same 1,000-iteration shape as
+// attr-native.grob, but the native call is xs.append(i) instead of "x".upper(),
+// which also grows the backing GrobArray via doubling.
+//
+// Subtract attr-array-dispatch.grob, not attr-native.grob, to isolate growth:
+// append and contains share the GetProperty binding path, whereas upper is a
+// registered Stdlib-plugin native on a structurally cheaper path (phase 1 §4).
+// attr-build minus attr-native gives combined dispatch-tax-plus-growth cost.
 xs: int[] := []
 for i in 1..1000 {
     xs.append(i)

@@ -112,8 +112,8 @@ to surface throughput characteristics the small scripts cannot.
 
 **Question answered:** how fast is the dispatch loop?
 
-These use hand-constructed `Chunk` instances — the compiler is not
-involved. This isolates VM performance from compiler performance.
+These execute a pre-built `Chunk` — the compiler is not involved **in the
+measured region**. This isolates VM performance from compiler performance.
 A regression in VM execution time on a tight arithmetic loop tells
 you something very different from a regression in the same workload
 when measured end-to-end.
@@ -122,8 +122,17 @@ when measured end-to-end.
 from this definition for several sprints, running the full pipeline (lex,
 parse, type-check, compile, execute) inside the measured region. D-387
 corrected it: compilation now happens once in `[GlobalSetup]`, and each
-`[Benchmark]` method is exactly `vm.Run(chunk)`, restoring the definition
-above.
+`[Benchmark]` method is exactly `vm.Run(chunk)`.
+
+**What "pre-built" means, exactly.** Through Sprint 9 this section read
+"hand-constructed `Chunk` instances — the compiler is not involved", and the
+fixtures are not hand-constructed: they are ordinary `.grob` sources compiled
+by the real compiler in `[GlobalSetup]`. D-386 Q1' ratified that model and
+D-387 built it, so the wording above is corrected to state the property that
+actually holds and that the category depends on — the compiler is outside the
+measured region — rather than one particular means of reaching it. Compiling
+real sources keeps the fixtures readable and keeps them measuring the bytecode
+the compiler actually emits, which a hand-written chunk would drift from.
 
 Patterns measured:
 
@@ -149,21 +158,42 @@ category added by D-385/D-386 (phase 1 findings:
 `docs/design/bench-allocation-attribution.md`). The `attr-*` fixtures are
 **instruments, not guards** — they measure the pipeline floor, loop
 machinery and per-native-call overhead by differencing successive
-whole-script fixtures that differ by exactly one thing, not features anyone
-should gate on. A regression in `attr-empty` means "the compiler pipeline
-allocates more", which is already `compile`'s job to catch — gating on it
-here would gate on the wrong category.
+whole-script fixtures, not features anyone should gate on. A regression in
+`attr-empty` means "the compiler pipeline allocates more", which is already
+`compile`'s job to catch — gating on it here would gate on the wrong
+category.
+
+**A difference is only as clean as its pair.** The goal is that each pair
+differs by exactly one thing, and the fixture set is built so that a correct
+pair exists for every quantity the category claims to attribute — but that is
+a property of the *pair*, not of the category, and it does not hold for every
+pair one could form. Two rules keep the subtractions honest:
+
+- **Match the dispatch path.** Phase 1 §4 established that Stdlib-plugin
+  natives (registered once, `GetGlobal` per call) and array/map instance
+  methods (bound fresh by `GetProperty`, paying a `NativeFunction`/delegate/
+  display-class triple per call) are structurally different costs. So
+  `attr-build` − `attr-array-dispatch` isolates array growth, while
+  `attr-build` − `attr-native` spans two paths and yields the **combined**
+  dispatch tax plus growth.
+- **No unmatched terminal work.** No fixture ends with a `print` or other
+  trailing operation its counterpart lacks, so a subtraction never silently
+  adds or removes output work. `attr-empty` is statement-free for this
+  reason.
 
 Whole-script by design: perfect isolation of a fragment inside its own
 measured region is unattainable, so every fixture in this category measures
 the full lex/parse/type-check/compile/run pipeline, and the differential
 technique does the isolating instead of `[GlobalSetup]`.
 
-Fixture set: `attr-empty` (pipeline + VM setup floor), `attr-range`
-(range-loop machinery), `attr-native` (native-call dispatch), `attr-build`
-(native call plus array growth), `attr-map-build` (map construction only),
-`attr-snapshot-empty` (the `attr-build` loop plus an empty-body `for...in`,
-isolating the D-383 contents-snapshot copy from any iteration-body cost).
+Fixture set: `attr-empty` (pipeline + VM setup floor, statement-free),
+`attr-range` (range-loop machinery), `attr-native` (Stdlib-plugin native-call
+dispatch), `attr-array-dispatch` (array-member dispatch with no growth — the
+growth-free control for `attr-build`, and the dedicated fixture phase 1 §4
+recorded as missing), `attr-build` (array-member dispatch plus array growth),
+`attr-map-build` (map construction only), `attr-snapshot-empty` (the
+`attr-build` loop plus an empty-body `for...in`, isolating the D-383
+contents-snapshot copy from any iteration-body cost).
 `StringMethodsPlugin` is registered uniformly across every fixture in this
 category (D-385 Q4) so its one-time registration cost cancels out of every
 pairwise subtraction.

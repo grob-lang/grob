@@ -8,10 +8,21 @@ namespace Grob.Benchmarks.Vm;
 /// <summary>
 /// VM-execution category benchmarks (Sprint 3 baseline, D-309; rebuilt in place by
 /// D-385/D-386/D-387). Measures <c>vm.Run(chunk)</c> alone, against a <c>Chunk</c>
-/// compiled once in <see cref="Setup"/> — restoring <c>grob-benchmarking-strategy.md</c>
-/// §4.2's always-standing definition ("hand-constructed <c>Chunk</c> instances — the
-/// compiler is not involved") from which the previous full-pipeline implementation had
-/// drifted. The baseline JSON for this category is produced via the
+/// compiled once in <see cref="Setup"/>, restoring <c>grob-benchmarking-strategy.md</c>
+/// §4.2's standing <em>intent</em> — isolating VM performance from compiler performance
+/// — from which the previous full-pipeline implementation had drifted.
+/// <para>
+/// To be exact about the contract: the fixtures are <b>not</b> hand-constructed
+/// <c>Chunk</c> instances. They are ordinary <c>.grob</c> sources compiled by the real
+/// compiler in <c>[GlobalSetup]</c>, so the compiler is involved in building a fixture
+/// but excluded from the measured region. That is what D-386 Q1' ratified and D-387
+/// implemented; §4.2's earlier "hand-constructed … the compiler is not involved"
+/// phrasing described one way of reaching the isolation, not the only one, and has been
+/// corrected to match what is built. Compiling real sources keeps the fixtures readable
+/// and keeps them honest about the bytecode the compiler actually emits, which a
+/// hand-written chunk would drift from.
+/// </para>
+/// The baseline JSON for this category is produced via the
 /// <c>benchmark.yml</c> GitHub Actions workflow (D-309) on a <c>windows-latest</c>
 /// runner; the committed <c>baseline/vm.json</c> must not be replaced with a
 /// locally-produced file. Because this rebuild changes what the category measures,

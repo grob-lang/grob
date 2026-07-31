@@ -248,11 +248,12 @@ public class BenchCheckTests {
 
     [Fact]
     public void Attribution_new_fixtures_report_as_new_benchmark() {
-        // attr-map-build and the empty-body snapshot fixture join four pre-existing
-        // attr-* fixtures in this increment. Against a rolling baseline that only
-        // knows the four, the two new ones must classify as NewBenchmark, not a
-        // regression — the same path BenchCheck already handles correctly (phase 2's
-        // "Correctly working, do not fix" note).
+        // attr-map-build, the empty-body snapshot fixture and attr-array-dispatch (the
+        // growth-free control added in PR #171 review) join four pre-existing attr-*
+        // fixtures in this increment. Against a rolling baseline that only knows the
+        // four, all three new ones must classify as NewBenchmark, not a regression —
+        // the same path BenchCheck already handles correctly (phase 2's "Correctly
+        // working, do not fix" note).
         var policy = new Policy(5.0, 12.0, 10.0, 85000, 3.0,
             [new PolicyCategory("attribution", "Grob.Benchmarks.Attribution", "attribution.json", Gating: false)]);
         const string prefix = "Grob.Benchmarks.Attribution.AttributionBenchmarks.";
@@ -263,6 +264,7 @@ public class BenchCheckTests {
         var freshMeasurements = new Dictionary<string, BenchmarkMeasurement>(rollingMeasurements) {
             [prefix + "Run_AttrMapBuild"] = M(150, bytes: 15000),
             [prefix + "Run_AttrSnapshotEmpty"] = M(120, bytes: 12000),
+            [prefix + "Run_AttrArrayDispatch"] = M(130, bytes: 13000),
         };
         var fresh = new BaselineSide(_epyc, freshMeasurements);
 
@@ -271,6 +273,7 @@ public class BenchCheckTests {
         Assert.Equal(Outcome.Pass, report.Outcome);
         Assert.Contains(report.Deltas, d => d.FullName == prefix + "Run_AttrMapBuild" && d.TimeClass == TimeClass.NewBenchmark && d.AllocClass == AllocClass.NewBenchmark);
         Assert.Contains(report.Deltas, d => d.FullName == prefix + "Run_AttrSnapshotEmpty" && d.TimeClass == TimeClass.NewBenchmark && d.AllocClass == AllocClass.NewBenchmark);
+        Assert.Contains(report.Deltas, d => d.FullName == prefix + "Run_AttrArrayDispatch" && d.TimeClass == TimeClass.NewBenchmark && d.AllocClass == AllocClass.NewBenchmark);
         Assert.All(existing, n => Assert.Contains(report.Deltas, d => d.FullName == prefix + n && d.TimeClass == TimeClass.Informational));
     }
 

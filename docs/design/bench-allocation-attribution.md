@@ -9,6 +9,27 @@ back to back, Release, one machine. Not a profiler run — bytes attributable by
 subtracting successive fixtures that differ by exactly one thing, per the source
 prompt's method.
 
+> **These are pre-refactor measurements. Read them as history, not as a description
+> of the shipped harness.** Every number below was produced against the *old*
+> `VmBenchmarks.RunSource`, which ran the full pipeline (lex, parse, type-check,
+> compile, execute) inside the measured region. D-387 rebuilt that category: `vm`
+> fixtures are now compiled once in `[GlobalSetup]` and each `[Benchmark]` is exactly
+> `vm.Run(chunk)`, and the `attr-*` fixtures moved to their own `attribution`
+> category. Two consequences matter when reading on:
+>
+> - The `Run_*` figures in §2, §3 and §5 are **whole-pipeline** figures. The
+>   like-named benchmarks in today's `vm` category measure execution only and are
+>   numerically much smaller — they are not comparable.
+> - The §3 finding that `Run_ArrayForIn` is "86.4% setup" describes the old
+>   full-pipeline benchmark, in which fixture construction sat inside the measured
+>   region. That is precisely the defect D-387 fixed; it does **not** describe the
+>   current precompiled `_arrayForIn` benchmark, where fixture construction is not
+>   measured at all.
+>
+> This note is retained unedited as the evidence base D-385/D-386/D-387 reason from.
+> Current numbers live in D-387; canonical baselines come from the `benchmark.yml`
+> workflow, not from here.
+
 ---
 
 ## 0. A harness gap found before any number could be produced
@@ -116,6 +137,12 @@ to measure (snapshot + 1,000 `total = total + x` iterations) is the remaining
 exercise: `Run_ArrayForIn` spends most of its allocation building the fixture, not
 running the code under test.
 
+**Pre-refactor, and since fixed.** This describes the old full-pipeline
+`Run_ArrayForIn`, where fixture construction sat inside the measured region. D-387
+moved compilation into `[GlobalSetup]`, so the current `_arrayForIn` benchmark
+measures execution only and this 86.4/13.6 split no longer applies to it. The
+finding stands as the evidence that motivated that rebuild.
+
 ---
 
 ## 4. Finding: the prompt's "subtract one `GrobValue` slot" caveat is wrong
@@ -211,7 +238,9 @@ was not in this phase's prescribed table.
   ~186 B/call figure, and not something the prompt's original framing distinguished.
 - New finding: `Run_ArrayForIn` is 86.4% setup, 13.6% the loop its own doc comment
   says it measures — quantifying, not just qualifying, the concern that opened this
-  investigation.
+  investigation. (Measured against the pre-D-387 full-pipeline benchmark; D-387
+  hoisted compilation out of the measured region, so this split does not describe
+  the current `vm` category.)
 - New finding: the for...in snapshot + iteration cost measures ≈3.3× the predicted
   ~24 KB, root cause not yet isolated.
 - Open gap: no fixture isolates map-only build cost, so the interpolation-vs-second-

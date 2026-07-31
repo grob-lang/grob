@@ -10,9 +10,12 @@ namespace Grob.Benchmarks.Attribution;
 /// Allocation-attribution differential fixtures (D-385/D-386 Q5'), a dedicated
 /// non-gating category (<c>policy.json</c>: <c>"gating": false</c>). These are
 /// instruments, not guards — they measure the pipeline floor, loop machinery and
-/// per-native-call overhead by subtracting successive fixtures that differ by
-/// exactly one thing (<c>docs/design/bench-allocation-attribution.md</c>), not
-/// features anyone should gate on. They stay whole-script by design: perfect
+/// per-native-call overhead by subtracting successive fixtures
+/// (<c>docs/design/bench-allocation-attribution.md</c>), not features anyone should
+/// gate on. A subtraction is only as clean as the pair it is taken over: each
+/// benchmark below names the fixture it is meant to be differenced against, and
+/// pairs spanning two different native-dispatch paths give a combined cost, not an
+/// isolated one (phase 1 §4). They stay whole-script by design: perfect
 /// isolation of a fragment inside its own measured region is unattainable, so each
 /// fixture measures the full lex/parse/type-check/compile/run pipeline and the
 /// differential technique does the isolating instead.
@@ -22,6 +25,7 @@ public class AttributionBenchmarks {
     private string _attrEmpty = null!;
     private string _attrRange = null!;
     private string _attrNative = null!;
+    private string _attrArrayDispatch = null!;
     private string _attrBuild = null!;
     private string _attrMapBuild = null!;
     private string _attrSnapshotEmpty = null!;
@@ -36,12 +40,17 @@ public class AttributionBenchmarks {
         _attrEmpty = File.ReadAllText(Path.Join(fixturesDir, "attr-empty.grob"));
         _attrRange = File.ReadAllText(Path.Join(fixturesDir, "attr-range.grob"));
         _attrNative = File.ReadAllText(Path.Join(fixturesDir, "attr-native.grob"));
+        _attrArrayDispatch = File.ReadAllText(Path.Join(fixturesDir, "attr-array-dispatch.grob"));
         _attrBuild = File.ReadAllText(Path.Join(fixturesDir, "attr-build.grob"));
         _attrMapBuild = File.ReadAllText(Path.Join(fixturesDir, "attr-map-build.grob"));
         _attrSnapshotEmpty = File.ReadAllText(Path.Join(fixturesDir, "attr-snapshot-empty.grob"));
     }
 
-    /// <summary>Pipeline + VM setup floor. No loop, no native calls.</summary>
+    /// <summary>
+    /// Pipeline + VM setup floor. No loop, no native calls and no statements at all —
+    /// as the fixture every other one is differenced against, it deliberately carries
+    /// no terminal operation those fixtures lack.
+    /// </summary>
     [Benchmark(Baseline = true)]
     public void Run_AttrEmpty() => RunSource(_attrEmpty);
 
@@ -53,16 +62,33 @@ public class AttributionBenchmarks {
     public void Run_AttrRange() => RunSource(_attrRange);
 
     /// <summary>
-    /// 1,000 native calls with no collection growth — isolates per-native-call
-    /// dispatch overhead (the args array and <c>VmInvoker</c> closure built on every
-    /// native call in <c>VirtualMachine.cs</c>) from array/map growth cost.
+    /// 1,000 Stdlib-plugin native calls with no collection growth — isolates
+    /// per-native-call dispatch overhead on that path (the args array and
+    /// <c>VmInvoker</c> closure built on every native call in
+    /// <c>VirtualMachine.cs</c>). Difference against <c>Run_AttrRange</c>. This
+    /// covers the registered-once, <c>GetGlobal</c>-per-call path only — not the
+    /// costlier array/map instance-method path (phase 1 §4).
     /// </summary>
     [Benchmark]
     public void Run_AttrNative() => RunSource(_attrNative);
 
     /// <summary>
-    /// 1,000 native calls that also grow a <c>GrobArray</c> via <c>append</c> —
-    /// isolates array-growth cost from bare native-call dispatch cost.
+    /// 1,000 <c>xs.contains(i)</c> calls on an array that never grows — the
+    /// growth-free control for <c>Run_AttrBuild</c>, and the dedicated fixture phase 1
+    /// §4 recorded as missing. <c>contains</c> and <c>append</c> are bound by the same
+    /// <c>OpCode.GetProperty</c> path through <c>ArrayNatives.GetMethod</c>, both as
+    /// arity-1 natives capturing the receiver, so both pay the identical
+    /// <c>NativeFunction</c>/delegate/display-class triple per call.
+    /// </summary>
+    [Benchmark]
+    public void Run_AttrArrayDispatch() => RunSource(_attrArrayDispatch);
+
+    /// <summary>
+    /// 1,000 <c>append</c> calls that also grow a <c>GrobArray</c>. Difference against
+    /// <c>Run_AttrArrayDispatch</c> to isolate array growth — the two share a dispatch
+    /// path, so only growth remains. Difference against <c>Run_AttrNative</c> instead
+    /// and the result is the combined array-member-dispatch tax plus growth, because
+    /// that pair spans two structurally different native paths (phase 1 §4).
     /// </summary>
     [Benchmark]
     public void Run_AttrBuild() => RunSource(_attrBuild);
@@ -98,10 +124,11 @@ public class AttributionBenchmarks {
         // (D-385 Q4, ratifying phase 1's stopgap as the permanent approach).
         // StringMethodsPlugin is pure (no capability injection) and is the only
         // stdlib plugin any attr-*.grob fixture calls into ("x".upper() in
-        // attr-native.grob). Array/map instance-method dispatch (xs.append/m.set —
-        // ArrayNatives/MapNatives) is a structurally distinct, more expensive
-        // native-call path (a fresh NativeFunction/closure/display-class triple
-        // built on every GetProperty dispatch, phase 1 §4) reachable without any
+        // attr-native.grob). Array/map instance-method dispatch (xs.append/
+        // xs.contains/m.set — ArrayNatives/MapNatives) is a structurally distinct,
+        // more expensive native-call path (a fresh NativeFunction/closure/
+        // display-class triple built on every GetProperty dispatch, phase 1 §4)
+        // reachable without any
         // plugin registration at all — Grob.Cli.RunCommand is the composition root
         // that registers the full stdlib set for real script runs; this harness
         // deliberately stays minimal.

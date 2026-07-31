@@ -1,7 +1,11 @@
 // Allocation-attribution fixture (attribution category, D-385/D-386): 1,000
-// native calls, no collection growth. Isolates per-native-call dispatch
-// overhead — the args array plus VmInvoker closure built on every native
-// call in VirtualMachine.cs — from array/map growth cost.
+// Stdlib-plugin native calls, no collection growth. Isolates per-native-call
+// dispatch overhead on that path — the args array plus VmInvoker closure built
+// on every native call in VirtualMachine.cs — from array/map growth cost.
+//
+// This measures the registered-once, GetGlobal-per-call plugin path only. The
+// array/map instance-method path costs more per call (phase 1 §4); its
+// growth-free control is attr-array-dispatch.grob, not this fixture.
 for i in 1..1000 {
     "x".upper()
 }
