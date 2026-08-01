@@ -74,12 +74,6 @@ public sealed record BdnMemory(
 /// relative to the rolling baseline before a gating category is declared a
 /// breach (D-333).
 /// </param>
-/// <param name="LohTripwireBytes">
-/// Absolute bytes-allocated-per-operation ceiling. Any benchmark, gating or
-/// not, whose fresh allocation meets or exceeds this fails the gate outright —
-/// the deterministic signal that would have caught the D-332 defect on day
-/// one (D-333).
-/// </param>
 /// <param name="TimeSignificanceK">
 /// Multiplier applied to a benchmark's relative standard deviation; the
 /// per-sprint time breach requires the delta to exceed
@@ -90,7 +84,6 @@ public sealed record Policy(
     [property: JsonPropertyName("perSprintPercent")] double PerSprintPercent,
     [property: JsonPropertyName("cumulativePercent")] double CumulativePercent,
     [property: JsonPropertyName("allocPercent")] double AllocPercent,
-    [property: JsonPropertyName("lohTripwireBytes")] double LohTripwireBytes,
     [property: JsonPropertyName("timeSignificanceK")] double TimeSignificanceK,
     [property: JsonPropertyName("categories")] IReadOnlyList<PolicyCategory> Categories);
 
@@ -109,14 +102,32 @@ public sealed record Policy(
 /// <param name="Gating">
 /// When <see langword="true"/>, a time or allocation percentage breach in
 /// this category fails the gate. When <see langword="false"/>, both
-/// percentage axes are reported but never fail. The LOH tripwire (D-333)
-/// ignores this flag and can fail either way.
+/// percentage axes are reported but never fail. The absolute allocation
+/// ceiling (D-333, category/fixture-shaped per D-391) ignores this flag and
+/// can fail either way.
+/// </param>
+/// <param name="AllocationCeilingBytes">
+/// Absolute bytes-allocated-per-operation ceiling for every benchmark in this
+/// category that has no entry of its own in
+/// <see cref="BenchmarkAllocationCeilings"/>. <see langword="null"/> when the
+/// category has no ceiling configured yet (e.g. <c>endToEnd</c> while F8 is
+/// open) — an unconfigured ceiling never breaches (D-391).
+/// </param>
+/// <param name="BenchmarkAllocationCeilings">
+/// Per-benchmark ceiling overrides, keyed by <see cref="BdnBenchmark.FullName"/>,
+/// taking precedence over <see cref="AllocationCeilingBytes"/> for the named
+/// benchmark. A single category-wide ceiling cannot serve fixtures whose
+/// legitimate allocation differs by two or more orders of magnitude (D-385
+/// Q2's "per-category, or per-fixture-shape" clause; D-391 derives these for
+/// `vm`'s and `attribution`'s widest-spread fixtures).
 /// </param>
 public sealed record PolicyCategory(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("namespacePrefix")] string NamespacePrefix,
     [property: JsonPropertyName("baseline")] string Baseline,
-    [property: JsonPropertyName("gating")] bool Gating);
+    [property: JsonPropertyName("gating")] bool Gating,
+    [property: JsonPropertyName("allocationCeilingBytes")] double? AllocationCeilingBytes = null,
+    [property: JsonPropertyName("benchmarkAllocationCeilings")] IReadOnlyDictionary<string, double>? BenchmarkAllocationCeilings = null);
 
 // --- evaluation model ---
 
@@ -162,11 +173,14 @@ public enum AllocClass {
     /// <summary>Fresh allocation exceeds the rolling baseline by more than <see cref="Policy.AllocPercent"/> on a gating category.</summary>
     PerSprintBreach,
     /// <summary>
-    /// Fresh allocation meets or exceeds <see cref="Policy.LohTripwireBytes"/> — the absolute
-    /// Large Object Heap tripwire. Fires regardless of the category's <see cref="PolicyCategory.Gating"/>
-    /// flag; this is what would have caught the D-332 defect on day one.
+    /// Fresh allocation meets or exceeds the category's absolute allocation ceiling —
+    /// <see cref="PolicyCategory.BenchmarkAllocationCeilings"/> if the benchmark has an
+    /// entry there, else <see cref="PolicyCategory.AllocationCeilingBytes"/>. Fires
+    /// regardless of the category's <see cref="PolicyCategory.Gating"/> flag; this is
+    /// what would have caught the D-332 defect on day one (D-333, category/fixture-shaped
+    /// per D-391).
     /// </summary>
-    LohTripwireBreach,
+    CeilingBreach,
 }
 
 /// <summary>
@@ -199,7 +213,7 @@ public sealed record BenchmarkDelta(
 public enum Outcome {
     /// <summary>Every gating benchmark is within threshold on both axes.</summary>
     Pass,
-    /// <summary>At least one gating benchmark exceeds a threshold on either axis, or the LOH tripwire fired.</summary>
+    /// <summary>At least one gating benchmark exceeds a threshold on either axis, or an allocation ceiling fired.</summary>
     Regression,
 }
 
@@ -303,11 +317,11 @@ public static class BenchCheck {
             foreach (var (name, freshM) in freshInCategory) {
                 if (!rolling.Measurements.TryGetValue(name, out var rollingM)) {
                     // A fresh-only benchmark has no rolling counterpart to delta against,
-                    // but the absolute LOH tripwire is unconditional (D-333): apply it here
-                    // too so a newly added over-allocating benchmark fails on day one rather
-                    // than being frozen into the next baseline.
-                    var newAllocClass = BreachesLohTripwire(freshM, policy) ? AllocClass.LohTripwireBreach : AllocClass.NewBenchmark;
-                    if (newAllocClass is AllocClass.LohTripwireBreach) regression = true;
+                    // but the absolute allocation ceiling is unconditional (D-333): apply
+                    // it here too so a newly added over-allocating benchmark fails on day
+                    // one rather than being frozen into the next baseline.
+                    var newAllocClass = BreachesAllocationCeiling(freshM, name, category) ? AllocClass.CeilingBreach : AllocClass.NewBenchmark;
+                    if (newAllocClass is AllocClass.CeilingBreach) regression = true;
                     deltas.Add(new BenchmarkDelta(category.Name, name, null, null, TimeClass.NewBenchmark, null, freshM.AllocatedBytes, newAllocClass));
                     continue;
                 }
@@ -317,10 +331,10 @@ public static class BenchCheck {
                     origin is not null && origin.Measurements.TryGetValue(name, out var originM) ? originM : null,
                     category.Gating, sameCpuRolling, sameCpuOrigin, policy);
 
-                var (allocPercent, allocClass) = ClassifyAlloc(freshM, rollingM, category.Gating, policy);
+                var (allocPercent, allocClass) = ClassifyAlloc(freshM, rollingM, name, category, policy);
 
                 if (timeClass is TimeClass.PerSprintBreach or TimeClass.CumulativeBreach) regression = true;
-                if (allocClass is AllocClass.PerSprintBreach or AllocClass.LohTripwireBreach) regression = true;
+                if (allocClass is AllocClass.PerSprintBreach or AllocClass.CeilingBreach) regression = true;
 
                 deltas.Add(new BenchmarkDelta(category.Name, name, timePerSprint, timeCumulative, timeClass, allocPercent, freshM.AllocatedBytes, allocClass));
             }
@@ -364,28 +378,45 @@ public static class BenchCheck {
     private static (double? Percent, AllocClass Class) ClassifyAlloc(
         BenchmarkMeasurement fresh,
         BenchmarkMeasurement rolling,
-        bool gating,
+        string fullName,
+        PolicyCategory category,
         Policy policy) {
-        if (BreachesLohTripwire(fresh, policy))
-            return (null, AllocClass.LohTripwireBreach);
+        // Computed before classifying, so a ceiling breach still carries the rolling
+        // delta: the row that failed the gate is the one whose Δ alloc a reader most
+        // wants. Null only when a side reported no bytes and there is nothing to
+        // delta against.
+        var percent = fresh.AllocatedBytes is { } freshBytes && rolling.AllocatedBytes is { } rollingBytes
+            ? Percent(freshBytes, rollingBytes)
+            : (double?)null;
 
-        if (fresh.AllocatedBytes is null || rolling.AllocatedBytes is null)
+        if (BreachesAllocationCeiling(fresh, fullName, category))
+            return (percent, AllocClass.CeilingBreach);
+
+        if (percent is null)
             return (null, AllocClass.Ok);
 
-        var percent = Percent(fresh.AllocatedBytes.Value, rolling.AllocatedBytes.Value);
-        if (!gating)
+        if (!category.Gating)
             return (percent, AllocClass.Informational);
         return percent > policy.AllocPercent ? (percent, AllocClass.PerSprintBreach) : (percent, AllocClass.Ok);
     }
 
     /// <summary>
-    /// Whether a fresh measurement meets or exceeds the absolute LOH tripwire
-    /// (<see cref="Policy.LohTripwireBytes"/>, D-333). The single source of truth for
-    /// the unconditional allocation ceiling, applied both to benchmarks that have a
-    /// rolling counterpart and to fresh-only ones with none.
+    /// Whether a fresh measurement meets or exceeds the applicable absolute allocation
+    /// ceiling (D-333, category/fixture-shaped per D-391) — the benchmark's own entry in
+    /// <see cref="PolicyCategory.BenchmarkAllocationCeilings"/> if present, else the
+    /// category's <see cref="PolicyCategory.AllocationCeilingBytes"/> default. A category
+    /// with neither configured (e.g. <c>endToEnd</c> while F8 is open) never breaches —
+    /// there is nothing to compare against yet. The single source of truth for the
+    /// unconditional allocation ceiling, applied both to benchmarks that have a rolling
+    /// counterpart and to fresh-only ones with none.
     /// </summary>
-    private static bool BreachesLohTripwire(BenchmarkMeasurement fresh, Policy policy)
-        => fresh.AllocatedBytes is { } bytes && bytes >= policy.LohTripwireBytes;
+    private static bool BreachesAllocationCeiling(BenchmarkMeasurement fresh, string fullName, PolicyCategory category) {
+        if (fresh.AllocatedBytes is not { } bytes)
+            return false;
+        if (category.BenchmarkAllocationCeilings?.TryGetValue(fullName, out var overrideCeiling) == true)
+            return bytes >= overrideCeiling;
+        return category.AllocationCeilingBytes is { } ceiling && bytes >= ceiling;
+    }
 
     /// <summary>
     /// A benchmark's standard deviation as a percentage of its own mean —
