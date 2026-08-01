@@ -384,6 +384,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-386 | July 2026 | Benchmarking — categories and fixtures | Refines D-385 on two of its six sub-decisions; Q2, Q3, Q4 and Q6 stand unchanged. **Q1':** D-385 proposed moving the nine current full-pipeline micro-script fixtures into the `endToEnd` category to give F8's never-captured baseline its first real content. Rejected: `grob-benchmarking-strategy.md` §4.3 defines `endToEnd` as the **validation-suite scripts through the real CLI**, so populating it with synthetic micro-scripts would give a category content contradicting its own specification — the documented-versus-built divergence this consolidation phase exists to eliminate — and would make F8 read as partially resolved while the thing F8 actually names still does not exist. It is also largely redundant: once `vm` measures execution per §4.2 and `compile` measures compilation, a third category measuring their sum adds baseline surface for little signal. Ratified instead: **`vm` is rebuilt in place** — same fixtures, compilation hoisted to `[GlobalSetup]`/a pre-built `Chunk` so the measured region is `vm.Run(chunk)` alone, restoring §4.2's standing intent from which the code had drifted — and **`endToEnd` stays empty with F8 stated as open**, to be built properly in its own increment against the real validation-suite corpus, now feasible since Sprint 9 unblocked most of those scripts. **Q5':** the `attr-*` differential fixtures become permanent as D-385 ratified, but in a **dedicated `attribution` category with `gating: false`** rather than folded into whichever category ends up hosting them. They are **instruments, not guards** — they measure the pipeline floor and per-native-call overhead, not features anyone should gate on — and they are whole-script by nature, so they need a whole-script home that is not a misnamed `endToEnd`. `attr-map-build` and the empty-body snapshot fixture join them. No new error code; count unchanged at 121 |
 | D-387 | July 2026 | Tooling — benchmarking (implementation) | Phase 3a — applies D-385/D-386 to `bench/`, `tooling/Grob.BenchCheck.Tests` and the corpus docs. `Grob.Benchmarks.Vm.VmBenchmarks` rebuilt in place (Q1'): `[GlobalSetup]` compiles the five existing fixtures to `Chunk` fields once; `[IterationSetup]` constructs a fresh `VirtualMachine` per iteration (needed because `array-for-in`/`map-for-in` mutate global state that must not compound across iterations sharing one `Chunk`); each `[Benchmark]` method is now exactly `vm.Run(chunk)`. `endToEnd` left untouched — still declared, still empty, **F8 stays open**. New `Grob.Benchmarks.Attribution.AttributionBenchmarks` class and `Fixtures/Attribution/` directory (Q5'): the four `attr-*` fixtures moved out of `vm`, doc comments losing "(phase 1, throwaway)" since they are permanent now, plus three new fixtures — `attr-map-build.grob` (map construction only, no second loop) and `attr-snapshot-empty.grob` (the `attr-build` build loop plus an empty-body `for...in`, isolating the pure contents-snapshot copy), both named as missing by phase 1/D-386, and `attr-array-dispatch.grob` (`xs.contains(i)` × 1,000, no growth — the growth-free control for `attr-build` that phase 1 §4 recorded as missing, added in PR #171 review). The same review removed unmatched terminal `print` calls from `attr-empty` (now deliberately statement-free, as the category's subtracted-against baseline) and `attr-map-build`. New `attribution` category added to `policy.json` (`gating: false`); two `BenchCheckTests` cases prove it reports informational, not a regression, and that the two new fixtures classify as `NewBenchmark` against a partial rolling baseline. Composition root ratified in code (D-385 Q4): `StringMethodsPlugin` registered uniformly across the attribution category's whole-pipeline runner; `ArrayNatives`/`MapNatives` instance-method dispatch documented as a structurally distinct, fresh-closure-per-call native path reachable without any plugin registration. `grob-benchmarking-strategy.md` amended (never editing D-313's or D-333's entries in place): new §4.2a for the attribution category, an implementation note on §4.2's vm-rebuild correction, §3/§7.1 fixture-tree entries, §8's baseline-file list gaining `attribution.json`/`attribution.origin.json` (declared, not yet committed) and a note that `vm.json`/`vm.origin.json` now describe a stale pre-rebuild measurement, and a new explicit §9.1 gating matrix plus the compile-cumulative-inert caveat (`compile.origin.json`'s `"Unknown processor"` capture), citing ADR-0018. **Local-machine measurement only, not a canonical baseline** (same Intel Core i5-8400 machine as phase 1's own run, `docs/design/bench-allocation-attribution.md`): `vm` category (execution only) — `Run_DeclAndArith` 28.97 μs / 2,344 B, `Run_Interpolation` 34.49 μs / 3,880 B, `Run_ControlFlow` 207.94 μs / 2,504 B, `Run_ArrayForIn` 1,244.41 μs / 531,616 B, `Run_MapForIn` 1,970.83 μs / 1,033,320 B; `attribution` category (whole pipeline) — `Run_AttrEmpty` 6.58 μs / 44,172 B, `Run_AttrRange` 75.34 μs / 46,149 B, `Run_AttrNative` 210.05 μs / 232,032 B, `Run_AttrBuild` 280.05 μs / 508,316 B, `Run_AttrMapBuild` 483.34 μs / 941,592 B, `Run_AttrSnapshotEmpty` 457.04 μs / 583,732 B. Derived: loop machinery 1,977 B, Stdlib-plugin per-native-call overhead ≈186 B/call, and — labelled precisely, per PR #171 review — the **combined** array-member-dispatch tax plus growth 276,284 B/1,000 appends, not array growth alone, since `attr-build` and `attr-native` sit on structurally different native paths (phase 1 §4); `attr-array-dispatch` is the control that isolates growth, its figure pending the canonical capture. All three reproduce phase 1's figures almost exactly on the same machine. New: pure contents-snapshot cost (`attr-snapshot-empty` − `attr-build`) = 75,416 B, inside D-386's ≈73–80 KB doubling-hypothesis prediction — **reported, no action taken**, any fix is a separate decision. Map-build split, using phase 1's frozen full-pipeline `Run_MapForIn` figure (1,092,413 B) as the comparison basis since the rebuilt `vm` category's `Run_MapForIn` no longer shares that basis: second-loop-plus-values-snapshot ≈150,821 B, map-build-loop-itself (interpolations + `map.set` + growth) ≈897,420 B. **Canonical `vm.json`/`vm.origin.json` re-capture and the first `attribution.json`/`attribution.origin.json` commit are a follow-up** — only the `benchmark.yml` workflow on `windows-latest` produces a committable baseline (§8.1/§8.2), and pushing/dispatching CI is the maintainer's action. Phase 3b (per-category allocation ceilings, D-385 Q2) is not addressed here — it needs this increment's numbers first. No `src/` change. No new error code; count unchanged at 121. Cites D-385, D-386, D-313, D-333, ADR-0018, `docs/design/bench-allocation-attribution.md`. |
 | D-388 | July 2026 | Core — `GrobArray` construction | Tests D-386's doubling hypothesis for `GrobArray`'s copy constructor by applying the proposed `ICollection<GrobValue>` fast-path branch and remeasuring. **Refuted**: before and after are byte-identical under both measurements, which are two distinct scopes and must not be conflated — the isolated `GC.GetAllocatedBytesForCurrentThread` constructor copy of a 1,000-element `List<GrobValue>` source at **24,080 B**, and the whole-pipeline `attr-snapshot-empty`/`attr-build` differential at **74,560 B**. The reason is that the compiler already lowers a single-spread `[.. elements]` targeting `List<T>` to `new List<T>(elements)`, and `List<T>`'s own `IEnumerable<T>` constructor already fast-paths any runtime-`ICollection<T>` source — which is what every production `GrobArray` construction site passes (a list or an array). Both halves are current compiler/BCL implementation behaviour rather than guaranteed contracts, and the refutation is scoped accordingly: a genuinely lazy, non-`ICollection<GrobValue>` source still grows by doubling (measured separately at 49,432 B), it is simply not what any production site passes today. No fix lands; the explicit branch was written, measured, found redundant and reverted, leaving only an explanatory comment and four new characterisation tests (`RuntimeTypesTests.cs`) covering equivalence-across-source-kinds, independence from source mutation and D-372's shallow-copy aliasing — coverage this type lacked before. That 74,560 B differential sits ≈850 B below D-387's committed 75,416 B, ordinary run-to-run variance between a short local job and a canonical one, not a second figure; D-387's number is the one of record. That cost is therefore not copy doubling — it is ≈3.1× a single isolated copy (24,080 B), while measured loop machinery is ≈2 B/iteration (`attr-range` − `attr-empty` = 1,977 B over 1,000 iterations) and cannot account for it, so the leading hypothesis is that the `for...in` snapshot path copies more than once — which would also explain why a constructor-level fix had no effect. Unattributed, left for a future, separately measured increment per this increment's own stop-on-refutation condition; **phase 3b must not derive a `Run_ArrayForIn` allocation ceiling until this residual is attributed**, or it commits ≈50 KB/1,000-element loop as expected behaviour that a later fix would need to lower a published threshold to remove. No `src/` behavioural change. No new error code; count unchanged at 121. Cites D-313, D-386, D-387, D-383, D-372, `docs/design/bench-allocation-attribution.md` §5. |
+| D-389 | July 2026 | VM — `GetProperty` dispatch / benchmarking attribution | Attributes the residual D-388 left open, refuting its three-copy hypothesis. Reading every handler on the array `for...in` path confirms exactly **one** `new GrobArray(...)` call (`$snapshot`, `VirtualMachine.cs:887`–890), executed once regardless of size or loop length; `GrobArray.Elements` is a direct, non-copying accessor. Direct `GC.GetAllocatedBytesForCurrentThread` measurement (no BenchmarkDotNet) shows the ≈75 KB residual is **constant regardless of the snapshotted array's size** (48,072 B ± 160 B across sizes 3–5,000) and **identical for `"length"` and `"isEmpty"`**, an early-return property read that never touches element data — a copy would scale with size; this does not. **Root cause: a Roslyn closure-capture display-class allocation**, paid on every `GetProperty` dispatch against an array receiver regardless of which branch of the case executes, because the closure at `VirtualMachine.cs:894`–899 (binding `ArrayNatives.GetMethod`, e.g. for `.append`) shares a lexical block with the early-return `"length"`/`"isEmpty"`/`"$snapshot"` branches — confirmed mechanistically by an independent synthetic C# repro carrying zero Grob code, reproducing the same "early-return branch still pays" effect from Roslyn semantics alone. Reconciliation for the 1,000-element/1,000-iteration case: 24,080 B (the one copy) + 48,072 B (1,000 × the `GetProperty("length")` closure tax the loop condition pays every iteration) + 96 B (`GetIndex`/`PopN`) + 344 B (loop arithmetic) = 72,592 B predicted, 72,592 B measured — exact, against this entry's own isolated repro and the real compiled fixtures alike (72,536–72,596 B, measured directly). Against D-387's committed 75,416 B figure of record, ≈96–97% is accounted for by named site; the residual ≈3–4% is attributed to BenchmarkDotNet harness/operation-batching overhead, not an unidentified allocation site. **Phase 3b is unblocked**: D-388's blocking condition (attribute before deriving a ceiling) is met. **No fix proposed or made**, per this increment's stop condition — the closure-tax finding, and a candidate restructuring direction, are left for a future, separately decided increment; the tax is a general `GetProperty`-on-array dispatch cost, not specific to `for...in`. No `src/` change. No opcode change. No new error code; count unchanged at 121. Full method and evidence trail: `docs/design/bench-snapshot-residual.md`. Cites D-388, D-387, D-386, D-383, D-313, `docs/design/bench-allocation-attribution.md`. |
 
 ---
 
@@ -8832,6 +8833,79 @@ aliasing the characterisation tests protect) and `docs/design/bench-allocation-a
 
 ---
 
+### D-389 — Snapshot allocation residual attributed: not a second copy, a per-call `GetProperty` closure tax; three-copy hypothesis refuted; phase 3b unblocked (July 2026)
+
+Area: VM — `GetProperty` dispatch / benchmarking attribution
+Supersedes: none
+Superseded by: none
+Refines: D-388 (attributes the residual D-388 left open; closes its blocking condition)
+
+**The residual is attributed, and the three-copy hypothesis D-388 proposed is refuted.**
+Disassembling the minimal case (`xs := [1, 2, 3]; for x in xs { }`) and reading every
+handler on the path confirms there is exactly **one** `new GrobArray(...)` call on the
+array `for...in` path — the `$snapshot` `GetProperty` case (`VirtualMachine.cs:887`–890),
+executed once regardless of array size or loop length. `GrobArray.Elements` returns the
+live list directly (no defensive copy). The ≈75 KB residual is not a second or third
+copy of the array's data — direct measurement (`GC.GetAllocatedBytesForCurrentThread`,
+D-388's own technique applied more narrowly, no BenchmarkDotNet) shows the residual is
+**constant regardless of the snapshotted array's size** (48,072 B ± 160 B across array
+sizes 3 through 5,000) and **identical for `"length"` and `"isEmpty"`**, an array
+property read that never touches element data at all. A copy would scale with size;
+this does not.
+
+**Root cause: a C#-compiler closure-capture display-class allocation, paid on every
+`GetProperty` dispatch against an array receiver, not gated by which branch of the case
+actually runs.** `VirtualMachine.cs`'s `OpCode.GetProperty` case declares a closure at
+:894–899 (`(callable, args) => InvokeCallable(callable, args, line, column, ct,
+finallyContext)`, binding `ArrayNatives.GetMethod` for methods like `.append`) that
+captures `line`/`column` (outer, per-dispatch-iteration-reassigned locals) alongside
+locals declared in the same case body. The `"length"`/`"isEmpty"`/`"$snapshot"`
+branches `break` out **before** that closure-declaring code, and by reading alone
+should cost nothing beyond a struct push — but Roslyn allocates the display class
+covering the shared lexical scope regardless of which sibling branch executes.
+Confirmed mechanistically, not just measured, by an independent synthetic repro
+carrying zero Grob code: a minimal C# method with the same shape (an early-return `if`
+sibling, in one block, to a later lambda-declaring branch capturing an outer
+per-iteration-reassigned local) reproduces the same "early-return branch still pays"
+effect from C# semantics alone. This is a general `GetProperty`-on-array dispatch tax
+— any user `.length`/`.isEmpty` read pays it, not only `for...in`'s internal emission.
+
+**Reconciliation.** For the 1,000-element/1,000-iteration case: 24,080 B (the one
+`$snapshot` copy, exactly D-388's isolated figure, confirmed unchanged when routed
+through the real VM dispatch path) + 48,072 B (1,000 × the `GetProperty("length")`
+closure tax the loop condition pays every iteration) + 96 B (`GetIndex`/`PopN` item
+binding) + 344 B (bare loop arithmetic) = **72,592 B predicted, 72,592 B measured** —
+exact, zero residual, for this entry's own isolated hand-assembled repro. The same
+figure (72,536–72,596 B) reproduces via the real compiled `attr-build`-based fixtures,
+measured directly rather than through BenchmarkDotNet. Against D-387's committed
+75,416 B figure of record, ≈96–97% is accounted for by named site; the remaining ≈3–4%
+is attributed to BenchmarkDotNet harness/operation-batching overhead (D-388 already
+documented a smaller instance of the same kind of gap between a short and a canonical
+local job), not to an unidentified allocation site — reported as an honest residual
+rather than folded into the headline attribution.
+
+**Phase 3b is unblocked.** D-388's condition — the residual must be attributed before a
+`Run_ArrayForIn` allocation ceiling is derived, so a later fix does not force lowering a
+published threshold — is met: the residual is now named, sited and measured. A future
+ceiling can be derived knowing it commits to (one D-383 copy) + (a per-call
+`GetProperty` closure tax unrelated to array size), and knowing that removing the tax
+component would _shrink_ a ceiling, the direction D-313's ratchet rule permits without
+friction.
+
+**No fix proposed or made** — this increment's explicit stop condition. The closure-tax
+finding is left for a future, separately decided increment (candidate direction:
+restructure `OpCode.GetProperty`'s case body so the closure-declaring statements are
+scoped to their own block, narrowing the display class Roslyn generates — not designed
+here). Full method, every measured table, and the ablation/scaling/synthetic-repro
+evidence trail: `docs/design/bench-snapshot-residual.md`. No `src/` change. No opcode
+change. No new error code; count unchanged at **121**. Cites D-388 (the hypothesis
+refuted and the blocking condition closed), D-387 (the figure of record and the
+isolating technique refined here), D-386 (the original doubling hypothesis), D-383
+(the contents-snapshot guarantee the one genuine copy implements), D-313 (the
+measurement gate this satisfies) and `docs/design/bench-allocation-attribution.md`.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -9053,7 +9127,29 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — GrobArray copy pre-sizing investigated, D-388 added: D-386's doubling hypothesis_
+_July 2026 — for...in snapshot allocation residual attributed, D-389 added: reading every_
+_handler on the array for...in path confirms exactly one GrobArray copy (the $snapshot_
+_GetProperty case); GrobArray.Elements is non-copying. Direct GC.GetAllocatedBytesForCurrentThread_
+_measurement (no BenchmarkDotNet) shows the ~75 KB residual is constant regardless of the_
+_snapshotted array's size and identical for "length" and "isEmpty" — an early-return property_
+_read that never touches element data — refuting D-388's three-copy hypothesis outright, since a_
+_second or third data copy would scale with size and this does not. Root cause: a Roslyn_
+_closure-capture display-class allocation, paid on every GetProperty dispatch against an array_
+_receiver regardless of which branch of the case executes, because the closure binding_
+_ArrayNatives.GetMethod (e.g. for .append) shares a lexical block with the early-return_
+_"length"/"isEmpty"/"$snapshot" branches — confirmed mechanistically, not just measured, by an_
+_independent synthetic C# repro carrying zero Grob code. Reconciliation for the_
+_1,000-element/1,000-iteration case: 24,080 B (the one copy) + 48,072 B (1,000 x the_
+_GetProperty("length") closure tax the loop condition pays every iteration) + 96 B_
+_(GetIndex/PopN) + 344 B (loop arithmetic) = 72,592 B predicted, 72,592 B measured — exact,_
+_against both this entry's own isolated repro and the real compiled fixtures. Against D-387's_
+_committed 75,416 B figure of record, ~96-97% is accounted for by named site; the remaining_
+_~3-4% is attributed to BenchmarkDotNet harness/operation-batching overhead, not an unidentified_
+_allocation site. Phase 3b is unblocked: D-388's blocking condition is met. No fix proposed or_
+_made, per this increment's stop condition — the closure-tax finding and a candidate_
+_restructuring direction are left for a future, separately decided increment. No src/ change, no_
+_opcode change, no new error code, count unchanged at 121._
+_Previous: July 2026 — GrobArray copy pre-sizing investigated, D-388 added: D-386's doubling hypothesis_
 _for GrobArray's enumerable-sourced copy constructor was tested by applying the proposed_
 _collection-typed fast-path branch and remeasuring, and refuted — before and after are_
 _byte-identical under both measurement scopes: the isolated constructor copy of a 1,000-element_
