@@ -7,10 +7,13 @@ actually attributed. No `src/` change. No opcode change. No new error code; coun
 unchanged at **121**.
 
 **Result in one line: the three-copy hypothesis is refuted. There is exactly one array
-copy. The residual is a C#-compiler closure-capture allocation paid on every
-`GetProperty` dispatch against an array receiver — including the `length` read the
-array `for...in` condition issues every iteration — and it is completely independent of
-the snapshotted array's size.**
+copy — the 24,080 B `$snapshot` allocation D-383 requires, and the only term in the
+differential that scales with element count. The rest, ≈48 KB at 1,000 iterations, is a
+C#-compiler closure-capture allocation paid on every `GetProperty` dispatch against an
+array receiver — including the `length` read the array `for...in` condition issues every
+iteration. That component scales with iteration count and is completely independent of
+the snapshotted array's size; the copy is the only size-dependent term. Any allocation
+ceiling derived from this must carry both.**
 
 ---
 
@@ -206,18 +209,21 @@ Against **D-387's committed figure of record (75,416 B)** and **D-388's own loca
 re-run (74,560 B)**: this entry's direct-GC-counter figure (72,536–72,596 B) sits
 ≈1,960–2,880 B below both. That gap is **not attributed to any counted allocation
 site** above — the counted-site sum already closes the gap against this entry's own
-measurement exactly. The most plausible account is BenchmarkDotNet harness/
-operation-batching overhead folded into its per-op average (D-388 already documented
-an ≈850 B gap between a short local job and a canonical one on the same technique; the
-gap here, using a different and more tightly scoped technique, is larger but the same
-kind of harness artefact, not a Grob-VM allocation this note failed to find). Recorded
-as an honest, small unattributed variance rather than folded into the headline result.
+measurement exactly. It is a **cross-harness** difference: every figure this note
+produces comes from direct GC counters, every figure it is compared against comes from
+BenchmarkDotNet. Harness/operation-batching overhead folded into a per-op average is the
+plausible account, and D-388 documented an ≈850 B gap of that kind between a short local
+job and a canonical one — but **no matched-harness comparison was run here**, so that
+account is not established. The remainder is therefore left **unresolved**: this note
+neither claims it is harness overhead nor claims it is a Grob-VM allocation site it
+failed to find. Settling it needs the same fixture measured under both harnesses, which
+is outside this increment's scope and is named here for whoever takes it on.
 
 **Attribution: 100% of this entry's own measured 72,536–72,596 B differential is
 accounted for by name and site. Of D-387's committed 75,416 B figure of record,
-≈96–97% is accounted for; the remaining ≈4% is attributed to measurement-technique
-variance between BenchmarkDotNet and direct GC counters, not to an unidentified
-allocation site.**
+≈96–97% is accounted for by name and site; the remaining ≈3–4% (≈1,960–2,880 B) is an
+unresolved cross-harness measurement difference — neither attributed to a named
+allocation site nor established as harness overhead.**
 
 ## 6. Three-copy hypothesis: refuted
 
@@ -225,8 +231,9 @@ D-388 predicted `3 × 24,080 + 1,977 ≈ 74,217 B`, close to the measured 74,560
 flagged this as arithmetic, not evidence. It is refuted:
 
 - There is **exactly one** `new GrobArray(...)` call on the array `for...in` path
-  (§1's disassembly, §2's handler read) — the `$snapshot` `GetProperty` at compile-time
-  offset 0012, executed exactly once regardless of array size or loop length.
+  (§1's disassembly, §2's handler read) — the `$snapshot` `GetProperty` at bytecode
+  offset 0012 in §1's disassembly, executed exactly once regardless of array size or
+  loop length.
 - The ≈48 KB residual does not scale with array size (§4, Part 4) — a second or third
   _copy_ of the array's data would. It scales with **iteration count** (§4, Parts 3
   and 5) and is identical for a property call that never touches the array's element
@@ -247,7 +254,7 @@ flagged this as arithmetic, not evidence. It is refuted:
   C#-compiler artefact of how `VirtualMachine.cs`'s `OpCode.GetProperty` case is
   currently structured (the closure-declaring statements at :894–899 share a lexical
   block with the early-return branches at :873–890), not a semantic requirement of
-  `for...in`, `length`, or `isEmpty`. A future, separately measured and separately
+  `for...in`, `length` or `isEmpty`. A future, separately measured and separately
   decided increment could restructure that case body (for instance, moving the
   closure-declaring statements into their own nested block or a local function so their
   display class is scoped only to the branch that needs it) — enough context for that
@@ -262,13 +269,14 @@ flagged this as arithmetic, not evidence. It is refuted:
 
 **Yes.** D-388's blocking condition was that the residual be attributed before a
 `Run_ArrayForIn` allocation ceiling is derived, so a future fix does not force lowering
-a published threshold. That condition is met: the ≈75 KB residual is now named,
-sited, and measured as (one D-383 copy) + (N × a per-`GetProperty`-call closure tax
-unrelated to array size) + (negligible loop arithmetic), with the sum reconciling to
-within measurement-technique noise of the committed figure of record. Phase 3b may
-derive a ceiling knowing precisely what it is committing to, and knowing that the
-per-call tax component would shrink a ceiling (not require raising one) if a future
-increment removes it — the correct direction for D-313's ratchet rule.
+a published threshold. That condition is met: the ≈75 KB residual is now named, sited
+and measured as (one D-383 copy) + (N × a per-`GetProperty`-call closure tax unrelated
+to array size) + (negligible loop arithmetic), reconciling exactly against this note's
+own measurement and to within an unresolved ≈3–4% cross-harness difference of the
+committed figure of record (§5). Phase 3b may derive a ceiling knowing precisely what it
+is committing to, and knowing that the per-call tax component would shrink a ceiling
+(not require raising one) if a future increment removes it — the correct direction for
+D-313's ratchet rule.
 
 ---
 
@@ -276,5 +284,5 @@ Cites D-388 (the refuted hypothesis and the blocking condition this closes), D-3
 committed differential figure of record and the isolating technique this refines),
 D-386 (the original doubling hypothesis), D-383 (the contents-snapshot guarantee the
 one genuine copy implements), D-313 (the measurement-before-optimisation gate this
-satisfies), and `docs/design/bench-allocation-attribution.md` (§5, phase 1's original
+satisfies) and `docs/design/bench-allocation-attribution.md` (§5, phase 1's original
 framing of the residual).
