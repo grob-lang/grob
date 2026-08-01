@@ -2,12 +2,45 @@
   "perSprintPercent": 5.0,
   "cumulativePercent": 12.0,
   "allocPercent": 10.0,
-  "lohTripwireBytes": 85000,
   "timeSignificanceK": 3.0,
   "categories": [
-    { "name": "compile",     "namespacePrefix": "Grob.Benchmarks.Compile",     "baseline": "compile.json",     "gating": true  },
-    { "name": "vm",          "namespacePrefix": "Grob.Benchmarks.Vm",          "baseline": "vm.json",          "gating": false },
-    { "name": "attribution", "namespacePrefix": "Grob.Benchmarks.Attribution", "baseline": "attribution.json", "gating": false },
-    { "name": "endToEnd",    "namespacePrefix": "Grob.Benchmarks.EndToEnd",    "baseline": "endToEnd.json",    "gating": false }
+    {
+      "name": "compile",
+      "namespacePrefix": "Grob.Benchmarks.Compile",
+      "baseline": "compile.json",
+      "gating": true,
+      "allocationCeilingBytes": 20100
+    },
+    {
+      "name": "vm",
+      "namespacePrefix": "Grob.Benchmarks.Vm",
+      "baseline": "vm.json",
+      "gating": false,
+      "allocationCeilingBytes": 4700,
+      "benchmarkAllocationCeilings": {
+        "Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn": 637900,
+        "Grob.Benchmarks.Vm.VmBenchmarks.Run_MapForIn": 1240000
+      }
+    },
+    {
+      "name": "attribution",
+      "namespacePrefix": "Grob.Benchmarks.Attribution",
+      "baseline": "attribution.json",
+      "gating": false,
+      "allocationCeilingBytes": 55400,
+      "benchmarkAllocationCeilings": {
+        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrNative": 278700,
+        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrArrayDispatch": 552100,
+        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrBuild": 610900,
+        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrSnapshotEmpty": 700300,
+        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrMapBuild": 1128400
+      }
+    },
+    {
+      "name": "endToEnd",
+      "namespacePrefix": "Grob.Benchmarks.EndToEnd",
+      "baseline": "endToEnd.json",
+      "gating": false
+    }
   ]
 }

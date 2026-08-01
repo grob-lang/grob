@@ -385,6 +385,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-387 | July 2026 | Tooling — benchmarking (implementation) | Phase 3a — applies D-385/D-386 to `bench/`, `tooling/Grob.BenchCheck.Tests` and the corpus docs. `Grob.Benchmarks.Vm.VmBenchmarks` rebuilt in place (Q1'): `[GlobalSetup]` compiles the five existing fixtures to `Chunk` fields once; `[IterationSetup]` constructs a fresh `VirtualMachine` per iteration (needed because `array-for-in`/`map-for-in` mutate global state that must not compound across iterations sharing one `Chunk`); each `[Benchmark]` method is now exactly `vm.Run(chunk)`. `endToEnd` left untouched — still declared, still empty, **F8 stays open**. New `Grob.Benchmarks.Attribution.AttributionBenchmarks` class and `Fixtures/Attribution/` directory (Q5'): the four `attr-*` fixtures moved out of `vm`, doc comments losing "(phase 1, throwaway)" since they are permanent now, plus three new fixtures — `attr-map-build.grob` (map construction only, no second loop) and `attr-snapshot-empty.grob` (the `attr-build` build loop plus an empty-body `for...in`, isolating the pure contents-snapshot copy), both named as missing by phase 1/D-386, and `attr-array-dispatch.grob` (`xs.contains(i)` × 1,000, no growth — the growth-free control for `attr-build` that phase 1 §4 recorded as missing, added in PR #171 review). The same review removed unmatched terminal `print` calls from `attr-empty` (now deliberately statement-free, as the category's subtracted-against baseline) and `attr-map-build`. New `attribution` category added to `policy.json` (`gating: false`); two `BenchCheckTests` cases prove it reports informational, not a regression, and that the two new fixtures classify as `NewBenchmark` against a partial rolling baseline. Composition root ratified in code (D-385 Q4): `StringMethodsPlugin` registered uniformly across the attribution category's whole-pipeline runner; `ArrayNatives`/`MapNatives` instance-method dispatch documented as a structurally distinct, fresh-closure-per-call native path reachable without any plugin registration. `grob-benchmarking-strategy.md` amended (never editing D-313's or D-333's entries in place): new §4.2a for the attribution category, an implementation note on §4.2's vm-rebuild correction, §3/§7.1 fixture-tree entries, §8's baseline-file list gaining `attribution.json`/`attribution.origin.json` (declared, not yet committed) and a note that `vm.json`/`vm.origin.json` now describe a stale pre-rebuild measurement, and a new explicit §9.1 gating matrix plus the compile-cumulative-inert caveat (`compile.origin.json`'s `"Unknown processor"` capture), citing ADR-0018. **Local-machine measurement only, not a canonical baseline** (same Intel Core i5-8400 machine as phase 1's own run, `docs/design/bench-allocation-attribution.md`): `vm` category (execution only) — `Run_DeclAndArith` 28.97 μs / 2,344 B, `Run_Interpolation` 34.49 μs / 3,880 B, `Run_ControlFlow` 207.94 μs / 2,504 B, `Run_ArrayForIn` 1,244.41 μs / 531,616 B, `Run_MapForIn` 1,970.83 μs / 1,033,320 B; `attribution` category (whole pipeline) — `Run_AttrEmpty` 6.58 μs / 44,172 B, `Run_AttrRange` 75.34 μs / 46,149 B, `Run_AttrNative` 210.05 μs / 232,032 B, `Run_AttrBuild` 280.05 μs / 508,316 B, `Run_AttrMapBuild` 483.34 μs / 941,592 B, `Run_AttrSnapshotEmpty` 457.04 μs / 583,732 B. Derived: loop machinery 1,977 B, Stdlib-plugin per-native-call overhead ≈186 B/call, and — labelled precisely, per PR #171 review — the **combined** array-member-dispatch tax plus growth 276,284 B/1,000 appends, not array growth alone, since `attr-build` and `attr-native` sit on structurally different native paths (phase 1 §4); `attr-array-dispatch` is the control that isolates growth, its figure pending the canonical capture. All three reproduce phase 1's figures almost exactly on the same machine. New: pure contents-snapshot cost (`attr-snapshot-empty` − `attr-build`) = 75,416 B, inside D-386's ≈73–80 KB doubling-hypothesis prediction — **reported, no action taken**, any fix is a separate decision. Map-build split, using phase 1's frozen full-pipeline `Run_MapForIn` figure (1,092,413 B) as the comparison basis since the rebuilt `vm` category's `Run_MapForIn` no longer shares that basis: second-loop-plus-values-snapshot ≈150,821 B, map-build-loop-itself (interpolations + `map.set` + growth) ≈897,420 B. **Canonical `vm.json`/`vm.origin.json` re-capture and the first `attribution.json`/`attribution.origin.json` commit are a follow-up** — only the `benchmark.yml` workflow on `windows-latest` produces a committable baseline (§8.1/§8.2), and pushing/dispatching CI is the maintainer's action. Phase 3b (per-category allocation ceilings, D-385 Q2) is not addressed here — it needs this increment's numbers first. No `src/` change. No new error code; count unchanged at 121. Cites D-385, D-386, D-313, D-333, ADR-0018, `docs/design/bench-allocation-attribution.md`. |
 | D-388 | July 2026 | Core — `GrobArray` construction | Tests D-386's doubling hypothesis for `GrobArray`'s copy constructor by applying the proposed `ICollection<GrobValue>` fast-path branch and remeasuring. **Refuted**: before and after are byte-identical under both measurements, which are two distinct scopes and must not be conflated — the isolated `GC.GetAllocatedBytesForCurrentThread` constructor copy of a 1,000-element `List<GrobValue>` source at **24,080 B**, and the whole-pipeline `attr-snapshot-empty`/`attr-build` differential at **74,560 B**. The reason is that the compiler already lowers a single-spread `[.. elements]` targeting `List<T>` to `new List<T>(elements)`, and `List<T>`'s own `IEnumerable<T>` constructor already fast-paths any runtime-`ICollection<T>` source — which is what every production `GrobArray` construction site passes (a list or an array). Both halves are current compiler/BCL implementation behaviour rather than guaranteed contracts, and the refutation is scoped accordingly: a genuinely lazy, non-`ICollection<GrobValue>` source still grows by doubling (measured separately at 49,432 B), it is simply not what any production site passes today. No fix lands; the explicit branch was written, measured, found redundant and reverted, leaving only an explanatory comment and four new characterisation tests (`RuntimeTypesTests.cs`) covering equivalence-across-source-kinds, independence from source mutation and D-372's shallow-copy aliasing — coverage this type lacked before. That 74,560 B differential sits ≈850 B below D-387's committed 75,416 B, ordinary run-to-run variance between a short local job and a canonical one, not a second figure; D-387's number is the one of record. That cost is therefore not copy doubling — it is ≈3.1× a single isolated copy (24,080 B), while measured loop machinery is ≈2 B/iteration (`attr-range` − `attr-empty` = 1,977 B over 1,000 iterations) and cannot account for it, so the leading hypothesis is that the `for...in` snapshot path copies more than once — which would also explain why a constructor-level fix had no effect. Unattributed, left for a future, separately measured increment per this increment's own stop-on-refutation condition; **phase 3b must not derive a `Run_ArrayForIn` allocation ceiling until this residual is attributed**, or it commits ≈50 KB/1,000-element loop as expected behaviour that a later fix would need to lower a published threshold to remove. No `src/` behavioural change. No new error code; count unchanged at 121. Cites D-313, D-386, D-387, D-383, D-372, `docs/design/bench-allocation-attribution.md` §5. |
 | D-389 | July 2026 | VM — `GetProperty` dispatch / benchmarking attribution | Attributes the residual D-388 left open, refuting its three-copy hypothesis. Reading every handler on the array `for...in` path confirms exactly **one** `new GrobArray(...)` call (`$snapshot`, `VirtualMachine.cs:887`–890), executed once regardless of size or loop length; `GrobArray.Elements` is a direct, non-copying accessor. Direct `GC.GetAllocatedBytesForCurrentThread` measurement (no BenchmarkDotNet) shows the ≈75 KB residual is **constant regardless of the snapshotted array's size** (48,072 B ± 160 B across sizes 3–5,000) and **identical for `"length"` and `"isEmpty"`**, an early-return property read that never touches element data — a copy would scale with size; this does not. **Root cause: a Roslyn closure-capture display-class allocation**, paid on every `GetProperty` dispatch against an array receiver regardless of which branch of the case executes, because the closure at `VirtualMachine.cs:894`–899 (binding `ArrayNatives.GetMethod`, e.g. for `.append`) shares a lexical block with the early-return `"length"`/`"isEmpty"`/`"$snapshot"` branches — confirmed mechanistically by an independent synthetic C# repro carrying zero Grob code, reproducing the same "early-return branch still pays" effect from Roslyn semantics alone. Reconciliation for the 1,000-element/1,000-iteration case: 24,080 B (the one copy) + 48,072 B (1,000 × the `GetProperty("length")` closure tax the loop condition pays every iteration) + 96 B (`GetIndex`/`PopN`) + 344 B (loop arithmetic) = 72,592 B predicted, 72,592 B measured — exact, against this entry's own isolated repro and the real compiled fixtures alike (72,536–72,596 B, measured directly). Against D-387's committed 75,416 B figure of record, ≈96–97% is accounted for by named site; the residual ≈3–4% (≈1,960–2,880 B) is left **unresolved** as a cross-harness difference between this entry's direct GC counters and D-387/D-388's BenchmarkDotNet figures — harness overhead is the plausible account but no matched-harness comparison was run, so it is attributed neither to harness overhead nor to an unidentified allocation site. **Phase 3b is unblocked**: D-388's blocking condition (attribute before deriving a ceiling) is met. **No fix proposed or made**, per this increment's stop condition — the closure-tax finding and a candidate restructuring direction are left for a future, separately decided increment; the tax is a general `GetProperty`-on-array dispatch cost, not specific to `for...in`. No `src/` change. No opcode change. No new error code; count unchanged at 121. Full method and evidence trail: `docs/design/bench-snapshot-residual.md`. Cites D-388, D-387, D-386, D-383, D-313, `docs/design/bench-allocation-attribution.md`. |
+| D-390 | August 2026 | Tooling — benchmarking (gate policy) | Whenever a benchmark's measurement methodology changes — not the code under test — the rolling and origin baselines are re-frozen in the same change, unconditionally, recorded as a **re-establishment** rather than a rebaseline absorbing a regression; a separate rule from D-313's ratchet trap, not a restatement of it (D-313 forbids hiding a real regression if skipped; this rule forbids manufacturing a fake one if skipped). Triggered by the canonical run `30707325720` compared against the still-committed pre-D-387 `vm.json`/`vm.origin.json`: raw per-sprint deltas of **+343.8%/+147.6%/+141.5%** on `Run_ControlFlow`/`Run_DeclAndArith`/`Run_Interpolation` are artifacts of D-387's `vm` rebuild (compilation hoisted into `[GlobalSetup]`, `[IterationSetup]` forcing `InvocationCount=1`/`UnrollFactor=1` to keep each iteration's fresh `VirtualMachine` isolated, removing BenchmarkDotNet's normal unrolling amortization) — not real VM or compiler slowdowns; the two sides of the percentage are measuring different things. **Why the build did not fail is a near-miss, not a working safeguard:** two independent, coincidental conditions suppressed it — `vm`'s time axis is already `Informational` under the §9.1 gating matrix (D-385/D-386 Q6, for unrelated build-out-sequencing reasons) and the fresh run's CPU (AMD EPYC 7763) doesn't match either baseline's (Intel Xeon Platinum 8370C), independently degrading the comparison to informational under D-333's `SameCpu` guard. Neither condition exists to protect against a methodology change. A time-gating category on a CPU-matched run — `compile` is exactly this shape today — would fail the build on a phantom regression with nothing in `BenchCheck`'s output pointing at "the measured region changed" as the cause. **Rejected:** leaving this to reviewer judgement case-by-case (a passing build gives no prompt to look, a failing build points at the wrong cause — the two moments a reviewer would check are exactly when this gap is invisible); an automatic methodology-change detector in `BenchCheck` (no field in a BenchmarkDotNet report distinguishes "the code under test got slower" from "the harness now measures a different region" — this has to be a rule applied by whoever changes a benchmark class's `[GlobalSetup]`/`[IterationSetup]`/measured-region shape, at the point they change it). No opcode change, no new error code; count unchanged at 121. Cites D-313, D-387, D-333, D-309. |
+| D-391 | August 2026 | Tooling — benchmarking (gate policy, implementation) | Phase 3b — completes D-385 Q2. Renames `policy.json`'s single global `lohTripwireBytes` (85,000 B, borrowed from the .NET LOH's unrelated single-object promotion threshold, D-333) to a category-scoped **total-allocation ceiling**: `PolicyCategory.AllocationCeilingBytes` (category default) plus an optional `BenchmarkAllocationCeilings` map (`FullName` → bytes) overriding it per benchmark; `Policy.LohTripwireBytes` removed entirely — no global fallback, since the categories are provably incommensurable (`vm` spans 441× internally, `Run_DeclAndArith` 2,344 B to `Run_MapForIn` 1,033,320 B). `BenchCheck.BreachesLohTripwire` → `BreachesAllocationCeiling(fresh, fullName, category)`; `AllocClass.LohTripwireBreach` → `CeilingBreach`; `Cli.cs`'s per-row label and the header's now-nonexistent single figure updated (the header drops the clause — no single number is true any more, the per-row `Alloc status` column already carries a breach). **Granularity, per D-385 Q2's "per-category (or per-fixture-shape)" clause:** `compile` keeps one category default; `vm` splits into a scalar-dispatch default (`Run_DeclAndArith`/`Run_Interpolation`/`Run_ControlFlow`) plus individual overrides for `Run_ArrayForIn`/`Run_MapForIn` (themselves ~2× apart, so even a shared for-in ceiling would reintroduce the problem one level down); `attribution` mirrors the same logic — a floor-shape default for `Run_AttrEmpty`/`Run_AttrRange` (the fixtures every other `attr-*` subtraction treats as a stable floor, and `attr-empty` measures the pipeline plus `VirtualMachine` construction plus plugin registration, a regression surface `compile` does not watch) plus individual overrides for the five structurally distinct larger fixtures (`Run_AttrNative`/`Run_AttrArrayDispatch`/`Run_AttrBuild`/`Run_AttrSnapshotEmpty`/`Run_AttrMapBuild`, themselves ~4× apart). `endToEnd` keeps no ceiling (F8 open, zero fresh benchmarks — `Evaluate` already skips empty categories, so an absent ceiling is inert, not a gap). **Headroom: one convention, `round_to_nearest_100(1.20 × canonical measured value)`**, applied uniformly — double `allocPercent` (10%), sized larger because this is the coarse absolute backstop, not the primary per-sprint signal. Every derived ceiling, canonical run `30707325720` (`windows-latest`, AMD EPYC 7763, 2026-08-01): `compile` 20,100 B (basis 16,728 B); `vm` scalar default 4,700 B (basis 3,880 B), `Run_ArrayForIn` 637,900 B (basis 531,616 B), `Run_MapForIn` 1,240,000 B (basis 1,033,320 B); `attribution` floor default 55,400 B (basis 46,145 B), `Run_AttrNative` 278,700 B (232,239 B), `Run_AttrArrayDispatch` 552,100 B (460,101 B), `Run_AttrBuild` 610,900 B (509,095 B), `Run_AttrSnapshotEmpty` 700,300 B (583,609 B), `Run_AttrMapBuild` 1,128,400 B (940,315 B). Every one of these sits above the old 85,000 B constant — stated plainly, per no threshold being loosened: the old number was never derived from any of these fixtures' legitimate allocation, so raising the figure corrects a mismeasurement rather than relaxing a real gate. The two `vm` `for...in` ceilings **include an ≈48 B/call `GetProperty` closure-capture tax** (D-389, independent of array/map size); per D-313's ratchet rule a future fix to that tax **lowers** these ceilings, it can never be used to justify raising them. **Canonical run also supplied the derivations D-387 left pending on `attr-array-dispatch`'s canonical capture**: Stdlib native cost 186.1 B/call, array-member dispatch cost 414.0 B/call (a 227.9 B/call dispatch tax over the Stdlib path), array growth (1,000 appends) 48,994 B, pure contents-snapshot cost 74,514 B — closing the gap D-387 recorded as "not yet measured" for the growth-vs-dispatch split. **`vm.json`/`vm.origin.json` re-established** (not merely re-captured) under **D-390**, logged separately in this session because D-387's rebuild changed both what is measured (execution alone, not whole-pipeline) and how (`[IterationSetup]` forcing `InvocationCount=1`/`UnrollFactor=1`, removing amortization) — the still-committed pre-rebuild files produced +343.8%/+147.6%/+141.5% artifact deltas that were never real regressions (D-390's full analysis). `attribution.json`/`attribution.origin.json` committed for the first time (no prior baseline existed). **Proof the ceiling still fires, not merely present:** re-ran `BenchCheck` against the canonical artifacts with `Run_ArrayForIn`'s reported allocation deliberately inflated to 700,000 B (above its 637,900 B override, comfortably under `vm`'s 4,700 B scalar default it would otherwise fall back to) — `Outcome.Regression`, `**allocation ceiling**` on that row alone, every other row unchanged. §8's `policy.json` shape example in `grob-benchmarking-strategy.md` — stale since D-387 added `attribution` without updating it — folded into the same edit as the ceiling rename; new §9.2 documents the mechanism, the full ceiling table with derivations, the headroom convention and the revision rule (a ceiling is raised only for a genuinely new fixture shape or a deliberate, measured, accepted cost, logged each time; never to silently absorb an unexplained regression — D-313's ratchet trap restated at the ceiling's own granularity; a ceiling may be lowered freely once a contributing cost, like the `GetProperty` tax, is fixed). `BenchCheckTests.cs`/`CliRenderTests.cs` updated for the new `Policy`/`PolicyCategory` shape, with new cases proving benchmark-override-beats-category-default, the override firing live, the category default governing an unlisted benchmark, and an unconfigured category never breaching. No opcode change. No new error code; count unchanged at **121**. Cites D-385 (Q2, the decision this completes), D-386, D-387 (the restructure whose canonical figures this derives thresholds from), D-388, D-389 (the residual attribution and the removable-tax component these ceilings commit to), D-390 (the re-establishment rule this applies to `vm`'s baselines), D-333, D-313, D-309, `docs/design/bench-allocation-attribution.md` and `docs/design/bench-snapshot-residual.md` (both findings notes). |
 
 ---
 
@@ -8910,6 +8912,263 @@ measurement gate this satisfies) and `docs/design/bench-allocation-attribution.m
 
 ---
 
+### D-390 — Benchmark baselines re-freeze on measurement-methodology change, unconditionally (August 2026)
+
+Area: Tooling — benchmarking (gate policy)
+Supersedes: none
+Superseded by: none
+Refines: D-313
+
+**Decision.** Whenever a benchmark's *measurement methodology* changes — what region of
+code is timed, what setup is hoisted out of the measured region, what invocation/unroll
+strategy BenchmarkDotNet is forced into — as distinct from a change to the code under
+test, the rolling and origin baselines for every benchmark that methodology touches are
+re-frozen in the same change, unconditionally. The commit message and the decisions-log
+entry record this explicitly as a **re-establishment** of the measurement basis, never
+as a rebaseline absorbing a regression, because none occurred.
+
+**Why this is a separate rule from D-313's ratchet trap, not a restatement of it.**
+D-313 forbids updating a baseline to quietly absorb a real regression — a genuine
+slowdown that happened and would otherwise compound invisibly sprint over sprint. This
+rule addresses the opposite failure: a percentage comparison (per-sprint, cumulative) is
+only meaningful when both sides measure the same thing, and a methodology change breaks
+that precondition without the code under test changing at all. The two are easy to
+conflate — both involve committing new baseline numbers — but the direction of harm
+differs: skipping D-313's rule hides a real cost; skipping this one manufactures a fake
+one.
+
+**The triggering evidence.** The canonical `benchmark.yml` run `30707325720`
+(2026-08-01, `windows-latest`, AMD EPYC 7763) compared against the still-committed
+pre-rebuild `vm.json`/`vm.origin.json` (Intel Xeon Platinum 8370C, captured before
+D-387's `vm` rebuild moved compilation into `[GlobalSetup]` and forced
+`[IterationSetup]`'s `InvocationCount=1`/`UnrollFactor=1` — needed to keep each
+iteration's fresh `VirtualMachine` isolated, which as a side effect removes
+BenchmarkDotNet's normal operation-unrolling amortization). The raw per-sprint/cumulative
+deltas: `Run_ControlFlow` **+343.8%** (61,174 ns → 271,508 ns), `Run_DeclAndArith`
+**+147.6%** (12,224 ns → 30,263 ns), `Run_Interpolation` **+141.5%** (13,005 ns →
+31,414 ns). None of these is a real VM or compiler slowdown — the old figures amortize
+per-invocation overhead across an unrolled batch and include compilation; the new
+figures measure one unamortized `vm.Run(chunk)` call with compilation already excluded.
+Comparing them is comparing two different rulers, not two points on the same one.
+
+**Why the build did not fail on this — a near-miss, not a working safeguard.** Two
+independent, coincidental conditions suppressed these numbers from gating, neither of
+which exists because of any mechanism protecting against a methodology change: `vm`'s
+time axis is `Informational` under the §9.1 gating matrix (D-385/D-386 Q6) for an
+unrelated reason (build-out sequencing, pending the full `endToEnd` corpus); and
+separately, the fresh run's CPU (AMD EPYC 7763) does not match either baseline file's
+CPU (Intel Xeon Platinum 8370C), which degrades the time comparison to informational
+under D-333's `SameCpu` guard regardless of gating status. Had either condition been
+otherwise — `vm` gating on time, or a CPU-matched canonical run — the identical
+methodology change would have failed the build on a phantom regression, with nothing in
+`BenchCheck`'s output pointing at "the measured region changed" as the cause; a
+maintainer would read a red per-sprint or cumulative breach and start hunting for a
+performance regression that was never there. `compile` is exactly this kind of category
+today — time-gating, and its own cumulative axis is only informational because of the
+separate, already-logged `compile.origin.json` CPU-placeholder gap (D-333, D-385 Q3),
+not because of any protection against a methodology change. A future `compile`
+methodology change landing on a CPU-matched run would hit this failure mode directly.
+
+**Rejected.** Leaving this to reviewer judgement case-by-case — a passing build gives no
+prompt to look, and a failing build points at the wrong cause, so the two moments a
+reviewer would naturally check are exactly the moments this gap is invisible. A
+`BenchCheck` mechanism to auto-detect a methodology change from the data — no field in a
+BenchmarkDotNet report distinguishes "the code under test got slower" from "the harness
+now measures a different region of code"; the two produce identical-shaped output. This
+has to be a rule applied by whoever changes a benchmark class's
+`[GlobalSetup]`/`[IterationSetup]`/measured-region shape, at the point they change it,
+not something inferred after the fact.
+
+**Cost.** None to any currently-committed baseline beyond what the phase-3b landing
+entry (D-391, citing this one) applies immediately: `vm.json`/`vm.origin.json`
+re-established from the `30707325720` canonical run under this rule, recorded there as a
+re-establishment, not a rebaseline. No opcode change, no new error code; count unchanged
+at **121**. Cites D-313 (the rule this sits beside, never inside), D-387 (the `vm`
+rebuild whose methodology change surfaced this gap), D-333 (the CPU-identity guard whose
+coincidental, unrelated application produced the near-miss), D-309 (`benchmark.yml`/
+`windows-latest` as the canonical production path this rule governs).
+
+---
+
+### D-391 — Allocation ceilings: `lohTripwireBytes` renamed to a category/fixture-shaped total-allocation ceiling, derived from canonical figures (August 2026)
+
+Area: Tooling — benchmarking (gate policy, implementation)
+Supersedes: none
+Superseded by: none
+Refines: D-385 (Q2), D-387, D-390
+
+**Phase 3b — completes D-385 Q2.** D-385 Q2 ratified redocumenting
+`lohTripwireBytes` (85,000 B) as what it already functioned as — a total-per-operation
+allocation ceiling compared against `Memory.BytesAllocatedPerOperation`, not an LOH
+detector — and left deriving per-category or per-fixture-shape thresholds to phase 3.
+This entry does that derivation, against the first canonical (`windows-latest`)
+benchmark run since D-387's `vm`/`attribution` restructure landed: `30707325720`
+(AMD EPYC 7763, .NET 10.0.10, 2026-08-01), dispatched against `origin/main` at `6f816d4`.
+
+**The rename, mechanically.** `policy.json`'s single global `lohTripwireBytes` is
+removed. `PolicyCategory` gains `AllocationCeilingBytes` (`double?`, the category's
+default ceiling) and `BenchmarkAllocationCeilings` (`IReadOnlyDictionary<string, double>?`,
+keyed by `BdnBenchmark.FullName`, taking precedence over the category default for the
+benchmarks it names). No global fallback survives — the categories are provably
+incommensurable, not merely differently sized: `vm` alone spans **441×** internally
+(`Run_DeclAndArith` 2,344 B to `Run_MapForIn` 1,033,320 B), so a shared constant across
+categories was never coherent and a shared default within `vm` is not much better.
+`BenchCheck.BreachesLohTripwire(fresh, policy)` becomes
+`BreachesAllocationCeiling(fresh, fullName, category)` — the benchmark's own
+`BenchmarkAllocationCeilings` entry if present, else `category.AllocationCeilingBytes`;
+absent both, the benchmark never breaches (the correct behaviour for `endToEnd`, which
+has no ceiling configured while F8 leaves it empty — `Evaluate` already skips categories
+with zero fresh benchmarks, so this is inert rather than a gap). `AllocClass
+.LohTripwireBreach` renamed to `CeilingBreach`; both `Evaluate` call sites (the
+fresh-only/`NewBenchmark` path and `ClassifyAlloc`) now thread the benchmark's `FullName`
+and its `PolicyCategory` through instead of just `Policy`. `Cli.cs`'s per-row label moves
+to `**allocation ceiling**`; the summary header's `LOH tripwire {N} B` clause is dropped
+entirely rather than trying to enumerate every category's number inline — there is no
+longer one figure that is true, and the per-row `Alloc status` column already carries a
+breach. No `loh` naming survives in `tooling/Grob.BenchCheck`, `tooling/Grob.BenchCheck.Tests`
+or `bench/Grob.Benchmarks/baseline/policy.json` — verified by a case-insensitive grep of
+the tree, leaving only the historical prose in this log, in
+`grob-benchmarking-strategy.md`'s own explanation of what changed, and unrelated genuine
+CLR-LOH usage in `src/Grob.Vm/ValueStack.cs`/`ValueStackTests.cs` (the VM's own backing-array
+sizing versus the real Large Object Heap threshold, D-332 — a different concern this
+rename does not touch).
+
+**Granularity — per-category default, per-benchmark override where the internal spread
+demands it, following D-385 Q2's explicit "per-category (or per-fixture-shape)" clause
+rather than one rigid taxonomy:**
+
+- **`compile`** — one category default; both members (`Compile_TenPrints` 16,728 B,
+  `Compile_TwoExpressions` 9,856 B) are the same shape and close in magnitude.
+- **`vm`** — a scalar-dispatch default covering `Run_DeclAndArith`/`Run_Interpolation`/
+  `Run_ControlFlow` (2,344–3,880 B, no collection snapshot), plus individual overrides for
+  `Run_ArrayForIn` and `Run_MapForIn`. The two `for...in` fixtures are **not** folded into
+  one shared for-in ceiling between them — they are themselves ~2× apart, and grouping
+  them would reintroduce, one level down, the exact "one number spans too wide a range"
+  problem this entry exists to fix.
+- **`attribution`** — the same logic, not a category-wide ceiling from its largest member
+  as first proposed. A single ceiling sized to `Run_AttrMapBuild` (940,315 B) would let
+  `Run_AttrEmpty` (42,849 B) grow **26×** unnoticed, and "`compile` already covers that
+  shape" does not hold: `attr-empty` measures the whole pipeline *plus* `VirtualMachine`
+  construction *plus* plugin registration, so a regression in either of the latter two
+  lands here and in nothing `compile` watches — and it is the fixture every other `attr-*`
+  subtraction treats as a stable floor (D-387), so it needs its own live protection, not a
+  borrowed one. `Run_AttrEmpty`/`Run_AttrRange` (42,849 B/46,145 B) share a floor-shape
+  default; `Run_AttrNative`, `Run_AttrArrayDispatch`, `Run_AttrBuild`,
+  `Run_AttrSnapshotEmpty` and `Run_AttrMapBuild` (232,239 B–940,315 B, a ~4× internal
+  spread) each get their own override.
+- **`endToEnd`** — no ceiling configured; F8 is open, zero fresh benchmarks exist to
+  derive one from.
+
+**Headroom — one convention, stated once, applied uniformly:**
+`round_to_nearest_100(1.20 × canonical measured value)`. 20% is double the existing
+`allocPercent` (10%, the per-sprint *relative* growth gate that already tracks
+incremental creep) — sized larger because this ceiling is the coarse, rare-firing
+absolute backstop, not the primary signal, but still tight enough that nothing short of
+roughly doubling slips through silently.
+
+| Category / benchmark | Measured (canonical) | Ceiling | Basis |
+|---|---:|---:|---|
+| `compile` (default) | 16,728 B | **20,100 B** | `Compile_TenPrints` |
+| `vm` scalar default | 3,880 B | **4,700 B** | `Run_Interpolation` |
+| `vm` → `Run_ArrayForIn` | 531,616 B | **637,900 B** | itself |
+| `vm` → `Run_MapForIn` | 1,033,320 B | **1,240,000 B** | itself |
+| `attribution` floor default | 46,145 B | **55,400 B** | `Run_AttrRange` |
+| `attribution` → `Run_AttrNative` | 232,239 B | **278,700 B** | itself |
+| `attribution` → `Run_AttrArrayDispatch` | 460,101 B | **552,100 B** | itself |
+| `attribution` → `Run_AttrBuild` | 509,095 B | **610,900 B** | itself |
+| `attribution` → `Run_AttrSnapshotEmpty` | 583,609 B | **700,300 B** | itself |
+| `attribution` → `Run_AttrMapBuild` | 940,315 B | **1,128,400 B** | itself |
+
+**Every one of these sits above the old 85,000 B constant — stated plainly, per the
+constraint that no threshold is loosened by this entry.** The old number was never
+derived from any of these fixtures' legitimate allocation — it was borrowed from an
+unrelated CLR concept and compared against the wrong quantity from the start (D-385 Q2).
+Setting a first threshold for a correctly-named mechanism against a newly-correct,
+newly-canonical measurement corrects a mismeasurement; it does not relax a gate that was
+ever meaningfully protecting against these numbers. What would now trigger a failure that
+does not today: any of the ten figures above growing by more than its stated 20%
+headroom, on any category regardless of its `gating` flag — not true of the old constant,
+which every `for...in`/`attribution` fixture had already cleared on day one and so
+protected nothing for them at all. The two `vm` `for...in` ceilings **include an
+≈48 B/call `GetProperty` closure-capture tax** D-389 attributed (per-iteration,
+independent of array/map size). Per D-313's ratchet rule, a future fix to that tax must
+**lower** these ceilings, never justify raising them — recorded here so that fix, when it
+lands, is measured against this entry rather than treated as license to hold the ceiling
+where it is.
+
+**The revision rule.** A ceiling is legitimately raised for a new benchmark of a
+genuinely different allocation shape, or a deliberate feature landing with measured,
+accepted cost — always as a stated, logged decision citing the new measurement, following
+this same 20%-headroom convention. It is not legitimately raised to silently absorb an
+unexplained regression — D-313's ratchet trap, restated at the ceiling's own granularity.
+A ceiling may be lowered freely once a component contributing to it (the `GetProperty` tax
+above, say) is fixed; the ratchet only forbids motion in the direction that hides cost.
+
+**Canonical derivations the run also supplied**, closing the gap D-387 left open pending
+`attr-array-dispatch`'s canonical capture (D-387: "its number is not yet measured"):
+Stdlib native cost **186.1 B/call** ((`attr-native` − `attr-range`) ÷ 1000); array-member
+dispatch cost **414.0 B/call** ((`attr-array-dispatch` − `attr-range`) ÷ 1000) — a
+**227.9 B/call** dispatch tax over the Stdlib path; array growth (1,000 appends)
+**48,994 B** (`attr-build` − `attr-array-dispatch`); pure contents-snapshot cost
+**74,514 B** (`attr-snapshot-empty` − `attr-build`). All four reproduce phase 1/D-387's
+local-machine figures within measurement noise, now on canonical hardware.
+
+**`vm.json`/`vm.origin.json` re-established, `attribution.json`/`attribution.origin.json`
+committed for the first time.** Per **D-390** (logged separately in this session, since
+the rule is general and not specific to this increment): D-387's `vm` rebuild changed both
+*what* is measured (execution alone, compilation excluded) and *how* (`[IterationSetup]`
+forcing `InvocationCount=1`/`UnrollFactor=1`, removing BenchmarkDotNet's amortization) —
+the still-committed pre-rebuild files produced raw deltas of
++343.8%/+147.6%/+141.5% against the canonical run that were never real regressions
+(D-390's full analysis, including why the build did not fail on them). Both files are
+replaced from `30707325720`, recorded as a re-establishment, not a rebaseline.
+`attribution.json`/`attribution.origin.json` are a genuine first measurement — the
+category has never had a committed baseline.
+
+**Proof the ceiling still fires, not merely present.** Re-ran `BenchCheck` against the
+canonical artifacts with `Run_ArrayForIn`'s reported allocation deliberately inflated to
+700,000 B — above its 637,900 B override, comfortably under the 4,700 B scalar default it
+would otherwise fall back to were the override absent. Result: `Outcome.Regression`,
+`**allocation ceiling**` on that row alone, every other row (including `Run_MapForIn`,
+untouched) reading `info`/`ok` exactly as the unmodified run does. The gate is
+demonstrably live, not quietly always-pass.
+
+**`grob-benchmarking-strategy.md`.** §8's `policy.json` shape example — three categories,
+missing `attribution` since D-387 added it without updating this example — folded into
+the same edit as the rename; the §8 baseline-file list and the "`vm.json` describes a
+stale measurement" note updated to record the re-establishment instead. New **§9.2**
+documents the mechanism in full: what it was and why that stopped working, the rename,
+the granularity rationale per category, the headroom convention, the full ceiling table
+with derivations, and the revision rule — so the documented gate and the enforced gate
+stay the same thing (the ADR-0018 precedent D-385 Q3/Q6 already applied to this corpus).
+§9's Axis 3 prose and §9.1's gating-matrix column header renamed from "LOH tripwire" to
+"Allocation ceiling"; §9.1's `endToEnd` row states "Not configured" rather than
+implying a number exists.
+
+**Tests.** `BenchCheckTests.cs`: `PolicyWith`'s `lohTripwireBytes` parameter renamed to
+`allocationCeilingBytes`; the two existing tripwire-behaviour tests renamed and updated
+for `CeilingBreach`/`BreachesAllocationCeiling`; four new cases prove the restructured
+mechanism live — a per-benchmark override passing when under it, the same override still
+firing on a deliberately inflated value, the category default governing a benchmark with
+no override of its own, and a category with no ceiling configured never breaching however
+large the reported allocation. `CliRenderTests.cs`: the `LohTripwireBreach` theory case
+and its render-label assertion renamed; the culture-invariance test — previously anchored
+on the now-removed global header figure — re-anchored on the per-row `Alloc` column's
+byte formatting instead, preserving the same de-DE-locale regression coverage. Full
+solution (`Grob.slnx`) builds and tests clean, all `dotnet test` runs across every project
+passing.
+
+No opcode change. No new error code; count unchanged at **121**. Cites D-385 (Q2, the
+decision this completes), D-386, D-387 (the restructure whose canonical figures this
+derives every threshold from, and whose pending `attr-array-dispatch` measurement this
+closes), D-388, D-389 (the residual attribution and the removable tax component the
+`vm` `for...in` ceilings commit to), D-390 (the re-establishment rule this applies to
+`vm`'s baselines), D-333, D-313, D-309, `docs/design/bench-allocation-attribution.md` and
+`docs/design/bench-snapshot-residual.md` (both findings notes, cited throughout for
+figures this entry did not itself re-measure).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -9131,7 +9390,54 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_July 2026 — for...in snapshot allocation residual attributed, D-389 added: reading every_
+_August 2026 — allocation ceilings landed, D-391 added: phase 3b, completing D-385 Q2._
+_policy.json's global lohTripwireBytes (85,000 B, borrowed from the unrelated .NET LOH_
+_single-object threshold) replaced with a category-scoped total-allocation ceiling —_
+_PolicyCategory.AllocationCeilingBytes (per-category default) plus optional_
+_BenchmarkAllocationCeilings overrides (FullName to bytes), no global fallback since the_
+_categories are provably incommensurable (vm spans 441x internally). BreachesLohTripwire_
+_renamed BreachesAllocationCeiling; AllocClass.LohTripwireBreach renamed CeilingBreach;_
+_Cli.cs's per-row label and header updated, no loh naming survives in the tooling or_
+_policy.json. Granularity per D-385 Q2's per-category-or-per-fixture-shape clause: compile_
+_keeps one default; vm splits into a scalar default (Run_DeclAndArith/Run_Interpolation/_
+_Run_ControlFlow) plus individual Run_ArrayForIn/Run_MapForIn overrides; attribution_
+_mirrors the same logic (a floor default for Run_AttrEmpty/Run_AttrRange, individual_
+_overrides for the five larger fixtures) rather than one category-wide ceiling from its_
+_largest member, since attr-empty measures pipeline-plus-VM-construction-plus-plugin-_
+_registration, a regression surface compile does not watch, and is the fixture every_
+_other attr-* subtraction treats as a stable floor. Headroom: one convention throughout,_
+_round_to_nearest_100(1.20 x canonical measured value), from the first canonical_
+_(windows-latest) run since D-387's restructure, 30707325720 (AMD EPYC 7763,_
+_2026-08-01). Ten derived ceilings recorded, every one above the old 85,000 B constant_
+_because that number was never derived from any of these fixtures to begin with, not_
+_because a threshold was loosened; the two vm for...in ceilings include D-389's_
+_removable ~48 B/call GetProperty tax, which per D-313's ratchet can only lower them_
+_later. Canonical run also supplied the derivations D-387 left pending: Stdlib native_
+_186.1 B/call, array-member dispatch 414.0 B/call (227.9 B/call tax over Stdlib), array_
+_growth 48,994 B, snapshot 74,514 B. vm.json/vm.origin.json re-established (not merely_
+_re-captured) under D-390; attribution.json/attribution.origin.json committed for the_
+_first time. Proof the ceiling still fires: Run_ArrayForIn's allocation deliberately_
+_inflated past its override still trips Outcome.Regression with every other row_
+_unchanged. grob-benchmarking-strategy.md's stale three-category policy.json example_
+_(missing attribution since D-387) folded in; new §9.2 documents the mechanism, the full_
+_derivation table, the headroom convention and the revision rule. No opcode, no new_
+_error code, count unchanged at 121._
+_Previous: August 2026 — benchmark methodology re-freeze rule, D-390 added: whenever a benchmark's_
+_measurement methodology changes — not the code under test — the rolling and origin_
+_baselines are re-frozen in the same change, unconditionally, recorded as a_
+_re-establishment rather than a rebaseline absorbing a regression; a separate rule from_
+_D-313's ratchet trap, not a restatement of it (that one hides a real regression if_
+_skipped, this one manufactures a fake one if skipped). Triggered by the canonical run_
+_30707325720 showing +343.8%/+147.6%/+141.5% artifact deltas on Run_ControlFlow/_
+_Run_DeclAndArith/Run_Interpolation against the pre-D-387 vm.json/vm.origin.json, caused_
+_by the vm rebuild's measured-region and amortization changes (compilation hoisted out,_
+_InvocationCount=1/UnrollFactor=1), not a real slowdown. The build passed only by_
+_coincidence — vm's time axis is already informational (D-385/D-386 Q6) and the fresh_
+_run's CPU didn't match either baseline's (D-333) — neither guard exists to catch a_
+_methodology change, so a time-gating category (compile) on a CPU-matched run would fail_
+_on a phantom regression with no diagnostic pointing at the cause. No opcode change, no_
+_new error code, count unchanged at 121._
+_Previous: July 2026 — for...in snapshot allocation residual attributed, D-389 added: reading every_
 _handler on the array for...in path confirms exactly one GrobArray copy (the $snapshot_
 _GetProperty case); GrobArray.Elements is non-copying. Direct GC.GetAllocatedBytesForCurrentThread_
 _measurement (no BenchmarkDotNet) shows the ~75 KB residual is constant regardless of the_

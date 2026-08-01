@@ -14,13 +14,12 @@ public class BenchCheckTests {
     private static readonly BdnHostEnvironmentInfo _unknownCpu =
         new("Windows 11 (10.0.26100)", "Unknown processor", "10.0.9");
 
-    private static Policy PolicyWith(bool compileGating, double allocPercent = 10.0, double lohTripwireBytes = 85000, double k = 3.0) => new(
+    private static Policy PolicyWith(bool compileGating, double allocPercent = 10.0, double? allocationCeilingBytes = 85000, double k = 3.0) => new(
         PerSprintPercent: 5.0,
         CumulativePercent: 12.0,
         AllocPercent: allocPercent,
-        LohTripwireBytes: lohTripwireBytes,
         TimeSignificanceK: k,
-        Categories: [new PolicyCategory("compile", CompilePrefix, "compile.json", compileGating)]);
+        Categories: [new PolicyCategory("compile", CompilePrefix, "compile.json", compileGating, allocationCeilingBytes)]);
 
     private static BenchmarkMeasurement M(double mean, double stdDev = 0, double? bytes = null) => new(mean, stdDev, bytes);
 
@@ -111,7 +110,7 @@ public class BenchCheckTests {
 
     [Fact]
     public void Non_gating_category_regression_is_reported_not_failed() {
-        var policy = new Policy(5.0, 12.0, 10.0, 85000, 3.0,
+        var policy = new Policy(5.0, 12.0, 10.0, 3.0,
             [new PolicyCategory("compile", CompilePrefix, "compile.json", Gating: false)]);
 
         var report = BenchCheck.Evaluate(
@@ -151,21 +150,22 @@ public class BenchCheckTests {
     }
 
     [Fact]
-    public void New_benchmark_exceeding_loh_tripwire_still_fails_the_gate() {
+    public void New_benchmark_exceeding_allocation_ceiling_still_fails_the_gate() {
         // A fresh-only benchmark (absent from the rolling baseline) must not bypass
-        // the absolute LOH tripwire — the contract is "any benchmark, gating or not"
-        // (D-333). Otherwise a newly added, over-allocating benchmark would silently
-        // pass and be frozen into the next baseline (the D-332 class of defect).
+        // the absolute allocation ceiling — the contract is "any benchmark, gating or
+        // not" (D-333). Otherwise a newly added, over-allocating benchmark would
+        // silently pass and be frozen into the next baseline (the D-332 class of
+        // defect).
         var fresh = new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> {
             [Bench] = M(100),
             ["Grob.Benchmarks.Compile.CompileBenchmarks.Compile_BrandNew"] = M(999, bytes: 90000),
         });
         var rolling = Side(_epyc, M(100));
 
-        var report = BenchCheck.Evaluate(PolicyWith(compileGating: true, lohTripwireBytes: 85000), fresh, Loader(rolling, rolling));
+        var report = BenchCheck.Evaluate(PolicyWith(compileGating: true, allocationCeilingBytes: 85000), fresh, Loader(rolling, rolling));
 
         Assert.Equal(Outcome.Regression, report.Outcome);
-        Assert.Contains(report.Deltas, d => d.FullName.Contains("BrandNew") && d.AllocClass == AllocClass.LohTripwireBreach);
+        Assert.Contains(report.Deltas, d => d.FullName.Contains("BrandNew") && d.AllocClass == AllocClass.CeilingBreach);
     }
 
     [Fact]
@@ -208,9 +208,9 @@ public class BenchCheckTests {
     }
 
     [Fact]
-    public void Loh_tripwire_fires_even_on_informational_category() {
-        var policy = new Policy(5.0, 12.0, 10.0, 85000, 3.0,
-            [new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false)]);
+    public void Ceiling_fires_even_on_informational_category() {
+        var policy = new Policy(5.0, 12.0, 10.0, 3.0,
+            [new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false, AllocationCeilingBytes: 85000)]);
         var name = "Grob.Benchmarks.Vm.VmBenchmarks.Run_ControlFlow";
 
         var report = BenchCheck.Evaluate(
@@ -220,7 +220,94 @@ public class BenchCheckTests {
 
         var delta = Assert.Single(report.Deltas);
         Assert.Equal(Outcome.Regression, report.Outcome);
-        Assert.Equal(AllocClass.LohTripwireBreach, delta.AllocClass);
+        Assert.Equal(AllocClass.CeilingBreach, delta.AllocClass);
+    }
+
+    // --- allocation ceiling: per-category default and per-benchmark overrides (D-390/D-391 phase 3b) ---
+
+    [Fact]
+    public void Benchmark_specific_ceiling_overrides_category_default() {
+        // vm's shape: a small scalar-fixture default (D-391) with a much larger
+        // per-benchmark override for a for...in fixture that would otherwise trip
+        // the small default outright.
+        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false,
+            AllocationCeilingBytes: 4700,
+            BenchmarkAllocationCeilings: new Dictionary<string, double> {
+                ["Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn"] = 637900,
+            });
+        var policy = new Policy(5.0, 12.0, 10.0, 3.0, [category]);
+        var name = "Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn";
+
+        var report = BenchCheck.Evaluate(
+            policy,
+            fresh: new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 531616) }),
+            _ => new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 531616) }));
+
+        var delta = Assert.Single(report.Deltas);
+        Assert.Equal(Outcome.Pass, report.Outcome);
+        Assert.Equal(AllocClass.Informational, delta.AllocClass); // vm is non-gating on allocation percent; the ceiling is the only axis that can fail it here, and it doesn't
+    }
+
+    [Fact]
+    public void Benchmark_specific_ceiling_still_fires_when_inflated_value_exceeds_it() {
+        // Proves the override is live, not just present: a deliberately inflated
+        // value past the per-benchmark ceiling still fails, even though it sits
+        // comfortably under the category default that would otherwise govern it.
+        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false,
+            AllocationCeilingBytes: 4700,
+            BenchmarkAllocationCeilings: new Dictionary<string, double> {
+                ["Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn"] = 637900,
+            });
+        var policy = new Policy(5.0, 12.0, 10.0, 3.0, [category]);
+        var name = "Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn";
+
+        var report = BenchCheck.Evaluate(
+            policy,
+            fresh: new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 700000) }),
+            _ => new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 531616) }));
+
+        var delta = Assert.Single(report.Deltas);
+        Assert.Equal(Outcome.Regression, report.Outcome);
+        Assert.Equal(AllocClass.CeilingBreach, delta.AllocClass);
+    }
+
+    [Fact]
+    public void Category_default_ceiling_governs_a_benchmark_without_its_own_override() {
+        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false,
+            AllocationCeilingBytes: 4700,
+            BenchmarkAllocationCeilings: new Dictionary<string, double> {
+                ["Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn"] = 637900,
+            });
+        var policy = new Policy(5.0, 12.0, 10.0, 3.0, [category]);
+        var name = "Grob.Benchmarks.Vm.VmBenchmarks.Run_DeclAndArith"; // no per-benchmark override
+
+        var report = BenchCheck.Evaluate(
+            policy,
+            fresh: new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 5000) }),
+            _ => new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 2344) }));
+
+        var delta = Assert.Single(report.Deltas);
+        Assert.Equal(Outcome.Regression, report.Outcome);
+        Assert.Equal(AllocClass.CeilingBreach, delta.AllocClass);
+    }
+
+    [Fact]
+    public void Category_with_no_configured_ceiling_never_breaches() {
+        // endToEnd's shape: declared, no ceiling set yet (F8 open, zero fresh
+        // benchmarks today) — an unconfigured ceiling must not silently breach on
+        // whatever allocation a benchmark happens to report.
+        var category = new PolicyCategory("endToEnd", "Grob.Benchmarks.EndToEnd", "endToEnd.json", Gating: false);
+        var policy = new Policy(5.0, 12.0, 10.0, 3.0, [category]);
+        var name = "Grob.Benchmarks.EndToEnd.EndToEndBenchmarks.Run_Whatever";
+
+        var report = BenchCheck.Evaluate(
+            policy,
+            fresh: new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 10_000_000) }),
+            _ => new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 10_000_000) }));
+
+        var delta = Assert.Single(report.Deltas);
+        Assert.Equal(Outcome.Pass, report.Outcome);
+        Assert.Equal(AllocClass.Informational, delta.AllocClass); // endToEnd is non-gating too; a real breach would still show as CeilingBreach if a ceiling existed
     }
 
     // --- attribution category (D-385/D-386 Q5', phase 3a) ---
@@ -231,7 +318,7 @@ public class BenchCheckTests {
         // deliberately large time+alloc delta in the "attribution" category never
         // fails the gate, the same way Non_gating_category_regression_is_reported_not_failed
         // proves it generically, but naming the real category this increment adds.
-        var policy = new Policy(5.0, 12.0, 10.0, 85000, 3.0,
+        var policy = new Policy(5.0, 12.0, 10.0, 3.0,
             [new PolicyCategory("attribution", "Grob.Benchmarks.Attribution", "attribution.json", Gating: false)]);
         var name = "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrNative";
 
@@ -254,7 +341,7 @@ public class BenchCheckTests {
         // four, all three new ones must classify as NewBenchmark, not a regression —
         // the same path BenchCheck already handles correctly (phase 2's "Correctly
         // working, do not fix" note).
-        var policy = new Policy(5.0, 12.0, 10.0, 85000, 3.0,
+        var policy = new Policy(5.0, 12.0, 10.0, 3.0,
             [new PolicyCategory("attribution", "Grob.Benchmarks.Attribution", "attribution.json", Gating: false)]);
         const string prefix = "Grob.Benchmarks.Attribution.AttributionBenchmarks.";
         var existing = new[] { "Run_AttrEmpty", "Run_AttrRange", "Run_AttrNative", "Run_AttrBuild" };

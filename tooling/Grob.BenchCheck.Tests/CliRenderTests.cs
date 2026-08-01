@@ -8,7 +8,7 @@ public sealed class CliRenderTests {
     private static readonly BdnHostEnvironmentInfo _host =
         new("Windows 10 (10.0.22621)", "Intel Xeon Platinum 8370C", "10.0.0");
 
-    private static readonly Policy _policy = new(5.0, 12.0, 10.0, 85000, 3.0, []);
+    private static readonly Policy _policy = new(5.0, 12.0, 10.0, 3.0, []);
     private static readonly BaselineSide _fresh = new(_host, new Dictionary<string, BenchmarkMeasurement>());
     private static readonly BaselineSide _freshNoHost = new(null, new Dictionary<string, BenchmarkMeasurement>());
 
@@ -55,7 +55,7 @@ public sealed class CliRenderTests {
     [InlineData(AllocClass.NewBenchmark, "new")]
     [InlineData(AllocClass.NoBaseline, "establishing")]
     [InlineData(AllocClass.PerSprintBreach, "**per-sprint breach**")]
-    [InlineData(AllocClass.LohTripwireBreach, "**LOH tripwire**")]
+    [InlineData(AllocClass.CeilingBreach, "**allocation ceiling**")]
     public void Alloc_class_renders_correct_status_label(AllocClass cls, string expectedLabel) {
         var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Pass, [AllocDelta(cls)], []));
         Assert.Contains(expectedLabel, rendered);
@@ -100,21 +100,23 @@ public sealed class CliRenderTests {
 
     [Fact]
     public void Alloc_bytes_render_with_thousands_separator() {
-        var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Regression, [AllocDelta(AllocClass.LohTripwireBreach, bytes: 50265)], []));
+        var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Regression, [AllocDelta(AllocClass.CeilingBreach, bytes: 50265)], []));
         Assert.Contains("50,265 B", rendered);
     }
 
     [Fact]
-    public void Thresholds_line_uses_invariant_culture_regardless_of_locale() {
-        // The threshold summary must format numbers with the same InvariantCulture
-        // as the table body, so separators stay consistent regardless of the runner
-        // locale. de-DE swaps '.' and ',' — a locale-sensitive format would render
-        // "85.000 B" here.
+    public void Alloc_bytes_use_invariant_culture_regardless_of_locale() {
+        // The table body must format numbers with InvariantCulture, so separators
+        // stay consistent regardless of the runner locale. de-DE swaps '.' and ',' —
+        // a locale-sensitive format would render "50.265 B" here. (Per-category/
+        // per-benchmark ceilings, D-391, mean there is no longer a single global
+        // threshold figure in the header to anchor this on — the per-row Alloc
+        // column is where the same formatting risk now lives.)
         var original = CultureInfo.CurrentCulture;
         try {
             CultureInfo.CurrentCulture = new CultureInfo("de-DE");
-            var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Pass, [], []));
-            Assert.Contains("LOH tripwire 85,000 B", rendered);
+            var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Regression, [AllocDelta(AllocClass.CeilingBreach, bytes: 50265)], []));
+            Assert.Contains("50,265 B", rendered);
         } finally {
             CultureInfo.CurrentCulture = original;
         }

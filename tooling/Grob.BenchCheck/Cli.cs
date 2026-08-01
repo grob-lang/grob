@@ -52,7 +52,7 @@ internal static class Cli {
             AllocClass.NewBenchmark => "new",
             AllocClass.NoBaseline => "establishing",
             AllocClass.PerSprintBreach => "**per-sprint breach**",
-            AllocClass.LohTripwireBreach => "**LOH tripwire**",
+            AllocClass.CeilingBreach => "**allocation ceiling**",
             _ => cls.ToString(),
         };
 
@@ -62,9 +62,13 @@ internal static class Cli {
         sb.AppendLine($"## Benchmark regression gate — {verdict}");
         sb.AppendLine();
         sb.AppendLine($"Runner: {fresh.Host?.OsVersion ?? "unknown OS"} · {fresh.Host?.ProcessorName ?? "unknown CPU"} · {fresh.Host?.RuntimeVersion ?? "unknown runtime"}");
+        // No single allocation-ceiling figure belongs in this summary any more — D-391
+        // made the ceiling category/fixture-shaped (a per-category default plus
+        // per-benchmark overrides), not one constant. A breach is visible per-row in
+        // the Alloc status column instead.
         sb.AppendLine(string.Create(
             CultureInfo.InvariantCulture,
-            $"Thresholds: per-sprint {policy.PerSprintPercent:0.#}% (vs rolling, noise floor ×{policy.TimeSignificanceK:0.#}σ) · cumulative {policy.CumulativePercent:0.#}% (vs origin) · allocation {policy.AllocPercent:0.#}% · LOH tripwire {policy.LohTripwireBytes:N0} B"));
+            $"Thresholds: per-sprint {policy.PerSprintPercent:0.#}% (vs rolling, noise floor ×{policy.TimeSignificanceK:0.#}σ) · cumulative {policy.CumulativePercent:0.#}% (vs origin) · allocation {policy.AllocPercent:0.#}%"));
         sb.AppendLine();
         sb.AppendLine("| Category | Benchmark | Δ time (rolling) | Δ time (origin) | Time | Δ alloc | Alloc | Alloc status |");
         sb.AppendLine("| --- | --- | ---: | ---: | --- | ---: | ---: | --- |");
