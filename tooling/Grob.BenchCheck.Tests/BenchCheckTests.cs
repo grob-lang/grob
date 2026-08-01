@@ -250,11 +250,16 @@ public class BenchCheckTests {
 
     [Fact]
     public void Benchmark_specific_ceiling_still_fires_when_inflated_value_exceeds_it() {
-        // Proves the override is live, not just present: a deliberately inflated
-        // value past the per-benchmark ceiling still fails, even though it sits
-        // comfortably under the category default that would otherwise govern it.
+        // Proves the override is live in the *failing* direction, which needs the
+        // override to be stricter than the category default — the reverse of vm's
+        // real shape, deliberately, so that the override is the only thing that can
+        // fail this row. The inflated value clears the generous category default and
+        // breaches only the per-benchmark ceiling; delete BenchmarkAllocationCeilings
+        // and this test goes green-to-red, which is what makes it load-bearing.
+        // Benchmark_specific_ceiling_overrides_category_default covers the passing
+        // direction on vm's real (default-stricter-than-override) shape.
         var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false,
-            AllocationCeilingBytes: 4700,
+            AllocationCeilingBytes: 900_000,
             BenchmarkAllocationCeilings: new Dictionary<string, double> {
                 ["Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn"] = 637900,
             });
@@ -269,6 +274,45 @@ public class BenchCheckTests {
         var delta = Assert.Single(report.Deltas);
         Assert.Equal(Outcome.Regression, report.Outcome);
         Assert.Equal(AllocClass.CeilingBreach, delta.AllocClass);
+    }
+
+    [Fact]
+    public void Ceiling_breach_still_reports_the_rolling_allocation_percentage() {
+        // The row that failed the gate is the one a reader most wants the rolling
+        // delta for. Classification as a ceiling breach must not blank the Δ alloc
+        // column when both sides reported bytes and the percentage is computable.
+        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false,
+            AllocationCeilingBytes: 637900);
+        var policy = new Policy(5.0, 12.0, 10.0, 3.0, [category]);
+        var name = "Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn";
+
+        var report = BenchCheck.Evaluate(
+            policy,
+            fresh: new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 700000) }),
+            _ => new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 500000) }));
+
+        var delta = Assert.Single(report.Deltas);
+        Assert.Equal(AllocClass.CeilingBreach, delta.AllocClass);
+        Assert.Equal(40.0, delta.AllocPercent!.Value, 3);
+    }
+
+    [Fact]
+    public void Ceiling_breach_reports_no_percentage_when_the_rolling_side_has_no_bytes() {
+        // The complement: with nothing to delta against, the breach still fires but
+        // the percentage stays null rather than being invented.
+        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false,
+            AllocationCeilingBytes: 637900);
+        var policy = new Policy(5.0, 12.0, 10.0, 3.0, [category]);
+        var name = "Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn";
+
+        var report = BenchCheck.Evaluate(
+            policy,
+            fresh: new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100, bytes: 700000) }),
+            _ => new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(100) }));
+
+        var delta = Assert.Single(report.Deltas);
+        Assert.Equal(AllocClass.CeilingBreach, delta.AllocClass);
+        Assert.Null(delta.AllocPercent);
     }
 
     [Fact]

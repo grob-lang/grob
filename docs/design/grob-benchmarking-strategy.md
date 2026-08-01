@@ -688,8 +688,8 @@ D-333).** After the benchmark run, the workflow invokes
 `-report-full.json`. The tool computes the time and allocation comparisons
 (§9), writes a per-benchmark delta table to the job summary and exits
 non-zero on a breach — so the workflow run itself goes red when a gating
-category regresses on either axis, or when any category's allocation clears
-its allocation ceiling. The check reads only; it never commits a baseline.
+category regresses on either axis, or when any category's allocation meets or
+exceeds its allocation ceiling. The check reads only; it never commits a baseline.
 Committing an updated baseline remains the deliberate manual step above.
 Allocation gates regardless of which CPU produced the run; the time axis
 gates only when the fresh run's CPU matches the baseline's — on a CPU
@@ -852,8 +852,9 @@ than a flat default resolve it differently, on the same underlying logic
 current canonical measured value.** Double `allocPercent` (10%, the
 existing per-sprint *relative* growth gate that already tracks incremental
 creep) — sized larger because the ceiling is the coarse, rare-firing
-absolute backstop, not the primary signal, but still tight enough that nothing
-short of roughly doubling slips through silently. Every ceiling below is
+absolute backstop, not the primary signal. A fresh allocation reaching
+approximately 1.20 × the canonical measurement breaches the ceiling, so any
+growth beyond 20% is caught rather than absorbed. Every ceiling below is
 `round_to_nearest_100(1.20 × canonical measured value)`, from the canonical
 run `30707325720` (`windows-latest`, AMD EPYC 7763, 2026-08-01):
 
@@ -870,9 +871,14 @@ run `30707325720` (`windows-latest`, AMD EPYC 7763, 2026-08-01):
 | `attribution` → `Run_AttrSnapshotEmpty` | 583,609 B | **700,300 B** |
 | `attribution` → `Run_AttrMapBuild` | 940,315 B | **1,128,400 B** |
 
-Every ceiling above the old 85,000 B constant is higher because the old
-number was never derived from any of these fixtures' legitimate allocation
-in the first place — not because any threshold was loosened. The `vm`
+Three of these ten ceilings sit below the old 85,000 B constant (`compile`,
+the `vm` scalar default and the `attribution` floor default) and seven sit
+above it: a misapplied global limit replaced by shape-specific ceilings,
+tightening the three small shapes and raising the permitted figure for the
+seven larger ones. The seven are higher because the old number was never
+derived from any of these fixtures' legitimate allocation in the first
+place — every one of them already measured above it, so it was never a
+threshold those shapes were passing. The `vm`
 `for...in` ceilings specifically **include an ≈48 B/call `GetProperty`
 closure-capture tax** D-389 attributed — paid once per loop iteration,
 independent of array or map size, a Roslyn closure-capture display-class

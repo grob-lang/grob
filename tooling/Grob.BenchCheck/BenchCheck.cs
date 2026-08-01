@@ -381,13 +381,20 @@ public static class BenchCheck {
         string fullName,
         PolicyCategory category,
         Policy policy) {
-        if (BreachesAllocationCeiling(fresh, fullName, category))
-            return (null, AllocClass.CeilingBreach);
+        // Computed before classifying, so a ceiling breach still carries the rolling
+        // delta: the row that failed the gate is the one whose Δ alloc a reader most
+        // wants. Null only when a side reported no bytes and there is nothing to
+        // delta against.
+        var percent = fresh.AllocatedBytes is { } freshBytes && rolling.AllocatedBytes is { } rollingBytes
+            ? Percent(freshBytes, rollingBytes)
+            : (double?)null;
 
-        if (fresh.AllocatedBytes is null || rolling.AllocatedBytes is null)
+        if (BreachesAllocationCeiling(fresh, fullName, category))
+            return (percent, AllocClass.CeilingBreach);
+
+        if (percent is null)
             return (null, AllocClass.Ok);
 
-        var percent = Percent(fresh.AllocatedBytes.Value, rolling.AllocatedBytes.Value);
         if (!category.Gating)
             return (percent, AllocClass.Informational);
         return percent > policy.AllocPercent ? (percent, AllocClass.PerSprintBreach) : (percent, AllocClass.Ok);
