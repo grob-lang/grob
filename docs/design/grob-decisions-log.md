@@ -9431,8 +9431,8 @@ invoker-construction sites plus the four `ArrayNatives` higher-order call forms 
 per Q1 above, an **observable callback-type change**, since `VmInvoker` is public and
 surfaces through `NativeFunction.Implementation`: no registration-shape or
 `RegisterNative` signature change, but a binary break for every out-of-tree native and
-a source break for the higher-order subset that calls the invoker — of which today
-there are none of either); **Q2 third** (touches `ArrayNatives.cs`,
+a source break for the higher-order subset that calls the invoker — there are no
+external consumers of either kind today); **Q2 third** (touches `ArrayNatives.cs`,
 `MapNatives.cs` and adds a field to the `GrobArray`/`GrobMap` class definitions — the
 largest footprint of the three). Each fix is measured against the `attribution`
 category fixtures after implementation, per D-313's rule that a fix's effectiveness is
@@ -9699,7 +9699,7 @@ _before Sprint 9 Increment C: VmInvoker becomes a readonly struct, removing the_
 _per-call closure for every native — no registration-shape change, but VmInvoker is_
 _public and surfaces through NativeFunction.Implementation, so this is a recorded_
 _binary break for every out-of-tree native and a source break for the higher-order_
-_subset that calls the invoker, of which there are none_
+_subset that calls the invoker; there are no external consumers of either kind_
 _today (Q1); the bound-method NativeFunction from ArrayNatives/MapNatives.GetMethod is_
 _cached per receiver instance, invalidation-free both because bound natives read live_
 _receiver state and — the load-bearing reason, verified against source — because the_
