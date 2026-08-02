@@ -544,6 +544,77 @@ public sealed class VirtualMachineNativeTests {
     }
 
     // -----------------------------------------------------------------------
+    // D-394: GetProperty's array arm builds no ct/finallyContext of its own any
+    // more (ArrayNatives.GetMethod's bind-time VmInvoker parameter was dead —
+    // every higher-order member takes its VmInvoker from its own
+    // NativeFunction.Implementation delegate at invocation time, from the Call
+    // handler or from InvokeCallable when it runs re-entrantly). This covers the
+    // behavioural half of that deletion: a lambda argument that faults inside a
+    // bound higher-order call is still caught and resumes correctly on the
+    // invocation-time FinallyContext alone. That no bind-time context is built is
+    // established by source inspection and the D-394 allocation measurement, not
+    // by this test.
+    // -----------------------------------------------------------------------
+
+    private static void PatchJump16(Chunk chunk, int patchSite) {
+        int offset = chunk.Count - (patchSite + 2);
+        chunk.PatchByte(patchSite, (byte)(offset >> 8));
+        chunk.PatchByte(patchSite + 1, (byte)(offset & 0xFF));
+    }
+
+    [Fact]
+    public void Filter_LambdaFaultCaughtAndResumes() {
+        var script = new Chunk();
+        int reachedName = script.AddConstant(GrobValue.FromString("reached"));
+        int regionIndex = script.AddTryRegion();
+
+        script.WriteOpCode(OpCode.TryBegin, 1); script.WriteByte((byte)regionIndex, 1);
+        int startOffset = script.Count;
+
+        GrobValue arrayVal = GrobValue.FromArray(new GrobArray([GrobValue.FromInt(1)]));
+        int arrIdx = script.AddConstant(arrayVal);
+        script.WriteOpCode(OpCode.Constant, 2); script.WriteByte((byte)arrIdx, 2);
+
+        int propIdx = script.AddConstant(GrobValue.FromString("filter"));
+        script.WriteOpCode(OpCode.GetProperty, 2); script.WriteByte((byte)propIdx, 2);
+
+        var faultingPredicate = new NativeFunction("faultingPredicate", 1,
+            (_, _) => throw new NativeFaultException(
+                "ArithmeticError", ErrorCatalog.E5006.Code, "predicate faulted"));
+        int lambdaIdx = script.AddConstant(GrobValue.FromFunction(faultingPredicate));
+        script.WriteOpCode(OpCode.Constant, 2); script.WriteByte((byte)lambdaIdx, 2);
+
+        script.WriteOpCode(OpCode.Call, 2); script.WriteByte(1, 2);
+        script.WriteOpCode(OpCode.Pop, 2);
+        int endOffset = script.Count;
+
+        script.WriteOpCode(OpCode.Jump, 2);
+        int jumpSite = script.Count;
+        script.WriteByte(0xFF, 2); script.WriteByte(0xFF, 2);
+
+        int handlerOffset = script.Count; // empty catch body — binds at slot 0
+
+        PatchJump16(script, jumpSite);
+        script.WriteOpCode(OpCode.TryEnd, 3);
+        script.WriteOpCode(OpCode.True, 4);
+        script.WriteOpCode(OpCode.DefineGlobal, 4); script.WriteByte((byte)reachedName, 4);
+        script.WriteOpCode(OpCode.Return, 4);
+
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
+            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)]));
+
+        var (vm, _) = NewVm();
+        vm.Run(script);
+
+        Assert.Equal(0, vm.FrameCount);
+        GrobValue bound = vm.Stack.GetSlot(0);
+        Assert.True(bound.TryAsStruct(out GrobStruct? s));
+        Assert.Equal("ArithmeticError", s!.TypeName);
+        Assert.Contains("predicate faulted", s.GetField("message").AsString());
+        Assert.True(vm.Globals["reached"].AsBool());
+    }
+
+    // -----------------------------------------------------------------------
     // D-319: cancellation spans the bridge
     // -----------------------------------------------------------------------
 
