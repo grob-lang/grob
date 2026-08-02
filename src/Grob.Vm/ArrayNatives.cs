@@ -10,10 +10,14 @@ namespace Grob.Vm;
 /// the in-place-mutating members <c>append</c>, <c>insert</c>, <c>remove</c>, <c>clear</c>
 /// (Sprint 9 Increment C0a-2, D-373), completing the <c>T[]</c> surface. Each method is
 /// bound to its receiver array at <see cref="OpCode.GetProperty"/> dispatch time,
-/// capturing the array in the returned <see cref="NativeFunction"/> delegate. The
-/// <see cref="VmInvoker"/> callback is captured only by the members that run a lambda
-/// argument; every other member takes no function and ignores it. Sprint 5 Increment C;
-/// moved to <c>Grob.Stdlib</c> in Sprint 6+.
+/// capturing the array in the returned <see cref="NativeFunction"/> delegate.
+/// <see cref="GetMethod"/> itself takes no <see cref="VmInvoker"/> — mirroring
+/// <see cref="MapNatives.GetMethod"/> (D-394). The four higher-order members still run a
+/// lambda argument, but they take their <see cref="VmInvoker"/> from their own
+/// <see cref="NativeFunction.Implementation"/> delegate's second parameter, supplied by
+/// the VM's <c>Call</c> handler at invocation time — never from a bind-time parameter —
+/// so no invoker needs binding or capturing here. Sprint 5 Increment C; moved to
+/// <c>Grob.Stdlib</c> in Sprint 6+.
 /// </summary>
 internal static class ArrayNatives {
     /// <summary>The <c>GrobError</c> leaf <c>insert</c>/<c>remove</c> raise through the
@@ -24,14 +28,16 @@ internal static class ArrayNatives {
     /// <summary>
     /// Returns the bound <see cref="NativeFunction"/> for the given
     /// <paramref name="methodName"/> on <paramref name="receiver"/>, or
-    /// <see langword="null"/> when the name is not a recognised array method. The
-    /// <paramref name="invoker"/> is captured in the native's delegate so a higher-order
-    /// member (<c>filter</c>/<c>select</c>/<c>sort</c>/<c>each</c>) can call back into
-    /// the VM to run its lambda argument; every other member takes no function and
-    /// ignores it.
+    /// <see langword="null"/> when the name is not a recognised array method. Takes no
+    /// <see cref="VmInvoker"/> (D-394): the four higher-order members
+    /// (<c>filter</c>/<c>select</c>/<c>sort</c>/<c>each</c>) receive theirs through their
+    /// bound <see cref="NativeFunction.Implementation"/> delegate's own second parameter
+    /// at invocation time, so binding one here purely for signature parity would allocate
+    /// a capturing delegate and a <c>FinallyContext</c> on every array property dispatch
+    /// for a parameter nothing reads — the same reasoning
+    /// <see cref="MapNatives.GetMethod"/>'s doc comment already records.
     /// </summary>
-    internal static NativeFunction? GetMethod(
-            string methodName, GrobArray receiver, VmInvoker invoker) =>
+    internal static NativeFunction? GetMethod(string methodName, GrobArray receiver) =>
         methodName switch {
             "filter" => new NativeFunction("filter", 1,
                 (args, inv) => Filter(args, inv, receiver)),

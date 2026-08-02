@@ -888,15 +888,11 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                     _stack.Push(GrobValue.FromArray(new GrobArray(array!.Elements)), line);
                                     break;
                                 }
-                                // Sprint 5C: array higher-order method binding.
-                                // Capture the token at property-access time so the bound native
-                                // carries the live token through to InvokeCallable.
-                                CancellationToken ct = _cancellationToken;
-                                var finallyContext = new FinallyContext(
-                                    boundedFinally, finallyBoundaryFloor, finallyBoundaryStart);
-                                NativeFunction? method = ArrayNatives.GetMethod(
-                                    propertyName, array!,
-                                    (callable, args) => InvokeCallable(callable, args, line, column, ct, finallyContext));
+                                // Sprint 5C: array higher-order method binding. No token or
+                                // FinallyContext is captured here (D-394): the four
+                                // higher-order members get their live VmInvoker from the
+                                // Call handler at invocation time, not at bind time.
+                                NativeFunction? method = ArrayNatives.GetMethod(propertyName, array!);
                                 if (method is not null) {
                                     _stack.Push(GrobValue.FromFunction(method), line);
                                     break;
