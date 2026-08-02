@@ -9646,9 +9646,13 @@ file per comparison — the tool retains no cross-run history anywhere, a
 limitation D-333 itself already recorded when it deferred "consecutive-breach
 filtering... it needs cross-run history the tool doesn't retain." The
 prompt's hypothesis — that a within-run statistic cannot see a between-run
-swing caused by neighbouring workload, CPU frequency scaling or Hyper-V
-scheduling on a shared, non-pinned runner — is therefore confirmed against
-the live source, not merely plausible.
+swing — is therefore confirmed against the live source, not merely
+plausible. What is confirmed is the blindness, not its cause: neighbouring
+workload, CPU frequency scaling and Hyper-V scheduling on a shared,
+non-pinned runner remain the candidate explanations for this specific
+delta, none of them established here — no runner telemetry was retrieved,
+and the filter's inability to see between-run movement holds whatever the
+cause turns out to be.
 
 **Not D-385 Q3.** Q3 addressed CPU-identity mismatch and correctly left
 `SameCpu` in place. Both sides of this comparison shared a CPU and the guard
@@ -9656,9 +9660,11 @@ passed cleanly — the false positive happened inside a CPU-matched
 comparison. No CPU check reaches this failure mode.
 
 **Sample size, stated honestly.** Two runs carry retrievable, comparable
-per-benchmark data — `30707325720` and `30720384069`, the six-row table
-above — and that table lives only in the commissioning prompt itself, not in
-any committed artifact. A third run, `30523454580`, is referenced as
+per-benchmark data — `30707325720` and `30720384069`, the six-benchmark
+list above — and those figures survive only in this session's commissioning
+prompt (`prompts/archive/sprint-9/decision-time-axis-noise-floor.md`,
+archived alongside this entry), never in any committed benchmark result
+artifact. A third run, `30523454580`, is referenced as
 "captured" but no per-benchmark figures for it exist anywhere in this
 repository: `benchmark.yml` is a `workflow_dispatch`-only workflow, not wired
 to `push`/`pull_request`, and its fresh results are uploaded only as a
@@ -9722,9 +9728,10 @@ gap D-333 logged and D-385 Q3 restated (`compile.origin.json`'s
 treated as a match) is no longer the operative reason that axis fails to
 gate — it is informational by policy now, independent of the placeholder.
 Re-capturing origin would not make the cited +74.2%/+44.2% cumulative
-figures meaningful, only present: the cumulative axis has no noise floor of
-any kind — D-391 and `BenchCheck.cs` confirm the significance filter applies
-only to the per-sprint axis — so a real between-run swing would land there
+figures meaningful, only present: the cumulative axis has no implemented
+significance filter of any kind — D-391 and `BenchCheck.cs` confirm the
+filter applies only to the per-sprint axis — so a real between-run swing
+would land there
 exactly as it did on the per-sprint axis here. Re-capturing remains a
 legitimate future act, but only alongside whichever of Q1's B or C is later
 adopted, not before, and not in this session regardless (baseline files are
@@ -9738,7 +9745,7 @@ for a category — D-333's own text: the allocation-percent axis "gates on the
 same categories time gates today." Turning `compile.Gating` off to silence
 its time axis would also silence its allocation-percent check, which the
 evidence here says should keep gating. The implementation increment must
-decouple the two — most simply, by making the allocation-percent axis gate
+decouple the two — by making the allocation-percent axis gate
 unconditionally wherever a `PolicyCategory` configures one, mirroring how the
 absolute allocation ceiling already gates "regardless of `gating`" (D-391) —
 and have `gating` (or a renamed successor) govern only the time axes. Once
@@ -9773,18 +9780,18 @@ category gates on time.
 **Cost.** No source, `policy.json` or baseline change in this session — the
 false positive on `main` remains live until the Q3 implementation increment
 ships. That increment's cost: the `gating`/allocation-percent decoupling
-above, a `policy.json` edit turning off `compile`'s time-gating, and a
+above, a `policy.json` edit turning off `compile`'s time-gating and a
 `grob-benchmarking-strategy.md` §9/§9.1 update to the gating-matrix table and
 prose. No opcode change. No new error code; count unchanged at **121**.
 
 Cites D-333 (the significance-aware gate this refines), D-390 (the adjacent-
 but-distinct methodology-re-freeze rule — a variance question, not a
 methodology change, so D-390's rule does not apply here), D-391 (the
-allocation-ceiling mechanism this decision leaves untouched and relies on),
+allocation-ceiling mechanism this decision leaves untouched and relies on)
 and benchmark run `30720384069`'s gate output (`Compile_TwoExpressions Δ time
 (rolling) +12.0%`, per-sprint breach, every allocation delta 0.0%) as its
 central evidence, alongside the `30707325720` → `30720384069` between-run
-comparison table above. Refines D-313 (the Q1–Q3 restatement of the time
+comparison above. Refines D-313 (the Q1–Q3 restatement of the time
 axis as informational everywhere, and the gating-matrix update) and D-385
 (Q3's CPU-heterogeneity finding, confirmed still correctly separate from
 this failure mode; Q6's gating-matrix precedent, restated here for the
