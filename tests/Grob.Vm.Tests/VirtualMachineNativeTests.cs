@@ -547,10 +547,13 @@ public sealed class VirtualMachineNativeTests {
     // D-394: GetProperty's array arm builds no ct/finallyContext of its own any
     // more (ArrayNatives.GetMethod's bind-time VmInvoker parameter was dead —
     // every higher-order member takes its VmInvoker from its own
-    // NativeFunction.Implementation delegate at invocation time). This proves
-    // that deletion left nothing load-bearing: a lambda argument that faults
-    // inside a bound higher-order call is still caught and resumes correctly,
-    // using the Call handler's invocation-time FinallyContext exclusively.
+    // NativeFunction.Implementation delegate at invocation time, from the Call
+    // handler or from InvokeCallable when it runs re-entrantly). This covers the
+    // behavioural half of that deletion: a lambda argument that faults inside a
+    // bound higher-order call is still caught and resumes correctly on the
+    // invocation-time FinallyContext alone. That no bind-time context is built is
+    // established by source inspection and the D-394 allocation measurement, not
+    // by this test.
     // -----------------------------------------------------------------------
 
     private static void PatchJump16(Chunk chunk, int patchSite) {
@@ -560,7 +563,7 @@ public sealed class VirtualMachineNativeTests {
     }
 
     [Fact]
-    public void Filter_LambdaArgumentFaults_CaughtByTryCatch_AndResumes() {
+    public void Filter_LambdaFaultCaughtAndResumes() {
         var script = new Chunk();
         int reachedName = script.AddConstant(GrobValue.FromString("reached"));
         int regionIndex = script.AddTryRegion();

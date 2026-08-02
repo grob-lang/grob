@@ -15,8 +15,10 @@ namespace Grob.Vm;
 /// <see cref="MapNatives.GetMethod"/> (D-394). The four higher-order members still run a
 /// lambda argument, but they take their <see cref="VmInvoker"/> from their own
 /// <see cref="NativeFunction.Implementation"/> delegate's second parameter, supplied by
-/// the VM's <c>Call</c> handler at invocation time — never from a bind-time parameter —
-/// so no invoker needs binding or capturing here. Sprint 5 Increment C; moved to
+/// whichever VM invocation path runs the bound native at invocation time — the <c>Call</c>
+/// handler for a direct call, or <c>InvokeCallable</c> for a re-entrant one nested inside
+/// another native — never from a bind-time parameter, so no invoker needs binding or
+/// capturing here. Sprint 5 Increment C; moved to
 /// <c>Grob.Stdlib</c> in Sprint 6+.
 /// </summary>
 internal static class ArrayNatives {
@@ -32,7 +34,9 @@ internal static class ArrayNatives {
     /// <see cref="VmInvoker"/> (D-394): the four higher-order members
     /// (<c>filter</c>/<c>select</c>/<c>sort</c>/<c>each</c>) receive theirs through their
     /// bound <see cref="NativeFunction.Implementation"/> delegate's own second parameter
-    /// at invocation time, so binding one here purely for signature parity would allocate
+    /// at invocation time — from the VM's <c>Call</c> handler, or from
+    /// <c>InvokeCallable</c> when the bound native runs re-entrantly inside another
+    /// native — so binding one here purely for signature parity would allocate
     /// a capturing delegate and a <c>FinallyContext</c> on every array property dispatch
     /// for a parameter nothing reads — the same reasoning
     /// <see cref="MapNatives.GetMethod"/>'s doc comment already records.

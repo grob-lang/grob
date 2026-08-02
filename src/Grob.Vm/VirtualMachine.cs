@@ -890,8 +890,10 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                 }
                                 // Sprint 5C: array higher-order method binding. No token or
                                 // FinallyContext is captured here (D-394): the four
-                                // higher-order members get their live VmInvoker from the
-                                // Call handler at invocation time, not at bind time.
+                                // higher-order members get their live VmInvoker from
+                                // whichever VM invocation path runs them — the Call handler
+                                // for a direct call, InvokeCallable for a re-entrant one —
+                                // at invocation time, not at bind time.
                                 NativeFunction? method = ArrayNatives.GetMethod(propertyName, array!);
                                 if (method is not null) {
                                     _stack.Push(GrobValue.FromFunction(method), line);
