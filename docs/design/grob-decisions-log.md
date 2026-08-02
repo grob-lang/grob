@@ -390,6 +390,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-392 | August 2026 | Tooling — benchmarking (gate policy, correction) | PR #174 review follow-up. **Corrects D-390's near-miss analysis** (never editing D-390's entry in place): D-390 attributes the canonical run `30707325720` *not* failing to two coincidental guards suppressing three phantom time-axis regressions, but the run's actual "Check regression gate" step **failed** (`conclusion: failure`, exit code 1, `## Benchmark regression gate — REGRESSION`) — confirmed against the job's own log, not recalled. Under the policy committed at the time (the still-global `lohTripwireBytes: 85000`), `Run_ArrayForIn` (531,616 B) and `Run_MapForIn` (1,033,320 B) both breached the tripwire outright (`**LOH tripwire**` on both rows, unconditional per D-333 regardless of category `gating` or the `NewBenchmark` classification both rows also carried). D-390's analysis covers only the time axis; it never asks the allocation axis's own question, and the run it calls a near-miss was never a passing run at all. **The standing rule is unaffected — strengthened, not weakened.** D-390's rule (re-freeze rolling and origin baselines, unconditionally, on a measurement-methodology change) does not depend on whether that specific run passed or failed; it depends on the percentage comparison being invalid regardless of outcome. What changes is the illustrative claim about *why* this run didn't visibly demonstrate the danger: it did fail, just for an unrelated, correct reason (the very allocation-ceiling mismeasurement D-391 fixes) that had nothing to do with the time-axis methodology change D-390 is about. Three independent coincidences — two suppressing the time axis, one triggering a same-run allocation failure for an unrelated cause — combining to mask a genuine methodology change from ever being *seen* as the reason for a red build is a stronger argument for unconditional re-freezing than two, not a weaker one: a maintainer reading this run's failure would have diagnosed "allocation ceiling too tight for legitimate `for...in` cost" (correct) and had no occasion to notice the time-axis figures were comparing two different rulers, because nothing forced that comparison into view. **Also recorded, not built here:** PR #174 review (CodeRabbit) proposed carrying the applied allocation ceiling on `BenchmarkDelta` so a `CeilingBreach` row names which threshold it broke — category default or the specific per-benchmark override. A genuine diagnostic gap now that overrides are live (D-391): "ceiling breach" alone does not say which of, for example, `vm`'s 4,700 B default or `Run_ArrayForIn`'s 637,900 B override fired. Scoped out of the rename-and-derive-thresholds PR it surfaced in — the touch points are a new `BenchmarkDelta` field, the three `Evaluate` construction sites, and a `Cli.Render` change — and left for its own small increment, this note being the durable pointer beyond the PR comment thread. No opcode change, no new error code; count unchanged at **121**. Cites D-390 (corrected), D-391 (the increment this review is on), D-333 (the tripwire mechanism whose unconditional-regardless-of-`NewBenchmark` behaviour this correction turns on), PR #174. |
 | D-393 | August 2026 | VM — native dispatch (allocation) | Decision-only, no source change. Corrects an earlier conflation: D-391's 227.9 B/call array-dispatch tax is sources 2 (`GetMethod` per-call rebinding) + 3 (D-389's `GetProperty` closure tax), independently addressable — source 1 (the per-call `VmInvoker` closure at the `Call` handler, inside the 186.1 B/call figure every native pays) is not part of that gap at all. **Q1 ratified:** `VmInvoker` becomes a `readonly struct`, removing source 1's allocation for every native call. No registration-shape change (`IPluginRegistrar.RegisterNative`'s signature is untouched), but — recorded, not implied away — `VmInvoker` is public and surfaces through `NativeFunction.Implementation`, so the delegate→struct conversion is a **binary** break for _every_ out-of-tree native — the type sits in the `Implementation` signature all of them satisfy, whether or not they ever call the callback — and additionally a **source** break for the higher-order subset that has to rewrite `invoker(...)` to `invoker.Invoke(...)`; in-tree that rewrite is four one-token call forms, and there are no external consumers of either kind today. **Q1 option C (splitting registration into pure/higher-order shapes, narrowing the plugin API) rejected for now** — only 4 of ~136 natives are higher-order, `IPluginRegistrar` has one production implementer and zero external plugin consumers today (`Grob.Http`/`Crypto`/`Zip` are empty scaffolds), so the breaking change and two-dispatch-path cost are not yet justified; recorded with an explicit revisit trigger (a non-Stdlib native registers, or a native is found stashing a `VmInvoker` in a field). The re-entrancy hazard this would also close is real but currently dormant and left open, independent of the B/C choice. **Q2 ratified:** cache the bound `NativeFunction` per receiver instance (a lazy field on `GrobArray`/`GrobMap`, keyed by method name) — invalidation-free by construction, on two independent grounds: bound natives close over the receiver by reference and always read live state, and (the load-bearing one, verified against source) the bound delegate captures the receiver and nothing else — `GetMethod`'s `invoker` parameter is never referenced, the higher-order arms taking their `VmInvoker` from the caller at invocation time — so no per-access `line`/`column`/token/`FinallyContext` exists inside a cache entry to go stale. The cache's lifetime is tied to the receiver's own. **Q3 ratified:** restructure `GetProperty`'s array arm so the closure-declaring statements sit in their own scope, so early-returning `.length`/`.isEmpty`/`$snapshot` reads stop paying D-389's tax; guarded by a characterisation test, not a language guarantee (D-388's caveat). All three land as separate increments before Sprint 9 Increment C, in order Q3 → Q1 → Q2 by ascending blast radius, each measured post-implementation against the `attribution` fixtures and required to lower, never raise, D-391's ceilings. No opcode change. No new error code; count unchanged at **121**. Refines D-389, D-391. Cites D-342, D-372, D-385 through D-392, `docs/design/bench-allocation-attribution.md`, `docs/design/bench-snapshot-residual.md`. |
 | D-394 | August 2026 | VM — native dispatch (allocation, implementation) | Implements D-393 Q3. The plan-mode gate re-confirmed on current source that `ArrayNatives.GetMethod`'s bind-time `invoker` parameter (`ArrayNatives.cs:34`) was never read by any switch arm — the four higher-order members (`filter`/`select`/`sort`/`each`) take their `VmInvoker` from their own `NativeFunction.Implementation` delegate's second parameter, supplied at invocation time by whichever VM invocation path runs the bound native — the `Call` handler for a direct call (`VirtualMachine.cs:1013–1034`), `InvokeCallable` for a re-entrant one nested inside another native (`VirtualMachine.cs:1373–1374`) — never from `GetMethod`'s bind-time one. Traced `xs.filter(f)` end to end to confirm it. No other `GetProperty` sub-arm shares D-389's shared-lexical-scope shape (the map arm already avoids it — `MapNatives.GetMethod`, CodeRabbit PR #165; the struct/nominal-type arm builds no such closure at all). Because the finding held, Q3 lands as the **cheaper deletion shape** D-393's own gate note flagged as possible, not the narrower-lexical-scope restructure Q3 originally ratified as its fallback: `ArrayNatives.GetMethod`'s `VmInvoker` parameter is deleted outright — now `GetMethod(string methodName, GrobArray receiver)`, matching `MapNatives.GetMethod`'s shape exactly — and `VirtualMachine.cs`'s `GetProperty` array arm builds no `CancellationToken`, `FinallyContext` or closure at bind time at all; the call site is now one line. `ArrayNatives.cs:28`'s stale doc comment (previously: the invoker "is captured in the native's delegate") is corrected on both the class-level summary and the method's own XML doc. The full existing higher-order/array test suite (`VirtualMachineNativeTests`, `VirtualMachineArrayQueryMemberTests`, `VirtualMachineArrayMutatingMemberTests` — filter/select/sort/each end to end, `Sort`'s comparer-fault-unwrap path, the cancellation-spanning-bridge test) passes unmodified. One new test (`Filter_LambdaFaultCaughtAndResumes`) covers the behavioural half of the invariant the deletion depends on: a lambda argument that faults inside a `GetProperty`-bound `filter` call is still caught and resumes correctly on the invocation-time `FinallyContext` alone. That no bind-time context is constructed is established not by that test but by source inspection and by the allocation measurement below — together confirming `ct`/`finallyContext` were never load-bearing at bind time, as the trace predicted. **Characterisation-test gap, recorded rather than papered over:** a direct `GC.GetAllocatedBytesForCurrentThread` allocation-ceiling assertion was judged impractical inside `Grob.Vm.Tests` — xUnit's default parallel execution and JIT tiered-compilation warm-up make per-call byte counts non-deterministic in a shared test-host process, and no precedent for this exists in the repository (D-388/D-389's own allocation work used a throwaway console harness outside the test suite for the same reason). D-391's `attribution`/`vm` BenchmarkDotNet ceilings (`Run_ArrayForIn`, `attr-array-dispatch`) remain the durable regression guard for this specific cost. **Measurement — local machine, this session, not a canonical baseline** (only the `benchmark.yml` `windows-latest` run produces one, D-391): same direct-GC-counter technique D-389 established (fresh `VirtualMachine` per trial, JIT warm-up excluded, five repeated trials, byte-identical each time at this precision), via a throwaway console harness (discarded, not committed) referencing `Grob.Compiler`/`Grob.Vm` directly, before (via `git stash`) and after, one sitting. `attr-array-dispatch` (`.contains` × 1,000, falls through to `ArrayNatives.GetMethod` every call): 409,408 B → 297,408 B, **-112,000 B (-112.0 B/call, -27.4%)** — the local before-figure sits close to but below D-391's canonical CI figure of 414.0 B/call, expected local-vs-CI variance, previously documented (D-387/D-391). `Run_ArrayForIn` (531,616 B basis, an exact match to D-391's committed CI figure on this run): **531,616 B → 371,520 B, -160,096 B (-30.1%)**. That delta is considerably larger than a naive "only the `length`-read tax" prediction (≈48,072 B) because the fixture's own build loop calls `.append()` 1,000 times before the `for...in` loop runs, and `.append()` shares the exact fall-through-to-`GetMethod` shape `.contains()` does (the `attr-array-dispatch` fixture's own comment already says so) — reconciled almost exactly: 1,000 × D-389's 48.072 B/call length-read tax + 1,000 × this session's own measured 112.0 B/call fall-through-path tax = 160,072 B predicted, 160,096 B measured, a 24 B difference inside measurement noise. Both figures move only in the direction D-313's ratchet rule requires (lower, never higher) against D-391's committed ceilings; no baseline file is touched, per the commissioning prompt's explicit scope boundary. The remaining post-fix per-call cost (≈297.4 B/call on `attr-array-dispatch`; ≈136.3 B/call inferred for the fall-through-path portion alone against D-389's Part 5 ≈248.3 B/call `append` figure) is the `NativeFunction`-plus-receiver-capturing-delegate allocation `GetMethod` still performs on every dispatch — D-393 Q2's per-receiver method cache is the increment that removes it, not this one. No opcode change. No new error code; count unchanged at **121**. No semantics change — D-372 reference semantics, D-383's contents-snapshot guarantee, the native-throw seam (D-342/D-382) and catchability are all untouched, confirmed by the unmodified passing suite. Q1 (`VmInvoker` struct-ification) and Q2 (per-receiver method cache) remain outstanding, sequenced next per D-393 Q4's ascending-blast-radius ordering. Refines D-393 (Q3, its gate note, Q4), D-389. Cites D-391, D-372, D-383, D-342, D-313, `docs/design/bench-snapshot-residual.md`. |
+| D-395 | August 2026 | Tooling — benchmarking (gate policy) | Decision-only. Confirms `BenchCheck`'s ×3σ per-sprint significance filter (D-333) is within-run `StandardDeviation` only and cannot see between-run variance — `Compile_TwoExpressions` moved **+12.0%** between two CPU-matched runs (`30707325720`→`30720384069`) against its own ≈2% within-run StdDev, while allocation stayed **0.0%** on every benchmark in both runs, including `vm`/`attribution` benchmarks moving +13.5–27.0% on the same unchanged code. **Time drops to informational on every category**, `compile` included, extending the treatment `vm`/`attribution`/`endToEnd` already had rather than inventing a new policy; allocation remains the sole gating axis. `compile.origin.json` stays un-recaptured — its cumulative axis is now informational by policy, not only by the pre-existing `"Unknown processor"` gap. Resolving the live false positive on `main` needs a separate implementation increment that decouples allocation-percent gating from the `gating` flag before flipping `compile`'s time axes off. No standing rule added for time-breach-plus-zero-alloc — moot once time never gates anywhere. Sample size stated honestly: one between-run delta per benchmark, not a distribution. Refines D-313, D-385 (Q3, Q6). Cites D-333, D-390, D-391. |
 
 ---
 
@@ -9603,6 +9604,194 @@ sequencing), D-389 (the tax removed and the measurement technique reused), D-391
 
 ---
 
+### D-395 — Time axis noise floor: within-run ×3σ cannot see between-run variance; time drops to informational everywhere (August 2026)
+
+Area: Tooling — benchmarking (gate policy)
+Supersedes: none
+Superseded by: none
+Refines: D-313, D-385 (Q3, Q6)
+
+**Type: decision-only session. No `src/`, `policy.json`, baseline or threshold
+change.** Runs against the corpus carrying D-356 through D-394, plus
+`docs/design/bench-allocation-attribution.md` and
+`docs/design/bench-snapshot-residual.md`. Error-code count unchanged at 121.
+
+**Context.** Benchmark run `30720384069` on `main` failed the gate on exactly
+one row: `compile Compile_TwoExpressions Δ time (rolling) +12.0% → per-sprint
+breach`. Every allocation delta in that run was **0.0%** —
+`Compile_TwoExpressions` allocated 9,856 B, byte-identical to the previous
+run — and neither D-393 nor D-394, the only changes since, touched the
+compiler. Comparing the same run against the immediately preceding one,
+`30707325720` (both `windows-latest`/AMD EPYC 7763, D-333's `SameCpu` guard
+satisfied on both sides), shows the background this breach sits in:
+`Run_DeclAndArith` **+27.0%**, `Run_AttrMapBuild` **+20.2%**, `Run_AttrEmpty`
++16.6%, `Run_Interpolation` +13.5%, `Compile_TwoExpressions` +12.0%,
+`Compile_TenPrints` +4.5% — every one against a **0.0%** allocation delta.
+`compile` failed only because it is the sole category with `gating:true` on
+time; `vm` and `attribution` carried the same order of movement as purely
+informational, exactly as `policy.json` already treats them.
+
+**Confirmed mechanism.** `BenchCheck.cs`'s `RelativePercent` (line ~421)
+computes a benchmark's `BdnStatistics.StandardDeviation / Mean` — a single
+BDN report's own within-run iteration variance, nothing else. `ClassifyTime`
+(line ~346) gates the per-sprint axis on `perSprint > max(policy.PerSprintPercent,
+policy.TimeSignificanceK * relativeStdDev)`, `relativeStdDev` being the larger
+of the fresh/rolling side's own within-run figure — D-333's original text
+confirms the intent: "the larger of the fresh and baseline run's
+`StandardDeviation` as a percentage of `Mean`." For this run: StdDev
+0.1002 μs on a 4.958 μs mean ≈ 2.02%; three sigma ≈ 6.06%; threshold
+`max(5.0%, 6.06%) = 6.06%`; the 12.0% between-run move cleared it by roughly
+2×. `BaselineLoader` (line ~562) reads exactly one committed rolling-baseline
+file per comparison — the tool retains no cross-run history anywhere, a
+limitation D-333 itself already recorded when it deferred "consecutive-breach
+filtering... it needs cross-run history the tool doesn't retain." The
+prompt's hypothesis — that a within-run statistic cannot see a between-run
+swing caused by neighbouring workload, CPU frequency scaling or Hyper-V
+scheduling on a shared, non-pinned runner — is therefore confirmed against
+the live source, not merely plausible.
+
+**Not D-385 Q3.** Q3 addressed CPU-identity mismatch and correctly left
+`SameCpu` in place. Both sides of this comparison shared a CPU and the guard
+passed cleanly — the false positive happened inside a CPU-matched
+comparison. No CPU check reaches this failure mode.
+
+**Sample size, stated honestly.** Two runs carry retrievable, comparable
+per-benchmark data — `30707325720` and `30720384069`, the six-row table
+above — and that table lives only in the commissioning prompt itself, not in
+any committed artifact. A third run, `30523454580`, is referenced as
+"captured" but no per-benchmark figures for it exist anywhere in this
+repository: `benchmark.yml` is a `workflow_dispatch`-only workflow, not wired
+to `push`/`pull_request`, and its fresh results are uploaded only as a
+90-day CI artifact, never committed — nothing beyond the six committed
+`baseline/*.json`/`*.origin.json` files persists past that window. This
+decision therefore rests on **one** between-run delta per benchmark, not a
+distribution: enough to demonstrate that between-run variance on unchanged,
+CPU-matched code reaches at least ≈27%, not enough to calibrate any numeric
+threshold against it. Separately: `benchmark.yml` is not a required PR check,
+so no merge was ever mechanically blocked by this run — "failed the gate on
+`main`" means a manually dispatched run against `main` went red, not that
+automated merges halted. The cost is to trust in the signal (D-385's "second
+time a gate has blocked a PR for a reason unrelated to the change," restated
+here for `main`), not an active blockage.
+
+**Q1 — is time gateable at all on shared hosted runners? Decided: A — time
+drops to informational on every category; allocation remains the sole
+gating axis.** `vm`, `attribution` and `endToEnd` already carry `gating:false`
+for time, and this same comparison's own between-run movement on those
+categories (+13.5% to +27.0%, 0.0% allocation delta) shows that was already
+the correct call, not merely permissive by omission. This decision extends
+the same, already-validated treatment to `compile`, the one remaining
+time-gating category, rather than adopting a new policy. Allocation is
+untouched by any of this: deterministic (0.0% across every benchmark in both
+compared runs, matching D-333's and D-391's characterisation) and
+CPU-independent, it continues to gate `compile` on both its existing checks —
+the 10% percent-vs-rolling threshold and the D-391 per-category/per-benchmark
+ceiling.
+
+Rejected — **B, re-derive the noise floor from between-run variance.**
+Correct in principle, but the available sample (one delta per benchmark,
+above) cannot support a calibrated threshold; adopting one now would dress
+up a single observation as a measurement. Revisit only if a deliberately
+captured, multi-run between-run sample is ever built.
+
+Rejected — **C, pin a stable runner.** Would address the root cause — shared-
+runner noisy-neighbour and Hyper-V-scheduling variance — rather than working
+around it, and D-385 Q3's rejection of self-hosting does not automatically
+carry over here: that rejection was about CPU heterogeneity, a problem
+`SameCpu` already solves correctly, not about same-CPU between-run noise.
+But it is a standing infrastructure and maintenance cost with no measurement
+yet of what a dedicated or larger runner class would actually buy in reduced
+variance. Not ruled out permanently — ruled out for this session on
+cost/evidence grounds.
+
+Rejected — **D, widen the per-sprint threshold above observed variance.** A
+threshold set above ≈27% stops protecting against exactly the class of
+regression D-313 exists to catch, and raising a threshold specifically
+because a gate fired is the shape D-313's ratchet rule exists to forbid —
+that the _cause_ here is measurement noise rather than a known regression
+does not, on the evidence available, cleanly separate this case from that
+rule. A achieves the same practical outcome — `compile` time stops gating —
+honestly, as an explicit category-level informational status, rather than a
+threshold stretched thin enough to stop firing.
+
+**Q2 — compile's cumulative axis. Decided: stays informational;
+`compile.origin.json` is not re-captured.** Q1 makes cumulative time
+informational for every category, `compile` included, so the CPU-placeholder
+gap D-333 logged and D-385 Q3 restated (`compile.origin.json`'s
+`HostEnvironmentInfo.ProcessorName` reading `"Unknown processor"`, never
+treated as a match) is no longer the operative reason that axis fails to
+gate — it is informational by policy now, independent of the placeholder.
+Re-capturing origin would not make the cited +74.2%/+44.2% cumulative
+figures meaningful, only present: the cumulative axis has no noise floor of
+any kind — D-391 and `BenchCheck.cs` confirm the significance filter applies
+only to the per-sprint axis — so a real between-run swing would land there
+exactly as it did on the per-sprint axis here. Re-capturing remains a
+legitimate future act, but only alongside whichever of Q1's B or C is later
+adopted, not before, and not in this session regardless (baseline files are
+out of scope here).
+
+**Q3 — is this run's failure resolved, and how? Decided: yes, once a
+follow-up implementation increment ships — not by this entry alone.** This
+session makes no `policy.json` edit. `policy.json`'s current `gating` field
+couples time-gating and the 10% percent-vs-rolling allocation check together
+for a category — D-333's own text: the allocation-percent axis "gates on the
+same categories time gates today." Turning `compile.Gating` off to silence
+its time axis would also silence its allocation-percent check, which the
+evidence here says should keep gating. The implementation increment must
+decouple the two — most simply, by making the allocation-percent axis gate
+unconditionally wherever a `PolicyCategory` configures one, mirroring how the
+absolute allocation ceiling already gates "regardless of `gating`" (D-391) —
+and have `gating` (or a renamed successor) govern only the time axes. Once
+that lands and `compile`'s time axes read informational, a re-run of this
+exact scenario passes: the only axis that would gate, allocation, already
+cleared at 0.0% in run `30720384069`. If a future run fails again after this
+change, it can only be through the allocation axis, which — given its
+demonstrated determinism — should be treated as a real signal and
+investigated as one, not dismissed as noise. **At least two increments**:
+this ratification, then the `policy.json`/`BenchCheck.cs` schema change
+described above.
+
+**Q4 — a standing rule for false-positive gates? Decided: no.** The
+candidate rule — a time breach alongside a 0.0% allocation delta on an
+untouched category is presumptively variance — exists to guard exactly the
+event class Q1 just removed: once time is informational everywhere, there is
+no more "time breach" for such a rule to interpret. It does not earn its
+place against a failure mode this same entry already eliminates. If a future
+decision reintroduces any form of time-gating (Q1's B or C), the candidate
+rule should be reconsidered then, against whatever evidence that decision is
+built on — not adopted speculatively now.
+
+**The gating matrix, restated (amends D-313 by citation, per the D-385 Q6
+precedent — D-313's own entry is never edited).** `compile`: allocation
+gates (10% vs rolling, plus the D-391 per-category ceiling); time — both
+per-sprint and cumulative — informational. `vm` / `attribution` /
+`endToEnd`: allocation ceiling gates; allocation-percent-vs-rolling and time
+both informational, unchanged from today. The documented gate and the
+enforced gate become the same statement once Q3's implementation lands: no
+category gates on time.
+
+**Cost.** No source, `policy.json` or baseline change in this session — the
+false positive on `main` remains live until the Q3 implementation increment
+ships. That increment's cost: the `gating`/allocation-percent decoupling
+above, a `policy.json` edit turning off `compile`'s time-gating, and a
+`grob-benchmarking-strategy.md` §9/§9.1 update to the gating-matrix table and
+prose. No opcode change. No new error code; count unchanged at **121**.
+
+Cites D-333 (the significance-aware gate this refines), D-390 (the adjacent-
+but-distinct methodology-re-freeze rule — a variance question, not a
+methodology change, so D-390's rule does not apply here), D-391 (the
+allocation-ceiling mechanism this decision leaves untouched and relies on),
+and benchmark run `30720384069`'s gate output (`Compile_TwoExpressions Δ time
+(rolling) +12.0%`, per-sprint breach, every allocation delta 0.0%) as its
+central evidence, alongside the `30707325720` → `30720384069` between-run
+comparison table above. Refines D-313 (the Q1–Q3 restatement of the time
+axis as informational everywhere, and the gating-matrix update) and D-385
+(Q3's CPU-heterogeneity finding, confirmed still correctly separate from
+this failure mode; Q6's gating-matrix precedent, restated here for the
+changed `compile` row).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -9824,7 +10013,24 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — D-393 Q3 implemented, D-394 added: ArrayNatives.GetMethod's_
+_August 2026 — time-axis noise-floor decision session, D-395 added:_
+_BenchCheck's ×3σ per-sprint significance filter (D-333) is confirmed_
+_within-run StandardDeviation only, unable to see the between-run variance_
+_that broke run 30720384069's compile gate (+12.0% against a ~2% own-StdDev_
+_baseline, on a CPU-matched comparison whose allocation delta was 0.0% on_
+_every benchmark, compile included). Time drops to informational on every_
+_category, extending to compile the treatment vm/attribution/endToEnd_
+_already had rather than inventing a new policy; allocation stays the sole_
+_gating axis. compile.origin.json is not re-captured — its cumulative axis_
+_is now informational by policy, not only by the pre-existing "Unknown_
+_processor" gap. Sample size stated honestly: one between-run delta per_
+_benchmark, not a distribution, and benchmark.yml is workflow_dispatch-only_
+_so no merge was ever mechanically blocked. No standing false-positive rule_
+_added — moot once time never gates anywhere. Resolving the live red main_
+_needs a separate implementation increment that decouples allocation-percent_
+_gating from the gating flag before flipping compile's time axes off. No_
+_opcode change, no new error code, count unchanged at 121._
+_Previous: August 2026 — D-393 Q3 implemented, D-394 added: ArrayNatives.GetMethod's_
 _bind-time VmInvoker parameter deleted outright (ArrayNatives.cs:34) after_
 _the plan-mode gate re-confirmed it was never read by any switch arm — the_
 _four higher-order members take their VmInvoker from their own_
