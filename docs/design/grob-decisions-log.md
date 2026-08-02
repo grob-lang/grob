@@ -388,6 +388,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-390 | August 2026 | Tooling — benchmarking (gate policy) | Whenever a benchmark's measurement methodology changes — not the code under test — the rolling and origin baselines are re-frozen in the same change, unconditionally, recorded as a **re-establishment** rather than a rebaseline absorbing a regression; a separate rule from D-313's ratchet trap, not a restatement of it (D-313 forbids hiding a real regression if skipped; this rule forbids manufacturing a fake one if skipped). Triggered by the canonical run `30707325720` compared against the still-committed pre-D-387 `vm.json`/`vm.origin.json`: raw per-sprint deltas of **+343.8%/+147.6%/+141.5%** on `Run_ControlFlow`/`Run_DeclAndArith`/`Run_Interpolation` are artifacts of D-387's `vm` rebuild (compilation hoisted into `[GlobalSetup]`, `[IterationSetup]` forcing `InvocationCount=1`/`UnrollFactor=1` to keep each iteration's fresh `VirtualMachine` isolated, removing BenchmarkDotNet's normal unrolling amortization) — not real VM or compiler slowdowns; the two sides of the percentage are measuring different things. **Why the build did not fail is a near-miss, not a working safeguard:** two independent, coincidental conditions suppressed it — `vm`'s time axis is already `Informational` under the §9.1 gating matrix (D-385/D-386 Q6, for unrelated build-out-sequencing reasons) and the fresh run's CPU (AMD EPYC 7763) doesn't match either baseline's (Intel Xeon Platinum 8370C), independently degrading the comparison to informational under D-333's `SameCpu` guard. Neither condition exists to protect against a methodology change. A time-gating category on a CPU-matched run — `compile` is exactly this shape today — would fail the build on a phantom regression with nothing in `BenchCheck`'s output pointing at "the measured region changed" as the cause. **Rejected:** leaving this to reviewer judgement case-by-case (a passing build gives no prompt to look, a failing build points at the wrong cause — the two moments a reviewer would check are exactly when this gap is invisible); an automatic methodology-change detector in `BenchCheck` (no field in a BenchmarkDotNet report distinguishes "the code under test got slower" from "the harness now measures a different region" — this has to be a rule applied by whoever changes a benchmark class's `[GlobalSetup]`/`[IterationSetup]`/measured-region shape, at the point they change it). No opcode change, no new error code; count unchanged at 121. Cites D-313, D-387, D-333, D-309. |
 | D-391 | August 2026 | Tooling — benchmarking (gate policy, implementation) | Phase 3b — completes D-385 Q2. Renames `policy.json`'s single global `lohTripwireBytes` (85,000 B, borrowed from the .NET LOH's unrelated single-object promotion threshold, D-333) to a category-scoped **total-allocation ceiling**: `PolicyCategory.AllocationCeilingBytes` (category default) plus an optional `BenchmarkAllocationCeilings` map (`FullName` → bytes) overriding it per benchmark; `Policy.LohTripwireBytes` removed entirely — no global fallback, since the categories are provably incommensurable (`vm` spans 441× internally, `Run_DeclAndArith` 2,344 B to `Run_MapForIn` 1,033,320 B). `BenchCheck.BreachesLohTripwire` → `BreachesAllocationCeiling(fresh, fullName, category)`; `AllocClass.LohTripwireBreach` → `CeilingBreach`; `Cli.cs`'s per-row label and the header's now-nonexistent single figure updated (the header drops the clause — no single number is true any more, the per-row `Alloc status` column already carries a breach). **Granularity, per D-385 Q2's "per-category (or per-fixture-shape)" clause:** `compile` keeps one category default; `vm` splits into a scalar-dispatch default (`Run_DeclAndArith`/`Run_Interpolation`/`Run_ControlFlow`) plus individual overrides for `Run_ArrayForIn`/`Run_MapForIn` (themselves ~2× apart, so even a shared for-in ceiling would reintroduce the problem one level down); `attribution` mirrors the same logic — a floor-shape default for `Run_AttrEmpty`/`Run_AttrRange` (the fixtures every other `attr-*` subtraction treats as a stable floor, and `attr-empty` measures the pipeline plus `VirtualMachine` construction plus plugin registration, a regression surface `compile` does not watch) plus individual overrides for the five structurally distinct larger fixtures (`Run_AttrNative`/`Run_AttrArrayDispatch`/`Run_AttrBuild`/`Run_AttrSnapshotEmpty`/`Run_AttrMapBuild`, themselves ~4× apart). `endToEnd` keeps no ceiling (F8 open, zero fresh benchmarks — `Evaluate` already skips empty categories, so an absent ceiling is inert, not a gap). **Headroom: one convention, `round_to_nearest_100(1.20 × canonical measured value)`**, applied uniformly — double `allocPercent` (10%), sized larger because this is the coarse absolute backstop, not the primary per-sprint signal. Every derived ceiling, canonical run `30707325720` (`windows-latest`, AMD EPYC 7763, 2026-08-01): `compile` 20,100 B (basis 16,728 B); `vm` scalar default 4,700 B (basis 3,880 B), `Run_ArrayForIn` 637,900 B (basis 531,616 B), `Run_MapForIn` 1,240,000 B (basis 1,033,320 B); `attribution` floor default 55,400 B (basis 46,145 B), `Run_AttrNative` 278,700 B (232,239 B), `Run_AttrArrayDispatch` 552,100 B (460,101 B), `Run_AttrBuild` 610,900 B (509,095 B), `Run_AttrSnapshotEmpty` 700,300 B (583,609 B), `Run_AttrMapBuild` 1,128,400 B (940,315 B). **Three of these ten sit _below_ the old 85,000 B constant** (`compile` 20,100 B, `vm` scalar 4,700 B, `attribution` floor 55,400 B) **and seven above it** — stated plainly, because the honest description is a _replacement of a misapplied global limit with shape-specific ceilings_, tightening those three shapes and raising the permitted figure for the other seven, not a change under which no threshold moves outward. What justifies the seven: the old number was never derived from any of these fixtures' legitimate allocation — it was borrowed from an unrelated CLR concept and compared against the wrong quantity (D-385 Q2) — and every one of those seven fixtures already measured above it, so for them it was never a gate they were passing. Each figure is therefore a first threshold set against a correct measurement, and what would now trigger a failure that does not today is any of the ten growing past its stated 20% headroom, on any category regardless of its `gating` flag. The two `vm` `for...in` ceilings **include an ≈48 B/call `GetProperty` closure-capture tax** (D-389, independent of array/map size); per D-313's ratchet rule a future fix to that tax **lowers** these ceilings, it can never be used to justify raising them. **Canonical run also supplied the derivations D-387 left pending on `attr-array-dispatch`'s canonical capture**: Stdlib native cost 186.1 B/call, array-member dispatch cost 414.0 B/call (a 227.9 B/call dispatch tax over the Stdlib path), array growth (1,000 appends) 48,994 B, pure contents-snapshot cost 74,514 B — closing the gap D-387 recorded as "not yet measured" for the growth-vs-dispatch split. **`vm.json`/`vm.origin.json` re-established** (not merely re-captured) under **D-390**, logged separately in this session because D-387's rebuild changed both what is measured (execution alone, not whole-pipeline) and how (`[IterationSetup]` forcing `InvocationCount=1`/`UnrollFactor=1`, removing amortization) — the still-committed pre-rebuild files produced +343.8%/+147.6%/+141.5% artifact deltas that were never real regressions (D-390's full analysis). `attribution.json`/`attribution.origin.json` committed for the first time (no prior baseline existed). **Proof the ceiling still fires, not merely present:** re-ran `BenchCheck` against the canonical artifacts with `Run_ArrayForIn`'s reported allocation deliberately inflated to 700,000 B (above its 637,900 B override) — `Outcome.Regression`, `**allocation ceiling**` on that row alone, every other row unchanged. §8's `policy.json` shape example in `grob-benchmarking-strategy.md` — stale since D-387 added `attribution` without updating it — folded into the same edit as the ceiling rename; new §9.2 documents the mechanism, the full ceiling table with derivations, the headroom convention and the revision rule (a ceiling is raised only for a genuinely new fixture shape or a deliberate, measured, accepted cost, logged each time; never to silently absorb an unexplained regression — D-313's ratchet trap restated at the ceiling's own granularity; a ceiling may be lowered freely once a contributing cost, like the `GetProperty` tax, is fixed). `BenchCheckTests.cs`/`CliRenderTests.cs` updated for the new `Policy`/`PolicyCategory` shape, with new cases proving benchmark-override-beats-category-default, the override firing live, the category default governing an unlisted benchmark, and an unconfigured category never breaching. No opcode change. No new error code; count unchanged at **121**. Cites D-385 (Q2, the decision this completes), D-386, D-387 (the restructure whose canonical figures this derives thresholds from), D-388, D-389 (the residual attribution and the removable-tax component these ceilings commit to), D-390 (the re-establishment rule this applies to `vm`'s baselines), D-333, D-313, D-309, `docs/design/bench-allocation-attribution.md` and `docs/design/bench-snapshot-residual.md` (both findings notes). |
 | D-392 | August 2026 | Tooling — benchmarking (gate policy, correction) | PR #174 review follow-up. **Corrects D-390's near-miss analysis** (never editing D-390's entry in place): D-390 attributes the canonical run `30707325720` *not* failing to two coincidental guards suppressing three phantom time-axis regressions, but the run's actual "Check regression gate" step **failed** (`conclusion: failure`, exit code 1, `## Benchmark regression gate — REGRESSION`) — confirmed against the job's own log, not recalled. Under the policy committed at the time (the still-global `lohTripwireBytes: 85000`), `Run_ArrayForIn` (531,616 B) and `Run_MapForIn` (1,033,320 B) both breached the tripwire outright (`**LOH tripwire**` on both rows, unconditional per D-333 regardless of category `gating` or the `NewBenchmark` classification both rows also carried). D-390's analysis covers only the time axis; it never asks the allocation axis's own question, and the run it calls a near-miss was never a passing run at all. **The standing rule is unaffected — strengthened, not weakened.** D-390's rule (re-freeze rolling and origin baselines, unconditionally, on a measurement-methodology change) does not depend on whether that specific run passed or failed; it depends on the percentage comparison being invalid regardless of outcome. What changes is the illustrative claim about *why* this run didn't visibly demonstrate the danger: it did fail, just for an unrelated, correct reason (the very allocation-ceiling mismeasurement D-391 fixes) that had nothing to do with the time-axis methodology change D-390 is about. Three independent coincidences — two suppressing the time axis, one triggering a same-run allocation failure for an unrelated cause — combining to mask a genuine methodology change from ever being *seen* as the reason for a red build is a stronger argument for unconditional re-freezing than two, not a weaker one: a maintainer reading this run's failure would have diagnosed "allocation ceiling too tight for legitimate `for...in` cost" (correct) and had no occasion to notice the time-axis figures were comparing two different rulers, because nothing forced that comparison into view. **Also recorded, not built here:** PR #174 review (CodeRabbit) proposed carrying the applied allocation ceiling on `BenchmarkDelta` so a `CeilingBreach` row names which threshold it broke — category default or the specific per-benchmark override. A genuine diagnostic gap now that overrides are live (D-391): "ceiling breach" alone does not say which of, for example, `vm`'s 4,700 B default or `Run_ArrayForIn`'s 637,900 B override fired. Scoped out of the rename-and-derive-thresholds PR it surfaced in — the touch points are a new `BenchmarkDelta` field, the three `Evaluate` construction sites, and a `Cli.Render` change — and left for its own small increment, this note being the durable pointer beyond the PR comment thread. No opcode change, no new error code; count unchanged at **121**. Cites D-390 (corrected), D-391 (the increment this review is on), D-333 (the tripwire mechanism whose unconditional-regardless-of-`NewBenchmark` behaviour this correction turns on), PR #174. |
+| D-393 | August 2026 | VM — native dispatch (allocation) | Decision-only, no source change. Corrects an earlier conflation: D-391's 227.9 B/call array-dispatch tax is sources 2 (`GetMethod` per-call rebinding) + 3 (D-389's `GetProperty` closure tax), independently addressable — source 1 (the per-call `VmInvoker` closure at the `Call` handler, inside the 186.1 B/call figure every native pays) is not part of that gap at all. **Q1 ratified:** `VmInvoker` becomes a `readonly struct`, removing source 1's allocation for every native call, with no plugin-API change. **Q1 option C (splitting registration into pure/higher-order shapes, narrowing the plugin API) rejected for now** — only 4 of ~136 natives are higher-order, `IPluginRegistrar` has one production implementer and zero external plugin consumers today (`Grob.Http`/`Crypto`/`Zip` are empty scaffolds), so the breaking change and two-dispatch-path cost are not yet justified; recorded with an explicit revisit trigger (a non-Stdlib native registers, or a native is found stashing a `VmInvoker` in a field). The re-entrancy hazard this would also close is real but currently dormant and left open, independent of the B/C choice. **Q2 ratified:** cache the bound `NativeFunction` per receiver instance (a lazy field on `GrobArray`/`GrobMap`, keyed by method name) — invalidation-free by construction, since bound natives close over the receiver by reference and always read live state, and the cache's lifetime is tied to the receiver's own. **Q3 ratified:** restructure `GetProperty`'s array arm so the closure-declaring statements sit in their own scope, so early-returning `.length`/`.isEmpty`/`$snapshot` reads stop paying D-389's tax; guarded by a characterisation test, not a language guarantee (D-388's caveat). All three land as separate increments before Sprint 9 Increment C, in order Q3 → Q1 → Q2 by ascending blast radius, each measured post-implementation against the `attribution` fixtures and required to lower, never raise, D-391's ceilings. No opcode change. No new error code; count unchanged at **121**. Refines D-389, D-391. Cites D-342, D-372, D-385 through D-392, `docs/design/bench-allocation-attribution.md`, `docs/design/bench-snapshot-residual.md`. |
 
 ---
 
@@ -9257,6 +9258,167 @@ behaviour, the mechanism this correction turns on), and PR #174.
 
 ---
 
+### D-393 — Dispatch-path allocation: `VmInvoker` struct, per-receiver method cache, `GetProperty` closure split — three fixes ratified, one rejected for now (August 2026)
+
+Area: VM — native dispatch (allocation)
+Supersedes: none
+Superseded by: none
+Refines: D-389, D-391
+
+**Decision-only session, no source change. Three separable fixes are ratified as
+independent increments landing before Sprint 9 Increment C; a fourth candidate (a
+breaking `VmInvoker`/plugin-API narrowing) is considered and rejected for now.** The
+plan-mode gate re-read the three sites in current source
+(`VirtualMachine.cs`'s `Call` handler ~993–1043 building the `VmInvoker` at 1023,
+`InvokeCallable`'s own nested-invoker construction at 1366–1379, the `GetProperty`
+array sub-arm at 860–904 with its closure-declaring statements at 894–899,
+`ArrayNatives.GetMethod` at `ArrayNatives.cs` 33–63 and `MapNatives.GetMethod` at
+`MapNatives.cs` 24–34) rather than trusting the framing that commissioned it, and that
+re-read corrects a conflation in the framing itself, which is recorded first because it
+changes which argument each option below actually carries.
+
+**The conflation, corrected.** D-391's 227.9 B/call "array-member dispatch tax" is
+**not one cost** and was wrongly treated in earlier framing as an argument for
+narrowing `VmInvoker`'s shape. It is source 2 (`ArrayNatives`/`MapNatives.GetMethod`'s
+per-call `NativeFunction` rebinding) plus source 3 (D-389's `GetProperty`
+closure-capture tax, ≈48 B/call), and the two are structurally independent: source 3's
+display-class allocation is paid by `.length`/`.isEmpty`/`$snapshot` reads that never
+reach `ArrayNatives.GetMethod` at all, and `MapNatives.GetMethod`'s call site
+(`VirtualMachine.cs:936`) builds no closure and no `FinallyContext` for the map arm, so
+the map path never pays source 3's tax the array path pays. **Source 1 — the
+`VmInvoker` closure built for every native call at the `Call` handler — is not part of
+the 227.9 B/call gap at all.** It sits inside the 186.1 B/call Stdlib-native figure
+that _every_ dispatch path, array or not, already pays. Fixing source 1 does not touch
+the 227.9 B/call figure; fixing sources 2 or 3 does not touch the 186.1 B/call figure.
+The three are addressed as three fixes for this reason.
+
+**Q1 — `VmInvoker` shape: option B ratified (struct-ify), option C rejected for now.**
+`VmInvoker` becomes a `readonly struct` carrying the VM reference, `line`, `column`,
+the cancellation token and `FinallyContext`, replacing the delegate closures built at
+`VirtualMachine.cs:1023`, `:899` and `:1377`; call sites change `invoker(...)` to
+`invoker.Invoke(...)`. This removes source 1's allocation for **every** native call —
+the full measured win — at the lowest cost of the four options from the commissioning
+prompt: no native is rewritten, and `IPluginRegistrar.RegisterNative`'s signature
+(`void RegisterNative(string name, NativeFunction fn)`, `Grob.Runtime/IPluginRegistrar.cs:14–20`)
+does not change. **Option C — splitting registration into a pure
+`Func<GrobValue[], GrobValue>` shape and a higher-order shape, narrowing the plugin API
+so a pure native cannot re-enter the VM at all — is rejected, not because it is wrong,
+but because nothing currently justifies its cost.** The gate's own count settles this:
+of ~136 native constructions across the tree (99 `RegisterNative` calls across twelve
+`Grob.Stdlib` plugins, 21 `NamedTypeRegistry` guid/date methods, 16 `GetMethod`-bound
+array/map methods), **exactly four are higher-order** — `ArrayNatives.Filter`,
+`Select`, `Sort`, `Each` — and `MapNatives.GetMethod` already demonstrates the narrower
+signature costs nothing on the one path that has adopted it (its own doc comment,
+predating this session, cites a CodeRabbit review on PR #165 for exactly this
+reasoning). `IPluginRegistrar` has **one production implementer**
+(`VirtualMachine`) and **zero external consumers** — `plugins/Grob.Http`,
+`Grob.Crypto` and `Grob.Zip` are empty scaffold projects with no `IGrobPlugin`
+implementation, confirmed by direct search. So C's timing argument ("cheaper before
+third-party plugins exist") is true but not yet load-bearing: there is no plugin author
+today for the narrower contract to protect, and B already removes 100% of the measured
+allocation without splitting the native-registration surface into two shapes that every
+one of Sprint 9 Increment C's ~50–60 new natives would otherwise have to choose
+between. This is the forward-scaffolding trap this project's own working pattern
+declines by default (D-388's precedent: a measured, reasoned "no" is a legitimate
+outcome) — not a rejection of the capability-narrowing argument's validity, a rejection
+of building it before a real consumer exists to need it.
+
+**The re-entrancy hazard is real, independent of B vs. C, and is left open.** The gate
+confirmed `VmInvoker` (as a delegate today, and unchanged as a struct under B) has
+nothing preventing a native from assigning it to a field and invoking it later with the
+`line`/`column`/token/`FinallyContext` captured at the _original_ call site — struct-ifying
+the type does not close this, since a struct value can be stored in a field exactly as a
+delegate reference can. No current native in the tree does this (searched every
+`VmInvoker`-typed usage in `src/`; every occurrence is a local, never a field). Per the
+commissioning prompt's own caution, this is not overstated: a stashed invoker can only
+invoke a callable already present in `args` at the point it was received, not arbitrary
+VM state. This hazard is the one genuine, currently-dormant argument for C, and is
+recorded — not fixed — with the same revisit trigger as C itself, below.
+
+**Q2 — per-call rebinding in `GetMethod`: cache, ratified.** `ArrayNatives.GetMethod`
+and (if it ever grows a higher-order member) `MapNatives.GetMethod` cache the bound
+`NativeFunction` **on the receiver instance itself** — a lazily created
+`Dictionary<string, NativeFunction>?` field on `GrobArray`/`GrobMap`, populated on
+first bind per method name, consulted before constructing a fresh `NativeFunction` on
+every subsequent `GetProperty` dispatch against the same receiver. **The invalidation
+story, since D-372 makes `GrobArray`/`GrobMap` mutable reference types and an unstated
+invalidation story is worse than the allocation (per the gate):** none is needed. Every
+bound native closes over `receiver` by reference and reads its live state on each
+invocation — `append`/`filter`/etc. never snapshot the receiver at bind time — so a
+cached `NativeFunction` observes every mutation between binds exactly as a freshly
+constructed one would; the only state a stale cache entry could leak is the identity of
+the closure itself, which is deliberately reusable. The cache's own lifetime is tied to
+the receiver's lifetime by being a field on it, so it cannot outlive the receiver (no
+leak) and cannot exist before the receiver does (nothing to invalidate against a
+not-yet-constructed object). **Rejected:** a cache keyed on method name alone, held
+externally — cannot carry which receiver a bound method closes over, so it cannot be
+correct for more than one live receiver; a `ConditionalWeakTable<GrobArray,
+Dictionary<string, NativeFunction>>` held at VM or static scope — avoids adding a field
+to `GrobArray`/`GrobMap`, but adds its own per-entry allocation on first bind and a
+global table lookup on every access, for no invalidation benefit over the direct field,
+which is simpler to reason about and is chosen instead. This directly targets the
+hot-loop shape D-391 already flagged (`Run_ArrayForIn`, repeated same-method calls on
+one receiver) and is worth its complexity for that reason.
+
+**Q3 — the `GetProperty` closure tax: restructure, ratified.** The `GetProperty` array
+sub-arm's closure-declaring statements (`VirtualMachine.cs:894–899` — `ct`,
+`finallyContext`, and the lambda passed to `ArrayNatives.GetMethod`) move into their
+own narrower lexical scope (a local function or a nested block reached only by the
+`method is not null` path), so the `length`/`isEmpty`/`$snapshot` branches that already
+`break` before reaching them no longer share the Roslyn-generated display class D-389
+attributed the ≈48 B/call tax to. Contained to one method, no API change, cheapest of
+the three fixes. Per D-388's own precedent for this exact category of fix, this is
+**implementation behaviour of the current Roslyn lowering, not a language guarantee** —
+the same caveat D-388 attached to its own refutation applies here in the other
+direction — so the fix ships with a characterisation test asserting an allocation
+ceiling on a `.length`-only benchmark fixture, which is what guards it against a future
+compiler-version regression, not a contract.
+
+**Q4 — sequencing and blast radius.** All three land as separate, independently
+reviewed increments, all **before** Sprint 9 Increment C, so its ~50–60 new `fs`/
+`json`/`csv`/`regex`/`process` natives are measured against the corrected baseline once
+rather than requiring a second D-390-style re-freeze after the fact. Order, by
+ascending blast radius: **Q3 first** (one method, `VirtualMachine.cs` only, zero API
+surface); **Q1 second** (`VirtualMachine.cs`'s `Call`/`InvokeCallable`/`GetProperty`
+invoker-construction sites plus the four `ArrayNatives` higher-order call forms, no
+plugin-facing signature change); **Q2 third** (touches `ArrayNatives.cs`,
+`MapNatives.cs`, and adds a field to the `GrobArray`/`GrobMap` class definitions — the
+largest footprint of the three). Each fix is measured against the `attribution`
+category fixtures after implementation, per D-313's rule that a fix's effectiveness is
+never assumed; each must **lower**, never justify raising, the D-391 ceilings for
+`Run_ArrayForIn`/`Run_MapForIn` and the Stdlib-native/array-dispatch attribution
+fixtures (D-313's ratchet direction, restated for this specific removable cost by
+D-391 itself).
+
+**Q5 — what earns its complexity.** Q1(B), Q2 and Q3 all do: each is contained, each
+has a stated (or absent-because-unneeded) invalidation story, and all three land ahead
+of a ~50–60-native increment that would otherwise multiply the exact costs being
+removed. Q1's option C does not, yet: it is a real fork with a real argument (capability
+narrowing, and the re-entrancy hazard above), but the argument is speculative against
+today's tree — one production `IPluginRegistrar` implementer, zero external plugin
+consumers, four higher-order natives total — and forcing a two-shape registration
+choice onto Increment C's new natives ahead of an actual need is the forward-scaffolding
+this project declines by default. **Revisit trigger, recorded explicitly so this is not
+a silent drop:** reopen Q1 option C the moment either condition becomes true — a native
+outside `src/Grob.Stdlib` (a real third-party or non-Stdlib first-party plugin)
+registers through `IPluginRegistrar`, or a native anywhere is found stashing a
+`VmInvoker` in a field and invoking it out of turn.
+
+No opcode change. No new error code; count unchanged at **121**. No semantics change —
+D-372 reference semantics, D-383's contents-snapshot behaviour, the native-throw seam
+(D-342/D-382) and catchability are unaffected and out of scope, per the commissioning
+prompt's constraints. Cites D-342 (native-throw seam, unaffected), D-372 (mutable
+reference semantics, the basis for Q2's invalidation-free cache), D-385 through D-388
+(the benchmark-harness and residual-attribution work this session's investigation
+verified rather than assumed), D-389 (source 3, the tax Q3 removes), D-390 (the
+re-freeze rule Q1–Q3's post-implementation measurements will trigger), D-391 (the
+canonical 186.1/414.0/227.9 B/call figures this session separates and the ceilings
+Q1–Q3 must lower), D-392 (unaffected), and `docs/design/bench-allocation-attribution.md`
+/ `docs/design/bench-snapshot-residual.md` (the findings notes this session's gate
+cross-checked against current source rather than trusting at face value).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -9478,7 +9640,24 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — PR #174 review follow-up, D-392 added: corrects D-390's near-miss_
+_August 2026 — dispatch-path allocation decision session, D-393 added: corrects an_
+_earlier conflation (D-391's 227.9 B/call array-dispatch tax is sources 2 + 3, not_
+_source 1's 186.1 B/call VmInvoker closure, which every native call already pays_
+_regardless of array involvement). Three fixes ratified as separate increments landing_
+_before Sprint 9 Increment C: VmInvoker becomes a readonly struct, removing the_
+_per-call closure for every native (Q1); the bound-method NativeFunction from_
+_ArrayNatives/MapNatives.GetMethod is cached per receiver instance, invalidation-free_
+_because bound natives read live receiver state and the cache's lifetime is tied to the_
+_receiver's own (Q2); GetProperty's array arm is restructured so early-returning_
+_length/isEmpty/$snapshot reads stop paying D-389's closure-capture tax, guarded by a_
+_characterisation test since it depends on current Roslyn lowering, not a language_
+_guarantee (Q3). A fourth option — splitting native registration into pure and_
+_higher-order shapes to narrow the plugin API and close a real-but-dormant re-entrancy_
+_hazard — is rejected for now: only 4 of ~136 natives are higher-order and_
+_IPluginRegistrar has zero external plugin consumers today, so the breaking change is_
+_not yet justified; recorded with an explicit revisit trigger rather than a silent_
+_drop. No opcode, no new error code, count unchanged at 121._
+_Previous: August 2026 — PR #174 review follow-up, D-392 added: corrects D-390's near-miss_
 _analysis without editing D-390 in place. D-390 attributed canonical run 30707325720_
 _not failing to two coincidental guards suppressing phantom time-axis regressions —_
 _but the run's regression-gate step actually failed (conclusion: failure, exit code 1,_
