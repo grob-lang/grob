@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <PackageVersion Include="MinVer" Version="7.0.0" />
-    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.30.0.144632" />
+    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.31.0.145097" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="OmniSharp.Extensions.LanguageServer" Version="0.19.9" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
