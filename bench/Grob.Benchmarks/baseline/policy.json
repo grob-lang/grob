@@ -8,14 +8,14 @@
       "name": "compile",
       "namespacePrefix": "Grob.Benchmarks.Compile",
       "baseline": "compile.json",
-      "gating": true,
+      "allocGating": true,
       "allocationCeilingBytes": 20100
     },
     {
       "name": "vm",
       "namespacePrefix": "Grob.Benchmarks.Vm",
       "baseline": "vm.json",
-      "gating": false,
+      "allocGating": false,
       "allocationCeilingBytes": 4700,
       "benchmarkAllocationCeilings": {
         "Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn": 637900,
@@ -26,7 +26,7 @@
       "name": "attribution",
       "namespacePrefix": "Grob.Benchmarks.Attribution",
       "baseline": "attribution.json",
-      "gating": false,
+      "allocGating": false,
       "allocationCeilingBytes": 55400,
       "benchmarkAllocationCeilings": {
         "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrNative": 278700,
@@ -40,7 +40,7 @@
       "name": "endToEnd",
       "namespacePrefix": "Grob.Benchmarks.EndToEnd",
       "baseline": "endToEnd.json",
-      "gating": false
+      "allocGating": false
     }
   ]
 }

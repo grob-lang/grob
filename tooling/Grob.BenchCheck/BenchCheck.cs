@@ -58,26 +58,30 @@ public sealed record BdnMemory(
 
 /// <summary>
 /// Benchmark regression policy loaded from <c>policy.json</c>. Defines the
-/// per-sprint, cumulative and allocation thresholds, the time-significance
-/// factor and the list of benchmark categories.
+/// allocation threshold and the list of benchmark categories. The two time
+/// figures are retained and rendered for a reader's context only — time never
+/// gates on any category (D-395/D-396), so neither drives a classification.
 /// </summary>
 /// <param name="PerSprintPercent">
-/// Maximum allowed percentage increase in mean execution time relative to the
-/// rolling baseline before a gating category is declared a breach.
+/// Historical per-sprint time threshold, displayed in the CLI report header
+/// for context. No longer enforced — time is informational everywhere
+/// (D-395/D-396).
 /// </param>
 /// <param name="CumulativePercent">
-/// Maximum allowed percentage increase relative to the frozen origin baseline
-/// across all sprints.
+/// Historical cumulative time threshold, displayed in the CLI report header
+/// for context. No longer enforced — time is informational everywhere
+/// (D-395/D-396).
 /// </param>
 /// <param name="AllocPercent">
 /// Maximum allowed percentage increase in bytes allocated per operation
-/// relative to the rolling baseline before a gating category is declared a
-/// breach (D-333).
+/// relative to the rolling baseline before an allocation-gating category is
+/// declared a breach (D-333).
 /// </param>
 /// <param name="TimeSignificanceK">
-/// Multiplier applied to a benchmark's relative standard deviation; the
-/// per-sprint time breach requires the delta to exceed
-/// <c>max(PerSprintPercent, TimeSignificanceK * relativeStdDev)</c> (D-333).
+/// Historical significance multiplier, displayed in the CLI report header for
+/// context. No longer consulted — the significance-aware time gate it fed
+/// (D-333) cannot see between-run variance and was retired in favour of time
+/// being informational everywhere (D-395/D-396).
 /// </param>
 /// <param name="Categories">The benchmark categories to evaluate.</param>
 public sealed record Policy(
@@ -99,12 +103,14 @@ public sealed record Policy(
 /// Filename of the rolling baseline JSON file (relative to the baseline
 /// directory, e.g. <c>compile.json</c>).
 /// </param>
-/// <param name="Gating">
-/// When <see langword="true"/>, a time or allocation percentage breach in
-/// this category fails the gate. When <see langword="false"/>, both
-/// percentage axes are reported but never fail. The absolute allocation
-/// ceiling (D-333, category/fixture-shaped per D-391) ignores this flag and
-/// can fail either way.
+/// <param name="AllocGating">
+/// When <see langword="true"/>, an allocation-percentage breach in this
+/// category fails the gate. When <see langword="false"/>, the percentage is
+/// reported but never fails. Governs the allocation-percent axis only — the
+/// time axes are informational for every category regardless of this flag
+/// (D-395/D-396), and the absolute allocation ceiling (D-333,
+/// category/fixture-shaped per D-391) ignores this flag too and can fail
+/// either way.
 /// </param>
 /// <param name="AllocationCeilingBytes">
 /// Absolute bytes-allocated-per-operation ceiling for every benchmark in this
@@ -125,35 +131,25 @@ public sealed record PolicyCategory(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("namespacePrefix")] string NamespacePrefix,
     [property: JsonPropertyName("baseline")] string Baseline,
-    [property: JsonPropertyName("gating")] bool Gating,
+    [property: JsonPropertyName("allocGating")] bool AllocGating,
     [property: JsonPropertyName("allocationCeilingBytes")] double? AllocationCeilingBytes = null,
     [property: JsonPropertyName("benchmarkAllocationCeilings")] IReadOnlyDictionary<string, double>? BenchmarkAllocationCeilings = null);
 
 // --- evaluation model ---
 
 /// <summary>
-/// Classification of a single benchmark's time-axis comparison (D-333).
+/// Classification of a single benchmark's time-axis comparison. Time never
+/// gates the build on any category (D-395/D-396) — a within-run ×3σ noise
+/// filter cannot see between-run variance, so every comparison that has data
+/// to report reads <see cref="Informational"/>, unconditionally.
 /// </summary>
 public enum TimeClass {
-    /// <summary>Within threshold on a CPU-matched comparison; no action needed.</summary>
-    Ok,
-    /// <summary>Non-gating category — reported for information, never fails the gate.</summary>
+    /// <summary>Reported for information; never fails the gate.</summary>
     Informational,
-    /// <summary>
-    /// Fresh run's CPU differs from the baseline's CPU on at least one of the
-    /// rolling/origin sides, or either host is unrecorded — a genuine
-    /// hardware-driven time swing is indistinguishable from a regression, so
-    /// the comparison is reported but never fails the gate.
-    /// </summary>
-    CpuMismatch,
     /// <summary>Present in the fresh run but absent from the rolling baseline; treated as informational.</summary>
     NewBenchmark,
     /// <summary>The rolling baseline file for this category does not exist yet; establishing.</summary>
     NoBaseline,
-    /// <summary>Fresh mean exceeds the rolling baseline by more than a noise-adjusted <see cref="Policy.PerSprintPercent"/> (D-333).</summary>
-    PerSprintBreach,
-    /// <summary>Fresh mean exceeds the origin baseline by more than <see cref="Policy.CumulativePercent"/>.</summary>
-    CumulativeBreach,
 }
 
 /// <summary>
@@ -176,7 +172,7 @@ public enum AllocClass {
     /// Fresh allocation meets or exceeds the category's absolute allocation ceiling —
     /// <see cref="PolicyCategory.BenchmarkAllocationCeilings"/> if the benchmark has an
     /// entry there, else <see cref="PolicyCategory.AllocationCeilingBytes"/>. Fires
-    /// regardless of the category's <see cref="PolicyCategory.Gating"/> flag; this is
+    /// regardless of the category's <see cref="PolicyCategory.AllocGating"/> flag; this is
     /// what would have caught the D-332 defect on day one (D-333, category/fixture-shaped
     /// per D-391).
     /// </summary>
@@ -185,9 +181,10 @@ public enum AllocClass {
 
 /// <summary>
 /// Comparison result for a single benchmark against both the time and
-/// allocation axes (D-333). The two axes are classified independently: a
-/// benchmark can read time-informational under a CPU mismatch while its
-/// allocation axis still gates.
+/// allocation axes. The two axes are classified independently: time never
+/// gates on any category (D-395/D-396), while the allocation axis can still
+/// gate — a benchmark can read time-informational while its allocation axis
+/// breaches.
 /// </summary>
 /// <param name="Category">Name of the policy category this benchmark belongs to.</param>
 /// <param name="FullName">Fully qualified benchmark method name.</param>
@@ -254,13 +251,33 @@ public sealed record BaselineSide(
 /// </summary>
 public static class BenchCheck {
     /// <summary>
-    /// Shared <see cref="JsonSerializerOptions"/> used when reading BenchmarkDotNet
-    /// reports and policy files. Case-insensitive, allows comments and trailing commas.
+    /// <see cref="JsonSerializerOptions"/> used when reading BenchmarkDotNet reports.
+    /// Case-insensitive, allows comments and trailing commas, and ignores the many
+    /// report members this tool does not map. Policy files use the stricter
+    /// <see cref="PolicyJson"/> instead.
     /// </summary>
     public static readonly JsonSerializerOptions Json = new() {
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
+    };
+
+    /// <summary>
+    /// <see cref="JsonSerializerOptions"/> for <c>policy.json</c> only. Identical to
+    /// <see cref="Json"/> except that an unmapped member is rejected rather than
+    /// ignored: the policy file configures the build gate, so a field this tool does
+    /// not understand — a <c>gating</c> left behind by D-396's rename to
+    /// <c>allocGating</c>, or a plain typo — must fail loudly. Ignoring it would
+    /// default <see cref="PolicyCategory.AllocGating"/> to <see langword="false"/> and
+    /// stand the allocation-percent check down silently, which is the fail-open shape
+    /// D-395 diagnosed. BenchmarkDotNet reports keep <see cref="Json"/>: their
+    /// documents carry many members this tool deliberately does not map.
+    /// </summary>
+    private static readonly JsonSerializerOptions PolicyJson = new() {
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
     /// <summary>
@@ -306,12 +323,24 @@ public static class BenchCheck {
             if (origin is null)
                 notes.Add($"{category.Name}: origin baseline '{OriginName(category.Baseline)}' not found — cumulative axis skipped.");
 
-            var sameCpuRolling = SameCpu(fresh.Host, rolling.Host);
-            var sameCpuOrigin = origin is not null && SameCpu(fresh.Host, origin.Host);
-            if (!sameCpuRolling) {
+            if (!SameCpu(fresh.Host, rolling.Host)) {
                 notes.Add(
                     $"{category.Name}: CPU mismatch — fresh '{CpuOf(fresh.Host)}' vs rolling baseline " +
-                    $"'{CpuOf(rolling.Host)}'. Time comparison is informational; allocation still gates.");
+                    $"'{CpuOf(rolling.Host)}'. Δ time per-sprint may reflect the CPU swing rather than a real " +
+                    "change; allocation is CPU-independent and still gates when configured.");
+            }
+
+            // The cumulative axis is measured against the *origin*, whose CPU can
+            // differ from the fresh run's even when the rolling baseline's does not —
+            // the live case
+            // for `compile.origin.json` and its "Unknown processor" capture. Without
+            // this the report shows a cross-CPU cumulative percentage with nothing
+            // explaining it.
+            if (origin is not null && !SameCpu(fresh.Host, origin.Host)) {
+                notes.Add(
+                    $"{category.Name}: CPU mismatch — fresh '{CpuOf(fresh.Host)}' vs origin baseline " +
+                    $"'{CpuOf(origin.Host)}'. Δ time cumulative may reflect the CPU swing rather than a real " +
+                    "change; the allocation axes do not use the origin baseline and are unaffected.");
             }
 
             foreach (var (name, freshM) in freshInCategory) {
@@ -326,53 +355,33 @@ public static class BenchCheck {
                     continue;
                 }
 
-                var (timePerSprint, timeCumulative, timeClass) = ClassifyTime(
-                    freshM, rollingM,
-                    origin is not null && origin.Measurements.TryGetValue(name, out var originM) ? originM : null,
-                    category.Gating, sameCpuRolling, sameCpuOrigin, policy);
+                var originM = origin is not null && origin.Measurements.TryGetValue(name, out var om) ? om : null;
+                var (timePerSprint, timeCumulative) = ClassifyTime(freshM, rollingM, originM);
 
                 var (allocPercent, allocClass) = ClassifyAlloc(freshM, rollingM, name, category, policy);
 
-                if (timeClass is TimeClass.PerSprintBreach or TimeClass.CumulativeBreach) regression = true;
                 if (allocClass is AllocClass.PerSprintBreach or AllocClass.CeilingBreach) regression = true;
 
-                deltas.Add(new BenchmarkDelta(category.Name, name, timePerSprint, timeCumulative, timeClass, allocPercent, freshM.AllocatedBytes, allocClass));
+                deltas.Add(new BenchmarkDelta(category.Name, name, timePerSprint, timeCumulative, TimeClass.Informational, allocPercent, freshM.AllocatedBytes, allocClass));
             }
         }
 
         return new EvaluationReport(regression ? Outcome.Regression : Outcome.Pass, deltas, notes);
     }
 
-    private static (double? PerSprint, double? Cumulative, TimeClass Class) ClassifyTime(
+    /// <summary>
+    /// Computes the per-sprint and cumulative time deltas for reporting. Time never
+    /// gates on any category (D-395/D-396) — there is no threshold, CPU-identity or
+    /// significance check here, only the percentage a reader sees in the report; the
+    /// caller always classifies the result <see cref="TimeClass.Informational"/>.
+    /// </summary>
+    private static (double? PerSprint, double? Cumulative) ClassifyTime(
         BenchmarkMeasurement fresh,
         BenchmarkMeasurement rolling,
-        BenchmarkMeasurement? origin,
-        bool gating,
-        bool sameCpuRolling,
-        bool sameCpuOrigin,
-        Policy policy) {
+        BenchmarkMeasurement? origin) {
         var perSprint = Percent(fresh.Mean, rolling.Mean);
         double? cumulative = origin is not null ? Percent(fresh.Mean, origin.Mean) : null;
-
-        if (!gating)
-            return (perSprint, cumulative, TimeClass.Informational);
-
-        if (sameCpuRolling) {
-            var relativeStdDev = Math.Max(RelativePercent(fresh), RelativePercent(rolling));
-            var threshold = Math.Max(policy.PerSprintPercent, policy.TimeSignificanceK * relativeStdDev);
-            if (perSprint > threshold)
-                return (perSprint, cumulative, TimeClass.PerSprintBreach);
-        }
-
-        var canCheckCumulative = cumulative is not null && sameCpuOrigin;
-        if (canCheckCumulative && cumulative!.Value > policy.CumulativePercent)
-            return (perSprint, cumulative, TimeClass.CumulativeBreach);
-
-        // "Blocked" means an axis that actually has baseline data to compare against
-        // was withheld from gating by a CPU mismatch — not merely that the axis has
-        // no data at all (a missing origin, say, is reported Ok if per-sprint is fine).
-        var cpuBlocked = !sameCpuRolling || (cumulative is not null && !sameCpuOrigin);
-        return (perSprint, cumulative, cpuBlocked ? TimeClass.CpuMismatch : TimeClass.Ok);
+        return (perSprint, cumulative);
     }
 
     private static (double? Percent, AllocClass Class) ClassifyAlloc(
@@ -395,7 +404,7 @@ public static class BenchCheck {
         if (percent is null)
             return (null, AllocClass.Ok);
 
-        if (!category.Gating)
+        if (!category.AllocGating)
             return (percent, AllocClass.Informational);
         return percent > policy.AllocPercent ? (percent, AllocClass.PerSprintBreach) : (percent, AllocClass.Ok);
     }
@@ -417,14 +426,6 @@ public static class BenchCheck {
             return bytes >= overrideCeiling;
         return category.AllocationCeilingBytes is { } ceiling && bytes >= ceiling;
     }
-
-    /// <summary>
-    /// A benchmark's standard deviation as a percentage of its own mean —
-    /// the noise-relative signal the significance-aware time gate (D-333)
-    /// compares against <see cref="Policy.TimeSignificanceK"/>.
-    /// </summary>
-    private static double RelativePercent(BenchmarkMeasurement m)
-        => Math.Abs(m.Mean) < 1e-3 ? 0 : m.StandardDeviation / m.Mean * 100.0;
 
     /// <summary>
     /// Computes the percentage change of <paramref name="fresh"/> relative to
@@ -492,9 +493,27 @@ public static class BenchCheck {
     /// <param name="path">Path to the policy JSON file.</param>
     /// <returns>The deserialised <see cref="Policy"/>.</returns>
     /// <exception cref="InvalidDataException">The file could not be parsed as a valid policy.</exception>
-    public static Policy LoadPolicy(string path)
-        => JsonSerializer.Deserialize<Policy>(File.ReadAllText(path), Json)
-           ?? throw new InvalidDataException($"Could not parse policy file '{path}'.");
+    public static Policy LoadPolicy(string path) {
+        try {
+            return ParsePolicy(File.ReadAllText(path));
+        } catch (JsonException ex) {
+            throw new InvalidDataException($"Could not parse policy file '{path}': {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Parses policy JSON text. Pure — the file-reading half is <see cref="LoadPolicy"/>,
+    /// which is also where a failure gains the offending file's name.
+    /// </summary>
+    /// <param name="json">The policy JSON document.</param>
+    /// <returns>The deserialised <see cref="Policy"/>.</returns>
+    /// <exception cref="JsonException">
+    /// The text is not valid policy JSON, or it carries a field this tool does not
+    /// map (see <see cref="PolicyJson"/>).
+    /// </exception>
+    public static Policy ParsePolicy(string json)
+        => JsonSerializer.Deserialize<Policy>(json, PolicyJson)
+           ?? throw new JsonException("Policy JSON deserialised to null.");
 
     /// <summary>
     /// Reads and deserialises a BenchmarkDotNet <c>-report-full.json</c> file.

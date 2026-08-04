@@ -16,7 +16,7 @@ public sealed class CliRenderTests {
         => new("cat", "A.B.MyBench", perSprint, cumulative, cls, null, null, AllocClass.Ok);
 
     private static BenchmarkDelta AllocDelta(AllocClass cls, double? percent = null, double? bytes = null)
-        => new("cat", "A.B.MyBench", 0.0, null, TimeClass.Ok, percent, bytes, cls);
+        => new("cat", "A.B.MyBench", 0.0, null, TimeClass.Informational, percent, bytes, cls);
 
     // --- verdict header ---
 
@@ -35,13 +35,9 @@ public sealed class CliRenderTests {
     // --- time-axis status labels ---
 
     [Theory]
-    [InlineData(TimeClass.Ok, "ok")]
     [InlineData(TimeClass.Informational, "info")]
-    [InlineData(TimeClass.CpuMismatch, "cpu mismatch")]
     [InlineData(TimeClass.NewBenchmark, "new")]
     [InlineData(TimeClass.NoBaseline, "establishing")]
-    [InlineData(TimeClass.PerSprintBreach, "**per-sprint breach**")]
-    [InlineData(TimeClass.CumulativeBreach, "**cumulative breach**")]
     public void Time_class_renders_correct_status_label(TimeClass cls, string expectedLabel) {
         var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Pass, [TimeDelta(cls)], []));
         Assert.Contains(expectedLabel, rendered);
@@ -65,7 +61,7 @@ public sealed class CliRenderTests {
 
     [Fact]
     public void Benchmark_full_name_is_shortened_to_last_segment() {
-        var delta = new BenchmarkDelta("cat", "Grob.Benchmarks.Compile.CompileBenchmarks.Compile_Foo", 1.0, null, TimeClass.Ok, null, null, AllocClass.Ok);
+        var delta = new BenchmarkDelta("cat", "Grob.Benchmarks.Compile.CompileBenchmarks.Compile_Foo", 1.0, null, TimeClass.Informational, null, null, AllocClass.Ok);
         var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Pass, [delta], []));
         Assert.Contains("Compile_Foo", rendered);
         Assert.DoesNotContain("Grob.Benchmarks.Compile", rendered);
@@ -73,7 +69,7 @@ public sealed class CliRenderTests {
 
     [Fact]
     public void Benchmark_name_without_dot_renders_as_is() {
-        var delta = new BenchmarkDelta("cat", "NoDotName", 0.0, null, TimeClass.Ok, null, null, AllocClass.Ok);
+        var delta = new BenchmarkDelta("cat", "NoDotName", 0.0, null, TimeClass.Informational, null, null, AllocClass.Ok);
         var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Pass, [delta], []));
         Assert.Contains("NoDotName", rendered);
     }
@@ -88,13 +84,13 @@ public sealed class CliRenderTests {
 
     [Fact]
     public void Positive_percent_renders_with_plus_sign() {
-        var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Regression, [TimeDelta(TimeClass.PerSprintBreach, perSprint: 5.5)], []));
+        var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Regression, [TimeDelta(TimeClass.Informational, perSprint: 5.5)], []));
         Assert.Contains("+5.5%", rendered);
     }
 
     [Fact]
     public void Negative_percent_renders_with_minus_sign() {
-        var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Pass, [TimeDelta(TimeClass.Ok, perSprint: -3.0)], []));
+        var rendered = Cli.Render(_policy, _fresh, new EvaluationReport(Outcome.Pass, [TimeDelta(TimeClass.Informational, perSprint: -3.0)], []));
         Assert.Contains("-3.0%", rendered);
     }
 

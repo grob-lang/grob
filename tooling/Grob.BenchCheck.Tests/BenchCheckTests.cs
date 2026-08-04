@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Grob.BenchCheck;
 using Xunit;
 
@@ -14,12 +15,12 @@ public class BenchCheckTests {
     private static readonly BdnHostEnvironmentInfo _unknownCpu =
         new("Windows 11 (10.0.26100)", "Unknown processor", "10.0.9");
 
-    private static Policy PolicyWith(bool compileGating, double allocPercent = 10.0, double? allocationCeilingBytes = 85000, double k = 3.0) => new(
+    private static Policy PolicyWith(bool allocGating, double allocPercent = 10.0, double? allocationCeilingBytes = 85000, double k = 3.0) => new(
         PerSprintPercent: 5.0,
         CumulativePercent: 12.0,
         AllocPercent: allocPercent,
         TimeSignificanceK: k,
-        Categories: [new PolicyCategory("compile", CompilePrefix, "compile.json", compileGating, allocationCeilingBytes)]);
+        Categories: [new PolicyCategory("compile", CompilePrefix, "compile.json", allocGating, allocationCeilingBytes)]);
 
     private static BenchmarkMeasurement M(double mean, double stdDev = 0, double? bytes = null) => new(mean, stdDev, bytes);
 
@@ -70,52 +71,13 @@ public class BenchCheckTests {
     public void SameCpu_placeholder_unknown_processor_never_matches_itself()
         => Assert.False(BenchCheck.SameCpu(_unknownCpu, _unknownCpu));
 
-    // --- the gate: time axis, CPU-matched ---
+    // --- the gate: time never gates, on any category, by construction (D-395/D-396) ---
 
     [Fact]
     public void Within_both_thresholds_passes() {
         var report = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true),
+            PolicyWith(allocGating: true),
             fresh: Side(_epyc, M(102)),                 // +2% vs rolling, +2% vs origin
-            Loader(rolling: Side(_epyc, M(100)), origin: Side(_epyc, M(100))));
-
-        Assert.Equal(Outcome.Pass, report.Outcome);
-        Assert.Equal(TimeClass.Ok, Assert.Single(report.Deltas).TimeClass);
-    }
-
-    [Fact]
-    public void Acute_per_sprint_regression_fails() {
-        var report = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true),
-            fresh: Side(_epyc, M(130)),                 // +30% vs rolling, low StdDev on both sides
-            Loader(rolling: Side(_epyc, M(100)), origin: Side(_epyc, M(100))));
-
-        Assert.Equal(Outcome.Regression, report.Outcome);
-        Assert.Equal(TimeClass.PerSprintBreach, Assert.Single(report.Deltas).TimeClass);
-    }
-
-    [Fact]
-    public void Slow_creep_trips_cumulative_even_when_per_sprint_is_in_tolerance() {
-        var report = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true),
-            fresh: Side(_epyc, M(113)),                 // +2.7% vs rolling (110), +13% vs origin (100)
-            Loader(rolling: Side(_epyc, M(110)), origin: Side(_epyc, M(100))));
-
-        var delta = Assert.Single(report.Deltas);
-        Assert.Equal(Outcome.Regression, report.Outcome);
-        Assert.Equal(TimeClass.CumulativeBreach, delta.TimeClass);
-        Assert.True(delta.TimePerSprintPercent < 5.0);
-        Assert.True(delta.TimeCumulativePercent > 12.0);
-    }
-
-    [Fact]
-    public void Non_gating_category_regression_is_reported_not_failed() {
-        var policy = new Policy(5.0, 12.0, 10.0, 3.0,
-            [new PolicyCategory("compile", CompilePrefix, "compile.json", Gating: false)]);
-
-        var report = BenchCheck.Evaluate(
-            policy,
-            fresh: Side(_epyc, M(200)),                 // +100%, but category is informational
             Loader(rolling: Side(_epyc, M(100)), origin: Side(_epyc, M(100))));
 
         Assert.Equal(Outcome.Pass, report.Outcome);
@@ -123,9 +85,80 @@ public class BenchCheckTests {
     }
 
     [Fact]
+    public void No_category_ever_gates_on_time_even_on_a_severe_regression() {
+        // Mutation-verified: this must fail if ClassifyTime is reverted to consult
+        // any gating flag, CPU match or significance threshold. A deliberately huge
+        // per-sprint AND cumulative delta, with allocGating on and 0% allocation
+        // delta, must still pass — time cannot gate, full stop (D-395 Q1).
+        var report = BenchCheck.Evaluate(
+            PolicyWith(allocGating: true),
+            fresh: Side(_epyc, M(300, stdDev: 1.0)),    // +200% vs rolling and origin, tight StdDev
+            Loader(rolling: Side(_epyc, M(100, stdDev: 1.0)), origin: Side(_epyc, M(100, stdDev: 1.0))));
+
+        var delta = Assert.Single(report.Deltas);
+        Assert.Equal(Outcome.Pass, report.Outcome);
+        Assert.Equal(TimeClass.Informational, delta.TimeClass);
+        Assert.True(delta.TimePerSprintPercent > 100.0);
+        Assert.True(delta.TimeCumulativePercent > 100.0);
+    }
+
+    [Fact]
+    public void Run_30720384069_scenario_is_informational_not_a_breach() {
+        // Regression test for the false positive D-395 diagnosed: compile category,
+        // gating:true, +12.0% per-sprint time delta against ~2.02% within-run relative
+        // StdDev (well past the old max(5.0%, 3*2.02%)=6.06% threshold) and a 0.0%
+        // allocation delta. Must read Pass/Informational now, not PerSprintBreach.
+        var report = BenchCheck.Evaluate(
+            PolicyWith(allocGating: true, allocPercent: 10.0),
+            fresh: Side(_epyc, M(5.554, stdDev: 0.1002, bytes: 9856)),   // +12.0% vs rolling (4.958), 0% alloc delta
+            Loader(rolling: Side(_epyc, M(4.958, bytes: 9856)), origin: Side(_epyc, M(4.958, bytes: 9856))));
+
+        var delta = Assert.Single(report.Deltas);
+        Assert.Equal(Outcome.Pass, report.Outcome);
+        Assert.Equal(TimeClass.Informational, delta.TimeClass);
+        Assert.Equal(AllocClass.Ok, delta.AllocClass);
+        Assert.Equal(0.0, delta.AllocPercent);
+    }
+
+    [Fact]
+    public void Allocation_percent_breach_on_compile_still_fails_the_gate() {
+        // The converse the prompt requires: decoupling time from allocation-percent
+        // must not silence allocation-percent too. Mutation-verified — fails if
+        // AllocGating stops driving ClassifyAlloc.
+        var report = BenchCheck.Evaluate(
+            PolicyWith(allocGating: true, allocPercent: 10.0),
+            fresh: Side(_epyc, M(100, bytes: 12000)),           // +20% alloc vs 10000-byte baseline, time flat
+            Loader(rolling: Side(_epyc, M(100, bytes: 10000)), origin: Side(_epyc, M(100, bytes: 10000))));
+
+        var delta = Assert.Single(report.Deltas);
+        Assert.Equal(Outcome.Regression, report.Outcome);
+        Assert.Equal(TimeClass.Informational, delta.TimeClass);
+        Assert.Equal(AllocClass.PerSprintBreach, delta.AllocClass);
+    }
+
+    [Fact]
+    public void Non_gating_category_allocation_percent_is_reported_not_failed() {
+        // allocGating:false is the only thing this flag still controls — time is
+        // informational unconditionally regardless of it, so this test targets the
+        // allocation-percent axis, the flag's sole remaining purpose.
+        var policy = new Policy(5.0, 12.0, 10.0, 3.0,
+            [new PolicyCategory("compile", CompilePrefix, "compile.json", AllocGating: false)]);
+
+        var report = BenchCheck.Evaluate(
+            policy,
+            fresh: Side(_epyc, M(200, bytes: 20000)),   // +100% time and +100% alloc, but category is informational
+            Loader(rolling: Side(_epyc, M(100, bytes: 10000)), origin: Side(_epyc, M(100, bytes: 10000))));
+
+        var delta = Assert.Single(report.Deltas);
+        Assert.Equal(Outcome.Pass, report.Outcome);
+        Assert.Equal(TimeClass.Informational, delta.TimeClass);
+        Assert.Equal(AllocClass.Informational, delta.AllocClass);
+    }
+
+    [Fact]
     public void Missing_rolling_baseline_is_establishing_not_a_failure() {
         var report = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true),
+            PolicyWith(allocGating: true),
             fresh: Side(_epyc, M(100)),
             Loader(rolling: null, origin: null));
 
@@ -143,7 +176,7 @@ public class BenchCheckTests {
         });
         var rolling = Side(_epyc, M(100));
 
-        var report = BenchCheck.Evaluate(PolicyWith(compileGating: true), fresh, Loader(rolling, rolling));
+        var report = BenchCheck.Evaluate(PolicyWith(allocGating: true), fresh, Loader(rolling, rolling));
 
         Assert.Equal(Outcome.Pass, report.Outcome);
         Assert.Contains(report.Deltas, d => d.TimeClass == TimeClass.NewBenchmark && d.AllocClass == AllocClass.NewBenchmark);
@@ -162,7 +195,7 @@ public class BenchCheckTests {
         });
         var rolling = Side(_epyc, M(100));
 
-        var report = BenchCheck.Evaluate(PolicyWith(compileGating: true, allocationCeilingBytes: 85000), fresh, Loader(rolling, rolling));
+        var report = BenchCheck.Evaluate(PolicyWith(allocGating: true, allocationCeilingBytes: 85000), fresh, Loader(rolling, rolling));
 
         Assert.Equal(Outcome.Regression, report.Outcome);
         Assert.Contains(report.Deltas, d => d.FullName.Contains("BrandNew") && d.AllocClass == AllocClass.CeilingBreach);
@@ -171,14 +204,14 @@ public class BenchCheckTests {
     [Fact]
     public void Missing_origin_skips_cumulative_axis_without_failing() {
         var report = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true),
-            fresh: Side(_epyc, M(103)),                 // +3% vs rolling, under the per-sprint gate
+            PolicyWith(allocGating: true),
+            fresh: Side(_epyc, M(103)),                 // +3% vs rolling, time never gates regardless
             Loader(rolling: Side(_epyc, M(100)), origin: null));
 
         var delta = Assert.Single(report.Deltas);
         Assert.Equal(Outcome.Pass, report.Outcome);
         Assert.Null(delta.TimeCumulativePercent);
-        Assert.Equal(TimeClass.Ok, delta.TimeClass);
+        Assert.Equal(TimeClass.Informational, delta.TimeClass);
     }
 
     // --- allocation axis (D-333, test rows 1-3) ---
@@ -186,7 +219,7 @@ public class BenchCheckTests {
     [Fact]
     public void Allocation_regression_trips() {
         var report = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true, allocPercent: 10.0),
+            PolicyWith(allocGating: true, allocPercent: 10.0),
             fresh: Side(_epyc, M(100, bytes: 12000)),           // +20% vs 10000-byte baseline
             Loader(rolling: Side(_epyc, M(100, bytes: 10000)), origin: Side(_epyc, M(100, bytes: 10000))));
 
@@ -198,7 +231,7 @@ public class BenchCheckTests {
     [Fact]
     public void Allocation_within_threshold_passes() {
         var report = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true, allocPercent: 10.0),
+            PolicyWith(allocGating: true, allocPercent: 10.0),
             fresh: Side(_epyc, M(100, bytes: 10500)),           // +5% vs 10000-byte baseline
             Loader(rolling: Side(_epyc, M(100, bytes: 10000)), origin: Side(_epyc, M(100, bytes: 10000))));
 
@@ -210,7 +243,7 @@ public class BenchCheckTests {
     [Fact]
     public void Ceiling_fires_even_on_informational_category() {
         var policy = new Policy(5.0, 12.0, 10.0, 3.0,
-            [new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false, AllocationCeilingBytes: 85000)]);
+            [new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", AllocGating: false, AllocationCeilingBytes: 85000)]);
         var name = "Grob.Benchmarks.Vm.VmBenchmarks.Run_ControlFlow";
 
         var report = BenchCheck.Evaluate(
@@ -230,7 +263,7 @@ public class BenchCheckTests {
         // vm's shape: a small scalar-fixture default (D-391) with a much larger
         // per-benchmark override for a for...in fixture that would otherwise trip
         // the small default outright.
-        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false,
+        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", AllocGating: false,
             AllocationCeilingBytes: 4700,
             BenchmarkAllocationCeilings: new Dictionary<string, double> {
                 ["Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn"] = 637900,
@@ -258,7 +291,7 @@ public class BenchCheckTests {
         // and this test goes green-to-red, which is what makes it load-bearing.
         // Benchmark_specific_ceiling_overrides_category_default covers the passing
         // direction on vm's real (default-stricter-than-override) shape.
-        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false,
+        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", AllocGating: false,
             AllocationCeilingBytes: 900_000,
             BenchmarkAllocationCeilings: new Dictionary<string, double> {
                 ["Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn"] = 637900,
@@ -281,7 +314,7 @@ public class BenchCheckTests {
         // The row that failed the gate is the one a reader most wants the rolling
         // delta for. Classification as a ceiling breach must not blank the Δ alloc
         // column when both sides reported bytes and the percentage is computable.
-        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false,
+        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", AllocGating: false,
             AllocationCeilingBytes: 637900);
         var policy = new Policy(5.0, 12.0, 10.0, 3.0, [category]);
         var name = "Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn";
@@ -300,7 +333,7 @@ public class BenchCheckTests {
     public void Ceiling_breach_reports_no_percentage_when_the_rolling_side_has_no_bytes() {
         // The complement: with nothing to delta against, the breach still fires but
         // the percentage stays null rather than being invented.
-        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false,
+        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", AllocGating: false,
             AllocationCeilingBytes: 637900);
         var policy = new Policy(5.0, 12.0, 10.0, 3.0, [category]);
         var name = "Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn";
@@ -317,7 +350,7 @@ public class BenchCheckTests {
 
     [Fact]
     public void Category_default_ceiling_governs_a_benchmark_without_its_own_override() {
-        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", Gating: false,
+        var category = new PolicyCategory("vm", "Grob.Benchmarks.Vm", "vm.json", AllocGating: false,
             AllocationCeilingBytes: 4700,
             BenchmarkAllocationCeilings: new Dictionary<string, double> {
                 ["Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn"] = 637900,
@@ -340,7 +373,7 @@ public class BenchCheckTests {
         // endToEnd's shape: declared, no ceiling set yet (F8 open, zero fresh
         // benchmarks today) — an unconfigured ceiling must not silently breach on
         // whatever allocation a benchmark happens to report.
-        var category = new PolicyCategory("endToEnd", "Grob.Benchmarks.EndToEnd", "endToEnd.json", Gating: false);
+        var category = new PolicyCategory("endToEnd", "Grob.Benchmarks.EndToEnd", "endToEnd.json", AllocGating: false);
         var policy = new Policy(5.0, 12.0, 10.0, 3.0, [category]);
         var name = "Grob.Benchmarks.EndToEnd.EndToEndBenchmarks.Run_Whatever";
 
@@ -363,7 +396,7 @@ public class BenchCheckTests {
         // fails the gate, the same way Non_gating_category_regression_is_reported_not_failed
         // proves it generically, but naming the real category this increment adds.
         var policy = new Policy(5.0, 12.0, 10.0, 3.0,
-            [new PolicyCategory("attribution", "Grob.Benchmarks.Attribution", "attribution.json", Gating: false)]);
+            [new PolicyCategory("attribution", "Grob.Benchmarks.Attribution", "attribution.json", AllocGating: false)]);
         var name = "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrNative";
 
         var report = BenchCheck.Evaluate(
@@ -386,7 +419,7 @@ public class BenchCheckTests {
         // the same path BenchCheck already handles correctly (phase 2's "Correctly
         // working, do not fix" note).
         var policy = new Policy(5.0, 12.0, 10.0, 3.0,
-            [new PolicyCategory("attribution", "Grob.Benchmarks.Attribution", "attribution.json", Gating: false)]);
+            [new PolicyCategory("attribution", "Grob.Benchmarks.Attribution", "attribution.json", AllocGating: false)]);
         const string prefix = "Grob.Benchmarks.Attribution.AttributionBenchmarks.";
         var existing = new[] { "Run_AttrEmpty", "Run_AttrRange", "Run_AttrNative", "Run_AttrBuild" };
         var rollingMeasurements = existing.ToDictionary(n => prefix + n, _ => M(100, bytes: 10000));
@@ -408,64 +441,22 @@ public class BenchCheckTests {
         Assert.All(existing, n => Assert.Contains(report.Deltas, d => d.FullName == prefix + n && d.TimeClass == TimeClass.Informational));
     }
 
-    // --- time significance (D-333, test rows 4-5) ---
-
-    [Fact]
-    public void Time_delta_inside_noise_passes() {
-        // The Sprint 6 Compile_TenPrints shape: ~8.7% delta, ~3.2% relative StdDev.
-        // 3 * 3.2% ~= 9.6%, comfortably above 8.7%, so this must read Ok, not a breach.
-        var report = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true, k: 3.0),
-            fresh: Side(_epyc, M(6550, stdDev: 209.6)),          // 3.2% relative StdDev
-            Loader(rolling: Side(_epyc, M(6025)), origin: Side(_epyc, M(6025))));
-
-        var delta = Assert.Single(report.Deltas);
-        Assert.Equal(Outcome.Pass, report.Outcome);
-        Assert.Equal(TimeClass.Ok, delta.TimeClass);
-        Assert.True(delta.TimePerSprintPercent > 5.0);
-    }
-
-    [Fact]
-    public void Time_delta_clearing_noise_trips() {
-        // A genuine acute regression: +30% against a tight (~1%) relative StdDev
-        // on both sides — well outside even a 3-sigma noise band.
-        var report = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true, k: 3.0),
-            fresh: Side(_epyc, M(130, stdDev: 1.3)),
-            Loader(rolling: Side(_epyc, M(100, stdDev: 1.0)), origin: Side(_epyc, M(100, stdDev: 1.0))));
-
-        var delta = Assert.Single(report.Deltas);
-        Assert.Equal(Outcome.Regression, report.Outcome);
-        Assert.Equal(TimeClass.PerSprintBreach, delta.TimeClass);
-    }
-
-    // --- CPU-identity axis-split (D-333, test rows 6-8) ---
-
-    [Fact]
-    public void Cpu_match_time_gates_normally() {
-        var passReport = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true),
-            fresh: Side(_epyc, M(102)),
-            Loader(rolling: Side(_epyc, M(100)), origin: Side(_epyc, M(100))));
-        Assert.Equal(TimeClass.Ok, Assert.Single(passReport.Deltas).TimeClass);
-
-        var breachReport = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true),
-            fresh: Side(_epyc, M(130)),
-            Loader(rolling: Side(_epyc, M(100)), origin: Side(_epyc, M(100))));
-        Assert.Equal(TimeClass.PerSprintBreach, Assert.Single(breachReport.Deltas).TimeClass);
-    }
+    // --- CPU identity: still an allocation-only concern now time never gates (D-333, D-395/D-396) ---
 
     [Fact]
     public void Cpu_mismatch_time_informational_allocation_still_gates() {
+        // Allocation was never CPU-gated to begin with (D-333) — this proves that's
+        // still true post-decoupling. Time is Informational for the CPU-matched and
+        // CPU-mismatched case alike now, so this test's only remaining point is that
+        // a CPU swing cannot suppress an allocation-percent breach.
         var report = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true, allocPercent: 10.0),
+            PolicyWith(allocGating: true, allocPercent: 10.0),
             fresh: Side(_xeon, M(140, bytes: 12000)),            // +40% time, +20% alloc
             Loader(rolling: Side(_epyc, M(100, bytes: 10000)), origin: Side(_epyc, M(100, bytes: 10000))));
 
         var delta = Assert.Single(report.Deltas);
         Assert.Equal(Outcome.Regression, report.Outcome);           // allocation still fails the gate
-        Assert.Equal(TimeClass.CpuMismatch, delta.TimeClass);       // time never breaches on CPU mismatch
+        Assert.Equal(TimeClass.Informational, delta.TimeClass);
         Assert.Equal(AllocClass.PerSprintBreach, delta.AllocClass);
     }
 
@@ -473,33 +464,138 @@ public class BenchCheckTests {
     public void Proven_cross_cpu_fixture_matches_the_real_run() {
         // The real post-Interlude-1 verification run: EPYC-anchored compile baseline
         // (rolling and origin) vs an Intel Xeon fresh run. Allocation is byte-identical
-        // (7864 B / 14480 B); time is +25-37% purely from the CPU swing.
+        // (7864 B); time is +25-37% purely from the CPU swing, and now reads
+        // Informational rather than the old CpuMismatch classification — still
+        // computed and reported (Δ time is not blanked), just never a breach.
         var name = "Grob.Benchmarks.Compile.CompileBenchmarks.Compile_TwoExpressions";
         var rolling = new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(2900.98, bytes: 7864) });
         var origin = new BaselineSide(_epyc, new Dictionary<string, BenchmarkMeasurement> { [name] = M(2900.98, bytes: 7864) });
         var fresh = new BaselineSide(_xeon, new Dictionary<string, BenchmarkMeasurement> { [name] = M(3623.26, bytes: 7864) });
 
-        var report = BenchCheck.Evaluate(PolicyWith(compileGating: true), fresh, Loader(rolling, origin));
+        var report = BenchCheck.Evaluate(PolicyWith(allocGating: true), fresh, Loader(rolling, origin));
 
         var delta = Assert.Single(report.Deltas);
         Assert.Equal(Outcome.Pass, report.Outcome);
-        Assert.Equal(TimeClass.CpuMismatch, delta.TimeClass);
+        Assert.Equal(TimeClass.Informational, delta.TimeClass);
+        Assert.NotNull(delta.TimePerSprintPercent);
         Assert.Equal(AllocClass.Ok, delta.AllocClass);
         Assert.Equal(0.0, delta.AllocPercent);
     }
 
     [Fact]
-    public void Cumulative_axis_also_reads_cpu_mismatch_when_only_origin_cpu_is_unrecorded() {
-        // The real compile.origin.json wrinkle: rolling's CPU matches fresh, but the
-        // frozen origin predates CPU provenance ("Unknown processor"). The cumulative
-        // axis must not silently compare across an unverifiable CPU gap.
+    public void Cpu_mismatch_still_produces_an_explanatory_note() {
+        // The CPU-identity guard's remaining job: even though the classification is
+        // always Informational now, the Notes list still explains *why* a reader
+        // might see a large, non-gating Δ time (D-333's guard is reporting-only now,
+        // not classification-only-when-gating).
         var report = BenchCheck.Evaluate(
-            PolicyWith(compileGating: true),
-            fresh: Side(_epyc, M(113)),                          // matches rolling's CPU
-            Loader(rolling: Side(_epyc, M(110)), origin: Side(_unknownCpu, M(100))));
+            PolicyWith(allocGating: true),
+            fresh: Side(_xeon, M(140)),
+            Loader(rolling: Side(_epyc, M(100)), origin: Side(_epyc, M(100))));
 
-        var delta = Assert.Single(report.Deltas);
-        Assert.Equal(TimeClass.CpuMismatch, delta.TimeClass);
-        Assert.NotNull(delta.TimeCumulativePercent);   // still computed and reported, just not gated
+        Assert.Contains(report.Notes, n => n.Contains("CPU mismatch", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Origin_cpu_mismatch_produces_its_own_cumulative_note() {
+        // fresh and rolling agree, so the rolling-side guard stays quiet — but
+        // ClassifyTime still computes the cumulative Δ against the origin. This is
+        // the live `compile.origin.json` case (§9.1: its ProcessorName is still the
+        // "Unknown processor" placeholder), so the report has to explain the
+        // cross-CPU cumulative figure rather than present it bare.
+        var report = BenchCheck.Evaluate(
+            PolicyWith(allocGating: true),
+            fresh: Side(_epyc, M(140)),
+            Loader(rolling: Side(_epyc, M(100)), origin: Side(_xeon, M(100))));
+
+        Assert.Contains(
+            report.Notes,
+            n => n.Contains("CPU mismatch", StringComparison.Ordinal)
+                 && n.Contains("origin baseline", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Matching_cpus_across_all_three_sides_add_no_mismatch_note() {
+        var report = BenchCheck.Evaluate(
+            PolicyWith(allocGating: true),
+            fresh: Side(_epyc, M(140)),
+            Loader(rolling: Side(_epyc, M(100)), origin: Side(_epyc, M(100))));
+
+        Assert.DoesNotContain(report.Notes, n => n.Contains("CPU mismatch", StringComparison.Ordinal));
+    }
+
+    // --- policy parsing: D-396's rename must not fail open ---
+
+    private const string PolicyJsonWith = """
+        {
+          "perSprintPercent": 5.0,
+          "cumulativePercent": 12.0,
+          "allocPercent": 10.0,
+          "timeSignificanceK": 3.0,
+          "categories": [
+            {
+              "name": "compile",
+              "namespacePrefix": "Grob.Benchmarks.Compile",
+              "baseline": "compile.json",
+              §FLAG§
+            }
+          ]
+        }
+        """;
+
+    private static string PolicyText(string categoryFlag) => PolicyJsonWith.Replace("§FLAG§", categoryFlag, StringComparison.Ordinal);
+
+    [Fact]
+    public void ParsePolicy_reads_the_current_allocGating_contract() {
+        var policy = BenchCheck.ParsePolicy(PolicyText("\"allocGating\": true"));
+
+        Assert.True(Assert.Single(policy.Categories).AllocGating);
+        Assert.Equal(10.0, policy.AllocPercent);
+    }
+
+    [Fact]
+    public void ParsePolicy_rejects_the_legacy_gating_field_rather_than_ignoring_it() {
+        // Before D-396 the field was `gating`. Silently ignoring a leftover would
+        // default AllocGating to false and stand `compile`'s allocation-percent
+        // check down without a word — the exact fail-open shape D-395 diagnosed.
+        var ex = Assert.Throws<JsonException>(() => BenchCheck.ParsePolicy(PolicyText("\"gating\": true")));
+
+        Assert.Contains("gating", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParsePolicy_rejects_a_policy_carrying_both_gating_and_allocGating() {
+        Assert.Throws<JsonException>(
+            () => BenchCheck.ParsePolicy(PolicyText("\"gating\": true, \"allocGating\": false")));
+    }
+
+    [Fact]
+    public void ParsePolicy_rejects_a_null_document() {
+        Assert.Throws<JsonException>(() => BenchCheck.ParsePolicy("null"));
+    }
+
+    [Fact]
+    public void The_shipped_policy_file_parses_under_the_strict_policy_options() {
+        // Rejecting unmapped members cuts both ways: it catches a stale `gating`, and
+        // it would also reject a new policy.json field nobody mapped. Prove the file
+        // the workflow actually loads still round-trips.
+        var policy = BenchCheck.LoadPolicy(Path.Combine(AppContext.BaseDirectory, "policy.json"));
+
+        Assert.Equal(4, policy.Categories.Count);
+        Assert.True(policy.Categories.Single(c => c.Name == "compile").AllocGating);
+    }
+
+    [Fact]
+    public void LoadPolicy_surfaces_a_rejected_field_as_InvalidDataException_naming_the_file() {
+        var path = Path.Combine(Path.GetTempPath(), $"grob-policy-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, PolicyText("\"gating\": true"));
+        try {
+            var ex = Assert.Throws<InvalidDataException>(() => BenchCheck.LoadPolicy(path));
+
+            Assert.Contains(path, ex.Message, StringComparison.Ordinal);
+            Assert.IsType<JsonException>(ex.InnerException);
+        } finally {
+            File.Delete(path);
+        }
     }
 }

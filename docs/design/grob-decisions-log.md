@@ -391,6 +391,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-393 | August 2026 | VM — native dispatch (allocation) | Decision-only, no source change. Corrects an earlier conflation: D-391's 227.9 B/call array-dispatch tax is sources 2 (`GetMethod` per-call rebinding) + 3 (D-389's `GetProperty` closure tax), independently addressable — source 1 (the per-call `VmInvoker` closure at the `Call` handler, inside the 186.1 B/call figure every native pays) is not part of that gap at all. **Q1 ratified:** `VmInvoker` becomes a `readonly struct`, removing source 1's allocation for every native call. No registration-shape change (`IPluginRegistrar.RegisterNative`'s signature is untouched), but — recorded, not implied away — `VmInvoker` is public and surfaces through `NativeFunction.Implementation`, so the delegate→struct conversion is a **binary** break for _every_ out-of-tree native — the type sits in the `Implementation` signature all of them satisfy, whether or not they ever call the callback — and additionally a **source** break for the higher-order subset that has to rewrite `invoker(...)` to `invoker.Invoke(...)`; in-tree that rewrite is four one-token call forms, and there are no external consumers of either kind today. **Q1 option C (splitting registration into pure/higher-order shapes, narrowing the plugin API) rejected for now** — only 4 of ~136 natives are higher-order, `IPluginRegistrar` has one production implementer and zero external plugin consumers today (`Grob.Http`/`Crypto`/`Zip` are empty scaffolds), so the breaking change and two-dispatch-path cost are not yet justified; recorded with an explicit revisit trigger (a non-Stdlib native registers, or a native is found stashing a `VmInvoker` in a field). The re-entrancy hazard this would also close is real but currently dormant and left open, independent of the B/C choice. **Q2 ratified:** cache the bound `NativeFunction` per receiver instance (a lazy field on `GrobArray`/`GrobMap`, keyed by method name) — invalidation-free by construction, on two independent grounds: bound natives close over the receiver by reference and always read live state, and (the load-bearing one, verified against source) the bound delegate captures the receiver and nothing else — `GetMethod`'s `invoker` parameter is never referenced, the higher-order arms taking their `VmInvoker` from the caller at invocation time — so no per-access `line`/`column`/token/`FinallyContext` exists inside a cache entry to go stale. The cache's lifetime is tied to the receiver's own. **Q3 ratified:** restructure `GetProperty`'s array arm so the closure-declaring statements sit in their own scope, so early-returning `.length`/`.isEmpty`/`$snapshot` reads stop paying D-389's tax; guarded by a characterisation test, not a language guarantee (D-388's caveat). All three land as separate increments before Sprint 9 Increment C, in order Q3 → Q1 → Q2 by ascending blast radius, each measured post-implementation against the `attribution` fixtures and required to lower, never raise, D-391's ceilings. No opcode change. No new error code; count unchanged at **121**. Refines D-389, D-391. Cites D-342, D-372, D-385 through D-392, `docs/design/bench-allocation-attribution.md`, `docs/design/bench-snapshot-residual.md`. |
 | D-394 | August 2026 | VM — native dispatch (allocation, implementation) | Implements D-393 Q3. The plan-mode gate re-confirmed on current source that `ArrayNatives.GetMethod`'s bind-time `invoker` parameter (`ArrayNatives.cs:34`) was never read by any switch arm — the four higher-order members (`filter`/`select`/`sort`/`each`) take their `VmInvoker` from their own `NativeFunction.Implementation` delegate's second parameter, supplied at invocation time by whichever VM invocation path runs the bound native — the `Call` handler for a direct call (`VirtualMachine.cs:1013–1034`), `InvokeCallable` for a re-entrant one nested inside another native (`VirtualMachine.cs:1373–1374`) — never from `GetMethod`'s bind-time one. Traced `xs.filter(f)` end to end to confirm it. No other `GetProperty` sub-arm shares D-389's shared-lexical-scope shape (the map arm already avoids it — `MapNatives.GetMethod`, CodeRabbit PR #165; the struct/nominal-type arm builds no such closure at all). Because the finding held, Q3 lands as the **cheaper deletion shape** D-393's own gate note flagged as possible, not the narrower-lexical-scope restructure Q3 originally ratified as its fallback: `ArrayNatives.GetMethod`'s `VmInvoker` parameter is deleted outright — now `GetMethod(string methodName, GrobArray receiver)`, matching `MapNatives.GetMethod`'s shape exactly — and `VirtualMachine.cs`'s `GetProperty` array arm builds no `CancellationToken`, `FinallyContext` or closure at bind time at all; the call site is now one line. `ArrayNatives.cs:28`'s stale doc comment (previously: the invoker "is captured in the native's delegate") is corrected on both the class-level summary and the method's own XML doc. The full existing higher-order/array test suite (`VirtualMachineNativeTests`, `VirtualMachineArrayQueryMemberTests`, `VirtualMachineArrayMutatingMemberTests` — filter/select/sort/each end to end, `Sort`'s comparer-fault-unwrap path, the cancellation-spanning-bridge test) passes unmodified. One new test (`Filter_LambdaFaultCaughtAndResumes`) covers the behavioural half of the invariant the deletion depends on: a lambda argument that faults inside a `GetProperty`-bound `filter` call is still caught and resumes correctly on the invocation-time `FinallyContext` alone. That no bind-time context is constructed is established not by that test but by source inspection and by the allocation measurement below — together confirming `ct`/`finallyContext` were never load-bearing at bind time, as the trace predicted. **Characterisation-test gap, recorded rather than papered over:** a direct `GC.GetAllocatedBytesForCurrentThread` allocation-ceiling assertion was judged impractical inside `Grob.Vm.Tests` — xUnit's default parallel execution and JIT tiered-compilation warm-up make per-call byte counts non-deterministic in a shared test-host process, and no precedent for this exists in the repository (D-388/D-389's own allocation work used a throwaway console harness outside the test suite for the same reason). D-391's `attribution`/`vm` BenchmarkDotNet ceilings (`Run_ArrayForIn`, `attr-array-dispatch`) remain the durable regression guard for this specific cost. **Measurement — local machine, this session, not a canonical baseline** (only the `benchmark.yml` `windows-latest` run produces one, D-391): same direct-GC-counter technique D-389 established (fresh `VirtualMachine` per trial, JIT warm-up excluded, five repeated trials, byte-identical each time at this precision), via a throwaway console harness (discarded, not committed) referencing `Grob.Compiler`/`Grob.Vm` directly, before (via `git stash`) and after, one sitting. `attr-array-dispatch` (`.contains` × 1,000, falls through to `ArrayNatives.GetMethod` every call): 409,408 B → 297,408 B, **-112,000 B (-112.0 B/call, -27.4%)** — the local before-figure sits close to but below D-391's canonical CI figure of 414.0 B/call, expected local-vs-CI variance, previously documented (D-387/D-391). `Run_ArrayForIn` (531,616 B basis, an exact match to D-391's committed CI figure on this run): **531,616 B → 371,520 B, -160,096 B (-30.1%)**. That delta is considerably larger than a naive "only the `length`-read tax" prediction (≈48,072 B) because the fixture's own build loop calls `.append()` 1,000 times before the `for...in` loop runs, and `.append()` shares the exact fall-through-to-`GetMethod` shape `.contains()` does (the `attr-array-dispatch` fixture's own comment already says so) — reconciled almost exactly: 1,000 × D-389's 48.072 B/call length-read tax + 1,000 × this session's own measured 112.0 B/call fall-through-path tax = 160,072 B predicted, 160,096 B measured, a 24 B difference inside measurement noise. Both figures move only in the direction D-313's ratchet rule requires (lower, never higher) against D-391's committed ceilings; no baseline file is touched, per the commissioning prompt's explicit scope boundary. The remaining post-fix per-call cost (≈297.4 B/call on `attr-array-dispatch`; ≈136.3 B/call inferred for the fall-through-path portion alone against D-389's Part 5 ≈248.3 B/call `append` figure) is the `NativeFunction`-plus-receiver-capturing-delegate allocation `GetMethod` still performs on every dispatch — D-393 Q2's per-receiver method cache is the increment that removes it, not this one. No opcode change. No new error code; count unchanged at **121**. No semantics change — D-372 reference semantics, D-383's contents-snapshot guarantee, the native-throw seam (D-342/D-382) and catchability are all untouched, confirmed by the unmodified passing suite. Q1 (`VmInvoker` struct-ification) and Q2 (per-receiver method cache) remain outstanding, sequenced next per D-393 Q4's ascending-blast-radius ordering. Refines D-393 (Q3, its gate note, Q4), D-389. Cites D-391, D-372, D-383, D-342, D-313, `docs/design/bench-snapshot-residual.md`. |
 | D-395 | August 2026 | Tooling — benchmarking (gate policy) | Decision-only. Confirms `BenchCheck`'s ×3σ per-sprint significance filter (D-333) is within-run `StandardDeviation` only and cannot see between-run variance — `Compile_TwoExpressions` moved **+12.0%** between two CPU-matched runs (`30707325720`→`30720384069`) against its own ≈2% within-run StdDev, while allocation stayed **0.0%** on every benchmark in both runs, including `vm`/`attribution` benchmarks moving +13.5–27.0% on the same unchanged code. **Time drops to informational on every category**, `compile` included, extending the treatment `vm`/`attribution`/`endToEnd` already had rather than inventing a new policy; allocation remains the sole gating axis. `compile.origin.json` stays un-recaptured — its cumulative axis is now informational by policy, not only by the pre-existing `"Unknown processor"` gap. Resolving the live false positive on `main` needs a separate implementation increment that decouples allocation-percent gating from the `gating` flag before flipping `compile`'s time axes off. No standing rule added for time-breach-plus-zero-alloc — moot once time never gates anywhere. Sample size stated honestly: one between-run delta per benchmark, not a distribution. Refines D-313, D-385 (Q3, Q6). Cites D-333, D-390, D-391. |
+| D-396 | August 2026 | Tooling — benchmarking (gate policy, implementation) | Implements D-395 Q3. `PolicyCategory.Gating` renamed `AllocGating` (JSON `gating` → `allocGating`), scoped to the allocation-percent axis only, mirroring D-391's unconditional-ceiling precedent but kept per-category (matrix stays `compile`-only, unlike the universal ceiling). `ClassifyTime` no longer takes a gating/CPU/`Policy` parameter at all — it computes the reported percentages and unconditionally returns `TimeClass.Informational`; `Ok`/`CpuMismatch`/`PerSprintBreach`/`CumulativeBreach` removed from the enum as structurally unreachable. **No category can gate on time by construction**, not merely by a flag reading false. `SameCpu`'s guard survives only as an explanatory report note. Walked through `30720384069`: `Compile_TwoExpressions` now reads `Informational`/`Ok` → `Outcome.Pass`; a genuine allocation-percent breach on `compile` still fails (mutation-verified both ways). No threshold value changed — `perSprintPercent`/`cumulativePercent`/`timeSignificanceK`/`allocPercent` are byte-identical in `policy.json`, the first three retained for CLI report-header context only; D-313's ratchet rule untouched. `grob-benchmarking-strategy.md` §8/§9/§9.1/§9.2 updated so the documented and enforced gates match; the §9.1 matrix's Time columns now read `Informational` uniformly and the stale "compile's cumulative axis... not currently enforceable" caveat is retired as moot. No `src/` change. No opcode change. No new error code; count unchanged at 121. Refines D-395 (Q3), D-391 (the ceiling precedent mirrored). Cites D-395, D-391, D-333, D-313, D-385 (Q6's matrix, amended by citation). |
 
 ---
 
@@ -9799,6 +9800,130 @@ changed `compile` row).
 
 ---
 
+### D-396 — Decouple time-gating from allocation-gating: `PolicyCategory.Gating` renamed `AllocGating`, `ClassifyTime` never classifies a breach (August 2026)
+
+Area: Tooling — benchmarking (gate policy, implementation)
+Supersedes: none
+Superseded by: none
+Refines: D-395 (Q3, its implementation), D-391 (the unconditional-ceiling precedent this mirrors)
+
+**Implements D-395 Q3.** `policy.json`'s `gating` field previously coupled the
+time axes and the allocation-percent axis for a category —
+`BenchCheck.ClassifyTime` and `ClassifyAlloc` both read the same
+`PolicyCategory.Gating` flag. Turning `compile.gating` off to silence its time
+axis (per D-395 Q1) would have silenced its 10% allocation-percent check too,
+which the evidence (0.0% allocation delta across every benchmark in both
+`30720384069`-adjacent runs) says should keep gating. This entry decouples the
+two.
+
+**The mechanism.** `ClassifyTime` no longer takes a `gating`, CPU-match or
+`Policy` parameter at all — it computes the per-sprint/cumulative percentages
+for the report and unconditionally returns `TimeClass.Informational`. This is
+not "default the flag to false"; it is structurally impossible for time to
+gate, because the code path that could classify a breach no longer exists.
+`TimeClass.Ok`, `CpuMismatch`, `PerSprintBreach` and `CumulativeBreach` are
+removed from the enum — each was reachable only from the deleted branch —
+leaving `Informational`, `NewBenchmark`, `NoBaseline`. This is precisely the
+treatment `vm`/`attribution`/`endToEnd` already received under the old
+`gating:false` branch (D-395 Q1's own framing: "extending the treatment...
+already had"), now made the only treatment, for every category. `SameCpu`'s
+guard is retained and still evaluated in `Evaluate`, but only to add an
+explanatory note ("Δ time may reflect the CPU swing rather than a real
+change") — reporting, not classification.
+
+**The allocation-percent axis mirrors D-391's unconditional-ceiling precedent,
+scoped rather than universal.** D-391's absolute allocation ceiling already
+gates "regardless of `gating`"; the allocation-percent axis needed its own
+independent field the same way, but — unlike the ceiling — the gating matrix
+(D-395, restated at D-385/D-386 Q6) keeps allocation-percent scoped to
+`compile` alone, `vm`/`attribution`/`endToEnd` staying informational,
+"unchanged from today." `PolicyCategory.Gating` (JSON `"gating"`) is renamed
+`AllocGating` (JSON `"allocGating"`) and used solely by `ClassifyAlloc`;
+values in `policy.json` are unchanged (`compile: true`, the other three:
+`false`) — only the key name and its documented scope move. Rename over
+removal: the field is still load-bearing for `compile`'s allocation-percent
+gate, so a vestigial `gating` name that no longer touches the axis it is
+named after was the trap to avoid (D-395's own "gating is a misleading name"
+flag), not a reason to delete it.
+
+**Net effect, walked through against `30720384069`.**
+`Compile_TwoExpressions` (+12.0% time, 0.0% allocation delta, `allocGating:
+true`) now classifies `TimeClass.Informational` / `AllocClass.Ok` →
+`Outcome.Pass`. **No category gates on time, by construction** — confirmed
+by the fact that no code path in `BenchCheck.cs` can produce a time-breach
+classification any more, not merely by a flag reading false on this run.
+
+**Tests, mutation-verified per the increment's own requirement.**
+`BenchCheckTests.cs`: `No_category_ever_gates_on_time_even_on_a_severe_regression`
+asserts `Outcome.Pass`/`TimeClass.Informational` on a deliberately extreme
+(+200%) time delta with `allocGating: true` and 0% allocation delta — reverting
+`ClassifyTime` to consult any flag (verified by hand: reintroducing a
+per-sprint threshold check) turns this red.
+`Allocation_percent_breach_on_compile_still_fails_the_gate` is the converse —
+a genuine 20% allocation delta on `compile` still fails — reverting
+`ClassifyAlloc` to ignore `AllocGating` (verified by hand: removing the
+`if (!category.AllocGating)` branch) turns this red.
+`Run_30720384069_scenario_is_informational_not_a_breach` reproduces the real
+run's figures (StdDev ≈2.02%, +12.0% per-sprint delta, 0% allocation delta)
+end to end. `Non_gating_category_allocation_percent_is_reported_not_failed`
+replaces the old time-focused non-gating test — the flag's only remaining
+effect is on the allocation-percent axis.
+`Proven_cross_cpu_fixture_matches_the_real_run` and
+`Cpu_mismatch_time_informational_allocation_still_gates`
+are retained, re-pointed at `TimeClass.Informational` (from the now-removed
+`CpuMismatch`) — proving allocation is still unaffected by CPU identity,
+which was always true and remains the CPU guard's only remaining
+consequence. `CliRenderTests.cs`'s `Time_class_renders_correct_status_label`
+Theory drops its four now-impossible rows. Every existing `BenchCheckTests`/
+`CliRenderTests` test passes with the change visible in the diff — none were
+left unmodified where the old one no longer compiled or no longer held.
+
+**No threshold value changed.** `perSprintPercent` (5%), `cumulativePercent`
+(12%), `timeSignificanceK` (3) and `allocPercent` (10%) are byte-identical in
+`policy.json`; the first three are retained purely as CLI report-header
+context (they are no longer consulted by any classification) rather than
+removed, since D-395 explicitly kept the time axes "computed and reported, as
+information." This entry changes **which axes gate**, not what any number is
+— D-313's ratchet rule is untouched by this change. No baseline re-captured;
+no `compile.origin.json` change (its cumulative axis was already informational
+by D-395 Q2, independent of this entry). `grob-benchmarking-strategy.md`
+§8/§9/§9.1/§9.2 updated so the documented gate and the enforced gate stay the
+same statement (the §9.1 gating matrix's Time columns now read
+`Informational` uniformly; the "compile's cumulative axis... not currently
+enforceable" caveat is retired as moot, superseded by the unconditional
+informational status).
+
+**Two hardenings from PR review, both consequences of this entry rather than
+new policy.** First, the rename must not fail open: `policy.json` is now
+deserialised with `JsonUnmappedMemberHandling.Disallow`, so a `gating` field
+left behind by this rename — or any field the tool does not map — throws
+instead of being silently ignored. Ignoring it would have defaulted
+`AllocGating` to `false` and stood `compile`'s allocation-percent check down
+without a word, which is the same fail-open shape D-395 diagnosed on the time
+axis. BenchmarkDotNet reports keep the permissive options; their documents
+carry many members this tool deliberately does not map. `LoadPolicy` is split
+into a pure `ParsePolicy` plus the file read, and wraps the failure as
+`InvalidDataException` naming the file. Second, the CPU-identity guard now
+also compares the fresh run against the **origin** baseline, not only the
+rolling one: the cumulative axis is measured against the origin, whose CPU can
+differ from the fresh run's while the rolling baseline's does not — the live
+case for
+`compile.origin.json`'s `"Unknown processor"` capture — and previously that
+cross-CPU percentage appeared in the report unexplained. Each side carries its
+own note.
+
+No `src/` change — `tooling/Grob.BenchCheck`, `tooling/Grob.BenchCheck.Tests`
+and `bench/Grob.Benchmarks/baseline/policy.json` only. No opcode change. No
+new error code; count unchanged at **121**. Cites D-395 (the ratified decision
+this implements, particularly Q1 and Q3), D-391 (the unconditional-ceiling
+mechanism this mirrors for the allocation-percent axis), D-333 (the
+significance-aware gate whose enforcement this retires while keeping its
+figures visible), D-313 (the ratchet rule confirmed untouched), D-385 (Q6's
+gating matrix, amended by citation here — D-313's own entry is never edited,
+per the D-385/D-386 precedent).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -10020,7 +10145,23 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — time-axis noise-floor decision session, D-395 added:_
+_August 2026 — decouple time-gating from allocation-gating, D-396 added:_
+_implements D-395 Q3. PolicyCategory.Gating renamed AllocGating (JSON_
+_gating → allocGating), scoped to the allocation-percent axis only,_
+_mirroring D-391's unconditional-ceiling precedent but kept per-category._
+_ClassifyTime no longer takes a gating/CPU/Policy parameter — it computes_
+_the reported percentages and unconditionally returns Informational;_
+_Ok/CpuMismatch/PerSprintBreach/CumulativeBreach removed from TimeClass as_
+_structurally unreachable, so no category can gate on time by construction._
+_SameCpu's guard survives only as an explanatory report note. Walked_
+_through 30720384069: Compile_TwoExpressions now reads Informational/Ok →_
+_Pass; a genuine allocation-percent breach on compile still fails_
+_(mutation-verified both ways). No threshold value changed — the three_
+_time figures are retained for CLI header context only; D-313's ratchet_
+_rule untouched. grob-benchmarking-strategy.md's §9.1 gating matrix and_
+_§8/§9/§9.2 prose updated to match. No src/ change. No opcode change, no_
+_new error code, count unchanged at 121._
+_Previous: August 2026 — time-axis noise-floor decision session, D-395 added:_
 _BenchCheck's ×3σ per-sprint significance filter (D-333) is confirmed_
 _within-run StandardDeviation only, unable to see the between-run variance_
 _that broke run 30720384069's compile gate (+12.0% against a ~2% own-StdDev_

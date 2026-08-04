@@ -153,7 +153,7 @@ something worth understanding.
 **Question answered:** where, specifically, does a whole script's allocation
 go?
 
-A dedicated, permanent, **non-gating** (`policy.json`: `"gating": false`)
+A dedicated, permanent, **non-gating** (`policy.json`: `"allocGating": false`)
 category added by D-385/D-386 (phase 1 findings:
 `docs/design/bench-allocation-attribution.md`). The `attr-*` fixtures are
 **instruments, not guards** — they measure the pipeline floor, loop
@@ -207,8 +207,14 @@ source file on disk → compiled → executed → exit. This is the workload
 that actually matters. If end-to-end numbers regress, something is
 wrong even if the micro-benchmarks all look fine.
 
-This category is the primary gate. The other two exist to help diagnose
-regressions surfaced here.
+This category is the *intended* primary gate, and is not gating yet: the
+validation-suite corpus it needs is still F8-open, so it carries
+`allocGating: false` and no allocation ceiling today, and `compile` holds the
+allocation-percent gate in the meantime (§9.1's matrix, §9.2's flip
+condition). It holds only that one: `vm` and `attribution` gate on their
+absolute allocation ceilings whatever their `allocGating` flag says (D-333,
+D-391). The other categories exist to help diagnose regressions surfaced
+here.
 
 ---
 
@@ -578,15 +584,18 @@ rationale in the commit message and a decisions-log entry. The
 regression gate (§9) never updates a baseline on its own — it reads,
 compares and reports; the human commits the update.
 
-`policy.json` holds the per-sprint threshold, the cumulative threshold,
-the allocation thresholds, the time-significance factor and the list of
-categories with their gating flags and allocation ceilings. It is data so
-the cumulative budget is a number the maintainer edits, not a constant
-recompiled into the tool. Its shape (D-333 added `allocPercent` and
-`timeSignificanceK`; D-391 replaced the single global `lohTripwireBytes`
+`policy.json` holds the allocation threshold and the list of categories with
+their allocation-gating flags and allocation ceilings, plus the historical
+per-sprint/cumulative/significance time figures (§9.1) retained for the CLI
+report header's context only — time never gates on any category (D-395/
+D-396). It is data so the cumulative budget is a number the maintainer edits,
+not a constant recompiled into the tool. Its shape (D-333 added `allocPercent`
+and `timeSignificanceK`; D-391 replaced the single global `lohTripwireBytes`
 constant with a per-category `allocationCeilingBytes` default and optional
 per-benchmark `benchmarkAllocationCeilings` overrides — this example was
-also missing the `attribution` category added by D-387, folded in here):
+also missing the `attribution` category added by D-387, folded in here;
+D-396 renamed `gating` to `allocGating`, scoping it to the allocation-percent
+axis alone):
 
 ```json
 {
@@ -599,14 +608,14 @@ also missing the `attribution` category added by D-387, folded in here):
       "name": "compile",
       "namespacePrefix": "Grob.Benchmarks.Compile",
       "baseline": "compile.json",
-      "gating": true,
+      "allocGating": true,
       "allocationCeilingBytes": 20100
     },
     {
       "name": "vm",
       "namespacePrefix": "Grob.Benchmarks.Vm",
       "baseline": "vm.json",
-      "gating": false,
+      "allocGating": false,
       "allocationCeilingBytes": 4700,
       "benchmarkAllocationCeilings": {
         "Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn": 637900,
@@ -617,7 +626,7 @@ also missing the `attribution` category added by D-387, folded in here):
       "name": "attribution",
       "namespacePrefix": "Grob.Benchmarks.Attribution",
       "baseline": "attribution.json",
-      "gating": false,
+      "allocGating": false,
       "allocationCeilingBytes": 55400,
       "benchmarkAllocationCeilings": {
         "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrNative": 278700,
@@ -631,21 +640,23 @@ also missing the `attribution` category added by D-387, folded in here):
       "name": "endToEnd",
       "namespacePrefix": "Grob.Benchmarks.EndToEnd",
       "baseline": "endToEnd.json",
-      "gating": false
+      "allocGating": false
     }
   ]
 }
 ```
 
-`allocPercent` governs the per-sprint allocation-growth axis, and
-`timeSignificanceK` the significance-aware time gate — both described in
-§9. `allocationCeilingBytes`/`benchmarkAllocationCeilings` govern the
-absolute allocation ceiling (§9, §9.2) — a category with neither configured
-(`endToEnd`, above, while F8 is open) has no ceiling to breach yet. The
-committed baseline JSON already carries the data both `allocPercent` and
-`timeSignificanceK` need (`Memory.BytesAllocatedPerOperation` and
-`Statistics.StandardDeviation`, BenchmarkDotNet's native output), so neither
-required a benchmark-workload
+`allocPercent` governs the per-sprint allocation-growth axis (§9), gated
+per category by `allocGating`. `allocationCeilingBytes`/
+`benchmarkAllocationCeilings` govern the absolute allocation ceiling (§9,
+§9.2) — a category with neither configured (`endToEnd`, above, while F8 is
+open) has no ceiling to breach yet. `perSprintPercent`/`cumulativePercent`/
+`timeSignificanceK` are retained and still rendered in the CLI report header
+for a reader's context, but no longer drive any classification — time is
+informational on every category regardless of these figures or of
+`allocGating` (D-395/D-396). The committed baseline JSON already carries the
+data `allocPercent` needs (`Memory.BytesAllocatedPerOperation`,
+BenchmarkDotNet's native output), so it required no benchmark-workload
 change to add.
 
 ### 8.1 Canonical Production Path — GitHub Actions Workflow
@@ -683,19 +694,24 @@ against an Intel Xeon Platinum 8370C verification run, both labelled
 keying on the CPU itself, not the label.
 
 **The regression gate runs inside this workflow (D-313, hardened by
-D-333).** After the benchmark run, the workflow invokes
+D-333, D-395/D-396).** After the benchmark run, the workflow invokes
 `tooling/Grob.BenchCheck` against the committed baselines and the fresh
 `-report-full.json`. The tool computes the time and allocation comparisons
 (§9), writes a per-benchmark delta table to the job summary and exits
-non-zero on a breach — so the workflow run itself goes red when a gating
-category regresses on either axis, or when any category's allocation meets or
-exceeds its allocation ceiling. The check reads only; it never commits a baseline.
+non-zero on a breach — so the workflow run itself goes red when an
+`allocGating` category's allocation-percent regresses, or when any category's
+allocation meets or exceeds its allocation ceiling. Time deltas are always
+computed and shown but never fail the run. The check reads only; it never
+commits a baseline.
 Committing an updated baseline remains the deliberate manual step above.
-Allocation gates regardless of which CPU produced the run; the time axis
-gates only when the fresh run's CPU matches the baseline's — on a CPU
-mismatch the time comparison is reported informational rather than refused,
-since hosted runners cannot be CPU-pinned and a hard refusal would make the
-gate unusable in practice.
+Allocation gates regardless of which CPU produced the run; the time axes do
+not gate at all, on a matched CPU or a mismatched one (D-395/D-396). The
+CPU-identity guard still runs, and its only remaining job is to annotate the
+report — against the rolling baseline for the per-sprint Δ, and against the
+origin baseline for the cumulative Δ, which can disagree with the fresh run's
+CPU even when the rolling baseline agrees. Hosted runners cannot be
+CPU-pinned, so a hardware swing has to be visible in the report rather than
+mistaken for a slowdown.
 
 ### 8.2 Local Invocation — Debugging and One-Off Exploration
 
@@ -729,66 +745,62 @@ benchmark run belongs **after** the sprint's correctness QA loop has
 landed and the code is final — measuring a state that is about to change
 wastes the run.
 
-The policy has **two time comparison axes** (D-313) plus, since D-333, an
-**allocation axis** evaluated alongside them. A single axis — comparing only
-against the immediately prior baseline and then updating it — ratchets: a
-regression below the gate passes, becomes the new normal and a steady
-few-percent-per-sprint creep compounds invisibly. The two time axes close
-that; the allocation axis closes a different gap the Sprint 6 run exposed —
-a deterministic, CPU-independent signal (`[MemoryDiagnoser]`'s
-`BytesAllocatedPerOperation`) that the gate previously recorded into every
-baseline but never acted on, so a defect like D-332's Large Object Heap
-allocation read as merely informational instead of failing outright.
+The policy has **two time comparison axes** (D-313), both informational on
+every category since D-395/D-396 (below), plus, since D-333, an
+**allocation axis** that is the sole gating signal. A single axis —
+comparing only against the immediately prior baseline and then updating it —
+ratchets: a regression below the gate passes, becomes the new normal and a
+steady few-percent-per-sprint creep compounds invisibly. The allocation axis
+closes that gap the Sprint 6 run exposed — a deterministic, CPU-independent
+signal (`[MemoryDiagnoser]`'s `BytesAllocatedPerOperation`) that the gate
+previously recorded into every baseline but never acted on, so a defect like
+D-332's Large Object Heap allocation read as merely informational instead of
+failing outright.
 
-**Axis 1 — per-sprint gate (noise filter), now significance-aware
-(D-333).** New results compared against the **rolling** baseline
-(`<category>.json`). A breach requires the delta to exceed
-`max(perSprintPercent, timeSignificanceK × relativeStdDev)` — the flat 5%
-remains a floor, but a delta inside the benchmark's own measurement noise no
-longer trips it. `relativeStdDev` is the larger of the fresh and baseline
-run's `StandardDeviation` as a percentage of their own `Mean` (the noisier
-side is the conservative choice), and `timeSignificanceK` is **3** — the
-standard three-sigma convention. Checked against the case that motivated it:
-Sprint 6's `Compile_TenPrints` breach had an ~8.7% delta against a ~3.2%
-relative StdDev; `3 × 3.2% ≈ 9.6%` absorbs it, while a genuine acute
-regression (the sprint that boxes a value on the dispatch hot path and jumps
-30%) stays far outside even a noisy (~5%) benchmark's 15% band. This was the
-gate's originally-stated precondition for tightening — "a quieter
-measurement first" — now met by measuring the noise itself rather than
-assuming a flat floor. Consecutive-breach filtering (requiring N breaches
-across runs before failing) was considered and deferred: it needs cross-run
-history the tool doesn't retain today, and the significance filter alone
-already resolves the demonstrated false positive.
+**Axis 1 — per-sprint (noise filter). Informational only, not enforced
+(D-395/D-396).** New results compared against the **rolling** baseline
+(`<category>.json`). `policy.json` still carries `perSprintPercent` and
+`timeSignificanceK`, rendered in the CLI header for context, but neither
+drives a classification — D-395 found `BenchCheck`'s ×3σ significance filter
+(`max(perSprintPercent, timeSignificanceK × relativeStdDev)`, `relativeStdDev`
+a benchmark's own within-run `StandardDeviation` as a percentage of its
+`Mean`) is structurally blind to **between-run** variance on hosted,
+non-pinned runners: a CPU-matched comparison moved **+12.0%** between two
+consecutive runs on unchanged code with a **0.0%** allocation delta, well
+past the filter's own ~6% threshold. D-396 retired the enforcement rather
+than widen the threshold further (D-313's ratchet rule forbids raising a
+threshold specifically because it fired) — Δ time is still computed and
+shown every row, so a real slowdown stays visible, it just cannot fail the
+build on its own.
 
-**Axis 2 — cumulative ceiling (anti-ratchet).** New results compared
-against the **frozen origin** baseline (`<category>.origin.json`).
-Threshold **12%** total drift to v1, evaluated at the flat percentage (the
-significance filter above applies to axis 1 only — the cumulative ceiling
-already smooths over single-run noise by design, across the whole v1 arc).
-A slow creep trips this within a few sprints even when every individual step
-is inside the 5% per-sprint gate. Read it against the arc: Grob lands
-benchmarking before optimisation, so features add real, correct overhead
-(checked arithmetic, nil checks, the extra type-checker passes) through the
-build sprints, and the dedicated optimisation pass claws it back. The 12% is
-sized for "necessary trades through features, recovered at optimisation",
-not "never regress".
+**Axis 2 — cumulative (anti-ratchet). Informational only, not enforced
+(D-395/D-396).** New results compared against the **frozen origin** baseline
+(`<category>.origin.json`). `cumulativePercent` (**12%**) is likewise
+retained and rendered for context — the arc it was sized for still matters
+when reading the number (Grob lands benchmarking before optimisation, so
+features add real, correct overhead through the build sprints and the
+dedicated optimisation pass claws it back; 12% was sized for "necessary
+trades through features, recovered at optimisation") — but a slow creep no
+longer fails the gate on its own; only a paired allocation-percent or
+allocation-ceiling breach does.
 
-**Axis 3 — allocation (D-333).** New results compared against the
-**rolling** baseline's `Memory.BytesAllocatedPerOperation` on two
+**Axis 3 — allocation (D-333). The sole gating axis.** New results compared
+against the **rolling** baseline's `Memory.BytesAllocatedPerOperation` on two
 sub-checks:
 
-- **Percent-vs-baseline** (`allocPercent`, **10%**): a gating category's
-  allocation growing by more than this fails the gate, mirroring axis 1 but
-  tighter — allocation is deterministic (the same code path allocates the
-  same bytes run to run), so it only needs to absorb legitimate minor
-  variance, not hardware noise. On a non-gating category the percentage is
-  reported, never failing.
+- **Percent-vs-baseline** (`allocPercent`, **10%**): an `allocGating: true`
+  category's allocation growing by more than this fails the gate, tighter
+  than the old time axes because allocation is deterministic (the same code
+  path allocates the same bytes run to run), so it only needs to absorb
+  legitimate minor variance, not hardware or scheduler noise. On an
+  `allocGating: false` category the percentage is reported, never failing.
 - **The allocation ceiling** (`allocationCeilingBytes`/
-  `benchmarkAllocationCeilings`, §9.2): any benchmark, gating or not, whose
-  fresh allocation meets or exceeds its applicable ceiling fails the gate
-  outright. This is the check that would have caught D-332 on day one
-  instead of filing it under "info" — an informational category is still
-  forbidden from silently landing on an unbounded allocation.
+  `benchmarkAllocationCeilings`, §9.2): any benchmark, `allocGating` or not,
+  whose fresh allocation meets or exceeds its applicable ceiling fails the
+  gate outright — unconditional, exactly as it ignored the old `gating` flag
+  before D-396's rename. This is the check that would have caught D-332 on
+  day one instead of filing it under "info" — an informational category is
+  still forbidden from silently landing on an unbounded allocation.
 
 ### 9.2 Allocation Ceiling — Category-Default and Per-Benchmark Thresholds (D-385 Q2, D-391)
 
@@ -897,43 +909,39 @@ ceiling may be *lowered* freely once a component contributing to it (like
 the `GetProperty` tax above) is fixed — the ratchet only forbids motion in
 the direction that hides cost.
 
-**CPU identity, and which axis it governs (D-333, refining D-309's "same
-runner type" to "same CPU identity").** `windows-latest` is a label, not a
-hardware pin — the post-Interlude-1 verification run proved a 25–37% time
-swing between an AMD EPYC 7763 baseline and an Intel Xeon Platinum 8370C
-run sharing that label, with allocation byte-identical across both. The
-gate's guard keys on `HostEnvironmentInfo.ProcessorName`, not the runner
-label, comparing the fresh run's CPU against the CPU each baseline file
-(rolling and origin independently) was captured on. **Allocation gates
-regardless of CPU** — it is deterministic hardware-independent data.
-**Time gates only when the fresh run's CPU matches the baseline's**; on a
-mismatch the time comparison (per-sprint or cumulative, whichever baseline's
-CPU differs) is reported informational, never a breach, rather than
-refused outright — hosted runners cannot be CPU-pinned, so a hard refusal
-would make the gate refuse constantly. A missing or placeholder CPU
-recording (for example a pre-D-333 baseline that predates this provenance
-discipline) is never treated as a match — an unrecorded CPU can't be
-verified equal to anything, so it also falls to informational rather than
-silently comparing. `compile.origin.json`'s frozen host predates CPU
-provenance entirely (`"Unknown processor"`, a stale BenchmarkDotNet 0.14.0
-capture); until it is deliberately re-frozen with a real capture, the
-compile category's cumulative axis reads informational rather than gating —
-a known, logged gap (D-333), not a silent one.
+**CPU identity (D-333, refining D-309's "same runner type" to "same CPU
+identity") — now affects reporting only.** `windows-latest` is a label,
+not a hardware pin — the post-Interlude-1 verification run proved a 25–37%
+time swing between an AMD EPYC 7763 baseline and an Intel Xeon Platinum
+8370C run sharing that label, with allocation byte-identical across both.
+The gate's guard keys on `HostEnvironmentInfo.ProcessorName`, not the runner
+label, comparing the fresh run's CPU against the rolling baseline's for the
+per-sprint axis and against the origin baseline's for the cumulative axis —
+each mismatch carries its own note, because the two sides can disagree
+independently. **Time
+was previously gated only when the fresh run's CPU matched the baseline's**;
+since D-395/D-396 that distinction no longer changes the classification —
+time is informational unconditionally, CPU-matched or not — but the guard
+is still evaluated, and a mismatch still adds an explanatory note to the
+report (Δ time may be a CPU artefact rather than a real change, so a reader
+does not mistake a hardware swing for a slowdown). **Allocation gates
+regardless of CPU** — it is deterministic, hardware-independent data, and
+was never suppressed by a CPU mismatch even before this change.
 
-**Which category gates.** The end-to-end script benchmarks are the primary
-gate — they measure the thing that matters. Compile-time and VM execution
-are diagnostic, there to localise where an end-to-end regression came from.
-**During build-out, before the end-to-end workload exists** (its thirteen
-validation scripts need control flow in Sprint 4 and functions in Sprint
-5), **compile-time gates cumulatively instead.** For a scripting language
-that compiles-and-runs on every invocation with no persistent process,
-compile time is real wall-clock time-to-result, not merely diagnostic — a
-script that goes from 50 ms to 200 ms to compile is a genuine regression
-even with execution unchanged. VM execution stays informational while it
-remains a first baseline with no origin to anchor against. When end-to-end
-becomes live it takes over as the gate and compile/VM drop to
-informational. That flip is a deliberate `gating` edit in `policy.json`,
-not an automatic change.
+**Which category gates.** The allocation axis is the only gating signal
+(D-395/D-396); `compile` is the sole category with `allocGating: true`
+today, both its 10% percent-vs-rolling check and its absolute ceiling.
+`vm`/`attribution`/`endToEnd` gate only on their absolute allocation
+ceilings, informational on the percent axis. Time — per-sprint and
+cumulative, every category including `compile` — is informational only,
+still computed and shown so a real slowdown stays visible, but incapable of
+failing the build (D-395 diagnosed a within-run ×3σ noise filter that cannot
+see between-run variance; D-396 is the implementation). This supersedes the
+original design's stopgap of having `compile` gate cumulatively until
+`endToEnd`'s validation-suite corpus existed (§4.3, F8) — that stopgap is
+retired, not merely dormant; reinstating any time gate is a future,
+separately decided increment (D-395 Q1's rejected options B/C, revisit
+triggers noted there).
 
 **The gate is mechanical, not eyeballed.** `tooling/Grob.BenchCheck`
 performs both comparisons inside the workflow (§8.1) and the run goes red
@@ -957,36 +965,45 @@ headroom against the cumulative ceiling, which is the point.
 An hour of automated benchmarking at the close of a two-week sprint is
 rounding-error overhead against the cost of catching regressions late.
 
-### 9.1 Gating Matrix (D-385/D-386 Q6, made explicit by D-387)
+### 9.1 Gating Matrix (D-385/D-386 Q6, made explicit by D-387; time columns retired by D-395/D-396)
 
 The matrix above is stated here explicitly rather than left for a reader to
 reconstruct from `policy.json` plus separate decisions:
 
-| Category      | Time, per-sprint | Time, cumulative                          | Allocation (%) | Allocation ceiling |
-|----------------|-------------------|--------------------------------------------|-----------------|--------------|
-| `compile`      | Gates             | Gates *(informational until `compile.origin.json` is re-captured — see below)* | Gates | Gates |
-| `vm`           | Informational     | Informational                              | Informational   | Gates        |
-| `attribution`  | Informational     | Informational                              | Informational   | Gates        |
-| `endToEnd`     | Informational (empty — F8 open) | Informational                | Informational   | Not configured (empty — F8 open) |
+| Category      | Time, per-sprint | Time, cumulative | Allocation (%) | Allocation ceiling |
+|----------------|-------------------|-------------------|-----------------|--------------|
+| `compile`      | Informational     | Informational     | Gates | Gates |
+| `vm`           | Informational     | Informational     | Informational   | Gates        |
+| `attribution`  | Informational     | Informational     | Informational   | Gates        |
+| `endToEnd`     | Informational (empty — F8 open) | Informational | Informational   | Not configured (empty — F8 open) |
 
-The allocation ceiling (§9.2) ignores the `gating` flag entirely — it fires
-on any benchmark, in any category with one configured, per D-333. `endToEnd`
-has none configured today; §9.2 explains why an absent ceiling never
-breaches rather than silently passing on some implicit default.
+No category gates on time — this is the one row-shape the whole matrix now
+shares, by construction (`BenchCheck.ClassifyTime` computes no threshold and
+takes no category input at all; see §9 Axis 1/2). The allocation ceiling
+(§9.2) ignores `allocGating` entirely — it fires on any benchmark, in any
+category with one configured, per D-333. `endToEnd` has none configured
+today; §9.2 explains why an absent ceiling never breaches rather than
+silently passing on some implicit default.
 
-**Compile's cumulative axis is documented but not currently enforceable.**
-`compile.origin.json`'s `HostEnvironmentInfo.ProcessorName` reads `"Unknown
-processor"` (a pre-D-333 BenchmarkDotNet 0.14.0 capture); `BenchCheck.SameCpu`
-never treats that placeholder as a match to anything (§9, CPU identity), so
-the 12% cumulative ceiling reads informational in practice until someone
-deliberately re-captures that file. This was already logged at D-333 and
-re-confirmed at D-385 Q3 — stated here so a reader of this document alone is
-not told a guarantee the current data cannot deliver.
+**`compile.origin.json`'s CPU-provenance gap is now moot.** Its
+`HostEnvironmentInfo.ProcessorName` still reads `"Unknown processor"` (a
+pre-D-333 BenchmarkDotNet 0.14.0 capture) and `BenchCheck.SameCpu` still
+never treats that placeholder as a match to anything, but this no longer
+matters to the cumulative axis's classification — cumulative is
+informational for every category unconditionally now (D-395/D-396), not
+only because of this placeholder. It does still show: the placeholder never
+matches, so every `compile` run carries an origin-side CPU-mismatch note
+saying the cumulative Δ may be a hardware artefact. Re-capturing the file
+remains a legitimate future act (it would retire that standing note and make
+the cumulative figure trustworthy) but is no longer a precondition for
+anything gating.
 
 **Flip condition.** When `endToEnd` carries the full validation-suite corpus
-(§4.3, not yet built — F8), it becomes the primary gate and `compile`/`vm`
-drop to informational. This is a deliberate, logged `policy.json` edit, never
-an automatic change.
+(§4.3, not yet built — F8), it becomes the primary allocation-gating category:
+`endToEnd.allocGating` flips to `true` and `compile.allocGating` flips to
+`false`. This is a deliberate, logged `policy.json` edit, never an automatic
+change; the time columns above are unaffected by this flip — they stay
+informational regardless of which category holds `allocGating: true`.
 
 ---
 
@@ -1071,5 +1088,10 @@ _drift found by the phase 1 allocation-attribution session: `vm` rebuilt_
 _to match §4.2's since-inception hand-off-isolated intent (§4.2), the_
 _`attr-*` differential fixtures given a dedicated, permanent, non-gating_
 _`attribution` category (§4.2a), and §9's gating matrix and compile's_
-_cumulative-axis caveat stated explicitly (§9.1). `grob-v1-requirements.md`_
+_cumulative-axis caveat stated explicitly (§9.1). D-395/D-396 (August 2026)_
+_retire time as a gating axis on every category — a within-run ×3σ noise_
+_filter proved blind to between-run variance — decoupling the_
+_allocation-percent axis from the old shared `gating` flag (renamed_
+_`allocGating`, §8/§9/§9.1) so allocation keeps gating `compile` without a_
+_time-axis flag flip silencing it too. `grob-v1-requirements.md`_
 _§12 and `grob-solution-architecture.md` cite this document for detail._

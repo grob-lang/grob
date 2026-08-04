@@ -37,13 +37,9 @@ internal static class Cli {
             return lastDot >= 0 ? fullName[(lastDot + 1)..] : fullName;
         }
         static string TimeStatus(TimeClass cls) => cls switch {
-            TimeClass.Ok => "ok",
             TimeClass.Informational => "info",
-            TimeClass.CpuMismatch => "cpu mismatch",
             TimeClass.NewBenchmark => "new",
             TimeClass.NoBaseline => "establishing",
-            TimeClass.PerSprintBreach => "**per-sprint breach**",
-            TimeClass.CumulativeBreach => "**cumulative breach**",
             _ => cls.ToString(),
         };
         static string AllocStatus(AllocClass cls) => cls switch {
