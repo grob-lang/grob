@@ -210,8 +210,11 @@ wrong even if the micro-benchmarks all look fine.
 This category is the *intended* primary gate, and is not gating yet: the
 validation-suite corpus it needs is still F8-open, so it carries
 `allocGating: false` and no allocation ceiling today, and `compile` holds the
-gate in the meantime (§9.1's matrix, §9.2's flip condition). The other
-categories exist to help diagnose regressions surfaced here.
+allocation-percent gate in the meantime (§9.1's matrix, §9.2's flip
+condition). It holds only that one: `vm` and `attribution` gate on their
+absolute allocation ceilings whatever their `allocGating` flag says (D-333,
+D-391). The other categories exist to help diagnose regressions surfaced
+here.
 
 ---
 
@@ -907,7 +910,7 @@ the `GetProperty` tax above) is fixed — the ratchet only forbids motion in
 the direction that hides cost.
 
 **CPU identity (D-333, refining D-309's "same runner type" to "same CPU
-identity") — now an allocation-only concern.** `windows-latest` is a label,
+identity") — now affects reporting only.** `windows-latest` is a label,
 not a hardware pin — the post-Interlude-1 verification run proved a 25–37%
 time swing between an AMD EPYC 7763 baseline and an Intel Xeon Platinum
 8370C run sharing that label, with allocation byte-identical across both.
