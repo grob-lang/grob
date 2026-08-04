@@ -251,13 +251,33 @@ public sealed record BaselineSide(
 /// </summary>
 public static class BenchCheck {
     /// <summary>
-    /// Shared <see cref="JsonSerializerOptions"/> used when reading BenchmarkDotNet
-    /// reports and policy files. Case-insensitive, allows comments and trailing commas.
+    /// <see cref="JsonSerializerOptions"/> used when reading BenchmarkDotNet reports.
+    /// Case-insensitive, allows comments and trailing commas, and ignores the many
+    /// report members this tool does not map. Policy files use the stricter
+    /// <see cref="PolicyJson"/> instead.
     /// </summary>
     public static readonly JsonSerializerOptions Json = new() {
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
+    };
+
+    /// <summary>
+    /// <see cref="JsonSerializerOptions"/> for <c>policy.json</c> only. Identical to
+    /// <see cref="Json"/> except that an unmapped member is rejected rather than
+    /// ignored: the policy file configures the build gate, so a field this tool does
+    /// not understand — a <c>gating</c> left behind by D-396's rename to
+    /// <c>allocGating</c>, or a plain typo — must fail loudly. Ignoring it would
+    /// default <see cref="PolicyCategory.AllocGating"/> to <see langword="false"/> and
+    /// stand the allocation-percent check down silently, which is the fail-open shape
+    /// D-395 diagnosed. BenchmarkDotNet reports keep <see cref="Json"/>: their
+    /// documents carry many members this tool deliberately does not map.
+    /// </summary>
+    private static readonly JsonSerializerOptions PolicyJson = new() {
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
     /// <summary>
@@ -306,8 +326,21 @@ public static class BenchCheck {
             if (!SameCpu(fresh.Host, rolling.Host)) {
                 notes.Add(
                     $"{category.Name}: CPU mismatch — fresh '{CpuOf(fresh.Host)}' vs rolling baseline " +
-                    $"'{CpuOf(rolling.Host)}'. Δ time may reflect the CPU swing rather than a real change; " +
-                    "allocation is CPU-independent and still gates when configured.");
+                    $"'{CpuOf(rolling.Host)}'. Δ time per-sprint may reflect the CPU swing rather than a real " +
+                    "change; allocation is CPU-independent and still gates when configured.");
+            }
+
+            // The cumulative axis is measured against the *origin*, whose CPU can
+            // differ from the fresh run's even when the rolling baseline's does not —
+            // the live case
+            // for `compile.origin.json` and its "Unknown processor" capture. Without
+            // this the report shows a cross-CPU cumulative percentage with nothing
+            // explaining it.
+            if (origin is not null && !SameCpu(fresh.Host, origin.Host)) {
+                notes.Add(
+                    $"{category.Name}: CPU mismatch — fresh '{CpuOf(fresh.Host)}' vs origin baseline " +
+                    $"'{CpuOf(origin.Host)}'. Δ time cumulative may reflect the CPU swing rather than a real " +
+                    "change; the allocation axes do not use the origin baseline and are unaffected.");
             }
 
             foreach (var (name, freshM) in freshInCategory) {
@@ -460,9 +493,27 @@ public static class BenchCheck {
     /// <param name="path">Path to the policy JSON file.</param>
     /// <returns>The deserialised <see cref="Policy"/>.</returns>
     /// <exception cref="InvalidDataException">The file could not be parsed as a valid policy.</exception>
-    public static Policy LoadPolicy(string path)
-        => JsonSerializer.Deserialize<Policy>(File.ReadAllText(path), Json)
-           ?? throw new InvalidDataException($"Could not parse policy file '{path}'.");
+    public static Policy LoadPolicy(string path) {
+        try {
+            return ParsePolicy(File.ReadAllText(path));
+        } catch (JsonException ex) {
+            throw new InvalidDataException($"Could not parse policy file '{path}': {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Parses policy JSON text. Pure — the file-reading half is <see cref="LoadPolicy"/>,
+    /// which is also where a failure gains the offending file's name.
+    /// </summary>
+    /// <param name="json">The policy JSON document.</param>
+    /// <returns>The deserialised <see cref="Policy"/>.</returns>
+    /// <exception cref="JsonException">
+    /// The text is not valid policy JSON, or it carries a field this tool does not
+    /// map (see <see cref="PolicyJson"/>).
+    /// </exception>
+    public static Policy ParsePolicy(string json)
+        => JsonSerializer.Deserialize<Policy>(json, PolicyJson)
+           ?? throw new JsonException("Policy JSON deserialised to null.");
 
     /// <summary>
     /// Reads and deserialises a BenchmarkDotNet <c>-report-full.json</c> file.

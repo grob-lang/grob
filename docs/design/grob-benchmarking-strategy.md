@@ -207,8 +207,11 @@ source file on disk → compiled → executed → exit. This is the workload
 that actually matters. If end-to-end numbers regress, something is
 wrong even if the micro-benchmarks all look fine.
 
-This category is the primary gate. The other two exist to help diagnose
-regressions surfaced here.
+This category is the *intended* primary gate, and is not gating yet: the
+validation-suite corpus it needs is still F8-open, so it carries
+`allocGating: false` and no allocation ceiling today, and `compile` holds the
+gate in the meantime (§9.1's matrix, §9.2's flip condition). The other
+categories exist to help diagnose regressions surfaced here.
 
 ---
 
@@ -698,11 +701,14 @@ allocation meets or exceeds its allocation ceiling. Time deltas are always
 computed and shown but never fail the run. The check reads only; it never
 commits a baseline.
 Committing an updated baseline remains the deliberate manual step above.
-Allocation gates regardless of which CPU produced the run; the time axis
-gates only when the fresh run's CPU matches the baseline's — on a CPU
-mismatch the time comparison is reported informational rather than refused,
-since hosted runners cannot be CPU-pinned and a hard refusal would make the
-gate unusable in practice.
+Allocation gates regardless of which CPU produced the run; the time axes do
+not gate at all, on a matched CPU or a mismatched one (D-395/D-396). The
+CPU-identity guard still runs, and its only remaining job is to annotate the
+report — against the rolling baseline for the per-sprint Δ, and against the
+origin baseline for the cumulative Δ, which can disagree with the fresh run's
+CPU even when the rolling baseline agrees. Hosted runners cannot be
+CPU-pinned, so a hardware swing has to be visible in the report rather than
+mistaken for a slowdown.
 
 ### 8.2 Local Invocation — Debugging and One-Off Exploration
 
@@ -906,7 +912,10 @@ not a hardware pin — the post-Interlude-1 verification run proved a 25–37%
 time swing between an AMD EPYC 7763 baseline and an Intel Xeon Platinum
 8370C run sharing that label, with allocation byte-identical across both.
 The gate's guard keys on `HostEnvironmentInfo.ProcessorName`, not the runner
-label, comparing the fresh run's CPU against the rolling baseline's. **Time
+label, comparing the fresh run's CPU against the rolling baseline's for the
+per-sprint axis and against the origin baseline's for the cumulative axis —
+each mismatch carries its own note, because the two sides can disagree
+independently. **Time
 was previously gated only when the fresh run's CPU matched the baseline's**;
 since D-395/D-396 that distinction no longer changes the classification —
 time is informational unconditionally, CPU-matched or not — but the guard
@@ -979,9 +988,12 @@ pre-D-333 BenchmarkDotNet 0.14.0 capture) and `BenchCheck.SameCpu` still
 never treats that placeholder as a match to anything, but this no longer
 matters to the cumulative axis's classification — cumulative is
 informational for every category unconditionally now (D-395/D-396), not
-only because of this placeholder. Re-capturing the file remains a legitimate
-future act (it would still improve the CPU-mismatch note's accuracy) but is
-no longer a precondition for anything gating.
+only because of this placeholder. It does still show: the placeholder never
+matches, so every `compile` run carries an origin-side CPU-mismatch note
+saying the cumulative Δ may be a hardware artefact. Re-capturing the file
+remains a legitimate future act (it would retire that standing note and make
+the cumulative figure trustworthy) but is no longer a precondition for
+anything gating.
 
 **Flip condition.** When `endToEnd` carries the full validation-suite corpus
 (§4.3, not yet built — F8), it becomes the primary allocation-gating category:

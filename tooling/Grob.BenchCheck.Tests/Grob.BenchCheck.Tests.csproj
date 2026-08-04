@@ -19,4 +19,14 @@
     <ProjectReference Include="..\Grob.BenchCheck\Grob.BenchCheck.csproj" />
   </ItemGroup>
 
+  <!--
+    The shipped gate policy, copied beside the test assembly so a test can prove it
+    still parses under the strict policy options (unmapped members are rejected, so a
+    field added to policy.json without a matching record property must fail here at
+    PR time rather than in the benchmark workflow).
+  -->
+  <ItemGroup>
+    <Content Include="..\..\bench\Grob.Benchmarks\baseline\policy.json" Link="policy.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

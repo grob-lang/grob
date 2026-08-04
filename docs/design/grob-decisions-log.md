@@ -9808,12 +9808,13 @@ Superseded by: none
 Refines: D-395 (Q3, its implementation), D-391 (the unconditional-ceiling precedent this mirrors)
 
 **Implements D-395 Q3.** `policy.json`'s `gating` field previously coupled the
-time axes and the allocation-percent axis for a category — `BenchCheck.
-ClassifyTime` and `ClassifyAlloc` both read the same `PolicyCategory.Gating`
-flag. Turning `compile.gating` off to silence its time axis (per D-395 Q1)
-would have silenced its 10% allocation-percent check too, which the evidence
-(0.0% allocation delta across every benchmark in both `30720384069`-adjacent
-runs) says should keep gating. This entry decouples the two.
+time axes and the allocation-percent axis for a category —
+`BenchCheck.ClassifyTime` and `ClassifyAlloc` both read the same
+`PolicyCategory.Gating` flag. Turning `compile.gating` off to silence its time
+axis (per D-395 Q1) would have silenced its 10% allocation-percent check too,
+which the evidence (0.0% allocation delta across every benchmark in both
+`30720384069`-adjacent runs) says should keep gating. This entry decouples the
+two.
 
 **The mechanism.** `ClassifyTime` no longer takes a `gating`, CPU-match or
 `Policy` parameter at all — it computes the per-sprint/cumulative percentages
@@ -9866,8 +9867,9 @@ a genuine 20% allocation delta on `compile` still fails — reverting
 run's figures (StdDev ≈2.02%, +12.0% per-sprint delta, 0% allocation delta)
 end to end. `Non_gating_category_allocation_percent_is_reported_not_failed`
 replaces the old time-focused non-gating test — the flag's only remaining
-effect is on the allocation-percent axis. `Proven_cross_cpu_fixture_matches_
-the_real_run` and `Cpu_mismatch_time_informational_allocation_still_gates`
+effect is on the allocation-percent axis.
+`Proven_cross_cpu_fixture_matches_the_real_run` and
+`Cpu_mismatch_time_informational_allocation_still_gates`
 are retained, re-pointed at `TimeClass.Informational` (from the now-removed
 `CpuMismatch`) — proving allocation is still unaffected by CPU identity,
 which was always true and remains the CPU guard's only remaining
@@ -9890,6 +9892,25 @@ same statement (the §9.1 gating matrix's Time columns now read
 `Informational` uniformly; the "compile's cumulative axis... not currently
 enforceable" caveat is retired as moot, superseded by the unconditional
 informational status).
+
+**Two hardenings from PR review, both consequences of this entry rather than
+new policy.** First, the rename must not fail open: `policy.json` is now
+deserialised with `JsonUnmappedMemberHandling.Disallow`, so a `gating` field
+left behind by this rename — or any field the tool does not map — throws
+instead of being silently ignored. Ignoring it would have defaulted
+`AllocGating` to `false` and stood `compile`'s allocation-percent check down
+without a word, which is the same fail-open shape D-395 diagnosed on the time
+axis. BenchmarkDotNet reports keep the permissive options; their documents
+carry many members this tool deliberately does not map. `LoadPolicy` is split
+into a pure `ParsePolicy` plus the file read, and wraps the failure as
+`InvalidDataException` naming the file. Second, the CPU-identity guard now
+also compares the fresh run against the **origin** baseline, not only the
+rolling one: the cumulative axis is measured against the origin, whose CPU can
+differ from the fresh run's while the rolling baseline's does not — the live
+case for
+`compile.origin.json`'s `"Unknown processor"` capture — and previously that
+cross-CPU percentage appeared in the report unexplained. Each side carries its
+own note.
 
 No `src/` change — `tooling/Grob.BenchCheck`, `tooling/Grob.BenchCheck.Tests`
 and `bench/Grob.Benchmarks/baseline/policy.json` only. No opcode change. No

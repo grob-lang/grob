@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Grob.BenchCheck;
 using Xunit;
 
@@ -493,5 +494,108 @@ public class BenchCheckTests {
             Loader(rolling: Side(_epyc, M(100)), origin: Side(_epyc, M(100))));
 
         Assert.Contains(report.Notes, n => n.Contains("CPU mismatch", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Origin_cpu_mismatch_produces_its_own_cumulative_note() {
+        // fresh and rolling agree, so the rolling-side guard stays quiet — but
+        // ClassifyTime still computes the cumulative Δ against the origin. This is
+        // the live `compile.origin.json` case (§9.1: its ProcessorName is still the
+        // "Unknown processor" placeholder), so the report has to explain the
+        // cross-CPU cumulative figure rather than present it bare.
+        var report = BenchCheck.Evaluate(
+            PolicyWith(allocGating: true),
+            fresh: Side(_epyc, M(140)),
+            Loader(rolling: Side(_epyc, M(100)), origin: Side(_xeon, M(100))));
+
+        Assert.Contains(
+            report.Notes,
+            n => n.Contains("CPU mismatch", StringComparison.Ordinal)
+                 && n.Contains("origin baseline", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Matching_cpus_across_all_three_sides_add_no_mismatch_note() {
+        var report = BenchCheck.Evaluate(
+            PolicyWith(allocGating: true),
+            fresh: Side(_epyc, M(140)),
+            Loader(rolling: Side(_epyc, M(100)), origin: Side(_epyc, M(100))));
+
+        Assert.DoesNotContain(report.Notes, n => n.Contains("CPU mismatch", StringComparison.Ordinal));
+    }
+
+    // --- policy parsing: D-396's rename must not fail open ---
+
+    private const string PolicyJsonWith = """
+        {
+          "perSprintPercent": 5.0,
+          "cumulativePercent": 12.0,
+          "allocPercent": 10.0,
+          "timeSignificanceK": 3.0,
+          "categories": [
+            {
+              "name": "compile",
+              "namespacePrefix": "Grob.Benchmarks.Compile",
+              "baseline": "compile.json",
+              §FLAG§
+            }
+          ]
+        }
+        """;
+
+    private static string PolicyText(string categoryFlag) => PolicyJsonWith.Replace("§FLAG§", categoryFlag, StringComparison.Ordinal);
+
+    [Fact]
+    public void ParsePolicy_reads_the_current_allocGating_contract() {
+        var policy = BenchCheck.ParsePolicy(PolicyText("\"allocGating\": true"));
+
+        Assert.True(Assert.Single(policy.Categories).AllocGating);
+        Assert.Equal(10.0, policy.AllocPercent);
+    }
+
+    [Fact]
+    public void ParsePolicy_rejects_the_legacy_gating_field_rather_than_ignoring_it() {
+        // Before D-396 the field was `gating`. Silently ignoring a leftover would
+        // default AllocGating to false and stand `compile`'s allocation-percent
+        // check down without a word — the exact fail-open shape D-395 diagnosed.
+        var ex = Assert.Throws<JsonException>(() => BenchCheck.ParsePolicy(PolicyText("\"gating\": true")));
+
+        Assert.Contains("gating", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParsePolicy_rejects_a_policy_carrying_both_gating_and_allocGating() {
+        Assert.Throws<JsonException>(
+            () => BenchCheck.ParsePolicy(PolicyText("\"gating\": true, \"allocGating\": false")));
+    }
+
+    [Fact]
+    public void ParsePolicy_rejects_a_null_document() {
+        Assert.Throws<JsonException>(() => BenchCheck.ParsePolicy("null"));
+    }
+
+    [Fact]
+    public void The_shipped_policy_file_parses_under_the_strict_policy_options() {
+        // Rejecting unmapped members cuts both ways: it catches a stale `gating`, and
+        // it would also reject a new policy.json field nobody mapped. Prove the file
+        // the workflow actually loads still round-trips.
+        var policy = BenchCheck.LoadPolicy(Path.Combine(AppContext.BaseDirectory, "policy.json"));
+
+        Assert.Equal(4, policy.Categories.Count);
+        Assert.True(policy.Categories.Single(c => c.Name == "compile").AllocGating);
+    }
+
+    [Fact]
+    public void LoadPolicy_surfaces_a_rejected_field_as_InvalidDataException_naming_the_file() {
+        var path = Path.Combine(Path.GetTempPath(), $"grob-policy-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, PolicyText("\"gating\": true"));
+        try {
+            var ex = Assert.Throws<InvalidDataException>(() => BenchCheck.LoadPolicy(path));
+
+            Assert.Contains(path, ex.Message, StringComparison.Ordinal);
+            Assert.IsType<JsonException>(ex.InnerException);
+        } finally {
+            File.Delete(path);
+        }
     }
 }
