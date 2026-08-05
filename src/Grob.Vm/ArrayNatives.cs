@@ -40,9 +40,18 @@ internal static class ArrayNatives {
     /// a capturing delegate and a <c>FinallyContext</c> on every array property dispatch
     /// for a parameter nothing reads — the same reasoning
     /// <see cref="MapNatives.GetMethod"/>'s doc comment already records.
+    /// <para>
+    /// Consults <paramref name="receiver"/>'s per-receiver method cache first (D-393
+    /// Q2): every bound native below closes over <c>receiver</c> and nothing else, so a
+    /// cached binding observes receiver mutation exactly as a fresh one would, and
+    /// carries no per-access VM context to go stale.
+    /// </para>
     /// </summary>
-    internal static NativeFunction? GetMethod(string methodName, GrobArray receiver) =>
-        methodName switch {
+    internal static NativeFunction? GetMethod(string methodName, GrobArray receiver) {
+        NativeFunction? cached = receiver.GetCachedMethod(methodName);
+        if (cached is not null) return cached;
+
+        NativeFunction? method = methodName switch {
             "filter" => new NativeFunction("filter", 1,
                 (args, inv) => Filter(args, inv, receiver)),
             "select" => new NativeFunction("select", 1,
@@ -71,6 +80,9 @@ internal static class ArrayNatives {
                 (_, _) => Clear(receiver)),
             _ => null,
         };
+        if (method is not null) receiver.CacheMethod(methodName, method);
+        return method;
+    }
 
     // -----------------------------------------------------------------------
     // filter(fn: T → bool) → T[]
