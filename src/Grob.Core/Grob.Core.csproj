@@ -7,4 +7,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Allow Grob.Vm to construct VmInvoker directly and implement IVmCallHost
+       (D-397): both are internal to Grob.Core because VmInvoker sits on
+       NativeFunction.Implementation's public signature (Grob.Core, the one
+       assembly both Grob.Compiler and Grob.Vm reference) but only Grob.Vm's
+       VirtualMachine ever builds one or serves as its IVmCallHost. -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Grob.Vm</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

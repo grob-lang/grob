@@ -184,7 +184,7 @@ public sealed class VirtualMachineGlobalInitTests {
         var reader = new BytecodeFunction("reader", 0, readerChunk);
 
         // Native 'apply' invokes its single function argument with no args.
-        var apply = new NativeFunction("apply", 1, (args, invoke) => invoke(args[0], []));
+        var apply = new NativeFunction("apply", 1, (args, invoke) => invoke.Invoke(args[0], []));
 
         // script:
         //   Constant <reader>; DefineGlobal reader       ; prologue — Initialised

@@ -19,10 +19,15 @@ namespace Grob.Vm;
 /// - Array higher-order method binding (<see cref="OpCode.GetProperty"/> arm).
 /// - D-319 cooperative-cancellation step-budget seam (<see cref="Run"/>).
 ///
+/// Implements <see cref="IVmCallHost"/> (explicitly, D-397) so a
+/// <see cref="Grob.Core.VmInvoker"/> struct — constructed at the <c>Call</c>
+/// handler and <see cref="InvokeCallable"/>'s nested-native path — can call back
+/// into this instance without <c>Grob.Core</c> naming <c>VirtualMachine</c>.
+///
 /// Authority: grob-vm-architecture.md (dispatch loop, value stack, developer
 /// diagnostics) and grob-v1-requirements.md §3.3 (the OpCode set).
 /// </summary>
-public sealed class VirtualMachine : IPluginRegistrar {
+public sealed class VirtualMachine : IPluginRegistrar, IVmCallHost {
     /// <summary>
     /// Maximum call depth (D-180). The frames array holds call frames only — the
     /// top-level script is not a frame — so a 257th nested call has no slot and
@@ -1014,12 +1019,11 @@ public sealed class VirtualMachine : IPluginRegistrar {
                                 for (int i = argCount - 1; i >= 0; i--) callArgs[i] = _stack.Pop();
                                 _stack.Pop(); // pop the callee value itself
 
-                                // Build the VmInvoker that threads back through this VM instance.
-                                CancellationToken ct = _cancellationToken;
-                                var finallyContext = new FinallyContext(
-                                    boundedFinally, finallyBoundaryFloor, finallyBoundaryStart);
-                                VmInvoker invoker = (callable, args) =>
-                                    InvokeCallable(callable, args, line, column, ct, finallyContext);
+                                // Build the VmInvoker that threads back through this VM instance
+                                // (D-397: a value, constructed against IVmCallHost — no closure or
+                                // delegate allocated here any more).
+                                var invoker = new VmInvoker(this, line, column, _cancellationToken,
+                                    new VmFinallyWindow(boundedFinally, finallyBoundaryFloor, finallyBoundaryStart));
 
                                 // The native-throw seam (D-342): a native signals a domain
                                 // error by throwing NativeFaultException rather than
@@ -1350,6 +1354,19 @@ public sealed class VirtualMachine : IPluginRegistrar {
     private readonly record struct FinallyContext(bool Bounded, int BoundaryFloor, int BoundaryStart);
 
     /// <summary>
+    /// <see cref="IVmCallHost"/>'s bridge into <see cref="InvokeCallable"/> (D-397).
+    /// Explicit — so this adapter does not appear as a new public member on
+    /// <see cref="VirtualMachine"/> — and purely a conversion between
+    /// <c>Grob.Core</c>'s <see cref="VmFinallyWindow"/> and this class's own
+    /// private <see cref="FinallyContext"/>, which stays exactly as it was
+    /// (VM-internal bookkeeping, not a compiler/VM-shared shape).
+    /// </summary>
+    GrobValue IVmCallHost.InvokeCallable(GrobValue callable, GrobValue[] args, int line, int column,
+            CancellationToken cancellationToken, VmFinallyWindow finallyWindow) =>
+        InvokeCallable(callable, args, line, column, cancellationToken,
+            new FinallyContext(finallyWindow.Bounded, finallyWindow.BoundaryFloor, finallyWindow.BoundaryStart));
+
+    /// <summary>
     /// Invoke a Grob callable (typically a lambda argument received by a
     /// <see cref="NativeFunction"/>) and return its result.  This is the
     /// re-entrant bridge: it saves the current dispatch state to a call frame,
@@ -1371,8 +1388,13 @@ public sealed class VirtualMachine : IPluginRegistrar {
                 "The type checker should have rejected the call site.");
 
         // Nested native: call the C# delegate directly without entering bytecode dispatch.
+        // D-397: a VmInvoker value, not a captured closure — carries this same line,
+        // column, ct and finallyContext (via its VmFinallyWindow twin) onward, so a
+        // native nested inside another native's lambda argument still reports the
+        // ORIGINAL Call opcode's source position.
         if (fn is NativeFunction nativeFn) {
-            VmInvoker nestedInvoker = (c, a) => InvokeCallable(c, a, line, column, ct, finallyContext);
+            var nestedInvoker = new VmInvoker(this, line, column, ct,
+                new VmFinallyWindow(finallyContext.Bounded, finallyContext.BoundaryFloor, finallyContext.BoundaryStart));
             return nativeFn.Implementation(args, nestedInvoker);
         }
 
