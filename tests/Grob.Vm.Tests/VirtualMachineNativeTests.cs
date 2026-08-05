@@ -98,6 +98,25 @@ public sealed class VirtualMachineNativeTests {
         return new BytecodeFunction("", 1, fnChunk);
     }
 
+    /// <summary>
+    /// Builds a single-parameter lambda chunk that returns <c>param * 2</c> (int
+    /// multiplication) — used as the innermost, real (non-native) callee in the
+    /// cross-native nesting test, so that test exercises both nested-native
+    /// dispatch (D-397) AND a nested BytecodeFunction dispatch in the same chain.
+    /// </summary>
+    private static BytecodeFunction BuildDoubleLambda() {
+        var fnChunk = new Chunk();
+        fnChunk.WriteOpCode(OpCode.GetLocal, 1);
+        fnChunk.WriteByte(0, 1);
+        fnChunk.WriteOpCode(OpCode.GetLocal, 1);
+        fnChunk.WriteByte(0, 1);
+        fnChunk.WriteOpCode(OpCode.MultiplyInt, 1);
+        fnChunk.WriteOpCode(OpCode.Return, 1);
+        fnChunk.WriteOpCode(OpCode.Nil, 1);
+        fnChunk.WriteOpCode(OpCode.Return, 1);
+        return new BytecodeFunction("", 1, fnChunk);
+    }
+
     // -----------------------------------------------------------------------
     // NativeFunction: basic dispatch
     // -----------------------------------------------------------------------
@@ -145,7 +164,7 @@ public sealed class VirtualMachineNativeTests {
         var (vm, _) = NewVm();
         var native = new NativeFunction("applyTo10", 1, (args, invoker) => {
             GrobValue fn = args[0];
-            return invoker(fn, [GrobValue.FromInt(10)]);
+            return invoker.Invoke(fn, [GrobValue.FromInt(10)]);
         });
 
         BytecodeFunction lambda = BuildAddDeltaLambda(5); // x => x + 5
@@ -166,9 +185,9 @@ public sealed class VirtualMachineNativeTests {
         var native = new NativeFunction("applyToEach", 1, (args, invoker) => {
             GrobValue fn = args[0];
             // Call the lambda three times; return the last result.
-            invoker(fn, [GrobValue.FromInt(1)]);
-            invoker(fn, [GrobValue.FromInt(2)]);
-            return invoker(fn, [GrobValue.FromInt(3)]);
+            invoker.Invoke(fn, [GrobValue.FromInt(1)]);
+            invoker.Invoke(fn, [GrobValue.FromInt(2)]);
+            return invoker.Invoke(fn, [GrobValue.FromInt(3)]);
         });
 
         BytecodeFunction lambda = BuildAddDeltaLambda(10); // x => x + 10
@@ -190,7 +209,7 @@ public sealed class VirtualMachineNativeTests {
             GrobValue fn = args[0];
             long sum = 0;
             for (int i = 1; i <= 5; i++)
-                sum += invoker(fn, [GrobValue.FromInt(i)]).AsInt();
+                sum += invoker.Invoke(fn, [GrobValue.FromInt(i)]).AsInt();
             return GrobValue.FromInt(sum);
         });
 
@@ -253,9 +272,12 @@ public sealed class VirtualMachineNativeTests {
     /// 3. Pushes the lambda as an argument.
     /// 4. Call 1.
     /// 5. Return.
+    /// <paramref name="lambda"/> takes <see cref="GrobFunction"/> rather than
+    /// <see cref="BytecodeFunction"/> so a caller can also supply a bound
+    /// <see cref="NativeFunction"/> (D-397 cross-native nesting test).
     /// </summary>
     private static Chunk BuildArrayMethodChunk(
-            GrobValue[] elements, string methodName, BytecodeFunction lambda) {
+            GrobValue[] elements, string methodName, GrobFunction lambda) {
         var chunk = new Chunk();
         // Build array using Constant (array constant)
         var arrayVal = GrobValue.FromArray(new GrobArray(elements));
@@ -509,7 +531,7 @@ public sealed class VirtualMachineNativeTests {
             // call invoker on elements [10, 20, 30] manually.
             GrobValue fn = args[0];
             foreach (GrobValue arg in new[] { 10L, 20L, 30L }.Select(GrobValue.FromInt)) {
-                GrobValue result = invoker(fn, [arg]);
+                GrobValue result = invoker.Invoke(fn, [arg]);
                 visited.Add(result.AsInt());
             }
             return GrobValue.Nil;
@@ -614,6 +636,48 @@ public sealed class VirtualMachineNativeTests {
         Assert.True(vm.Globals["reached"].AsBool());
     }
 
+    /// <summary>
+    /// Sibling to <see cref="Filter_LambdaFaultCaughtAndResumes"/>: this variant has no
+    /// enclosing <c>try</c>/<c>catch</c>, so the fault raised inside the lambda
+    /// <c>filter</c> invokes through the nested-native bridge escapes as an unhandled
+    /// <see cref="GrobRuntimeException"/>. D-397 asserts its numeric
+    /// <see cref="GrobRuntimeException.Line"/>/<see cref="GrobRuntimeException.Column"/>
+    /// match the ORIGINAL <c>Call</c> opcode's source position — not some
+    /// bridge-internal value the <c>VmInvoker</c> struct conversion could silently
+    /// substitute. <see cref="Filter_LambdaFaultCaughtAndResumes"/> only ever checked
+    /// the leaf type name and message; this test is the numeric-location half.
+    /// </summary>
+    [Fact]
+    public void Filter_LambdaFault_Uncaught_ReportsOriginalCallSiteLineAndColumn() {
+        var script = new Chunk();
+
+        GrobValue arrayVal = GrobValue.FromArray(new GrobArray([GrobValue.FromInt(1)]));
+        int arrIdx = script.AddConstant(arrayVal);
+        script.WriteOpCode(OpCode.Constant, 5, 3); script.WriteByte((byte)arrIdx, 5, 3);
+
+        int propIdx = script.AddConstant(GrobValue.FromString("filter"));
+        script.WriteOpCode(OpCode.GetProperty, 5, 3); script.WriteByte((byte)propIdx, 5, 3);
+
+        var faultingPredicate = new NativeFunction("faultingPredicate", 1,
+            (_, _) => throw new NativeFaultException(
+                "ArithmeticError", ErrorCatalog.E5006.Code, "predicate faulted"));
+        int lambdaIdx = script.AddConstant(GrobValue.FromFunction(faultingPredicate));
+        script.WriteOpCode(OpCode.Constant, 5, 3); script.WriteByte((byte)lambdaIdx, 5, 3);
+
+        // The Call opcode itself is the source location that must survive the bridge.
+        script.WriteOpCode(OpCode.Call, 5, 12); script.WriteByte(1, 5, 12);
+        script.WriteOpCode(OpCode.Pop, 5, 12);
+        script.WriteOpCode(OpCode.Nil, 6, 1);
+        script.WriteOpCode(OpCode.Return, 6, 1);
+
+        var (vm, _) = NewVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
+
+        Assert.Equal(ErrorCatalog.E5006.Code, ex.Code);
+        Assert.Equal(5, ex.Line);
+        Assert.Equal(12, ex.Column);
+    }
+
     // -----------------------------------------------------------------------
     // D-319: cancellation spans the bridge
     // -----------------------------------------------------------------------
@@ -652,7 +716,7 @@ public sealed class VirtualMachineNativeTests {
 
         // Native that calls the lambda on one element — enough to enter the bridge.
         var native = new NativeFunction("once", 1, (args, invoker) => {
-            invoker(args[0], [GrobValue.FromInt(0)]);
+            invoker.Invoke(args[0], [GrobValue.FromInt(0)]);
             return GrobValue.Nil;
         });
 
@@ -662,5 +726,53 @@ public sealed class VirtualMachineNativeTests {
 
         Assert.Throws<OperationCanceledException>(() =>
             vm.Run(chunk, cts.Token));
+    }
+
+    // -----------------------------------------------------------------------
+    // Cross-native nested invocation (D-397): a lambda invoked by ONE
+    // higher-order native itself invokes a DIFFERENT higher-order native, on a
+    // different receiver — the previously-untested branch of InvokeCallable's
+    // nested-native path. Existing coverage only exercises same-native
+    // self-recursion (Each_InvokesLambdaForEveryElementInOrder-style single-level
+    // bridging) and the FinallyContext-propagation path
+    // (Filter_LambdaFaultCaughtAndResumes); neither nests a SECOND native inside
+    // the first's lambda argument.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CrossNativeNestedInvocation_FilterLambdaInvokesSelectOnDifferentArray_CompletesCorrectly() {
+        // Three levels deep, each through the re-entrant bridge:
+        //   outer.filter(crossPredicate)                     -- level 1, Call handler's invoker
+        //     crossPredicate invokes inner.select(doubleLambda) -- level 2, InvokeCallable's
+        //                                                          nested-native path (native -> native)
+        //       select invokes doubleLambda for each inner element -- level 3, InvokeCallable's
+        //                                                              BytecodeFunction path (native -> real frame)
+        var (vm, _) = NewVm();
+
+        var innerArr = new GrobArray([GrobValue.FromInt(1), GrobValue.FromInt(2), GrobValue.FromInt(3)]);
+        BytecodeFunction doubleLambda = BuildDoubleLambda(); // x => x * 2
+        NativeFunction selectOnInner = ArrayNatives.GetMethod("select", innerArr)!;
+
+        // crossPredicate(e): doubles innerArr via a DIFFERENT higher-order native
+        // (select, not filter) invoked from inside filter's own lambda argument, then
+        // compares e against the doubled sum (innerArr doubled = [2,4,6], sum = 12).
+        var crossPredicate = new NativeFunction("crossPredicate", 1, (args, invoker) => {
+            GrobValue selected = invoker.Invoke(GrobValue.FromFunction(selectOnInner),
+                [GrobValue.FromFunction(doubleLambda)]);
+            Assert.True(selected.TryAsArray(out GrobArray? selectedArr));
+            long sum = 0;
+            for (int i = 0; i < selectedArr!.Count; i++) sum += selectedArr[i].AsInt();
+            return GrobValue.FromBool(args[0].AsInt() > sum);
+        });
+
+        GrobValue[] outerElements = [GrobValue.FromInt(100), GrobValue.FromInt(1)];
+        Chunk chunk = BuildArrayMethodChunk(outerElements, "filter", crossPredicate);
+
+        vm.Run(chunk);
+
+        Assert.Equal(1, vm.Stack.Count);
+        Assert.True(vm.Stack.Peek().TryAsArray(out GrobArray? result));
+        Assert.Equal(1, result!.Count);
+        Assert.Equal(GrobValue.FromInt(100), result[0]);
     }
 }

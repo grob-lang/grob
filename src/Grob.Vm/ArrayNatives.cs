@@ -81,7 +81,7 @@ internal static class ArrayNatives {
         var result = new List<GrobValue>(source.Count);
         for (int i = 0; i < source.Count; i++) {
             GrobValue element = source[i];
-            GrobValue keep = invoker(fn, [element]);
+            GrobValue keep = invoker.Invoke(fn, [element]);
             if (keep.AsBool())
                 result.Add(element);
         }
@@ -98,7 +98,7 @@ internal static class ArrayNatives {
         GrobValue fn = args[0];
         var result = new GrobValue[source.Count];
         for (int i = 0; i < source.Count; i++)
-            result[i] = invoker(fn, [source[i]]);
+            result[i] = invoker.Invoke(fn, [source[i]]);
         return GrobValue.FromArray(new GrobArray(result));
     }
 
@@ -114,7 +114,7 @@ internal static class ArrayNatives {
         // Project each element to a sort key.
         var pairs = new (GrobValue element, GrobValue key)[source.Count];
         for (int i = 0; i < source.Count; i++)
-            pairs[i] = (source[i], invoker(fn, [source[i]]));
+            pairs[i] = (source[i], invoker.Invoke(fn, [source[i]]));
 
         // Stable sort via LINQ (preserves relative order of equal-key elements).
         var comparer = GrobValueComparer.Instance;
@@ -143,7 +143,7 @@ internal static class ArrayNatives {
     private static GrobValue Each(GrobValue[] args, VmInvoker invoker, GrobArray source) {
         GrobValue fn = args[0];
         for (int i = 0; i < source.Count; i++)
-            invoker(fn, [source[i]]);
+            invoker.Invoke(fn, [source[i]]);
         return GrobValue.Nil;
     }
 

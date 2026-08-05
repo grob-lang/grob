@@ -57,21 +57,21 @@ public sealed class NamedTypeRegistryTests {
     public void GuidToString_ReturnsCanonicalLowercaseForm() {
         GrobStruct g = MakeGuid("01234567-89ab-4def-8123-456789abcdef");
         NativeFunction fn = NamedTypeRegistry.Guid.Methods["toString"].Bind(g);
-        Assert.Equal("01234567-89ab-4def-8123-456789abcdef", fn.Implementation([], null!).AsString());
+        Assert.Equal("01234567-89ab-4def-8123-456789abcdef", fn.Implementation([], default).AsString());
     }
 
     [Fact]
     public void GuidToUpperString_UppercasesCanonicalForm() {
         GrobStruct g = MakeGuid("01234567-89ab-4def-8123-456789abcdef");
         NativeFunction fn = NamedTypeRegistry.Guid.Methods["toUpperString"].Bind(g);
-        Assert.Equal("01234567-89AB-4DEF-8123-456789ABCDEF", fn.Implementation([], null!).AsString());
+        Assert.Equal("01234567-89AB-4DEF-8123-456789ABCDEF", fn.Implementation([], default).AsString());
     }
 
     [Fact]
     public void GuidToCompactString_StripsHyphens() {
         GrobStruct g = MakeGuid("01234567-89ab-4def-8123-456789abcdef");
         NativeFunction fn = NamedTypeRegistry.Guid.Methods["toCompactString"].Bind(g);
-        Assert.Equal("0123456789ab4def8123456789abcdef", fn.Implementation([], null!).AsString());
+        Assert.Equal("0123456789ab4def8123456789abcdef", fn.Implementation([], default).AsString());
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public sealed class NamedTypeRegistryTests {
     public void DateAddDays_ReturnsNewDateStruct() {
         GrobStruct d = MakeDate("2026-03-15T09:30:45+00:00");
         NativeFunction fn = NamedTypeRegistry.Date.Methods["addDays"].Bind(d);
-        GrobValue result = fn.Implementation([GrobValue.FromInt(1)], null!);
+        GrobValue result = fn.Implementation([GrobValue.FromInt(1)], default);
         Assert.True(result.TryAsStruct(out GrobStruct? resultStruct));
         Assert.Equal("date", resultStruct!.TypeName);
         Assert.Equal(16, NamedTypeRegistry.Date.Properties["day"].Get(resultStruct).AsInt());
@@ -120,7 +120,7 @@ public sealed class NamedTypeRegistryTests {
         GrobStruct earlier = MakeDate("2026-03-15T09:30:45+00:00");
         GrobStruct later = MakeDate("2026-03-16T09:30:45+00:00");
         NativeFunction fn = NamedTypeRegistry.Date.Methods["isBefore"].Bind(earlier);
-        Assert.True(fn.Implementation([GrobValue.FromStruct(later)], null!).AsBool());
+        Assert.True(fn.Implementation([GrobValue.FromStruct(later)], default).AsBool());
     }
 
     [Fact]
@@ -135,28 +135,28 @@ public sealed class NamedTypeRegistryTests {
         GrobStruct from = MakeDate("2026-03-15T00:00:00+00:00");
         GrobStruct to = MakeDate("2026-03-20T00:00:00+00:00");
         NativeFunction fn = NamedTypeRegistry.Date.Methods["daysUntil"].Bind(from);
-        Assert.Equal(5, fn.Implementation([GrobValue.FromStruct(to)], null!).AsInt());
+        Assert.Equal(5, fn.Implementation([GrobValue.FromStruct(to)], default).AsInt());
     }
 
     [Fact]
     public void ToIso_RendersDateOnlyForm() {
         GrobStruct d = MakeDate("2026-03-15T09:30:45+00:00");
         NativeFunction fn = NamedTypeRegistry.Date.Methods["toIso"].Bind(d);
-        Assert.Equal("2026-03-15", fn.Implementation([], null!).AsString());
+        Assert.Equal("2026-03-15", fn.Implementation([], default).AsString());
     }
 
     [Fact]
     public void ToIsoDateTime_UsesZSuffixForZeroOffset() {
         GrobStruct d = MakeDate("2026-03-15T09:30:45+00:00");
         NativeFunction fn = NamedTypeRegistry.Date.Methods["toIsoDateTime"].Bind(d);
-        Assert.Equal("2026-03-15T09:30:45Z", fn.Implementation([], null!).AsString());
+        Assert.Equal("2026-03-15T09:30:45Z", fn.Implementation([], default).AsString());
     }
 
     [Fact]
     public void ToIsoDateTime_UsesOffsetSuffixForNonZeroOffset() {
         GrobStruct d = MakeDate("2026-03-15T09:30:45+02:00");
         NativeFunction fn = NamedTypeRegistry.Date.Methods["toIsoDateTime"].Bind(d);
-        Assert.Equal("2026-03-15T09:30:45+02:00", fn.Implementation([], null!).AsString());
+        Assert.Equal("2026-03-15T09:30:45+02:00", fn.Implementation([], default).AsString());
     }
 
     [Fact]
@@ -169,14 +169,14 @@ public sealed class NamedTypeRegistryTests {
     public void ToUnixSeconds_ConvertsFromEpoch() {
         GrobStruct d = MakeDate("1970-01-01T00:00:10+00:00");
         NativeFunction fn = NamedTypeRegistry.Date.Methods["toUnixSeconds"].Bind(d);
-        Assert.Equal(10, fn.Implementation([], null!).AsInt());
+        Assert.Equal(10, fn.Implementation([], default).AsInt());
     }
 
     [Fact]
     public void ToDateOnly_ZeroesTimeComponents() {
         GrobStruct d = MakeDate("2026-03-15T09:30:45+00:00");
         NativeFunction fn = NamedTypeRegistry.Date.Methods["toDateOnly"].Bind(d);
-        GrobValue result = fn.Implementation([], null!);
+        GrobValue result = fn.Implementation([], default);
         Assert.True(result.TryAsStruct(out GrobStruct? resultStruct));
         Assert.Equal(0, NamedTypeRegistry.Date.Properties["hour"].Get(resultStruct!).AsInt());
         Assert.Equal(15, NamedTypeRegistry.Date.Properties["day"].Get(resultStruct!).AsInt());
@@ -186,6 +186,6 @@ public sealed class NamedTypeRegistryTests {
     public void Format_UsesSuppliedFormatString() {
         GrobStruct d = MakeDate("2026-03-15T09:30:45+00:00");
         NativeFunction fn = NamedTypeRegistry.Date.Methods["format"].Bind(d);
-        Assert.Equal("2026", fn.Implementation([GrobValue.FromString("yyyy")], null!).AsString());
+        Assert.Equal("2026", fn.Implementation([GrobValue.FromString("yyyy")], default).AsString());
     }
 }
