@@ -10,6 +10,14 @@ public sealed class GrobMap {
     private readonly OrderedDictionary<string, GrobValue> _entries =
         new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Per-receiver bound-method cache (D-393 Q2): <c>Grob.Vm.MapNatives.GetMethod</c>
+    /// consults this before constructing a fresh <see cref="NativeFunction"/> on every
+    /// <c>GetProperty</c> dispatch. Mirrors <see cref="GrobArray"/>'s identical field —
+    /// see its remarks for the invalidation-free rationale.
+    /// </summary>
+    private Dictionary<string, NativeFunction>? _methodCache;
+
     /// <summary>Read-only view of the underlying entry dictionary.</summary>
     public IReadOnlyDictionary<string, GrobValue> Entries => _entries;
 
@@ -54,4 +62,21 @@ public sealed class GrobMap {
 
     /// <summary>Removes all entries (Sprint 9 Increment C0b-2b, D-378).</summary>
     public void Clear() => _entries.Clear();
+
+    /// <summary>
+    /// Returns the cached <see cref="NativeFunction"/> bound to <paramref name="methodName"/>
+    /// on this receiver, or <see langword="null"/> if none has been cached yet (D-393 Q2).
+    /// </summary>
+    internal NativeFunction? GetCachedMethod(string methodName) =>
+        _methodCache is not null && _methodCache.TryGetValue(methodName, out NativeFunction? cached)
+            ? cached
+            : null;
+
+    /// <summary>
+    /// Caches <paramref name="method"/> as the bound <see cref="NativeFunction"/> for
+    /// <paramref name="methodName"/> on this receiver (D-393 Q2), lazily creating the
+    /// backing dictionary on first bind.
+    /// </summary>
+    internal void CacheMethod(string methodName, NativeFunction method) =>
+        (_methodCache ??= new Dictionary<string, NativeFunction>())[methodName] = method;
 }

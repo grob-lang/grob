@@ -8,6 +8,16 @@ public sealed class GrobArray {
     private readonly List<GrobValue> _elements;
 
     /// <summary>
+    /// Per-receiver bound-method cache (D-393 Q2): <c>Grob.Vm.ArrayNatives.GetMethod</c>
+    /// consults this before constructing a fresh <see cref="NativeFunction"/> on every
+    /// <c>GetProperty</c> dispatch. Lazily created on first bind; no invalidation is
+    /// needed — every bound native closes over its receiver by reference and reads live
+    /// state per invocation, and no cached delegate captures any per-access VM context
+    /// (D-393 Q2's ratified analysis).
+    /// </summary>
+    private Dictionary<string, NativeFunction>? _methodCache;
+
+    /// <summary>
     /// Initialises a new <see cref="GrobArray"/>, optionally pre-populated with
     /// <paramref name="elements"/>.
     /// </summary>
@@ -69,4 +79,21 @@ public sealed class GrobArray {
 
     /// <summary>Removes every element, leaving an empty array (Sprint 9 Increment C0a-2, D-373).</summary>
     public void Clear() => _elements.Clear();
+
+    /// <summary>
+    /// Returns the cached <see cref="NativeFunction"/> bound to <paramref name="methodName"/>
+    /// on this receiver, or <see langword="null"/> if none has been cached yet (D-393 Q2).
+    /// </summary>
+    internal NativeFunction? GetCachedMethod(string methodName) =>
+        _methodCache is not null && _methodCache.TryGetValue(methodName, out NativeFunction? cached)
+            ? cached
+            : null;
+
+    /// <summary>
+    /// Caches <paramref name="method"/> as the bound <see cref="NativeFunction"/> for
+    /// <paramref name="methodName"/> on this receiver (D-393 Q2), lazily creating the
+    /// backing dictionary on first bind.
+    /// </summary>
+    internal void CacheMethod(string methodName, NativeFunction method) =>
+        (_methodCache ??= new Dictionary<string, NativeFunction>())[methodName] = method;
 }

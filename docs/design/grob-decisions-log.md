@@ -393,6 +393,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-395 | August 2026 | Tooling — benchmarking (gate policy) | Decision-only. Confirms `BenchCheck`'s ×3σ per-sprint significance filter (D-333) is within-run `StandardDeviation` only and cannot see between-run variance — `Compile_TwoExpressions` moved **+12.0%** between two CPU-matched runs (`30707325720`→`30720384069`) against its own ≈2% within-run StdDev, while allocation stayed **0.0%** on every benchmark in both runs, including `vm`/`attribution` benchmarks moving +13.5–27.0% on the same unchanged code. **Time drops to informational on every category**, `compile` included, extending the treatment `vm`/`attribution`/`endToEnd` already had rather than inventing a new policy; allocation remains the sole gating axis. `compile.origin.json` stays un-recaptured — its cumulative axis is now informational by policy, not only by the pre-existing `"Unknown processor"` gap. Resolving the live false positive on `main` needs a separate implementation increment that decouples allocation-percent gating from the `gating` flag before flipping `compile`'s time axes off. No standing rule added for time-breach-plus-zero-alloc — moot once time never gates anywhere. Sample size stated honestly: one between-run delta per benchmark, not a distribution. Refines D-313, D-385 (Q3, Q6). Cites D-333, D-390, D-391. |
 | D-396 | August 2026 | Tooling — benchmarking (gate policy, implementation) | Implements D-395 Q3. `PolicyCategory.Gating` renamed `AllocGating` (JSON `gating` → `allocGating`), scoped to the allocation-percent axis only, mirroring D-391's unconditional-ceiling precedent but kept per-category (matrix stays `compile`-only, unlike the universal ceiling). `ClassifyTime` no longer takes a gating/CPU/`Policy` parameter at all — it computes the reported percentages and unconditionally returns `TimeClass.Informational`; `Ok`/`CpuMismatch`/`PerSprintBreach`/`CumulativeBreach` removed from the enum as structurally unreachable. **No category can gate on time by construction**, not merely by a flag reading false. `SameCpu`'s guard survives only as an explanatory report note. Walked through `30720384069`: `Compile_TwoExpressions` now reads `Informational`/`Ok` → `Outcome.Pass`; a genuine allocation-percent breach on `compile` still fails (mutation-verified both ways). No threshold value changed — `perSprintPercent`/`cumulativePercent`/`timeSignificanceK`/`allocPercent` are byte-identical in `policy.json`, the first three retained for CLI report-header context only; D-313's ratchet rule untouched. `grob-benchmarking-strategy.md` §8/§9/§9.1/§9.2 updated so the documented and enforced gates match; the §9.1 matrix's Time columns now read `Informational` uniformly and the stale "compile's cumulative axis... not currently enforceable" caveat is retired as moot. No `src/` change. No opcode change. No new error code; count unchanged at 121. Refines D-395 (Q3), D-391 (the ceiling precedent mirrored). Cites D-395, D-391, D-333, D-313, D-385 (Q6's matrix, amended by citation). |
 | D-397 | August 2026 | VM — native dispatch (allocation, implementation) | Implements D-393 Q1, sequenced after Q3 (D-394). `VmInvoker` (`Grob.Core/VmInvoker.cs`) becomes a `readonly struct` (`IVmCallHost _host`, `int line`, `int column`, `CancellationToken cancellationToken`, `VmFinallyWindow finallyWindow`), removing the closure-plus-delegate allocation built at the two remaining construction sites — `VirtualMachine.cs`'s `Call` handler (`:1025`) and `InvokeCallable`'s nested-native path (`:1396`); the `GetProperty` array sub-arm's site is confirmed gone (D-394). **DAG-crossing design, a fork D-393 itself left unresolved:** a concrete `VirtualMachine` field would invert the `Grob.Core`→`Grob.Vm` DAG boundary, so `Grob.Core` gets `internal interface IVmCallHost` (one method, `InvokeCallable`) and `VirtualMachine` implements it **explicitly** (`VirtualMachine.cs:1364`), mirroring `IPluginRegistrar`'s existing precedent (`Grob.Runtime`) one layer further down; `Grob.Core` also gets `internal readonly record struct VmFinallyWindow` as a minimal twin of `VirtualMachine`'s own private `FinallyContext` — promoting `FinallyContext` itself into `Grob.Core` was considered and rejected as unnecessary surface growth. New `InternalsVisibleTo("Grob.Vm")` on `Grob.Core.csproj`, mirroring `Grob.Runtime.csproj`'s existing block; no new entry needed on `Grob.Core.Tests`. **Boxing verdict, reasoned then checked:** `Func<GrobValue[], VmInvoker, GrobValue>` is a concrete generic instantiation over the value type, JIT-monomorphised, no box at `native.Implementation(callArgs, invoker)`; `_host.InvokeCallable(...)` inside `Invoke` is a plain interface call on an already-reference-typed field, not a struct box. A throwaway console harness (D-388's technique, not committed) confirmed it directly: byte-identical allocation across seven trials at three scales (1/1,000/100,000 calls), converging to 48.008 B/call with no scale-dependent growth. **Recursion analysis:** same-native self-recursion (bounded by `_frameCount`/`MaxFrames`/E5901, already covered by `Catch_RuntimeError_InvokeCallableStackOverflow_CatchesAndResumes`) vs. cross-native nesting (bounded only by the CLR call stack, previously untested, now covered by new test `CrossNativeNestedInvocation_FilterLambdaInvokesSelectOnDifferentArray_CompletesCorrectly`) — the asymmetry is pre-existing, not introduced or fixed by this refactor. New sibling test `Filter_LambdaFault_Uncaught_ReportsOriginalCallSiteLineAndColumn` confirms line/column attribution survives the bridge unchanged; both new tests ran and passed against the unmodified delegate first, then unchanged after conversion. Whole in-tree source break: four `invoker(...)` → `invoker.Invoke(...)` rewrites in `ArrayNatives.cs` (`Filter`/`Select`/`Sort`/`Each`) plus mechanical test-only updates. **Before/after benchmarks, `git stash`, one sitting:** `attr-native` 186.107 → 74.095 B/call (net of `attr-range`, reproducing D-391's canonical 186.1 B/call exactly before trusting the delta); `attr-array-dispatch` 348,124 → 236,080 B/1,000; `Run_ArrayForIn` 371,520 → 259,488 B/1,000 — all three move by the same **≈112.0 B/call**, against a predicted 40–70 B/call (two eliminated small objects — display class plus delegate — not one, explains the gap). Post-fix floor (74.1 B/call) is what Q2's per-receiver cache further reduces. No baseline/ceiling touched; D-391's ceilings remain valid (lower than actual). Public-signature break (delegate→struct on `NativeFunction.Implementation`) accepted per D-393, no out-of-tree consumers today, reconfirmed by grep. Q2 (per-receiver `NativeFunction` cache) remains outstanding; ceiling re-derivation deferred until after it. No opcode change. No new error code; count unchanged at **121**. Refines D-393 (Q1, Q4), D-394. Cites D-391, D-313, D-342, `docs/design/bench-allocation-attribution.md`. |
+| D-398 | August 2026 | VM — native dispatch (allocation, implementation) | Implements D-393 Q2, the third and final of the three fixes, sequenced last. A lazily created `Dictionary<string, NativeFunction>?` field on `GrobArray`/`GrobMap`, populated on first bind per method name, consulted by `ArrayNatives.GetMethod`/`MapNatives.GetMethod` before constructing a fresh `NativeFunction` on every `GetProperty` dispatch. **Capture set re-verified against post-D-397 `VmInvoker`: no drift** — every array/map native still closes over `receiver` and nothing else, so D-393's invalidation-free rationale (live-state reads; no per-access context captured) holds unchanged. **Field placement safe on every axis**: both types use reference-identity equality/hashing, no clone/serialisation touches them, and `ValueDisplay` reads only the public element/key view — a new private field is invisible everywhere. **Map cached too, by evidence not the ratified text's literal conditional**: `MapNatives.GetMethod` allocates per call identically to the array path regardless of its lack of higher-order members, so deferring it would gain nothing. **Single-threaded by construction** (no locking primitive anywhere in `Grob.Core`/`Grob.Vm`; the playground's cancellation seam interrupts a single-threaded tab, not concurrent access) — plain `Dictionary`, no synchronisation. **Crossover analysis, given a number:** the isolated per-call rebinding cost (`attr-array-dispatch` − `attr-native`) is ≈115.9 B/call; a fresh cache dictionary costs ≈250–300 B one-time; break-even ≈3–4 calls per receiver — below that the cache costs more, a risk case none of the three required fixtures (all one-receiver/many-calls) exercise, recorded rather than hidden. **Before/after benchmarks, `git stash`, one sitting:** `attr-array-dispatch` 236,083 → 124,406 B/1,000 (**−111.7 B/call, −47.3%**), converging near the `attr-native` floor; `Run_ArrayForIn` 259,492 → 147,835 B (**−111,657 B, −43.0%**); `attr-native` byte-identical before and after — confirmed unchanged, since it calls no array/map method. Tests: cache-identity against `GetMethod` directly (same-receiver same-name same-instance; different-receiver distinct; unrecognised name stays a miss regardless of cache state); load-bearing mutation-reflected-through-cache using `contains`/`filter`/`get` (deliberately not `length`/`isEmpty`, which bypass `GetMethod` entirely — a correction of the commissioning prompt's own suggested test subject); load-bearing per-access-context test (two call sites, one cached binding, each fault reports its own line/column); existing `CrossNativeNestedInvocation_...` (D-397) passes unmodified. **Completes D-393's three fixes**; ceiling re-derivation now due against final numbers, as separate follow-up work. No opcode change. No new error code; count unchanged at **121**. Refines D-393 (Q2, Q4), D-397, D-394. Cites D-391, D-372, D-313. |
 
 ---
 
@@ -10144,6 +10145,125 @@ and its new uncaught sibling both pass unmodified through it), and
 
 ---
 
+### D-398 — Per-receiver `NativeFunction` cache on `GrobArray`/`GrobMap`: D-393's third and final fix implemented (August 2026)
+
+Area: VM — native dispatch (allocation, implementation)
+Supersedes: none
+Superseded by: none
+Refines: D-393 (Q2, Q4), D-397, D-394
+
+**Implements D-393 Q2 — the third and last of the three fixes D-393 ratified**, sequenced
+last by ascending blast radius after Q3 (D-394) and Q1 (D-397): a lazily created
+`Dictionary<string, NativeFunction>?` field on `GrobArray`/`GrobMap`, populated on first
+bind per method name, consulted by `ArrayNatives.GetMethod`/`MapNatives.GetMethod`
+before constructing a fresh `NativeFunction` on every `GetProperty` dispatch against the
+same receiver.
+
+**Plan-mode gate — capture set re-verified against post-D-397 `VmInvoker`, no drift
+found.** Every case in `ArrayNatives.GetMethod` (`ArrayNatives.cs:44-73`, all 11 array
+members) and `MapNatives.GetMethod` (`MapNatives.cs:24-34`, all 5 map members) closes
+over `receiver` and nothing else; `GetMethod` itself takes no `VmInvoker`/line/column/
+token parameter to capture (D-394 deleted it as dead), and the four higher-order array
+arms (`filter`/`select`/`sort`/`each`) take their `VmInvoker` as the second parameter of
+the bound `NativeFunction.Implementation` delegate itself, supplied fresh by the VM's
+`Call` handler or `InvokeCallable` at invocation time, never at bind time. `VmInvoker`
+(`VmInvoker.cs:26-31`) is confirmed to be exactly the 5-field `readonly struct` D-397
+described. D-393's two-part invalidation-free rationale therefore still holds unchanged:
+(a) every bound native reads live receiver state per call, never snapshotting at bind
+time, so a cached binding observes mutation exactly as a fresh one would; (b) no cached
+delegate carries any per-access VM context to go stale, since none was ever captured at
+bind time in the first place.
+
+**Field placement — safe on every axis checked.** `GrobArray`/`GrobMap` are `sealed
+class` with a single pre-existing backing field each; neither overrides `Equals`/
+`GetHashCode` — `GrobValue.Equals`/its hash use pure reference identity
+(`ReferenceEquals`/`RuntimeHelpers.GetHashCode`) for both kinds, so the new field is
+invisible there. No clone/deep-copy logic exists for either type (D-372's reference
+semantics), no `.grobc` serialisation touches them, and `ValueDisplay.RenderArray`/
+`RenderMap` are hand-written against the public `Elements`/`InsertionOrderKeys` view with
+no reflection — a new private field cannot leak into `print()`/interpolation output. The
+new surface is `internal GetCachedMethod(string)`/`internal CacheMethod(string,
+NativeFunction)` on both types, reachable only from `Grob.Vm` (the existing
+`InternalsVisibleTo("Grob.Vm")` grant on `Grob.Core.csproj`, unchanged).
+
+**The map decision — by evidence, not the ratified text's literal conditional.** D-393
+Q2 scoped the map cache to "if it ever grows a higher-order member" — map has none
+today. But `MapNatives.GetMethod` allocates a fresh `NativeFunction` per call
+identically to `ArrayNatives.GetMethod` regardless of higher-order status; the
+conditional in D-393's text was framed around reason (b) (higher-order `VmInvoker`
+soundness), which never applied to map either way since map never reads the invoker at
+all. The allocation cost — reason (a), plus the raw per-call construction cost — applies
+to map right now. **Cached on `GrobMap` in this same pass**, a deliberate deviation from
+Q2's literal wording: deferring would mean revisiting this exact file for a second small
+PR with no new information gained between now and then.
+
+**Thread safety — single-threaded by construction.** No locking primitive exists
+anywhere in `Grob.Core` or `Grob.Vm` (`lock (`, `Monitor.Enter`, `[ThreadStatic]`,
+`ReaderWriterLock` all absent). `grob-playground-architecture.md` §8 states the VM is
+fresh per run with no static mutable run-state, and its `CancellationToken`/step-budget
+seam exists to interrupt a single-threaded Blazor WASM tab, not to coordinate concurrent
+access — "re-entrancy" there and in D-397 means synchronous nested native→VM callback
+dispatch, never multiple threads. Plain `Dictionary<string, NativeFunction>`, no
+synchronisation.
+
+**Crossover analysis — the one way this fix could regress, given a number rather than a
+reassurance.** The per-call rebinding cost this fix removes, isolated as
+`attr-array-dispatch` − `attr-native` on this session's own before-figures: 236,083 B −
+120,207 B over 1,000 calls ≈ **115.9 B/call** — the `NativeFunction`-plus-closure
+construction skipped on a repeat bind. A fresh `Dictionary<string, NativeFunction>` plus
+its first-add internal arrays costs roughly 250–300 B one-time on first bind
+(order-of-magnitude estimate, not separately measured). For a receiver that has a method
+called on it once, the cache therefore costs _more_ — the ~116 B first-bind construction
+plus the ~250–300 B dictionary setup, against ~116 B with no cache at all. Break-even is
+approximately **3–4 calls per receiver**; below that, per-receiver cost rises, at or
+above it every further call becomes a zero-allocation dictionary lookup. **Gap recorded
+rather than hidden:** none of the three measurement fixtures exercise the "many
+receivers, one call each" shape — `attr-array-dispatch` and `Run_ArrayForIn` are both
+the cache's _best_ case (one receiver, many calls) — so this specific risk case has no
+benchmark coverage before or after this change.
+
+**Before/after benchmarks, same machine, one sitting (`git stash`, matching D-394/D-397's
+technique), Release configuration.** `attr-array-dispatch` (1,000 `xs.contains(i)`, one
+receiver — the cache's best case): 236,083 B → 124,406 B, **−111,677 B/1,000
+(−111.677 B/call, −47.3%)**, converging close to the `attr-native` floor since a warm
+cache hit is now structurally the same as a generic native call (one `callArgs`
+allocation, no `NativeFunction`/closure construction). `Run_ArrayForIn` (1,000
+`.append()` building the array, then an empty-body `for...in` sum — the sum touches no
+native method and is untouched by this fix): 259,492 B → 147,835 B, **−111,657 B
+(−43.0%)**. `attr-native` (no array/map method call at all, so `GetMethod` is never
+invoked): **117.39 KiB before and after, byte-identical — confirmed unchanged**, exactly
+the expected result. Both figures move only in the direction D-313's ratchet rule
+permits (lower, never higher); no baseline or ceiling file is touched — D-391's
+committed ceilings for these fixtures remain valid (lower than actual).
+
+**Tests.** Cache-identity coverage against `ArrayNatives.GetMethod`/`MapNatives.GetMethod`
+directly (no VM needed): same name/same receiver returns the same instance; same
+name/different receivers return distinct instances; different names on one receiver
+cache independently; an unrecognised name stays a miss regardless of the receiver's
+cache state. **Load-bearing, VM end-to-end:** `contains`/`filter`/`get` (deliberately not
+`length`/`isEmpty`, which resolve directly in `VirtualMachine.cs`'s `GetProperty` arm and
+never reach `GetMethod` — the commissioning prompt's own suggested subject would have
+tested nothing about this cache) reflect a receiver mutation made between two calls that
+share one cached binding. **Load-bearing, per-access context:** the same array + method
+name invoked from two different call sites across two separate `VirtualMachine`
+instances, so the second dispatch hits the cache the first populated — each uncaught
+fault still reports its own call site's line/column, not the site that first populated
+the cache. The existing `CrossNativeNestedInvocation_FilterLambdaInvokesSelectOnDifferentArray_CompletesCorrectly`
+(D-397) passes unmodified — two caches live at once, on two different receivers. Full
+existing array/map/VM/string/numeric suite passes unmodified alongside the new tests.
+
+**This completes D-393's three fixes.** Ceiling re-derivation is now due against final
+numbers, as its own separate follow-up piece of work — not performed here, per D-393
+Q4's explicit deferral. No opcode change. No new error code; count unchanged at **121**.
+No semantics change — every native's arity, behaviour and the `NativeFunction` shape
+itself are untouched. Cites D-393 (Q2, the ratified design this implements; Q4, the
+ordering and ceiling-deferral this closes out), D-397 (the capture-set analysis
+re-verified here), D-394 (the sibling Q3 fix, and the measurement technique reused),
+D-391 (the ceilings left untouched), D-372 (the reference-semantics basis for the
+invalidation-free cache), D-313 (the ratchet rule both deltas satisfy).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -10365,7 +10485,37 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — VmInvoker struct-ified, D-397 added: implements D-393 Q1,_
+_August 2026 — per-receiver NativeFunction cache landed, D-398 added:_
+_implements D-393 Q2, the third and final of the three fixes, sequenced last_
+_after Q3 (D-394) and Q1 (D-397). A lazily created Dictionary<string,_
+_NativeFunction> field on GrobArray/GrobMap, populated on first bind per_
+_method name, consulted by ArrayNatives.GetMethod/MapNatives.GetMethod_
+_before constructing a fresh NativeFunction on every GetProperty dispatch._
+_Capture set re-verified against post-D-397 VmInvoker: no drift, every_
+_array/map native still closes over receiver alone. Field placement safe on_
+_every axis — reference-identity equality/hashing, no clone/serialisation,_
+_ValueDisplay reads only the public view. Map cached too, by evidence rather_
+_than the ratified text's literal "if it ever grows a higher-order member"_
+_conditional — MapNatives.GetMethod allocates per call identically to the_
+_array path regardless. Single-threaded by construction (no locking_
+_primitive anywhere in Grob.Core/Grob.Vm); plain Dictionary, no_
+_synchronisation. Crossover analysis given a number: isolated per-call cost_
+_≈115.9 B/call, a fresh cache dictionary ≈250-300 B one-time, break-even_
+_≈3-4 calls per receiver — below that the cache costs more, a risk case none_
+_of the three required fixtures exercise, recorded rather than hidden._
+_Before/after benchmarks (git stash, one sitting): attr-array-dispatch_
+_236,083 to 124,406 B/1,000 (-111.7 B/call, -47.3%), converging near the_
+_attr-native floor; Run_ArrayForIn 259,492 to 147,835 B (-111,657 B, -43.0%);_
+_attr-native byte-identical before and after, confirmed unchanged. Tests:_
+_cache-identity against GetMethod directly, load-bearing mutation-reflected-_
+_through-cache using contains/filter/get (not length/isEmpty, which bypass_
+_GetMethod entirely — correcting the commissioning prompt's own suggested_
+_test subject), load-bearing per-access-context test (two call sites, one_
+_cached binding, each fault reports its own line/column), existing_
+_CrossNativeNestedInvocation_... passes unmodified. Completes D-393's three_
+_fixes; ceiling re-derivation now due against final numbers as separate_
+_follow-up work. No opcode change, no new error code, count unchanged at 121._
+_Previous: August 2026 — VmInvoker struct-ified, D-397 added: implements D-393 Q1,_
 _sequenced after Q3 (D-394). VmInvoker (Grob.Core/VmInvoker.cs) becomes a_
 _readonly struct (IVmCallHost host, line, column, CancellationToken,_
 _VmFinallyWindow) instead of a delegate, removing the closure-plus-delegate_

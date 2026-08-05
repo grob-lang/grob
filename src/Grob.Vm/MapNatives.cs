@@ -19,10 +19,16 @@ internal static class MapNatives {
     /// <summary>
     /// Returns the bound <see cref="NativeFunction"/> for the given
     /// <paramref name="methodName"/> on <paramref name="receiver"/>, or
-    /// <see langword="null"/> when the name is not a recognised map method.
+    /// <see langword="null"/> when the name is not a recognised map method. Consults
+    /// <paramref name="receiver"/>'s per-receiver method cache first (D-393 Q2), on the
+    /// same terms as <see cref="ArrayNatives.GetMethod"/>: every bound native below
+    /// closes over <c>receiver</c> and nothing else, so caching is invalidation-free.
     /// </summary>
-    internal static NativeFunction? GetMethod(string methodName, GrobMap receiver) =>
-        methodName switch {
+    internal static NativeFunction? GetMethod(string methodName, GrobMap receiver) {
+        NativeFunction? cached = receiver.GetCachedMethod(methodName);
+        if (cached is not null) return cached;
+
+        NativeFunction? method = methodName switch {
             "get" => new NativeFunction("get", 1, (args, _) => Get(args, receiver)),
             "contains" => new NativeFunction("contains", 1, (args, _) => Contains(args, receiver)),
             // Sprint 9 Increment C0b-2b (D-378): the in-place-mutating members — none
@@ -32,6 +38,9 @@ internal static class MapNatives {
             "clear" => new NativeFunction("clear", 0, (_, _) => Clear(receiver)),
             _ => null,
         };
+        if (method is not null) receiver.CacheMethod(methodName, method);
+        return method;
+    }
 
     // -----------------------------------------------------------------------
     // get(key: K) -> V? — nil when the key is absent, the same GrobMap.TryGetValue
