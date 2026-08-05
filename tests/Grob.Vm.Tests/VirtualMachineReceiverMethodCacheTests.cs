@@ -57,6 +57,8 @@ public sealed class VirtualMachineReceiverMethodCacheTests {
         NativeFunction? containsMethod = ArrayNatives.GetMethod("contains", receiver);
         NativeFunction? filterMethod = ArrayNatives.GetMethod("filter", receiver);
 
+        Assert.NotNull(containsMethod);
+        Assert.NotNull(filterMethod);
         Assert.NotSame(containsMethod, filterMethod);
         Assert.Same(containsMethod, ArrayNatives.GetMethod("contains", receiver));
         Assert.Same(filterMethod, ArrayNatives.GetMethod("filter", receiver));
