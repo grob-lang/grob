@@ -394,6 +394,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-396 | August 2026 | Tooling — benchmarking (gate policy, implementation) | Implements D-395 Q3. `PolicyCategory.Gating` renamed `AllocGating` (JSON `gating` → `allocGating`), scoped to the allocation-percent axis only, mirroring D-391's unconditional-ceiling precedent but kept per-category (matrix stays `compile`-only, unlike the universal ceiling). `ClassifyTime` no longer takes a gating/CPU/`Policy` parameter at all — it computes the reported percentages and unconditionally returns `TimeClass.Informational`; `Ok`/`CpuMismatch`/`PerSprintBreach`/`CumulativeBreach` removed from the enum as structurally unreachable. **No category can gate on time by construction**, not merely by a flag reading false. `SameCpu`'s guard survives only as an explanatory report note. Walked through `30720384069`: `Compile_TwoExpressions` now reads `Informational`/`Ok` → `Outcome.Pass`; a genuine allocation-percent breach on `compile` still fails (mutation-verified both ways). No threshold value changed — `perSprintPercent`/`cumulativePercent`/`timeSignificanceK`/`allocPercent` are byte-identical in `policy.json`, the first three retained for CLI report-header context only; D-313's ratchet rule untouched. `grob-benchmarking-strategy.md` §8/§9/§9.1/§9.2 updated so the documented and enforced gates match; the §9.1 matrix's Time columns now read `Informational` uniformly and the stale "compile's cumulative axis... not currently enforceable" caveat is retired as moot. No `src/` change. No opcode change. No new error code; count unchanged at 121. Refines D-395 (Q3), D-391 (the ceiling precedent mirrored). Cites D-395, D-391, D-333, D-313, D-385 (Q6's matrix, amended by citation). |
 | D-397 | August 2026 | VM — native dispatch (allocation, implementation) | Implements D-393 Q1, sequenced after Q3 (D-394). `VmInvoker` (`Grob.Core/VmInvoker.cs`) becomes a `readonly struct` (`IVmCallHost _host`, `int line`, `int column`, `CancellationToken cancellationToken`, `VmFinallyWindow finallyWindow`), removing the closure-plus-delegate allocation built at the two remaining construction sites — `VirtualMachine.cs`'s `Call` handler (`:1025`) and `InvokeCallable`'s nested-native path (`:1396`); the `GetProperty` array sub-arm's site is confirmed gone (D-394). **DAG-crossing design, a fork D-393 itself left unresolved:** a concrete `VirtualMachine` field would invert the `Grob.Core`→`Grob.Vm` DAG boundary, so `Grob.Core` gets `internal interface IVmCallHost` (one method, `InvokeCallable`) and `VirtualMachine` implements it **explicitly** (`VirtualMachine.cs:1364`), mirroring `IPluginRegistrar`'s existing precedent (`Grob.Runtime`) one layer further down; `Grob.Core` also gets `internal readonly record struct VmFinallyWindow` as a minimal twin of `VirtualMachine`'s own private `FinallyContext` — promoting `FinallyContext` itself into `Grob.Core` was considered and rejected as unnecessary surface growth. New `InternalsVisibleTo("Grob.Vm")` on `Grob.Core.csproj`, mirroring `Grob.Runtime.csproj`'s existing block; no new entry needed on `Grob.Core.Tests`. **Boxing verdict, reasoned then checked:** `Func<GrobValue[], VmInvoker, GrobValue>` is a concrete generic instantiation over the value type, JIT-monomorphised, no box at `native.Implementation(callArgs, invoker)`; `_host.InvokeCallable(...)` inside `Invoke` is a plain interface call on an already-reference-typed field, not a struct box. A throwaway console harness (D-388's technique, not committed) confirmed it directly: byte-identical allocation across seven trials at three scales (1/1,000/100,000 calls), converging to 48.008 B/call with no scale-dependent growth. **Recursion analysis:** same-native self-recursion (bounded by `_frameCount`/`MaxFrames`/E5901, already covered by `Catch_RuntimeError_InvokeCallableStackOverflow_CatchesAndResumes`) vs. cross-native nesting (bounded only by the CLR call stack, previously untested, now covered by new test `CrossNativeNestedInvocation_FilterLambdaInvokesSelectOnDifferentArray_CompletesCorrectly`) — the asymmetry is pre-existing, not introduced or fixed by this refactor. New sibling test `Filter_LambdaFault_Uncaught_ReportsOriginalCallSiteLineAndColumn` confirms line/column attribution survives the bridge unchanged; both new tests ran and passed against the unmodified delegate first, then unchanged after conversion. Whole in-tree source break: four `invoker(...)` → `invoker.Invoke(...)` rewrites in `ArrayNatives.cs` (`Filter`/`Select`/`Sort`/`Each`) plus mechanical test-only updates. **Before/after benchmarks, `git stash`, one sitting:** `attr-native` 186.107 → 74.095 B/call (net of `attr-range`, reproducing D-391's canonical 186.1 B/call exactly before trusting the delta); `attr-array-dispatch` 348,124 → 236,080 B/1,000; `Run_ArrayForIn` 371,520 → 259,488 B/1,000 — all three move by the same **≈112.0 B/call**, against a predicted 40–70 B/call (two eliminated small objects — display class plus delegate — not one, explains the gap). Post-fix floor (74.1 B/call) is what Q2's per-receiver cache further reduces. No baseline/ceiling touched; D-391's ceilings remain valid (lower than actual). Public-signature break (delegate→struct on `NativeFunction.Implementation`) accepted per D-393, no out-of-tree consumers today, reconfirmed by grep. Q2 (per-receiver `NativeFunction` cache) remains outstanding; ceiling re-derivation deferred until after it. No opcode change. No new error code; count unchanged at **121**. Refines D-393 (Q1, Q4), D-394. Cites D-391, D-313, D-342, `docs/design/bench-allocation-attribution.md`. |
 | D-398 | August 2026 | VM — native dispatch (allocation, implementation) | Implements D-393 Q2, the third and final of the three fixes, sequenced last. A lazily created `Dictionary<string, NativeFunction>?` field on `GrobArray`/`GrobMap`, populated on first bind per method name, consulted by `ArrayNatives.GetMethod`/`MapNatives.GetMethod` before constructing a fresh `NativeFunction` on every `GetProperty` dispatch. **Capture set re-verified against post-D-397 `VmInvoker`: no drift** — every array/map native still closes over `receiver` and nothing else, so D-393's invalidation-free rationale (live-state reads; no per-access context captured) holds unchanged. **Field placement safe on every axis**: both types use reference-identity equality/hashing, no clone/serialisation touches them, and `ValueDisplay` reads only the public element/key view — a new private field is invisible everywhere. **Map cached too, by evidence not the ratified text's literal conditional**: `MapNatives.GetMethod` allocates per call identically to the array path regardless of its lack of higher-order members, so deferring it would gain nothing. **Single-threaded by construction** (no locking primitive anywhere in `Grob.Core`/`Grob.Vm`; the playground's cancellation seam interrupts a single-threaded tab, not concurrent access) — plain `Dictionary`, no synchronisation. **Crossover analysis, given a number:** the isolated per-call rebinding cost (`attr-array-dispatch` − `attr-native`) is ≈115.9 B/call; a fresh cache dictionary costs ≈250–300 B one-time; break-even ≈3–4 calls per receiver — below that the cache costs more, a risk case none of the three required fixtures (all one-receiver/many-calls) exercise, recorded rather than hidden. **Before/after benchmarks, `git stash`, one sitting:** `attr-array-dispatch` 236,083 → 124,406 B/1,000 (**−111.7 B/call, −47.3%**), converging near the `attr-native` floor; `Run_ArrayForIn` 259,492 → 147,835 B (**−111,657 B, −43.0%**); `attr-native` byte-identical before and after — confirmed unchanged, since it calls no array/map method. Tests: cache-identity against `GetMethod` directly (same-receiver same-name same-instance; different-receiver distinct; unrecognised name stays a miss regardless of cache state); load-bearing mutation-reflected-through-cache using `contains`/`filter`/`get` (deliberately not `length`/`isEmpty`, which bypass `GetMethod` entirely — a correction of the commissioning prompt's own suggested test subject); load-bearing per-access-context test (two call sites, one cached binding, each fault reports its own line/column); existing `CrossNativeNestedInvocation_...` (D-397) passes unmodified. **Completes D-393's three fixes**; ceiling re-derivation now due against final numbers, as separate follow-up work. No opcode change. No new error code; count unchanged at **121**. Refines D-393 (Q2, Q4), D-397, D-394. Cites D-391, D-372, D-313. |
+| D-399 | August 2026 | Tooling — benchmarking (gate policy, baselines) | Re-derives the seven allocation ceilings D-393's dispatch fixes (D-394/D-397/D-398) moved the ground under, against fresh canonical run `31046217136`; closes the benchmark thread D-385 opened. Three ceilings (`compile`, `vm` scalar default, `attribution` floor default) are confirmed unmoved — their fixtures call no array/map member or Stdlib native, so D-393's fixes never touch them — and left alone, since touching a correct ceiling is churn. The other seven fall by the same `round_to_nearest_100(1.20×)` convention D-391 set: `Run_ArrayForIn` 637,900→**177,400 B**, `Run_MapForIn` 1,240,000→**913,900 B**, `Run_AttrNative` 278,700→**144,200 B**, `Run_AttrArrayDispatch` 552,100→**149,300 B**, `Run_AttrBuild` 610,900→**208,100 B**, `Run_AttrSnapshotEmpty` 700,300→**239,800 B**, `Run_AttrMapBuild` 1,128,400→**859,900 B** — each strictly lower than D-391's, the direction D-313's ratchet rule permits, closing the loop D-391 itself opened when it flagged the ≈48 B/call `GetProperty` tax these fixes would eventually remove. **`attribution`'s five per-benchmark overrides re-examined, kept separate**: `Run_AttrNative`/`Run_AttrArrayDispatch` converged to 3.5% apart (from ~2×) purely as a side effect of this specific pair of fixes, not a shared allocation shape — folding them risks silent divergence if either path changes alone later, mirroring D-391's own reason for keeping `vm`'s two `for...in` fixtures separate. **Rolling baselines (`vm.json`/`attribution.json`) refreshed wholesale** from the same canonical run — they still held D-391's original, now-stale figures; this records a measured improvement, explicitly not the ratchet D-313 forbids (absorbing a regression), since leaving them stale would itself have weakened the gate by making a real regression below the old figure misread as an improvement. `compile.json`/`*.origin.json` untouched, per scope. **Proof, both directions**: each re-derived ceiling independently fires when inflated to exactly its new value (`Outcome.Regression`, `**allocation ceiling**` on that row alone); the old stale baseline figures, replayed as fresh values, now correctly report large positive Δalloc and breach, where before the refresh they would have read as improvements. `Grob.BenchCheck.Tests` (76 tests, unmodified) passes. D-398's `attr-many-receivers` crossover-gap fixture is reported and recommended for its own follow-up, not added here — a new measurement, not a re-derivation. `grob-benchmarking-strategy.md` §8/§9.2 updated in the same edit so the documented and enforced gates match. No `src/` change — `bench/Grob.Benchmarks/baseline/` and the strategy doc only. No opcode change. No new error code; count unchanged at **121**. Refines D-391, D-393, D-394, D-395, D-396, D-397, D-398. Cites D-313, D-309, `docs/design/bench-allocation-attribution.md`. |
 
 ---
 
@@ -10264,6 +10265,152 @@ invalidation-free cache), D-313 (the ratchet rule both deltas satisfy).
 
 ---
 
+### D-399 — Allocation ceilings and rolling baselines re-derived against D-393's dispatch fixes; closes the benchmark thread (August 2026)
+
+Area: Tooling — benchmarking (gate policy, baselines)
+Supersedes: none
+Superseded by: none
+Refines: D-391 (the ceilings this re-derives), D-393, D-394, D-395, D-396, D-397, D-398
+(the dispatch fixes that moved the ground under them)
+
+**Closes the benchmark thread D-385 opened.** D-391 derived ten allocation ceilings from
+canonical run `30707325720`. D-393's three fixes — implemented as D-394 (Q3, the dead
+`GetProperty` closure-capture parameter), D-397 (Q1, `VmInvoker` struct-ified) and D-398
+(Q2, the per-receiver `NativeFunction` cache) — then cut allocation on the fixtures that
+exercise array/map dispatch by up to 73%, moving seven of those ten ceilings out from
+under their fixtures without anyone re-deriving them. This entry re-derives the seven
+that moved and leaves the three that did not, against the first canonical run since
+D-398 landed: `31046217136` (`windows-latest`, AMD EPYC 7763, .NET 10.0.10, 2026-08-05,
+gate PASS).
+
+**Classification — verified against the fresh run, not assumed.**
+
+| Ceiling | D-391 canonical | This entry's canonical | Headroom | Status |
+|---|---:|---:|---:|---|
+| `compile` 20,100 B | 16,728 B | 16,728 B | 1.20× | unmoved — fixture untouched by D-393 |
+| `vm` scalar 4,700 B | 3,880 B | 3,848 B | 1.22× | unmoved — fixture untouched by D-393 |
+| `attribution` floor 55,400 B | 46,145 B | 46,113 B | 1.20× | unmoved — fixture untouched by D-393 |
+| `Run_ArrayForIn` | 531,616 B | 147,832 B | 4.32×→1.20× | re-derived |
+| `Run_MapForIn` | 1,033,320 B | 761,592 B | 1.63×→1.20× | re-derived |
+| `Run_AttrNative` | 232,239 B | 120,204 B | 2.32×→1.20× | re-derived |
+| `Run_AttrArrayDispatch` | 460,101 B | 124,396 B | 4.44×→1.20× | re-derived |
+| `Run_AttrBuild` | 509,095 B | 173,389 B | 3.52×→1.20× | re-derived |
+| `Run_AttrSnapshotEmpty` | 583,609 B | 199,854 B | 3.50×→1.20× | re-derived |
+| `Run_AttrMapBuild` | 940,315 B | 716,613 B | 1.57×→1.20× | re-derived |
+
+The three unmoved ceilings sit at their fixtures' shapes (scalar arithmetic, whole-pipeline
+floor, compile-time) — none calls an array/map member or a Stdlib native, so none of
+D-393's three fixes touches them; their canonical figures are within measurement noise of
+D-391's and the existing ceiling still holds at ~1.20–1.22× headroom. Re-deriving them
+would be churn with no signal. The seven re-derived ceilings are, by the same
+`round_to_nearest_100(1.20 × canonical measured value)` convention D-391 set and this
+entry does not renegotiate:
+
+| Benchmark | Canonical (this run) | New ceiling |
+|---|---:|---:|
+| `Run_ArrayForIn` | 147,832 B | **177,400 B** |
+| `Run_MapForIn` | 761,592 B | **913,900 B** |
+| `Run_AttrNative` | 120,204 B | **144,200 B** |
+| `Run_AttrArrayDispatch` | 124,396 B | **149,300 B** |
+| `Run_AttrBuild` | 173,389 B | **208,100 B** |
+| `Run_AttrSnapshotEmpty` | 199,854 B | **239,800 B** |
+| `Run_AttrMapBuild` | 716,613 B | **859,900 B** |
+
+**This is the lowering D-391 itself anticipated.** D-391 committed the two `vm` `for...in`
+ceilings with an explicit note that they included an ≈48 B/call `GetProperty`
+closure-capture tax (D-389), and that a future fix to that tax "must lower these ceilings,
+never justify raising them." D-393 diagnosed that tax as three separable sources; D-394,
+D-397 and D-398 removed each. Every one of the seven figures above is strictly lower than
+D-391's — none raised, none holding position by coincidence.
+
+**`attribution`'s shape groups re-examined, kept as five individual overrides.** D-391
+gave `Run_AttrNative`/`Run_AttrArrayDispatch`/`Run_AttrBuild`/`Run_AttrSnapshotEmpty`/
+`Run_AttrMapBuild` each their own ceiling because their measured spread (232,239 B–940,315
+B, ~4×) was too wide for a shared default. D-393's fixes narrowed that spread unevenly:
+`Run_AttrNative` and `Run_AttrArrayDispatch` are now 120,204 B / 124,396 B — 3.5% apart,
+down from ~2× — while `Run_AttrMapBuild` (716,613 B) still sits ~6× above the smallest.
+Considered folding `Run_AttrNative`/`Run_AttrArrayDispatch` into one shared default the way
+`Run_AttrEmpty`/`Run_AttrRange` already share the floor default. **Decision: kept
+separate.** The two natives reach their current proximity through structurally different
+mechanisms — `Run_AttrNative` calls a Stdlib-registered native bound once at plugin
+registration and looked up by `GetGlobal`; `Run_AttrArrayDispatch` calls an array method
+now served by D-398's per-receiver cache after a first-bind cost — so their closeness is a
+side effect of this specific pair of fixes landing together, not a shared allocation
+shape. A future change touching either path alone (a new Stdlib native, a cache
+eviction policy, a further array-dispatch optimisation) could diverge them again with no
+warning if they shared one ceiling. This mirrors D-391's own stated reason for keeping
+`vm`'s two `for...in` fixtures separate despite being conceptually related: merging
+reintroduces, one level down, the "one number spans too wide a range" problem the
+per-benchmark override exists to avoid.
+
+**Rolling baselines refreshed — a measured improvement recorded, not a ratchet
+violation absorbed.** `bench/Grob.Benchmarks/baseline/vm.json` and `attribution.json`
+still held D-391's original `30707325720` figures (identical to their `.origin.json`
+twins — neither had been touched since). Both rolling baseline files are replaced
+wholesale with run `31046217136`'s `-report-full.json` for their category, the same
+re-establishment mechanism D-390/D-391 used. Before this change, `Run_ArrayForIn`'s
+rolling baseline (531,616 B) sat far above the fixture's actual current allocation
+(147,832 B); a future regression landing anywhere below 531,616 B would have read as an
+_improvement_ against the stale baseline and passed the (informational, for `vm`)
+percent-vs-rolling check without a flag, even while breaching the old, equally stale,
+absolute ceiling was the only thing standing between that regression and a silent pass.
+D-313's ratchet rule forbids updating a baseline to _absorb_ a known regression; recording
+a _measured_ improvement as the new normal is the opposite case — leaving it stale is what
+would have weakened the gate, not refreshing it. `compile.json`/`compile.origin.json` are
+untouched: `compile`'s figures did not move, and its separately-tracked cumulative-drift/
+`Unknown processor` gap (D-395) is out of this entry's scope. No `*.origin.json` file is
+re-captured — that remains the separate, still-open decision D-395 left it as.
+
+**Proof the mechanism is live on both sides, not merely reconfigured.** Re-ran
+`BenchCheck` against run `31046217136`'s artifacts with the refreshed `policy.json` and
+baselines: gate `PASS`, every row `info`/`ok`, 0% Δalloc against the refreshed rolling
+baselines (they are the same run). Then, for each of the seven re-derived ceilings,
+inflated that one benchmark's reported allocation to exactly its new ceiling in an
+isolated copy of the fresh artifacts and re-ran: all seven independently produced
+`Outcome.Regression` with `**allocation ceiling**` on that row alone, every other row
+reading as the unmodified run does — the same per-ceiling proof technique D-391
+established. Separately, replayed the _old_, now-stale rolling-baseline figures
+(`Run_ArrayForIn` at 531,616 B; `Run_AttrArrayDispatch` at 460,101 B) as fresh values
+against the refreshed baseline and ceiling: both now report `Outcome.Regression` /
+`**allocation ceiling**` with a correctly-signed `+259.6%`/`+269.9%` Δalloc, where before
+the refresh the same absolute figures would have read as a percentage _improvement_
+against the stale rolling baseline. This is the hole the entry closes, demonstrated both
+before and after. `Grob.BenchCheck.Tests` (76 tests, unmodified — this entry changes no
+`Grob.BenchCheck` source) passes.
+
+**D-398's crossover gap — reported and scoped, not fixed here.** D-398 recorded that the
+per-receiver cache's break-even is ~3–4 calls per receiver, and that no existing fixture
+exercises "many receivers, one call each" — `attr-array-dispatch` and `Run_ArrayForIn`
+are both the cache's best case (one receiver, many calls). An `attr-many-receivers`
+fixture — e.g. 1,000 distinct one-element arrays, one `.contains()` call against each —
+would measure the cache's worst case: every receiver pays first-bind-plus-dictionary-setup
+cost with no repeat-call amortisation, the opposite allocation shape from every other
+`attr-*` fixture. **Deferred to its own follow-up piece of work, not added here**: it is a
+new measurement, not a re-derivation of an existing one, and adding it changes the
+`attribution` baseline set on terms this entry's scope does not cover.
+
+**Also: `docs/design/grob-benchmarking-strategy.md` updated in the same edit.** §8's
+`policy.json` example and §9.2's ceiling table and granularity prose now cite the seven
+re-derived figures and this entry's canonical run, so the documented gate and the
+enforced gate stay the same statement (the ADR-0018 precedent D-385/D-391 already applied
+to this corpus). §9.2's tax-removal paragraph now closes the loop D-391 opened: the
+`GetProperty` tax it flagged is confirmed removed by D-394/D-397/D-398, and this entry's
+lowered ceilings are that removal's required consequence under D-313, not a new
+concession.
+
+No `src/` change — `bench/Grob.Benchmarks/baseline/policy.json`, `vm.json`,
+`attribution.json` and `docs/design/grob-benchmarking-strategy.md` only. No opcode
+change. No new error code; count unchanged at **121**. Cites D-391 (the ceilings and
+convention this re-derives against, unrevised), D-393 (the dispatch-tax diagnosis),
+D-394, D-397, D-398 (the three fixes that moved the ground), D-395, D-396 (the
+allocation-percent/ceiling axis split this entry's proof relies on), D-313 (the ratchet
+rule, both the lowering this entry performs and the improvement-vs-regression distinction
+it draws), D-309 (the canonical-runner precedent), and
+`docs/design/bench-allocation-attribution.md` (the pre-refactor findings note D-391 itself
+cited, retained unedited as historical evidence and not touched by this entry either).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -10485,7 +10632,30 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — per-receiver NativeFunction cache landed, D-398 added:_
+_August 2026 — allocation ceilings and rolling baselines re-derived, D-399_
+_added: closes the benchmark thread D-385 opened. D-393's three dispatch_
+_fixes (D-394/D-397/D-398) moved the ground under seven of D-391's ten_
+_ceilings; against fresh canonical run 31046217136, three (compile, vm_
+_scalar default, attribution floor default) are confirmed unmoved and left_
+_alone, and the other seven are re-derived, each strictly lower than_
+_D-391's — Run_ArrayForIn 637,900 to 177,400 B, Run_MapForIn 1,240,000 to_
+_913,900 B, Run_AttrNative 278,700 to 144,200 B, Run_AttrArrayDispatch_
+_552,100 to 149,300 B, Run_AttrBuild 610,900 to 208,100 B,_
+_Run_AttrSnapshotEmpty 700,300 to 239,800 B, Run_AttrMapBuild 1,128,400 to_
+_859,900 B. attribution's five per-benchmark overrides re-examined and kept_
+_separate: Run_AttrNative/Run_AttrArrayDispatch converged to 3.5% apart_
+_purely as a side effect of this pair of fixes, not a shared shape, so_
+_merging them risks silent divergence later. Rolling baselines (vm.json,_
+_attribution.json) refreshed wholesale from the same canonical run — a_
+_measured improvement recorded, not the ratchet D-313 forbids absorbing._
+_compile.json/*.origin.json untouched, per scope. Proof both directions:_
+_each re-derived ceiling fires when inflated to exactly its new value; the_
+_old stale baseline figures, replayed as fresh, now correctly breach_
+_instead of misreading as improvements. D-398's attr-many-receivers_
+_crossover-gap fixture reported and recommended as its own follow-up, not_
+_added here. grob-benchmarking-strategy.md updated in the same edit. No_
+_src/ change, no opcode change, no new error code, count unchanged at 121._
+_Previous: August 2026 — per-receiver NativeFunction cache landed, D-398 added:_
 _implements D-393 Q2, the third and final of the three fixes, sequenced last_
 _after Q3 (D-394) and Q1 (D-397). A lazily created Dictionary<string,_
 _NativeFunction> field on GrobArray/GrobMap, populated on first bind per_

@@ -618,8 +618,8 @@ axis alone):
       "allocGating": false,
       "allocationCeilingBytes": 4700,
       "benchmarkAllocationCeilings": {
-        "Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn": 637900,
-        "Grob.Benchmarks.Vm.VmBenchmarks.Run_MapForIn": 1240000
+        "Grob.Benchmarks.Vm.VmBenchmarks.Run_ArrayForIn": 177400,
+        "Grob.Benchmarks.Vm.VmBenchmarks.Run_MapForIn": 913900
       }
     },
     {
@@ -629,11 +629,11 @@ axis alone):
       "allocGating": false,
       "allocationCeilingBytes": 55400,
       "benchmarkAllocationCeilings": {
-        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrNative": 278700,
-        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrArrayDispatch": 552100,
-        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrBuild": 610900,
-        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrSnapshotEmpty": 700300,
-        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrMapBuild": 1128400
+        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrNative": 144200,
+        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrArrayDispatch": 149300,
+        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrBuild": 208100,
+        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrSnapshotEmpty": 239800,
+        "Grob.Benchmarks.Attribution.AttributionBenchmarks.Run_AttrMapBuild": 859900
       }
     },
     {
@@ -838,21 +838,30 @@ than a flat default resolve it differently, on the same underlying logic
 
 - **`compile`** (16,728 B / 9,856 B, both compile-time-shaped) — one
   category default, no overrides.
-- **`vm`** — three scalar-dispatch fixtures (`Run_DeclAndArith` 2,344 B,
-  `Run_Interpolation` 3,880 B, `Run_ControlFlow` 2,504 B) share a category
-  default; `Run_ArrayForIn` (531,616 B) and `Run_MapForIn` (1,033,320 B) —
-  themselves ~2× apart — each get their own override rather than a shared
+- **`vm`** — three scalar-dispatch fixtures (`Run_DeclAndArith` 2,312 B,
+  `Run_Interpolation` 3,848 B, `Run_ControlFlow` 2,472 B) share a category
+  default; `Run_ArrayForIn` (147,832 B) and `Run_MapForIn` (761,592 B) —
+  themselves ~5× apart — each get their own override rather than a shared
   ceiling between the two, which would just reintroduce a smaller version of
   the same "one number spans too much" problem.
 - **`attribution`** — the two floor-shaped fixtures that measure the
   pipeline-plus-harness cost every other fixture is subtracted against
-  (`Run_AttrEmpty` 42,849 B, `Run_AttrRange` 46,145 B) share a category
+  (`Run_AttrEmpty` 42,817 B, `Run_AttrRange` 46,113 B) share a category
   default; the five larger, structurally distinct diagnostic fixtures
   (`Run_AttrNative`, `Run_AttrArrayDispatch`, `Run_AttrBuild`,
   `Run_AttrSnapshotEmpty`, `Run_AttrMapBuild`) each get their own override,
   for the same reason as `vm`'s two `for...in` fixtures — `attr-native`
-  (232,239 B) to `attr-map-build` (940,315 B) is itself a ~4× spread.
-  `attr-empty` and `attr-range` are deliberately not folded into "let
+  (120,204 B) to `attr-map-build` (716,613 B) is itself a ~6× spread. D-399
+  re-examined whether `attr-native` and `attr-array-dispatch` (120,204 B /
+  124,396 B, now 3.5% apart, having been ~2× apart at D-391) should fold into
+  one shared default now that the dispatch fixes (D-393/D-394/D-397/D-398)
+  cut the array-dispatch tax by 73%: kept separate, on the same reasoning as
+  `vm`'s two `for...in` fixtures above — the two natives bind through
+  structurally different mechanisms (D-393 §4; a Stdlib-registered cached
+  global versus a per-receiver-cached array method), so their current
+  numeric proximity is a side effect of that specific fix rather than a
+  shared shape, and a future change to either one alone could diverge them
+  again. `attr-empty` and `attr-range` are deliberately not folded into "let
   `compile` cover the small end" the way a purely category-wide ceiling
   might assume: `attr-empty` measures the whole pipeline *plus*
   `VirtualMachine` construction *plus* plugin registration, so a regression
@@ -868,36 +877,39 @@ absolute backstop, not the primary signal. A fresh allocation reaching
 approximately 1.20 × the canonical measurement breaches the ceiling, so any
 growth beyond 20% is caught rather than absorbed. Every ceiling below is
 `round_to_nearest_100(1.20 × canonical measured value)`, from the canonical
-run `30707325720` (`windows-latest`, AMD EPYC 7763, 2026-08-01):
+run `31046217136` (`windows-latest`, AMD EPYC 7763, 2026-08-05) — D-399's
+re-derivation, superseding D-391's original run `30707325720` for the seven
+rows the dispatch fixes (D-393/D-394/D-397/D-398) moved:
 
 | Benchmark / group | Measured | Ceiling |
 |---|---:|---:|
 | `compile` (default; basis `Compile_TenPrints`) | 16,728 B | **20,100 B** |
-| `vm` scalar-shape default (basis `Run_Interpolation`) | 3,880 B | **4,700 B** |
-| `vm` → `Run_ArrayForIn` | 531,616 B | **637,900 B** |
-| `vm` → `Run_MapForIn` | 1,033,320 B | **1,240,000 B** |
-| `attribution` floor-shape default (basis `Run_AttrRange`) | 46,145 B | **55,400 B** |
-| `attribution` → `Run_AttrNative` | 232,239 B | **278,700 B** |
-| `attribution` → `Run_AttrArrayDispatch` | 460,101 B | **552,100 B** |
-| `attribution` → `Run_AttrBuild` | 509,095 B | **610,900 B** |
-| `attribution` → `Run_AttrSnapshotEmpty` | 583,609 B | **700,300 B** |
-| `attribution` → `Run_AttrMapBuild` | 940,315 B | **1,128,400 B** |
+| `vm` scalar-shape default (basis `Run_Interpolation`) | 3,848 B | **4,700 B** |
+| `vm` → `Run_ArrayForIn` | 147,832 B | **177,400 B** |
+| `vm` → `Run_MapForIn` | 761,592 B | **913,900 B** |
+| `attribution` floor-shape default (basis `Run_AttrRange`) | 46,113 B | **55,400 B** |
+| `attribution` → `Run_AttrNative` | 120,204 B | **144,200 B** |
+| `attribution` → `Run_AttrArrayDispatch` | 124,396 B | **149,300 B** |
+| `attribution` → `Run_AttrBuild` | 173,389 B | **208,100 B** |
+| `attribution` → `Run_AttrSnapshotEmpty` | 199,854 B | **239,800 B** |
+| `attribution` → `Run_AttrMapBuild` | 716,613 B | **859,900 B** |
 
-Three of these ten ceilings sit below the old 85,000 B constant (`compile`,
-the `vm` scalar default and the `attribution` floor default) and seven sit
-above it: a misapplied global limit replaced by shape-specific ceilings,
-tightening the three small shapes and raising the permitted figure for the
-seven larger ones. The seven are higher because the old number was never
-derived from any of these fixtures' legitimate allocation in the first
-place — every one of them already measured above it, so it was never a
-threshold those shapes were passing. The `vm`
-`for...in` ceilings specifically **include an ≈48 B/call `GetProperty`
-closure-capture tax** D-389 attributed — paid once per loop iteration,
-independent of array or map size, a Roslyn closure-capture display-class
-allocation on the array/map `GetProperty` dispatch path (D-389's full
-mechanism and evidence trail: `docs/design/bench-snapshot-residual.md`). Per
-D-313's ratchet rule, removing that tax later must *lower* these ceilings,
-never require raising them; it is not chased in this entry.
+Three of these ten ceilings — `compile`, the `vm` scalar default and the
+`attribution` floor default — are unmoved by this re-derivation: their
+fixtures were never touched by D-393's dispatch fixes, so their canonical
+measurement still lands within noise of D-391's original figure and the
+existing ceiling still holds at ~1.20× headroom. The other seven fell
+sharply — 23.8% (`Run_AttrMapBuild`) to 73.0% (`Run_AttrArrayDispatch`) —
+because the `vm`/`attribution` `for...in` and array/map-dispatch ceilings
+specifically **included an ≈48 B/call `GetProperty` closure-capture tax**
+D-389 attributed and D-391 committed the ceiling with (paid once per loop
+iteration or dispatch, independent of array or map size — D-389's full
+mechanism and evidence trail: `docs/design/bench-snapshot-residual.md`).
+D-393 diagnosed that tax as three separable sources; D-394, D-397 and D-398
+removed each in turn. Per D-313's ratchet rule this is the direction a
+ceiling may always move — this entry is that lowering, not a new
+concession, and the seven figures above are strictly tighter than D-391's,
+never looser.
 
 **The revision rule.** A ceiling is legitimately raised when a new benchmark
 of a genuinely different allocation shape lands, or a deliberate feature
