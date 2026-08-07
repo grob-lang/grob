@@ -395,6 +395,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-397 | August 2026 | VM — native dispatch (allocation, implementation) | Implements D-393 Q1, sequenced after Q3 (D-394). `VmInvoker` (`Grob.Core/VmInvoker.cs`) becomes a `readonly struct` (`IVmCallHost _host`, `int line`, `int column`, `CancellationToken cancellationToken`, `VmFinallyWindow finallyWindow`), removing the closure-plus-delegate allocation built at the two remaining construction sites — `VirtualMachine.cs`'s `Call` handler (`:1025`) and `InvokeCallable`'s nested-native path (`:1396`); the `GetProperty` array sub-arm's site is confirmed gone (D-394). **DAG-crossing design, a fork D-393 itself left unresolved:** a concrete `VirtualMachine` field would invert the `Grob.Core`→`Grob.Vm` DAG boundary, so `Grob.Core` gets `internal interface IVmCallHost` (one method, `InvokeCallable`) and `VirtualMachine` implements it **explicitly** (`VirtualMachine.cs:1364`), mirroring `IPluginRegistrar`'s existing precedent (`Grob.Runtime`) one layer further down; `Grob.Core` also gets `internal readonly record struct VmFinallyWindow` as a minimal twin of `VirtualMachine`'s own private `FinallyContext` — promoting `FinallyContext` itself into `Grob.Core` was considered and rejected as unnecessary surface growth. New `InternalsVisibleTo("Grob.Vm")` on `Grob.Core.csproj`, mirroring `Grob.Runtime.csproj`'s existing block; no new entry needed on `Grob.Core.Tests`. **Boxing verdict, reasoned then checked:** `Func<GrobValue[], VmInvoker, GrobValue>` is a concrete generic instantiation over the value type, JIT-monomorphised, no box at `native.Implementation(callArgs, invoker)`; `_host.InvokeCallable(...)` inside `Invoke` is a plain interface call on an already-reference-typed field, not a struct box. A throwaway console harness (D-388's technique, not committed) confirmed it directly: byte-identical allocation across seven trials at three scales (1/1,000/100,000 calls), converging to 48.008 B/call with no scale-dependent growth. **Recursion analysis:** same-native self-recursion (bounded by `_frameCount`/`MaxFrames`/E5901, already covered by `Catch_RuntimeError_InvokeCallableStackOverflow_CatchesAndResumes`) vs. cross-native nesting (bounded only by the CLR call stack, previously untested, now covered by new test `CrossNativeNestedInvocation_FilterLambdaInvokesSelectOnDifferentArray_CompletesCorrectly`) — the asymmetry is pre-existing, not introduced or fixed by this refactor. New sibling test `Filter_LambdaFault_Uncaught_ReportsOriginalCallSiteLineAndColumn` confirms line/column attribution survives the bridge unchanged; both new tests ran and passed against the unmodified delegate first, then unchanged after conversion. Whole in-tree source break: four `invoker(...)` → `invoker.Invoke(...)` rewrites in `ArrayNatives.cs` (`Filter`/`Select`/`Sort`/`Each`) plus mechanical test-only updates. **Before/after benchmarks, `git stash`, one sitting:** `attr-native` 186.107 → 74.095 B/call (net of `attr-range`, reproducing D-391's canonical 186.1 B/call exactly before trusting the delta); `attr-array-dispatch` 348,124 → 236,080 B/1,000; `Run_ArrayForIn` 371,520 → 259,488 B/1,000 — all three move by the same **≈112.0 B/call**, against a predicted 40–70 B/call (two eliminated small objects — display class plus delegate — not one, explains the gap). Post-fix floor (74.1 B/call) is what Q2's per-receiver cache further reduces. No baseline/ceiling touched; D-391's ceilings remain valid (lower than actual). Public-signature break (delegate→struct on `NativeFunction.Implementation`) accepted per D-393, no out-of-tree consumers today, reconfirmed by grep. Q2 (per-receiver `NativeFunction` cache) remains outstanding; ceiling re-derivation deferred until after it. No opcode change. No new error code; count unchanged at **121**. Refines D-393 (Q1, Q4), D-394. Cites D-391, D-313, D-342, `docs/design/bench-allocation-attribution.md`. |
 | D-398 | August 2026 | VM — native dispatch (allocation, implementation) | Implements D-393 Q2, the third and final of the three fixes, sequenced last. A lazily created `Dictionary<string, NativeFunction>?` field on `GrobArray`/`GrobMap`, populated on first bind per method name, consulted by `ArrayNatives.GetMethod`/`MapNatives.GetMethod` before constructing a fresh `NativeFunction` on every `GetProperty` dispatch. **Capture set re-verified against post-D-397 `VmInvoker`: no drift** — every array/map native still closes over `receiver` and nothing else, so D-393's invalidation-free rationale (live-state reads; no per-access context captured) holds unchanged. **Field placement safe on every axis**: both types use reference-identity equality/hashing, no clone/serialisation touches them, and `ValueDisplay` reads only the public element/key view — a new private field is invisible everywhere. **Map cached too, by evidence not the ratified text's literal conditional**: `MapNatives.GetMethod` allocates per call identically to the array path regardless of its lack of higher-order members, so deferring it would gain nothing. **Single-threaded by construction** (no locking primitive anywhere in `Grob.Core`/`Grob.Vm`; the playground's cancellation seam interrupts a single-threaded tab, not concurrent access) — plain `Dictionary`, no synchronisation. **Crossover analysis, given a number:** the isolated per-call rebinding cost (`attr-array-dispatch` − `attr-native`) is ≈115.9 B/call; a fresh cache dictionary costs ≈250–300 B one-time; break-even ≈3–4 calls per receiver — below that the cache costs more, a risk case none of the three required fixtures (all one-receiver/many-calls) exercise, recorded rather than hidden. **Before/after benchmarks, `git stash`, one sitting:** `attr-array-dispatch` 236,083 → 124,406 B/1,000 (**−111.7 B/call, −47.3%**), converging near the `attr-native` floor; `Run_ArrayForIn` 259,492 → 147,835 B (**−111,657 B, −43.0%**); `attr-native` byte-identical before and after — confirmed unchanged, since it calls no array/map method. Tests: cache-identity against `GetMethod` directly (same-receiver same-name same-instance; different-receiver distinct; unrecognised name stays a miss regardless of cache state); load-bearing mutation-reflected-through-cache using `contains`/`filter`/`get` (deliberately not `length`/`isEmpty`, which bypass `GetMethod` entirely — a correction of the commissioning prompt's own suggested test subject); load-bearing per-access-context test (two call sites, one cached binding, each fault reports its own line/column); existing `CrossNativeNestedInvocation_...` (D-397) passes unmodified. **Completes D-393's three fixes**; ceiling re-derivation now due against final numbers, as separate follow-up work. No opcode change. No new error code; count unchanged at **121**. Refines D-393 (Q2, Q4), D-397, D-394. Cites D-391, D-372, D-313. |
 | D-399 | August 2026 | Tooling — benchmarking (gate policy, baselines) | Re-derives the seven allocation ceilings D-393's dispatch fixes (D-394/D-397/D-398) moved the ground under, against fresh canonical run `31046217136`; closes the benchmark thread D-385 opened. Three ceilings (`compile`, `vm` scalar default, `attribution` floor default) are confirmed unmoved — their fixtures call no array/map member or Stdlib native, so D-393's fixes never touch them — and left alone, since touching a correct ceiling is churn. The other seven fall by the same `round_to_nearest_100(1.20×)` convention D-391 set: `Run_ArrayForIn` 637,900→**177,400 B**, `Run_MapForIn` 1,240,000→**913,900 B**, `Run_AttrNative` 278,700→**144,200 B**, `Run_AttrArrayDispatch` 552,100→**149,300 B**, `Run_AttrBuild` 610,900→**208,100 B**, `Run_AttrSnapshotEmpty` 700,300→**239,800 B**, `Run_AttrMapBuild` 1,128,400→**859,900 B** — each strictly lower than D-391's, the direction D-313's ratchet rule permits, closing the loop D-391 itself opened when it flagged the ≈48 B/call `GetProperty` tax these fixes would eventually remove. **`attribution`'s five per-benchmark overrides re-examined, kept separate**: `Run_AttrNative`/`Run_AttrArrayDispatch` converged to 3.5% apart (from ~2×) purely as a side effect of this specific pair of fixes, not a shared allocation shape — folding them risks silent divergence if either path changes alone later, mirroring D-391's own reason for keeping `vm`'s two `for...in` fixtures separate. **Rolling baselines (`vm.json`/`attribution.json`) refreshed wholesale** from the same canonical run — they still held D-391's original, now-stale figures; this records a measured improvement, explicitly not the ratchet D-313 forbids (absorbing a regression), since leaving them stale would itself have weakened the gate by making a real regression below the old figure misread as an improvement. `compile.json`/`*.origin.json` untouched, per scope. **Proof, both directions**: each re-derived ceiling independently fires when inflated to exactly its new value (`Outcome.Regression`, `**allocation ceiling**` on that row alone); the old stale baseline figures, replayed as fresh values, now correctly report large positive Δalloc and breach, where before the refresh they _were_ the baseline and would have replayed as exactly 0% Δalloc, well inside the old ceilings. `Grob.BenchCheck.Tests` (76 tests, unmodified) passes. D-398's `attr-many-receivers` crossover-gap fixture is reported and recommended for its own follow-up, not added here — a new measurement, not a re-derivation. `grob-benchmarking-strategy.md` §8/§9.2 updated in the same edit so the documented and enforced gates match. No `src/` change — `bench/Grob.Benchmarks/baseline/` and the strategy doc only. No opcode change. No new error code; count unchanged at **121**. Refines D-391, D-393, D-394, D-395, D-396, D-397, D-398. Cites D-313, D-309, `docs/design/bench-allocation-attribution.md`. |
+| D-400 | August 2026 | Compiler — bytecode emission (optional chaining) | Fixes D-380's fourth finding: `xs?.first()` on a nil `int[]?` crashed the VM (`Call target is not a function (kind: Nil)`) instead of short-circuiting to `nil`, because `VisitCall` never inspected the callee `MemberAccessExpr`'s `IsOptional` flag — `VisitMemberAccess`'s own property-path guard correctly left `nil` on the stack for a nil receiver, but the surrounding call emission unconditionally evaluated arguments and emitted `Call` regardless, popping that `nil` as the callee at runtime. Empirically reproduced across every receiver kind first (array/string/numeric/nominal all crashed identically; map could not be reproduced at all — `GrobType` has no `NullableMap` variant, a separate pre-existing gap, not fixed here). Compiler-only fix, no VM change, no new opcode: a new `EmitOptionalChainCall` helper (extracted from `VisitCall` to stay under the S3776 complexity bar) reuses `VisitMemberAccess`'s exact `IsNil`/`JumpIfTrue`/`Pop`/…/`Jump`/`Pop` shape around the argument evaluation and `Call`, called whenever `node.Callee is MemberAccessExpr { IsOptional: true }`. Fixes argument-evaluation "for free" (`node.Arguments` visited only on the non-nil branch, so `xs?.contains(sideEffect())` on nil `xs` no longer runs `sideEffect()`) and chained short-circuiting falls out with no extra code (`a?.first()?.upper()` on nil `a` skips the whole chain from the first nil). Result typing confirmed unchanged and correctly out of scope (`?.` on a nullable array/struct already resolved `Unknown`, not `T?`, before this fix — one of D-380's own deferred findings). **New finding surfaced, not fixed here:** a _non-nil_ `string?`/`int?`/`float?`/`bool?` receiver's `?.` method call still crashes with a different message (`opcode GetProperty '<name>' on receiver of kind String not yet implemented`) — `GetProperty` has no primitive-kind arm by design, and the primitive compile-time rewrite never fires for a genuinely nullable primitive; a VM-dispatch-table gap distinct from this entry's short-circuit fix, one of D-380's remaining diagnostic-quality gaps, reported for its own follow-up. New tests: `CompilerOptionalChainCallTests.cs` (bytecode-shape, count-based so a false-green regression is structurally impossible) and `OptionalChainMethodCallTests.cs` (full-pipeline, every reachable receiver kind, argument non-evaluation, chained short-circuit, `??` interaction); full solution `dotnet test` green (3,639 tests, no regressions). `grob-language-fundamentals.md` §21 already states "no further member access or method calls are attempted" — not silent, no doc update needed. No opcode change. No new error code; count unchanged at **121**. Refines D-380, D-377. Cites D-353. |
 
 ---
 
@@ -10414,6 +10415,125 @@ cited, retained unedited as historical evidence and not touched by this entry ei
 
 ---
 
+### D-400 — `?.` method-call short-circuit fixed: `xs?.first()` on a nil receiver no longer crashes the VM, closing D-380's fourth finding (August 2026)
+
+Area: Compiler — bytecode emission (optional chaining)
+Supersedes: none
+Superseded by: none
+Refines: D-380 (the finding this closes), D-377 (the property-path precedent mirrored)
+
+**The defect, empirically reproduced before any fix.** D-380 found and deliberately
+deferred this: `?.` short-circuits correctly for property access (`xs?.length` on a
+nil `int[]?` yields `nil`) but a method call through the same `?.` (`xs?.first()`)
+crashed with `Call target is not a function (kind: Nil)`. Reproduced against a built
+`grob.exe` across every receiver kind before writing any code, per the plan-mode gate:
+array (`xs?.first()`), string (`s?.upper()`), numeric (`n?.toString()`), and nominal
+(`d?.addDays(1)`) all crashed identically on a nil receiver. **Map could not be
+reproduced at all**: `GrobType` has no `NullableMap` variant (only `NullableArray`,
+`NullableString`, `NullableInt`, `NullableFloat`, `NullableBool`, `NullableStruct`,
+`NullableFunction`, `NullableAnonStruct` exist), so `m: map<string, int>? := nil`
+fails to compile with E0001 before the call site is ever reached — nullable-map
+support was simply never built. Independent of D-380, not fixed here, but doesn't
+block this fix: the fix (below) is receiver-type-agnostic, so a nullable-map `?.`
+call will work automatically the day `NullableMap` lands. `xs?.contains(sideEffect())`
+on a nil `xs` additionally ran `sideEffect()` before crashing — arguments were
+evaluated unconditionally, a second, load-bearing correctness gap alongside the crash
+itself.
+
+**Root cause — compiler, not VM.** `?.` has exactly one AST home,
+`MemberAccessExpr.IsOptional`; `CallExpr` carries no such flag, so for `xs?.first()`
+the parser nests `CallExpr(Callee: MemberAccessExpr(Target: xs, Member: "first",
+IsOptional: true))`. `VisitMemberAccess` already wraps the non-optional emission in
+`IsNil`/`JumpIfTrue` (peek)/`Pop`/`GetProperty`/`Jump`/`PatchJump`/`Pop`/`PatchJump` —
+on a nil receiver it skips `GetProperty` and leaves `nil` as the result. `VisitCall`,
+however, had no arm inspecting `IsOptional` at all: `Visit(node.Callee)` correctly ran
+the property-path guard and left `nil` on the stack, but the surrounding call
+emission unconditionally evaluated `node.Arguments` and unconditionally emitted
+`OpCode.Call`, popping that `nil` as the callee at runtime — `VirtualMachine.cs`'s
+`Call` handler then throws `GrobInternalException` (an unhandled-crash exception, not
+a routed `GrobRuntimeException`/E-code diagnostic) when the popped value isn't
+function-kind. No VM change needed and no new opcode: `IsNil`/`JumpIfTrue`/`Jump`/
+`Pop` are already sufficient, confirmed by mirroring the property path's proven shape
+exactly rather than inventing a parallel mechanism.
+
+**The fix is receiver-type-agnostic.** There is no per-receiver-kind branching in the
+compiler's call emission at all — every non-`formatAs`, non-primitive-rewritten method
+call already took one generic tail regardless of array/struct/(eventually map)
+receiver. The primitive in-place rewrite (`ResolvedPrimitiveNativeName`, string/int/
+float/bool methods) is only ever populated when the receiver's _static_ type is the
+exact non-nullable primitive (`PrimitiveMemberRegistry` is keyed by `GrobType.String`/
+`Int`/`Float`/`Bool` only) — a `NullableString`/`NullableInt` receiver never matches,
+confirmed empirically (`s?.upper()`/`n?.toString()` both crashed via the generic path,
+not the rewrite), so that arm's pre-existing "only ever reached for a statically
+non-nullable receiver" invariant holds unchanged and needed no `IsOptional` handling.
+
+**Implementation.** `Compiler.Expressions.cs`'s `VisitCall`, immediately after
+`Visit(node.Callee)`: `if (node.Callee is MemberAccessExpr { IsOptional: true })`
+delegates to a new `EmitOptionalChainCall` helper (extracted to keep `VisitCall`
+under the S3776 cognitive-complexity bar — inlining pushed it from 15 to 17) that
+reuses `VisitMemberAccess`'s exact `IsNil`/`JumpIfTrue`/`Pop`/…/`Jump`/`Pop` shape
+around the argument evaluation and `Call`. Placed after the `formatAs`/primitive-
+rewrite early returns (both already bypass this tail) and before the namespace-
+native-default-fill/reordered-args/plain-positional arms that follow (none of which
+ever match a `MemberAccessExpr` callee with `IsOptional: true` — namespaces aren't
+nullable, reordered-args requires an `IdentifierExpr` callee) — so the change alters
+behaviour only for the exact broken case. `node.Arguments` is visited solely inside
+the non-nil branch, fixing argument-evaluation "for free": `xs?.contains(sideEffect())`
+on a nil `xs` no longer runs `sideEffect()`, proven by a dedicated integration test.
+Chained short-circuiting (`a?.first()?.upper()`) falls out automatically with no
+extra code: the outer call's `Visit(node.Callee)` runs `VisitMemberAccess` on
+`.upper`, whose own `Visit(node.Target)` compiles the inner `a?.first()` call through
+this same guard first, so a nil `a` leaves `nil` on the stack without ever touching
+the inner `Call`, and the outer guard short-circuits again — the whole chain skips
+from the first nil, exactly once.
+
+**Result typing — confirmed unchanged, correctly out of scope.** `xs?.garbage()` on a
+nullable array already type-checked permissively before this fix, resolving to
+`GrobType.Unknown` (`TypeCheckerArrayQueryMemberTests.OptionalChainOnNullableArrayMethodCall_StaysPermissive`)
+— the exact-type dispatch gates (`receiverType == GrobType.Array`, `== GrobType.Struct`)
+never match a `NullableArray`/`NullableStruct` receiver, so every nullable-receiver
+`?.` call bypasses per-method validation entirely regardless of this fix, and stays
+compatible with further `??`/chaining. This `Unknown`-not-`T?` asymmetry is one of
+D-380's own explicitly-deferred findings; the type checker needed zero changes here.
+
+**New finding surfaced, not fixed here (this brief's scope, followed).** A _non-nil_
+`string?`/`int?`/`float?`/`bool?` receiver's `?.` method call still crashes today,
+with a different message: `s: string? := "abc"; print(s?.upper())` throws `opcode
+GetProperty 'upper' on receiver of kind String not yet implemented`. Root cause is
+distinct from this entry's fix: `VirtualMachine.cs`'s `GetProperty` handler only has
+arms for `TryAsArray`/`TryAsMap`/`TryAsStruct` receivers — by design, since a
+primitive receiver is meant to always route through the compile-time rewrite above,
+which (as established) never fires for a genuinely nullable primitive's `?.` call.
+This is a real, load-bearing gap (any legitimate `s?.upper()` idiom on a _live_
+`string?` value is unusable today) but is a VM-dispatch-table gap, not a `?.`
+short-circuit defect, and squarely one of "D-380's remaining diagnostic-quality
+gaps" this brief's scope excludes. Recorded for its own follow-up.
+
+**Tests.** `tests/Grob.Compiler.Tests/CompilerOptionalChainCallTests.cs` (new):
+bytecode-shape assertions proving a second `IsNil`/`JumpIfTrue` pair now guards the
+`Call` site (count-based, so a false-green regression is structurally impossible),
+that `xs.first()` (no `?.`) keeps its old unguarded shape, and that
+`sideEffect()`'s `GetGlobal` only appears after the call-site guard's false-branch
+`Pop`. `tests/Grob.Integration.Tests/OptionalChainMethodCallTests.cs` (new): full
+lex→parse→check→compile→VM pipeline coverage of the reported case, every reachable
+receiver kind (array/string/numeric/nominal; map excluded per above), the
+property-path regression guard, non-nil dispatch unaffected, the argument-
+non-evaluation proof (and its non-nil contrast case), chained short-circuit (and its
+non-nil contrast case, deliberately array-of-array rather than string to avoid the
+separate `GetProperty`-String gap above), and `??` interaction. Full solution
+`dotnet test` green (3,639 tests across eight projects), no regressions.
+
+**Spec check.** `grob-language-fundamentals.md` §21 already states "no further
+member access or method calls are attempted" — not silent on method calls or on
+argument evaluation, so no doc update: the spec was already correct, only the
+implementation lagged it.
+
+No opcode change. No new error code; count stays **121**. Cites D-380 (the finding
+this closes), D-377 (the property-path precedent), D-353 (the "every failure is a
+Grob diagnostic" contract this crash breached).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -10635,7 +10755,31 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — allocation ceilings and rolling baselines re-derived, D-399_
+_August 2026 — `?.` method-call short-circuit fixed, D-400 added: closes_
+_D-380's fourth finding. `xs?.first()` on a nil `int[]?` crashed the VM_
+_instead of short-circuiting to nil, because VisitCall never inspected the_
+_callee MemberAccessExpr's IsOptional flag — VisitMemberAccess's own_
+_property-path guard correctly left nil on the stack, but the surrounding_
+_call emission unconditionally evaluated arguments and emitted Call_
+_regardless. Reproduced empirically across every receiver kind first: array/_
+_string/numeric/nominal all crashed identically; map could not be_
+_reproduced at all, GrobType has no NullableMap variant, a separate_
+_pre-existing gap not fixed here. Compiler-only fix, no VM change, no new_
+_opcode: a new EmitOptionalChainCall helper (extracted from VisitCall to_
+_stay under the S3776 complexity bar) reuses VisitMemberAccess's exact_
+_IsNil/JumpIfTrue/Pop/.../Jump/Pop shape around the argument evaluation and_
+_Call. Fixes argument evaluation for free (xs?.contains(sideEffect()) on_
+_nil xs no longer runs sideEffect()) and chained short-circuiting falls out_
+_with no extra code. Result typing confirmed unchanged and correctly out of_
+_scope. New finding surfaced, not fixed here: a non-nil string?/int?/_
+_float?/bool? receiver's ?. method call still crashes with a different_
+_message (GetProperty has no primitive-kind arm), a VM-dispatch-table gap_
+_distinct from this fix, reported for its own follow-up. New tests:_
+_CompilerOptionalChainCallTests.cs, OptionalChainMethodCallTests.cs; full_
+_solution dotnet test green (3,639 tests, no regressions). Language_
+_fundamentals §21 already correct, no doc update needed. No opcode change,_
+_no new error code, count unchanged at 121._
+_Previous: August 2026 — allocation ceilings and rolling baselines re-derived, D-399_
 _added: closes the benchmark thread D-385 opened. D-393's three dispatch_
 _fixes (D-394/D-397/D-398) moved the ground under seven of D-391's ten_
 _ceilings; against fresh canonical run 31046217136, three (compile, vm_
