@@ -66,6 +66,19 @@ public enum GrobType {
     /// </summary>
     Map,
 
+    // ---- Nullable map — Sprint 9 (D-401) ----
+
+    /// <summary>
+    /// Nullable map — the Grob <c>map&lt;K, V&gt;?</c> type. Nil is assignable;
+    /// a non-nullable <c>map</c> value widens to this slot. Carries a value type
+    /// the same way <see cref="Map"/> does — via a <c>MapTypeDescriptor</c>
+    /// alongside this flat tag, not on the tag itself. Added by D-401, closing a
+    /// gap D-400 found: <c>map</c> was the only collection type with no nullable
+    /// variant, so <c>Grob.Http</c>'s documented <c>map&lt;string,string&gt;?</c>
+    /// parameter shape could not compile.
+    /// </summary>
+    NullableMap,
+
     // ---- Function types — Sprint 5 Increment 4 (D-326) ----
 
     /// <summary>

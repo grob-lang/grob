@@ -430,9 +430,39 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
         if (initType == GrobType.Error) return (GrobType.Error, null, null, null); // cascade suppression
 
+        bool compatible = IsBindingValueCompatible(
+            initType, annotated, annotatedNamedTypeName, initDescriptor, annotatedDesc,
+            initArrayDescriptor, annotatedArrayDesc, initMapDescriptor, annotatedMapDesc, initExpr);
+
+        if (!compatible) {
+            EmitError(PickAssignabilityError(initType, annotated),
+                $"Cannot assign value of type '{TypeName(initType)}' to binding of type '{TypeName(annotated)}'.",
+                initRange);
+            return (GrobType.Error, null, null, null);
+        }
+
+        // Annotation wins (e.g. int → float widening is recorded as float).
+        return (annotated, annotatedDesc, annotatedArrayDesc, annotatedMapDesc);
+    }
+
+    /// <summary>
+    /// Reports whether a binding's initialiser is assignable to its resolved
+    /// annotation — flat kind (with structural function-descriptor comparison, D-326),
+    /// array element identity (D-351), map value identity (Sprint 9 Increment C0b-1),
+    /// then struct nominal identity, in turn. Split from <see cref="ResolveBindingFull"/>
+    /// to keep that method's cognitive complexity under the analyser bar, mirroring
+    /// <see cref="IsFieldValueCompatible"/>/<see cref="IsParameterDefaultCompatible"/>'s
+    /// identical extraction shape (<c>TypeChecker.Declarations.cs</c>).
+    /// </summary>
+    private bool IsBindingValueCompatible(
+            GrobType initType, GrobType annotated, string? annotatedNamedTypeName,
+            FunctionTypeDescriptor? initDescriptor, FunctionTypeDescriptor? annotatedDesc,
+            ArrayTypeDescriptor? initArrayDescriptor, ArrayTypeDescriptor? annotatedArrayDesc,
+            MapTypeDescriptor? initMapDescriptor, MapTypeDescriptor? annotatedMapDesc,
+            Expression? initExpr) {
         bool isFunctionAnnotation = annotated == GrobType.Function || annotated == GrobType.NullableFunction;
         bool isArrayAnnotation = annotated == GrobType.Array || annotated == GrobType.NullableArray;
-        bool isMapAnnotation = annotated == GrobType.Map;
+        bool isMapAnnotation = annotated == GrobType.Map || annotated == GrobType.NullableMap;
         bool compatible = isFunctionAnnotation
             ? TypesAreAssignable(initType, annotated, initDescriptor, annotatedDesc)
             : TypesAreAssignable(initType, annotated);
@@ -453,15 +483,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             compatible = false;
         }
 
-        if (!compatible) {
-            EmitError(PickAssignabilityError(initType, annotated),
-                $"Cannot assign value of type '{TypeName(initType)}' to binding of type '{TypeName(annotated)}'.",
-                initRange);
-            return (GrobType.Error, null, null, null);
-        }
-
-        // Annotation wins (e.g. int → float widening is recorded as float).
-        return (annotated, annotatedDesc, annotatedArrayDesc, annotatedMapDesc);
+        return compatible;
     }
 
     /// <summary>
@@ -547,6 +569,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         IdentifierExpr id => LookupSymbol(id.Name)?.MapDescriptor,
         MapLiteralExpr literal => _mapLiteralDescriptors.GetValueOrDefault(literal),
         GroupingExpr grp => MapDescriptorOf(grp.Inner),
+        // D-401: a '??'-unwrapped nullable map (m ?? map<string,int>{}) must keep its
+        // value descriptor — otherwise indexing the result silently regresses to
+        // Unknown, undoing D-374's typing. Both operands describe the same map's value
+        // shape by construction (TypesAreAssignable/MapValueAssignable already reject a
+        // mismatched fallback), so either side's descriptor is authoritative; the left
+        // is checked first since it is the nullable operand actually being unwrapped.
+        BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
+            MapDescriptorOf(binary.Left) ?? MapDescriptorOf(binary.Right),
         _ => null,
     };
 
@@ -650,7 +680,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // Sprint 9 Increment C0b-1: 'map' additionally resolves its value-type descriptor
         // from typeRef.TypeArguments[1] — the same TypeArguments the array branch above
         // has consulted since D-327, now read for the first time on this builtin.
-        if (builtin == GrobType.Map) return (builtin, null, null, null, ResolveMapValueDescriptor(typeRef));
+        // D-401: also matches NullableMap ('map<K,V>?') — otherwise a nullable map
+        // annotation would silently drop its V descriptor, regressing D-374's typing.
+        if (builtin is GrobType.Map or GrobType.NullableMap) return (builtin, null, null, null, ResolveMapValueDescriptor(typeRef));
         if (builtin != GrobType.Unknown) return (builtin, null, null, null, null);
 
         // D-356: a registered nominal type (guid, date, ...) is a primitive type
@@ -1120,6 +1152,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         GrobType.NullableBool => "bool?",
         GrobType.Array => "array",
         GrobType.Map => "map",
+        GrobType.NullableMap => "map?",
         GrobType.Function => "fn",
         GrobType.NullableFunction => "fn?",
         GrobType.NullableArray => "array?",

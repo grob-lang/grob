@@ -22,6 +22,7 @@ public sealed class GrobTypeHelpersTests {
     [InlineData(GrobType.NullableArray)]
     [InlineData(GrobType.NullableStruct)]
     [InlineData(GrobType.NullableAnonStruct)]
+    [InlineData(GrobType.NullableMap)]
     public void GrobTypeHelpers_IsNullable_NullableVariants_ReturnsTrue(GrobType type) =>
         Assert.True(GrobTypeHelpers.IsNullable(type));
 
@@ -30,6 +31,7 @@ public sealed class GrobTypeHelpersTests {
     [InlineData(GrobType.Struct)]
     [InlineData(GrobType.AnonStruct)]
     [InlineData(GrobType.Unknown)]
+    [InlineData(GrobType.Map)]
     public void GrobTypeHelpers_IsNullable_NonNullableVariants_ReturnsFalse(GrobType type) =>
         Assert.False(GrobTypeHelpers.IsNullable(type));
 
@@ -49,6 +51,14 @@ public sealed class GrobTypeHelpersTests {
     public void GrobTypeHelpers_ToNullable_Struct_ReturnsNullableStruct() =>
         Assert.Equal(GrobType.NullableStruct, GrobTypeHelpers.ToNullable(GrobType.Struct));
 
+    [Fact]
+    public void GrobTypeHelpers_ToNullable_Map_ReturnsNullableMap() =>
+        Assert.Equal(GrobType.NullableMap, GrobTypeHelpers.ToNullable(GrobType.Map));
+
+    [Fact]
+    public void GrobTypeHelpers_ToNullable_NullableMap_IsIdempotent() =>
+        Assert.Equal(GrobType.NullableMap, GrobTypeHelpers.ToNullable(GrobType.NullableMap));
+
     // -----------------------------------------------------------------------
     // ElementType
     // -----------------------------------------------------------------------
@@ -60,4 +70,12 @@ public sealed class GrobTypeHelpersTests {
     [Fact]
     public void GrobTypeHelpers_ElementType_AnonStruct_IsIdentity() =>
         Assert.Equal(GrobType.AnonStruct, GrobTypeHelpers.ElementType(GrobType.AnonStruct));
+
+    [Fact]
+    public void GrobTypeHelpers_ElementType_NullableMap_ReturnsMap() =>
+        Assert.Equal(GrobType.Map, GrobTypeHelpers.ElementType(GrobType.NullableMap));
+
+    [Fact]
+    public void GrobTypeHelpers_ElementType_Map_IsIdentity() =>
+        Assert.Equal(GrobType.Map, GrobTypeHelpers.ElementType(GrobType.Map));
 }

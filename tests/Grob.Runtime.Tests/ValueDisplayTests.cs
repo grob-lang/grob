@@ -225,6 +225,7 @@ public sealed class ValueDisplayTests {
     [InlineData(GrobType.Array, "array")]
     [InlineData(GrobType.NullableArray, "array?")]
     [InlineData(GrobType.Map, "map")]
+    [InlineData(GrobType.NullableMap, "map?")]
     [InlineData(GrobType.Function, "fn")]
     [InlineData(GrobType.NullableFunction, "fn?")]
     [InlineData(GrobType.Struct, "struct")]

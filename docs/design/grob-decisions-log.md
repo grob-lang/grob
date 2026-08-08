@@ -396,6 +396,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-398 | August 2026 | VM — native dispatch (allocation, implementation) | Implements D-393 Q2, the third and final of the three fixes, sequenced last. A lazily created `Dictionary<string, NativeFunction>?` field on `GrobArray`/`GrobMap`, populated on first bind per method name, consulted by `ArrayNatives.GetMethod`/`MapNatives.GetMethod` before constructing a fresh `NativeFunction` on every `GetProperty` dispatch. **Capture set re-verified against post-D-397 `VmInvoker`: no drift** — every array/map native still closes over `receiver` and nothing else, so D-393's invalidation-free rationale (live-state reads; no per-access context captured) holds unchanged. **Field placement safe on every axis**: both types use reference-identity equality/hashing, no clone/serialisation touches them, and `ValueDisplay` reads only the public element/key view — a new private field is invisible everywhere. **Map cached too, by evidence not the ratified text's literal conditional**: `MapNatives.GetMethod` allocates per call identically to the array path regardless of its lack of higher-order members, so deferring it would gain nothing. **Single-threaded by construction** (no locking primitive anywhere in `Grob.Core`/`Grob.Vm`; the playground's cancellation seam interrupts a single-threaded tab, not concurrent access) — plain `Dictionary`, no synchronisation. **Crossover analysis, given a number:** the isolated per-call rebinding cost (`attr-array-dispatch` − `attr-native`) is ≈115.9 B/call; a fresh cache dictionary costs ≈250–300 B one-time; break-even ≈3–4 calls per receiver — below that the cache costs more, a risk case none of the three required fixtures (all one-receiver/many-calls) exercise, recorded rather than hidden. **Before/after benchmarks, `git stash`, one sitting:** `attr-array-dispatch` 236,083 → 124,406 B/1,000 (**−111.7 B/call, −47.3%**), converging near the `attr-native` floor; `Run_ArrayForIn` 259,492 → 147,835 B (**−111,657 B, −43.0%**); `attr-native` byte-identical before and after — confirmed unchanged, since it calls no array/map method. Tests: cache-identity against `GetMethod` directly (same-receiver same-name same-instance; different-receiver distinct; unrecognised name stays a miss regardless of cache state); load-bearing mutation-reflected-through-cache using `contains`/`filter`/`get` (deliberately not `length`/`isEmpty`, which bypass `GetMethod` entirely — a correction of the commissioning prompt's own suggested test subject); load-bearing per-access-context test (two call sites, one cached binding, each fault reports its own line/column); existing `CrossNativeNestedInvocation_...` (D-397) passes unmodified. **Completes D-393's three fixes**; ceiling re-derivation now due against final numbers, as separate follow-up work. No opcode change. No new error code; count unchanged at **121**. Refines D-393 (Q2, Q4), D-397, D-394. Cites D-391, D-372, D-313. |
 | D-399 | August 2026 | Tooling — benchmarking (gate policy, baselines) | Re-derives the seven allocation ceilings D-393's dispatch fixes (D-394/D-397/D-398) moved the ground under, against fresh canonical run `31046217136`; closes the benchmark thread D-385 opened. Three ceilings (`compile`, `vm` scalar default, `attribution` floor default) are confirmed unmoved — their fixtures call no array/map member or Stdlib native, so D-393's fixes never touch them — and left alone, since touching a correct ceiling is churn. The other seven fall by the same `round_to_nearest_100(1.20×)` convention D-391 set: `Run_ArrayForIn` 637,900→**177,400 B**, `Run_MapForIn` 1,240,000→**913,900 B**, `Run_AttrNative` 278,700→**144,200 B**, `Run_AttrArrayDispatch` 552,100→**149,300 B**, `Run_AttrBuild` 610,900→**208,100 B**, `Run_AttrSnapshotEmpty` 700,300→**239,800 B**, `Run_AttrMapBuild` 1,128,400→**859,900 B** — each strictly lower than D-391's, the direction D-313's ratchet rule permits, closing the loop D-391 itself opened when it flagged the ≈48 B/call `GetProperty` tax these fixes would eventually remove. **`attribution`'s five per-benchmark overrides re-examined, kept separate**: `Run_AttrNative`/`Run_AttrArrayDispatch` converged to 3.5% apart (from ~2×) purely as a side effect of this specific pair of fixes, not a shared allocation shape — folding them risks silent divergence if either path changes alone later, mirroring D-391's own reason for keeping `vm`'s two `for...in` fixtures separate. **Rolling baselines (`vm.json`/`attribution.json`) refreshed wholesale** from the same canonical run — they still held D-391's original, now-stale figures; this records a measured improvement, explicitly not the ratchet D-313 forbids (absorbing a regression), since leaving them stale would itself have weakened the gate by making a real regression below the old figure misread as an improvement. `compile.json`/`*.origin.json` untouched, per scope. **Proof, both directions**: each re-derived ceiling independently fires when inflated to exactly its new value (`Outcome.Regression`, `**allocation ceiling**` on that row alone); the old stale baseline figures, replayed as fresh values, now correctly report large positive Δalloc and breach, where before the refresh they _were_ the baseline and would have replayed as exactly 0% Δalloc, well inside the old ceilings. `Grob.BenchCheck.Tests` (76 tests, unmodified) passes. D-398's `attr-many-receivers` crossover-gap fixture is reported and recommended for its own follow-up, not added here — a new measurement, not a re-derivation. `grob-benchmarking-strategy.md` §8/§9.2 updated in the same edit so the documented and enforced gates match. No `src/` change — `bench/Grob.Benchmarks/baseline/` and the strategy doc only. No opcode change. No new error code; count unchanged at **121**. Refines D-391, D-393, D-394, D-395, D-396, D-397, D-398. Cites D-313, D-309, `docs/design/bench-allocation-attribution.md`. |
 | D-400 | August 2026 | Compiler — bytecode emission (optional chaining) | Fixes D-380's fourth finding: `xs?.first()` on a nil `int[]?` crashed the VM (`Call target is not a function (kind: Nil)`) instead of short-circuiting to `nil`, because `VisitCall` never inspected the callee `MemberAccessExpr`'s `IsOptional` flag — `VisitMemberAccess`'s own property-path guard correctly left `nil` on the stack for a nil receiver, but the surrounding call emission unconditionally evaluated arguments and emitted `Call` regardless, popping that `nil` as the callee at runtime. Empirically reproduced across every receiver kind first (array/string/numeric/nominal all crashed identically; map could not be reproduced at all — `GrobType` has no `NullableMap` variant, a separate pre-existing gap, not fixed here). Compiler-only fix, no VM change, no new opcode: a new `EmitOptionalChainCall` helper (extracted from `VisitCall` to stay under the S3776 complexity bar) reuses `VisitMemberAccess`'s exact `IsNil`/`JumpIfTrue`/`Pop`/…/`Jump`/`Pop` shape around the argument evaluation and `Call`, called whenever `node.Callee is MemberAccessExpr { IsOptional: true }`. Fixes argument-evaluation "for free" (`node.Arguments` visited only on the non-nil branch, so `xs?.contains(sideEffect())` on nil `xs` no longer runs `sideEffect()`) and chained short-circuiting falls out with no extra code (`a?.first()?.upper()` on nil `a` skips the whole chain from the first nil). Result typing confirmed unchanged and correctly out of scope (`?.` on a nullable array/struct already resolved `Unknown`, not `T?`, before this fix — one of D-380's own deferred findings). **New finding surfaced, not fixed here:** a _non-nil_ `string?`/`int?`/`float?`/`bool?` receiver's `?.` method call still crashes with a different message (`opcode GetProperty '<name>' on receiver of kind String not yet implemented`) — `GetProperty` has no primitive-kind arm by design, and the primitive compile-time rewrite never fires for a genuinely nullable primitive; a VM-dispatch-table gap distinct from this entry's short-circuit fix, one of D-380's remaining diagnostic-quality gaps, reported for its own follow-up. New tests: `CompilerOptionalChainCallTests.cs` (bytecode-shape, count-based so a false-green regression is structurally impossible) and `OptionalChainMethodCallTests.cs` (full-pipeline, every reachable receiver kind, argument non-evaluation, chained short-circuit, `??` interaction); full solution `dotnet test` green (3,639 tests, no regressions). `grob-language-fundamentals.md` §21 already states "no further member access or method calls are attempted" — not silent, no doc update needed. No opcode change. No new error code; count unchanged at **121**. Refines D-380, D-377. Cites D-353. |
+| D-401 | August 2026 | Compiler — type system (nullable map) | Closes the gap D-400 found: adds `GrobType.NullableMap`, the fifth advertised-but-unbuilt instance the consolidation phase has found and the first in type-variant coverage — `Grob.Http`'s locked signature (D-155) documents `headers: map<string,string>? = nil`, which could not compile. Empirically reproduced first: `m: map<string, int>? := nil` failed E0001 because `GrobTypeHelpers.ToNullable(Map)` had no arm and silently dropped the `?`. Mechanical fix mirrors the `NullableArray` pattern exactly — one enum variant plus one arm each in `IsNullable`/`ToNullable`/`ElementType` (`Grob.Core`), which alone makes nil-guard narrowing, `??` resolution and the generic `.`/`?.` nullable-dereference guard work for free; four further direct edits (`isMapAnnotation`/`ResolveSignatureType`'s descriptor branch/`TypeName` in `TypeChecker.cs`, `SpellType` in `ValueDisplay.cs`) — **~9 lines across 6 files**, confirming the enumeration is not straining at this instance. `GrobType` carries no stability-ADR governance the way `OpCode` does (ADR-0013) — grown by convention across D-014/D-326/D-327/D-351/D-356 and this entry, not a standing procedure; noted, not a blocker. **Two pre-existing gaps found while tracing the template, one fixed, one reported.** (1) `??` did not propagate array/map value descriptors — confirmed for `NullableArray` too (`(xs ?? [])[0]` assigned to a strictly-typed `int` binding failed E0001 today), because `ArrayDescriptorOf`/`MapDescriptorOf` had no `BinaryExpr` arm. Fixed narrowly for the map side only — one `NilCoalesce` arm added to `MapDescriptorOf` — since this increment's own load-bearing test (`(m ?? map<string,int>{})["k"]` must type `int?`) requires it; the parallel `ArrayDescriptorOf` gap is reported here, not fixed, out of this branch's one-concern scope. (2) A non-optional `.` **method** call on a nullable collection receiver is not rejected at compile time — `xs.length` (property) correctly raises E0101 but `xs.first()` (method) compiles and runs permissively, because `ResolveMemberAccessCall`'s dispatch matches only the bare `Array`/`Map` tag, so a `NullableArray`/`NullableMap` receiver falls through to the generic `Unknown` fallback with no E0101, deferring the fault to a runtime E5201 nil-dereference instead. Reported, not fixed — fixing it touches the shared method-call dispatch for every nullable collection type. Confirmed by reading `EmitOptionalChainCall` that `?.` short-circuits correctly at runtime for a nullable map with **no VM/compiler change** (receiver-type-agnostic, per D-400) but `m?.get("k")` resolves `Unknown` at compile time, not `int?`, exactly mirroring `xs?.first()`'s existing `NullableArray` behaviour — not a regression. `for k, v in` a nullable map mirrors the nullable-array rule exactly (E0501, confirmed by running both), no code change needed there beyond the `TypeName` arm. New tests: `NullableMapTypeCheckerTests.cs` (new, mirrors `ArrayTypeRefCheckerTests.cs`), `MapTypeDescriptorTests.cs` (`??` descriptor survival), `GrobTypeHelpersTests.cs`, `ValueDisplayTests.cs`, `OptionalChainMethodCallTests.cs` (nullable-map receiver cases, closing the map exclusion its own comment previously noted); full solution `dotnet test` green (3,625 tests across seven projects), no regressions. `ResolveBindingFull` extracted a new `IsBindingValueCompatible` helper (mirrors `IsFieldValueCompatible`/`IsParameterDefaultCompatible`'s existing shape) to stay under the S3776 complexity bar after the `isMapAnnotation` widening pushed it from 15 to 16. No opcode change. No new error code; count unchanged at **121**. Refines D-400 (the finding this closes). Cites D-374, D-377, D-378 (the `MapTypeDescriptor` machinery this preserves), D-326/D-327 (the suffix grammar and nullable-function precedent), D-155 (the `Grob.Http` signature this unblocks). |
 
 ---
 
@@ -10550,6 +10551,141 @@ Grob diagnostic" contract this crash breached).
 
 ---
 
+### D-401 — `map<K, V>?` added: `GrobType.NullableMap`, closing the gap D-400 found (August 2026)
+
+Area: Compiler — type system (nullable map)
+Supersedes: none
+Superseded by: none
+Refines: D-400 (the finding this closes)
+
+**The gap, and why it matters.** D-400 found this while sweeping receiver kinds for
+the `?.` method-call fix: `GrobType` carried `NullableArray`, `NullableString`,
+`NullableInt`, `NullableFloat`, `NullableBool`, `NullableStruct`, `NullableFunction`
+and `NullableAnonStruct` — `map` was the only collection type with no nullable
+variant. This is not an unbuilt convenience: `Grob.Http`'s locked signature (D-155)
+documents `http.get(url: string, auth: AuthHeader? = nil, headers:
+map<string,string>? = nil, timeoutSeconds: int = 30): Response`, and the identical
+`headers` parameter on `post`/`put`/`patch`/`delete` — a documented signature that
+could not compile. The fifth advertised-but-unbuilt instance the consolidation phase
+has found, and the first in type-variant coverage (the earlier four were members,
+stdlib functions and error codes — a different sweep dimension entirely).
+
+**Empirically reproduced before any fix, per the plan-mode gate.** `m: map<string,
+int>? := nil` failed `E0001: Cannot assign value of type 'nil' to binding of type
+'map'.` Root cause: `GrobTypeHelpers.ToNullable(GrobType.Map)` had no `Map` arm, so
+it fell through to `_ => type` and silently dropped the `?` — `ResolveTypeRef`
+resolved `map<string,int>?` to plain `GrobType.Map`, and `Map` was not in
+`IsNullable`'s list, so `nil` was never assignable to it.
+
+**The `NullableArray` site list, traced end to end, is the template — and confirms
+the enumeration is not straining.** `GrobTypeHelpers` (`Grob.Core`) is the one choke
+point almost everything else reads through: adding one `Map`/`NullableMap` arm each
+to `IsNullable`, `ToNullable` and `ElementType` alone makes nil-guard narrowing
+(`TypeChecker.ControlFlow.cs`'s `if (x != nil)`), `??` resolution
+(`ResolveNilCoalesce`) and the generic `.`/`?.` nullable-dereference guard
+(`VisitMemberAccess`) all work for `NullableMap` for free — none of them switch on a
+per-type tag. Four further direct edits were needed where the map tag is looked up
+literally rather than through the helpers: `TypeChecker.cs`'s `isMapAnnotation` (now
+`Map or NullableMap`, mirroring `isArrayAnnotation`), `ResolveSignatureType`'s
+map-descriptor branch (now matches `NullableMap` too — otherwise a nullable-map
+annotation would silently drop its `V` descriptor, regressing D-374's typing), the
+`TypeName` switch (`"map?"`, mirroring `"array?"`), and `ValueDisplay.cs`'s
+`SpellType` (the function-signature display arm, same spelling). **Total: one enum
+variant plus ~9 lines across 6 files** — almost all of it the two generic helper
+functions. No VM change: `GrobType` is erased at runtime (D-303) — a nullable map is
+either a `GrobMap` heap object or `Nil` at the `GrobValueKind` level, and
+`ValueDisplay`'s actual `print()` rendering already dispatches on `GrobValueKind`,
+not `GrobType` — so "no new rendering path" holds without any runtime-side edit.
+
+**Is `GrobType` a governed surface?** No — unlike `OpCode` (ADR-0013's wire-format
+stability contract), no ADR governs `GrobType`. It has grown by convention across
+many increments (D-014, D-326, D-327, D-351, D-356, this entry) via the ordinary
+design-then-implement discipline, not a standing procedure. Noted for the record,
+not a blocker, and this instance's small, mechanical site count does not itself
+argue for inventing one.
+
+**Two pre-existing gaps found while tracing the template — one fixed narrowly, one
+reported and left alone.**
+
+1. **`??` did not propagate array/map value descriptors — not nullable-map-specific,
+   confirmed for `NullableArray` too.** `xs: int[]? := [1, 2, 3]; first := (xs ??
+   [])[0]; y: int := first` fails `E0001: Cannot assign value of type 'unknown' to
+   binding of type 'int'` **today**, before this entry. `ArrayDescriptorOf`/
+   `MapDescriptorOf` (`TypeChecker.cs`) had no `BinaryExpr` arm, so a `??` result
+   carried no element/value descriptor and typed `Unknown`. This entry's own
+   load-bearing acceptance test — `(m ?? map<string,int>{})["k"]` must type `int?`,
+   or a nullable map that lost its `V` would silently undo D-374's typing — cannot
+   pass without addressing it. Fixed **narrowly, map-side only**: one
+   `BinaryExpr { Operator: NilCoalesce } binary => MapDescriptorOf(binary.Left) ??
+   MapDescriptorOf(binary.Right)` arm added to `MapDescriptorOf`, mirroring the
+   existing side-channel pattern exactly. The parallel `ArrayDescriptorOf` gap is
+   **reported here, not fixed** — out of a one-concern branch; a citable finding for
+   a future correctness-batch item.
+2. **A non-optional `.` method call on a nullable collection receiver is not
+   rejected at compile time — pre-existing, affects arrays today, applies
+   identically to maps.** `xs: int[]? := [1, 2, 3]; print(xs.length)` correctly
+   raises `E0101` (property access; `VisitMemberAccess`'s nullable guard is
+   generic), but `print(xs.first())` **compiles and runs**, deferring the fault to a
+   runtime `E5201` nil-dereference only when the receiver is actually nil.
+   `ResolveMemberAccessCall` (the method-call dispatch) matches only the exact
+   non-nullable tag (`receiverType == GrobType.Array`), so a
+   `NullableArray`/`NullableMap` receiver skips that arm and the array's own
+   nullable-`E0101` guard entirely, falling through to the generic permissive
+   `return GrobType.Unknown;`. **Reported, not fixed** — fixing it touches the
+   shared method-call dispatch for every nullable collection type, well beyond a
+   one-concern "add the missing variant" branch. Means this entry's "unguarded
+   nullable map" test uses property access (`m.length`), the precedent that
+   actually raises the diagnostic — not a method call, which does not.
+
+**`?.` verification (D-400), confirmed by reading the emission path, not assumed.**
+`EmitOptionalChainCall` guards purely on the runtime value's `IsNil`/`JumpIfTrue`,
+never on `GrobType`, so `m?.get(k)`/`m?.length`/`m?.keys` short-circuit correctly at
+runtime with **no VM/compiler change**, exactly as D-400 intended. At the
+type-checker level, `m?.get("k")` resolves `GrobType.Unknown`, not `int?` — gap 2
+above means a `NullableMap` receiver falls through to the generic `Unknown` fallback
+regardless of `IsOptional`, exactly mirroring `xs?.first()`'s pre-existing
+`NullableArray` behaviour. Not a regression, not fixed here.
+
+**`for k, v in` a nullable map mirrors the nullable-array rule exactly, confirmed by
+running both.** `xs: int[]? := [1,2,3]; for x in xs { ... }` raises `E0501:
+'for...in' subject of type 'array?' is not iterable.` today.
+`ResolveIterationVariableTypes`'s `switch` has only a `case GrobType.Map:` arm (no
+`NullableMap`), so a nullable-map subject falls to the existing `default:` branch
+and raises the identical E0501 once the variant exists — no code change needed
+beyond the `TypeName` arm above (so the message reads `'map?'`, not `'unknown'`).
+
+**Implementation.** `GrobType.cs` (`NullableMap`), `GrobTypeHelpers.cs` (three
+arms), `TypeChecker.cs` (`isMapAnnotation`, `ResolveSignatureType`, `TypeName`, the
+`MapDescriptorOf` `NilCoalesce` arm), `ValueDisplay.cs` (`SpellType`).
+`ResolveBindingFull` extracted a new `IsBindingValueCompatible` helper — mirroring
+`IsFieldValueCompatible`/`IsParameterDefaultCompatible`'s identical existing
+extraction shape (`TypeChecker.Declarations.cs`) — after the `isMapAnnotation`
+widening pushed its cognitive complexity from 15 to 16 (S3776); fixed by extraction,
+not suppression, per the analyser-gate rule.
+
+**Tests.** `NullableMapTypeCheckerTests.cs` (new, mirrors `ArrayTypeRefCheckerTests.cs`):
+binding/nil-acceptance, widening, the `Grob.Http` parameter shape, `for...in`
+rejection and its `??`-guarded acceptance, `??` unwrapping, nil-guard narrowing,
+unguarded-property-access `E0101`, optional-property-access permissiveness, and the
+`'map?'` diagnostic spelling. `MapTypeDescriptorTests.cs`: the `??` descriptor-
+survival case (fixed above), proven the same "resolves `int?`, not merely compiles"
+way the existing map-descriptor tests do. `GrobTypeHelpersTests.cs`/
+`ValueDisplayTests.cs`: the three helper arms and the `"map?"` spelling.
+`OptionalChainMethodCallTests.cs`: nil/non-nil nullable-map receiver cases and the
+nil-property-access regression guard, closing the map exclusion its own comment
+previously noted explicitly. Full solution `dotnet test` green (3,625 tests across
+seven projects: Core, Runtime, Compiler, Vm, Stdlib, Integration, Consistency), no
+regressions. `dotnet build` clean across every production project (Sonar analyzer
+gate).
+
+No opcode change. No new error code; count stays **121**. Refines D-400 (the finding
+this closes). Cites D-374, D-377, D-378 (the `MapTypeDescriptor` machinery this
+preserves), D-326/D-327 (the suffix grammar and nullable-function precedent already
+accepting `map<K,V>?` syntactically), D-155 (the `Grob.Http` signature this
+unblocks).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -10771,7 +10907,37 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — `?.` method-call short-circuit fixed, D-400 added: closes_
+_August 2026 — `map<K, V>?` added, D-401 added: closes the gap D-400 found —_
+_GrobType had no NullableMap variant, so Grob.Http's locked signature_
+_(headers: map<string,string>? = nil, D-155) could not compile, the fifth_
+_advertised-but-unbuilt instance found and the first in type-variant_
+_coverage. Empirically reproduced first: m: map<string, int>? := nil_
+_failed E0001 because GrobTypeHelpers.ToNullable(Map) had no arm and_
+_silently dropped the ?. Mechanical fix mirrors NullableArray exactly: one_
+_enum variant plus one arm each in IsNullable/ToNullable/ElementType,_
+_which alone makes nil-guard narrowing, ?? resolution and the generic_
+_./?. nullable guard work for free, plus four direct edits (isMapAnnotation,_
+_ResolveSignatureType, TypeName, SpellType) — ~9 lines across 6 files,_
+_confirming the enumeration is not straining. GrobType carries no_
+_stability-ADR governance unlike OpCode (ADR-0013) — grown by convention,_
+_noted not blocking. Two pre-existing gaps found tracing the template: (1)_
+_?? did not propagate array/map value descriptors, confirmed for_
+_NullableArray too — fixed narrowly, map-side only (one NilCoalesce arm on_
+_MapDescriptorOf), since this entry's own load-bearing test required it;_
+_the parallel array gap is reported, not fixed. (2) a non-optional '.'_
+_method call on a nullable collection receiver is not rejected at compile_
+_time (property access is, via E0101; method calls fall through to_
+_permissive Unknown) — pre-existing, affects arrays today, reported not_
+_fixed. ?. short-circuits correctly at runtime for a nullable map with no_
+_VM/compiler change (D-400's emission is receiver-type-agnostic) but_
+_m?.get("k") resolves Unknown not int? at compile time, mirroring_
+_xs?.first()'s existing behaviour — not a regression. for...in mirrors the_
+_nullable-array E0501 rule exactly. New tests: NullableMapTypeCheckerTests.cs,_
+_MapTypeDescriptorTests.cs, GrobTypeHelpersTests.cs, ValueDisplayTests.cs,_
+_OptionalChainMethodCallTests.cs; full solution dotnet test green (3,625_
+_tests, no regressions). No opcode change, no new error code, count_
+_unchanged at 121._
+_Previous: August 2026 — `?.` method-call short-circuit fixed, D-400 added: closes_
 _D-380's fourth finding. `xs?.first()` on a nil `int[]?` crashed the VM_
 _instead of short-circuiting to nil, because VisitCall never inspected the_
 _callee MemberAccessExpr's IsOptional flag — VisitMemberAccess's own_
