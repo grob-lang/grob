@@ -139,7 +139,8 @@ The full commit conventions are carried by the `/commit-message` command and the
 - xUnit for tests, with plain xUnit assertions. `FluentAssertions` and `FsCheck`
   are deliberately not used (not in `Directory.Packages.props`); do not flag their
   absence and do not suggest introducing them.
-- `Subject_BehaviourClause` test naming.
+- `Subject_Condition_BehaviourClause` test naming (three segments is the norm;
+  drop the middle segment only when there is no separate condition to name).
 
 **14. Error model.** New diagnostics should:
 

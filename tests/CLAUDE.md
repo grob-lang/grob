@@ -72,9 +72,13 @@ procedure.
   expected token-stream length varies per case, or per-case index-based lexeme
   spot-checks differ, keep separate `[Fact]`s — a Theory that obscures intent is
   worse than the duplication.
-- Test method names use the shape `Subject_BehaviourClause` — two PascalCase
-  segments joined by a single underscore. Match the convention in
-  `tests/Grob.Core.Tests/TokenTests.cs`.
+- Test method names use PascalCase segments joined by single underscores. Three
+  segments — `Subject_Condition_BehaviourClause` — is the norm, naming the specific
+  scenario under test alongside the subject and the expected outcome
+  (`GetIndex_NilReceiver_ThrowsE5201`, `Equality_SameValues_AreEqual`). Drop the
+  middle segment to `Subject_BehaviourClause` only when there is no separate
+  condition to name (`Constructor_SetsAllProperties`). Match the convention in
+  `tests/Grob.Core.Tests/TokenTests.cs`, which is predominantly three-segment.
 - Test names state the behaviour: `PlainString_SegmentsIntoStartPartEnd`, not
   `Plain_string_segments_into_start_part_end` and not `PlainStringSegmentsIntoStartPartEnd`.
 - Plain xUnit assertions (`Assert.Equal`, `Assert.True`, `Assert.Single`, …) with a
