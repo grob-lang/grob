@@ -10433,12 +10433,15 @@ reproduced at all**: `GrobType` has no `NullableMap` variant (only `NullableArra
 `NullableString`, `NullableInt`, `NullableFloat`, `NullableBool`, `NullableStruct`,
 `NullableFunction`, `NullableAnonStruct` exist), so `m: map<string, int>? := nil`
 fails to compile with E0001 before the call site is ever reached — nullable-map
-support was simply never built. Independent of D-380, not fixed here, but doesn't
-block this fix: the fix (below) is receiver-type-agnostic, so a nullable-map `?.`
-call will work automatically the day `NullableMap` lands. `xs?.contains(sideEffect())`
-on a nil `xs` additionally ran `sideEffect()` before crashing — arguments were
-evaluated unconditionally, a second, load-bearing correctness gap alongside the crash
-itself.
+support has not been implemented. Independent of D-380, not fixed here, and it does
+not block this fix: the emission below is receiver-type-agnostic, so it imposes no
+new obstacle to a nullable-map `?.` call. Whether such a call then works is
+conditional on the separate `GrobType.NullableMap`, type-checker and VM-dispatch
+work that landing `NullableMap` would require, and is not claimed here — no
+nullable-map behaviour is asserted by any test in this entry.
+`xs?.contains(sideEffect())` on a nil `xs` additionally ran `sideEffect()` before
+crashing — arguments were evaluated unconditionally, a second, load-bearing
+correctness gap alongside the crash itself.
 
 **Root cause — compiler, not VM.** `?.` has exactly one AST home,
 `MemberAccessExpr.IsOptional`; `CallExpr` carries no such flag, so for `xs?.first()`
@@ -10511,17 +10514,30 @@ gaps" this brief's scope excludes. Recorded for its own follow-up.
 
 **Tests.** `tests/Grob.Compiler.Tests/CompilerOptionalChainCallTests.cs` (new):
 bytecode-shape assertions proving a second `IsNil`/`JumpIfTrue` pair now guards the
-`Call` site (count-based, so a false-green regression is structurally impossible),
-that `xs.first()` (no `?.`) keeps its old unguarded shape, and that
-`sideEffect()`'s `GetGlobal` only appears after the call-site guard's false-branch
-`Pop`. `tests/Grob.Integration.Tests/OptionalChainMethodCallTests.cs` (new): full
-lex→parse→check→compile→VM pipeline coverage of the reported case, every reachable
-receiver kind (array/string/numeric/nominal; map excluded per above), the
-property-path regression guard, non-nil dispatch unaffected, the argument-
+`Call` site. The primary case asserts the complete `Chunk` contract — every
+instruction's offset, opcode, decoded operand and source line, the whole constant
+pool, and each forward jump resolved to the absolute offset it lands on (itself
+asserted to be a real instruction boundary, never mid-operand). That covers the
+mis-patched-jump, wrong-`Call`-arity and line-number regressions a count-only
+assertion cannot see; it is a strong guard, not a proof of correctness for inputs
+outside the asserted cases. Alongside it: `xs.first()` (no `?.`) keeps its old
+unguarded shape, `sideEffect()`'s `GetGlobal` only appears after the call-site
+guard's false-branch `Pop` (with both emitted `Call` arities pinned), and a
+nullable-primitive receiver (`s?.upper()`) is asserted to compile to the identical
+guarded shape rather than the primitive rewrite — pinning the
+`PrimitiveMemberRegistry`-keying invariant the section above rests on, so a future
+registry change that keyed a `Nullable*` variant could not silently route a
+nullable receiver around the guard.
+`tests/Grob.Integration.Tests/OptionalChainMethodCallTests.cs` (new): driven through
+the CLI's own `RunCommand` over a real `.grob` file (the `Sprint9IncrementA1aTests`
+harness shape), so every case asserts the full CLI contract — stdout, empty stderr
+and exit code 0 — rather than only a VM writer's output. Covers the reported case,
+every reachable receiver kind (array/string/numeric/nominal; map excluded per
+above), the property-path regression guard, non-nil dispatch unaffected, the argument-
 non-evaluation proof (and its non-nil contrast case), chained short-circuit (and its
 non-nil contrast case, deliberately array-of-array rather than string to avoid the
 separate `GetProperty`-String gap above), and `??` interaction. Full solution
-`dotnet test` green (3,639 tests across eight projects), no regressions.
+`dotnet test` green (3,676 tests across eight projects), no regressions.
 
 **Spec check.** `grob-language-fundamentals.md` §21 already states "no further
 member access or method calls are attempted" — not silent on method calls or on

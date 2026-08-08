@@ -29,7 +29,7 @@ public sealed class CompilerOptionalChainCallTests {
         return chunk;
     }
 
-    private readonly record struct Instr(int Offset, OpCode Op, int Arg);
+    private readonly record struct Instr(int Offset, OpCode Op, int Arg, int Line);
 
     private static List<Instr> Decode(Chunk chunk) {
         var result = new List<Instr>();
@@ -78,46 +78,101 @@ public sealed class CompilerOptionalChainCallTests {
                 default:
                     break;
             }
-            result.Add(new Instr(here, op, arg));
+            result.Add(new Instr(here, op, arg, chunk.GetLine(here)));
+        }
+        return result;
+    }
+
+    private static string[] StringConstants(Chunk chunk) {
+        var result = new string[chunk.ConstantCount];
+        for (int i = 0; i < chunk.ConstantCount; i++) {
+            GrobValue value = chunk.ReadConstant(i);
+            result[i] = value.IsString ? value.AsString() : value.ToString();
         }
         return result;
     }
 
     // -----------------------------------------------------------------------
-    // The guard shape — xs?.first() must be wrapped exactly like xs?.length
+    // The guard shape — xs?.first() must be wrapped exactly like xs?.length.
+    //
+    // Asserted as the complete Chunk contract (CodeRabbit, PR #184): every
+    // instruction's offset, opcode, decoded operand and source line, plus the
+    // whole constant pool. A count-only assertion cannot catch a mis-patched
+    // jump operand, a wrong Call arity or a line-number regression; this can.
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void OptionalChainCall_NilReceiver_EmitsSecondNilGuardAroundCall() {
+    public void OptionalChainCall_EmitsExactGuardedBytecode() {
         Chunk chunk = CompileSource("""
             xs: int[]? := nil
             print(xs?.first())
             """);
 
-        List<Instr> instrs = Decode(chunk);
+        Assert.Equal(["xs", "first"], StringConstants(chunk));
 
-        // One IsNil/JumpIfTrue pair already guards xs?.first()'s own property/
-        // method-bind resolution (VisitMemberAccess's pre-existing guard, unchanged
-        // by this fix). A *second* pair must now guard the Call itself — without it,
-        // a nil xs falls through to an unconditional Call and crashes.
-        Assert.Equal(2, instrs.Count(i => i.Op == OpCode.IsNil));
-        Assert.Equal(2, instrs.Count(i => i.Op == OpCode.JumpIfTrue));
+        // Two guards, both the property path's proven IsNil/JumpIfTrue/Pop/<op>/
+        // Jump/Pop shape. The first (offsets 5-15) is VisitMemberAccess's
+        // pre-existing property/method-bind guard, unchanged by this fix. The
+        // second (offsets 16-26) is D-400's new call-site guard: without it a nil
+        // xs falls through to an unconditional Call and crashes the VM.
+        Instr[] expected = [
+            new(0, OpCode.Nil, 0, 1),           // xs := nil
+            new(1, OpCode.DefineGlobal, 0, 1),  // -> "xs"
+            new(3, OpCode.GetGlobal, 0, 2),     // receiver
 
-        int lastJumpIfTrueIdx = instrs.FindLastIndex(i => i.Op == OpCode.JumpIfTrue);
-        int callIdx = instrs.FindIndex(lastJumpIfTrueIdx, i => i.Op == OpCode.Call);
-        Assert.True(callIdx > lastJumpIfTrueIdx, "Call must be reachable only past the second (call-site) guard");
+            new(5, OpCode.IsNil, 0, 2),         // guard 1: property path
+            new(6, OpCode.JumpIfTrue, 6, 2),    // -> offset 15 (nil cleanup Pop)
+            new(9, OpCode.Pop, 0, 2),           // pop false
+            new(10, OpCode.GetProperty, 1, 2),  // -> "first"
+            new(12, OpCode.Jump, 1, 2),         // -> offset 16 (skip nil cleanup)
+            new(15, OpCode.Pop, 0, 2),          // pop true; nil stays as result
 
-        // The guard converges via a Jump that lands after a trailing Pop — mirroring
-        // VisitMemberAccess's IsNil/JumpIfTrue/Pop/<op>/Jump/Pop/PatchJump shape.
-        int jumpIdx = instrs.FindIndex(callIdx, i => i.Op == OpCode.Jump);
-        Assert.True(jumpIdx > callIdx, "expected a Jump immediately after Call to skip the nil-cleanup Pop");
+            new(16, OpCode.IsNil, 0, 2),        // guard 2: D-400 call site
+            new(17, OpCode.JumpIfTrue, 6, 2),   // -> offset 26 (nil cleanup Pop)
+            new(20, OpCode.Pop, 0, 2),          // pop false
+            new(21, OpCode.Call, 0, 2),         // 0 arguments
+            new(23, OpCode.Jump, 1, 2),         // -> offset 27 (skip nil cleanup)
+            new(26, OpCode.Pop, 0, 2),          // pop true; nil stays as result
 
-        int popAfterJumpIdx = instrs.FindIndex(jumpIdx, i => i.Op == OpCode.Pop);
-        Assert.True(popAfterJumpIdx > jumpIdx, "expected a Pop on the nil-cleanup path (pops the JumpIfTrue's true bool)");
+            new(27, OpCode.Print, 0, 2),
+            new(28, OpCode.Return, 0, 2),  // implicit trailing return, last source line
+        ];
+
+        List<Instr> actual = Decode(chunk);
+        Assert.Equal(expected, actual);
+
+        // Jump operands are encoded relative to the instruction *after* the
+        // 2-byte operand, so pin the resolved absolute targets as well — that is
+        // what a mis-patched PatchJump actually corrupts, and it is the assertion
+        // the operand literals above cannot make on their own.
+        Assert.Equal(
+            [
+                (OpCode.JumpIfTrue, 15),  // guard 1 -> its nil-cleanup Pop
+                (OpCode.Jump, 16),        // guard 1 -> guard 2's IsNil
+                (OpCode.JumpIfTrue, 26),  // guard 2 -> its nil-cleanup Pop
+                (OpCode.Jump, 27),        // guard 2 -> Print
+            ],
+            ResolveJumpTargets(actual));
+    }
+
+    /// <summary>
+    /// Resolves each forward jump to the absolute offset it lands on, and asserts
+    /// that offset is the start of a real decoded instruction (never mid-operand).
+    /// </summary>
+    private static List<(OpCode Op, int Target)> ResolveJumpTargets(List<Instr> instrs) {
+        var starts = instrs.Select(i => i.Offset).ToHashSet();
+        var result = new List<(OpCode, int)>();
+        foreach (Instr instr in instrs) {
+            if (instr.Op is not (OpCode.Jump or OpCode.JumpIfTrue or OpCode.JumpIfFalse)) continue;
+            int target = instr.Offset + 3 + instr.Arg;
+            Assert.Contains(target, starts);
+            result.Add((instr.Op, target));
+        }
+        return result;
     }
 
     [Fact]
-    public void OptionalChainCall_NonOptionalCall_EmitsNoGuard() {
+    public void NonOptionalCall_EmitsNoNilGuard() {
         // Regression guard: the fix is additive — xs.first() (no '?.') on a
         // non-nullable array keeps its old unguarded shape.
         Chunk chunk = CompileSource("""
@@ -128,15 +183,19 @@ public sealed class CompilerOptionalChainCallTests {
         List<Instr> instrs = Decode(chunk);
         Assert.DoesNotContain(instrs, i => i.Op == OpCode.IsNil);
         Assert.DoesNotContain(instrs, i => i.Op == OpCode.JumpIfTrue);
-        Assert.Contains(instrs, i => i.Op == OpCode.Call);
+        Assert.DoesNotContain(instrs, i => i.Op == OpCode.Jump);
+
+        Instr call = Assert.Single(instrs, i => i.Op == OpCode.Call);
+        Assert.Equal(0, call.Arg);
+        Assert.Equal(2, call.Line);
     }
 
     // -----------------------------------------------------------------------
-    // Argument evaluation — load-bearing: must only happen on the non-nil path
+    // Argument evaluation — load-bearing: must only happen on the non-nil path.
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void OptionalChainCall_ArgumentEvaluation_OnlyEmittedAfterNilGuardPop() {
+    public void OptionalChainCallArguments_EmitOnlyOnNonNilBranch() {
         Chunk chunk = CompileSource("""
             fn sideEffect(): int {
                 return 1
@@ -158,7 +217,7 @@ public sealed class CompilerOptionalChainCallTests {
         // must appear before the sideEffect call's own GetGlobal/Call pair — i.e.
         // sideEffect() is only ever reached inside the guarded, non-nil branch.
         int guardPopIdx = instrs.FindIndex(lastJumpIfTrueIdx, i => i.Op == OpCode.Pop);
-        Assert.True(guardPopIdx > lastJumpIfTrueIdx, "expected the false-branch Pop right after the call-site JumpIfTrue");
+        Assert.Equal(lastJumpIfTrueIdx + 1, guardPopIdx);
 
         int sideEffectGetGlobalIdx = instrs.FindIndex(
             i => i.Op == OpCode.GetGlobal &&
@@ -166,5 +225,48 @@ public sealed class CompilerOptionalChainCallTests {
                  chunk.ReadConstant(i.Arg).AsString() == "sideEffect");
         Assert.True(sideEffectGetGlobalIdx > guardPopIdx,
             "sideEffect() must only be emitted after the call-site guard's false-branch Pop");
+
+        // Two Calls emit: sideEffect()'s own (0 args, inside the guarded branch)
+        // then the outer optional contains() (1 arg). Pin both arities — a wrong
+        // Call operand is exactly what a count-only assertion cannot see.
+        Assert.Equal([0, 1], instrs.Where(i => i.Op == OpCode.Call).Select(i => i.Arg));
+    }
+
+    // -----------------------------------------------------------------------
+    // The primitive-rewrite boundary (CodeRabbit, PR #184).
+    //
+    // D-400 rests on the invariant that CallExpr.ResolvedPrimitiveNativeName is
+    // only ever populated for a statically NON-nullable primitive receiver:
+    // PrimitiveMemberRegistry is keyed by GrobType.String/Int/Float/Bool, never
+    // their Nullable* variants. A nullable primitive receiver therefore takes the
+    // generic guarded tail, not EmitPrimitiveMemberCall — which is why the D-400
+    // guard covers s?.upper() without a primitive-specific arm. Pin it here so a
+    // future registry change that keys a Nullable* variant cannot silently route
+    // a nullable receiver around the guard.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void NullablePrimitiveOptionalCall_TakesGuardedPathNotPrimitiveRewrite() {
+        Chunk chunk = CompileSource("""
+            s: string? := nil
+            print(s?.upper())
+            """);
+
+        // The primitive rewrite would add a "string.upper" qualified-native
+        // constant and emit an unguarded GetGlobal/Call pair. It must not fire.
+        Assert.Equal(["s", "upper"], StringConstants(chunk));
+
+        List<Instr> instrs = Decode(chunk);
+        Assert.Equal(2, instrs.Count(i => i.Op == OpCode.IsNil));
+        Assert.Equal(2, instrs.Count(i => i.Op == OpCode.JumpIfTrue));
+
+        // Byte-for-byte the same guarded shape the array receiver gets: the
+        // emission is receiver-type-agnostic (D-400).
+        Assert.Equal(
+            Decode(CompileSource("""
+                xs: int[]? := nil
+                print(xs?.first())
+                """)).Select(i => (i.Offset, i.Op, i.Arg, i.Line)),
+            instrs.Select(i => (i.Offset, i.Op, i.Arg, i.Line)));
     }
 }

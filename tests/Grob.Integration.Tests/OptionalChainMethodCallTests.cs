@@ -1,41 +1,48 @@
 using System.Text;
 
-using Grob.Compiler;
-using Grob.Compiler.Ast;
-using Grob.Core;
-using Grob.Vm;
+using Grob.Cli;
 
 using Xunit;
-
-using GrobCompiler = Grob.Compiler.Compiler;
 
 namespace Grob.Integration.Tests;
 
 /// <summary>
-/// End-to-end (lex, parse, type-check, compile, VM) tests for the D-380/D-400 fix:
-/// <c>?.</c> on a method call (<c>xs?.first()</c>) must short-circuit to <c>nil</c> on
-/// a nil receiver exactly as the property path (<c>xs?.length</c>) already does,
-/// instead of crashing the VM with an internal "Call target is not a function"
-/// error. Driven through the full pipeline via the in-process runner pattern from
-/// <c>Sprint9IncrementA4Tests</c> — no fixture files, no CLI process spawn.
+/// End-to-end tests for the D-380/D-400 fix: <c>?.</c> on a method call
+/// (<c>xs?.first()</c>) must short-circuit to <c>nil</c> on a nil receiver exactly as
+/// the property path (<c>xs?.length</c>) already does, instead of crashing the VM with
+/// an internal "Call target is not a function" error. Driven through the CLI's own
+/// <see cref="RunCommand"/> over a real <c>.grob</c> file — the same harness shape as
+/// <c>Sprint9IncrementA1aTests.RunSource</c> — so each case asserts the full CLI
+/// contract (stdout, stderr and exit code) rather than only a VM writer's output, and
+/// exercises plugin auto-registration on the real command path.
 /// </summary>
 public sealed class OptionalChainMethodCallTests {
     private static string NL => Environment.NewLine;
 
-    private static string Run(string source) {
-        var bag = new DiagnosticBag();
-        IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
-        CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
-        Assert.False(bag.HasErrors,
-            $"TypeChecker errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
-        Chunk chunk = GrobCompiler.Compile(unit, bag);
-        Assert.False(bag.HasErrors,
-            $"Compiler errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
-        var output = new StringWriter(new StringBuilder());
-        var vm = new VirtualMachine(output);
-        vm.Run(chunk);
-        return output.ToString();
+    private static (string Stdout, string Stderr, int ExitCode) RunSource(string source) {
+        string path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.grob");
+        File.WriteAllText(path, source);
+        try {
+            var stdout = new StringWriter(new StringBuilder());
+            var stderr = new StringWriter(new StringBuilder());
+            int exitCode = new RunCommand(stdout, stderr).Run(path);
+            return (stdout.ToString(), stderr.ToString(), exitCode);
+        } finally {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="source"/> and asserts the success half of the CLI
+    /// contract — clean stderr and exit code 0 — before returning stdout for the
+    /// caller's own value assertion. A short-circuit that crashed the VM would fail
+    /// here on the exit code, not only on the printed value.
+    /// </summary>
+    private static string RunAndAssertSuccess(string source) {
+        (string stdout, string stderr, int exitCode) = RunSource(source);
+        Assert.Equal(string.Empty, stderr);
+        Assert.Equal(0, exitCode);
+        return stdout;
     }
 
     // -----------------------------------------------------------------------
@@ -46,8 +53,8 @@ public sealed class OptionalChainMethodCallTests {
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void OptionalCall_NilArrayReceiver_ShortCircuitsToNil() {
-        string stdout = Run(
+    public void NilArrayReceiver_ShortCircuitsToNil() {
+        string stdout = RunAndAssertSuccess(
             "xs: int[]? := nil\n" +
             "print(xs?.first())\n");
 
@@ -55,8 +62,8 @@ public sealed class OptionalChainMethodCallTests {
     }
 
     [Fact]
-    public void OptionalCall_NilStringReceiver_ShortCircuitsToNil() {
-        string stdout = Run(
+    public void NilStringReceiver_ShortCircuitsToNil() {
+        string stdout = RunAndAssertSuccess(
             "s: string? := nil\n" +
             "print(s?.upper())\n");
 
@@ -64,8 +71,8 @@ public sealed class OptionalChainMethodCallTests {
     }
 
     [Fact]
-    public void OptionalCall_NilNumericReceiver_ShortCircuitsToNil() {
-        string stdout = Run(
+    public void NilNumericReceiver_ShortCircuitsToNil() {
+        string stdout = RunAndAssertSuccess(
             "n: int? := nil\n" +
             "print(n?.toString())\n");
 
@@ -73,8 +80,8 @@ public sealed class OptionalChainMethodCallTests {
     }
 
     [Fact]
-    public void OptionalCall_NilNominalReceiver_ShortCircuitsToNil() {
-        string stdout = Run(
+    public void NilNominalReceiver_ShortCircuitsToNil() {
+        string stdout = RunAndAssertSuccess(
             "d: date? := nil\n" +
             "print(d?.addDays(1))\n");
 
@@ -86,9 +93,9 @@ public sealed class OptionalChainMethodCallTests {
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void OptionalPropertyAccess_NilArrayReceiver_StillShortCircuits() {
+    public void NilArrayPropertyAccess_StillShortCircuits() {
         // The pre-existing, already-correct property path this fix must not regress.
-        string stdout = Run(
+        string stdout = RunAndAssertSuccess(
             "xs: int[]? := nil\n" +
             "print(xs?.length)\n");
 
@@ -96,8 +103,8 @@ public sealed class OptionalChainMethodCallTests {
     }
 
     [Fact]
-    public void OptionalCall_NonNilReceiver_DispatchesNormally() {
-        string stdout = Run(
+    public void NonNilReceiver_DispatchesNormally() {
+        string stdout = RunAndAssertSuccess(
             "xs: int[]? := [10, 20, 30]\n" +
             "print(xs?.first())\n");
 
@@ -109,8 +116,8 @@ public sealed class OptionalChainMethodCallTests {
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void OptionalCall_NilReceiver_DoesNotEvaluateArguments() {
-        string stdout = Run(
+    public void NilReceiverArguments_AreNotEvaluated() {
+        string stdout = RunAndAssertSuccess(
             "fn sideEffect(): int {\n" +
             "    print(\"SIDE EFFECT RAN\")\n" +
             "    return 1\n" +
@@ -123,10 +130,10 @@ public sealed class OptionalChainMethodCallTests {
     }
 
     [Fact]
-    public void OptionalCall_NonNilReceiver_DoesEvaluateArguments() {
+    public void NonNilReceiverArguments_AreEvaluated() {
         // Contrast case: proves the guard above suppresses evaluation because the
         // receiver is nil, not because arguments are never evaluated at all.
-        string stdout = Run(
+        string stdout = RunAndAssertSuccess(
             "fn sideEffect(): int {\n" +
             "    print(\"SIDE EFFECT RAN\")\n" +
             "    return 1\n" +
@@ -142,8 +149,8 @@ public sealed class OptionalChainMethodCallTests {
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void OptionalCall_ChainedOnNilReceiver_ShortCircuitsWholeChain() {
-        string stdout = Run(
+    public void ChainedCallOnNilReceiver_ShortCircuitsWholeChain() {
+        string stdout = RunAndAssertSuccess(
             "a: string[]? := nil\n" +
             "print(a?.first()?.upper())\n");
 
@@ -151,14 +158,14 @@ public sealed class OptionalChainMethodCallTests {
     }
 
     [Fact]
-    public void OptionalCall_ChainedOnNonNilReceiver_EvaluatesEachLink() {
+    public void ChainedCallOnNonNilReceiver_EvaluatesEachLink() {
         // Array-of-array (not string) deliberately: GetProperty dispatches array/map/
         // struct receivers by their actual runtime kind regardless of static type, but
         // has no arm for a raw String receiver — a real, separate, pre-existing gap
         // (confirmed: `s?.upper()` on a *non-nil* `string?` already crashes today with
         // "opcode GetProperty 'upper' on receiver of kind String not yet implemented",
         // independent of this fix). Reported, not fixed here — out of this brief's scope.
-        string stdout = Run(
+        string stdout = RunAndAssertSuccess(
             "a: int[][]? := [[1, 2, 3]]\n" +
             "print(a?.first()?.first())\n");
 
@@ -170,8 +177,8 @@ public sealed class OptionalChainMethodCallTests {
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void OptionalCall_NilReceiver_NilCoalesceUnwrapsToFallback() {
-        string stdout = Run(
+    public void NilReceiverWithNilCoalesce_UnwrapsToFallback() {
+        string stdout = RunAndAssertSuccess(
             "xs: int[]? := nil\n" +
             "print(xs?.first() ?? 0)\n");
 
