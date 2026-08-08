@@ -26,9 +26,11 @@ public sealed class NullableMapTypeCheckerTests {
 
     private static DiagnosticBag Check(string source) => TypeCheckSource(source).Diagnostics;
 
-    private static void AssertSingleError(DiagnosticBag bag, string code) {
+    private static void AssertSingleError(DiagnosticBag bag, string code, int line, int column) {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(code, diag.Code);
+        Assert.Equal(line, diag.Range.Start.Line);
+        Assert.Equal(column, diag.Range.Start.Column);
     }
 
     // ------------------------------------------------------------------
@@ -55,7 +57,7 @@ public sealed class NullableMapTypeCheckerTests {
         // proves NullableMapAnnotation_AcceptsNil exercises real nullable widening, not
         // a permissive fallback.
         DiagnosticBag bag = Check("m: map<string, int> := nil\n");
-        AssertSingleError(bag, "E0001");
+        AssertSingleError(bag, "E0001", 1, 24);
     }
 
     [Fact]
@@ -80,7 +82,7 @@ public sealed class NullableMapTypeCheckerTests {
             c: map<string, string>? := a
             }
             """);
-        AssertSingleError(bag, "E0001");
+        AssertSingleError(bag, "E0001", 2, 28);
     }
 
     // ------------------------------------------------------------------
@@ -108,11 +110,11 @@ public sealed class NullableMapTypeCheckerTests {
             }
             }
             """);
-        AssertSingleError(bag, "E0501");
+        AssertSingleError(bag, "E0501", 2, 13);
     }
 
     [Fact]
-    public void ForIn_OnNullableMap_AfterNilGuardUnwrap_NoDiagnostics() {
+    public void ForIn_NilGuardUnwrappedMap_NoDiagnostics() {
         DiagnosticBag bag = Check("""
             fn f(m: map<string, int>?): void {
             for k, v in (m ?? map<string, int>{}) {
@@ -172,7 +174,7 @@ public sealed class NullableMapTypeCheckerTests {
             print(m.length)
             }
             """);
-        AssertSingleError(bag, "E0101");
+        AssertSingleError(bag, "E0101", 2, 7);
     }
 
     [Fact]
@@ -190,7 +192,7 @@ public sealed class NullableMapTypeCheckerTests {
     // ------------------------------------------------------------------
 
     [Fact]
-    public void ForIn_OnNullableMap_DiagnosticMessage_SpellsMapQuestionMark() {
+    public void ForIn_OnNullableMap_MessageSpellsMapQuestionMark() {
         DiagnosticBag bag = Check("""
             fn f(m: map<string, int>?): void {
             for k, v in m {

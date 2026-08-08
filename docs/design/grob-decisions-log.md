@@ -10666,7 +10666,7 @@ not suppression, per the analyser-gate rule.
 **Tests.** `NullableMapTypeCheckerTests.cs` (new, mirrors `ArrayTypeRefCheckerTests.cs`):
 binding/nil-acceptance, widening, the `Grob.Http` parameter shape, `for...in`
 rejection and its `??`-guarded acceptance, `??` unwrapping, nil-guard narrowing,
-unguarded-property-access `E0101`, optional-property-access permissiveness, and the
+unguarded-property-access `E0101`, optional-property-access permissiveness and the
 `'map?'` diagnostic spelling. `MapTypeDescriptorTests.cs`: the `??` descriptor-
 survival case (fixed above), proven the same "resolves `int?`, not merely compiles"
 way the existing map-descriptor tests do. `GrobTypeHelpersTests.cs`/

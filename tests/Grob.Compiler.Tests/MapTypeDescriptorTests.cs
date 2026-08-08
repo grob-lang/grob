@@ -422,7 +422,7 @@ public sealed class MapTypeDescriptorTests {
     // ------------------------------------------------------------------
 
     [Fact]
-    public void IndexRead_OnNilCoalescedNullableMap_ResolvesToNullableInt_NotUnknown() {
+    public void IndexRead_NilCoalescedMap_ResolvesToNullableInt() {
         // If the descriptor were lost through '??', 'n' below would be Unknown and this
         // assignment would be permissively accepted instead of raising E0104 — the same
         // "prove it resolved, don't just prove it compiled" shape as
@@ -436,7 +436,7 @@ public sealed class MapTypeDescriptorTests {
     }
 
     [Fact]
-    public void IndexRead_OnNilCoalescedNullableMap_AssignableToNullableInt_NoDiagnostics() {
+    public void IndexRead_NilCoalescedMap_AssignableToNullableInt() {
         DiagnosticBag bag = Check("""
             fn f(m: map<string, int>?): void {
             n: int? := (m ?? map<string, int>{})["k"]

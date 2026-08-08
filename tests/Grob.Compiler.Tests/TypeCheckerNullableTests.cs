@@ -193,6 +193,34 @@ public sealed class TypeCheckerNullableTests {
     }
 
     [Fact]
+    public void NilCoalesce_MapValueTypeMismatch_EmitsE0002() {
+        // map<string, int>? ?? map<string, string>{} — both operands are the flat
+        // Map tag, so the element-kind check above cannot see the mismatch; only
+        // the value-descriptor check (MapValueAssignable) can. Without it this
+        // would silently type as map<string, int> while carrying string values at
+        // runtime — the exact hole CodeRabbit flagged on PR #186.
+        var diag = Check("""
+            fn f(m: map<string, int>?): void {
+            n := m ?? map<string, string>{}
+            }
+            """);
+        Diagnostic err = Assert.Single(diag.Errors);
+        Assert.Equal("E0002", err.Code);
+        Assert.Equal((2, 6), (err.Range.Start.Line, err.Range.Start.Column));
+    }
+
+    [Fact]
+    public void NilCoalesce_MapValueTypeMatch_NoError() {
+        // Guard against over-rejection: identical value types unwrap cleanly.
+        var diag = Check("""
+            fn f(m: map<string, int>?): void {
+            n := m ?? map<string, int>{}
+            }
+            """);
+        Assert.False(diag.HasErrors, $"Unexpected errors: {string.Join("; ", diag.Errors)}");
+    }
+
+    [Fact]
     public void NilCoalesce_NonNullableOnLeft_NoError() {
         // Non-nullable ?? something is a no-op at runtime; type checker is permissive.
         var diag = Check("""

@@ -346,6 +346,21 @@ public sealed partial class TypeChecker {
                 node.Range);
         }
 
+        // D-401 review fix: the flat Map tag matches on both sides regardless of
+        // value type, so 'm ?? map<string,string>{}' with m: map<string,int>?
+        // would otherwise pass the element-kind check above unchecked, then
+        // MapDescriptorOf's NilCoalesce arm keeps the left (int) descriptor —
+        // silently typing the result map<string,int> while a mismatched right
+        // fallback could supply string values at runtime. MapValueAssignable
+        // already recurses into nested array/struct value identity, mirroring
+        // every other map-value gate (ResolveBindingFull, IsFieldValueCompatible).
+        if (leftElem == GrobType.Map && rightElem == GrobType.Map &&
+                !MapValueAssignable(MapDescriptorOf(node.Left), MapDescriptorOf(node.Right))) {
+            return EmitErrorAndReturn(ErrorCatalog.E0002,
+                $"Operator '??' cannot be applied to types '{TypeName(left)}' and '{TypeName(right)}': map value types do not match.",
+                node.Range);
+        }
+
         // When both sides are Unknown (e.g. deferred member types), be permissive.
         if (leftElem == GrobType.Unknown || rightElem == GrobType.Unknown) return GrobType.Unknown;
 

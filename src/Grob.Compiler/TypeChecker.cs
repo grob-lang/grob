@@ -431,8 +431,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         if (initType == GrobType.Error) return (GrobType.Error, null, null, null); // cascade suppression
 
         bool compatible = IsBindingValueCompatible(
-            initType, annotated, annotatedNamedTypeName, initDescriptor, annotatedDesc,
-            initArrayDescriptor, annotatedArrayDesc, initMapDescriptor, annotatedMapDesc, initExpr);
+            (initType, initDescriptor, initArrayDescriptor, initMapDescriptor),
+            (annotated, annotatedNamedTypeName, annotatedDesc, annotatedArrayDesc, annotatedMapDesc),
+            initExpr);
 
         if (!compatible) {
             EmitError(PickAssignabilityError(initType, annotated),
@@ -452,22 +453,23 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// then struct nominal identity, in turn. Split from <see cref="ResolveBindingFull"/>
     /// to keep that method's cognitive complexity under the analyser bar, mirroring
     /// <see cref="IsFieldValueCompatible"/>/<see cref="IsParameterDefaultCompatible"/>'s
-    /// identical extraction shape (<c>TypeChecker.Declarations.cs</c>).
+    /// identical extraction shape (<c>TypeChecker.Declarations.cs</c>). The two sides are
+    /// bundled into the same tuple shapes <see cref="ResolveBindingFull"/> and
+    /// <see cref="ResolveSignatureType"/> already produce — a review fix (SonarCloud
+    /// S107) after the plain 10-parameter form exceeded the 7-parameter bar.
     /// </summary>
     private bool IsBindingValueCompatible(
-            GrobType initType, GrobType annotated, string? annotatedNamedTypeName,
-            FunctionTypeDescriptor? initDescriptor, FunctionTypeDescriptor? annotatedDesc,
-            ArrayTypeDescriptor? initArrayDescriptor, ArrayTypeDescriptor? annotatedArrayDesc,
-            MapTypeDescriptor? initMapDescriptor, MapTypeDescriptor? annotatedMapDesc,
+            (GrobType Type, FunctionTypeDescriptor? Descriptor, ArrayTypeDescriptor? ArrayDescriptor, MapTypeDescriptor? MapDescriptor) init,
+            (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor, ArrayTypeDescriptor? ArrayDescriptor, MapTypeDescriptor? MapDescriptor) annotated,
             Expression? initExpr) {
-        bool isFunctionAnnotation = annotated == GrobType.Function || annotated == GrobType.NullableFunction;
-        bool isArrayAnnotation = annotated == GrobType.Array || annotated == GrobType.NullableArray;
-        bool isMapAnnotation = annotated == GrobType.Map || annotated == GrobType.NullableMap;
+        bool isFunctionAnnotation = annotated.Kind == GrobType.Function || annotated.Kind == GrobType.NullableFunction;
+        bool isArrayAnnotation = annotated.Kind == GrobType.Array || annotated.Kind == GrobType.NullableArray;
+        bool isMapAnnotation = annotated.Kind == GrobType.Map || annotated.Kind == GrobType.NullableMap;
         bool compatible = isFunctionAnnotation
-            ? TypesAreAssignable(initType, annotated, initDescriptor, annotatedDesc)
-            : TypesAreAssignable(initType, annotated);
+            ? TypesAreAssignable(init.Type, annotated.Kind, init.Descriptor, annotated.FunctionDescriptor)
+            : TypesAreAssignable(init.Type, annotated.Kind);
 
-        if (compatible && isArrayAnnotation && !ArrayElementAssignable(initArrayDescriptor, annotatedArrayDesc)) {
+        if (compatible && isArrayAnnotation && !ArrayElementAssignable(init.ArrayDescriptor, annotated.ArrayDescriptor)) {
             compatible = false;
         }
 
@@ -475,11 +477,11 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // value identity (V) is checked here the same way the array element gate above
         // checks T — otherwise map<string, int> would bind cleanly to a map<string, string>
         // annotation, silently defeating the value-type identity this increment introduced.
-        if (compatible && isMapAnnotation && !MapValueAssignable(initMapDescriptor, annotatedMapDesc)) {
+        if (compatible && isMapAnnotation && !MapValueAssignable(init.MapDescriptor, annotated.MapDescriptor)) {
             compatible = false;
         }
 
-        if (compatible && initExpr is not null && IsStructNominalMismatch(annotated, annotatedNamedTypeName, initExpr)) {
+        if (compatible && initExpr is not null && IsStructNominalMismatch(annotated.Kind, annotated.NamedTypeName, initExpr)) {
             compatible = false;
         }
 
