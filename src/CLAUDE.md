@@ -119,8 +119,10 @@ propose the design first.
   prefix, no Hungarian. Interface names start with `I`; generic type parameters
   start with `T`.
 - In non-test, non-private code, identifiers have no underscores. The two exceptions
-  are `_camelCase` private fields and `Subject_BehaviourClause` test method names
-  (a single mid-identifier underscore).
+  are `_camelCase` private fields and underscore-joined PascalCase test method
+  names: `Subject_Condition_BehaviourClause` is the norm, dropping the middle
+  segment to `Subject_BehaviourClause` when there is no separate condition to
+  name (see `tests/CLAUDE.md`).
 - **Same-line braces (K&R).** `dotnet format` is the source of truth and enforces
   opening braces on the same line for types, methods and control-flow blocks. Do not
   raise review comments about brace placement — the formatter overrides any manual
