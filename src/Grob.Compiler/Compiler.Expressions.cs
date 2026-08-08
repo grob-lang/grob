@@ -763,6 +763,18 @@ public sealed partial class Compiler {
 
         Visit(node.Callee);
 
+        // D-400: an optional-chained method call (xs?.first()) — the callee's own
+        // MemberAccessExpr.IsOptional guard (VisitMemberAccess) has already run inside
+        // Visit(node.Callee) above and, on a nil receiver, left nil on the stack in
+        // place of a callable instead of emitting GetProperty. Without this guard the
+        // call below would unconditionally evaluate the arguments and emit Call
+        // against that nil "callee", crashing the VM (D-380). Extracted to keep this
+        // method's cognitive complexity under the analyser bar.
+        if (node.Callee is MemberAccessExpr { IsOptional: true }) {
+            EmitOptionalChainCall(node, line);
+            return null;
+        }
+
         // D-358: a namespace-native call (date.parse) that omits trailing optional
         // arguments — generalises the input() one-off arm below via
         // NativeDefaultArgumentFill, the same "inject a synthesised constant argument"
@@ -813,6 +825,37 @@ public sealed partial class Compiler {
         _chunk.WriteOpCode(OpCode.Call, line);
         _chunk.WriteByte(ToByteOperand(node.Arguments.Count, CallArgumentCountOperand), line);
         return null;
+    }
+
+    /// <summary>
+    /// Emits an optional-chained method call (<c>xs?.first()</c>), guarding the
+    /// argument evaluation and <see cref="OpCode.Call"/> the same way
+    /// <see cref="VisitMemberAccess"/> already guards <see cref="OpCode.GetProperty"/>
+    /// for optional property access (D-400, closing D-380's fourth finding). Called
+    /// from <see cref="VisitCall"/> after <c>Visit(node.Callee)</c> has already run —
+    /// on a nil receiver, that visit's own <c>IsOptional</c> guard has left <c>nil</c>
+    /// on the stack in place of a callable, so this method's own <see
+    /// cref="OpCode.IsNil"/>/<see cref="OpCode.JumpIfTrue"/> check reuses that same
+    /// value rather than re-deriving it. Reuses the property path's exact
+    /// <c>IsNil</c>/<c>JumpIfTrue</c>/<c>Pop</c>/…/<c>Jump</c>/<c>Pop</c> shape — no new
+    /// opcode. Critically, <paramref name="node"/>'s arguments are only visited on the
+    /// non-nil branch, so a nil receiver never evaluates its call's argument
+    /// expressions either (the <c>xs?.contains(sideEffect())</c> requirement).
+    /// </summary>
+    private void EmitOptionalChainCall(CallExpr node, int line) {
+        _chunk.WriteOpCode(OpCode.IsNil, line);
+        int nilSite = EmitJump(OpCode.JumpIfTrue, line);
+
+        _chunk.WriteOpCode(OpCode.Pop, line);          // pop false
+        foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
+        _chunk.WriteOpCode(OpCode.Call, line);
+        _chunk.WriteByte(ToByteOperand(node.Arguments.Count, CallArgumentCountOperand), line);
+        int skipSite = EmitJump(OpCode.Jump, line);
+
+        PatchJump(nilSite);
+        _chunk.WriteOpCode(OpCode.Pop, line);          // pop true; nil stays as result
+
+        PatchJump(skipSite);
     }
 
     /// <summary>
