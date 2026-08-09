@@ -413,6 +413,39 @@ public sealed class MapTypeDescriptorTests {
     }
 
     // ------------------------------------------------------------------
+    // D-401 follow-on: a '??'-unwrapped nullable map's value descriptor must survive
+    // the nil-coalesce so indexing the result still resolves to a nullable V, not
+    // Unknown. Pre-existing gap for arrays too (MapDescriptorOf/ArrayDescriptorOf had
+    // no BinaryExpr arm) — fixed here for the map side only, since it is this
+    // increment's own load-bearing acceptance test; the parallel array gap is reported
+    // in the D-401 decisions-log entry, not fixed on this branch.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void IndexRead_NilCoalescedMap_ResolvesToNullableInt() {
+        // If the descriptor were lost through '??', 'n' below would be Unknown and this
+        // assignment would be permissively accepted instead of raising E0104 — the same
+        // "prove it resolved, don't just prove it compiled" shape as
+        // IndexRead_OnMapStringInt_ResolvesToNullableInt above.
+        DiagnosticBag bag = Check("""
+            fn f(m: map<string, int>?): void {
+            n: int := (m ?? map<string, int>{})["k"]
+            }
+            """);
+        AssertSingleError(bag, "E0104", 2, 11);
+    }
+
+    [Fact]
+    public void IndexRead_NilCoalescedMap_AssignableToNullableInt() {
+        DiagnosticBag bag = Check("""
+            fn f(m: map<string, int>?): void {
+            n: int? := (m ?? map<string, int>{})["k"]
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    // ------------------------------------------------------------------
     // D-376 follow-on: the same indexer/for-in scenarios above, now driven through a
     // real map<K, V>{...} literal rather than a fn-parameter annotation.
     // ------------------------------------------------------------------

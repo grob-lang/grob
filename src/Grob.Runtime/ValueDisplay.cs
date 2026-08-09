@@ -218,6 +218,7 @@ public sealed class ValueDisplay {
         GrobType.Array => "array",
         GrobType.NullableArray => "array?",
         GrobType.Map => "map",
+        GrobType.NullableMap => "map?",
         GrobType.Function => "fn",
         GrobType.NullableFunction => "fn?",
         GrobType.Struct => "struct",

@@ -430,28 +430,10 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
         if (initType == GrobType.Error) return (GrobType.Error, null, null, null); // cascade suppression
 
-        bool isFunctionAnnotation = annotated == GrobType.Function || annotated == GrobType.NullableFunction;
-        bool isArrayAnnotation = annotated == GrobType.Array || annotated == GrobType.NullableArray;
-        bool isMapAnnotation = annotated == GrobType.Map;
-        bool compatible = isFunctionAnnotation
-            ? TypesAreAssignable(initType, annotated, initDescriptor, annotatedDesc)
-            : TypesAreAssignable(initType, annotated);
-
-        if (compatible && isArrayAnnotation && !ArrayElementAssignable(initArrayDescriptor, annotatedArrayDesc)) {
-            compatible = false;
-        }
-
-        // Sprint 9 Increment C0b-1: the flat Map tag matches on both sides, so the map's
-        // value identity (V) is checked here the same way the array element gate above
-        // checks T — otherwise map<string, int> would bind cleanly to a map<string, string>
-        // annotation, silently defeating the value-type identity this increment introduced.
-        if (compatible && isMapAnnotation && !MapValueAssignable(initMapDescriptor, annotatedMapDesc)) {
-            compatible = false;
-        }
-
-        if (compatible && initExpr is not null && IsStructNominalMismatch(annotated, annotatedNamedTypeName, initExpr)) {
-            compatible = false;
-        }
+        bool compatible = IsBindingValueCompatible(
+            (initType, initDescriptor, initArrayDescriptor, initMapDescriptor),
+            (annotated, annotatedNamedTypeName, annotatedDesc, annotatedArrayDesc, annotatedMapDesc),
+            initExpr);
 
         if (!compatible) {
             EmitError(PickAssignabilityError(initType, annotated),
@@ -462,6 +444,48 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
         // Annotation wins (e.g. int → float widening is recorded as float).
         return (annotated, annotatedDesc, annotatedArrayDesc, annotatedMapDesc);
+    }
+
+    /// <summary>
+    /// Reports whether a binding's initialiser is assignable to its resolved
+    /// annotation — flat kind (with structural function-descriptor comparison, D-326),
+    /// array element identity (D-351), map value identity (Sprint 9 Increment C0b-1),
+    /// then struct nominal identity, in turn. Split from <see cref="ResolveBindingFull"/>
+    /// to keep that method's cognitive complexity under the analyser bar, mirroring
+    /// <see cref="IsFieldValueCompatible"/>/<see cref="IsParameterDefaultCompatible"/>'s
+    /// identical extraction shape (<c>TypeChecker.Declarations.cs</c>). The two sides are
+    /// bundled into the same tuple shapes <see cref="ResolveBindingFull"/> and
+    /// <see cref="ResolveSignatureType"/> already produce — a review fix (SonarCloud
+    /// S107) after the plain 10-parameter form exceeded the 7-parameter bar.
+    /// </summary>
+    private bool IsBindingValueCompatible(
+            (GrobType Type, FunctionTypeDescriptor? Descriptor, ArrayTypeDescriptor? ArrayDescriptor, MapTypeDescriptor? MapDescriptor) init,
+            (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor, ArrayTypeDescriptor? ArrayDescriptor, MapTypeDescriptor? MapDescriptor) annotated,
+            Expression? initExpr) {
+        bool isFunctionAnnotation = annotated.Kind == GrobType.Function || annotated.Kind == GrobType.NullableFunction;
+        bool isArrayAnnotation = annotated.Kind == GrobType.Array || annotated.Kind == GrobType.NullableArray;
+        bool isMapAnnotation = annotated.Kind == GrobType.Map || annotated.Kind == GrobType.NullableMap;
+        bool compatible = isFunctionAnnotation
+            ? TypesAreAssignable(init.Type, annotated.Kind, init.Descriptor, annotated.FunctionDescriptor)
+            : TypesAreAssignable(init.Type, annotated.Kind);
+
+        if (compatible && isArrayAnnotation && !ArrayElementAssignable(init.ArrayDescriptor, annotated.ArrayDescriptor)) {
+            compatible = false;
+        }
+
+        // Sprint 9 Increment C0b-1: the flat Map tag matches on both sides, so the map's
+        // value identity (V) is checked here the same way the array element gate above
+        // checks T — otherwise map<string, int> would bind cleanly to a map<string, string>
+        // annotation, silently defeating the value-type identity this increment introduced.
+        if (compatible && isMapAnnotation && !MapValueAssignable(init.MapDescriptor, annotated.MapDescriptor)) {
+            compatible = false;
+        }
+
+        if (compatible && initExpr is not null && IsStructNominalMismatch(annotated.Kind, annotated.NamedTypeName, initExpr)) {
+            compatible = false;
+        }
+
+        return compatible;
     }
 
     /// <summary>
@@ -547,6 +571,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         IdentifierExpr id => LookupSymbol(id.Name)?.MapDescriptor,
         MapLiteralExpr literal => _mapLiteralDescriptors.GetValueOrDefault(literal),
         GroupingExpr grp => MapDescriptorOf(grp.Inner),
+        // D-401: a '??'-unwrapped nullable map (m ?? map<string,int>{}) must keep its
+        // value descriptor — otherwise indexing the result silently regresses to
+        // Unknown, undoing D-374's typing. Both operands describe the same map's value
+        // shape by construction (TypesAreAssignable/MapValueAssignable already reject a
+        // mismatched fallback), so either side's descriptor is authoritative; the left
+        // is checked first since it is the nullable operand actually being unwrapped.
+        BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
+            MapDescriptorOf(binary.Left) ?? MapDescriptorOf(binary.Right),
         _ => null,
     };
 
@@ -650,7 +682,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // Sprint 9 Increment C0b-1: 'map' additionally resolves its value-type descriptor
         // from typeRef.TypeArguments[1] — the same TypeArguments the array branch above
         // has consulted since D-327, now read for the first time on this builtin.
-        if (builtin == GrobType.Map) return (builtin, null, null, null, ResolveMapValueDescriptor(typeRef));
+        // D-401: also matches NullableMap ('map<K,V>?') — otherwise a nullable map
+        // annotation would silently drop its V descriptor, regressing D-374's typing.
+        if (builtin is GrobType.Map or GrobType.NullableMap) return (builtin, null, null, null, ResolveMapValueDescriptor(typeRef));
         if (builtin != GrobType.Unknown) return (builtin, null, null, null, null);
 
         // D-356: a registered nominal type (guid, date, ...) is a primitive type
@@ -1120,6 +1154,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         GrobType.NullableBool => "bool?",
         GrobType.Array => "array",
         GrobType.Map => "map",
+        GrobType.NullableMap => "map?",
         GrobType.Function => "fn",
         GrobType.NullableFunction => "fn?",
         GrobType.NullableArray => "array?",

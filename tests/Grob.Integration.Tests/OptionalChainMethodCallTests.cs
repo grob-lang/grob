@@ -46,10 +46,13 @@ public sealed class OptionalChainMethodCallTests {
     }
 
     // -----------------------------------------------------------------------
-    // The reported case, and the receiver-kind matrix (array/string/numeric/nominal
-    // — map is excluded: GrobType has no NullableMap variant, so a nil map receiver
-    // cannot be constructed from source today; a separate, pre-existing gap, not
-    // part of this fix).
+    // The reported case, and the receiver-kind matrix (array/string/numeric/nominal/
+    // map). Map was excluded from this matrix originally — GrobType had no
+    // NullableMap variant, so a nil map receiver could not be constructed from source
+    // at all — closed by D-401, which added GrobType.NullableMap. The short-circuit
+    // mechanism itself (EmitOptionalChainCall) was always receiver-type-agnostic, so
+    // no compiler/VM change was needed here — only the type existing to compile
+    // 'm: map<string, int>? := nil' in the first place.
     // -----------------------------------------------------------------------
 
     [Fact]
@@ -88,6 +91,18 @@ public sealed class OptionalChainMethodCallTests {
         Assert.Equal($"nil{NL}", stdout);
     }
 
+    [Fact]
+    public void NilMapReceiver_ShortCircuitsToNil() {
+        // D-401: map<K,V>? did not exist until this fix, so this case could not be
+        // constructed from source before — closing the gap the matrix comment above
+        // used to note explicitly.
+        string stdout = RunAndAssertSuccess(
+            "m: map<string, int>? := nil\n" +
+            "print(m?.get(\"k\"))\n");
+
+        Assert.Equal($"nil{NL}", stdout);
+    }
+
     // -----------------------------------------------------------------------
     // Regression guards
     // -----------------------------------------------------------------------
@@ -109,6 +124,24 @@ public sealed class OptionalChainMethodCallTests {
             "print(xs?.first())\n");
 
         Assert.Equal($"10{NL}", stdout);
+    }
+
+    [Fact]
+    public void NonNilMapReceiver_DispatchesNormally() {
+        string stdout = RunAndAssertSuccess(
+            "m: map<string, int>? := map<string, int>{\"k\": 42}\n" +
+            "print(m?.get(\"k\"))\n");
+
+        Assert.Equal($"42{NL}", stdout);
+    }
+
+    [Fact]
+    public void NilMapPropertyAccess_StillShortCircuits() {
+        string stdout = RunAndAssertSuccess(
+            "m: map<string, int>? := nil\n" +
+            "print(m?.length)\n");
+
+        Assert.Equal($"nil{NL}", stdout);
     }
 
     // -----------------------------------------------------------------------
