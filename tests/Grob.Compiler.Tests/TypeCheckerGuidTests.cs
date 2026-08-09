@@ -467,13 +467,21 @@ public sealed class TypeCheckerGuidTests {
     }
 
     [Fact]
-    public void NullableGuidParameter_OptionalMethodCall_ResolvesPermissively() {
-        DiagnosticBag bag = Check("""
+    public void NullableGuidParameter_OptionalMethodCall_ResolvesToNullableString() {
+        // D-402: 'id?.toString()' dispatches against the underlying non-nullable 'guid'
+        // and widens the result to 'string?' — not the permissive Unknown D-401 reported.
+        // ResolvedPrimitiveNativeName must stay null: the compiler checks that field
+        // before IsOptional, so a primitive-rewrite regression would silently route the
+        // call around D-400's IsNil guard while still producing no diagnostic here.
+        var (unit, bag) = TypeCheckSource("""
             fn describe(id: guid?): void {
                 s := id?.toString()
             }
             """);
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.NullableString, call.ResolvedReturnType);
+        Assert.Null(call.ResolvedPrimitiveNativeName);
     }
 
     // -----------------------------------------------------------------------
@@ -542,6 +550,23 @@ public sealed class TypeCheckerGuidTests {
         public override Unit VisitErrorExpr(ErrorExpr node) => default;
         public override Unit VisitErrorStmt(ErrorStmt node) => default;
         public override Unit VisitErrorDecl(ErrorDecl node) => default;
+    }
+
+    private sealed class CallCollector : AstWalker {
+        public List<CallExpr> Nodes { get; } = [];
+        public override Unit VisitCall(CallExpr node) {
+            Nodes.Add(node);
+            return base.VisitCall(node);
+        }
+        public override Unit VisitErrorExpr(ErrorExpr node) => default;
+        public override Unit VisitErrorStmt(ErrorStmt node) => default;
+        public override Unit VisitErrorDecl(ErrorDecl node) => default;
+    }
+
+    private static List<CallExpr> CollectCalls(CompilationUnit unit) {
+        var collector = new CallCollector();
+        collector.Visit(unit);
+        return collector.Nodes;
     }
 
     private sealed class MemberAccessCollector : AstWalker {
