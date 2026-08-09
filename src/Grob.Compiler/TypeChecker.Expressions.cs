@@ -511,6 +511,72 @@ public sealed partial class TypeChecker {
         for (int i = 0; i < node.Arguments.Count; i++)
             argTypes[i] = Visit(node.Arguments[i].Value);
 
+        // D-402: a nullable receiver dispatches once, generically — mirroring
+        // VisitMemberAccess's identical IsNullable guard rather than a parallel check.
+        // Every dispatch arm below (array/map/primitive/struct) matches only the exact
+        // non-nullable GrobType tag, so without this guard a nullable receiver falls
+        // through all of them to the permissive Unknown fallback regardless of '.'/'?.'
+        // (D-401's finding). Subsumes the former NullableStruct-only bespoke guard, which
+        // covered registered named types (guid/date) only and produced a named-type-
+        // specific message; this guard is deliberately generic instead, matching
+        // VisitMemberAccess's existing property-access wording exactly.
+        if (GrobTypeHelpers.IsNullable(receiverType)) {
+            return ResolveNullableMemberAccessCall(node, memberAccess, argTypes, receiverType);
+        }
+
+        return DispatchMemberAccessCall(node, memberAccess, argTypes, receiverType);
+    }
+
+    /// <summary>
+    /// Resolves a method call whose receiver is nullable (D-402). Non-optional '.' is
+    /// always E0101, matching <see cref="VisitMemberAccess"/>'s identical property-access
+    /// guard. '?.' resolves the call against the underlying non-nullable type — reusing
+    /// <see cref="DispatchMemberAccessCall"/>'s array/map/primitive/struct arms unchanged
+    /// rather than a parallel mechanism — and widens a successful result to its nullable
+    /// form via <see cref="GrobTypeHelpers.ToNullable"/>; an <see cref="GrobType.Unknown"/>
+    /// or <see cref="GrobType.Error"/> result passes through unchanged, preserving the
+    /// existing permissive fallback for anything genuinely unresolvable.
+    /// </summary>
+    private GrobType ResolveNullableMemberAccessCall(
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, GrobType receiverType) {
+        if (!memberAccess.IsOptional) {
+            return EmitErrorAndReturn(ErrorCatalog.E0101,
+                $"Member access via '.' on nullable type '{TypeName(receiverType)}' may dereference nil. Use '?.' to chain or '??' to unwrap first.",
+                memberAccess.Range);
+        }
+
+        GrobType underlyingType = GrobTypeHelpers.ElementType(receiverType);
+        GrobType underlyingResult = DispatchMemberAccessCall(node, memberAccess, argTypes, underlyingType);
+
+        // D-400 invariant, deliberately preserved: a nullable receiver's '?.' call must
+        // always take the IsNil-guarded generic compiler emission path
+        // (EmitOptionalChainCall), never the unguarded primitive-native rewrite.
+        // ValidatePrimitiveMemberCall (reached via DispatchMemberAccessCall above, driven
+        // by the underlying non-nullable primitive type) sets this field unconditionally;
+        // clearing it here — the one deliberate exception to "reuse unchanged" — is what
+        // CompilerOptionalChainCallTests.NullablePrimitiveOptionalCall_TakesGuardedPathNotPrimitiveRewrite
+        // and TypeCheckerPrimitiveMemberTests.OptionalChainCallOnNullableString_DoesNotSetPrimitiveNativeRewrite
+        // both pin.
+        node.ResolvedPrimitiveNativeName = null;
+
+        if (underlyingResult is GrobType.Unknown or GrobType.Error) return underlyingResult;
+
+        GrobType widened = GrobTypeHelpers.ToNullable(underlyingResult);
+        node.ResolvedReturnType = widened;
+        return widened;
+    }
+
+    /// <summary>
+    /// Dispatches a method call to its receiver-kind-specific validator — array, map,
+    /// primitive (D-066) or registered-named-type (D-356) — or the permissive
+    /// <see cref="GrobType.Unknown"/> fallback for anything else. Extracted from
+    /// <see cref="ResolveMemberAccessCall"/> so <see cref="ResolveNullableMemberAccessCall"/>
+    /// can reuse the identical dispatch against a receiver's underlying non-nullable type
+    /// (D-402) without duplicating it. <paramref name="receiverType"/> is always
+    /// non-nullable by the time this runs — the caller guarantees it.
+    /// </summary>
+    private GrobType DispatchMemberAccessCall(
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, GrobType receiverType) {
         // D-380: dispatches unconditionally on receiver type, not gated on a recognised
         // name — ValidateArrayMethodCall's/ValidateMapMethodCall's own switch raises E1002
         // for an unrecognised name, mirroring how every other arm below resolves its own
@@ -530,22 +596,6 @@ public sealed partial class TypeChecker {
         // does not apply). Checked ahead of the Struct-only arms since they never overlap.
         if (PrimitiveMemberRegistry.TryGet(receiverType, out PrimitiveMemberEntry? primitiveEntry)) {
             return ValidatePrimitiveMemberCall(node, memberAccess, argTypes, primitiveEntry);
-        }
-
-        // A non-optional '.' method call on a nullable registered-named-type (D-356)
-        // receiver may dereference nil — reject at compile time (E0101), mirroring
-        // VisitMemberAccess's identical guard for plain property access (CodeRabbit
-        // review, PR #143 — this call-site arm had no nullable guard at all, so
-        // `d.toIso()` on a `date?` silently resolved Unknown instead of erroring).
-        // '?.' stays permissive, matching the existing property-access pattern.
-        string? nullableStructName = receiverType == GrobType.NullableStruct
-            ? GetStructTypeName(memberAccess.Target)
-            : null;
-        if (!memberAccess.IsOptional && nullableStructName is not null &&
-                NamedTypeRegistry.TryGet(nullableStructName, out _)) {
-            return EmitErrorAndReturn(ErrorCatalog.E0101,
-                $"Member access via '.' on nullable type '{nullableStructName}?' may dereference nil. Use '?.' to chain or '??' to unwrap first.",
-                memberAccess.Range);
         }
 
         // D-356: instance methods on a registered named type (guid, date, ...) —

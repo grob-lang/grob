@@ -553,6 +553,13 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         MemberAccessExpr member => _memberAccessArrayDescriptors.GetValueOrDefault(member),
         IdentifierExpr id => LookupSymbol(id.Name)?.ArrayDescriptor,
         GroupingExpr grp => ArrayDescriptorOf(grp.Inner),
+        // D-402: restores the symmetry D-401 deliberately left half-done — a '??'-unwrapped
+        // nullable array (xs ?? []) must keep its element descriptor, mirroring
+        // MapDescriptorOf's identical NilCoalesce arm exactly. Without this arm a '??'
+        // result carried no element descriptor and typed Unknown, so indexing it
+        // (`(xs ?? [])[0]`) fell back to Unknown instead of the real element type.
+        BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
+            ArrayDescriptorOf(binary.Left) ?? ArrayDescriptorOf(binary.Right),
         IndexExpr index => ArrayDescriptorOf(index.Target)?.ElementArrayDescriptor
             ?? MapDescriptorOf(index.Target)?.ValueArrayDescriptor,
         _ => null,

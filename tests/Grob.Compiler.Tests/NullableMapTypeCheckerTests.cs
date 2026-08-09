@@ -33,6 +33,23 @@ public sealed class NullableMapTypeCheckerTests {
         Assert.Equal(column, diag.Range.Start.Column);
     }
 
+    private sealed class CallCollector : AstWalker {
+        public List<CallExpr> Nodes { get; } = [];
+        public override Unit VisitCall(CallExpr node) {
+            Nodes.Add(node);
+            return base.VisitCall(node);
+        }
+        public override Unit VisitErrorExpr(ErrorExpr node) => default;
+        public override Unit VisitErrorStmt(ErrorStmt node) => default;
+        public override Unit VisitErrorDecl(ErrorDecl node) => default;
+    }
+
+    private static List<CallExpr> CollectCalls(CompilationUnit unit) {
+        var collector = new CallCollector();
+        collector.Visit(unit);
+        return collector.Nodes;
+    }
+
     // ------------------------------------------------------------------
     // Annotation → GrobType resolution — the reported case.
     // ------------------------------------------------------------------
@@ -160,11 +177,8 @@ public sealed class NullableMapTypeCheckerTests {
     }
 
     // ------------------------------------------------------------------
-    // Unguarded property access on a nullable map — the correct precedent to
-    // assert is property access ('.length'), which VisitMemberAccess already
-    // rejects generically for every nullable type (E0101). A method call
-    // ('.get(...)') does NOT raise this diagnostic today for a nullable array
-    // either — a separate, pre-existing gap (D-401), not fixed here.
+    // Unguarded property access on a nullable map — VisitMemberAccess already
+    // rejects generically for every nullable type (E0101).
     // ------------------------------------------------------------------
 
     [Fact]
@@ -185,6 +199,39 @@ public sealed class NullableMapTypeCheckerTests {
             }
             """);
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    // ------------------------------------------------------------------
+    // D-402: the method-call analogue of the property-access guard above.
+    // ResolveMemberAccessCall previously matched only the exact non-nullable
+    // GrobType.Map tag, so a method call ('.get(...)') did NOT raise E0101 for a
+    // nullable map the way '.length' already did — a separate, pre-existing gap
+    // (D-401's second finding), closed here alongside the identical array gap.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void UnguardedMethodCallOnNullableMap_ReportsE0101() {
+        DiagnosticBag bag = Check("""
+            fn f(m: map<string, int>?): void {
+            print(m.get("k"))
+            }
+            """);
+        AssertSingleError(bag, "E0101", 2, 7);
+    }
+
+    [Fact]
+    public void OptionalMethodCallOnNullableMap_ResolvesToNullableValueType() {
+        // Load-bearing: 'm?.get("k")' now resolves 'int?' (the value type widened to
+        // nullable) instead of the permissive Unknown D-401 reported — closes the gap
+        // that made 'y: int? := m?.get("k")' fail E0001 before this fix.
+        var (unit, bag) = TypeCheckSource("""
+            fn f(m: map<string, int>?): void {
+            x := m?.get("k")
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.NullableInt, call.ResolvedReturnType);
     }
 
     // ------------------------------------------------------------------
