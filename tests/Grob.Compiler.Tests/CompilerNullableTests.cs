@@ -98,10 +98,20 @@ public sealed class CompilerNullableTests {
 
     [Fact]
     public void OptionalDot_EmitsIsNilAndJumps() {
-        // x: int? := nil; x?.member
+        // D-403: the receiver moved from 'int? := nil' with a placeholder '.member' name
+        // onto 'int[]? := nil' with the real array property '.length' (Sprint 9
+        // Increment C0a-1, D-371). D-403's type-checker fix makes '?.' property access
+        // genuinely dispatch against the receiver's underlying type instead of staying
+        // permissively Unknown — and 'int' (via PrimitiveMemberRegistry) has zero bare
+        // properties, so ANY property name on a nullable int now correctly raises E1002,
+        // which CompileSource's own bag.HasErrors assertion turns into a test failure
+        // before the bytecode-shape assertions below ever run. This file only ever
+        // needed a real nullable receiver with a real bare property to prove the
+        // emission shape (IsNil/JumpIfTrue/Pop/GetProperty/Jump/Pop) — the receiver
+        // kind and property name were never load-bearing to that shape.
         Chunk chunk = CompileSource("""
-            x: int? := nil
-            x?.member
+            xs: int[]? := nil
+            xs?.length
             """);
 
         List<OpCode> ops = ReadOpcodes(chunk);
@@ -114,9 +124,11 @@ public sealed class CompilerNullableTests {
     [Fact]
     public void OptionalDot_EmitsTwoPopOpcodes_ForBoolCleanup() {
         // Each path (nil/non-nil) needs one Pop to discard the IsNil bool.
+        // D-403: see OptionalDot_EmitsIsNilAndJumps for why the receiver moved off
+        // 'int?'/'.member' onto a real nullable-array property.
         Chunk chunk = CompileSource("""
-            x: int? := nil
-            x?.member
+            xs: int[]? := nil
+            xs?.length
             """);
 
         List<OpCode> ops = ReadOpcodes(chunk);
@@ -129,9 +141,11 @@ public sealed class CompilerNullableTests {
 
     [Fact]
     public void OptionalDot_StructureOrder_IsNilBeforeJumpIfTrue() {
+        // D-403: see OptionalDot_EmitsIsNilAndJumps for why the receiver moved off
+        // 'int?'/'.member' onto a real nullable-array property.
         Chunk chunk = CompileSource("""
-            x: int? := nil
-            x?.member
+            xs: int[]? := nil
+            xs?.length
             """);
 
         List<OpCode> ops = ReadOpcodes(chunk);
@@ -180,9 +194,11 @@ public sealed class CompilerNullableTests {
         // Compile a minimal ?. expression and verify the backpatch is correct:
         // the JumpIfTrue must skip exactly over [Pop, GetProperty, byte, Jump, byte, byte]
         // and land at the nil-path Pop.
+        // D-403: see OptionalDot_EmitsIsNilAndJumps for why the receiver moved off
+        // 'int?'/'.member' onto a real nullable-array property.
         Chunk chunk = CompileSource("""
-            x: int? := nil
-            x?.member
+            xs: int[]? := nil
+            xs?.length
             """);
 
         // Walk the chunk to find the JumpIfTrue opcode and its offset.

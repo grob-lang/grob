@@ -1469,14 +1469,65 @@ public sealed partial class TypeChecker {
                 node.Range);
         }
 
-        // '?.' on a nullable receiver: stay permissive so downstream '??' and
-        // nullable-aware operators do not see a spuriously concrete field type.
-        // Full '?.' type propagation (returning the nullable variant of the field type)
-        // is deferred until nullable-struct construction is fully wired.
-        if (node.IsOptional && GrobTypeHelpers.IsNullable(targetType)) {
-            return GrobType.Unknown;
+        // D-403: a nullable receiver dispatches once, generically — mirroring
+        // ResolveMemberAccessCall's identical D-402 guard rather than a parallel check.
+        // DispatchMemberAccessProperty's own arms below match only the exact
+        // non-nullable GrobType tag, so without this guard a '?.' receiver fell through
+        // all of them to the permissive Unknown fallback regardless of the field's real
+        // type (the stale "F3 guard" this closes — no D-### ever recorded it).
+        if (GrobTypeHelpers.IsNullable(targetType)) {
+            return ResolveNullableMemberAccess(node, targetType);
         }
 
+        return DispatchMemberAccessProperty(node, targetType);
+    }
+
+    /// <summary>
+    /// Resolves a property access whose receiver is nullable (D-403), mirroring
+    /// <see cref="ResolveNullableMemberAccessCall"/>'s D-402 shape exactly. Non-optional
+    /// '.' is rejected before this method is ever reached (<see cref="VisitMemberAccess"/>'s
+    /// own E0101 guard runs first). '?.' resolves the field against the receiver's
+    /// underlying non-nullable type — reusing <see cref="DispatchMemberAccessProperty"/>'s
+    /// array/map/primitive/struct arms unchanged rather than a parallel mechanism — and
+    /// widens a successful result to its nullable form via
+    /// <see cref="GrobTypeHelpers.ToNullable"/>; an <see cref="GrobType.Unknown"/> or
+    /// <see cref="GrobType.Error"/> result passes through unchanged, preserving the
+    /// existing permissive fallback for anything genuinely unresolvable.
+    /// </summary>
+    private GrobType ResolveNullableMemberAccess(MemberAccessExpr node, GrobType targetType) {
+        GrobType underlyingType = GrobTypeHelpers.ElementType(targetType);
+        GrobType underlyingResult = DispatchMemberAccessProperty(node, underlyingType);
+
+        // D-400/D-402 invariant, preserved on the property-access path: the compiler's own
+        // VisitMemberAccess (Compiler.Expressions.cs) checks ResolvedPrimitiveNativeName
+        // BEFORE IsOptional, and the primitive-native rewrite it triggers has no nil guard
+        // at all. ResolvePrimitiveMemberPropertyAccess (reached via
+        // DispatchMemberAccessProperty above, driven by the underlying non-nullable
+        // primitive type) sets that field unconditionally; clearing it here — the one
+        // deliberate exception to "reuse unchanged" — stops a nullable '?.' receiver's
+        // property access from silently bypassing the IsNil-guarded generic GetProperty
+        // emission and passing a nil receiver straight into a qualified native.
+        node.ResolvedPrimitiveNativeName = null;
+
+        if (underlyingResult is GrobType.Unknown or GrobType.Error) return underlyingResult;
+
+        GrobType widened = GrobTypeHelpers.ToNullable(underlyingResult);
+        node.ResolvedFieldType = widened;
+        return widened;
+    }
+
+    /// <summary>
+    /// Dispatches a bare property access to its receiver-kind-specific resolver —
+    /// registered named type (D-356), primitive (D-066), struct/anon-struct field
+    /// (Sprint 6), array/map (Sprint 9 C0a-1/C0b-2a) — or the permissive
+    /// <see cref="GrobType.Unknown"/> fallback for anything else. Extracted from
+    /// <see cref="VisitMemberAccess"/> so <see cref="ResolveNullableMemberAccess"/> can
+    /// reuse the identical dispatch against a receiver's underlying non-nullable type
+    /// (D-403) without duplicating it, mirroring <see cref="DispatchMemberAccessCall"/>'s
+    /// identical extraction for the call path (D-402). <paramref name="targetType"/> is
+    /// always non-nullable by the time this runs — the caller guarantees it.
+    /// </summary>
+    private GrobType DispatchMemberAccessProperty(MemberAccessExpr node, GrobType targetType) {
         // D-356: instance properties on a registered named type (guid, date, ...) —
         // none has UserTypeInfo/declared fields (never constructed via '{ }' braces) for
         // ResolveStructFieldAccess to consult, so their property surfaces are resolved
@@ -1485,11 +1536,7 @@ public sealed partial class TypeChecker {
             return knownStructResult;
         }
 
-        // D-066: primitive instance-property dispatch (string first). Only ever reached
-        // for a non-nullable receiver — the generic nullable guards above (lines checking
-        // GrobTypeHelpers.IsNullable(targetType)) already reject or short-circuit a
-        // nullable receiver before this point, so no extra nullable handling is needed
-        // here (mirrors TryResolveKnownStructPropertyAccess's identical latitude).
+        // D-066: primitive instance-property dispatch (string first).
         if (PrimitiveMemberRegistry.TryGet(targetType, out PrimitiveMemberEntry? primitiveEntry)) {
             return ResolvePrimitiveMemberPropertyAccess(node, primitiveEntry);
         }
@@ -1515,8 +1562,8 @@ public sealed partial class TypeChecker {
             return collectionResult;
         }
 
-        // For '?.' chains or Unknown-typed targets the result type is Unknown so
-        // downstream '??' operators remain permissive and do not emit false positives.
+        // For an Unknown-typed target the result type is Unknown so downstream '??'
+        // operators remain permissive and do not emit false positives.
         return GrobType.Unknown;
     }
 
@@ -2364,6 +2411,13 @@ public sealed partial class TypeChecker {
         // same gap silently affected every struct-returning call, guid included).
         CallExpr call => _callResultStructNames.GetValueOrDefault(call),
         GroupingExpr g => GetStructTypeName(g.Inner),
+        // D-403: mirrors ArrayDescriptorOf's/MapDescriptorOf's identical NilCoalesce arm
+        // exactly — a '??'-unwrapped nullable named-type value (g1 ?? g2) must keep its
+        // struct-type identity, so a method call on the grouped result
+        // ((g1 ?? g2).toString()) still dispatches via NamedTypeRegistry instead of
+        // falling back to Unknown.
+        BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
+            GetStructTypeName(binary.Left) ?? GetStructTypeName(binary.Right),
         _ => null
     };
 

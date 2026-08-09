@@ -526,6 +526,12 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         CallExpr call => _callResultDescriptors.GetValueOrDefault(call),
         IdentifierExpr id => LookupSymbol(id.Name)?.FunctionDescriptor,
         GroupingExpr grp => ExpressionDescriptor(grp.Inner),
+        // D-403: mirrors ArrayDescriptorOf's/MapDescriptorOf's identical NilCoalesce arm
+        // exactly — a '??'-unwrapped nullable function value (f ?? g) must keep its
+        // function descriptor, so a direct call on the grouped result ((f ?? g)()) still
+        // resolves the declared return type instead of falling back to Unknown.
+        BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
+            ExpressionDescriptor(binary.Left) ?? ExpressionDescriptor(binary.Right),
         _ => null,
     };
 

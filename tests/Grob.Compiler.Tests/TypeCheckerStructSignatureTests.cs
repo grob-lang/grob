@@ -123,6 +123,32 @@ public sealed class TypeCheckerStructSignatureTests {
         Assert.Equal(GrobType.Int, ma.ResolvedFieldType);
     }
 
+    // -----------------------------------------------------------------------
+    // D-403: '?.' field access on a nullable-struct receiver resolves the field's
+    // nullable-widened type — mirroring D-402's identical fix for the method-call
+    // path, now closed for property access too.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void OptionalChainFieldAccess_OnNullableStructParam_ResolvesWidenedFieldType() {
+        var (unit, bag) = TypeCheckSource("""
+            type Point {
+            x: int
+            y: int
+            }
+            fn describe(p: Point?): void {
+            v := p?.x
+            }
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"Unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+        var collector = new MemberAccessCollector();
+        collector.Visit(unit);
+        MemberAccessExpr ma = Assert.Single(collector.Nodes, m => m.Member == "x");
+        Assert.Equal(GrobType.NullableInt, ma.ResolvedFieldType);
+    }
+
     [Fact]
     public void UndefinedFieldOnStructParam_EmitsE1002() {
         // The parameter now resolves to a real struct kind, so an undefined member

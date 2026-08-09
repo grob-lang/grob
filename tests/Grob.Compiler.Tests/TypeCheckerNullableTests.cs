@@ -235,14 +235,19 @@ public sealed class TypeCheckerNullableTests {
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void QuestionDot_ResultIsUnknown_CompatibleWithNilCoalesce() {
-        // ?. result type is Unknown (member types deferred Sprint 5).
-        // The ?? should not emit a false E0002 for the Unknown type.
+    public void QuestionDot_WidenedResultType_CompatibleWithNilCoalesce() {
+        // D-403: '?.' now resolves the nullable-widened field type ('int?' for
+        // 'string?.length') rather than the old permissive Unknown, so this proves '??'
+        // still accepts the '?.' result under its correct type, not merely under a
+        // permissive stand-in. ('toString' is a method, not a property, on 'string' —
+        // a bare uncalled reference to it correctly raises E1002 once '?.' genuinely
+        // dispatches against the underlying type, so 'length' is used here instead.)
         var diag = Check("""
-            x: int? := nil
-            y := x?.toString ?? "none"
+            s: string? := nil
+            y := s?.length ?? 0
             """);
-        // E0101 must NOT fire (optional access); E0002 must NOT fire (Unknown ?? string is permissive).
+        // E0101 must NOT fire (optional access); E0002 must NOT fire ('int?' ?? 'int' is
+        // a genuinely compatible '??', not merely a permissive Unknown pass-through).
         Assert.DoesNotContain(diag.Errors, d => d.Code == "E0101");
         Assert.DoesNotContain(diag.Errors, d => d.Code == "E0002");
     }

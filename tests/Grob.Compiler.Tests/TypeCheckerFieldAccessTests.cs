@@ -320,15 +320,17 @@ public sealed class TypeCheckerFieldAccessTests {
     }
 
     // -----------------------------------------------------------------------
-    // F3 guard — '?.' on any nullable receiver returns Unknown without E0101
+    // D-403: '?.' on a nullable receiver resolves the field's nullable-widened
+    // type, not the old permissive Unknown (formerly "the F3 guard") — mirroring
+    // D-402's identical fix for the method-call path.
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void FieldAccess_OptionalChainOnNullableScalar_NoError() {
+    public void FieldAccess_OptionalChainOnNullableScalar_ResolvesWidenedFieldType() {
         // '?.' on a NullableString target must not emit E0101 (that fires only for
-        // plain '.') and must not attempt struct-field resolution — the F3 guard
-        // returns Unknown immediately, making the result permissive downstream.
-        DiagnosticBag bag = Check("""
+        // plain '.') and must dispatch against the underlying 'string' property table,
+        // widening 'length' (int) to 'int?' rather than staying permissively Unknown.
+        var (unit, bag) = TypeCheckSource("""
             fn maybeLabel(): string? {
                 return nil
             }
@@ -338,6 +340,9 @@ public sealed class TypeCheckerFieldAccessTests {
 
         Assert.False(bag.HasErrors,
             $"Unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+        List<MemberAccessExpr> accesses = CollectMemberAccesses(unit);
+        MemberAccessExpr ma = Assert.Single(accesses, m => m.Member == "length");
+        Assert.Equal(GrobType.NullableInt, ma.ResolvedFieldType);
     }
 
     // -----------------------------------------------------------------------
