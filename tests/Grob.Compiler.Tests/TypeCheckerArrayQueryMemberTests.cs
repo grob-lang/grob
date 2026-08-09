@@ -126,12 +126,55 @@ public sealed class TypeCheckerArrayQueryMemberTests {
     }
 
     [Fact]
-    public void OptionalChainOnNullableArrayMethodCall_StaysPermissive() {
-        // The other required survivor: '?.' on a nullable receiver stays permissive,
-        // including for a name that would otherwise be unrecognised — NullableArray never
-        // matches the tightened Array-receiver arm.
+    public void OptionalChainOnNullableArray_UnrecognisedMethod_ReportsE1002() {
+        // D-402: 'xs?.garbage()' now dispatches fully against the underlying non-nullable
+        // element type (mirroring UnrecognisedArrayMethodCall_ReportsE1002's non-nullable
+        // case), closing the permissive-Unknown fall-through this test previously proved —
+        // a NullableArray receiver is no longer a way to bypass method-name validation.
         DiagnosticBag bag = Check("xs: int[]? := nil\nxs?.garbage()\n");
+        AssertSingleError(bag, "E1002", 2, 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // D-402: the nullable-receiver method-call guard and '?.' nullable-widened typing —
+    // closing the gap D-401 found and deliberately left open. ResolveMemberAccessCall
+    // matched only the exact non-nullable GrobType.Array tag, so a NullableArray receiver
+    // fell through to the permissive Unknown fallback regardless of '.'/'?.'.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void UnguardedMethodCallOnNullableArray_ReportsE0101() {
+        // The method-call analogue of VisitMemberAccess's existing property-access guard
+        // — 'xs.first()' (no '?.') on a nullable array previously compiled and deferred
+        // the fault to a runtime E5201 nil-dereference; it is now a compile-time E0101,
+        // matching 'xs.length'.
+        DiagnosticBag bag = Check("xs: int[]? := nil\nxs.first()\n");
+        AssertSingleError(bag, "E0101", 2, 1);
+    }
+
+    [Fact]
+    public void OptionalChainCallOnNullableArray_First_ResolvesToNullableElementType() {
+        // Load-bearing: 'xs?.first()' now resolves the real element type (widened to
+        // nullable) instead of the permissive Unknown D-401 reported — the half that
+        // makes '?.' genuinely usable, matching 'm?.get("k")''s equivalent map fix.
+        var (unit, bag) = TypeCheckSource("xs: int[]? := [1, 2, 3]\nx := xs?.first()\n");
+
         Assert.False(bag.HasErrors, FormatErrors(bag));
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.NullableInt, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void OptionalChainCallOnNonNullableArray_NoDiagnostic() {
+        // '?.' on a non-nullable receiver is unaffected by the new nullable guard — it is
+        // gated on GrobTypeHelpers.IsNullable(receiverType), which is false here, so
+        // dispatch proceeds exactly as for plain '.'. first()/last() already return T?
+        // regardless of '?.' (D-371), so the resolved type is unchanged by this fix.
+        var (unit, bag) = TypeCheckSource("xs: int[] := [1, 2, 3]\nx := xs?.first()\n");
+
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.NullableInt, call.ResolvedReturnType);
     }
 
     // -----------------------------------------------------------------------

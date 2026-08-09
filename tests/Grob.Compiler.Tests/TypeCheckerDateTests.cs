@@ -527,6 +527,38 @@ public sealed class TypeCheckerDateTests {
         Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
     }
 
+    [Fact]
+    public void NullableDateParameter_OptionalNominalSelfMethodCall_ResolvesToNullableStruct() {
+        // D-402, load-bearing: 'd?.addDays(1)' now resolves the underlying method's
+        // nominal-self return type widened to nullable ('date?', flat GrobType.NullableStruct)
+        // instead of the permissive Unknown D-401 reported — closing the gap that made
+        // 'y: date? := d?.addDays(1)' fail E0001 before this fix. Assigning to a 'date?'
+        // binding (rather than chaining a second member access) proves the typing without
+        // touching the separate, still-deferred '?.' property-access typing gap.
+        DiagnosticBag bag = Check("""
+            fn describe(d: date?): void {
+                y: date? := d?.addDays(1)
+            }
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+    }
+
+    [Fact]
+    public void NullableDateParameter_NonOptionalMethodCall_UsesGenericMessage() {
+        // Both open questions the D-402 gate raised resolved: the E0101 message on the
+        // call path is now generic ('struct?'), matching VisitMemberAccess's existing
+        // property-access wording — not the named-type-specific 'date?'/'guid?' text the
+        // old bespoke NullableStruct-only guard produced.
+        DiagnosticBag bag = Check("""
+            fn describe(d: date?): string {
+                return d.toIso()
+            }
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Contains("'struct?'", diag.Message);
+        Assert.DoesNotContain("'date?'", diag.Message);
+    }
+
     // -----------------------------------------------------------------------
     // date-vs-date comparison — D-354, LessDate/GreaterDate authorisation.
     // -----------------------------------------------------------------------

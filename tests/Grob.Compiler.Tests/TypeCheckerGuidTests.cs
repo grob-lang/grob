@@ -447,6 +447,36 @@ public sealed class TypeCheckerGuidTests {
     }
 
     // -----------------------------------------------------------------------
+    // D-402: the nullable-receiver method-call guard and '?.' nullable-widened typing —
+    // guid's side of the same fix TypeCheckerDateTests exercises for date, mirroring
+    // NamedTypeRegistry's identical dispatch shape for both registered named types.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void NullableGuidParameter_NonOptionalMethodCall_ReportsSingleE0101() {
+        DiagnosticBag bag = Check("""
+            fn describe(id: guid?): string {
+                return id.toString()
+            }
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0101.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(12, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void NullableGuidParameter_OptionalMethodCall_ResolvesPermissively() {
+        DiagnosticBag bag = Check("""
+            fn describe(id: guid?): void {
+                s := id?.toString()
+            }
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+    }
+
+    // -----------------------------------------------------------------------
     // §3.1.1 — every identifier node carries a non-null ResolvedType/Declaration.
     // -----------------------------------------------------------------------
 

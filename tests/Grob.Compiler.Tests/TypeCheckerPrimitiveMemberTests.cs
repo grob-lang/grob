@@ -574,4 +574,119 @@ public sealed class TypeCheckerPrimitiveMemberTests {
         CallExpr call = Assert.Single(CollectCalls(unit));
         Assert.Equal(GrobType.Float, call.ResolvedReturnType);
     }
+
+    // -----------------------------------------------------------------------
+    // D-402: the nullable-receiver method-call guard and '?.' nullable-widened typing.
+    // ResolveMemberAccessCall's PrimitiveMemberRegistry lookup matched only the exact
+    // non-nullable String/Int/Float/Bool tag, so a nullable primitive receiver fell
+    // through to the permissive Unknown fallback for '.', and crashed unconditionally
+    // at runtime (a separate, pre-existing VM GetProperty-dispatch gap D-400 found and
+    // left open) rather than short-circuiting for '?.'.
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("s: string? := \"abc\"\ns.upper()\n", 2, 1)]
+    [InlineData("n: int? := 5\nn.toString()\n", 2, 1)]
+    [InlineData("f: float? := 3.5\nf.round()\n", 2, 1)]
+    [InlineData("b: bool? := true\nb.toString()\n", 2, 1)]
+    public void UnguardedMethodCallOnNullablePrimitive_ReportsE0101(string source, int line, int column) {
+        DiagnosticBag bag = Check(source);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0101.Code, diag.Code);
+        Assert.Equal(line, diag.Range.Start.Line);
+        Assert.Equal(column, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void OptionalChainCallOnNullableString_Upper_ResolvesToNullableString() {
+        // Load-bearing: 's?.upper()' now resolves 'string?' instead of the permissive
+        // Unknown D-401's finding reported — the '?.' typing half of Finding A.
+        var (unit, bag) = TypeCheckSource("""
+            s: string? := "abc"
+            x := s?.upper()
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.NullableString, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void OptionalChainCallOnNullableInt_ToString_ResolvesToNullableString() {
+        var (unit, bag) = TypeCheckSource("""
+            n: int? := 5
+            x := n?.toString()
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.NullableString, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void OptionalChainCallOnNullableFloat_Round_ResolvesToNullableInt() {
+        var (unit, bag) = TypeCheckSource("""
+            f: float? := 3.5
+            x := f?.round()
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.NullableInt, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void OptionalChainCallOnNullableBool_ToString_ResolvesToNullableString() {
+        var (unit, bag) = TypeCheckSource("""
+            b: bool? := true
+            x := b?.toString()
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.NullableString, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void OptionalChainCallOnNullableFloat_RoundToNoArguments_StillReportsE0003() {
+        // Proves the '?.' nullable path resolves the call against the underlying type's
+        // full validation (arity here), not merely a return-type stub — mirrors
+        // RoundTo_NoArguments_ReportsSingleE0003's non-nullable case at the same column
+        // (the receiver identifier's own position is unchanged by the '?').
+        DiagnosticBag bag = Check("""
+            f: float? := 3.5
+            readonly v := f?.roundTo()
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void OptionalChainCallOnNullableString_DoesNotSetPrimitiveNativeRewrite() {
+        // The critical D-400 invariant this fix must never break: a nullable receiver's
+        // '?.' call must always take the IsNil-guarded generic compiler emission path
+        // (EmitOptionalChainCall), never the unguarded primitive-native rewrite —
+        // CallExpr.ResolvedPrimitiveNativeName must stay null even though the typing is
+        // now resolved via the underlying non-nullable 'string' method table. Pinned
+        // independently of CompilerOptionalChainCallTests' bytecode-level proof of the
+        // same invariant.
+        var (unit, bag) = TypeCheckSource("""
+            s: string? := "abc"
+            x := s?.upper()
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Null(call.ResolvedPrimitiveNativeName);
+    }
+
+    [Fact]
+    public void OptionalChainCallOnNonNullablePrimitive_NoDiagnostic() {
+        // '?.' on a non-nullable receiver is unaffected by the new nullable guard.
+        var (unit, bag) = TypeCheckSource("""
+            s: string := "abc"
+            x := s?.upper()
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.String, call.ResolvedReturnType);
+    }
 }
