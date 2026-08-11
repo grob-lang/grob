@@ -98,40 +98,77 @@ public sealed class CompilerNullableTests {
 
     [Fact]
     public void OptionalDot_EmitsIsNilAndJumps() {
-        // x: int? := nil; x?.member
+        // D-403: the receiver moved from 'int? := nil' with a placeholder '.member' name
+        // onto 'int[]? := nil' with the real array property '.length' (Sprint 9
+        // Increment C0a-1, D-371). D-403's type-checker fix makes '?.' property access
+        // genuinely dispatch against the receiver's underlying type instead of staying
+        // permissively Unknown — and 'int' (via PrimitiveMemberRegistry) has zero bare
+        // properties, so ANY property name on a nullable int now correctly raises E1002,
+        // which CompileSource's own bag.HasErrors assertion turns into a test failure
+        // before the bytecode-shape assertions below ever run. This file only ever
+        // needed a real nullable receiver with a real bare property to prove the
+        // emission shape (IsNil/JumpIfTrue/Pop/GetProperty/Jump/Pop) — the receiver
+        // kind and property name were never load-bearing to that shape.
         Chunk chunk = CompileSource("""
-            x: int? := nil
-            x?.member
+            xs: int[]? := nil
+            xs?.length
             """);
 
-        List<OpCode> ops = ReadOpcodes(chunk);
-        Assert.Contains(OpCode.IsNil, ops);
-        Assert.Contains(OpCode.JumpIfTrue, ops);
-        Assert.Contains(OpCode.Jump, ops);
-        Assert.Contains(OpCode.GetProperty, ops);
+        // PR #189 review (CodeRabbit): the receiver changed above, so this — the anchor
+        // test for the whole '?.' shape — now asserts the complete emitted chunk rather
+        // than probing it with Contains, per tests/CLAUDE.md ("given source text, assert
+        // the exact bytecode emitted — opcodes, operands, constant-pool contents, and the
+        // line-number array"). The three tests below stay narrow on purpose: each pins one
+        // property of this same sequence (Pop count, ordering, backpatch arithmetic) and
+        // names it, so a break points at the property that broke.
+        Assert.Equal(
+            [
+                (OpCode.Nil, -1, 1),            // xs := nil
+                (OpCode.DefineGlobal, 0, 1),    //   → constant 0, "xs"
+                (OpCode.GetGlobal, 0, 2),       // xs?.length — push the receiver
+                (OpCode.IsNil, -1, 2),          //   nil test, leaves receiver + bool
+                (OpCode.JumpIfTrue, 6, 2),      //   nil → skip the property read (to offset 15)
+                (OpCode.Pop, -1, 2),            //   non-nil path: discard the false bool
+                (OpCode.GetProperty, 1, 2),     //   → constant 1, "length"
+                (OpCode.Jump, 1, 2),            //   skip the nil path's own cleanup
+                (OpCode.Pop, -1, 2),            //   nil path: discard the true bool
+                (OpCode.Pop, -1, 2),            // expression statement discards the result
+                (OpCode.Return, -1, 2),
+            ],
+            ReadInstructions(chunk));
+
+        Assert.Equal(2, chunk.ConstantCount);
+        Assert.Equal("xs", chunk.ReadConstant(0).AsString());
+        Assert.Equal("length", chunk.ReadConstant(1).AsString());
     }
 
     [Fact]
     public void OptionalDot_EmitsTwoPopOpcodes_ForBoolCleanup() {
         // Each path (nil/non-nil) needs one Pop to discard the IsNil bool.
+        // D-403: see OptionalDot_EmitsIsNilAndJumps for why the receiver moved off
+        // 'int?'/'.member' onto a real nullable-array property.
         Chunk chunk = CompileSource("""
-            x: int? := nil
-            x?.member
+            xs: int[]? := nil
+            xs?.length
             """);
 
         List<OpCode> ops = ReadOpcodes(chunk);
         int popCount = ops.Count(op => op == OpCode.Pop);
-        // Two Pops: one on the non-nil path (pop false bool before GetProperty),
-        // one on the nil path (pop true bool, leaving nil receiver as result).
-        // Plus one Pop after the expression-statement discards the result.
-        Assert.True(popCount >= 2, $"Expected >= 2 Pops but got {popCount}");
+        // Two Pops for the bool: one on the non-nil path (pop false before GetProperty),
+        // one on the nil path (pop true, leaving the nil receiver as the result). Plus one
+        // Pop for the expression statement discarding the result — three exactly.
+        // PR #189 review (CodeRabbit): was 'popCount >= 2', an inequality that would have
+        // stayed green if a path lost its cleanup Pop and leaked a bool onto the stack.
+        Assert.Equal(3, popCount);
     }
 
     [Fact]
     public void OptionalDot_StructureOrder_IsNilBeforeJumpIfTrue() {
+        // D-403: see OptionalDot_EmitsIsNilAndJumps for why the receiver moved off
+        // 'int?'/'.member' onto a real nullable-array property.
         Chunk chunk = CompileSource("""
-            x: int? := nil
-            x?.member
+            xs: int[]? := nil
+            xs?.length
             """);
 
         List<OpCode> ops = ReadOpcodes(chunk);
@@ -180,9 +217,11 @@ public sealed class CompilerNullableTests {
         // Compile a minimal ?. expression and verify the backpatch is correct:
         // the JumpIfTrue must skip exactly over [Pop, GetProperty, byte, Jump, byte, byte]
         // and land at the nil-path Pop.
+        // D-403: see OptionalDot_EmitsIsNilAndJumps for why the receiver moved off
+        // 'int?'/'.member' onto a real nullable-array property.
         Chunk chunk = CompileSource("""
-            x: int? := nil
-            x?.member
+            xs: int[]? := nil
+            xs?.length
             """);
 
         // Walk the chunk to find the JumpIfTrue opcode and its offset.
@@ -210,6 +249,30 @@ public sealed class CompilerNullableTests {
         Assert.True(jumpTarget < chunk.Count,
             $"Jump target {jumpTarget} is past chunk end {chunk.Count}");
         Assert.Equal((byte)OpCode.Pop, chunk.ReadByte(jumpTarget));
+    }
+
+    /// <summary>
+    /// Decodes <paramref name="chunk"/> into one entry per instruction — opcode, decoded
+    /// operand (<c>-1</c> when the instruction takes none) and the source line the byte is
+    /// attributed to — so a test can assert the emitted sequence exactly rather than probing
+    /// it with <c>Contains</c>. Stops after the first <see cref="OpCode.Return"/>.
+    /// </summary>
+    private static List<(OpCode Op, int Operand, int Line)> ReadInstructions(Chunk chunk) {
+        List<(OpCode Op, int Operand, int Line)> result = [];
+        int offset = 0;
+        while (offset < chunk.Count) {
+            var op = (OpCode)chunk.ReadByte(offset);
+            int size = InstructionSize(chunk, offset);
+            int operand = size switch {
+                2 => chunk.ReadByte(offset + 1),
+                3 => (chunk.ReadByte(offset + 1) << 8) | chunk.ReadByte(offset + 2),
+                _ => -1,
+            };
+            result.Add((op, operand, chunk.GetLine(offset)));
+            offset += size;
+            if (op == OpCode.Return) break;
+        }
+        return result;
     }
 
     /// <summary>Returns the total byte size of the instruction at <paramref name="offset"/>.</summary>

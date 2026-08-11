@@ -50,6 +50,23 @@ public sealed class NullableMapTypeCheckerTests {
         return collector.Nodes;
     }
 
+    private sealed class MemberAccessCollector : AstWalker {
+        public List<MemberAccessExpr> Nodes { get; } = [];
+        public override Unit VisitMemberAccess(MemberAccessExpr node) {
+            Nodes.Add(node);
+            return base.VisitMemberAccess(node);
+        }
+        public override Unit VisitErrorExpr(ErrorExpr node) => default;
+        public override Unit VisitErrorStmt(ErrorStmt node) => default;
+        public override Unit VisitErrorDecl(ErrorDecl node) => default;
+    }
+
+    private static List<MemberAccessExpr> CollectMemberAccesses(CompilationUnit unit) {
+        var collector = new MemberAccessCollector();
+        collector.Visit(unit);
+        return collector.Nodes;
+    }
+
     // ------------------------------------------------------------------
     // Annotation → GrobType resolution — the reported case.
     // ------------------------------------------------------------------
@@ -192,13 +209,18 @@ public sealed class NullableMapTypeCheckerTests {
     }
 
     [Fact]
-    public void OptionalPropertyAccess_OnNullableMap_StaysPermissive() {
-        DiagnosticBag bag = Check("""
+    public void OptionalPropertyAccess_OnNullableMap_ResolvesWidenedFieldType() {
+        // D-403: 'm?.length' now dispatches against the underlying non-nullable
+        // 'map<string, int>' property table and widens the result to 'int?' — not the
+        // old permissive Unknown a bare 'print(...)' argument could not distinguish.
+        var (unit, bag) = TypeCheckSource("""
             fn f(m: map<string, int>?): void {
             print(m?.length)
             }
             """);
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+        MemberAccessExpr ma = Assert.Single(CollectMemberAccesses(unit), m => m.Member == "length");
+        Assert.Equal(GrobType.NullableInt, ma.ResolvedFieldType);
     }
 
     // ------------------------------------------------------------------
