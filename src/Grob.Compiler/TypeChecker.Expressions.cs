@@ -346,18 +346,9 @@ public sealed partial class TypeChecker {
                 node.Range);
         }
 
-        // D-401 review fix: the flat Map tag matches on both sides regardless of
-        // value type, so 'm ?? map<string,string>{}' with m: map<string,int>?
-        // would otherwise pass the element-kind check above unchecked, then
-        // MapDescriptorOf's NilCoalesce arm keeps the left (int) descriptor —
-        // silently typing the result map<string,int> while a mismatched right
-        // fallback could supply string values at runtime. MapValueAssignable
-        // already recurses into nested array/struct value identity, mirroring
-        // every other map-value gate (ResolveBindingFull, IsFieldValueCompatible).
-        if (leftElem == GrobType.Map && rightElem == GrobType.Map &&
-                !MapValueAssignable(MapDescriptorOf(node.Left), MapDescriptorOf(node.Right))) {
+        if (NilCoalesceIdentityMismatch(node, leftElem, rightElem) is string mismatch) {
             return EmitErrorAndReturn(ErrorCatalog.E0002,
-                $"Operator '??' cannot be applied to types '{TypeName(left)}' and '{TypeName(right)}': map value types do not match.",
+                $"Operator '??' cannot be applied to types '{TypeName(left)}' and '{TypeName(right)}': {mismatch}.",
                 node.Range);
         }
 
@@ -366,6 +357,64 @@ public sealed partial class TypeChecker {
 
         // If the right side is nullable the result stays nullable; otherwise it is non-nullable.
         return GrobTypeHelpers.IsNullable(right) ? left : leftElem;
+    }
+
+    /// <summary>
+    /// Decides whether the two operands of a <c>??</c> agree on the side-channel identity
+    /// the result will inherit, returning the mismatch clause for the <c>E0002</c> message
+    /// or <see langword="null"/> when they agree.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The flat <see cref="GrobType"/> tag is identical for every map, every array, every
+    /// function and every named struct regardless of value type, element type, signature or
+    /// nominal identity — so <see cref="ResolveNilCoalesce"/>'s element-kind check passes,
+    /// and each helper's <c>NilCoalesce</c> arm then keeps the <em>left</em> operand's
+    /// descriptor for a result the right operand may actually supply at runtime. D-401 closed
+    /// this for <c>map</c>; the PR #189 review found the same shape open on the other three.
+    /// </para>
+    /// <para>
+    /// Callers reach here only once <see cref="ResolveNilCoalesce"/> has rejected genuinely
+    /// different element kinds, so equal kinds are the checkable case; an <c>Unknown</c>/
+    /// <c>Error</c> pairing falls through permissively, exactly as the missing-descriptor and
+    /// <c>Unknown</c>-descriptor cases do inside each predicate below.
+    /// </para>
+    /// </remarks>
+    private string? NilCoalesceIdentityMismatch(BinaryExpr node, GrobType leftElem, GrobType rightElem) {
+        if (leftElem != rightElem) return null;
+
+        return leftElem switch {
+            GrobType.Map when !MapValueAssignable(MapDescriptorOf(node.Left), MapDescriptorOf(node.Right)) =>
+                "map value types do not match",
+            GrobType.Array when !ArrayElementAssignable(ArrayDescriptorOf(node.Left), ArrayDescriptorOf(node.Right)) =>
+                "array element types do not match",
+            GrobType.Function when !FunctionDescriptorsAgree(node.Left, node.Right) =>
+                "function signatures do not match",
+            GrobType.Struct when !NamedTypeIdentitiesAgree(node.Left, node.Right) =>
+                "named types do not match",
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// True when both operands' function descriptors resolve to the same signature, or when
+    /// either side has no descriptor to compare — the permissive-on-missing shape
+    /// <see cref="ArrayElementAssignable"/> and <see cref="MapValueAssignable"/> already use.
+    /// </summary>
+    private bool FunctionDescriptorsAgree(Expression left, Expression right) {
+        FunctionTypeDescriptor? leftDescriptor = ExpressionDescriptor(left);
+        FunctionTypeDescriptor? rightDescriptor = ExpressionDescriptor(right);
+        return leftDescriptor is null || rightDescriptor is null || leftDescriptor.Equals(rightDescriptor);
+    }
+
+    /// <summary>
+    /// True when both operands resolve to the same named type, or when either side's nominal
+    /// identity is unresolved (an anonymous or unregistered struct stays permissive).
+    /// </summary>
+    private bool NamedTypeIdentitiesAgree(Expression left, Expression right) {
+        string? leftName = GetStructTypeName(left);
+        string? rightName = GetStructTypeName(right);
+        return leftName is null || rightName is null || string.Equals(leftName, rightName, StringComparison.Ordinal);
     }
 
     // -----------------------------------------------------------------------

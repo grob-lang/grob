@@ -172,4 +172,106 @@ public sealed class NilCoalesceDescriptorSymmetryTests {
         CallExpr call = Assert.Single(CollectCalls(unit), c => c.Callee is MemberAccessExpr { Member: "toString" });
         Assert.Equal(GrobType.String, call.ResolvedReturnType);
     }
+
+    // -----------------------------------------------------------------------
+    // PR #189 review (CodeRabbit): the descriptor-retention arms above keep the LEFT
+    // operand's side-channel identity, so '??' must first prove the two operands agree
+    // on it. ResolveNilCoalesce's own element-kind check compares only the flat GrobType
+    // tag, which is identical for every function ('Function'), every array ('Array') and
+    // every named/anonymous struct ('Struct') regardless of signature, element type or
+    // nominal identity — exactly the hole D-401 already closed for 'Map' via
+    // MapValueAssignable. Same defect class, same remedy, same diagnostic (E0002).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void FunctionResult_MismatchedNilCoalesceDescriptors_RaisesE0002() {
+        // Without the check, '(f ?? g)()' is typed int even when g — returning string —
+        // is the operand that actually runs.
+        DiagnosticBag bag = Check("""
+            f: (fn(): int)? := nil
+            g: fn(): string := () => "s"
+            y := (f ?? g)()
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal(3, diag.Range.Start.Line);
+        Assert.Equal(7, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void NestedNilCoalesce_MismatchedFunctionDescriptors_RaisesE0002() {
+        // The arm recurses, so the mismatch check must recurse with it: the offending
+        // pair here is the inner '(f ?? g)', two levels down from the outer call.
+        DiagnosticBag bag = Check("""
+            f: (fn(): int)? := nil
+            g: (fn(): string)? := nil
+            h: fn(): int := () => 3
+            y := (f ?? g ?? h)()
+            """);
+
+        // One diagnostic, not two: the inner '??' resolves to Error, and Error's universal
+        // assignability keeps the outer '??' from cascading a second report.
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal(4, diag.Range.Start.Line);
+        Assert.Equal(7, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void FunctionResult_MatchedNilCoalesceDescriptors_StaysClean() {
+        // Positive control for the check above — identical signatures must not trip it.
+        DiagnosticBag bag = Check("""
+            f: (fn(int): int)? := nil
+            g: fn(int): int := (n: int) => n
+            y := (f ?? g)(1)
+            """);
+
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void NamedStruct_MismatchedNilCoalesceOperands_RaisesE0002() {
+        // 'date? ?? guid' both carry the flat Struct tag, so without the nominal check
+        // GetStructTypeName keeps "date" and dispatches date's method table over a guid.
+        DiagnosticBag bag = Check("""
+            d: date? := nil
+            g := guid.newV4()
+            s := (d ?? g).toString()
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal(3, diag.Range.Start.Line);
+        Assert.Equal(7, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void NamedStruct_MatchedNilCoalesceOperands_StaysClean() {
+        // Positive control — the guid/guid pair the D-403 tests above rely on.
+        DiagnosticBag bag = Check("""
+            g1: guid? := nil
+            g2 := guid.newV4()
+            s := (g1 ?? g2).toString()
+            """);
+
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void ArrayResult_MismatchedNilCoalesceElementTypes_RaisesE0002() {
+        // The third instance of the same shape, unflagged by the review but structurally
+        // identical: 'int[]? ?? string[]' passes the flat-Array tag check, then
+        // ArrayDescriptorOf keeps the left (int) element descriptor.
+        DiagnosticBag bag = Check("""
+            a: int[]? := nil
+            b: string[] := ["s"]
+            y := (a ?? b)[0]
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal(3, diag.Range.Start.Line);
+        Assert.Equal(7, diag.Range.Start.Column);
+    }
 }
