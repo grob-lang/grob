@@ -150,6 +150,31 @@ public sealed class TypeCheckerStructSignatureTests {
     }
 
     [Fact]
+    public void OptionalChainFieldAccess_OnAlreadyNullableField_StaysSinglyNullable() {
+        // PR #189 follow-up review (CodeRabbit): the boundary of D-403's widening. The
+        // field is already 'int?', so ResolveNullableMemberAccess widens a value that is
+        // nullable to begin with — GrobTypeHelpers.ToNullable's '_ => type' arm must
+        // return it unchanged rather than reaching for a second-order nullable the type
+        // system has no tag for. Characterisation, not a bug fix: this was already the
+        // behaviour, it was simply never pinned.
+        var (unit, bag) = TypeCheckSource("""
+            type Box {
+            opt: int?
+            }
+            fn describe(b: Box?): void {
+            v := b?.opt
+            }
+            """);
+
+        Assert.False(bag.HasErrors,
+            $"Unexpected errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+        var collector = new MemberAccessCollector();
+        collector.Visit(unit);
+        MemberAccessExpr ma = Assert.Single(collector.Nodes, m => m.Member == "opt");
+        Assert.Equal(GrobType.NullableInt, ma.ResolvedFieldType);
+    }
+
+    [Fact]
     public void UndefinedFieldOnStructParam_EmitsE1002() {
         // The parameter now resolves to a real struct kind, so an undefined member
         // is caught (previously masked by the permissive Unknown fallback).

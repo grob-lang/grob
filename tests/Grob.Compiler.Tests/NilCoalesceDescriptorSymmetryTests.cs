@@ -259,6 +259,40 @@ public sealed class NilCoalesceDescriptorSymmetryTests {
     }
 
     [Fact]
+    public void AnonStruct_MismatchedNilCoalesceShapes_RaisesE0002() {
+        // PR #189 follow-up review (CodeRabbit): the fifth instance of the same shape.
+        // 'xs.first()' on an anonymous-struct array yields NullableAnonStruct, whose flat
+        // tag matches every other anonymous shape — so before this arm, '(a ?? b).x'
+        // type-checked clean against the LEFT operand's field table while 'b', which has
+        // no 'x' at all, is the operand that runs when 'a' is nil. Confirmed by its twin:
+        // '(a ?? b).y' reported "Type 'x:Int' has no member 'y'", naming the left shape.
+        DiagnosticBag bag = Check("""
+            xs := [#{ x: 1 }]
+            a := xs.first()
+            b := #{ y: 2 }
+            c := (a ?? b).x
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal(4, diag.Range.Start.Line);
+        Assert.Equal(7, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void AnonStruct_MatchedNilCoalesceShapes_StaysClean() {
+        // Positive control — identical synthesised shapes must still coalesce.
+        DiagnosticBag bag = Check("""
+            xs := [#{ x: 1 }]
+            a := xs.first()
+            b := #{ x: 2 }
+            c := (a ?? b).x
+            """);
+
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
     public void ArrayResult_MismatchedNilCoalesceElementTypes_RaisesE0002() {
         // The third instance of the same shape, unflagged by the review but structurally
         // identical: 'int[]? ?? string[]' passes the flat-Array tag check, then

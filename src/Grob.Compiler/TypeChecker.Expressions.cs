@@ -390,8 +390,15 @@ public sealed partial class TypeChecker {
                 "array element types do not match",
             GrobType.Function when !FunctionDescriptorsAgree(node.Left, node.Right) =>
                 "function signatures do not match",
-            GrobType.Struct when !NamedTypeIdentitiesAgree(node.Left, node.Right) =>
+            GrobType.Struct when !StructIdentitiesAgree(node.Left, node.Right) =>
                 "named types do not match",
+            // PR #189 follow-up review: the anonymous twin of the arm above. An
+            // anonymous struct's identity is structural, but it is carried the same way —
+            // AnonStructExpr.SynthesisedTypeName, which GetStructTypeName already reads —
+            // so the same predicate decides both, and 'xs.first() ?? #{ y: 2 }' can no
+            // longer type-check a field read against the left shape's field table alone.
+            GrobType.AnonStruct when !StructIdentitiesAgree(node.Left, node.Right) =>
+                "struct shapes do not match",
             _ => null,
         };
     }
@@ -408,10 +415,14 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// True when both operands resolve to the same named type, or when either side's nominal
-    /// identity is unresolved (an anonymous or unregistered struct stays permissive).
+    /// True when both operands resolve to the same struct identity, or when either side's is
+    /// unresolved (an unregistered struct stays permissive). Serves the nominal
+    /// (<see cref="GrobType.Struct"/>) and structural (<see cref="GrobType.AnonStruct"/>)
+    /// cases alike: <see cref="GetStructTypeName"/> returns a declared type name for the
+    /// former and <c>AnonStructExpr.SynthesisedTypeName</c> — which encodes the field
+    /// shape — for the latter, so identity comparison is one string equality either way.
     /// </summary>
-    private bool NamedTypeIdentitiesAgree(Expression left, Expression right) {
+    private bool StructIdentitiesAgree(Expression left, Expression right) {
         string? leftName = GetStructTypeName(left);
         string? rightName = GetStructTypeName(right);
         return leftName is null || rightName is null || string.Equals(leftName, rightName, StringComparison.Ordinal);
