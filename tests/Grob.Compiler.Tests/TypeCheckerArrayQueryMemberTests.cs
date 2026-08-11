@@ -178,6 +178,40 @@ public sealed class TypeCheckerArrayQueryMemberTests {
     }
 
     // -----------------------------------------------------------------------
+    // D-403: the property-access analogue of D-402's call-path fix above —
+    // 'xs?.length' now resolves the nullable-widened field type instead of the
+    // permissive Unknown 'VisitMemberAccess' previously returned unconditionally for
+    // any '?.' on a nullable receiver.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void OptionalChainPropertyOnNullableArray_Length_ResolvesToNullableInt() {
+        var (unit, bag) = TypeCheckSource("xs: int[]? := [1, 2, 3]\nx := xs?.length\n");
+
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+        MemberAccessExpr access = Assert.Single(CollectMemberAccesses(unit), m => m.Member == "length");
+        Assert.Equal(GrobType.NullableInt, access.ResolvedFieldType);
+    }
+
+    [Fact]
+    public void OptionalChainPropertyAndCall_OnNullableArray_AgreeOnWidenedType() {
+        // The symmetry D-402 left broken: before this fix, 'xs?.first()' (a call)
+        // typed 'int?' while 'xs?.length' (a property) typed the permissive Unknown —
+        // one path outperforming the other for the identical '?.' operator on the
+        // identical receiver. Both now resolve the same widened element/count type.
+        var (unit, bag) = TypeCheckSource(
+            "xs: int[]? := [1, 2, 3]\n" +
+            "byLength := xs?.length\n" +
+            "byFirst := xs?.first()\n");
+
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+        MemberAccessExpr lengthAccess = Assert.Single(CollectMemberAccesses(unit), m => m.Member == "length");
+        CallExpr firstCall = Assert.Single(CollectCalls(unit));
+        Assert.Equal(GrobType.NullableInt, lengthAccess.ResolvedFieldType);
+        Assert.Equal(GrobType.NullableInt, firstCall.ResolvedReturnType);
+    }
+
+    // -----------------------------------------------------------------------
     // first() / last() — generic T? typing, proven for two distinct element types.
     // -----------------------------------------------------------------------
 

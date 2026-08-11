@@ -398,6 +398,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-400 | August 2026 | Compiler — bytecode emission (optional chaining) | Fixes D-380's fourth finding: `xs?.first()` on a nil `int[]?` crashed the VM (`Call target is not a function (kind: Nil)`) instead of short-circuiting to `nil`, because `VisitCall` never inspected the callee `MemberAccessExpr`'s `IsOptional` flag — `VisitMemberAccess`'s own property-path guard correctly left `nil` on the stack for a nil receiver, but the surrounding call emission unconditionally evaluated arguments and emitted `Call` regardless, popping that `nil` as the callee at runtime. Empirically reproduced across every receiver kind first (array/string/numeric/nominal all crashed identically; map could not be reproduced at all — `GrobType` has no `NullableMap` variant, a separate pre-existing gap, not fixed here). Compiler-only fix, no VM change, no new opcode: a new `EmitOptionalChainCall` helper (extracted from `VisitCall` to stay under the S3776 complexity bar) reuses `VisitMemberAccess`'s exact `IsNil`/`JumpIfTrue`/`Pop`/…/`Jump`/`Pop` shape around the argument evaluation and `Call`, called whenever `node.Callee is MemberAccessExpr { IsOptional: true }`. Fixes argument-evaluation "for free" (`node.Arguments` visited only on the non-nil branch, so `xs?.contains(sideEffect())` on nil `xs` no longer runs `sideEffect()`) and chained short-circuiting falls out with no extra code (`a?.first()?.upper()` on nil `a` skips the whole chain from the first nil). Result typing confirmed unchanged and correctly out of scope (`?.` on a nullable array/struct already resolved `Unknown`, not `T?`, before this fix — one of D-380's own deferred findings). **New finding surfaced, not fixed here:** a _non-nil_ `string?`/`int?`/`float?`/`bool?` receiver's `?.` method call still crashes with a different message (`opcode GetProperty '<name>' on receiver of kind String not yet implemented`) — `GetProperty` has no primitive-kind arm by design, and the primitive compile-time rewrite never fires for a genuinely nullable primitive; a VM-dispatch-table gap distinct from this entry's short-circuit fix, one of D-380's remaining diagnostic-quality gaps, reported for its own follow-up. New tests: `CompilerOptionalChainCallTests.cs` (bytecode-shape, count-based so a false-green regression is structurally impossible) and `OptionalChainMethodCallTests.cs` (full-pipeline, every reachable receiver kind, argument non-evaluation, chained short-circuit, `??` interaction); full solution `dotnet test` green (3,639 tests, no regressions). `grob-language-fundamentals.md` §21 already states "no further member access or method calls are attempted" — not silent, no doc update needed. No opcode change. No new error code; count unchanged at **121**. Refines D-380, D-377. Cites D-353. |
 | D-401 | August 2026 | Compiler — type system (nullable map) | Closes the gap D-400 found: adds `GrobType.NullableMap`, the fifth advertised-but-unbuilt instance the consolidation phase has found and the first in type-variant coverage — `Grob.Http`'s locked signature (D-155) documents `headers: map<string,string>? = nil`, which could not compile. Empirically reproduced first: `m: map<string, int>? := nil` failed E0001 because `GrobTypeHelpers.ToNullable(Map)` had no arm and silently dropped the `?`. Mechanical fix mirrors the `NullableArray` pattern exactly — one enum variant plus one arm each in `IsNullable`/`ToNullable`/`ElementType` (`Grob.Core`), which alone makes nil-guard narrowing, `??` resolution and the generic `.`/`?.` nullable-dereference guard work for free; four further direct edits (`isMapAnnotation`/`ResolveSignatureType`'s descriptor branch/`TypeName` in `TypeChecker.cs`, `SpellType` in `ValueDisplay.cs`) — **~9 lines across 6 files**, confirming the enumeration is not straining at this instance. `GrobType` carries no stability-ADR governance the way `OpCode` does (ADR-0013) — grown by convention across D-014/D-326/D-327/D-351/D-356 and this entry, not a standing procedure; noted, not a blocker. **Two pre-existing gaps found while tracing the template, one fixed, one reported.** (1) `??` did not propagate array/map value descriptors — confirmed for `NullableArray` too (`(xs ?? [])[0]` assigned to a strictly-typed `int` binding failed E0001 today), because `ArrayDescriptorOf`/`MapDescriptorOf` had no `BinaryExpr` arm. Fixed narrowly for the map side only — one `NilCoalesce` arm added to `MapDescriptorOf` — since this increment's own load-bearing test (`(m ?? map<string,int>{})["k"]` must type `int?`) requires it; the parallel `ArrayDescriptorOf` gap is reported here, not fixed, out of this branch's one-concern scope. (2) A non-optional `.` **method** call on a nullable collection receiver is not rejected at compile time — `xs.length` (property) correctly raises E0101 but `xs.first()` (method) compiles and runs permissively, because `ResolveMemberAccessCall`'s dispatch matches only the bare `Array`/`Map` tag, so a `NullableArray`/`NullableMap` receiver falls through to the generic `Unknown` fallback with no E0101, deferring the fault to a runtime E5201 nil-dereference instead. Reported, not fixed — fixing it touches the shared method-call dispatch for every nullable collection type. Confirmed by reading `EmitOptionalChainCall` that `?.` short-circuits correctly at runtime for a nullable map with **no VM/compiler change** (receiver-type-agnostic, per D-400) but `m?.get("k")` resolves `Unknown` at compile time, not `int?`, exactly mirroring `xs?.first()`'s existing `NullableArray` behaviour — not a regression. `for k, v in` a nullable map mirrors the nullable-array rule exactly (E0501, confirmed by running both), no code change needed there beyond the `TypeName` arm. New tests: `NullableMapTypeCheckerTests.cs` (new, mirrors `ArrayTypeRefCheckerTests.cs`), `MapTypeDescriptorTests.cs` (`??` descriptor survival), `GrobTypeHelpersTests.cs`, `ValueDisplayTests.cs`, `OptionalChainMethodCallTests.cs` (nullable-map receiver cases, closing the map exclusion its own comment previously noted); full solution `dotnet test` green (3,625 tests across seven projects), no regressions. `ResolveBindingFull` extracted a new `IsBindingValueCompatible` helper (mirrors `IsFieldValueCompatible`/`IsParameterDefaultCompatible`'s existing shape) to stay under the S3776 complexity bar after the `isMapAnnotation` widening pushed it from 15 to 16. No opcode change. No new error code; count unchanged at **121**. Refines D-400 (the finding this closes). Cites D-374, D-377, D-378 (the `MapTypeDescriptor` machinery this preserves), D-326/D-327 (the suffix grammar and nullable-function precedent), D-155 (the `Grob.Http` signature this unblocks). |
 | D-402 | August 2026 | Compiler — type system (nullable-receiver method dispatch) | Closes both of D-401's reported gaps as one defect: `ResolveMemberAccessCall` matched only the exact non-nullable `GrobType` tag on every receiver-kind dispatch arm, so a nullable array/map/string/int/float/bool receiver always fell through to the permissive `Unknown` fallback — a non-optional `.` compiled and ran (array/map; primitives crashed unconditionally instead, a separate D-400 VM-dispatch gap), and `?.` typed `Unknown` instead of the real nullable-widened member type. Registered **named types (`guid`/`date`) are the one partial exception**: PR #143's bespoke `NullableStruct` block sat ahead of the named-type arm and already raised `E0101` for a non-optional `.`, so only the `?.` typing half was missing there (`d?.addDays(1)` resolved `Unknown`, not `date?`). One generic guard, hoisted to the top of `ResolveMemberAccessCall` and mirroring `VisitMemberAccess`'s existing shape exactly, closes both: non-optional `.` on any nullable receiver is unconditionally `E0101` (generic `'struct?'` wording, matching property access — the bespoke named-type-specific `NullableStruct` guard from PR #143 is deleted, subsumed); `?.` resolves the call against the receiver's underlying non-nullable type via a new `DispatchMemberAccessCall` helper (the existing array/map/primitive/struct arms reused unchanged, not duplicated) and widens a successful result via `GrobTypeHelpers.ToNullable` — `m?.get("k")` → `int?`, `xs?.first()` → `T?`, `s?.upper()` → `string?`, `d?.addDays(1)` → `date?`. **Critical constraint found and guarded**: reusing the primitive dispatch for typing also sets `CallExpr.ResolvedPrimitiveNativeName`, which the compiler checks **before** `IsOptional` and would silently bypass D-400's `IsNil` guard entirely — explicitly cleared to `null` for the nullable path, pinned by both the pre-existing `CompilerOptionalChainCallTests.NullablePrimitiveOptionalCall_TakesGuardedPathNotPrimitiveRewrite` (stayed green unmodified) and a new type-checker-level test. `ArrayDescriptorOf` regains the `BinaryExpr { Operator: NilCoalesce }` arm D-401 added to `MapDescriptorOf` only, closing `(xs ?? [])[0]` typing `Unknown`; symmetry asserted in a new shared file, `NilCoalesceDescriptorSymmetryTests.cs`. Implementation surfaced one pre-existing test invalidated by the tightened guard (`xs?.garbage()` on a nullable array no longer stays permissive — updated, not deleted, to assert `E1002`) and two further findings deferred by maintainer decision: `ResolveNilCoalesce` has no `ArrayElementAssignable` guard mirroring D-401's `MapValueAssignable` fix (`int[]? ?? string[]` still silently compiles); `ExpressionDescriptor`/`GetStructTypeName` share the same missing `NilCoalesce` arm. No VM/opcode change — confirmed by reading `EmitOptionalChainCall`, receiver-type-agnostic per D-400. `grob-language-fundamentals.md` not touched: §21 remains correct for `?.` short-circuiting; the separate, undocumented "`.` on nullable is `E0101`" rule predates this branch and applies equally to property access, so it falls outside this entry's narrow method-call-specific doc-update authorisation. No new error code; count unchanged at **121**. Full solution `dotnet test` green (3,727 tests across eight projects), `Grob.Compiler` line coverage 96.9%. Refines D-401 (both findings, closed), D-400 (the `?.` runtime guard preserved unchanged). Cites D-374, D-377, D-378. |
+| D-403 | August 2026 | Compiler — type system (`?.` property-access dispatch, side-channel-helper symmetry) | Closes the property-access half of D-402's own finding, plus two further `NilCoalesce`-arm gaps D-402 reported and deferred. **Finding 1 (the main fix):** `VisitMemberAccess`'s `?.`-on-nullable-receiver arm unconditionally returned `Unknown` (an undocumented deferral — no `D-###` ever recorded it, "the F3 guard" per its own stale comment), intercepting every property-dispatch arm below it exactly the way `ResolveMemberAccessCall` used to intercept the call path before D-402. Confirmed a stale oversight, not a real obstacle: the struct-field dispatch already carried dead `NullableStruct`/`NullableAnonStruct` checks, unreachable only because this early return ran first. Fixed by mirroring D-402's `ResolveNullableMemberAccessCall` shape exactly: the property-dispatch arms (`TryResolveKnownStructPropertyAccess`, `PrimitiveMemberRegistry`, `Struct`/`AnonStruct`/`NullableStruct`/`NullableAnonStruct` via `ResolveStructFieldAccess`, `ResolveCollectionPropertyAccess`) extracted into a new `DispatchMemberAccessProperty(node, targetType)`; a new `ResolveNullableMemberAccess(node, targetType)` dispatches against `GrobTypeHelpers.ElementType(targetType)`, widens a successful result via `ToNullable`, sets `node.ResolvedFieldType`, and passes `Unknown`/`Error` through unwidened — `xs?.length` → `int?`, `p?.x` → `int?` for a nullable struct field. **Critical constraint found during implementation, not named in the commissioning brief**: reusing the primitive-property dispatch for typing also sets `MemberAccessExpr.ResolvedPrimitiveNativeName`, which the compiler's own `VisitMemberAccess` (`Compiler.Expressions.cs`) checks **before** `IsOptional` and has no nil guard at all — exactly D-402's call-path hazard, now confirmed to exist identically on the property path. `ResolveNullableMemberAccess` explicitly clears the field for the nullable path, the same deliberate exception to "reuse unchanged"; pinned by a new type-checker-level test (`OptionalChainPropertyOnNullableString_Length_DoesNotSetPrimitiveNativeRewrite`) and a new full-pipeline runtime test proving a nil `string?` receiver's `?.length` still short-circuits to `nil` rather than crashing on an unguarded native call. **Findings 2 and 3:** `ExpressionDescriptor` (`TypeChecker.cs`) and `GetStructTypeName` (`TypeChecker.Expressions.cs`) each gained the identical `BinaryExpr { Operator: NilCoalesce }` arm `ArrayDescriptorOf`/`MapDescriptorOf` already carry (D-401/D-402), recursing on both operands — `(f ?? g)()` on two nullable function values now resolves the declared return type via `ExpressionDescriptor` instead of `Unknown`; `(g1 ?? g2).toString()` on a nullable `guid` now resolves through `GetStructTypeName` to the `NamedTypeRegistry` dispatch instead of `Unknown`. Both verified to recurse correctly on a three-way nested `??` chain. **Breaking-change fallout, three tests updated to the new correct behaviour, none weakened:** `TypeCheckerFieldAccessTests.FieldAccess_OptionalChainOnNullableScalar_NoError` renamed off "the F3 guard" and now asserts the widened field type (`int?`), not merely absence of errors; `TypeCheckerNullableTests.QuestionDot_ResultIsUnknown_CompatibleWithNilCoalesce` renamed and rewritten off `x?.toString ?? "none"` (a bare, uncalled reference to a _method_ on `int`, which now correctly raises `E1002` once `?.` genuinely dispatches against the underlying type — the same tightening D-402 already applied to the call path) onto `s?.length ?? 0`, still proving `??`-compatibility of a `?.` result but now under its correct widened type; `NullableMapTypeCheckerTests.OptionalPropertyAccess_OnNullableMap_StaysPermissive` renamed to `..._ResolvesWidenedFieldType` and now asserts `int?`, not merely no-errors. A fourth pre-existing test (`CompilerNullableTests`, on the explicit do-not-touch list) also broke as unavoidable fallout, not anticipated by the commissioning brief: its four `?.` bytecode-shape tests used a placeholder property name (`x: int? := nil; x?.member`) that relied on the old permissive `Unknown` never validating it; `int` has zero bare properties in `PrimitiveMemberRegistry` (methods only), so _any_ property name on a nullable `int` now correctly raises `E1002`, failing `CompileSource`'s own pre-compile `bag.HasErrors` assertion before the bytecode-shape assertions it exists to prove ever ran. This is flagged here as a genuine contradiction between the commissioning brief's "must stay green, do not touch" framing and a correct Finding-1 fix — the four tests were narrowly updated (receiver moved to `int[]?`/`.length`, a real array property, preserving the exact `IsNil`/`JumpIfTrue`/`Pop`/`GetProperty`/`Jump`/`Pop` shape assertions unchanged) rather than left red or the fix weakened to avoid touching the file. `CompilerFieldAccessTests`, `VirtualMachineNullableTests` and `OptionalChainMethodCallTests` — the other three named do-not-touch files — were confirmed genuinely unaffected by running them, and stayed untouched. **Wider survey, findings reported not fixed:** `TernaryExpr`/`SwitchExprNode` arms are missing across all four original side-channel helpers (`ArrayDescriptorOf`, `MapDescriptorOf`, `ExpressionDescriptor`, `GetStructTypeName`), plus three further helpers share the identical missing-arm shape — `GetFieldValueStructTypeName`, `SilentMapDescriptorOf`, `TryGetAnonStructLiteral` — named here as open follow-up items, none fixed on this branch. **Mechanisation considered and rejected, per the commissioning brief's own framing**: a shared generic expression-walker was not built — the four helpers have heterogeneous return types (`FunctionTypeDescriptor?`/`ArrayTypeDescriptor?`/`MapTypeDescriptor?`/`string?`) and genuine, deliberate per-helper divergence in which node kinds legitimately apply (`MapDescriptorOf` has no `CallExpr` arm by design — no map-returning native exists to carry a value descriptor through — not a residual gap). The chosen alternative is a documented convention (every side-channel helper handles `GroupingExpr` and `BinaryExpr { Operator: NilCoalesce }` structurally) enforced by a new, mutation-verified exhaustiveness-pinning test region (`SideChannelHelperExhaustivenessTests.cs`) that pins each helper's current handled-node-kind set against a real checked `TypeChecker` instance — by direct reflection where the result stays observable after checking, and through each helper's own post-`Check` consumer for the three scope-sensitive `IdentifierExpr` arms — proven to catch a regression, not merely assert intent, by temporarily deleting `ArrayDescriptorOf`'s `NilCoalesce` arm during development, confirming the pin failed for the expected reason, then restoring it. Two of the four helpers (`ExpressionDescriptor`, `ArrayDescriptorOf`, `MapDescriptorOf`) resolve their `IdentifierExpr` arm purely via `LookupSymbol`, which only searches the live scope stack — `TypeChecker.Check` pops every scope, including the global one, before returning — so those three specific arms are pinned through their own real, observable post-Check consumers (`CallExpr.ResolvedReturnType`, `IndexExpr.ElementType`) rather than direct reflection; `GetStructTypeName`'s `IdentifierExpr` arm has no such constraint (it falls back to `id.Declaration`-based AST-structural resolution, never `LookupSymbol`-only) and is pinned directly. **D-362's permissive-`Unknown` catalogue updated by citation**: the `?.` property-access source this entry closes was never enumerated there — found later, by D-402's own sweep, as an undocumented deferral predating any `D-###` — now closed. **Finding 4, added by the PR #189 review:** D-402's first deferred finding — `ResolveNilCoalesce`'s missing `ArrayElementAssignable` guard — turned out to be the same shape as Findings 2/3 rather than a separate item, and is closed here with two siblings the review found. The arms above make the side-channel identity survive `??`, and the surviving identity is always the **left** operand's, so the arms are only sound if `??` first proves the operands agree — which it could not, the flat `GrobType` tag being identical for every function, array and named/anon struct just as it is for every map (the hole D-401 closed for maps alone). Three mismatches were confirmed accepted silently before the fix: `(f ?? g)()` with `(fn(): int)?`/`fn(): string` typed the call `int`; `(a ?? b)[0]` with `int[]?`/`string[]` typed the element `int` (D-402's case verbatim); `(d ?? g).toString()` with `date?`/`guid` retained `"date"` and reported `E1002` for a method `guid` genuinely has, proving the wrong nominal method table was consulted. A fourth, `AnonStruct`, was found by the follow-up review pass on the pushed commit: `(a ?? b).x` with shapes `#{ x: int }`/`#{ y: int }` type-checked clean against the left shape's field table, its twin `(a ?? b).y` reporting `E1002` "Type 'x:Int' has no member 'y'" and naming that shape outright — closed by the same predicate (`StructIdentitiesAgree`), since an anonymous struct's structural identity is carried as `AnonStructExpr.SynthesisedTypeName`, which `GetStructTypeName` already reads. All four now raise the existing `E0002` at the `??` via one `NilCoalesceIdentityMismatch` helper with D-401's map check folded in unchanged (one place, five kinds, `ResolveNilCoalesce`'s complexity flat); each predicate stays permissive on a missing or `Unknown` descriptor/name, so `xs ?? []` keeps working, and the check recurses through nested `??` for free by consulting the very helpers Findings 2/3 fixed. No existing test changed behaviour. `grob-language-fundamentals.md` §21 checked, not edited: it already states the chain's result type "is always nullable (`T?`)" — true generically and, after this fix, finally true of property access too; no correction needed, so none made. New tests: `TypeCheckerArrayQueryMemberTests.cs` (nullable-array property/call symmetry), `TypeCheckerStructSignatureTests.cs` (nullable-struct field widening), `TypeCheckerPrimitiveMemberTests.cs` (the `ResolvedPrimitiveNativeName`-clearing pin), `NilCoalesceDescriptorSymmetryTests.cs` (extended with the function/guid `??` cases, single vs nested), `SideChannelHelperExhaustivenessTests.cs` (new, the mutation-verified pinning region), `OptionalChainPropertyAccessRuntimeTests.cs` (new, full-pipeline nil-short-circuit proof for the primitive/struct property path). Full solution `dotnet test` green (3,697 tests across seven projects — `Grob.BenchCheck` not re-run, untouched by this change), `Grob.Compiler` line coverage 92.3%. No opcode change. No new error code; count unchanged at **121**. Refines D-402 (Finding 1, the property/call asymmetry it flagged, now closed; the two `NilCoalesce` findings it deferred, now closed; and its first deferred finding, the missing `??` element guard, closed by Finding 4), D-401 (the `NilCoalesce`-arm convention this generalises, and the `MapValueAssignable` guard Finding 4 generalises), D-400 (the `?.` runtime guard preserved unchanged), D-362 (the permissive-`Unknown` catalogue, updated by citation), D-374 (the `MapTypeDescriptor` machinery reused unmodified). |
 
 ---
 
@@ -10866,6 +10867,277 @@ unmodified for the nullable path).
 
 ---
 
+### D-403 — Side-channel type-resolution symmetry: `?.` property access resolves the nullable-widened field type, `ExpressionDescriptor`/`GetStructTypeName` regain the `NilCoalesce` arm (August 2026)
+
+Area: Compiler — type system (`?.` property-access dispatch, side-channel-helper `??` symmetry)
+Supersedes: none
+Superseded by: none
+Refines: D-402 (Finding 1, the property/call asymmetry it flagged, now closed; the two `NilCoalesce` findings it deferred, now closed), D-401 (the `NilCoalesce`-arm convention this generalises), D-400 (the `?.` runtime guard preserved unchanged), D-362 (the permissive-`Unknown` catalogue, updated by citation), D-374 (the `MapTypeDescriptor` machinery reused unmodified)
+
+**Finding 1 — the main fix, and the property/call asymmetry D-402 flagged but did not
+close.** `VisitMemberAccess`'s `?.`-on-nullable-receiver arm (`TypeChecker.Expressions.cs`)
+unconditionally returned `GrobType.Unknown`, intercepting every property-dispatch arm
+below it — `TryResolveKnownStructPropertyAccess`, `PrimitiveMemberRegistry`, the
+`Struct`/`AnonStruct`/`NullableStruct`/`NullableAnonStruct` arm (`ResolveStructFieldAccess`),
+`ResolveCollectionPropertyAccess` — exactly the way `ResolveMemberAccessCall` used to
+intercept the call path before D-402. Its own comment called it "the F3 guard" and
+described the correct behaviour (returning the nullable variant of the field type) as
+"deferred until nullable-struct construction is fully wired" — an undocumented deferral
+with **no `D-###` ever recorded for it**, predating this branch. Confirmed a stale
+oversight, not a real obstacle, by reading the surrounding code: the struct-field
+dispatch already carried dead `targetType == GrobType.NullableStruct`/
+`NullableAnonStruct` checks, unreachable only because this early return ran first —
+nullable-struct construction was never actually a blocker.
+
+**Fix — mirrors D-402's `ResolveNullableMemberAccessCall` shape exactly.** The
+property-dispatch arms extracted, unchanged, into a new
+`DispatchMemberAccessProperty(MemberAccessExpr node, GrobType targetType)` (`targetType`
+always non-nullable by the time it runs, the caller's guarantee); a new
+`ResolveNullableMemberAccess(MemberAccessExpr node, GrobType targetType)` dispatches
+against `GrobTypeHelpers.ElementType(targetType)`, passes an `Unknown`/`Error` result
+through unwidened, otherwise widens via `GrobTypeHelpers.ToNullable` and sets
+`node.ResolvedFieldType`. `VisitMemberAccess`'s non-nullable path now calls
+`DispatchMemberAccessProperty` in place of the extracted arms, so non-nullable-receiver
+behaviour is byte-for-byte unchanged. `xs?.length` on `int[]?` now resolves `int?`;
+`p?.x` on a nullable user-struct field resolves the field's nullable-widened type
+(`int?` for an `int` field) — proven for a plain `type Point { x: int, y: int }`, not
+only the registered named types (`guid`/`date`) D-402 exercised. **Symmetry closed**:
+`xs?.length` (property) and `xs?.first()` (call) — the exact pair D-402's own entry
+recorded as diverging — now both resolve `int?`, pinned side by side in
+`TypeCheckerArrayQueryMemberTests.OptionalChainPropertyAndCall_OnNullableArray_AgreeOnWidenedType`.
+
+**Critical constraint found during implementation, not named in the commissioning
+brief — the property-access twin of D-402's own load-bearing finding.** Reusing the
+primitive-property dispatch (`ResolvePrimitiveMemberPropertyAccess`, reached via
+`DispatchMemberAccessProperty`) against the underlying type for a nullable `?.`
+receiver's typing also sets `MemberAccessExpr.ResolvedPrimitiveNativeName` as a side
+effect. The compiler's own `VisitMemberAccess` (`Compiler.Expressions.cs`) checks that
+field **before** `IsOptional` and the primitive-native rewrite it triggers has **no nil
+guard at all** — confirmed by reading the emission code directly, not assumed. Without
+clearing it, a nullable `?.` receiver's property access would silently bypass D-400's
+`IsNil`/`JumpIfTrue` guard entirely and pass a nil receiver straight into a qualified
+native — the exact hazard D-402 found and fixed on the call path, now confirmed to exist
+identically, unfixed, on the property path until this entry. `ResolveNullableMemberAccess`
+explicitly clears `node.ResolvedPrimitiveNativeName` to `null` for the nullable path — the
+one deliberate exception to "reuse the dispatch arms unchanged," mirroring
+`ResolveNullableMemberAccessCall`'s identical exception. Pinned two ways: a new
+type-checker-level test (`TypeCheckerPrimitiveMemberTests.
+OptionalChainPropertyOnNullableString_Length_DoesNotSetPrimitiveNativeRewrite`) asserts
+the field directly, and a new full-pipeline runtime test
+(`OptionalChainPropertyAccessRuntimeTests.NilStringReceiver_PropertyAccess_ShortCircuitsToNil`)
+proves a nil `string?` receiver's `?.length` still short-circuits to `nil` rather than
+crashing on the unguarded native call this fix prevents.
+
+**Findings 2 and 3 — the two `NilCoalesce`-arm gaps D-402 reported and deliberately left
+open, now closed.** `ExpressionDescriptor` (`TypeChecker.cs`) and `GetStructTypeName`
+(`TypeChecker.Expressions.cs`) each gained the identical
+`BinaryExpr { Operator: NilCoalesce } binary => Helper(binary.Left) ?? Helper(binary.Right)`
+arm `ArrayDescriptorOf`/`MapDescriptorOf` already carry (D-401 added it to
+`MapDescriptorOf`; D-402 restored it on `ArrayDescriptorOf`), in the same position
+(immediately after the `GroupingExpr` arm) both times. `(f ?? g)()` on two nullable
+function values now resolves the declared return type via `ExpressionDescriptor` instead
+of falling back to `Unknown` — `VisitCall`'s own fallback branch
+(`ExpressionDescriptor(node.Callee) is FunctionTypeDescriptor calleeDescriptor`) reaches
+it directly. `(g1 ?? g2).toString()` on a nullable `guid` now resolves through
+`GetStructTypeName`'s new arm to `NamedTypeRegistry`'s method dispatch instead of
+`Unknown` — `ResolveMemberAccessCall`'s own `receiverType == GrobType.Struct &&
+GetStructTypeName(memberAccess.Target) is string namedTypeName` check reaches it the
+same way. Both verified to recurse correctly on a three-way nested `??` chain
+(`(f ?? g ?? h)()`, `(g1 ?? g2 ?? g3).toString()`). Asserted alongside the existing
+array/map cases in the same shared file, `NilCoalesceDescriptorSymmetryTests.cs` — all
+four side-channel helpers' `??` symmetry now visible in one place.
+
+**Breaking-change fallout — three tests updated to the new correct behaviour, none
+weakened.** `TypeCheckerFieldAccessTests.FieldAccess_OptionalChainOnNullableScalar_NoError`
+renamed `..._ResolvesWidenedFieldType`, off "the F3 guard" its own comment named, and now
+asserts the widened field type (`int?` for `x?.length` on `string?`) rather than merely
+absence of errors. `TypeCheckerNullableTests.QuestionDot_ResultIsUnknown_CompatibleWithNilCoalesce`
+renamed `QuestionDot_WidenedResultType_CompatibleWithNilCoalesce` and rewritten off
+`x?.toString ?? "none"` — a bare, uncalled reference to a _method_ on `int`, which now
+correctly raises `E1002` once `?.` genuinely dispatches against the underlying type's
+property table, the identical tightening D-402 already applied to the analogous
+bare-method-reference case on the call path — onto `s?.length ?? 0` on `string?`, still
+proving `??`-compatibility of a `?.` result but now under its correct widened type
+(`int?`) rather than the old permissive `Unknown`. `NullableMapTypeCheckerTests.
+OptionalPropertyAccess_OnNullableMap_StaysPermissive` renamed
+`..._ResolvesWidenedFieldType` and now asserts `int?` for `m?.length` on
+`map<string, int>?`, not merely no-errors.
+
+**A fourth pre-existing test broke as unavoidable fallout — not anticipated by the
+commissioning brief, and a genuine contradiction surfaced rather than silently
+resolved.** `CompilerNullableTests.cs` is on the commissioning brief's explicit
+do-not-touch list ("assert bytecode/runtime shape, unaffected by this change"). Its four
+`?.` bytecode-shape tests (`OptionalDot_EmitsIsNilAndJumps`,
+`OptionalDot_EmitsTwoPopOpcodes_ForBoolCleanup`,
+`OptionalDot_StructureOrder_IsNilBeforeJumpIfTrue`,
+`OptionalDot_JumpIfTrueOffset_LandsAtNilPathPop`) used a placeholder property name
+(`x: int? := nil; x?.member`) that only ever needed to type-check under the old
+permissive `Unknown` fallback, which validated nothing. `PrimitiveMemberRegistry`
+registers `int` with **zero bare properties** (methods only — `abs`, `toString`, etc.),
+so once `?.` property access genuinely dispatches, **any** property name on a nullable
+`int` correctly raises `E1002` — not a consequence of the specific placeholder name
+chosen, structurally unavoidable for this receiver kind. `CompileSource`'s own
+`Assert.False(bag.HasErrors, ...)` guard failed before the bytecode-shape assertions
+these tests exist to prove ever ran. Confirmed empirically (this was not predicted, it
+was found by running the full suite after the fix) and confirmed to be the **only**
+fallout in the file — the other three do-not-touch files
+(`CompilerFieldAccessTests`, `VirtualMachineNullableTests`, `OptionalChainMethodCallTests`)
+were run and confirmed genuinely unaffected, and stayed untouched, exactly as the brief
+expected. Resolved by narrowly updating the four tests' receiver — moved from `int?`/
+`.member` onto `int[]?`/`.length` (Sprint 9 Increment C0a-1, D-371's real array
+property) — preserving every bytecode-shape assertion (`IsNil`/`JumpIfTrue`/`Pop`/
+`GetProperty`/`Jump`/`Pop` ordering, backpatch-offset correctness) unchanged; the
+receiver kind and property name were never load-bearing to the shape these tests prove,
+only to reaching a type-checked, error-free chunk to disassemble. Flagged here as the
+correct resolution of a genuine brief/implementation conflict, not a silent workaround:
+the alternative (leaving the tests red, or weakening Finding 1's fix to preserve the
+placeholder) was rejected on the same "update, don't weaken" principle the brief itself
+applied to the three named breaking-change tests above.
+
+**Wider survey, reported not fixed — the mechanisation question answered by
+citation.** `TernaryExpr`/`SwitchExprNode` arms are missing across all four original
+side-channel helpers (`ArrayDescriptorOf`, `MapDescriptorOf`, `ExpressionDescriptor`,
+`GetStructTypeName`); a further sweep beyond the two helpers D-402 named found three
+more helpers sharing the identical missing-arm shape — `GetFieldValueStructTypeName`,
+`SilentMapDescriptorOf`, `TryGetAnonStructLiteral`. None of the seven gaps above are
+fixed on this branch — named here as open follow-up items for a future correctness-batch
+entry, per maintainer decision (the same treatment D-402 gave its own two deferred
+findings). **Mechanisation considered and rejected** — a shared generic
+expression-walker was not built to "mechanise" the `GroupingExpr`/`NilCoalesce`
+convention across all side-channel helpers: they have heterogeneous return types
+(`FunctionTypeDescriptor?`/`ArrayTypeDescriptor?`/`MapTypeDescriptor?`/`string?`) and
+genuine, deliberate per-helper divergence in which node kinds legitimately apply —
+`MapDescriptorOf` has no `CallExpr` arm by design (no map-returning native exists to
+carry a value descriptor through), not a residual gap a generic walker would need to
+paper over. The chosen alternative, reaffirmed here: a documented convention (every
+side-channel helper structurally handles `GroupingExpr` and
+`BinaryExpr { Operator: NilCoalesce }`) enforced by a new, **mutation-verified**
+exhaustiveness-pinning test region (`SideChannelHelperExhaustivenessTests.cs`) that pins
+each of the four original helpers' current handled-node-kind set against a real,
+fully-checked `TypeChecker` instance — by direct reflection where the helper's result
+stays observable after checking, and through each helper's own post-`Check` consumer for
+the three scope-sensitive `IdentifierExpr` arms the paragraph below sets out (behavioural
+evidence where it exists, implementation-level evidence only where it must).
+Proven to actually catch the regression it
+claims to catch, not merely assert engineering intent: `ArrayDescriptorOf`'s
+`NilCoalesce` arm was temporarily deleted during development, the pinning test
+(`ArrayDescriptorOf_NilCoalesce_ArrayLeft_ReturnsElementDescriptor`) confirmed to fail
+for the expected reason (`Assert.NotNull` on a `null` result), then the arm restored and
+the test re-confirmed green. **A scope-lifetime constraint found while building the
+pinning region**, not predicted going in: three of the four helpers
+(`ExpressionDescriptor`, `ArrayDescriptorOf`, `MapDescriptorOf`) resolve their
+`IdentifierExpr` arm purely via `LookupSymbol`, which only searches the live scope
+stack — `TypeChecker.Check` pushes one global scope and unconditionally pops it before
+returning, so by the time a test reflects into an already-checked instance, every scope
+(global included) is gone and `LookupSymbol` always returns `null`. Those three specific
+arms are pinned instead through their own real, observable post-`Check` consumers —
+`CallExpr.ResolvedReturnType` (via `VisitCall`'s fallback branch) for
+`ExpressionDescriptor`, `IndexExpr.ElementType` (via `VisitIndex`) for
+`ArrayDescriptorOf`/`MapDescriptorOf` — rather than direct reflection.
+`GetStructTypeName`'s `IdentifierExpr` arm has no such constraint: it never depends on
+`LookupSymbol` alone, falling back to `id.Declaration`-based AST-structural resolution
+(`GetStructTypeNameFromDecl`) that survives scope teardown, so it is pinned directly.
+Every `GroupingExpr`/`NilCoalesce` pin in the region deliberately wraps a
+dictionary/node-field-backed operand (a lambda, an array/map literal, a call), not a
+bare identifier, so the pin exercises only the arm under test, not the separately-pinned
+(and separately scope-constrained) `IdentifierExpr` arm underneath it.
+
+**D-362's permissive-`Unknown` catalogue, updated by citation.** The `?.`
+property-access source this entry closes was never enumerated there — D-362 catalogued
+the permissive-`Unknown` sources known at the time; this one was found later, by D-402's
+own sweep, as an undocumented deferral predating any `D-###`. Now closed; no further
+edit to D-362's own entry (its catalogue is historical, not living).
+
+**Finding 4, added by the PR #189 review — the operand-identity guard `??` never had,
+closing D-402's first deferred finding and two siblings of it the review found.** The
+entry above originally recorded `ResolveNilCoalesce`'s missing `ArrayElementAssignable`
+guard as out of scope, not conflated with Findings 2/3 because it looked like a different
+shape (a missing type-soundness guard, not a missing structural arm). The review showed
+they are one shape after all: Findings 2/3 make the side-channel identity **survive**
+`??`, and the surviving identity is always the **left** operand's — so the arms are only
+sound if `??` first proves the two operands agree on it. They do not, and
+`ResolveNilCoalesce`'s element-kind check cannot tell: the flat `GrobType` tag is
+identical for every function (`Function`), every array (`Array`) and every named or
+anonymous struct (`Struct`), exactly as it is for every map (`Map`) — the hole D-401
+already closed for maps alone via `MapValueAssignable`. Three mismatches were confirmed
+empirically to be accepted silently before this fix, each with its own regression test:
+`(f ?? g)()` with `f: (fn(): int)?` and `g: fn(): string` type-checked clean and typed
+the call `int`; `(a ?? b)[0]` with `a: int[]?` and `b: string[]` type-checked clean and
+typed the element `int` (D-402's finding verbatim); `(d ?? g).toString()` with
+`d: date?` and `g: guid` retained `"date"` and reported `E1002` for `toString` — a method
+`guid` genuinely has — proving the wrong nominal method table was being consulted, not
+merely a cosmetic name. All three now raise the existing `E0002` at the `??`, reusing the
+message shape D-401 established (`"...: <what> do not match."`) — no new error code, count
+still **121**. Implemented as one `NilCoalesceIdentityMismatch(node, leftElem, rightElem)`
+returning the mismatch clause or `null`, with D-401's map check folded into it unchanged
+(same predicate, same message), so the kinds are decided in one place rather than as a
+run of sequential guards inside `ResolveNilCoalesce` — which keeps that method's
+cognitive complexity flat as the concern grew from one kind to five. A **fifth kind was
+added by the follow-up review pass on the pushed commit**: `AnonStruct`, the anonymous
+twin of the named-struct arm. `xs.first()` on an anonymous-struct array yields
+`NullableAnonStruct`, whose flat tag matches every other anonymous shape, so
+`(a ?? b).x` with `a` of shape `#{ x: int }` and `b` of shape `#{ y: int }`
+type-checked clean against the left shape's field table — confirmed by its twin,
+`(a ?? b).y`, reporting `E1002` "Type 'x:Int' has no member 'y'" and naming the left
+shape outright. No new machinery was needed: an anonymous struct's identity is
+structural but carried the same way as a nominal one — `AnonStructExpr.SynthesisedTypeName`,
+which `GetStructTypeName` already reads — so the same predicate (renamed
+`StructIdentitiesAgree`) decides both arms and the difference is only the message clause
+("struct shapes do not match"). Each predicate is permissive
+when either side's descriptor or nominal name is missing or `Unknown`, matching
+`ArrayElementAssignable`/`MapValueAssignable`'s existing shape exactly, so `xs ?? []` and
+other unannotated fallbacks keep working. The check recurses through nested `??` for free,
+because it consults the very side-channel helpers Findings 2/3 gave the `NilCoalesce` arm:
+a nested mismatch reports once, at the inner `??`, and `Error`'s universal assignability
+stops the outer one cascading. No existing test changed behaviour — the full suite was
+green before and after — so no previously-valid Grob program in the corpus relied on the
+unsound coalesce.
+
+**Spec check.** `grob-language-fundamentals.md` §21 already states the chain's result
+type "is always nullable (`T?`)" — true generically, and after this fix, finally true of
+property access too (it was previously false in practice for `?.` on a nullable
+receiver's field, which resolved `Unknown`). No correction needed, so none made — this
+entry closes the gap between documented and actual behaviour rather than the document
+needing to change.
+
+**Tests.** `TypeCheckerFieldAccessTests.cs`, `TypeCheckerNullableTests.cs`,
+`NullableMapTypeCheckerTests.cs` (the three breaking-change updates above);
+`TypeCheckerArrayQueryMemberTests.cs` (nullable-array property/call symmetry, new);
+`TypeCheckerStructSignatureTests.cs` (nullable-struct field widening, new);
+`TypeCheckerPrimitiveMemberTests.cs` (the `ResolvedPrimitiveNativeName`-clearing pin,
+new); `NilCoalesceDescriptorSymmetryTests.cs` (extended with the function/guid `??`
+cases, single and three-way nested, and then with Finding 4's four mismatch cases plus
+three matched-operand controls, each mismatch asserting the full diagnostic contract —
+code, line and column); `TypeCheckerStructSignatureTests.cs` again, for the boundary of
+Finding 1's widening (`b?.opt` on an already-`int?` field stays singly nullable —
+`ToNullable`'s `_ => type` arm, characterisation of existing behaviour rather than a fix,
+raised by the follow-up review as an unpinned edge; the analogous nullable _method_
+result was already pinned by D-402 in `NullableMapTypeCheckerTests`);
+`SideChannelHelperExhaustivenessTests.cs` (new, the
+mutation-verified pinning region); `OptionalChainPropertyAccessRuntimeTests.cs` (new,
+full-pipeline nil-short-circuit proof for the primitive/struct property path);
+`CompilerNullableTests.cs` (the four receiver-swap updates above, with the anchor test
+`OptionalDot_EmitsIsNilAndJumps` strengthened in the review from `Contains` probes to the
+complete emitted chunk — every opcode, operand, source line and constant-pool entry — and
+the sibling Pop-cleanup test's `popCount >= 2` inequality replaced by the exact count).
+`CompilerFieldAccessTests.cs`,
+`VirtualMachineNullableTests.cs` and `OptionalChainMethodCallTests.cs` — the other three
+do-not-touch files — run unmodified and confirmed still green, the regression net
+proving no runtime/emission change occurred. Full solution `dotnet test` green (3,697
+tests across seven projects — Core, Runtime, Compiler, Vm, Stdlib, Integration,
+Consistency; `Grob.BenchCheck` not re-run, untouched by this change), no regressions.
+`Grob.Compiler` line coverage 92.3%, above the 90% bar.
+
+No opcode change. No new error code; count stays **121**. Cites D-402 (Finding 1, the
+property/call asymmetry it flagged, now closed; the two `NilCoalesce` findings it
+deferred, now closed; and its first deferred finding, the missing `??` element guard,
+closed by Finding 4), D-401 (the `NilCoalesce`-arm convention this generalises, and the
+`MapValueAssignable` guard Finding 4 generalises), D-400
+(the `?.` runtime guard preserved unchanged), D-362 (the permissive-`Unknown` catalogue,
+updated by citation), D-374 (the `MapTypeDescriptor` machinery reused unmodified).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -11087,7 +11359,59 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — nullable-receiver method dispatch closed, D-402 added: closes both of_
+_August 2026 — side-channel type-resolution symmetry closed, D-403 added: '?.' property_
+_access (VisitMemberAccess) unconditionally returned Unknown for any nullable receiver —_
+_"the F3 guard," an undocumented deferral predating any D-###, and the property/call_
+_asymmetry D-402 flagged but did not close. Mirrors D-402's ResolveNullableMemberAccessCall_
+_shape exactly: property-dispatch arms extracted into DispatchMemberAccessProperty, a new_
+_ResolveNullableMemberAccess dispatches against the underlying non-nullable type and_
+_widens via ToNullable — xs?.length -> int?, p?.x on a nullable struct field -> int?._
+_xs?.length and xs?.first() (property vs call) now both resolve int?, closing the_
+_asymmetry. Critical constraint found during implementation: reusing the primitive-_
+_property dispatch also sets MemberAccessExpr.ResolvedPrimitiveNativeName, checked by_
+_the compiler before IsOptional with no nil guard at all — the property-access twin of_
+_D-402's own call-path hazard, confirmed to exist identically; explicitly cleared for_
+_the nullable path, pinned by a new type-checker test and a new full-pipeline runtime_
+_test proving a nil string? receiver's '?.length' still short-circuits to nil._
+_ExpressionDescriptor/GetStructTypeName (D-402's two deferred findings) each gained the_
+_identical BinaryExpr NilCoalesce arm ArrayDescriptorOf/MapDescriptorOf already carry —_
+_(f ?? g)() now resolves the declared return type instead of Unknown; (g1 ?? g2).toString()_
+_on a nullable guid now resolves via NamedTypeRegistry dispatch instead of Unknown; both_
+_verified on a three-way nested '??' chain. Three tests updated to the new correct_
+_behaviour (TypeCheckerFieldAccessTests, TypeCheckerNullableTests,_
+_NullableMapTypeCheckerTests), none weakened. A fourth pre-existing test broke as_
+_unavoidable fallout despite being on the commissioning brief's explicit do-not-touch_
+_list: CompilerNullableTests' four '?.' bytecode-shape tests used a placeholder property_
+_name on a nullable int, which has zero bare properties in PrimitiveMemberRegistry — any_
+_property name on it now correctly raises E1002 once '?.' genuinely dispatches, failing_
+_the tests' own pre-compile no-errors assertion. Flagged as a genuine brief/_
+_implementation contradiction, resolved (not silently) by narrowly swapping the receiver_
+_onto int[]?/.length, preserving every bytecode-shape assertion unchanged; the other_
+_three do-not-touch files confirmed genuinely unaffected and left untouched. Wider_
+_survey found TernaryExpr/SwitchExprNode gaps across all four side-channel helpers plus_
+_three more helpers sharing the identical shape (GetFieldValueStructTypeName,_
+_SilentMapDescriptorOf, TryGetAnonStructLiteral) — reported, not fixed. Mechanisation_
+_(a shared generic expression-walker) considered and rejected — heterogeneous return_
+_types and genuine per-helper divergence (MapDescriptorOf's deliberate lack of a_
+_CallExpr arm) — in favour of a documented convention plus a new, mutation-verified_
+_exhaustiveness-pinning test region (SideChannelHelperExhaustivenessTests.cs), proven to_
+_catch the regression it claims to catch by temporarily deleting ArrayDescriptorOf's_
+_NilCoalesce arm, confirming the pin failed, then restoring it. D-362's permissive-_
+_Unknown catalogue updated by citation: the '?.' property-access source this entry_
+_closes was never enumerated there. Finding 4, added by the PR #189 review: D-402's_
+_first deferred finding — ResolveNilCoalesce's missing ArrayElementAssignable guard —_
+_proved to be the same shape as Findings 2/3, since the identity those arms carry through_
+_'??' is always the LEFT operand's, and is closed here with two siblings the review found._
+_'(f ?? g)()' on fn():int/fn():string, indexing '(a ?? b)' on int[]?/string[],_
+_'(d ?? g).toString()' on date?/guid and a field read through two mismatched anonymous_
+_struct shapes were all accepted silently; all four now raise the existing E0002 at the_
+_'??' via one NilCoalesceIdentityMismatch helper with D-401's map check folded in_
+_unchanged. grob-language-_
+_fundamentals.md §21 checked, not edited — already states the result type "is always_
+_nullable (T?)," true generically and now finally true of property access too. No_
+_opcode change, no new error code, count unchanged at 121. Full solution dotnet test_
+_green (3,697 tests across seven projects), Grob.Compiler line coverage 92.3%._
+_Previous: August 2026 — nullable-receiver method dispatch closed, D-402 added: closes both of_
 _D-401's reported gaps as one defect — ResolveMemberAccessCall matched only the exact_
 _non-nullable GrobType tag on every receiver-kind dispatch arm, so a nullable array/map/_
 _string/int/float/bool receiver always fell through to the permissive Unknown fallback,_

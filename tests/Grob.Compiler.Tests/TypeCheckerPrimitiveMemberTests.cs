@@ -679,6 +679,26 @@ public sealed class TypeCheckerPrimitiveMemberTests {
     }
 
     [Fact]
+    public void OptionalChainPropertyOnNullableString_Length_DoesNotSetPrimitiveNativeRewrite() {
+        // D-403's property-access mirror of the D-400 invariant above:
+        // MemberAccessExpr.ResolvedPrimitiveNativeName is checked BEFORE IsOptional by
+        // the compiler's own VisitMemberAccess (Compiler.Expressions.cs) — reusing the
+        // primitive property-dispatch arm against the underlying type for a nullable
+        // '?.' receiver's typing would, without this guard, silently route the compiler
+        // around the IsNil-guarded generic GetProperty path and pass a nil receiver
+        // straight into the qualified native. Must stay null even though the field type
+        // is now resolved via the underlying non-nullable 'string' property table.
+        var (unit, bag) = TypeCheckSource("""
+            s: string? := "abc"
+            x := s?.length
+            """);
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+        MemberAccessExpr access = Assert.Single(CollectMemberAccesses(unit), m => m.Member == "length");
+        Assert.Null(access.ResolvedPrimitiveNativeName);
+        Assert.Equal(GrobType.NullableInt, access.ResolvedFieldType);
+    }
+
+    [Fact]
     public void OptionalChainCallOnNonNullablePrimitive_NoDiagnostic() {
         // '?.' on a non-nullable receiver is unaffected by the new nullable guard.
         var (unit, bag) = TypeCheckSource("""
