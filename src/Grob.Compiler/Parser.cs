@@ -1267,7 +1267,7 @@ public sealed class Parser {
             if (_pos == startPos && !IsAtEnd) {
                 Advance();
             }
-            SkipToNextLiteralElementBoundary();
+            SkipToNextLiteralElementBoundary(startPos);
             return null;
         }
     }
@@ -1342,7 +1342,7 @@ public sealed class Parser {
             if (_pos == startPos && !IsAtEnd) {
                 Advance();
             }
-            SkipToNextLiteralElementBoundary();
+            SkipToNextLiteralElementBoundary(startPos);
             return null;
         }
     }
@@ -1355,36 +1355,84 @@ public sealed class Parser {
     /// bracket, none of which distinguish "the next element" from "the end of this
     /// list" inside a still-open '{' — a bare ',' is not one of its anchors, which
     /// is exactly what an entry-list boundary needs and a statement-level recovery
-    /// anchor never did. This instead stops at the next ',' or '}' found at the
-    /// nesting level where it is entered (always element-boundary level, since the
-    /// only caller invokes it immediately on a fresh <see cref="ParseMapEntryOrError"/>/
-    /// <see cref="ParseFieldInitOrError"/> failure, before any further bracket has
-    /// been opened at this call site) — tracking every bracket-pair kind the
-    /// abandoned element's own partially-parsed value could itself have opened
+    /// anchor never did. This instead stops at the next ',' or '}' that belongs to
+    /// the element list itself.
+    /// <para>
+    /// "Belongs to the element list" is decided by <paramref name="elementStart"/>:
+    /// the abandoned element may already have consumed an opening delimiter of its
+    /// own before it failed (<c>{ "a": foo(1 2), … }</c> fails inside the argument
+    /// list with '(' consumed), so the scan cannot assume it begins at
+    /// element-boundary nesting. The delimiters still open at the failure point are
+    /// replayed from the element's own tokens first, and the scan then tracks every
+    /// bracket-pair kind the rest of that element could open
     /// (<c>(…)</c>, <c>[…]</c>, nested <c>{…}</c>/<c>#{…}</c>, and a string
-    /// interpolation's <c>${…}</c>) so a nested literal or call inside that value
-    /// is skipped as a unit rather than having its own internal ',' mistaken for
-    /// this list's separator. Runs out safely at EOF (no anchor found) rather than
+    /// interpolation's <c>${…}</c>) so a nested literal or call is skipped as a unit
+    /// rather than having its own internal ',' mistaken for this list's separator.
+    /// A '}' that cannot close whatever is innermost-open is treated as the
+    /// enclosing literal's own closing brace and stops the scan unconsumed, so an
+    /// element that leaves a bracket permanently open (<c>{ "a": (1, "b": 2 }</c>)
+    /// still hands the literal's '}' back to the caller's Expect rather than
+    /// running past it. Runs out safely at EOF (no anchor found) rather than
     /// looping if the enclosing literal is itself unterminated.
+    /// </para>
     /// </summary>
-    private void SkipToNextLiteralElementBoundary() {
-        int depth = 0;
+    /// <param name="elementStart">
+    /// The token index the abandoned element began at, used to replay the
+    /// delimiters it left open.
+    /// </param>
+    private void SkipToNextLiteralElementBoundary(int elementStart) {
+        Stack<TokenKind> open = OpenDelimitersBetween(elementStart, _pos);
         while (!IsAtEnd) {
             TokenKind k = Current.Kind;
-            if (depth == 0 && (k == TokenKind.Comma || k == TokenKind.RightBrace)) return;
-            switch (k) {
-                case TokenKind.LeftBrace or TokenKind.LeftParen or TokenKind.LeftBracket
-                    or TokenKind.HashBrace or TokenKind.InterpStart:
-                    depth++;
-                    break;
-                case TokenKind.RightBrace or TokenKind.RightParen or TokenKind.RightBracket
-                    or TokenKind.InterpEnd:
-                    depth--;
-                    break;
-            }
+            if (open.Count == 0 && (k == TokenKind.Comma || k == TokenKind.RightBrace)) return;
+            if (!TrackDelimiter(open, k) && k == TokenKind.RightBrace) return;
             Advance();
         }
     }
+
+    /// <summary>
+    /// Replays the tokens of an abandoned literal element to rebuild the stack of
+    /// closing delimiters it still has outstanding at the failure point. Each entry
+    /// is the <see cref="TokenKind"/> that would close the corresponding opener.
+    /// </summary>
+    private Stack<TokenKind> OpenDelimitersBetween(int from, int to) {
+        Stack<TokenKind> open = new();
+        for (int i = from; i < to; i++) {
+            TrackDelimiter(open, _tokens[i].Kind);
+        }
+        return open;
+    }
+
+    /// <summary>
+    /// Applies one token to a delimiter stack: pushes the matching closer for an
+    /// opener, pops for the closer the innermost opener expects. Returns
+    /// <see langword="false"/> only for a closer that does not match what is
+    /// innermost-open — the signal <see cref="SkipToNextLiteralElementBoundary"/>
+    /// uses to recognise the enclosing literal's own '}'.
+    /// </summary>
+    private static bool TrackDelimiter(Stack<TokenKind> open, TokenKind k) {
+        TokenKind? closer = CloserFor(k);
+        if (closer is not null) {
+            open.Push(closer.Value);
+            return true;
+        }
+        if (!IsClosingDelimiter(k)) return true;
+        if (open.Count == 0 || open.Peek() != k) return false;
+        open.Pop();
+        return true;
+    }
+
+    private static TokenKind? CloserFor(TokenKind k) => k switch {
+        TokenKind.LeftParen => TokenKind.RightParen,
+        TokenKind.LeftBracket => TokenKind.RightBracket,
+        TokenKind.LeftBrace or TokenKind.HashBrace => TokenKind.RightBrace,
+        TokenKind.InterpStart => TokenKind.InterpEnd,
+        _ => null,
+    };
+
+    private static bool IsClosingDelimiter(TokenKind k) =>
+        k is TokenKind.RightParen or TokenKind.RightBracket
+          or TokenKind.RightBrace or TokenKind.InterpEnd;
 
     private MapEntry ParseMapEntry() {
         SourceLocation entryStart = Current.Location;

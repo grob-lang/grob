@@ -144,10 +144,56 @@ public sealed class ParserAnonStructLiteralTests {
         CompilationUnit unit = Parser.Parse(tokens, bag);
         Diagnostic parseDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", parseDiagnostic.Code);
+        Assert.Equal("expected field name", parseDiagnostic.Message);
+        Assert.Equal(1, parseDiagnostic.Range.Start.Line);
+        Assert.Equal(9, parseDiagnostic.Range.Start.Column); // the '1' where a name belongs
 
         new TypeChecker(bag).Check(unit);
 
         Diagnostic onlyDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Same(parseDiagnostic, onlyDiagnostic);
+
+        // Section 3.1.1 / D-311: "no further diagnostics" alone would still pass if
+        // the checker had left 'x' unresolved, so assert the LSP-enabling fields on
+        // the identifier itself — recovery must not leave the well-formed tail
+        // under-annotated.
+        VarDeclStmt yDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        BinaryExpr sum = Assert.IsType<BinaryExpr>(yDecl.Initializer);
+        IdentifierExpr xRef = Assert.IsType<IdentifierExpr>(sum.Left);
+        Assert.Equal("x", xRef.Name);
+        // GrobType is a value type, so Assert.NotNull is meaningless — assert that
+        // the checker set a non-error type instead.
+        Assert.NotEqual(GrobType.Error, xRef.ResolvedType);
+        Assert.NotNull(xRef.Declaration);
+        Assert.NotSame(UnresolvedDecl.Instance, xRef.Declaration);
+    }
+
+    // -----------------------------------------------------------------------
+    // Error recovery — delimiters the abandoned field opened before it failed (D-405)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MalformedField_ValueClosesItsOwnBracketPair_RecoversAtOuterCommaOnly() {
+        // Regression (PR #191 review), the anon-struct twin of the map-literal test of
+        // the same name: SkipToNextLiteralElementBoundary must start from the delimiter
+        // nesting the abandoned field had already opened before it failed, not from
+        // zero. 'foo(1 2)' fails with '(' already consumed, so a from-zero scan met the
+        // ')' first, drove its counter negative, and thereafter matched neither the
+        // field ',' nor the literal's own '}' — swallowing 'x := 9' with it.
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("s := #{ a: foo(1 2), b: 3 }\nx := 9\n");
+
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected ')' to close call", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(18, d.Range.Start.Column); // the stray '2'
+
+        AnonStructExpr anon = Assert.IsType<AnonStructExpr>(Assert.IsType<VarDeclStmt>(unit.TopLevel[0]).Initializer);
+        FieldInit field = Assert.Single(anon.Fields);
+        Assert.Equal("b", field.Name);
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("x", tail.Name);
+        Assert.Equal(9L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
     }
 }

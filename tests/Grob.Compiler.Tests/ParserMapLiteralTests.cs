@@ -351,9 +351,21 @@ public sealed class ParserMapLiteralTests {
         // Synchronise() sweep running all the way to EOF.
         (CompilationUnit unit, DiagnosticBag bag) = Parse("m := map<string, int>{foo: 1\n");
         Assert.Equal(2, bag.Diagnostics.Count);
-        Assert.Equal("expected string literal key", bag.Diagnostics[0].Message);
-        Assert.Equal("expected '}' to close map literal", bag.Diagnostics[1].Message);
-        Assert.All(bag.Diagnostics, d => Assert.Equal("E2001", d.Code));
+
+        Diagnostic key = bag.Diagnostics[0];
+        Assert.Equal("E2001", key.Code);
+        Assert.Equal("expected string literal key", key.Message);
+        Assert.Equal(1, key.Range.Start.Line);
+        Assert.Equal(23, key.Range.Start.Column); // 'foo'
+
+        // The missing-brace diagnostic is pinned at EOF, which the source's trailing
+        // newline puts at line 2, column 1.
+        Diagnostic brace = bag.Diagnostics[1];
+        Assert.Equal("E2001", brace.Code);
+        Assert.Equal("expected '}' to close map literal", brace.Message);
+        Assert.Equal(2, brace.Range.Start.Line);
+        Assert.Equal(1, brace.Range.Start.Column);
+
         Assert.NotNull(unit);
     }
 
@@ -371,10 +383,84 @@ public sealed class ParserMapLiteralTests {
         CompilationUnit unit = Parser.Parse(tokens, bag);
         Diagnostic parseDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", parseDiagnostic.Code);
+        Assert.Equal("expected string literal key", parseDiagnostic.Message);
+        Assert.Equal(1, parseDiagnostic.Range.Start.Line);
+        Assert.Equal(23, parseDiagnostic.Range.Start.Column); // 'a'
 
         new TypeChecker(bag).Check(unit);
 
         Diagnostic onlyDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Same(parseDiagnostic, onlyDiagnostic);
+
+        // Section 3.1.1 / D-311: "no further diagnostics" alone would still pass if
+        // the checker had left 'x' unresolved, so assert the LSP-enabling fields on
+        // the identifier itself — recovery must not leave the well-formed tail
+        // under-annotated.
+        VarDeclStmt yDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        BinaryExpr sum = Assert.IsType<BinaryExpr>(yDecl.Initializer);
+        IdentifierExpr xRef = Assert.IsType<IdentifierExpr>(sum.Left);
+        Assert.Equal("x", xRef.Name);
+        // GrobType is a value type, so Assert.NotNull is meaningless — assert that
+        // the checker set a non-error type instead.
+        Assert.NotEqual(GrobType.Error, xRef.ResolvedType);
+        Assert.NotNull(xRef.Declaration);
+        Assert.NotSame(UnresolvedDecl.Instance, xRef.Declaration);
+    }
+
+    // -----------------------------------------------------------------------
+    // Error recovery — delimiters the abandoned entry opened before it failed (D-405)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MalformedEntry_ValueClosesItsOwnBracketPair_RecoversAtOuterCommaOnly() {
+        // Regression (PR #191 review): SkipToNextLiteralElementBoundary must start
+        // from the delimiter nesting the abandoned entry had already opened before it
+        // failed, not from zero. 'foo(1 2)' fails inside the argument list with '('
+        // already consumed, so a from-zero scan met the ')' first, drove its counter
+        // negative, and thereafter matched neither the entry ',' nor the literal's own
+        // '}' — swallowing the rest of the file, including the well-formed 'x := 9'.
+        (CompilationUnit unit, DiagnosticBag bag) =
+            Parse("m := map<string, int>{\"a\": foo(1 2), \"b\": 3}\nx := 9\n");
+
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected ')' to close call", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(34, d.Range.Start.Column); // the stray '2'
+
+        // The malformed entry is omitted, but the ',' after the now-closed ')' is a
+        // genuine outer boundary, so '"b": 3' is still recovered as a real entry.
+        MapLiteralExpr map = Assert.IsType<MapLiteralExpr>(Assert.IsType<VarDeclStmt>(unit.TopLevel[0]).Initializer);
+        MapEntry entry = Assert.Single(map.Entries);
+        Assert.Equal("b", entry.Key);
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("x", tail.Name);
+        Assert.Equal(9L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
+    }
+
+    [Fact]
+    public void MalformedEntry_ValueLeavesBracketPairOpen_DoesNotReuseInnerComma() {
+        // Regression (PR #191 review), the other half of the same defect: here '(' is
+        // consumed and never closed, so every ',' that follows belongs to the open
+        // paren, not to the entry list. A from-zero scan stopped at the first inner
+        // ',' and wrongly promoted '"b": 2' to an outer entry. Carrying the nesting in
+        // means the scan stops only at the literal's own '}' — which cannot close a
+        // '(' — leaving it unconsumed for Expect(RightBrace).
+        (CompilationUnit unit, DiagnosticBag bag) =
+            Parse("m := map<string, int>{\"a\": (1, \"b\": 2}\nx := 9\n");
+
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected ')'", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(30, d.Range.Start.Column); // the ',' inside the still-open '('
+
+        MapLiteralExpr map = Assert.IsType<MapLiteralExpr>(Assert.IsType<VarDeclStmt>(unit.TopLevel[0]).Initializer);
+        Assert.Empty(map.Entries);
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("x", tail.Name);
+        Assert.Equal(9L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
     }
 }
