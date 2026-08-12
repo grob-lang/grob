@@ -346,7 +346,7 @@ public sealed partial class TypeChecker {
                 node.Range);
         }
 
-        if (NilCoalesceIdentityMismatch(node, leftElem, rightElem) is string mismatch) {
+        if (leftElem == rightElem && MergeIdentityMismatch([node.Left, node.Right], leftElem) is string mismatch) {
             return EmitErrorAndReturn(ErrorCatalog.E0002,
                 $"Operator '??' cannot be applied to types '{TypeName(left)}' and '{TypeName(right)}': {mismatch}.",
                 node.Range);
@@ -360,48 +360,79 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Decides whether the two operands of a <c>??</c> agree on the side-channel identity
-    /// the result will inherit, returning the mismatch clause for the <c>E0002</c> message
-    /// or <see langword="null"/> when they agree.
+    /// Decides whether every adjacent pair (source order) of a structural merge's branch
+    /// expressions agrees on the side-channel identity the merge result will carry
+    /// forward, returning the mismatch clause for the <c>E0002</c> message on the first
+    /// disagreeing pair, or <see langword="null"/> when every pair agrees.
     /// </summary>
     /// <remarks>
     /// <para>
     /// The flat <see cref="GrobType"/> tag is identical for every map, every array, every
     /// function and every named struct regardless of value type, element type, signature or
-    /// nominal identity — so <see cref="ResolveNilCoalesce"/>'s element-kind check passes,
-    /// and each helper's <c>NilCoalesce</c> arm then keeps the <em>left</em> operand's
-    /// descriptor for a result the right operand may actually supply at runtime. D-401 closed
-    /// this for <c>map</c>; the PR #189 review found the same shape open on the other three.
+    /// nominal identity — so a merge whose branches all agree on the flat tag can still
+    /// disagree on what that tag actually denotes, and each side-channel helper
+    /// (<see cref="ArrayDescriptorOf"/>, <see cref="MapDescriptorOf"/>,
+    /// <see cref="ExpressionDescriptor"/>, <see cref="GetStructTypeName"/>) keeps only the
+    /// FIRST non-null branch's descriptor — the identity a differently-typed later branch
+    /// may actually supply at runtime. D-401 closed this for <c>map</c>'s <c>??</c>; the
+    /// PR #189 review (Finding 4) found the same shape open on the other three <c>??</c>
+    /// kinds; D-404 found it open again wherever a ternary or switch expression performs
+    /// the identical N-branch merge (<see cref="VisitTernary"/>/<see cref="VisitSwitchExpr"/>),
+    /// and generalised this two-operand check (originally <c>NilCoalesceIdentityMismatch</c>)
+    /// to any branch count so both merge shapes share one implementation.
     /// </para>
     /// <para>
-    /// Callers reach here only once <see cref="ResolveNilCoalesce"/> has rejected genuinely
-    /// different element kinds, so equal kinds are the checkable case; an <c>Unknown</c>/
-    /// <c>Error</c> pairing falls through permissively, exactly as the missing-descriptor and
-    /// <c>Unknown</c>-descriptor cases do inside each predicate below.
+    /// Adjacent-pairwise comparison is sufficient — no need to check every combination:
+    /// each predicate below is an equality-or-permissive relation (transitive when both
+    /// sides resolve to a real descriptor, permissive whenever either side's descriptor is
+    /// missing or <see cref="GrobType.Unknown"/>), so proving every consecutive pair agrees
+    /// proves every pair agrees.
+    /// </para>
+    /// <para>
+    /// Every caller reaches here only once the branches' flat <see cref="GrobType"/> is
+    /// already known to agree — equal for <c>??</c>'s two operands (<see
+    /// cref="ResolveNilCoalesce"/>'s own guard), or the single merged type <see
+    /// cref="UnifyTernaryArms"/> already unified every arm to, for a ternary/switch — so
+    /// <paramref name="elemType"/> is the one flat kind every pair is checked against; an
+    /// <see cref="GrobType.Unknown"/>/<see cref="GrobType.Error"/> merge never reaches here
+    /// (every caller excludes it before calling).
     /// </para>
     /// </remarks>
-    private string? NilCoalesceIdentityMismatch(BinaryExpr node, GrobType leftElem, GrobType rightElem) {
-        if (leftElem != rightElem) return null;
+    private string? MergeIdentityMismatch(IReadOnlyList<Expression> branches, GrobType elemType) {
+        for (int i = 0; i < branches.Count - 1; i++) {
+            if (BranchPairIdentityMismatch(branches[i], branches[i + 1], elemType) is string mismatch) {
+                return mismatch;
+            }
+        }
+        return null;
+    }
 
-        return leftElem switch {
-            GrobType.Map when !MapValueAssignable(MapDescriptorOf(node.Left), MapDescriptorOf(node.Right)) =>
+    /// <summary>
+    /// The single-pair predicate <see cref="MergeIdentityMismatch"/> applies to every
+    /// adjacent branch pair — the original five-kind <c>??</c> identity switch
+    /// (D-401–D-403), unchanged in substance, generalised to take its two operand
+    /// expressions as parameters rather than reading them off a fixed <see
+    /// cref="BinaryExpr"/>.
+    /// </summary>
+    private string? BranchPairIdentityMismatch(Expression left, Expression right, GrobType elemType) =>
+        elemType switch {
+            GrobType.Map when !MapValueAssignable(MapDescriptorOf(left), MapDescriptorOf(right)) =>
                 "map value types do not match",
-            GrobType.Array when !ArrayElementAssignable(ArrayDescriptorOf(node.Left), ArrayDescriptorOf(node.Right)) =>
+            GrobType.Array when !ArrayElementAssignable(ArrayDescriptorOf(left), ArrayDescriptorOf(right)) =>
                 "array element types do not match",
-            GrobType.Function when !FunctionDescriptorsAgree(node.Left, node.Right) =>
+            GrobType.Function when !FunctionDescriptorsAgree(left, right) =>
                 "function signatures do not match",
-            GrobType.Struct when !StructIdentitiesAgree(node.Left, node.Right) =>
+            GrobType.Struct when !StructIdentitiesAgree(left, right) =>
                 "named types do not match",
             // PR #189 follow-up review: the anonymous twin of the arm above. An
             // anonymous struct's identity is structural, but it is carried the same way —
             // AnonStructExpr.SynthesisedTypeName, which GetStructTypeName already reads —
             // so the same predicate decides both, and 'xs.first() ?? #{ y: 2 }' can no
             // longer type-check a field read against the left shape's field table alone.
-            GrobType.AnonStruct when !StructIdentitiesAgree(node.Left, node.Right) =>
+            GrobType.AnonStruct when !StructIdentitiesAgree(left, right) =>
                 "struct shapes do not match",
             _ => null,
         };
-    }
 
     /// <summary>
     /// True when both operands' function descriptors resolve to the same signature, or when
@@ -2120,6 +2151,14 @@ public sealed partial class TypeChecker {
             VarDeclStmt vd => vd.Initializer as AnonStructExpr,
             _ => null,
         },
+        // D-404 bonus fix: the NilCoalesce/ternary/switch arms every other pinned
+        // side-channel helper already carries (GetStructTypeName's identical set) —
+        // first-non-null in source order, recursing rather than special-casing an
+        // identifier branch further.
+        BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
+            TryGetAnonStructLiteral(binary.Left) ?? TryGetAnonStructLiteral(binary.Right),
+        TernaryExpr t => TryGetAnonStructLiteral(t.Then) ?? TryGetAnonStructLiteral(t.Else),
+        SwitchExprNode sw => sw.Arms.Select(a => TryGetAnonStructLiteral(a.Result)).FirstOrDefault(d => d is not null),
         _ => null,
     };
 
@@ -2478,6 +2517,10 @@ public sealed partial class TypeChecker {
         // falling back to Unknown.
         BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
             GetStructTypeName(binary.Left) ?? GetStructTypeName(binary.Right),
+        // D-404: the ternary/switch-expression twin of the NilCoalesce arm above — see
+        // ExpressionDescriptor's identical arm (TypeChecker.cs) for the full rationale.
+        TernaryExpr t => GetStructTypeName(t.Then) ?? GetStructTypeName(t.Else),
+        SwitchExprNode sw => sw.Arms.Select(a => GetStructTypeName(a.Result)).FirstOrDefault(d => d is not null),
         _ => null
     };
 
@@ -2730,7 +2773,8 @@ public sealed partial class TypeChecker {
         }
         GrobType thenType = Visit(node.Then);
         GrobType elseType = Visit(node.Else);
-        return UnifyTernaryArms(thenType, elseType, node.Range);
+        GrobType mergedType = UnifyTernaryArms(thenType, elseType, node.Range);
+        return CheckMergeIdentity(mergedType, [node.Then, node.Else], "Ternary", node.Range);
     }
 
     /// <summary>
@@ -2771,6 +2815,36 @@ public sealed partial class TypeChecker {
         return GrobType.Error;
     }
 
+    /// <summary>
+    /// Guards a ternary's or switch expression's merged result against the same
+    /// side-channel-identity unsoundness PR #189 (Finding 4) closed for <c>??</c> — see
+    /// <see cref="MergeIdentityMismatch"/>. Only <see cref="GrobType.Map"/>/
+    /// <see cref="GrobType.Array"/>/<see cref="GrobType.Function"/>/
+    /// <see cref="GrobType.Struct"/>/<see cref="GrobType.AnonStruct"/> carry a side-channel
+    /// descriptor a later consumer (indexing, a call, a field access) might resolve
+    /// against the wrong branch, so every other merged type — a scalar, or one already
+    /// <see cref="GrobType.Error"/>/<see cref="GrobType.Unknown"/> — passes through
+    /// unchecked. <paramref name="mergedType"/> is deliberately the merged flat type, not
+    /// an <c>Unknown</c>/<c>Error</c>-unwrapped element: a nullable-widened merge (<c>T ?
+    /// + T</c>) never reaches the five checkable kinds here (its flat tag is the
+    /// <c>Nullable…</c> variant, not the bare one), which is a deliberate, narrower scope
+    /// than <c>??</c>'s own element-unwrapped check — D-404 covers the exact-match case
+    /// this sprint; a nullable-widened ternary/switch merge is not newly guarded.
+    /// </summary>
+    private GrobType CheckMergeIdentity(
+            GrobType mergedType, IReadOnlyList<Expression> branches, string kindLabel, SourceRange range) {
+        if (mergedType is GrobType.Error or GrobType.Unknown) return mergedType;
+        if (mergedType is not (GrobType.Map or GrobType.Array or GrobType.Function or GrobType.Struct or GrobType.AnonStruct)) {
+            return mergedType;
+        }
+        if (MergeIdentityMismatch(branches, mergedType) is string mismatch) {
+            return EmitErrorAndReturn(ErrorCatalog.E0002,
+                $"{kindLabel} arms must produce the same type: {mismatch}.",
+                range);
+        }
+        return mergedType;
+    }
+
     // -----------------------------------------------------------------------
     // Switch expression (§3.1) — patterns (D-277), exhaustiveness, arm unification.
     // -----------------------------------------------------------------------
@@ -2807,7 +2881,8 @@ public sealed partial class TypeChecker {
                 node.Range);
         }
 
-        return haveResult ? resultType : GrobType.Error;
+        if (!haveResult) return GrobType.Error;
+        return CheckMergeIdentity(resultType, node.Arms.Select(a => a.Result).ToList(), "Switch", node.Range);
     }
 
     /// <summary>

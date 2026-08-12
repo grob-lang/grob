@@ -220,6 +220,19 @@ public sealed partial class TypeChecker {
         AnonStructExpr anon => anon.SynthesisedTypeName,
         IdentifierExpr id => LookupSymbol(id.Name)?.NamedStructTypeName ?? GetStructTypeNameFromDecl(id.Declaration),
         MemberAccessExpr ma => ma.ResolvedStructTypeName,
+        // D-404 bonus fix: the NilCoalesce/ternary/switch arms every other pinned
+        // side-channel helper already carries (GetStructTypeName's identical set,
+        // TypeChecker.Expressions.cs) — first-non-null in source order. Without this, a
+        // field initialiser or 'throw' operand of the form 'a ?? b'/'cond ? a : b' fell to
+        // null even when both branches share the same struct identity — e.g.
+        // '#{ x: a ?? b }' left field 'x' with no NamedTypeName, and 'throw a ?? b' was
+        // misreported as E0014 despite both branches being IoError. GroupingExpr and
+        // CallExpr are deliberately NOT added here — out of scope for this fix, see
+        // GetStructTypeName for the superset this helper does not fully mirror.
+        BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
+            GetFieldValueStructTypeName(binary.Left) ?? GetFieldValueStructTypeName(binary.Right),
+        TernaryExpr t => GetFieldValueStructTypeName(t.Then) ?? GetFieldValueStructTypeName(t.Else),
+        SwitchExprNode sw => sw.Arms.Select(a => GetFieldValueStructTypeName(a.Result)).FirstOrDefault(d => d is not null),
         _ => null,
     };
 
