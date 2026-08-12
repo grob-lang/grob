@@ -400,6 +400,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-402 | August 2026 | Compiler — type system (nullable-receiver method dispatch) | Closes both of D-401's reported gaps as one defect: `ResolveMemberAccessCall` matched only the exact non-nullable `GrobType` tag on every receiver-kind dispatch arm, so a nullable array/map/string/int/float/bool receiver always fell through to the permissive `Unknown` fallback — a non-optional `.` compiled and ran (array/map; primitives crashed unconditionally instead, a separate D-400 VM-dispatch gap), and `?.` typed `Unknown` instead of the real nullable-widened member type. Registered **named types (`guid`/`date`) are the one partial exception**: PR #143's bespoke `NullableStruct` block sat ahead of the named-type arm and already raised `E0101` for a non-optional `.`, so only the `?.` typing half was missing there (`d?.addDays(1)` resolved `Unknown`, not `date?`). One generic guard, hoisted to the top of `ResolveMemberAccessCall` and mirroring `VisitMemberAccess`'s existing shape exactly, closes both: non-optional `.` on any nullable receiver is unconditionally `E0101` (generic `'struct?'` wording, matching property access — the bespoke named-type-specific `NullableStruct` guard from PR #143 is deleted, subsumed); `?.` resolves the call against the receiver's underlying non-nullable type via a new `DispatchMemberAccessCall` helper (the existing array/map/primitive/struct arms reused unchanged, not duplicated) and widens a successful result via `GrobTypeHelpers.ToNullable` — `m?.get("k")` → `int?`, `xs?.first()` → `T?`, `s?.upper()` → `string?`, `d?.addDays(1)` → `date?`. **Critical constraint found and guarded**: reusing the primitive dispatch for typing also sets `CallExpr.ResolvedPrimitiveNativeName`, which the compiler checks **before** `IsOptional` and would silently bypass D-400's `IsNil` guard entirely — explicitly cleared to `null` for the nullable path, pinned by both the pre-existing `CompilerOptionalChainCallTests.NullablePrimitiveOptionalCall_TakesGuardedPathNotPrimitiveRewrite` (stayed green unmodified) and a new type-checker-level test. `ArrayDescriptorOf` regains the `BinaryExpr { Operator: NilCoalesce }` arm D-401 added to `MapDescriptorOf` only, closing `(xs ?? [])[0]` typing `Unknown`; symmetry asserted in a new shared file, `NilCoalesceDescriptorSymmetryTests.cs`. Implementation surfaced one pre-existing test invalidated by the tightened guard (`xs?.garbage()` on a nullable array no longer stays permissive — updated, not deleted, to assert `E1002`) and two further findings deferred by maintainer decision: `ResolveNilCoalesce` has no `ArrayElementAssignable` guard mirroring D-401's `MapValueAssignable` fix (`int[]? ?? string[]` still silently compiles); `ExpressionDescriptor`/`GetStructTypeName` share the same missing `NilCoalesce` arm. No VM/opcode change — confirmed by reading `EmitOptionalChainCall`, receiver-type-agnostic per D-400. `grob-language-fundamentals.md` not touched: §21 remains correct for `?.` short-circuiting; the separate, undocumented "`.` on nullable is `E0101`" rule predates this branch and applies equally to property access, so it falls outside this entry's narrow method-call-specific doc-update authorisation. No new error code; count unchanged at **121**. Full solution `dotnet test` green (3,727 tests across eight projects), `Grob.Compiler` line coverage 96.9%. Refines D-401 (both findings, closed), D-400 (the `?.` runtime guard preserved unchanged). Cites D-374, D-377, D-378. |
 | D-403 | August 2026 | Compiler — type system (`?.` property-access dispatch, side-channel-helper symmetry) | Closes the property-access half of D-402's own finding, plus two further `NilCoalesce`-arm gaps D-402 reported and deferred. **Finding 1 (the main fix):** `VisitMemberAccess`'s `?.`-on-nullable-receiver arm unconditionally returned `Unknown` (an undocumented deferral — no `D-###` ever recorded it, "the F3 guard" per its own stale comment), intercepting every property-dispatch arm below it exactly the way `ResolveMemberAccessCall` used to intercept the call path before D-402. Confirmed a stale oversight, not a real obstacle: the struct-field dispatch already carried dead `NullableStruct`/`NullableAnonStruct` checks, unreachable only because this early return ran first. Fixed by mirroring D-402's `ResolveNullableMemberAccessCall` shape exactly: the property-dispatch arms (`TryResolveKnownStructPropertyAccess`, `PrimitiveMemberRegistry`, `Struct`/`AnonStruct`/`NullableStruct`/`NullableAnonStruct` via `ResolveStructFieldAccess`, `ResolveCollectionPropertyAccess`) extracted into a new `DispatchMemberAccessProperty(node, targetType)`; a new `ResolveNullableMemberAccess(node, targetType)` dispatches against `GrobTypeHelpers.ElementType(targetType)`, widens a successful result via `ToNullable`, sets `node.ResolvedFieldType`, and passes `Unknown`/`Error` through unwidened — `xs?.length` → `int?`, `p?.x` → `int?` for a nullable struct field. **Critical constraint found during implementation, not named in the commissioning brief**: reusing the primitive-property dispatch for typing also sets `MemberAccessExpr.ResolvedPrimitiveNativeName`, which the compiler's own `VisitMemberAccess` (`Compiler.Expressions.cs`) checks **before** `IsOptional` and has no nil guard at all — exactly D-402's call-path hazard, now confirmed to exist identically on the property path. `ResolveNullableMemberAccess` explicitly clears the field for the nullable path, the same deliberate exception to "reuse unchanged"; pinned by a new type-checker-level test (`OptionalChainPropertyOnNullableString_Length_DoesNotSetPrimitiveNativeRewrite`) and a new full-pipeline runtime test proving a nil `string?` receiver's `?.length` still short-circuits to `nil` rather than crashing on an unguarded native call. **Findings 2 and 3:** `ExpressionDescriptor` (`TypeChecker.cs`) and `GetStructTypeName` (`TypeChecker.Expressions.cs`) each gained the identical `BinaryExpr { Operator: NilCoalesce }` arm `ArrayDescriptorOf`/`MapDescriptorOf` already carry (D-401/D-402), recursing on both operands — `(f ?? g)()` on two nullable function values now resolves the declared return type via `ExpressionDescriptor` instead of `Unknown`; `(g1 ?? g2).toString()` on a nullable `guid` now resolves through `GetStructTypeName` to the `NamedTypeRegistry` dispatch instead of `Unknown`. Both verified to recurse correctly on a three-way nested `??` chain. **Breaking-change fallout, three tests updated to the new correct behaviour, none weakened:** `TypeCheckerFieldAccessTests.FieldAccess_OptionalChainOnNullableScalar_NoError` renamed off "the F3 guard" and now asserts the widened field type (`int?`), not merely absence of errors; `TypeCheckerNullableTests.QuestionDot_ResultIsUnknown_CompatibleWithNilCoalesce` renamed and rewritten off `x?.toString ?? "none"` (a bare, uncalled reference to a _method_ on `int`, which now correctly raises `E1002` once `?.` genuinely dispatches against the underlying type — the same tightening D-402 already applied to the call path) onto `s?.length ?? 0`, still proving `??`-compatibility of a `?.` result but now under its correct widened type; `NullableMapTypeCheckerTests.OptionalPropertyAccess_OnNullableMap_StaysPermissive` renamed to `..._ResolvesWidenedFieldType` and now asserts `int?`, not merely no-errors. A fourth pre-existing test (`CompilerNullableTests`, on the explicit do-not-touch list) also broke as unavoidable fallout, not anticipated by the commissioning brief: its four `?.` bytecode-shape tests used a placeholder property name (`x: int? := nil; x?.member`) that relied on the old permissive `Unknown` never validating it; `int` has zero bare properties in `PrimitiveMemberRegistry` (methods only), so _any_ property name on a nullable `int` now correctly raises `E1002`, failing `CompileSource`'s own pre-compile `bag.HasErrors` assertion before the bytecode-shape assertions it exists to prove ever ran. This is flagged here as a genuine contradiction between the commissioning brief's "must stay green, do not touch" framing and a correct Finding-1 fix — the four tests were narrowly updated (receiver moved to `int[]?`/`.length`, a real array property, preserving the exact `IsNil`/`JumpIfTrue`/`Pop`/`GetProperty`/`Jump`/`Pop` shape assertions unchanged) rather than left red or the fix weakened to avoid touching the file. `CompilerFieldAccessTests`, `VirtualMachineNullableTests` and `OptionalChainMethodCallTests` — the other three named do-not-touch files — were confirmed genuinely unaffected by running them, and stayed untouched. **Wider survey, findings reported not fixed:** `TernaryExpr`/`SwitchExprNode` arms are missing across all four original side-channel helpers (`ArrayDescriptorOf`, `MapDescriptorOf`, `ExpressionDescriptor`, `GetStructTypeName`), plus three further helpers share the identical missing-arm shape — `GetFieldValueStructTypeName`, `SilentMapDescriptorOf`, `TryGetAnonStructLiteral` — named here as open follow-up items, none fixed on this branch. **Mechanisation considered and rejected, per the commissioning brief's own framing**: a shared generic expression-walker was not built — the four helpers have heterogeneous return types (`FunctionTypeDescriptor?`/`ArrayTypeDescriptor?`/`MapTypeDescriptor?`/`string?`) and genuine, deliberate per-helper divergence in which node kinds legitimately apply (`MapDescriptorOf` has no `CallExpr` arm by design — no map-returning native exists to carry a value descriptor through — not a residual gap). The chosen alternative is a documented convention (every side-channel helper handles `GroupingExpr` and `BinaryExpr { Operator: NilCoalesce }` structurally) enforced by a new, mutation-verified exhaustiveness-pinning test region (`SideChannelHelperExhaustivenessTests.cs`) that pins each helper's current handled-node-kind set against a real checked `TypeChecker` instance — by direct reflection where the result stays observable after checking, and through each helper's own post-`Check` consumer for the three scope-sensitive `IdentifierExpr` arms — proven to catch a regression, not merely assert intent, by temporarily deleting `ArrayDescriptorOf`'s `NilCoalesce` arm during development, confirming the pin failed for the expected reason, then restoring it. Two of the four helpers (`ExpressionDescriptor`, `ArrayDescriptorOf`, `MapDescriptorOf`) resolve their `IdentifierExpr` arm purely via `LookupSymbol`, which only searches the live scope stack — `TypeChecker.Check` pops every scope, including the global one, before returning — so those three specific arms are pinned through their own real, observable post-Check consumers (`CallExpr.ResolvedReturnType`, `IndexExpr.ElementType`) rather than direct reflection; `GetStructTypeName`'s `IdentifierExpr` arm has no such constraint (it falls back to `id.Declaration`-based AST-structural resolution, never `LookupSymbol`-only) and is pinned directly. **D-362's permissive-`Unknown` catalogue updated by citation**: the `?.` property-access source this entry closes was never enumerated there — found later, by D-402's own sweep, as an undocumented deferral predating any `D-###` — now closed. **Finding 4, added by the PR #189 review:** D-402's first deferred finding — `ResolveNilCoalesce`'s missing `ArrayElementAssignable` guard — turned out to be the same shape as Findings 2/3 rather than a separate item, and is closed here with two siblings the review found. The arms above make the side-channel identity survive `??`, and the surviving identity is always the **left** operand's, so the arms are only sound if `??` first proves the operands agree — which it could not, the flat `GrobType` tag being identical for every function, array and named/anon struct just as it is for every map (the hole D-401 closed for maps alone). Three mismatches were confirmed accepted silently before the fix: `(f ?? g)()` with `(fn(): int)?`/`fn(): string` typed the call `int`; `(a ?? b)[0]` with `int[]?`/`string[]` typed the element `int` (D-402's case verbatim); `(d ?? g).toString()` with `date?`/`guid` retained `"date"` and reported `E1002` for a method `guid` genuinely has, proving the wrong nominal method table was consulted. A fourth, `AnonStruct`, was found by the follow-up review pass on the pushed commit: `(a ?? b).x` with shapes `#{ x: int }`/`#{ y: int }` type-checked clean against the left shape's field table, its twin `(a ?? b).y` reporting `E1002` "Type 'x:Int' has no member 'y'" and naming that shape outright — closed by the same predicate (`StructIdentitiesAgree`), since an anonymous struct's structural identity is carried as `AnonStructExpr.SynthesisedTypeName`, which `GetStructTypeName` already reads. All four now raise the existing `E0002` at the `??` via one `NilCoalesceIdentityMismatch` helper with D-401's map check folded in unchanged (one place, five kinds, `ResolveNilCoalesce`'s complexity flat); each predicate stays permissive on a missing or `Unknown` descriptor/name, so `xs ?? []` keeps working, and the check recurses through nested `??` for free by consulting the very helpers Findings 2/3 fixed. No existing test changed behaviour. `grob-language-fundamentals.md` §21 checked, not edited: it already states the chain's result type "is always nullable (`T?`)" — true generically and, after this fix, finally true of property access too; no correction needed, so none made. New tests: `TypeCheckerArrayQueryMemberTests.cs` (nullable-array property/call symmetry), `TypeCheckerStructSignatureTests.cs` (nullable-struct field widening), `TypeCheckerPrimitiveMemberTests.cs` (the `ResolvedPrimitiveNativeName`-clearing pin), `NilCoalesceDescriptorSymmetryTests.cs` (extended with the function/guid `??` cases, single vs nested), `SideChannelHelperExhaustivenessTests.cs` (new, the mutation-verified pinning region), `OptionalChainPropertyAccessRuntimeTests.cs` (new, full-pipeline nil-short-circuit proof for the primitive/struct property path). Full solution `dotnet test` green (3,697 tests across seven projects — `Grob.BenchCheck` not re-run, untouched by this change), `Grob.Compiler` line coverage 92.3%. No opcode change. No new error code; count unchanged at **121**. Refines D-402 (Finding 1, the property/call asymmetry it flagged, now closed; the two `NilCoalesce` findings it deferred, now closed; and its first deferred finding, the missing `??` element guard, closed by Finding 4), D-401 (the `NilCoalesce`-arm convention this generalises, and the `MapValueAssignable` guard Finding 4 generalises), D-400 (the `?.` runtime guard preserved unchanged), D-362 (the permissive-`Unknown` catalogue, updated by citation), D-374 (the `MapTypeDescriptor` machinery reused unmodified). |
 | D-404 | August 2026 | Compiler — type system (structural-merge side-channel identity: ternary/switch, `NilCoalesce`-arm completion) | Closes all seven gaps D-403's survey found and left open, plus one adjacent gap found and fixed in the same session. PR #189 (D-403 Finding 4) proved a structural side-channel arm is only sound with an identity guard — the arm makes an identity **survive** a merge, and the surviving identity is always one branch's, so it is sound only if the merge first proves every branch agrees. A ternary and a switch expression perform the identical N-branch merge `??` performs with two, so adding `TernaryExpr`/`SwitchExprNode` arms without the equivalent guard would reintroduce the exact unsoundness #189 closed, in two new places. **Generalised, not duplicated**: `NilCoalesceIdentityMismatch(BinaryExpr, GrobType, GrobType)` is replaced by `MergeIdentityMismatch(IReadOnlyList<Expression>, GrobType)`, checking every **adjacent branch pair** in source order via a new single-pair predicate, `BranchPairIdentityMismatch` — the same five-kind switch and the same four pre-existing pairwise predicates (`MapValueAssignable`/`ArrayElementAssignable`/`FunctionDescriptorsAgree`/`StructIdentitiesAgree`), unchanged and not copied. Adjacent-pairwise is sufficient — each predicate is an equality-or-permissive relation, so if every consecutive pair agrees, every pair agrees, transitively. `ResolveNilCoalesce`'s call site now passes `[node.Left, node.Right]`; behaviour for `??` is unchanged (`leftElem == rightElem` gates the call exactly as the old method's own internal guard did). **Wired once, not per-consumer**: a new `CheckMergeIdentity(mergedType, branches, kindLabel, range)` runs once after `VisitTernary`'s `UnifyTernaryArms` call and once after `VisitSwitchExpr`'s arm-folding loop, gated to exactly `Map`/`Array`/`Function`/`Struct`/`AnonStruct` (a scalar, or an already-`Error`/`Unknown` merge, passes through unchecked) — mirroring why `??`'s own guard never needed per-consumer copies: `TernaryExpr`/`SwitchExprNode`, like `BinaryExpr{NilCoalesce}`, are each visited exactly once, so every later side-channel-helper consultation of an already-checked node is provably post-guard. Raises the existing `E0002`, worded `"Ternary arms must produce the same type: <clause>."` / `"Switch arms must produce the same type: <clause>."`, mirroring `UnifyTernaryArms`'s own established wording for the flat-type mismatch case. **All seven helpers gained the `TernaryExpr`/`SwitchExprNode` arms** — `ArrayDescriptorOf`, `MapDescriptorOf`, `ExpressionDescriptor`, `GetStructTypeName` (D-403's four originally pinned) and `GetFieldValueStructTypeName`, `SilentMapDescriptorOf`, `TryGetAnonStructLiteral` (D-403's three further gaps) — each picking the first non-null branch descriptor in source order, the structural twin of the existing `Left ?? Right` `NilCoalesce` convention; `TryGetAnonStructLiteral` returns the literal node itself (for `formatAs.list`'s source-field-order read), not a name, needing no guard of its own since a genuine shape mismatch is already caught by `GetStructTypeName`'s own guarded `AnonStruct` arm on the same node. **One adjacent gap found and fixed in the same session, beyond D-403's seven**: the three previously-unpinned helpers were also missing a `NilCoalesce` arm outright (not only `TernaryExpr`/`SwitchExprNode`) — `#{ x: a ?? b }` (an anon-struct field initialiser) and `throw a ?? b` both fell to `null` even when both branches shared the same struct identity, the latter misreporting a legitimate `IoError ?? IoError` throw as `E0014`. Fixed on the same call-site-centralisation argument (`ResolveNilCoalesce` already guards every `BinaryExpr{NilCoalesce}` node once), approved in-scope by the maintainer as zero marginal risk since the helper bodies were already being touched. **Deliberately narrower than `??`'s own guard**: `CheckMergeIdentity` checks the merged flat type directly, not an `Unknown`/element-unwrapped one, so a nullable-widening merge (`T? : T`) never reaches the five checkable kinds — its flat tag is the `Nullable…` variant, not the bare one. Not newly guarded here; documented as a known, narrower scope on `CheckMergeIdentity`'s own XML doc rather than silently left unstated. **Pinning region extended to all seven helpers** in `SideChannelHelperExhaustivenessTests.cs`, using non-identifier branches to avoid the pre-existing `LookupSymbol` scope-lifetime constraint (three helpers' `IdentifierExpr` arms still pin through real post-`Check` consumers, unchanged); **mutation-verified twice** — `ArrayDescriptorOf`'s new `TernaryExpr` arm deleted, the pin failed for the expected reason, restored, re-confirmed green (matching D-403's own standard exactly), and separately `CheckMergeIdentity`'s wiring itself unwired from `VisitTernary`/`VisitSwitchExpr` in turn, each time the corresponding guard-fires test failing for the expected reason — notably the `date`/`guid` case failing with `E1002` (a real wrong-method-table dispatch), not merely a vacuous pass, proving the guard, not just a label. New tests: `MergeIdentityTypeCheckerTests.cs` (arm survival and guard-fires across all five kinds, both forms; permissiveness preserved on an `Unknown` branch; N-branch behaviour — a three-arm switch with one mismatched pair reports once, a nested ternary/switch reports at the innermost point only, no cascade, per D-300's `Error` universal assignability; the bonus-fix cases), each guard-fires assertion including the full diagnostic contract (code, line, column) per the project's test convention. Full solution `dotnet test` green (3,819 tests across eight projects — `Grob.BenchCheck` untouched by this change), `Grob.Compiler` line coverage 97.09%. No opcode change. No new error code; count unchanged at **121**. Refines D-403 (the seven-gap survey this closes, and the `NilCoalesceIdentityMismatch` predicate this generalises), D-402/D-401/D-400 (the `NilCoalesce`-arm/guard lineage extended to a second merge shape), D-362 (permissive-`Unknown` catalogue, unchanged), D-277/D-301 (switch-expression exhaustiveness/arm unification, the fold this guard runs alongside), D-300 (error recovery — `Error`'s universal assignability, relied on for no-cascade). |
+| D-405 | August 2026 | Compiler — parser error recovery (`Synchronise()` double-diagnostic on a malformed map-literal/anon-struct key) | Closes a finding carried in the correctness batch since the D-376 branch review, with no prior `D-###`: a malformed **non-string** map-literal key (and, found to share the identical shape, an anon-struct field with a non-identifier name) produced **two** `E2001` diagnostics for one mistake — the genuine one at the bad key/field, plus a phantom `"unexpected token '}' — expected expression"` at the literal's own closing brace. **Empirically reproduced first** across every malformed-key/field shape (identifier key, interpolated-string key, raw/backtick key for map; string/interpolated/raw field name for anon-struct) plus well-formed controls — all malformed shapes doubled, all well-formed shapes stayed clean. **Origin traced to a call-site gap, not a `Synchronise()` defect and not `Error`-node-typing**: `ParseMapLiteral`'s entry loop (and `ParseAnonStructLiteral`'s field loop) had no local recovery wrapper of their own, unlike `ParseReturn`/`ParseThrow` (which call `ExpressionOrError` directly) or `ParseBlock`'s statement loop — so a failure inside `ParseMapEntry`/`ParseOneFieldInit` propagated straight past the still-open `{`'s owning frame, up to the nearest top-level `*OrError` wrapper, several frames further out and long after that frame had unwound. `Synchronise()` (§29) then anchored on the literal's own closing `}` — correct per the letter of "the closing brace of an enclosing block," since it cannot distinguish that `}` from a genuine block's — without consuming it, leaving it for a fresh, unrelated top-level parse attempt to fail on again: the phantom. **`Synchronise()` verdict**: matches D-300 §29 exactly as specified; the gap is that §29's synchronisation-set text and worked example (§29.6) were written against block-statement contexts and never anticipated a `{}`-delimited literal interior with no owning recovery wrapper — a spec-model gap, not implementation drift. **Fixed at the call site**: two new local-recovery wrappers, `ParseMapEntryOrError`/`ParseFieldInitOrError`, catch the failure while the owning loop's frame is still live and resynchronise via a new, narrower helper, `SkipToNextLiteralElementBoundary` — distinct from and not a modification to `Synchronise()`, which has no anchor for a bare `,` (exactly what an entry-list boundary needs) — stopping at this literal's own next `,` or `}`, tracking every bracket-pair kind (`()`/`[]`/`{}`/`#{}`/string-interpolation `${}`) the abandoned element's own value could have opened so a nested literal's internal `,` is never mistaken for this list's separator. A malformed entry/field is **omitted** from the resulting AST, not replaced by a placeholder node (`MapEntry`/`FieldInit` gained no error variant; none was needed). **General-shape survey — six constructs share the underlying gap, two fixed here**: named-struct construction (`TypeName { … }`, `ParsePostfix`), switch-expression arms (`ParseSwitchArms`), `type`-declaration field bodies (`ParseTypeDecl`) and `param`-block bodies (`ParseParamBlockDecl`) all empirically reproduce the identical double-diagnostic shape and are **not fixed here** — reported as an open finding, deliberately left for a future increment; only the two call sites the approved scope named (map-literal, anon-struct) were touched. **Two-distinct-mistakes proof, load-bearing**: `map<string,int>{ foo: 1, bar: 2 }` (both keys malformed) previously produced only 2 diagnostics too, but one was the phantom and `bar`'s own mistake was never reported at all — the whole literal was abandoned by one top-level `Synchronise()` sweep after `foo` failed. After the fix both `foo` and `bar` are independently reported (2 genuine diagnostics) and the phantom is gone — proof the fix removes a duplicate without suppressing a second, genuine mistake. An adversarial edge case (malformed key with no closing `}` at all) was also characterised: `SkipToNextLiteralElementBoundary` safely runs out at EOF (no infinite loop), and the subsequent `Expect(RightBrace)` correctly reports the missing brace as its own, genuine second diagnostic — a real behaviour change from before the fix (previously silently absorbed into the whole-statement `Synchronise()` sweep to EOF), consistent with D-300's one-diagnostic-per-root-cause intent rather than a regression. **Finding added by the PR #191 review, fixed on the branch**: `SkipToNextLiteralElementBoundary` began its scan at nesting depth zero, which is wrong whenever the abandoned element had already consumed an opening delimiter before it failed — `{ "a": foo(1 2), "b": 3 }` fails inside the argument list with `(` consumed, so the from-zero counter met the `)` first, went negative, and thereafter matched neither the entry `,` nor the literal's own `}`: it ran to EOF and swallowed the rest of the file, losing a well-formed `x := 9` that the pre-fix parser still recovered — a regression the branch introduced, not a pre-existing gap, and the exact over-swallowing failure mode D-405 exists to remove. The counter is replaced by a delimiter **stack** replayed from the element's own tokens (`OpenDelimitersBetween`/`TrackDelimiter`), so the scan resumes at the nesting actually open at the failure point; a `}` that cannot close whatever is innermost-open is treated as the enclosing literal's own brace and stops the scan **unconsumed**, so an element that leaves a bracket permanently open (`{ "a": (1, "b": 2 }`) no longer promotes that bracket's internal `,` to an outer entry boundary. Three regression tests pin both directions (map and anon-struct closed-pair recovery, and the never-closed-pair case). **No gold master needed regenerating**: `docs/errors/examples/` was searched for any expected output with two diagnostics for one mistake; none exist for map-literal or anon-struct keys or any other construct — the malformed-key/field parse path was never exercised by that corpus. New/updated tests: `ParserMapLiteralTests.cs` (three pre-existing malformed-key tests tightened from `Assert.Equal(2, …)` to the full diagnostic contract — code, message, `Range.Start.Line`/`Column` — asserting exactly one; the two-distinct-mistakes test; the unterminated-plus-malformed-key edge case; a full-pipeline parse-then-type-check recovery test), `ParserAnonStructLiteralTests.cs` (new file — the anon-struct equivalents of all of the above, plus two well-formed parser-level control tests that did not previously exist at this layer); the PR #191 review added three nesting regressions, the §3.1.1/D-311 identifier-annotation assertions on both parse-then-type-check tests, and the missing line/column on the unterminated edge case. Full solution `dotnet test` green (3,832 tests across eight projects), `Grob.Compiler` line coverage 97.11%. No opcode change. No new error code; `E2001` unchanged, count stays **121**. Refines D-300 (§29 synchronisation set — matched exactly, the spec-model gap this entry's fix works around rather than amends). Cites D-376 (the map-literal key rule this entry does not change — only the diagnostic count), D-404 (most recent prior entry in this area, unrelated subsystem). |
 
 ---
 
@@ -11284,6 +11285,167 @@ Finding 4), D-402, D-401, D-400 (the `NilCoalesce`-arm/guard lineage), D-362
 
 ---
 
+### D-405 — `Synchronise()` double-diagnostic on a malformed map-literal/anon-struct key closed: call-site local recovery, general four-construct gap left open (August 2026)
+
+Area: Compiler — parser error recovery
+
+Supersedes: none
+Superseded by: none
+
+Closes a finding carried in the correctness batch since the D-376 branch review —
+recorded only in conversation, with no prior `D-###`: a malformed **non-string**
+map-literal key produced **two** `E2001` diagnostics for one mistake, traced at the time
+to a pre-existing `Synchronise()` limitation shared identically by anon-struct literals.
+This entry treats that summary as a lead, not established fact, and rebuilds the finding
+from empirical reproduction and a fresh trace against the current corpus (D-356 through
+D-404 have landed since).
+
+**Reproduced first, not assumed.** Every required shape was run through the CLI and the
+parser test harness before any fix was designed: a map-literal key that is a bare
+identifier, an interpolated string and a raw/backtick string; the anon-struct
+equivalents (a field name that is a string literal, an interpolated string or a
+raw/backtick string — anon-struct's single `Expect(TokenKind.Identifier, …)` guard means
+all three fail via the identical code path, unlike map's two-branch key parser); and
+well-formed controls of both forms. Every malformed shape produced exactly two `E2001`
+diagnostics — the genuine one at the bad key/field, plus a phantom
+`"unexpected token '}' — expected expression"` pinned at the literal's own closing brace.
+Every well-formed control produced none.
+
+**Origin traced to a call-site gap — not a `Synchronise()` defect, not
+`Error`-node-typing.** `ParseMapLiteral`'s entry loop (`ParseMapEntry`) and
+`ParseAnonStructLiteral`'s field loop (`ParseOneFieldInit`) had no local recovery wrapper
+of their own, unlike `ParseReturn`/`ParseThrow` (which call `ExpressionOrError` directly)
+or `ParseBlock`'s statement loop (which calls `ParseStatementOrError`). A failure inside
+the key/field parse therefore propagated straight past the still-open `{`'s owning
+frame — `ParseMapLiteral` or `ParseAnonStructLiteral` — all the way up to the nearest
+top-level `*OrError` wrapper (`ParseTopLevelItemOrError`, several frames further out),
+by which point the frame that knew this `{` was still open had already unwound.
+`Synchronise()` then anchored on the literal's own closing `}`, stopping without
+consuming it — correct per the letter of "the closing brace of an enclosing block"
+(§29.1), since `Synchronise()` genuinely cannot distinguish a literal's own delimiter
+from a real enclosing block's at the token level. That left the `}` for a fresh,
+unrelated top-level parse attempt, which failed on it again: the phantom second
+diagnostic. Both diagnostics are raised by the parser, before the type checker runs —
+`Error`'s universal assignability (§29.3) is never in play, ruling out an
+`Error`-node-typing fix.
+
+**`Synchronise()` verdict: matches D-300 §29 to the letter; the spec's model has a gap,
+not the implementation.** Traced the §29.6 worked example (`return a +\n}` inside a
+function body) against the live code to confirm why it works, for contrast:
+`ParseReturn` calls `ExpressionOrError` directly, which sits inside `ParseBlock`'s own
+statement loop — the frame watching for that exact `}` is still live when
+`Synchronise()` returns, so the loop's own `!Check(RightBrace)` check naturally
+terminates and consumes the brace. §29's synchronisation-set text and its only worked
+example are both written against block-statement contexts; nothing in the spec
+addresses a `{}`-delimited literal interior with no owning recovery wrapper — that
+context was not in scope of the original spec, not a case the implementation drifted
+away from. No change to `Synchronise()`'s anchor rules; no `grob-language-fundamentals.md`
+§29 edit — the spec is accurate for the contexts it was written to cover, and a
+clarifying note is left to the maintainer's judgement rather than added here.
+
+**Fixed at the call site.** Two new local-recovery wrappers, `ParseMapEntryOrError` and
+`ParseFieldInitOrError`, catch the `ParseFailedException` while the owning loop's frame
+(`ParseMapLiteral`/`ParseAnonStructLiteral`) is still live, then resynchronise via a new,
+narrower helper, `SkipToNextLiteralElementBoundary` — deliberately distinct from
+`Synchronise()`, not a modification to it, because `Synchronise()` has no anchor for a
+bare `,`, which is exactly what an entry-list boundary needs and a statement-level
+recovery anchor never did. The new helper stops at the next `,` or `}` at the nesting
+level where it is entered (always element-boundary level, since it only ever runs
+immediately after a fresh failure), tracking every bracket-pair kind the abandoned
+element's own partially-parsed value could itself have opened —
+`()`/`[]`/`{}`/`#{}`/a string interpolation's `${}` — so a nested literal or call inside
+that value is skipped as a unit rather than having its internal `,` mistaken for this
+list's separator. A malformed entry/field is **omitted** from the resulting
+`MapLiteralExpr`/`AnonStructExpr`, not replaced by a placeholder node — `MapEntry` and
+`FieldInit` gained no error variant, and none was needed (an empty-entries/empty-fields
+literal was already legal before this fix). The named-struct-construction call site in
+`ParsePostfix`, which also calls `ParseOneFieldInit`, is untouched — it keeps calling
+`ParseOneFieldInit` directly, per the approved narrow scope.
+
+**General-shape survey: six constructs share the gap, four left open.** Beyond map
+literals and anon-struct literals (fixed here), named-struct construction
+(`TypeName { … }` in `ParsePostfix`), switch-expression arms (`ParseSwitchArms`),
+`type`-declaration field bodies (`ParseTypeDecl`) and `param`-block bodies
+(`ParseParamBlockDecl`) all empirically reproduce the identical double-diagnostic shape —
+each parses a `{}`-delimited element list with no local recovery wrapper of its own.
+Array literals and call-argument lists do **not** share it, incidentally rather than by
+design: `Synchronise()` never treats `)`/`]` as anchors at all, so it skips past them as
+ordinary tokens using the lexer's accurate per-token bracket depth on the next newline.
+The four unfixed constructs are recorded here as an **open finding**, deliberately not
+fixed on this branch — extending the wrapper pattern to them is a scope decision for a
+future increment, not assumed here.
+
+**Two-distinct-mistakes proof, load-bearing.** `map<string,int>{ foo: 1, bar: 2 }` (both
+keys malformed) produced only 2 diagnostics before this fix too — but one was the
+phantom, and `bar`'s own mistake was never reported at all, because the whole literal
+was abandoned by a single top-level `Synchronise()` sweep once `foo` failed. After the
+fix, both `foo` and `bar` are independently reported (2 genuine diagnostics, one per
+malformed key) and the phantom is gone — direct proof the fix removes a duplicate
+without suppressing a second, genuine mistake in the same literal. An anon-struct
+equivalent (`#{ 1: 1, 2: 2 }`) confirms the same for the second call site. An adversarial
+edge case — a malformed key with no closing `}` at all — was also characterised:
+`SkipToNextLiteralElementBoundary` safely runs out at EOF with no infinite loop, and the
+subsequent `Expect(RightBrace)` then reports the missing brace as its own genuine second
+diagnostic. This is a real, understood behaviour change from before the fix (previously
+silently absorbed into the whole-statement `Synchronise()` sweep running to EOF) —
+consistent with D-300's one-diagnostic-per-root-cause intent, not a regression.
+
+**Nesting must be carried into the resync — finding added by the PR #191 review.** The
+first cut of `SkipToNextLiteralElementBoundary` began its scan at nesting depth zero. That
+is only correct when the abandoned element failed before opening a delimiter of its own,
+which is not the general case: `map<string, int>{ "a": foo(1 2), "b": 3 }` fails inside
+the argument list with `(` already consumed, so the from-zero counter met the `)` first,
+drove itself negative, and thereafter matched neither the entry `,` nor the literal's own
+`}` — it ran to EOF and swallowed the remainder of the file, losing a well-formed
+`x := 9` that the pre-fix parser still recovered. That is a regression this branch
+introduced, not a pre-existing gap, and it is precisely the over-swallowing failure mode
+D-405 exists to remove. The counter is replaced by a delimiter **stack**, replayed from
+the abandoned element's own tokens before the scan starts (`OpenDelimitersBetween`, with
+one shared `TrackDelimiter` step used for both the replay and the scan), so the scan
+resumes at the nesting actually open at the failure point. A closing token that cannot
+close whatever is innermost-open is not counted: if it is a `}` it is taken to be the
+enclosing literal's own closing brace and stops the scan **unconsumed**, handing it back
+to `Expect(TokenKind.RightBrace)`; any other stray closer is skipped as an ordinary
+token. This is what makes an element that leaves a bracket permanently open behave:
+`map<string, int>{ "a": (1, "b": 2 }` no longer promotes the `,` inside the still-open
+`(` to an outer entry boundary, so `"b": 2` is not fabricated as a second entry — the
+literal closes with no entries and one diagnostic. Three regression tests pin both
+directions, two on the map call site and one on the anon-struct twin.
+
+**No gold master needed regenerating.** `docs/errors/examples/` (57 expected-output
+files) was searched for any file with two diagnostics for one mistake; none exist for
+map-literal or anon-struct keys, or for any other construct. The one map-literal-adjacent
+gold master, `duplicate-key-map-literal`, exercises D-376's runtime `E0016` duplicate-key
+check against two well-formed keys — it never reaches the malformed-key parse path this
+entry fixes, and is unaffected.
+
+New/updated tests: `ParserMapLiteralTests.cs` (three pre-existing malformed-key tests
+tightened from `Assert.Equal(2, …)` to the full diagnostic contract — code, message,
+`Range.Start.Line`/`Column` — now asserting exactly one; the two-distinct-mistakes test;
+the unterminated-plus-malformed-key adversarial edge case; a full-pipeline
+parse-then-type-check recovery test proving the statement after the malformed literal
+both parses and type-checks cleanly), `ParserAnonStructLiteralTests.cs` (new file — the
+anon-struct equivalents of all of the above, plus two well-formed parser-level control
+tests that did not previously exist at this layer). Added by the PR #191 review: the
+parse-then-type-check tests in both files now also assert the §3.1.1/D-311 identifier
+annotations on the well-formed tail (non-error `ResolvedType`, non-null `Declaration`,
+not `UnresolvedDecl.Instance`) rather than only the absence of further diagnostics, the
+unterminated edge case asserts the missing-brace diagnostic's exact line and column, and
+three nesting regressions were added —
+`MalformedEntry_ValueClosesItsOwnBracketPair_RecoversAtOuterCommaOnly`,
+`MalformedEntry_ValueLeavesBracketPairOpen_DoesNotReuseInnerComma` and the anon-struct
+twin of the first. Full solution `dotnet test` green
+(3,832 tests across eight projects, 0 regressions), `Grob.Compiler` line coverage 97.11%,
+above the 90% bar. No opcode change. No new error code; `E2001` unchanged, error-code
+count stays **121**.
+
+Refines D-300 (§29 synchronisation set — matched exactly; the spec-model gap this entry's
+fix works around, not amends). Cites D-376 (the map-literal plain-string-key rule, which
+this entry does not change — only the diagnostic count for violating it), D-404 (most
+recent prior entry, unrelated subsystem, cited for corpus continuity).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -11505,7 +11667,62 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — side-channel merge-identity guard generalised to N branches, D-404_
+_August 2026 — Synchronise() double-diagnostic on a malformed map-literal/anon-struct_
+_key closed, D-405 added: a finding carried in the correctness batch since the D-376_
+_branch review (no prior D-###) — a malformed non-string map-literal key, and an_
+_anon-struct field with a non-identifier name, each produced two E2001 diagnostics for_
+_one mistake. Reproduced first across every malformed-key/field shape plus well-formed_
+_controls before any fix was designed. Origin traced to a call-site gap, not a_
+_Synchronise() defect and not Error-node-typing: ParseMapLiteral's entry loop and_
+_ParseAnonStructLiteral's field loop had no local recovery wrapper of their own, unlike_
+_ParseReturn/ParseThrow (ExpressionOrError) or ParseBlock's statement loop, so a key/field_
+_failure propagated past the still-open `{`'s owning frame to the nearest top-level_
+_*OrError wrapper, several frames further out and long after that frame had unwound;_
+_Synchronise() then anchored on the literal's own closing '}' without consuming it —_
+_correct per the letter of "the closing brace of an enclosing block," since it cannot_
+_distinguish that '}' from a genuine block's — leaving it for an unrelated top-level_
+_parse attempt to fail on again: the phantom second diagnostic. Synchronise() verdict:_
+_matches D-300 §29 to the letter (confirmed by tracing why the §29.6 worked example_
+_recovers correctly — ParseReturn's ExpressionOrError sits inside ParseBlock's own_
+_statement loop, still live when Synchronise() returns); the spec's synchronisation-set_
+_text and worked example were written against block-statement contexts and never_
+_anticipated a '{}'-delimited literal interior with no owning recovery wrapper — a_
+_spec-model gap, not implementation drift, so Synchronise() itself and_
+_grob-language-fundamentals.md §29 are both left unchanged. Fixed at the call site: two_
+_new local-recovery wrappers, ParseMapEntryOrError/ParseFieldInitOrError, catch the_
+_failure while the owning loop's frame is still live and resynchronise via a new,_
+_narrower helper, SkipToNextLiteralElementBoundary — distinct from Synchronise(), which_
+_has no anchor for a bare ',', exactly what an entry-list boundary needs — stopping at_
+_this literal's own next ',' or '}', tracking every bracket-pair kind the abandoned_
+_element's value could have opened so a nested literal's internal ',' is never mistaken_
+_for this list's separator. A malformed entry/field is omitted from the resulting AST,_
+_not replaced by a placeholder node. General-shape survey: six constructs share the gap;_
+_named-struct construction, switch-expression arms, type-declaration field bodies and_
+_param-block bodies also reproduce it empirically and are reported as an open finding,_
+_deliberately not fixed here — only the two approved call sites (map-literal,_
+_anon-struct) were touched. Two-distinct-mistakes proof, load-bearing:_
+_map<string,int>{ foo: 1, bar: 2 } previously reported only 2 diagnostics too (one_
+_phantom, bar's own mistake swallowed entirely); after the fix both foo and bar are_
+_independently reported and the phantom is gone. An adversarial edge case (malformed key,_
+_no closing '}' at all) safely runs out at EOF with no infinite loop and correctly_
+_reports the missing brace as its own genuine second diagnostic — an understood_
+_behaviour change, not a regression. No gold master needed regenerating — none of the 57_
+_expected-output files encode a two-diagnostic result for one mistake. New tests:_
+_ParserMapLiteralTests.cs (three pre-existing tests tightened to assert exactly one_
+_diagnostic with the full contract; two-distinct-mistakes; the unterminated edge case; a_
+_full-pipeline parse-then-type-check recovery test), ParserAnonStructLiteralTests.cs (new_
+_file, the anon-struct equivalents). Finding added by the PR #191 review and fixed on the_
+_branch: SkipToNextLiteralElementBoundary started its scan at nesting depth zero, wrong_
+_whenever the abandoned element had already consumed an opener — foo(1 2) as an entry_
+_value drove the counter negative on the ')' and then swallowed the rest of the file,_
+_losing a well-formed statement the pre-fix parser still recovered. Replaced by a_
+_delimiter stack replayed from the element's own tokens; a '}' that cannot close_
+_whatever is innermost-open is treated as the enclosing literal's brace and stops the_
+_scan unconsumed. Three regression tests. Full solution dotnet test green (3,832 tests across_
+_eight projects), Grob.Compiler line coverage 97.11%. No opcode change, no new error_
+_code, count unchanged at 121. Refines D-300 (§29, matched exactly). Cites D-376_
+_(unchanged key rule), D-404 (prior entry, unrelated subsystem)._
+_Previous: August 2026 — side-channel merge-identity guard generalised to N branches, D-404_
 _added: closes all seven gaps D-403's survey found and left open, plus one adjacent_
 _eighth gap found and fixed in the same session. PR #189 (D-403 Finding 4) proved a_
 _structural side-channel arm is only sound with an identity guard — the arm makes an_

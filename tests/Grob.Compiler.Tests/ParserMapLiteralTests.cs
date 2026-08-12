@@ -239,20 +239,25 @@ public sealed class ParserMapLiteralTests {
 
     [Fact]
     public void MalformedEntry_NonStringLiteralKey_RecoversAndParsingContinues() {
-        // The key diagnostic (E2001, "expected string literal key") is raised before the
-        // map literal's own '}' is reached, so the still-open '{' is behind the parser's
-        // cursor when Synchronise() runs — Synchronise (§29) treats ANY '}' as an anchor
-        // regardless of nesting, so it stops at the literal's own closing brace rather
-        // than skipping past it, and the next top-level parse attempt immediately fails
-        // again on that leftover '}' ("unexpected token '}'"). This is not specific to map
-        // literals: the identical two-diagnostic shape occurs today for a malformed
-        // anon-struct field failing before its own '}' (e.g. '#{ .bad: 1 }') — a
-        // pre-existing, general limitation of the brace-anchor recovery model shared by
-        // every '{ }'-delimited construct, not a defect introduced here. Parsing still
-        // recovers cleanly onto the next line — no unbounded cascade.
+        // D-405: ParseMapEntryOrError — the call-site local-recovery wrapper around
+        // ParseMapEntry — catches the key failure while ParseMapLiteral's own entry
+        // loop (the frame that owns the still-open '{') is still on the call stack,
+        // so recovery resynchronises to this literal's own ',' or '}' directly
+        // rather than letting the exception escape to the top-level recovery
+        // wrapper. Before the fix this produced a second, phantom "unexpected
+        // token '}'" diagnostic, because Synchronise() ran three frames further
+        // out, with the frame that owned the '{' already unwound off the stack —
+        // see D-405 for the full trace. The malformed entry is omitted from the
+        // literal, not replaced by a placeholder node.
         (CompilationUnit unit, DiagnosticBag bag) = Parse("m := map<string, int>{a: 1}\nx := 2\n");
-        Assert.Equal(2, bag.Diagnostics.Count);
-        Assert.All(bag.Diagnostics, d => Assert.Equal("E2001", d.Code));
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected string literal key", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(23, d.Range.Start.Column);
+
+        MapLiteralExpr map = Assert.IsType<MapLiteralExpr>(Assert.IsType<VarDeclStmt>(unit.TopLevel[0]).Initializer);
+        Assert.Empty(map.Entries);
 
         VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
         Assert.Equal("x", tail.Name);
@@ -262,20 +267,19 @@ public sealed class ParserMapLiteralTests {
     [Fact]
     public void MalformedEntry_InterpolatedStringKey_RecoversAndParsingContinues() {
         // "${x}" lexes as StringStart/InterpStart/.../InterpEnd/StringEnd — a genuine
-        // TokenKind.StringStart run — so ParseMapEntryKey takes the *second* rejection
+        // TokenKind.StringStart run — so ParseMapEntryKey takes its *second* rejection
         // branch: ParseInterpolatedString() runs to completion (consuming the whole
         // key, cursor left sitting on the ':' that follows it), and only then does the
         // parts.All(p is StringTextPart) check fail (the key has a StringExpressionPart),
-        // raising E2001 via FailAt at the key's start location. That still leaves the
-        // cursor behind the map literal's own unclosed '}': Synchronise (§29) walks
-        // forward from ':' through '1' and stops at that '}' as its brace anchor,
-        // producing the same two-diagnostic shape as the identifier-key case above (the
-        // leftover '}' immediately fails again as "unexpected token '}'") — the anchor
-        // is reached regardless of which branch inside ParseMapEntryKey threw, since
-        // both leave the cursor before the literal's closing brace.
+        // raising E2001 via FailAt at the key's start location. ParseMapEntryOrError
+        // (D-405) still recovers locally to this literal's own ',' or '}' from there —
+        // exactly one diagnostic, no phantom.
         (CompilationUnit unit, DiagnosticBag bag) = Parse("m := map<string, int>{\"${x}\": 1}\nx := 2\n");
-        Assert.Equal(2, bag.Diagnostics.Count);
-        Assert.All(bag.Diagnostics, d => Assert.Equal("E2001", d.Code));
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected string literal key", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(23, d.Range.Start.Column);
 
         VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
         Assert.Equal("x", tail.Name);
@@ -287,19 +291,176 @@ public sealed class ParserMapLiteralTests {
         // A backtick literal lexes as the single TokenKind.RawStringLiteral token — not
         // a StringStart/StringEnd run at all — so ParseMapEntryKey fails at its *first*
         // guard (!Check(TokenKind.StringStart)) before any string parsing starts, the
-        // same branch the plain-identifier key case exercises above; the doc comment on
-        // ParseMapEntryKey groups "an identifier, a raw string, or a genuinely
-        // interpolated string" together as E2001, but a raw string in fact shares the
-        // identifier case's code path, not the interpolated case's. The cursor sits on
-        // the untouched raw-string token when Fail() fires, and Synchronise (§29) walks
-        // forward through ':' and '1' to the map literal's own '}' anchor exactly as in
-        // the other malformed-key cases, giving the same two-diagnostic cascade.
+        // same branch the plain-identifier key case exercises above. ParseMapEntryOrError
+        // (D-405) recovers locally exactly as in that case — exactly one diagnostic.
         (CompilationUnit unit, DiagnosticBag bag) = Parse("m := map<string, int>{`k`: 1}\nx := 2\n");
-        Assert.Equal(2, bag.Diagnostics.Count);
-        Assert.All(bag.Diagnostics, d => Assert.Equal("E2001", d.Code));
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected string literal key", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(23, d.Range.Start.Column);
 
         VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
         Assert.Equal("x", tail.Name);
         Assert.Equal(2L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
+    }
+
+    [Fact]
+    public void MalformedEntry_TwoDistinctMalformedKeys_ProducesTwoDiagnosticsNoneSwallowed() {
+        // Load-bearing (D-405): proves the fix removes the phantom duplicate without
+        // suppressing a second, genuinely independent mistake in the same literal.
+        // Before the fix this source also produced exactly 2 diagnostics — but one of
+        // them was the phantom "unexpected token '}'" and 'bar''s own mistake was
+        // never reported at all, because the entire literal was abandoned by a single
+        // top-level Synchronise() sweep after 'foo' failed. After the fix both 'foo'
+        // and 'bar' are independently reported and the phantom is gone.
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("m := map<string, int>{foo: 1, bar: 2}\nx := 3\n");
+        Assert.Equal(2, bag.Diagnostics.Count);
+
+        Diagnostic first = bag.Diagnostics[0];
+        Assert.Equal("E2001", first.Code);
+        Assert.Equal("expected string literal key", first.Message);
+        Assert.Equal(1, first.Range.Start.Line);
+        Assert.Equal(23, first.Range.Start.Column); // 'foo'
+
+        Diagnostic second = bag.Diagnostics[1];
+        Assert.Equal("E2001", second.Code);
+        Assert.Equal("expected string literal key", second.Message);
+        Assert.Equal(1, second.Range.Start.Line);
+        Assert.Equal(31, second.Range.Start.Column); // 'bar'
+
+        MapLiteralExpr map = Assert.IsType<MapLiteralExpr>(Assert.IsType<VarDeclStmt>(unit.TopLevel[0]).Initializer);
+        Assert.Empty(map.Entries);
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("x", tail.Name);
+        Assert.Equal(3L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
+    }
+
+    [Fact]
+    public void MalformedEntry_UnterminatedAfterMalformedKey_ReportsBothRootCauses() {
+        // Adversarial edge case (malformed input never throws, recovery never loops):
+        // a malformed key AND a missing closing '}' are two genuinely independent
+        // mistakes. The local resync (SkipToNextLiteralElementBoundary) has no ','
+        // or '}' at this nesting level to find and safely runs out at EOF — no
+        // infinite loop — and the subsequent Expect(RightBrace) then reports the
+        // missing brace as its own diagnostic: a real second root cause D-300 says
+        // must not be suppressed, not a phantom. Before D-405 this combined case
+        // reported only the key mistake — the missing-brace problem was silently
+        // absorbed by the (now call-site-scoped, no longer whole-statement)
+        // Synchronise() sweep running all the way to EOF.
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("m := map<string, int>{foo: 1\n");
+        Assert.Equal(2, bag.Diagnostics.Count);
+
+        Diagnostic key = bag.Diagnostics[0];
+        Assert.Equal("E2001", key.Code);
+        Assert.Equal("expected string literal key", key.Message);
+        Assert.Equal(1, key.Range.Start.Line);
+        Assert.Equal(23, key.Range.Start.Column); // 'foo'
+
+        // The missing-brace diagnostic is pinned at EOF, which the source's trailing
+        // newline puts at line 2, column 1.
+        Diagnostic brace = bag.Diagnostics[1];
+        Assert.Equal("E2001", brace.Code);
+        Assert.Equal("expected '}' to close map literal", brace.Message);
+        Assert.Equal(2, brace.Range.Start.Line);
+        Assert.Equal(1, brace.Range.Start.Column);
+
+        Assert.NotNull(unit);
+    }
+
+    [Fact]
+    public void MalformedEntry_SubsequentStatement_TypeChecksCleanly() {
+        // Full-pipeline proof that recovery is not just "the parser doesn't crash" —
+        // the statement after the malformed literal must both parse and type-check
+        // with no further diagnostics, confirming the omitted malformed entry leaves
+        // the MapLiteralExpr in a shape the type checker accepts (an empty-entries
+        // map literal is already legal — see EmptyMapLiteral_Parses above).
+        const string src = "m := map<string, int>{a: 1}\nx := 2\ny := x + 1\n";
+        DiagnosticBag bag = new();
+        IReadOnlyList<Token> tokens = Lexer.Scan(src, bag);
+        Assert.Empty(bag.Diagnostics);
+        CompilationUnit unit = Parser.Parse(tokens, bag);
+        Diagnostic parseDiagnostic = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", parseDiagnostic.Code);
+        Assert.Equal("expected string literal key", parseDiagnostic.Message);
+        Assert.Equal(1, parseDiagnostic.Range.Start.Line);
+        Assert.Equal(23, parseDiagnostic.Range.Start.Column); // 'a'
+
+        new TypeChecker(bag).Check(unit);
+
+        Diagnostic onlyDiagnostic = Assert.Single(bag.Diagnostics);
+        Assert.Same(parseDiagnostic, onlyDiagnostic);
+
+        // Section 3.1.1 / D-311: "no further diagnostics" alone would still pass if
+        // the checker had left 'x' unresolved, so assert the LSP-enabling fields on
+        // the identifier itself — recovery must not leave the well-formed tail
+        // under-annotated.
+        VarDeclStmt yDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        BinaryExpr sum = Assert.IsType<BinaryExpr>(yDecl.Initializer);
+        IdentifierExpr xRef = Assert.IsType<IdentifierExpr>(sum.Left);
+        Assert.Equal("x", xRef.Name);
+        // GrobType is a value type, so Assert.NotNull is meaningless — assert that
+        // the checker set a non-error type instead.
+        Assert.NotEqual(GrobType.Error, xRef.ResolvedType);
+        Assert.NotNull(xRef.Declaration);
+        Assert.NotSame(UnresolvedDecl.Instance, xRef.Declaration);
+    }
+
+    // -----------------------------------------------------------------------
+    // Error recovery — delimiters the abandoned entry opened before it failed (D-405)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MalformedEntry_ValueClosesItsOwnBracketPair_RecoversAtOuterCommaOnly() {
+        // Regression (PR #191 review): SkipToNextLiteralElementBoundary must start
+        // from the delimiter nesting the abandoned entry had already opened before it
+        // failed, not from zero. 'foo(1 2)' fails inside the argument list with '('
+        // already consumed, so a from-zero scan met the ')' first, drove its counter
+        // negative, and thereafter matched neither the entry ',' nor the literal's own
+        // '}' — swallowing the rest of the file, including the well-formed 'x := 9'.
+        (CompilationUnit unit, DiagnosticBag bag) =
+            Parse("m := map<string, int>{\"a\": foo(1 2), \"b\": 3}\nx := 9\n");
+
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected ')' to close call", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(34, d.Range.Start.Column); // the stray '2'
+
+        // The malformed entry is omitted, but the ',' after the now-closed ')' is a
+        // genuine outer boundary, so '"b": 3' is still recovered as a real entry.
+        MapLiteralExpr map = Assert.IsType<MapLiteralExpr>(Assert.IsType<VarDeclStmt>(unit.TopLevel[0]).Initializer);
+        MapEntry entry = Assert.Single(map.Entries);
+        Assert.Equal("b", entry.Key);
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("x", tail.Name);
+        Assert.Equal(9L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
+    }
+
+    [Fact]
+    public void MalformedEntry_ValueLeavesBracketPairOpen_DoesNotReuseInnerComma() {
+        // Regression (PR #191 review), the other half of the same defect: here '(' is
+        // consumed and never closed, so every ',' that follows belongs to the open
+        // paren, not to the entry list. A from-zero scan stopped at the first inner
+        // ',' and wrongly promoted '"b": 2' to an outer entry. Carrying the nesting in
+        // means the scan stops only at the literal's own '}' — which cannot close a
+        // '(' — leaving it unconsumed for Expect(RightBrace).
+        (CompilationUnit unit, DiagnosticBag bag) =
+            Parse("m := map<string, int>{\"a\": (1, \"b\": 2}\nx := 9\n");
+
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected ')'", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(30, d.Range.Start.Column); // the ',' inside the still-open '('
+
+        MapLiteralExpr map = Assert.IsType<MapLiteralExpr>(Assert.IsType<VarDeclStmt>(unit.TopLevel[0]).Initializer);
+        Assert.Empty(map.Entries);
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("x", tail.Name);
+        Assert.Equal(9L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
     }
 }
