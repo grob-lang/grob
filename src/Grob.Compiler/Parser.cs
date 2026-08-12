@@ -1218,18 +1218,24 @@ public sealed class Parser {
 
     // #{ field: value, … } — anonymous-struct literal (Sprint 6D).
     // '#{' is a single HashBrace token; the lexer already incremented _depth so
-    // the matching '}' is scanned at the correct nesting level.
+    // the matching '}' is scanned at the correct nesting level. Each field goes
+    // through ParseFieldInitOrError (D-405), not a bare ParseOneFieldInit call, so
+    // a malformed field name is recovered locally rather than escaping to the
+    // top-level recovery wrapper — see that method's doc comment for why that
+    // distinction matters.
     private AnonStructExpr ParseAnonStructLiteral() {
         SourceLocation start = Current.Location;
         Advance(); // consume TokenKind.HashBrace
         SkipNewlines();
         List<FieldInit> fields = [];
         if (!Check(TokenKind.RightBrace)) {
-            fields.Add(ParseOneFieldInit());
+            FieldInit? first = ParseFieldInitOrError();
+            if (first is not null) fields.Add(first);
             while (Match(TokenKind.Comma)) {
                 SkipNewlines();
                 if (Check(TokenKind.RightBrace)) break; // trailing comma
-                fields.Add(ParseOneFieldInit());
+                FieldInit? next = ParseFieldInitOrError();
+                if (next is not null) fields.Add(next);
             }
             SkipNewlines();
         }
@@ -1237,11 +1243,42 @@ public sealed class Parser {
         return new AnonStructExpr(new SourceRange(start, closeBrace.Location), fields);
     }
 
+    /// <summary>
+    /// Local recovery wrapper (D-405) around <see cref="ParseOneFieldInit"/>, used
+    /// only by <see cref="ParseAnonStructLiteral"/>'s own field loop — the named
+    /// struct-construction call site in <see cref="ParsePostfix"/> deliberately
+    /// keeps calling <see cref="ParseOneFieldInit"/> directly and is out of scope
+    /// for this fix. See <see cref="ParseMapEntryOrError"/>'s doc comment for the
+    /// full rationale, which applies identically here: catching the failure at
+    /// this call site, rather than letting it escape to the top-level recovery
+    /// wrapper, keeps <see cref="ParseAnonStructLiteral"/>'s own frame — the one
+    /// that owns this literal's still-open '{' — on the call stack while recovery
+    /// runs, so <see cref="SkipToNextLiteralElementBoundary"/> can resynchronise
+    /// to this literal's own ',' or '}' instead of a phantom diagnostic being
+    /// raised against a leftover '}' by an unrelated, later parse attempt.
+    /// Returns <see langword="null"/> for a malformed field — the field is
+    /// omitted from the literal, not replaced by a placeholder AST node.
+    /// </summary>
+    private FieldInit? ParseFieldInitOrError() {
+        int startPos = _pos;
+        try {
+            return ParseOneFieldInit();
+        } catch (ParseFailedException) {
+            if (_pos == startPos && !IsAtEnd) {
+                Advance();
+            }
+            SkipToNextLiteralElementBoundary();
+            return null;
+        }
+    }
+
     // map<K, V>{ "key": value, … } — map-literal construction (D-376). Reached only
     // after LooksLikeMapLiteral() has already confirmed the shape from ParsePrimary,
     // so every Expect below is expected to succeed on well-formed input; a malformed
     // literal (e.g. a missing '}') still fails cleanly through the ordinary
-    // Fail()/recovery path like every other literal form.
+    // Fail()/recovery path like every other literal form. Each entry goes through
+    // ParseMapEntryOrError (D-405), not a bare ParseMapEntry call — see that
+    // method's doc comment.
     private MapLiteralExpr ParseMapLiteral(SourceLocation start) {
         Advance(); // consume 'map'
         Expect(TokenKind.Less, _e2001, "expected '<' to open map type arguments");
@@ -1252,16 +1289,101 @@ public sealed class Parser {
         SkipNewlines();
         List<MapEntry> entries = [];
         if (!Check(TokenKind.RightBrace)) {
-            entries.Add(ParseMapEntry());
+            MapEntry? first = ParseMapEntryOrError();
+            if (first is not null) entries.Add(first);
             while (Match(TokenKind.Comma)) {
                 SkipNewlines();
                 if (Check(TokenKind.RightBrace)) break; // trailing comma
-                entries.Add(ParseMapEntry());
+                MapEntry? next = ParseMapEntryOrError();
+                if (next is not null) entries.Add(next);
             }
             SkipNewlines();
         }
         Token closeBrace = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close map literal");
         return new MapLiteralExpr(new SourceRange(start, closeBrace.Location), typeRef, entries);
+    }
+
+    /// <summary>
+    /// Local recovery wrapper (D-405) around <see cref="ParseMapEntry"/> — the
+    /// call-site fix for the double-diagnostic gap traced in that decision.
+    /// <see cref="ParseMapLiteral"/>'s entry loop has no recovery point of its
+    /// own, so before this fix a malformed key's exception propagated straight
+    /// past the still-open '{' up to the nearest top-level recovery wrapper —
+    /// several frames further out, by which point <see cref="ParseMapLiteral"/>'s
+    /// own frame (the one tracking that this '{' is still open) had already
+    /// unwound. <see cref="Synchronise"/> then anchored on the literal's own
+    /// closing '}' without consuming it (it cannot distinguish that '}' from a
+    /// genuine enclosing block's), leaving it for a fresh, unrelated top-level
+    /// parse attempt to fail on again — the phantom second diagnostic.
+    /// <para>
+    /// Catching the failure here instead keeps <see cref="ParseMapLiteral"/>'s
+    /// frame on the stack while recovery runs, so it can resynchronise locally —
+    /// via <see cref="SkipToNextLiteralElementBoundary"/>, not the general-purpose
+    /// <see cref="Synchronise"/> — to this literal's own next ',' or its own '}'.
+    /// <see cref="Synchronise"/> itself is unchanged: it has no anchor for a bare
+    /// ',', which is exactly what a comma-separated literal's entry boundary needs
+    /// and a statement-level recovery anchor never did.
+    /// </para>
+    /// <para>
+    /// Returns <see langword="null"/> for a malformed entry — the entry is
+    /// omitted from the literal (no placeholder <c>MapEntry</c> node), not
+    /// replaced. The diagnostic already raised inside <see cref="ParseMapEntry"/>
+    /// stays in the bag unchanged; nothing further is added here, so a genuinely
+    /// independent second malformed entry later in the same literal still gets
+    /// its own diagnostic on the loop's next iteration — this recovers one
+    /// element, not the whole literal.
+    /// </para>
+    /// </summary>
+    private MapEntry? ParseMapEntryOrError() {
+        int startPos = _pos;
+        try {
+            return ParseMapEntry();
+        } catch (ParseFailedException) {
+            if (_pos == startPos && !IsAtEnd) {
+                Advance();
+            }
+            SkipToNextLiteralElementBoundary();
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Local synchronisation for one element of a comma-separated, brace-delimited
+    /// literal body — map-literal entries and anon-struct-literal fields (D-405).
+    /// Deliberately distinct from <see cref="Synchronise"/> (§29): that routine
+    /// anchors on '}', a top-level declaration keyword, or a newline outside any
+    /// bracket, none of which distinguish "the next element" from "the end of this
+    /// list" inside a still-open '{' — a bare ',' is not one of its anchors, which
+    /// is exactly what an entry-list boundary needs and a statement-level recovery
+    /// anchor never did. This instead stops at the next ',' or '}' found at the
+    /// nesting level where it is entered (always element-boundary level, since the
+    /// only caller invokes it immediately on a fresh <see cref="ParseMapEntryOrError"/>/
+    /// <see cref="ParseFieldInitOrError"/> failure, before any further bracket has
+    /// been opened at this call site) — tracking every bracket-pair kind the
+    /// abandoned element's own partially-parsed value could itself have opened
+    /// (<c>(…)</c>, <c>[…]</c>, nested <c>{…}</c>/<c>#{…}</c>, and a string
+    /// interpolation's <c>${…}</c>) so a nested literal or call inside that value
+    /// is skipped as a unit rather than having its own internal ',' mistaken for
+    /// this list's separator. Runs out safely at EOF (no anchor found) rather than
+    /// looping if the enclosing literal is itself unterminated.
+    /// </summary>
+    private void SkipToNextLiteralElementBoundary() {
+        int depth = 0;
+        while (!IsAtEnd) {
+            TokenKind k = Current.Kind;
+            if (depth == 0 && (k == TokenKind.Comma || k == TokenKind.RightBrace)) return;
+            switch (k) {
+                case TokenKind.LeftBrace or TokenKind.LeftParen or TokenKind.LeftBracket
+                    or TokenKind.HashBrace or TokenKind.InterpStart:
+                    depth++;
+                    break;
+                case TokenKind.RightBrace or TokenKind.RightParen or TokenKind.RightBracket
+                    or TokenKind.InterpEnd:
+                    depth--;
+                    break;
+            }
+            Advance();
+        }
     }
 
     private MapEntry ParseMapEntry() {
