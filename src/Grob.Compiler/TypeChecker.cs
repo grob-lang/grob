@@ -532,6 +532,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // resolves the declared return type instead of falling back to Unknown.
         BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
             ExpressionDescriptor(binary.Left) ?? ExpressionDescriptor(binary.Right),
+        // D-404: the ternary/switch-expression twin of the NilCoalesce arm above — a
+        // structural merge whose result is called directly, e.g. (cond ? f : g)(), must
+        // keep a function descriptor too. First-non-null in source order, mirroring the
+        // NilCoalesce arm's Left ?? Right convention; VisitTernary/VisitSwitchExpr already
+        // guard (MergeIdentityMismatch, D-404) that every branch agrees on the descriptor
+        // before this arm is ever consulted, so "first" is also "authoritative".
+        TernaryExpr t => ExpressionDescriptor(t.Then) ?? ExpressionDescriptor(t.Else),
+        SwitchExprNode sw => sw.Arms.Select(a => ExpressionDescriptor(a.Result)).FirstOrDefault(d => d is not null),
         _ => null,
     };
 
@@ -566,6 +574,12 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // (`(xs ?? [])[0]`) fell back to Unknown instead of the real element type.
         BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
             ArrayDescriptorOf(binary.Left) ?? ArrayDescriptorOf(binary.Right),
+        // D-404: the ternary/switch-expression twin of the NilCoalesce arm above — see
+        // ExpressionDescriptor's identical arm for the full rationale (first-non-null in
+        // source order; VisitTernary/VisitSwitchExpr's MergeIdentityMismatch guard already
+        // proved every branch agrees before this arm runs).
+        TernaryExpr t => ArrayDescriptorOf(t.Then) ?? ArrayDescriptorOf(t.Else),
+        SwitchExprNode sw => sw.Arms.Select(a => ArrayDescriptorOf(a.Result)).FirstOrDefault(d => d is not null),
         IndexExpr index => ArrayDescriptorOf(index.Target)?.ElementArrayDescriptor
             ?? MapDescriptorOf(index.Target)?.ValueArrayDescriptor,
         _ => null,
@@ -592,6 +606,10 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // is checked first since it is the nullable operand actually being unwrapped.
         BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
             MapDescriptorOf(binary.Left) ?? MapDescriptorOf(binary.Right),
+        // D-404: the ternary/switch-expression twin of the NilCoalesce arm above — see
+        // ArrayDescriptorOf's/ExpressionDescriptor's identical arms for the full rationale.
+        TernaryExpr t => MapDescriptorOf(t.Then) ?? MapDescriptorOf(t.Else),
+        SwitchExprNode sw => sw.Arms.Select(a => MapDescriptorOf(a.Result)).FirstOrDefault(d => d is not null),
         _ => null,
     };
 

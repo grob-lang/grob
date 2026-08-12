@@ -201,6 +201,16 @@ public sealed partial class TypeChecker {
     private MapTypeDescriptor? SilentMapDescriptorOf(Expression? expr) => expr switch {
         MapLiteralExpr literal => ResolveMapValueDescriptor(literal.TypeArguments),
         GroupingExpr grp => SilentMapDescriptorOf(grp.Inner),
+        // D-404 bonus fix: the NilCoalesce/ternary/switch arms MapDescriptorOf's pass-2
+        // counterpart already carries (TypeChecker.cs) — first-non-null in source order.
+        // Phase 1.5 runs before pass 2, so this recurses on syntax alone, same as every
+        // other arm here; no dependency on pass-2 state either. IdentifierExpr/CallExpr are
+        // deliberately NOT added — out of scope, see MapDescriptorOf for the tiers this
+        // phase-1.5 counterpart does not mirror.
+        BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
+            SilentMapDescriptorOf(binary.Left) ?? SilentMapDescriptorOf(binary.Right),
+        TernaryExpr t => SilentMapDescriptorOf(t.Then) ?? SilentMapDescriptorOf(t.Else),
+        SwitchExprNode sw => sw.Arms.Select(a => SilentMapDescriptorOf(a.Result)).FirstOrDefault(d => d is not null),
         _ => null,
     };
 

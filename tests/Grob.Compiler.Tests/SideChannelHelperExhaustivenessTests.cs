@@ -8,18 +8,24 @@ using Xunit;
 namespace Grob.Compiler.Tests;
 
 /// <summary>
-/// D-403 — pins the exact expression-node-kind set each side-channel type-resolution
-/// helper (<c>ExpressionDescriptor</c>, <c>ArrayDescriptorOf</c>, <c>MapDescriptorOf</c>,
-/// <c>GetStructTypeName</c>) currently handles, invoked directly via reflection against a
-/// real, fully-checked <see cref="TypeChecker"/> instance so a future silent narrowing (an
-/// arm quietly deleted) or a new helper added without the matching <c>GroupingExpr</c>/
-/// <c>BinaryExpr {Operator: NilCoalesce}</c> convention fails a test here rather than
+/// D-403/D-404 — pins the exact expression-node-kind set each side-channel
+/// type-resolution helper (<c>ExpressionDescriptor</c>, <c>ArrayDescriptorOf</c>,
+/// <c>MapDescriptorOf</c>, <c>GetStructTypeName</c>, <c>GetFieldValueStructTypeName</c>,
+/// <c>SilentMapDescriptorOf</c>, <c>TryGetAnonStructLiteral</c>) currently handles,
+/// invoked directly via reflection against a real, fully-checked <see cref="TypeChecker"/>
+/// instance so a future silent narrowing (an arm quietly deleted) or a new helper added
+/// without the matching <c>GroupingExpr</c>/<c>BinaryExpr {Operator: NilCoalesce}</c>/
+/// <c>TernaryExpr</c>/<c>SwitchExprNode</c> convention fails a test here rather than
 /// surfacing only as a user-facing regression. Deliberately does NOT assert every helper
 /// handles the same set — <c>MapDescriptorOf</c>'s lack of a <c>CallExpr</c> arm is by
 /// design (no map-returning native exists to carry a descriptor through), pinned as a
-/// "not handled" case rather than treated as a gap.
+/// "not handled" case rather than treated as a gap; the same applies to
+/// <c>GetFieldValueStructTypeName</c>'s and <c>SilentMapDescriptorOf</c>'s narrower arm
+/// sets relative to their pass-2 counterparts (<c>GetStructTypeName</c>/
+/// <c>MapDescriptorOf</c>) — see each helper's own section below.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Mutation-verified during development (D-403): the <c>BinaryExpr {Operator: NilCoalesce}</c>
 /// arm was temporarily deleted from <c>ArrayDescriptorOf</c>, confirmed
 /// <see cref="ArrayDescriptorOf_NilCoalesce_ArrayLeft_ReturnsElementDescriptor"/> failed for
@@ -27,6 +33,15 @@ namespace Grob.Compiler.Tests;
 /// then the arm was restored and the test re-confirmed green — proving this pinning
 /// mechanism actually catches the regression it claims to catch, not merely asserting
 /// engineering intent.
+/// </para>
+/// <para>
+/// Mutation-verified again during development (D-404): the new <c>TernaryExpr</c> arm was
+/// temporarily deleted from <c>ArrayDescriptorOf</c>, confirmed
+/// <see cref="ArrayDescriptorOf_TernaryExpr_ReturnsDescriptor"/> failed for the expected
+/// reason (a <see langword="null"/> result where a descriptor was expected), then the arm
+/// was restored and the test re-confirmed green — the same proof, repeated for the
+/// ternary/switch-expression generalisation.
+/// </para>
 /// </remarks>
 public sealed class SideChannelHelperExhaustivenessTests {
     private static (TypeChecker Checker, CompilationUnit Unit, DiagnosticBag Diagnostics) CheckKeepInstance(string source) {
@@ -57,7 +72,20 @@ public sealed class SideChannelHelperExhaustivenessTests {
         return method.Invoke(checker, [arg]);
     }
 
-    /// <summary>Collects every expression-node kind the four helpers under test switch on.</summary>
+    /// <summary>
+    /// The <see cref="Invoke"/> counterpart for <c>TryGetAnonStructLiteral</c>, the one
+    /// pinned helper that is <c>private static</c> rather than an instance method — no
+    /// <see cref="TypeChecker"/> instance is needed (or accepted) for the call itself.
+    /// </summary>
+    private static object? InvokeStatic(string methodName, Expression arg) {
+        MethodInfo method = typeof(TypeChecker).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException(
+                $"TypeChecker.{methodName} not found — this exhaustiveness pin is stale " +
+                "(the helper was renamed, removed, or made non-static without updating this test).");
+        return method.Invoke(null, [arg]);
+    }
+
+    /// <summary>Collects every expression-node kind the seven helpers under test switch on.</summary>
     private sealed class NodeCollector : AstWalker {
         public List<Expression> Nodes { get; } = [];
         public override Unit VisitBinary(BinaryExpr node) { Nodes.Add(node); return base.VisitBinary(node); }
@@ -72,6 +100,10 @@ public sealed class SideChannelHelperExhaustivenessTests {
         public override Unit VisitStructConstruction(StructConstructionExpr node) { Nodes.Add(node); return base.VisitStructConstruction(node); }
         public override Unit VisitAnonStruct(AnonStructExpr node) { Nodes.Add(node); return base.VisitAnonStruct(node); }
         public override Unit VisitIntLiteral(IntLiteralExpr node) { Nodes.Add(node); return base.VisitIntLiteral(node); }
+        // D-404: TernaryExpr/SwitchExprNode — the two structural-merge node kinds the
+        // seven helpers' new arms recurse into.
+        public override Unit VisitTernary(TernaryExpr node) { Nodes.Add(node); return base.VisitTernary(node); }
+        public override Unit VisitSwitchExpr(SwitchExprNode node) { Nodes.Add(node); return base.VisitSwitchExpr(node); }
         public override Unit VisitErrorExpr(ErrorExpr node) => default;
         public override Unit VisitErrorStmt(ErrorStmt node) => default;
         public override Unit VisitErrorDecl(ErrorDecl node) => default;
@@ -86,7 +118,8 @@ public sealed class SideChannelHelperExhaustivenessTests {
     // =========================================================================
     // ExpressionDescriptor (TypeChecker.cs) — the function-descriptor side channel.
     // Handled: LambdaExpr, CallExpr, IdentifierExpr, GroupingExpr,
-    // BinaryExpr{NilCoalesce}. Not handled: everything else (IntLiteralExpr pinned).
+    // BinaryExpr{NilCoalesce}, TernaryExpr, SwitchExprNode. Not handled: everything
+    // else (IntLiteralExpr pinned).
     // =========================================================================
 
     [Fact]
@@ -158,6 +191,29 @@ public sealed class SideChannelHelperExhaustivenessTests {
     }
 
     [Fact]
+    public void ExpressionDescriptor_TernaryExpr_ReturnsDescriptor() {
+        // D-404's new arm. Both arms are bare lambdas (not identifiers), same
+        // scope-independence reason as the GroupingExpr case above.
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "y := true ? (() => 1) : (() => 2)\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        TernaryExpr ternary = Assert.IsType<TernaryExpr>(Collect(unit).Single(n => n is TernaryExpr));
+        Assert.NotNull(Invoke(checker, "ExpressionDescriptor", ternary));
+    }
+
+    [Fact]
+    public void ExpressionDescriptor_SwitchExprNode_ReturnsDescriptor() {
+        // D-404's new arm.
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "y := 1 switch { 1 => (() => 1), _ => (() => 2) }\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Collect(unit).Single(n => n is SwitchExprNode));
+        Assert.NotNull(Invoke(checker, "ExpressionDescriptor", sw));
+    }
+
+    [Fact]
     public void ExpressionDescriptor_IntLiteralExpr_IsNotHandled() {
         (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance("n := 5\n");
         Assert.False(bag.HasErrors, FormatErrors(bag));
@@ -169,7 +225,7 @@ public sealed class SideChannelHelperExhaustivenessTests {
     // =========================================================================
     // ArrayDescriptorOf (TypeChecker.cs) — the array-element-type side channel.
     // Handled: ArrayLiteralExpr, CallExpr, MemberAccessExpr, IdentifierExpr,
-    // GroupingExpr, BinaryExpr{NilCoalesce}, IndexExpr.
+    // GroupingExpr, BinaryExpr{NilCoalesce}, TernaryExpr, SwitchExprNode, IndexExpr.
     // =========================================================================
 
     [Fact]
@@ -257,6 +313,30 @@ public sealed class SideChannelHelperExhaustivenessTests {
     }
 
     [Fact]
+    public void ArrayDescriptorOf_TernaryExpr_ReturnsDescriptor() {
+        // D-404's new arm — the mutation-verified case (see class remarks). Both arms
+        // are bare array literals (not identifiers), same reason as the GroupingExpr
+        // case above.
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "y := true ? [1, 2, 3] : [4, 5]\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        TernaryExpr ternary = Assert.IsType<TernaryExpr>(Collect(unit).Single(n => n is TernaryExpr));
+        Assert.NotNull(Invoke(checker, "ArrayDescriptorOf", ternary));
+    }
+
+    [Fact]
+    public void ArrayDescriptorOf_SwitchExprNode_ReturnsDescriptor() {
+        // D-404's new arm.
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "y := 1 switch { 1 => [1, 2], _ => [3, 4] }\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Collect(unit).Single(n => n is SwitchExprNode));
+        Assert.NotNull(Invoke(checker, "ArrayDescriptorOf", sw));
+    }
+
+    [Fact]
     public void ArrayDescriptorOf_IndexExpr_ReturnsDescriptor() {
         // The index target is a nested array literal directly (not an identifier) so
         // this pin exercises only IndexExpr's own recursive ElementArrayDescriptor
@@ -286,9 +366,10 @@ public sealed class SideChannelHelperExhaustivenessTests {
 
     // =========================================================================
     // MapDescriptorOf (TypeChecker.cs) — the map-value-type side channel.
-    // Handled: IdentifierExpr, MapLiteralExpr, GroupingExpr, BinaryExpr{NilCoalesce}.
-    // Deliberately NOT handled: CallExpr — no map-returning native exists to carry a
-    // value descriptor through, so no arm is registered (a design choice, not a gap).
+    // Handled: IdentifierExpr, MapLiteralExpr, GroupingExpr, BinaryExpr{NilCoalesce},
+    // TernaryExpr, SwitchExprNode. Deliberately NOT handled: CallExpr — no
+    // map-returning native exists to carry a value descriptor through, so no arm is
+    // registered (a design choice, not a gap).
     // =========================================================================
 
     [Fact]
@@ -345,6 +426,29 @@ public sealed class SideChannelHelperExhaustivenessTests {
     }
 
     [Fact]
+    public void MapDescriptorOf_TernaryExpr_ReturnsDescriptor() {
+        // D-404's new arm. Both arms are bare map literals (not identifiers), same
+        // reason as the GroupingExpr case above.
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "y := true ? map<string, int>{} : map<string, int>{}\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        TernaryExpr ternary = Assert.IsType<TernaryExpr>(Collect(unit).Single(n => n is TernaryExpr));
+        Assert.NotNull(Invoke(checker, "MapDescriptorOf", ternary));
+    }
+
+    [Fact]
+    public void MapDescriptorOf_SwitchExprNode_ReturnsDescriptor() {
+        // D-404's new arm.
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "y := 1 switch { 1 => map<string, int>{}, _ => map<string, int>{} }\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Collect(unit).Single(n => n is SwitchExprNode));
+        Assert.NotNull(Invoke(checker, "MapDescriptorOf", sw));
+    }
+
+    [Fact]
     public void MapDescriptorOf_CallExpr_IsNotHandledByDesign() {
         // The documented divergence: unlike ArrayDescriptorOf, MapDescriptorOf has no
         // CallExpr arm at all — pinned here as intentional, not a residual gap.
@@ -363,7 +467,8 @@ public sealed class SideChannelHelperExhaustivenessTests {
     // =========================================================================
     // GetStructTypeName (TypeChecker.Expressions.cs) — the named-struct-type-identity
     // side channel. Handled: StructConstructionExpr, AnonStructExpr, IdentifierExpr,
-    // MemberAccessExpr, CallExpr, GroupingExpr, BinaryExpr{NilCoalesce}.
+    // MemberAccessExpr, CallExpr, GroupingExpr, BinaryExpr{NilCoalesce}, TernaryExpr,
+    // SwitchExprNode.
     // =========================================================================
 
     [Fact]
@@ -467,11 +572,180 @@ public sealed class SideChannelHelperExhaustivenessTests {
     }
 
     [Fact]
+    public void GetStructTypeName_TernaryExpr_ReturnsName() {
+        // D-404's new arm. Both arms are direct StructConstructionExprs (not
+        // identifiers), same reason as the GroupingExpr case above.
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance("""
+            type Point {
+                x: int
+            }
+            y := true ? Point { x: 1 } : Point { x: 2 }
+            """);
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        TernaryExpr ternary = Assert.IsType<TernaryExpr>(Collect(unit).Single(n => n is TernaryExpr));
+        Assert.Equal("Point", Invoke(checker, "GetStructTypeName", ternary));
+    }
+
+    [Fact]
+    public void GetStructTypeName_SwitchExprNode_ReturnsName() {
+        // D-404's new arm.
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance("""
+            type Point {
+                x: int
+            }
+            y := 1 switch { 1 => Point { x: 1 }, _ => Point { x: 2 } }
+            """);
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Collect(unit).Single(n => n is SwitchExprNode));
+        Assert.Equal("Point", Invoke(checker, "GetStructTypeName", sw));
+    }
+
+    [Fact]
     public void GetStructTypeName_IntLiteralExpr_IsNotHandled() {
         (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance("n := 5\n");
         Assert.False(bag.HasErrors, FormatErrors(bag));
 
         IntLiteralExpr literal = Assert.IsType<IntLiteralExpr>(Collect(unit).Single(n => n is IntLiteralExpr));
         Assert.Null(Invoke(checker, "GetStructTypeName", literal));
+    }
+
+    // =========================================================================
+    // GetFieldValueStructTypeName (TypeChecker.Declarations.cs) — the field-value
+    // struct-type-identity side channel used by anon-struct-field typing and 'throw'
+    // operand resolution. A narrower arm set than GetStructTypeName by design (D-404):
+    // no GroupingExpr, no CallExpr — pinned as intentional here, not a residual gap.
+    // Bonus fix (D-404): BinaryExpr{NilCoalesce}, TernaryExpr, SwitchExprNode.
+    // =========================================================================
+
+    [Fact]
+    public void GetFieldValueStructTypeName_NilCoalesce_ReturnsName() {
+        // D-404 bonus fix. Both operands are direct StructConstructionExprs (not
+        // identifiers) so this pin exercises only the new arm's own recursion.
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance("""
+            type Point {
+                x: int
+            }
+            y := (Point { x: 1 } ?? Point { x: 2 })
+            """);
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        BinaryExpr binary = Assert.IsType<BinaryExpr>(
+            Collect(unit).Single(n => n is BinaryExpr { Operator: BinaryOperator.NilCoalesce }));
+        Assert.Equal("Point", Invoke(checker, "GetFieldValueStructTypeName", binary));
+    }
+
+    [Fact]
+    public void GetFieldValueStructTypeName_TernaryExpr_ReturnsName() {
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance("""
+            type Point {
+                x: int
+            }
+            y := true ? Point { x: 1 } : Point { x: 2 }
+            """);
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        TernaryExpr ternary = Assert.IsType<TernaryExpr>(Collect(unit).Single(n => n is TernaryExpr));
+        Assert.Equal("Point", Invoke(checker, "GetFieldValueStructTypeName", ternary));
+    }
+
+    [Fact]
+    public void GetFieldValueStructTypeName_SwitchExprNode_ReturnsName() {
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance("""
+            type Point {
+                x: int
+            }
+            y := 1 switch { 1 => Point { x: 1 }, _ => Point { x: 2 } }
+            """);
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Collect(unit).Single(n => n is SwitchExprNode));
+        Assert.Equal("Point", Invoke(checker, "GetFieldValueStructTypeName", sw));
+    }
+
+    // =========================================================================
+    // SilentMapDescriptorOf (TypeChecker.ValueResolution.cs) — the phase-1.5
+    // counterpart of MapDescriptorOf's literal tier. A narrower arm set than
+    // MapDescriptorOf by design (D-376/D-404): no IdentifierExpr, no CallExpr —
+    // pinned as intentional here, not a residual gap. Only invoked, in real use,
+    // directly on a top-level binding's own initialiser expression (phase 1.5 runs
+    // before pass 2 has visited anything nested elsewhere), so every test below binds
+    // the node under test straight to a top-level ':='.
+    // Bonus fix (D-404): BinaryExpr{NilCoalesce}, TernaryExpr, SwitchExprNode.
+    // =========================================================================
+
+    [Fact]
+    public void SilentMapDescriptorOf_NilCoalesce_ReturnsDescriptor() {
+        // D-404 bonus fix.
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "m := map<string, int>{} ?? map<string, int>{}\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        BinaryExpr binary = Assert.IsType<BinaryExpr>(
+            Collect(unit).Single(n => n is BinaryExpr { Operator: BinaryOperator.NilCoalesce }));
+        Assert.NotNull(Invoke(checker, "SilentMapDescriptorOf", binary));
+    }
+
+    [Fact]
+    public void SilentMapDescriptorOf_TernaryExpr_ReturnsDescriptor() {
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "m := true ? map<string, int>{} : map<string, int>{}\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        TernaryExpr ternary = Assert.IsType<TernaryExpr>(Collect(unit).Single(n => n is TernaryExpr));
+        Assert.NotNull(Invoke(checker, "SilentMapDescriptorOf", ternary));
+    }
+
+    [Fact]
+    public void SilentMapDescriptorOf_SwitchExprNode_ReturnsDescriptor() {
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "m := 1 switch { 1 => map<string, int>{}, _ => map<string, int>{} }\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Collect(unit).Single(n => n is SwitchExprNode));
+        Assert.NotNull(Invoke(checker, "SilentMapDescriptorOf", sw));
+    }
+
+    // =========================================================================
+    // TryGetAnonStructLiteral (TypeChecker.Expressions.cs) — the only pinned helper
+    // that is 'private static' rather than an instance method (see InvokeStatic), and
+    // the only one that returns the AnonStructExpr node itself rather than a name or
+    // descriptor. Handled: AnonStructExpr, IdentifierExpr (direct ReadonlyDecl/
+    // VarDeclStmt initialiser only). Bonus fix (D-404): BinaryExpr{NilCoalesce},
+    // TernaryExpr, SwitchExprNode.
+    // =========================================================================
+
+    [Fact]
+    public void TryGetAnonStructLiteral_NilCoalesce_ReturnsLiteral() {
+        // D-404 bonus fix. Both operands are direct AnonStructExprs (not identifiers)
+        // so this pin exercises only the new arm's own recursion.
+        (TypeChecker _, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "y := (#{ x: 1 } ?? #{ x: 2 })\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        BinaryExpr binary = Assert.IsType<BinaryExpr>(
+            Collect(unit).Single(n => n is BinaryExpr { Operator: BinaryOperator.NilCoalesce }));
+        Assert.NotNull(InvokeStatic("TryGetAnonStructLiteral", binary));
+    }
+
+    [Fact]
+    public void TryGetAnonStructLiteral_TernaryExpr_ReturnsLiteral() {
+        (TypeChecker _, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "y := true ? #{ x: 1 } : #{ x: 2 }\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        TernaryExpr ternary = Assert.IsType<TernaryExpr>(Collect(unit).Single(n => n is TernaryExpr));
+        Assert.NotNull(InvokeStatic("TryGetAnonStructLiteral", ternary));
+    }
+
+    [Fact]
+    public void TryGetAnonStructLiteral_SwitchExprNode_ReturnsLiteral() {
+        (TypeChecker _, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance(
+            "y := 1 switch { 1 => #{ x: 1 }, _ => #{ x: 2 } }\n");
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Collect(unit).Single(n => n is SwitchExprNode));
+        Assert.NotNull(InvokeStatic("TryGetAnonStructLiteral", sw));
     }
 }
