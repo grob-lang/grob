@@ -170,6 +170,54 @@ public sealed class SwitchExprTypeCheckerTests {
     }
 
     // -----------------------------------------------------------------------
+    // D-406 — a parser-recovered arm suppresses the derived non-exhaustiveness
+    // diagnostic (SwitchExprNode.HadRecoveredArm), mirroring the
+    // subjectType != Error guard immediately alongside it. The dropped arm might
+    // itself have been the one carrying exhaustiveness — the '_' catch-all or a
+    // required bool arm — so a spurious second diagnostic for the same root cause
+    // would break D-406's own "one malformed element, one diagnostic" contract.
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// The dropped arm is the '_' catch-all itself — without the guard this would
+    /// be non-exhaustive (int is not finitely enumerable and no '_' survives), a
+    /// second diagnostic entirely derived from the one parse-time mistake.
+    /// </summary>
+    [Fact]
+    public void RecoveredCatchAllArm_SuppressesE0505() {
+        DiagnosticBag bag = TypeCheckSource("n := 1\ny := n switch { 1 => 10, _ 0 }");
+        Diagnostic onlyDiag = Assert.Single(bag.Errors);
+        Assert.Equal("E2001", onlyDiag.Code);
+        Assert.DoesNotContain(bag.Errors, e => e.Code == "E0505");
+    }
+
+    /// <summary>
+    /// The dropped arm is the required 'false' bool arm — without the guard the
+    /// surviving 'true' arm alone would be non-exhaustive.
+    /// </summary>
+    [Fact]
+    public void RecoveredBoolArm_SuppressesE0505() {
+        DiagnosticBag bag = TypeCheckSource("b := true\ny := b switch { true => 1, false 2 }");
+        Diagnostic onlyDiag = Assert.Single(bag.Errors);
+        Assert.Equal("E2001", onlyDiag.Code);
+        Assert.DoesNotContain(bag.Errors, e => e.Code == "E0505");
+    }
+
+    /// <summary>
+    /// Contrast: a genuinely non-exhaustive, well-formed switch (no recovery
+    /// involved at all) still raises E0505 — the guard suppresses only when the
+    /// parser actually dropped an arm, not non-exhaustiveness in general. Restates
+    /// <see cref="NonExhaustive_NoCatchAll_ProducesE0505"/> with an unambiguous name
+    /// for the D-406 contrast.
+    /// </summary>
+    [Fact]
+    public void WellFormedNonExhaustiveSwitch_NoRecovery_StillRaisesE0505() {
+        DiagnosticBag bag = TypeCheckSource("n := 1\ny := n switch { 1 => 10, 2 => 20 }");
+        Assert.Empty(bag.Errors.Where(e => e.Code != "E0505"));
+        Assert.Single(bag.Errors, e => e.Code == "E0505");
+    }
+
+    // -----------------------------------------------------------------------
     // §3.1.1 invariant — every identifier carries ResolvedType and Declaration
     // -----------------------------------------------------------------------
 

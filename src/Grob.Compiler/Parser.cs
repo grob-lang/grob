@@ -321,7 +321,13 @@ public sealed class Parser {
         SkipNewlines();
         List<TypeField> fields = [];
         while (!Check(TokenKind.RightBrace) && !IsAtEnd) {
-            fields.Add(ParseTypeField());
+            // Mirrors ParseBlock's own top-level-keyword anchor (§29): without this,
+            // a field left unconsumed at a keyword by SkipToNextLiteralElementBoundary
+            // (D-406) would be force-advanced over on the loop's next attempt, eating
+            // the keyword the resync deliberately stopped at.
+            if (IsTopLevelKeyword(Current.Kind)) break;
+            TypeField? field = ParseTypeFieldOrError();
+            if (field is not null) fields.Add(field);
             SkipNewlines();
         }
         Expect(TokenKind.RightBrace, _e2001, "expected '}' to close type body");
@@ -340,6 +346,29 @@ public sealed class Parser {
         return new TypeField(RangeFrom(start), name.Lexeme, type, defaultValue);
     }
 
+    /// <summary>
+    /// Local recovery wrapper (D-406) around <see cref="ParseTypeField"/> — a
+    /// <c>type</c> body is a newline-separated, brace-delimited element list, the
+    /// declaration-context sibling of D-405's comma-separated literal interiors.
+    /// Resynchronises via <see cref="SkipToNextLiteralElementBoundary"/> in its
+    /// newline-boundary mode, which also anchors on a top-level declaration
+    /// keyword — see that method's doc comment. Returns <see langword="null"/> for
+    /// a malformed field — the field is omitted from the type, not replaced by a
+    /// placeholder node.
+    /// </summary>
+    private TypeField? ParseTypeFieldOrError() {
+        int startPos = _pos;
+        try {
+            return ParseTypeField();
+        } catch (ParseFailedException) {
+            if (_pos == startPos && !IsAtEnd) {
+                Advance();
+            }
+            SkipToNextLiteralElementBoundary(startPos, TokenKind.Newline);
+            return null;
+        }
+    }
+
     private ParamBlockDecl ParseParamBlockDecl() {
         SourceLocation start = Current.Location;
         Expect(TokenKind.Param, _e2001, "expected 'param'");
@@ -347,11 +376,38 @@ public sealed class Parser {
         SkipNewlines();
         List<Parameter> parameters = [];
         while (!Check(TokenKind.RightBrace) && !IsAtEnd) {
-            parameters.Add(ParseDeclaredParameter());
+            // Mirrors ParseTypeDecl's own top-level-keyword anchor above (D-406).
+            if (IsTopLevelKeyword(Current.Kind)) break;
+            Parameter? parameter = ParseDeclaredParameterOrError();
+            if (parameter is not null) parameters.Add(parameter);
             SkipNewlines();
         }
         Expect(TokenKind.RightBrace, _e2001, "expected '}' to close param block");
         return new ParamBlockDecl(RangeFrom(start), parameters);
+    }
+
+    /// <summary>
+    /// Local recovery wrapper (D-406) around <see cref="ParseDeclaredParameter"/>,
+    /// used only by <see cref="ParseParamBlockDecl"/>'s own entry loop — the
+    /// newline-separated declaration-body sibling of <see cref="ParseTypeFieldOrError"/>.
+    /// <see cref="ParseParameterList"/> (function parameter lists, comma-separated
+    /// inside parens) keeps calling <see cref="ParseDeclaredParameter"/> directly and
+    /// is out of scope — a malformed parameter there is not one of the four
+    /// constructs D-406 closes. Returns <see langword="null"/> for a malformed
+    /// entry — the entry is omitted from the param block, not replaced by a
+    /// placeholder node.
+    /// </summary>
+    private Parameter? ParseDeclaredParameterOrError() {
+        int startPos = _pos;
+        try {
+            return ParseDeclaredParameter();
+        } catch (ParseFailedException) {
+            if (_pos == startPos && !IsAtEnd) {
+                Advance();
+            }
+            SkipToNextLiteralElementBoundary(startPos, TokenKind.Newline);
+            return null;
+        }
     }
 
     private Parameter ParseDeclaredParameter() {
@@ -1001,9 +1057,9 @@ public sealed class Parser {
                 case TokenKind.Switch: {
                         Advance(); // consume 'switch'
                         Expect(TokenKind.LeftBrace, _e2001, "expected '{' to open switch body");
-                        List<SwitchArm> arms = ParseSwitchArms();
+                        (List<SwitchArm> arms, bool hadRecoveredArm) = ParseSwitchArms();
                         Token rb = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close switch body");
-                        e = new SwitchExprNode(RangeBetween(e.Range.Start, rb.Location), e, arms);
+                        e = new SwitchExprNode(RangeBetween(e.Range.Start, rb.Location), e, arms, hadRecoveredArm);
                         break;
                     }
                 case TokenKind.LeftBrace when _allowStructLiteral && LooksLikeStructConstruction() && e is IdentifierExpr id: {
@@ -1013,17 +1069,7 @@ public sealed class Parser {
                         // LooksLikeStructConstruction() prevents firing when the content
                         // does not match 'identifier :' or '}', catching error-recovery paths
                         // such as 'if (a { 1 }' where '{' would otherwise steal the body.
-                        Advance(); // consume '{'
-                        SkipNewlines();
-                        List<FieldInit> fields = [];
-                        while (!Check(TokenKind.RightBrace) && !IsAtEnd) {
-                            fields.Add(ParseOneFieldInit());
-                            if (!Match(TokenKind.Comma)) break;
-                            SkipNewlines();
-                        }
-                        SkipNewlines();
-                        Token closeBrace = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close struct construction");
-                        e = new StructConstructionExpr(RangeBetween(e.Range.Start, closeBrace.Location), id.Name, fields);
+                        e = ParseStructConstruction(e.Range.Start, id.Name);
                         break;
                     }
                 default:
@@ -1032,23 +1078,89 @@ public sealed class Parser {
         }
     }
 
+    /// <summary>
+    /// Parses a named-struct-construction field list — <c>TypeName { field: value, … }</c>
+    /// — starting after the leading identifier, with the opening '{' not yet
+    /// consumed. Extracted from <see cref="ParsePostfix"/>'s <c>switch</c> to keep
+    /// that method's cognitive complexity within the analyzer gate. Each field goes
+    /// through <see cref="ParseFieldInitOrError"/> (D-405/D-406), not a bare
+    /// <see cref="ParseOneFieldInit"/> call, so a malformed field is recovered
+    /// locally rather than escaping to the top-level recovery wrapper — the same
+    /// shape as <see cref="ParseAnonStructLiteral"/>'s own field loop.
+    /// </summary>
+    private StructConstructionExpr ParseStructConstruction(SourceLocation start, string typeName) {
+        Advance(); // consume '{'
+        SkipNewlines();
+        List<FieldInit> fields = [];
+        if (!Check(TokenKind.RightBrace)) {
+            FieldInit? first = ParseFieldInitOrError();
+            if (first is not null) fields.Add(first);
+            while (Match(TokenKind.Comma)) {
+                SkipNewlines();
+                if (Check(TokenKind.RightBrace)) break; // trailing comma
+                FieldInit? next = ParseFieldInitOrError();
+                if (next is not null) fields.Add(next);
+            }
+            SkipNewlines();
+        }
+        Token closeBrace = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close struct construction");
+        return new StructConstructionExpr(RangeBetween(start, closeBrace.Location), typeName, fields);
+    }
+
     // -----------------------------------------------------------------------
     // Switch expression (§3.1) — comma-separated `pattern => result` arms, an
     // optional trailing comma, newlines permitted around separators.
     // -----------------------------------------------------------------------
 
-    private List<SwitchArm> ParseSwitchArms() {
+    /// <summary>
+    /// Parses the arm list. Each arm goes through <see cref="ParseSwitchArmOrError"/>
+    /// (D-406), not a bare <see cref="ParseSwitchArm"/> call, so a malformed arm is
+    /// recovered locally — dropped from the list, not replaced by a placeholder node
+    /// — rather than escaping to the top-level recovery wrapper. The second return
+    /// value reports whether any arm was dropped this way; the type checker (via
+    /// <see cref="SwitchExprNode.HadRecoveredArm"/>) uses it to suppress a derived,
+    /// spurious non-exhaustiveness diagnostic when the dropped arm might itself have
+    /// been the one carrying exhaustiveness.
+    /// </summary>
+    private (List<SwitchArm> Arms, bool HadRecoveredArm) ParseSwitchArms() {
         List<SwitchArm> arms = [];
+        bool hadRecoveredArm = false;
         SkipNewlines();
-        if (Check(TokenKind.RightBrace)) return arms;
-        arms.Add(ParseSwitchArm());
+        if (Check(TokenKind.RightBrace)) return (arms, hadRecoveredArm);
+        SwitchArm? first = ParseSwitchArmOrError();
+        if (first is not null) arms.Add(first); else hadRecoveredArm = true;
         while (Match(TokenKind.Comma)) {
             SkipNewlines();
             if (Check(TokenKind.RightBrace)) break; // trailing comma
-            arms.Add(ParseSwitchArm());
+            SwitchArm? next = ParseSwitchArmOrError();
+            if (next is not null) arms.Add(next); else hadRecoveredArm = true;
         }
         SkipNewlines();
-        return arms;
+        return (arms, hadRecoveredArm);
+    }
+
+    /// <summary>
+    /// Local recovery wrapper (D-406) around <see cref="ParseSwitchArm"/> — the
+    /// switch-expression instance of the D-405 call-site gap. Catching the failure
+    /// here keeps <see cref="ParseSwitchArms"/>'s own frame — the one that owns the
+    /// switch body's still-open '{' — on the call stack while recovery runs, so
+    /// <see cref="SkipToNextLiteralElementBoundary"/> can resynchronise to this
+    /// arm list's own ',' or its own '}' instead of a phantom diagnostic being
+    /// raised against a leftover '}' by an unrelated, later parse attempt. Returns
+    /// <see langword="null"/> for a malformed arm — the arm is omitted from the
+    /// switch, not replaced by a placeholder node.
+    /// </summary>
+    private SwitchArm? ParseSwitchArmOrError() {
+        int startPos = _pos;
+        try {
+            return ParseSwitchArm();
+        } catch (ParseFailedException) {
+            if (_pos == startPos && !IsAtEnd) {
+                Advance();
+            }
+            SkipToNextLiteralElementBoundary(startPos, TokenKind.Comma);
+            return null;
+        }
     }
 
     private SwitchArm ParseSwitchArm() {
@@ -1244,18 +1356,18 @@ public sealed class Parser {
     }
 
     /// <summary>
-    /// Local recovery wrapper (D-405) around <see cref="ParseOneFieldInit"/>, used
-    /// only by <see cref="ParseAnonStructLiteral"/>'s own field loop — the named
-    /// struct-construction call site in <see cref="ParsePostfix"/> deliberately
-    /// keeps calling <see cref="ParseOneFieldInit"/> directly and is out of scope
-    /// for this fix. See <see cref="ParseMapEntryOrError"/>'s doc comment for the
-    /// full rationale, which applies identically here: catching the failure at
-    /// this call site, rather than letting it escape to the top-level recovery
-    /// wrapper, keeps <see cref="ParseAnonStructLiteral"/>'s own frame — the one
-    /// that owns this literal's still-open '{' — on the call stack while recovery
-    /// runs, so <see cref="SkipToNextLiteralElementBoundary"/> can resynchronise
-    /// to this literal's own ',' or '}' instead of a phantom diagnostic being
-    /// raised against a leftover '}' by an unrelated, later parse attempt.
+    /// Local recovery wrapper (D-405, widened to the named-struct-construction call
+    /// site by D-406) around <see cref="ParseOneFieldInit"/>, shared by
+    /// <see cref="ParseAnonStructLiteral"/>'s field loop and <see cref="ParsePostfix"/>'s
+    /// <c>TypeName { … }</c> construction loop — both own a still-open '{' and both
+    /// reproduced the identical double-diagnostic gap D-405 traced. See
+    /// <see cref="ParseMapEntryOrError"/>'s doc comment for the full rationale:
+    /// catching the failure at this call site, rather than letting it escape to the
+    /// top-level recovery wrapper, keeps the caller's own frame — the one that owns
+    /// this literal's still-open '{' — on the call stack while recovery runs, so
+    /// <see cref="SkipToNextLiteralElementBoundary"/> can resynchronise to this
+    /// literal's own ',' or '}' instead of a phantom diagnostic being raised against
+    /// a leftover '}' by an unrelated, later parse attempt.
     /// Returns <see langword="null"/> for a malformed field — the field is
     /// omitted from the literal, not replaced by a placeholder AST node.
     /// </summary>
@@ -1267,7 +1379,7 @@ public sealed class Parser {
             if (_pos == startPos && !IsAtEnd) {
                 Advance();
             }
-            SkipToNextLiteralElementBoundary(startPos);
+            SkipToNextLiteralElementBoundary(startPos, TokenKind.Comma);
             return null;
         }
     }
@@ -1342,21 +1454,25 @@ public sealed class Parser {
             if (_pos == startPos && !IsAtEnd) {
                 Advance();
             }
-            SkipToNextLiteralElementBoundary(startPos);
+            SkipToNextLiteralElementBoundary(startPos, TokenKind.Comma);
             return null;
         }
     }
 
     /// <summary>
-    /// Local synchronisation for one element of a comma-separated, brace-delimited
-    /// literal body — map-literal entries and anon-struct-literal fields (D-405).
-    /// Deliberately distinct from <see cref="Synchronise"/> (§29): that routine
-    /// anchors on '}', a top-level declaration keyword, or a newline outside any
-    /// bracket, none of which distinguish "the next element" from "the end of this
-    /// list" inside a still-open '{' — a bare ',' is not one of its anchors, which
-    /// is exactly what an entry-list boundary needs and a statement-level recovery
-    /// anchor never did. This instead stops at the next ',' or '}' that belongs to
-    /// the element list itself.
+    /// Local synchronisation for one element of a brace-delimited element list —
+    /// map-literal entries, anon-struct/named-struct fields and switch-expression
+    /// arms (comma-separated, D-405/D-406), plus <c>type</c>-declaration fields and
+    /// <c>param</c>-block entries (newline-separated, D-406). Deliberately distinct
+    /// from <see cref="Synchronise"/> (§29): that routine anchors on '}', a
+    /// top-level declaration keyword, or a newline outside any bracket, none of
+    /// which distinguish "the next element" from "the end of this list" inside a
+    /// still-open '{' — a bare ',' is not one of its anchors at all, and its
+    /// newline anchor cannot tell a literal's own interior newline from a real
+    /// statement boundary. This instead stops at the next occurrence of
+    /// <paramref name="boundaryToken"/> (<see cref="TokenKind.Comma"/> for a
+    /// comma-separated list, <see cref="TokenKind.Newline"/> for a newline-separated
+    /// declaration body) or '}' that belongs to the element list itself.
     /// <para>
     /// "Belongs to the element list" is decided by <paramref name="elementStart"/>:
     /// the abandoned element may already have consumed an opening delimiter of its
@@ -1367,27 +1483,69 @@ public sealed class Parser {
     /// bracket-pair kind the rest of that element could open
     /// (<c>(…)</c>, <c>[…]</c>, nested <c>{…}</c>/<c>#{…}</c>, and a string
     /// interpolation's <c>${…}</c>) so a nested literal or call is skipped as a unit
-    /// rather than having its own internal ',' mistaken for this list's separator.
-    /// A '}' that cannot close whatever is innermost-open is treated as the
-    /// enclosing literal's own closing brace and stops the scan unconsumed, so an
-    /// element that leaves a bracket permanently open (<c>{ "a": (1, "b": 2 }</c>)
-    /// still hands the literal's '}' back to the caller's Expect rather than
-    /// running past it. Runs out safely at EOF (no anchor found) rather than
-    /// looping if the enclosing literal is itself unterminated.
+    /// rather than having its own internal ',' or newline mistaken for this list's
+    /// separator. A '}' that cannot close whatever is innermost-open is treated as
+    /// the enclosing literal's own closing brace and stops the scan unconsumed, so
+    /// an element that leaves a bracket permanently open (<c>{ "a": (1, "b": 2 }</c>)
+    /// still hands the literal's '}' back to the caller's Expect rather than running
+    /// past it. Runs out safely at EOF (no anchor found) rather than looping if the
+    /// enclosing literal is itself unterminated.
+    /// </para>
+    /// <para>
+    /// <b>Newline mode also anchors on a top-level declaration keyword</b>
+    /// (<see cref="IsTopLevelKeyword"/>), unlike comma mode, which deliberately runs
+    /// to true EOF for a literal interior — D-406. A <c>type</c>/<c>param</c> body is
+    /// a declaration context ordinarily followed by more top-level declarations in
+    /// the same file; without this, one malformed field with an unterminated body
+    /// would swallow every later declaration. The keyword check is gated on a
+    /// brace-depth counter replayed the same way <see cref="Synchronise"/> gates its
+    /// own keyword anchor (plain '{'/'}' only, not the finer per-bracket-kind
+    /// <paramref name="elementStart"/> replay above) rather than on the full
+    /// delimiter stack being empty: a reserved declaration keyword can never appear
+    /// as expression content at any depth (declarations are not expressions), so it
+    /// is a reliable anchor even while a paren the field opened is still outstanding
+    /// — unlike a bare ',' or '}', which genuinely can occur inside an unterminated
+    /// value and needs the full delimiter stack to disambiguate.
     /// </para>
     /// </summary>
     /// <param name="elementStart">
     /// The token index the abandoned element began at, used to replay the
     /// delimiters it left open.
     /// </param>
-    private void SkipToNextLiteralElementBoundary(int elementStart) {
+    /// <param name="boundaryToken">
+    /// The element separator this list uses — <see cref="TokenKind.Comma"/> or
+    /// <see cref="TokenKind.Newline"/>. The literal's own '}' is always a boundary
+    /// in addition to this token.
+    /// </param>
+    private void SkipToNextLiteralElementBoundary(int elementStart, TokenKind boundaryToken) {
         Stack<TokenKind> open = OpenDelimitersBetween(elementStart, _pos);
+        bool anchorOnKeywords = boundaryToken == TokenKind.Newline;
+        int localOpenBraces = anchorOnKeywords ? CountOpenPlainBraces(elementStart, _pos) : 0;
         while (!IsAtEnd) {
             TokenKind k = Current.Kind;
-            if (open.Count == 0 && (k == TokenKind.Comma || k == TokenKind.RightBrace)) return;
+            if (anchorOnKeywords && localOpenBraces == 0 && IsTopLevelKeyword(k)) return;
+            if (open.Count == 0 && (k == boundaryToken || k == TokenKind.RightBrace)) return;
             if (!TrackDelimiter(open, k) && k == TokenKind.RightBrace) return;
+            if (k == TokenKind.LeftBrace) localOpenBraces++;
+            else if (k == TokenKind.RightBrace) localOpenBraces--;
             Advance();
         }
+    }
+
+    /// <summary>
+    /// Replays plain '{'/'}' tokens (not <see cref="TokenKind.HashBrace"/>) over a
+    /// token range to seed <see cref="SkipToNextLiteralElementBoundary"/>'s
+    /// keyword-anchor gate, mirroring <see cref="Synchronise"/>'s own
+    /// <c>localOpenBraces</c> counter exactly — including that routine's existing
+    /// choice not to count <c>#{</c> — so the two stay consistent (D-406).
+    /// </summary>
+    private int CountOpenPlainBraces(int from, int to) {
+        int count = 0;
+        for (int i = from; i < to; i++) {
+            if (_tokens[i].Kind == TokenKind.LeftBrace) count++;
+            else if (_tokens[i].Kind == TokenKind.RightBrace) count--;
+        }
+        return count;
     }
 
     /// <summary>

@@ -408,4 +408,36 @@ public sealed class MergeIdentityTypeCheckerTests {
             """);
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
     }
+
+    // =========================================================================
+    // D-406 — a switch arm the parser drops during local recovery is simply absent
+    // from SwitchExprNode.Arms, so CheckMergeIdentity (run once, after the fold,
+    // over the SURVIVING arms only) needs no change of its own: recovery neither
+    // suppresses a real mismatch among the arms that remain nor fabricates a
+    // spurious one. Both directions are pinned explicitly rather than assumed.
+    // =========================================================================
+
+    [Fact]
+    public void Switch_RecoveredArm_DoesNotSuppressGenuineMismatchAmongSurvivingArms_RaisesE0002() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            n := 1
+            y := (n switch { 1 10, 2 => [1, 2], _ => ["s"] })[0]
+            """);
+        Assert.Equal(2, bag.Errors.Count());
+        Assert.Contains(bag.Errors, e => e.Code == "E2001");
+        Diagnostic mergeDiag = Assert.Single(bag.Errors, e => e.Code == "E0002");
+        Assert.Contains("array element types do not match", mergeDiag.Message);
+        Assert.NotNull(unit);
+    }
+
+    [Fact]
+    public void Switch_RecoveredArm_SurvivingArmsAgree_DoesNotSpuriouslyRaiseE0002() {
+        DiagnosticBag bag = Check("""
+            n := 1
+            y := (n switch { 1 10, 2 => [1, 2], _ => [3, 4] })[0]
+            """);
+        Diagnostic onlyDiag = Assert.Single(bag.Errors);
+        Assert.Equal("E2001", onlyDiag.Code);
+        Assert.DoesNotContain(bag.Errors, e => e.Code == "E0002");
+    }
 }

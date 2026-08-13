@@ -78,4 +78,145 @@ public sealed class SwitchExprParserTests {
         Assert.Contains(bag.Errors,
             d => d.Code == "E2001" && d.Range.Start.Line == 1 && d.Range.Start.Column == 19);
     }
+
+    // -----------------------------------------------------------------------
+    // Error recovery — malformed arm (D-406, closing the finding D-405 left open
+    // for switch-expression arms). ParseSwitchArmOrError (comma-boundary mode)
+    // mirrors ParseMapEntryOrError/ParseFieldInitOrError exactly.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MalformedArm_MissingArrow_RecoversWithOneDiagnostic() {
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("x := n switch { 1 10, _ => 0 }\ny := 2\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected '=>' after switch pattern", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(19, d.Range.Start.Column); // the stray '10'
+
+        SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Assert.IsType<VarDeclStmt>(unit.TopLevel[0]).Initializer);
+        SwitchArm arm = Assert.Single(sw.Arms);
+        Assert.IsType<CatchAllPattern>(arm.Pattern);
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("y", tail.Name);
+        Assert.Equal(2L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
+    }
+
+    /// <summary>
+    /// Load-bearing (D-405 shape): proves the fix removes the phantom duplicate
+    /// without suppressing a second, genuinely independent mistake in the same arm
+    /// list.
+    /// </summary>
+    [Fact]
+    public void MalformedArm_TwoDistinctMalformedArms_ProducesTwoDiagnosticsNoneSwallowed() {
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("x := n switch { 1 10, 2 20, _ => 0 }\ny := 3\n");
+        Assert.Equal(2, bag.Diagnostics.Count);
+
+        Diagnostic first = bag.Diagnostics[0];
+        Assert.Equal("E2001", first.Code);
+        Assert.Equal("expected '=>' after switch pattern", first.Message);
+        Assert.Equal(1, first.Range.Start.Line);
+        Assert.Equal(19, first.Range.Start.Column);
+
+        Diagnostic second = bag.Diagnostics[1];
+        Assert.Equal("E2001", second.Code);
+        Assert.Equal("expected '=>' after switch pattern", second.Message);
+        Assert.Equal(1, second.Range.Start.Line);
+        Assert.Equal(25, second.Range.Start.Column);
+
+        SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Assert.IsType<VarDeclStmt>(unit.TopLevel[0]).Initializer);
+        SwitchArm arm = Assert.Single(sw.Arms);
+        Assert.IsType<CatchAllPattern>(arm.Pattern);
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("y", tail.Name);
+        Assert.Equal(3L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
+    }
+
+    [Fact]
+    public void MalformedArm_SubsequentStatement_TypeChecksCleanly() {
+        const string src = "x := 1 switch { 1 10, _ => 0 }\ny := 2\nz := y + 1\n";
+        DiagnosticBag bag = new();
+        IReadOnlyList<Token> tokens = Lexer.Scan(src, bag);
+        Assert.Empty(bag.Diagnostics);
+        CompilationUnit unit = Parser.Parse(tokens, bag);
+        Diagnostic parseDiagnostic = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", parseDiagnostic.Code);
+
+        new TypeChecker(bag).Check(unit);
+
+        Diagnostic onlyDiagnostic = Assert.Single(bag.Diagnostics);
+        Assert.Same(parseDiagnostic, onlyDiagnostic);
+
+        VarDeclStmt zDecl = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        BinaryExpr sum = Assert.IsType<BinaryExpr>(zDecl.Initializer);
+        IdentifierExpr yRef = Assert.IsType<IdentifierExpr>(sum.Left);
+        Assert.Equal("y", yRef.Name);
+        Assert.NotEqual(GrobType.Error, yRef.ResolvedType);
+        Assert.NotNull(yRef.Declaration);
+        Assert.NotSame(UnresolvedDecl.Instance, yRef.Declaration);
+    }
+
+    // -----------------------------------------------------------------------
+    // Error recovery — delimiters the abandoned arm opened before it failed
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MalformedArm_ResultClosesItsOwnBracketPair_RecoversAtOuterCommaOnly() {
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("x := n switch { 1 => foo(1 2), _ => 0 }\ny := 3\n");
+
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected ')' to close call", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(28, d.Range.Start.Column); // the stray '2'
+
+        SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Assert.IsType<VarDeclStmt>(unit.TopLevel[0]).Initializer);
+        SwitchArm arm = Assert.Single(sw.Arms);
+        Assert.IsType<CatchAllPattern>(arm.Pattern);
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("y", tail.Name);
+        Assert.Equal(3L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
+    }
+
+    [Fact]
+    public void MalformedArm_ResultLeavesBracketPairOpen_DoesNotReuseInnerComma() {
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("x := n switch { 1 => (1, _ => 0 }\nq := 9\n");
+
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected ')'", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(24, d.Range.Start.Column); // the ',' inside the still-open '('
+
+        SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Assert.IsType<VarDeclStmt>(unit.TopLevel[0]).Initializer);
+        Assert.Empty(sw.Arms);
+
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[^1]);
+        Assert.Equal("q", tail.Name);
+        Assert.Equal(9L, Assert.IsType<IntLiteralExpr>(tail.Initializer).Value);
+    }
+
+    [Fact]
+    public void MalformedArm_UnterminatedAfterMalformedArm_ReportsBothRootCauses() {
+        // EOF safety (malformed input never throws, recovery never loops): a
+        // malformed arm AND a missing closing '}' are two genuinely independent
+        // mistakes; both must be reported.
+        (_, DiagnosticBag bag) = Parse("x := n switch { 1 10\n");
+        Assert.Equal(2, bag.Diagnostics.Count);
+
+        Diagnostic arrow = bag.Diagnostics[0];
+        Assert.Equal("E2001", arrow.Code);
+        Assert.Equal("expected '=>' after switch pattern", arrow.Message);
+        Assert.Equal(1, arrow.Range.Start.Line);
+        Assert.Equal(19, arrow.Range.Start.Column);
+
+        Diagnostic brace = bag.Diagnostics[1];
+        Assert.Equal("E2001", brace.Code);
+        Assert.Equal("expected '}' to close switch body", brace.Message);
+        Assert.Equal(2, brace.Range.Start.Line);
+        Assert.Equal(1, brace.Range.Start.Column);
+    }
 }

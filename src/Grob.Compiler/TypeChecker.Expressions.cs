@@ -2873,9 +2873,12 @@ public sealed partial class TypeChecker {
             }
         }
 
-        // Cascade suppression: a subject that already failed to type-check would
-        // otherwise produce a derived, misleading non-exhaustiveness diagnostic.
-        if (subjectType != GrobType.Error && !IsExhaustive(subjectType, node.Arms)) {
+        // Cascade suppression: a subject that already failed to type-check, or an
+        // arm the parser dropped during local recovery (D-406), would otherwise
+        // produce a derived, misleading non-exhaustiveness diagnostic — the dropped
+        // arm might itself have been the one carrying exhaustiveness (the '_'
+        // catch-all, a required bool arm, or the nil arm on a nullable subject).
+        if (subjectType != GrobType.Error && !node.HadRecoveredArm && !IsExhaustive(subjectType, node.Arms)) {
             EmitError(ErrorCatalog.E0505,
                 "Switch expression is not exhaustive; add a '_' arm or cover every possible value.",
                 node.Range);
