@@ -1082,14 +1082,32 @@ public sealed class Parser {
     /// Parses a named-struct-construction field list — <c>TypeName { field: value, … }</c>
     /// — starting after the leading identifier, with the opening '{' not yet
     /// consumed. Extracted from <see cref="ParsePostfix"/>'s <c>switch</c> to keep
-    /// that method's cognitive complexity within the analyzer gate. Each field goes
-    /// through <see cref="ParseFieldInitOrError"/> (D-405/D-406), not a bare
-    /// <see cref="ParseOneFieldInit"/> call, so a malformed field is recovered
-    /// locally rather than escaping to the top-level recovery wrapper — the same
-    /// shape as <see cref="ParseAnonStructLiteral"/>'s own field loop.
+    /// that method's cognitive complexity within the analyzer gate. The field loop
+    /// itself is <see cref="ParseBracedFieldInitList"/>, shared verbatim with
+    /// <see cref="ParseAnonStructLiteral"/>; only the closing brace's diagnostic
+    /// wording and the node built from the result differ between the two forms.
     /// </summary>
     private StructConstructionExpr ParseStructConstruction(SourceLocation start, string typeName) {
-        Advance(); // consume '{'
+        List<FieldInit> fields = ParseBracedFieldInitList();
+        Token closeBrace = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close struct construction");
+        return new StructConstructionExpr(RangeBetween(start, closeBrace.Location), typeName, fields);
+    }
+
+    /// <summary>
+    /// Parses the body shared by both brace-delimited field-init lists — the
+    /// anonymous-struct literal's <c>#{ … }</c> and the named-struct construction's
+    /// <c>TypeName { … }</c> — which are token-for-token identical between the
+    /// opening brace and the closing one. The opening brace is consumed here (both
+    /// forms open on exactly one token, '#{' or '{'); the closing '}' is left to the
+    /// caller so each form keeps its own diagnostic wording. Every field goes through
+    /// <see cref="ParseFieldInitOrError"/> (D-405/D-406), not a bare
+    /// <see cref="ParseOneFieldInit"/> call, so a malformed field is recovered locally
+    /// against this list's own ',' or '}' rather than escaping to the top-level
+    /// recovery wrapper. One shared primitive, not two divergent copies — D-406's own
+    /// argument applied to its own output.
+    /// </summary>
+    private List<FieldInit> ParseBracedFieldInitList() {
+        Advance(); // consume the opening '{' / '#{'
         SkipNewlines();
         List<FieldInit> fields = [];
         if (!Check(TokenKind.RightBrace)) {
@@ -1103,8 +1121,7 @@ public sealed class Parser {
             }
             SkipNewlines();
         }
-        Token closeBrace = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close struct construction");
-        return new StructConstructionExpr(RangeBetween(start, closeBrace.Location), typeName, fields);
+        return fields;
     }
 
     // -----------------------------------------------------------------------
@@ -1330,37 +1347,25 @@ public sealed class Parser {
 
     // #{ field: value, … } — anonymous-struct literal (Sprint 6D).
     // '#{' is a single HashBrace token; the lexer already incremented _depth so
-    // the matching '}' is scanned at the correct nesting level. Each field goes
-    // through ParseFieldInitOrError (D-405), not a bare ParseOneFieldInit call, so
-    // a malformed field name is recovered locally rather than escaping to the
-    // top-level recovery wrapper — see that method's doc comment for why that
-    // distinction matters.
+    // the matching '}' is scanned at the correct nesting level. The field loop is
+    // ParseBracedFieldInitList, shared with named-struct construction — it consumes
+    // the '#{' and runs each field through ParseFieldInitOrError (D-405/D-406), so a
+    // malformed field name is recovered locally rather than escaping to the
+    // top-level recovery wrapper. 'start' is captured before that call because the
+    // helper consumes the opening token.
     private AnonStructExpr ParseAnonStructLiteral() {
         SourceLocation start = Current.Location;
-        Advance(); // consume TokenKind.HashBrace
-        SkipNewlines();
-        List<FieldInit> fields = [];
-        if (!Check(TokenKind.RightBrace)) {
-            FieldInit? first = ParseFieldInitOrError();
-            if (first is not null) fields.Add(first);
-            while (Match(TokenKind.Comma)) {
-                SkipNewlines();
-                if (Check(TokenKind.RightBrace)) break; // trailing comma
-                FieldInit? next = ParseFieldInitOrError();
-                if (next is not null) fields.Add(next);
-            }
-            SkipNewlines();
-        }
+        List<FieldInit> fields = ParseBracedFieldInitList();
         Token closeBrace = Expect(TokenKind.RightBrace, _e2001, "expected '}' to close anonymous struct literal");
         return new AnonStructExpr(new SourceRange(start, closeBrace.Location), fields);
     }
 
     /// <summary>
     /// Local recovery wrapper (D-405, widened to the named-struct-construction call
-    /// site by D-406) around <see cref="ParseOneFieldInit"/>, shared by
-    /// <see cref="ParseAnonStructLiteral"/>'s field loop and <see cref="ParsePostfix"/>'s
-    /// <c>TypeName { … }</c> construction loop — both own a still-open '{' and both
-    /// reproduced the identical double-diagnostic gap D-405 traced. See
+    /// site by D-406) around <see cref="ParseOneFieldInit"/>, reached from the field
+    /// loop <see cref="ParseBracedFieldInitList"/> that <see cref="ParseAnonStructLiteral"/>
+    /// and <see cref="ParseStructConstruction"/> share — both own a still-open '{' and
+    /// both reproduced the identical double-diagnostic gap D-405 traced. See
     /// <see cref="ParseMapEntryOrError"/>'s doc comment for the full rationale:
     /// catching the failure at this call site, rather than letting it escape to the
     /// top-level recovery wrapper, keeps the caller's own frame — the one that owns

@@ -188,6 +188,9 @@ public sealed class SwitchExprTypeCheckerTests {
         DiagnosticBag bag = TypeCheckSource("n := 1\ny := n switch { 1 => 10, _ 0 }");
         Diagnostic onlyDiag = Assert.Single(bag.Errors);
         Assert.Equal("E2001", onlyDiag.Code);
+        // The '0' that should have been preceded by '=>' — line 2, column 28.
+        Assert.Equal(2, onlyDiag.Range.Start.Line);
+        Assert.Equal(28, onlyDiag.Range.Start.Column);
         Assert.DoesNotContain(bag.Errors, e => e.Code == "E0505");
     }
 
@@ -200,6 +203,9 @@ public sealed class SwitchExprTypeCheckerTests {
         DiagnosticBag bag = TypeCheckSource("b := true\ny := b switch { true => 1, false 2 }");
         Diagnostic onlyDiag = Assert.Single(bag.Errors);
         Assert.Equal("E2001", onlyDiag.Code);
+        // The '2' that should have been preceded by '=>' — line 2, column 34.
+        Assert.Equal(2, onlyDiag.Range.Start.Line);
+        Assert.Equal(34, onlyDiag.Range.Start.Column);
         Assert.DoesNotContain(bag.Errors, e => e.Code == "E0505");
     }
 
@@ -213,8 +219,12 @@ public sealed class SwitchExprTypeCheckerTests {
     [Fact]
     public void WellFormedNonExhaustiveSwitch_NoRecovery_StillRaisesE0505() {
         DiagnosticBag bag = TypeCheckSource("n := 1\ny := n switch { 1 => 10, 2 => 20 }");
-        Assert.Empty(bag.Errors.Where(e => e.Code != "E0505"));
-        Assert.Single(bag.Errors, e => e.Code == "E0505");
+        Diagnostic onlyDiag = Assert.Single(bag.Errors);
+        Assert.Equal("E0505", onlyDiag.Code);
+        // E0505 is pinned at the switch expression itself, which starts at its
+        // subject 'n' — line 2, column 6.
+        Assert.Equal(2, onlyDiag.Range.Start.Line);
+        Assert.Equal(6, onlyDiag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------

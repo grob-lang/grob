@@ -424,9 +424,14 @@ public sealed class MergeIdentityTypeCheckerTests {
             y := (n switch { 1 10, 2 => [1, 2], _ => ["s"] })[0]
             """);
         Assert.Equal(2, bag.Errors.Count());
-        Assert.Contains(bag.Errors, e => e.Code == "E2001");
+        Diagnostic parseDiag = Assert.Single(bag.Errors, e => e.Code == "E2001");
+        // The '10' that should have been preceded by '=>' — line 2, column 20.
+        Assert.Equal(2, parseDiag.Range.Start.Line);
+        Assert.Equal(20, parseDiag.Range.Start.Column);
         Diagnostic mergeDiag = Assert.Single(bag.Errors, e => e.Code == "E0002");
         Assert.Contains("array element types do not match", mergeDiag.Message);
+        Assert.Equal(2, mergeDiag.Range.Start.Line);
+        Assert.Equal(7, mergeDiag.Range.Start.Column);
         Assert.NotNull(unit);
     }
 
@@ -438,6 +443,9 @@ public sealed class MergeIdentityTypeCheckerTests {
             """);
         Diagnostic onlyDiag = Assert.Single(bag.Errors);
         Assert.Equal("E2001", onlyDiag.Code);
+        // The '10' that should have been preceded by '=>' — line 2, column 20.
+        Assert.Equal(2, onlyDiag.Range.Start.Line);
+        Assert.Equal(20, onlyDiag.Range.Start.Column);
         Assert.DoesNotContain(bag.Errors, e => e.Code == "E0002");
     }
 }

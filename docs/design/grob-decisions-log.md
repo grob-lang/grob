@@ -11487,9 +11487,9 @@ take an explicit `boundaryToken` parameter (`TokenKind.Comma` or `TokenKind.Newl
 `OpenDelimitersBetween`/`TrackDelimiter` are unchanged — they were already
 boundary-agnostic, only ever tracking bracket-pair opens/closes, never the separator
 itself. The two pre-existing comma-boundary call sites (`ParseMapEntryOrError`,
-`ParseFieldInitOrError`) now pass `TokenKind.Comma` explicitly and are otherwise
-byte-for-byte unchanged — confirmed by the full existing D-405 test suite staying
-green with no edits.
+`ParseFieldInitOrError`) now pass `TokenKind.Comma` explicitly; that argument is
+their only edit — confirmed by the full existing D-405 test suite staying green with
+no edits.
 
 **Named-struct construction and switch-expression arms took the wrapper unchanged
 (comma-boundary mode).** Named-struct construction reuses `ParseFieldInitOrError` —
@@ -11498,7 +11498,12 @@ deliberately left this call site out of its narrow scope — with `ParsePostfix`
 inline field loop restructured to the same first-then-`while (Match(Comma))` shape
 `ParseAnonStructLiteral` already used, extracted into a new `ParseStructConstruction`
 helper (kept `ParsePostfix`'s cognitive complexity under the S3776 gate, which the
-inline restructuring alone pushed from 24 to 25). One subtlety specific to this call
+inline restructuring alone pushed from 24 to 25). Restructuring to that shape made
+the two loops token-for-token identical, which SonarCloud duplication-flagged on the
+PR, so the loop itself is a third shared primitive — `ParseBracedFieldInitList`,
+consuming the opening `{`/`#{` and leaving the closing `}` to each caller so both
+keep their own diagnostic wording. Same argument as the wrapper above, applied to
+this entry's own output. One subtlety specific to this call
 site, not present for map/anon-struct: `LooksLikeStructConstruction()`'s lookahead
 only inspects the **first** field's shape (`identifier :`, or an empty body) before
 committing to struct-construction parsing at all — it never inspects the value. A
