@@ -234,19 +234,19 @@ public sealed class StringMethodsPluginTests {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.substring", GrobValue.FromString("hi"), GrobValue.FromInt(1), GrobValue.FromInt(5))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5102.Code, ex.Code);
     }
 
     [Fact]
     public void Substring_StartOverflowsOnAddition_StillThrowsIndexError() {
         // start + length must not wrap: long.MaxValue + 1 overflows to a negative value that
         // would bypass an `start + length > Length` guard, letting Substring throw an uncoded
-        // CLR fault instead of E5101. The guard checks start against Length before subtracting.
+        // CLR fault instead of E5102. The guard checks start against Length before subtracting.
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.substring", GrobValue.FromString("hi"),
                 GrobValue.FromInt(long.MaxValue), GrobValue.FromInt(1))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5102.Code, ex.Code);
     }
 
     [Fact]
@@ -257,7 +257,7 @@ public sealed class StringMethodsPluginTests {
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.substring", GrobValue.FromString("hi"),
                 GrobValue.FromInt(0), GrobValue.FromInt(int.MaxValue))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5102.Code, ex.Code);
     }
 
     [Fact]
@@ -266,7 +266,7 @@ public sealed class StringMethodsPluginTests {
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.substring", GrobValue.FromString("hi"),
                 GrobValue.FromInt(-1), GrobValue.FromInt(1))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5102.Code, ex.Code);
     }
 
     [Fact]
@@ -275,7 +275,7 @@ public sealed class StringMethodsPluginTests {
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.substring", GrobValue.FromString("hi"),
                 GrobValue.FromInt(0), GrobValue.FromInt(-1))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5102.Code, ex.Code);
     }
 
     [Fact]
@@ -354,7 +354,7 @@ public sealed class StringMethodsPluginTests {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.left", GrobValue.FromString("hi"), GrobValue.FromInt(5))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5102.Code, ex.Code);
     }
 
     [Fact]
@@ -365,7 +365,7 @@ public sealed class StringMethodsPluginTests {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.left", GrobValue.FromString("hi"), GrobValue.FromInt(int.MaxValue))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5102.Code, ex.Code);
     }
 
     [Fact]
@@ -373,7 +373,7 @@ public sealed class StringMethodsPluginTests {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.left", GrobValue.FromString("hi"), GrobValue.FromInt(-1))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5102.Code, ex.Code);
     }
 
     [Fact]
@@ -388,7 +388,7 @@ public sealed class StringMethodsPluginTests {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.right", GrobValue.FromString("hi"), GrobValue.FromInt(5))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5102.Code, ex.Code);
     }
 
     [Fact]
@@ -396,7 +396,7 @@ public sealed class StringMethodsPluginTests {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.right", GrobValue.FromString("hi"), GrobValue.FromInt(int.MaxValue))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5102.Code, ex.Code);
     }
 
     [Fact]
@@ -404,7 +404,7 @@ public sealed class StringMethodsPluginTests {
         var vm = NewRegisteredVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("string.right", GrobValue.FromString("hi"), GrobValue.FromInt(-1))));
-        Assert.Equal(ErrorCatalog.E5101.Code, ex.Code);
+        Assert.Equal(ErrorCatalog.E5102.Code, ex.Code);
     }
 
     [Fact]

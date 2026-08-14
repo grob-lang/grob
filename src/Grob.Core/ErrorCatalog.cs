@@ -882,10 +882,10 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: GrobErrorLeaf.IndexError);
 
-    /// <summary>substring bounds out of range</summary>
+    /// <summary>string bounds out of range</summary>
     public static readonly ErrorDescriptor E5102 = new(
         Code: "E5102",
-        Title: "substring bounds out of range",
+        Title: "string bounds out of range",
         Category: ErrorCategory.Runtime,
         Status: ErrorStatus.PreRelease,
         Severity: DiagnosticSeverity.Error,
