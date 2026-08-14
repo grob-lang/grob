@@ -11744,8 +11744,9 @@ no count movement to record).
 earlier approximate count.** `tests/Grob.Stdlib.Tests/StringMethodsPluginTests.cs` — 11
 (`substring`: lines 237, 249, 260, 269, 278; `left`: 357, 368, 376; `right`: 391, 399, 407)
 — and `tests/Grob.Integration.Tests/Sprint9StringInstanceMethodsTests.cs:103` — 1, a CLI
-stderr assertion. Each confirmed red (11 failures, `E5101`≠`E5102`) against the
-unmodified production code before the throw-site change, then green after — the TDD
+stderr assertion. Each confirmed red against the unmodified production code before the
+throw-site change — 12 failures in total, 11 from the `Grob.Stdlib.Tests` project and 1
+from `Grob.Integration.Tests`, all `E5101`≠`E5102` — then green after: the TDD
 regression-cycle shape, not a blind find-and-replace. No gold master needed regenerating:
 `docs/errors/examples/` was searched for `substring`/`left`/`right` fixtures; none exist —
 the only `E5101` examples (`array-index-out-of-range`, `array-index-out-of-range-in-function`)
