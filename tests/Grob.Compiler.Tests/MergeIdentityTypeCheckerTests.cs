@@ -408,4 +408,44 @@ public sealed class MergeIdentityTypeCheckerTests {
             """);
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
     }
+
+    // =========================================================================
+    // D-406 — a switch arm the parser drops during local recovery is simply absent
+    // from SwitchExprNode.Arms, so CheckMergeIdentity (run once, after the fold,
+    // over the SURVIVING arms only) needs no change of its own: recovery neither
+    // suppresses a real mismatch among the arms that remain nor fabricates a
+    // spurious one. Both directions are pinned explicitly rather than assumed.
+    // =========================================================================
+
+    [Fact]
+    public void Switch_RecoveredArm_DoesNotSuppressGenuineMismatchAmongSurvivingArms_RaisesE0002() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            n := 1
+            y := (n switch { 1 10, 2 => [1, 2], _ => ["s"] })[0]
+            """);
+        Assert.Equal(2, bag.Errors.Count());
+        Diagnostic parseDiag = Assert.Single(bag.Errors, e => e.Code == "E2001");
+        // The '10' that should have been preceded by '=>' — line 2, column 20.
+        Assert.Equal(2, parseDiag.Range.Start.Line);
+        Assert.Equal(20, parseDiag.Range.Start.Column);
+        Diagnostic mergeDiag = Assert.Single(bag.Errors, e => e.Code == "E0002");
+        Assert.Contains("array element types do not match", mergeDiag.Message);
+        Assert.Equal(2, mergeDiag.Range.Start.Line);
+        Assert.Equal(7, mergeDiag.Range.Start.Column);
+        Assert.NotNull(unit);
+    }
+
+    [Fact]
+    public void Switch_RecoveredArm_SurvivingArmsAgree_DoesNotSpuriouslyRaiseE0002() {
+        DiagnosticBag bag = Check("""
+            n := 1
+            y := (n switch { 1 10, 2 => [1, 2], _ => [3, 4] })[0]
+            """);
+        Diagnostic onlyDiag = Assert.Single(bag.Errors);
+        Assert.Equal("E2001", onlyDiag.Code);
+        // The '10' that should have been preceded by '=>' — line 2, column 20.
+        Assert.Equal(2, onlyDiag.Range.Start.Line);
+        Assert.Equal(20, onlyDiag.Range.Start.Column);
+        Assert.DoesNotContain(bag.Errors, e => e.Code == "E0002");
+    }
 }
