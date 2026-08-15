@@ -173,7 +173,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         // Compare start against Length before subtracting so `start + length` cannot wrap:
         // long.MaxValue + 1 would overflow to a negative value and slip past an additive guard.
         if (start < 0 || length < 0 || start > s.Length || length > s.Length - start) {
-            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5102.Code,
                 $"substring: start {start} and length {length} are out of range for a string of length {s.Length}.");
         }
         return GrobValue.FromString(s.Substring((int)start, (int)length));
@@ -206,7 +206,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         string s = receiver.AsString();
         long n = nArg.AsInt();
         if (n < 0 || n > s.Length) {
-            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5102.Code,
                 $"left: {n} exceeds string length {s.Length}.");
         }
         return GrobValue.FromString(s[..(int)n]);
@@ -216,7 +216,7 @@ public sealed class StringMethodsPlugin : IGrobPlugin {
         string s = receiver.AsString();
         long n = nArg.AsInt();
         if (n < 0 || n > s.Length) {
-            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5101.Code,
+            throw new NativeFaultException(IndexErrorLeaf, ErrorCatalog.E5102.Code,
                 $"right: {n} exceeds string length {s.Length}.");
         }
         return GrobValue.FromString(s[(s.Length - (int)n)..]);

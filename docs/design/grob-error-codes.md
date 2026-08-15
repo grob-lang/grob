@@ -147,7 +147,7 @@ read by `grob --explain Exxxx`.
 | E5005 | float modulo by zero                               | Runtime           | pre-release           |
 | E5006 | math domain violation                              | Runtime           | pre-release           |
 | E5101 | array index out of range                           | Runtime           | pre-release           |
-| E5102 | substring bounds out of range                      | Runtime           | pre-release           |
+| E5102 | string bounds out of range                         | Runtime           | pre-release           |
 | E5201 | nil dereference at runtime                         | Runtime           | pre-release           |
 | E5301 | file not found                                     | Runtime           | pre-release           |
 | E5302 | permission denied                                  | Runtime           | pre-release           |
@@ -1113,14 +1113,18 @@ read by `grob --explain Exxxx`.
 
 ---
 
-### E5102 — substring bounds out of range
+### E5102 — string bounds out of range
 
 - **Category:** Runtime
 - **Introduced:** v1
 - **Status:** pre-release
 - **Throws:** `IndexError`
-- **Description:** A substring start or end index was outside the source string's bounds.
-- **Source decision:** D-284.
+- **Description:** A string-bounds argument was outside the source string's length —
+  either a `substring` `start`/`length` pair describing a range past the string's end,
+  or a `left`/`right` character count exceeding the string's actual length.
+- **Throw sites:** `string.substring`, `string.left`, `string.right`.
+- **Source decision:** D-284 (leaf), D-407 (throw sites; distinguished from `E5101`'s
+  array-index domain).
 
 ---
 

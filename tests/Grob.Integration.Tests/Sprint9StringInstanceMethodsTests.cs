@@ -100,7 +100,7 @@ public sealed class Sprint9StringInstanceMethodsTests {
 
         Assert.NotEqual(0, exitCode);
         Assert.Equal(string.Empty, stdout);
-        Assert.Contains(ErrorCatalog.E5101.Code, stderr);
+        Assert.Contains(ErrorCatalog.E5102.Code, stderr);
     }
 
     [Fact]
