@@ -173,6 +173,9 @@ public sealed class TypeCheckerMemberAccessCallDiagnosticsTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1001.Code, diag.Code);
+        // 'undefinedThing' starts at column 7 — after "throw " (six characters).
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(7, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -187,6 +190,9 @@ public sealed class TypeCheckerMemberAccessCallDiagnosticsTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1001.Code, diag.Code);
+        // 'undefinedThing' starts at column 8 — after "return " (seven characters).
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(8, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -205,8 +211,17 @@ public sealed class TypeCheckerMemberAccessCallDiagnosticsTests {
         List<Diagnostic> errors = bag.Errors.ToList();
         Assert.Equal(2, errors.Count);
         Assert.Equal(ErrorCatalog.E1001.Code, errors[0].Code);
+        // 'undefinedThing' starts at column 6 — after "take(" (five characters).
+        Assert.Equal(3, errors[0].Range.Start.Line);
+        Assert.Equal(6, errors[0].Range.Start.Column);
         Assert.Equal(ErrorCatalog.E0004.Code, errors[1].Code);
         Assert.Contains("'b'", errors[1].Message);
+        // The genuine second-argument mistake stays located on '42' itself (column 32 —
+        // after "take(" plus "undefinedThing.compute()" plus ", "), not on the call or on
+        // the suppressed first argument: cascade suppression must not move a real
+        // diagnostic off its own source text.
+        Assert.Equal(3, errors[1].Range.Start.Line);
+        Assert.Equal(32, errors[1].Range.Start.Column);
     }
 
     [Fact]
@@ -217,6 +232,9 @@ public sealed class TypeCheckerMemberAccessCallDiagnosticsTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E1001.Code, diag.Code);
+        // 'undefinedThing' starts at column 11 — after "x: int := " (ten characters).
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(11, diag.Range.Start.Column);
     }
 
     // =========================================================================
@@ -249,6 +267,15 @@ public sealed class TypeCheckerMemberAccessCallDiagnosticsTests {
         Diagnostic callDiag = Assert.Single(callBag.Errors);
         Assert.Equal(ErrorCatalog.E1001.Code, propertyDiag.Code);
         Assert.Equal(ErrorCatalog.E1001.Code, callDiag.Code);
+        // Both paths locate the one root cause on 'undefinedThing' itself — column 8,
+        // after "return " — not on the member or the call. Parity of location is part of
+        // the parity this test pins, so the two are asserted individually and against
+        // each other.
+        Assert.Equal(2, propertyDiag.Range.Start.Line);
+        Assert.Equal(8, propertyDiag.Range.Start.Column);
+        Assert.Equal(2, callDiag.Range.Start.Line);
+        Assert.Equal(8, callDiag.Range.Start.Column);
+        Assert.Equal(propertyDiag.Range.Start, callDiag.Range.Start);
     }
 
     [Fact]
@@ -269,5 +296,13 @@ public sealed class TypeCheckerMemberAccessCallDiagnosticsTests {
         Assert.Equal(ErrorCatalog.E1002.Code, propertyDiag.Code);
         Assert.Equal(ErrorCatalog.E1002.Code, callDiag.Code);
         Assert.Equal(propertyDiag.Message, callDiag.Message);
+        // Both diagnostics span the whole member access, so each starts at its own
+        // receiver 'p' — column 15 on 'readonly v := p.nosuchmember', column 1 on the
+        // bare 'p.nosuchmember()' statement. The columns differ because the source does;
+        // the shared line is the sixth in both, after the five-line type declaration.
+        Assert.Equal(6, propertyDiag.Range.Start.Line);
+        Assert.Equal(15, propertyDiag.Range.Start.Column);
+        Assert.Equal(6, callDiag.Range.Start.Line);
+        Assert.Equal(1, callDiag.Range.Start.Column);
     }
 }
