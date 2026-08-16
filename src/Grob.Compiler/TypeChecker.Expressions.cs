@@ -597,10 +597,26 @@ public sealed partial class TypeChecker {
         }
 
         GrobType receiverType = Visit(memberAccess.Target);
-        // Visit argument values to satisfy §3.1.1 on any identifiers inside them.
+        // Visit argument values to satisfy §3.1.1 on any identifiers inside them —
+        // unconditionally, even when the receiver itself already errored below: an
+        // argument's own mistake is a separate root cause and must still surface.
         var argTypes = new GrobType[node.Arguments.Count];
         for (int i = 0; i < node.Arguments.Count; i++)
             argTypes[i] = Visit(node.Arguments[i].Value);
+
+        // D-408: cascade suppression mirroring VisitMemberAccess's identical Error
+        // arm — if the receiver already errored (an undefined identifier, a broken
+        // prior expression), returning Unknown here would let the one root cause
+        // masquerade as a fresh mistake at the call's consumption sites (return,
+        // throw, a typed ':=', a typed call argument), none of which excuse Unknown
+        // the way every one of them excuses Error (D-300's universal-assignability
+        // design). Returning Error instead routes through those existing == Error
+        // checks and collapses the cascade back to the one diagnostic already
+        // raised for the receiver — it does not swallow a genuinely separate
+        // mistake elsewhere in the same call (e.g. a second, unrelated argument),
+        // since Error's suppression is scoped to this node's own type, not
+        // propagated outward.
+        if (receiverType == GrobType.Error) return GrobType.Error;
 
         // D-402: a nullable receiver dispatches once, generically — mirroring
         // VisitMemberAccess's identical IsNullable guard rather than a parallel check.
@@ -697,7 +713,49 @@ public sealed partial class TypeChecker {
                 NamedTypeRegistry.TryGet(namedTypeName, out NamedTypeEntry namedEntry)) {
             return ValidateNamedTypeMethodCall(node, memberAccess, argTypes, namedEntry);
         }
+
+        // D-408: an ordinary user 'type' struct or an anonymous struct (#{ }) has no
+        // method surface in v1 (D-043/D-080) — but a call through a genuinely declared
+        // field whose value happens to be callable (box.callback(), a function-typed
+        // field) must keep resolving permissively, exactly as it does today. Reusing
+        // ResolveStructFieldAccess's own field-lookup-by-name semantics (rather than a
+        // blanket "any call on a Struct/AnonStruct receiver is E1002") is what tells
+        // the two cases apart: a name that names a declared field, of any type, stays
+        // Unknown; a name that names no field at all is E1002 — mirroring the property
+        // path's unrecognised-field diagnostic instead of falling through to the
+        // generic Unknown fallback below and crashing the VM at emission.
+        if (receiverType is GrobType.Struct or GrobType.AnonStruct) {
+            return ValidateStructMemberCall(memberAccess);
+        }
         return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// Validates a call whose receiver is an ordinary user <c>type</c> struct or an
+    /// anonymous struct (D-408, finding 2). Field-lookup-based, deliberately: v1 gives
+    /// structs no method surface, but a call through a declared field whose value is
+    /// callable (<c>box.callback()</c>) is a legitimate, currently-working pattern that
+    /// must not be rejected merely because the receiver is a struct. Returns
+    /// <see cref="GrobType.Unknown"/> when <paramref name="memberAccess"/>'s member
+    /// names a declared field (regardless of that field's own type — the same
+    /// permissive outcome this call already reached before this fix), and raises
+    /// <see cref="ErrorCatalog.E1002"/>, the same code and wording
+    /// <see cref="ResolveStructFieldAccess"/> already raises for an unrecognised field
+    /// on the property path, when it names no field at all.
+    /// </summary>
+    private GrobType ValidateStructMemberCall(MemberAccessExpr memberAccess) {
+        string? typeName = GetStructTypeName(memberAccess.Target);
+        if (typeName is null) return GrobType.Unknown;
+
+        UserTypeInfo? typeInfo = TryGetTypeInfo(typeName);
+        if (typeInfo is null) return GrobType.Unknown;
+
+        bool hasField = typeInfo.Fields.Any(f => f.Name == memberAccess.Member);
+        if (hasField) return GrobType.Unknown;
+
+        return EmitErrorAndReturn(ErrorCatalog.E1002,
+            $"Type '{typeName}' has no member '{memberAccess.Member}'.",
+            memberAccess.Range);
     }
 
     /// <summary>

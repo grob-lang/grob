@@ -403,6 +403,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-405 | August 2026 | Compiler — parser error recovery (`Synchronise()` double-diagnostic on a malformed map-literal/anon-struct key) | Closes a finding carried in the correctness batch since the D-376 branch review, with no prior `D-###`: a malformed **non-string** map-literal key (and, found to share the identical shape, an anon-struct field with a non-identifier name) produced **two** `E2001` diagnostics for one mistake — the genuine one at the bad key/field, plus a phantom `"unexpected token '}' — expected expression"` at the literal's own closing brace. **Empirically reproduced first** across every malformed-key/field shape (identifier key, interpolated-string key, raw/backtick key for map; string/interpolated/raw field name for anon-struct) plus well-formed controls — all malformed shapes doubled, all well-formed shapes stayed clean. **Origin traced to a call-site gap, not a `Synchronise()` defect and not `Error`-node-typing**: `ParseMapLiteral`'s entry loop (and `ParseAnonStructLiteral`'s field loop) had no local recovery wrapper of their own, unlike `ParseReturn`/`ParseThrow` (which call `ExpressionOrError` directly) or `ParseBlock`'s statement loop — so a failure inside `ParseMapEntry`/`ParseOneFieldInit` propagated straight past the still-open `{`'s owning frame, up to the nearest top-level `*OrError` wrapper, several frames further out and long after that frame had unwound. `Synchronise()` (§29) then anchored on the literal's own closing `}` — correct per the letter of "the closing brace of an enclosing block," since it cannot distinguish that `}` from a genuine block's — without consuming it, leaving it for a fresh, unrelated top-level parse attempt to fail on again: the phantom. **`Synchronise()` verdict**: matches D-300 §29 exactly as specified; the gap is that §29's synchronisation-set text and worked example (§29.6) were written against block-statement contexts and never anticipated a `{}`-delimited literal interior with no owning recovery wrapper — a spec-model gap, not implementation drift. **Fixed at the call site**: two new local-recovery wrappers, `ParseMapEntryOrError`/`ParseFieldInitOrError`, catch the failure while the owning loop's frame is still live and resynchronise via a new, narrower helper, `SkipToNextLiteralElementBoundary` — distinct from and not a modification to `Synchronise()`, which has no anchor for a bare `,` (exactly what an entry-list boundary needs) — stopping at this literal's own next `,` or `}`, tracking every bracket-pair kind (`()`/`[]`/`{}`/`#{}`/string-interpolation `${}`) the abandoned element's own value could have opened so a nested literal's internal `,` is never mistaken for this list's separator. A malformed entry/field is **omitted** from the resulting AST, not replaced by a placeholder node (`MapEntry`/`FieldInit` gained no error variant; none was needed). **General-shape survey — six constructs share the underlying gap, two fixed here**: named-struct construction (`TypeName { … }`, `ParsePostfix`), switch-expression arms (`ParseSwitchArms`), `type`-declaration field bodies (`ParseTypeDecl`) and `param`-block bodies (`ParseParamBlockDecl`) all empirically reproduce the identical double-diagnostic shape and are **not fixed here** — reported as an open finding, deliberately left for a future increment; only the two call sites the approved scope named (map-literal, anon-struct) were touched. **Two-distinct-mistakes proof, load-bearing**: `map<string,int>{ foo: 1, bar: 2 }` (both keys malformed) previously produced only 2 diagnostics too, but one was the phantom and `bar`'s own mistake was never reported at all — the whole literal was abandoned by one top-level `Synchronise()` sweep after `foo` failed. After the fix both `foo` and `bar` are independently reported (2 genuine diagnostics) and the phantom is gone — proof the fix removes a duplicate without suppressing a second, genuine mistake. An adversarial edge case (malformed key with no closing `}` at all) was also characterised: `SkipToNextLiteralElementBoundary` safely runs out at EOF (no infinite loop), and the subsequent `Expect(RightBrace)` correctly reports the missing brace as its own, genuine second diagnostic — a real behaviour change from before the fix (previously silently absorbed into the whole-statement `Synchronise()` sweep to EOF), consistent with D-300's one-diagnostic-per-root-cause intent rather than a regression. **Finding added by the PR #191 review, fixed on the branch**: `SkipToNextLiteralElementBoundary` began its scan at nesting depth zero, which is wrong whenever the abandoned element had already consumed an opening delimiter before it failed — `{ "a": foo(1 2), "b": 3 }` fails inside the argument list with `(` consumed, so the from-zero counter met the `)` first, went negative, and thereafter matched neither the entry `,` nor the literal's own `}`: it ran to EOF and swallowed the rest of the file, losing a well-formed `x := 9` that the pre-fix parser still recovered — a regression the branch introduced, not a pre-existing gap, and the exact over-swallowing failure mode D-405 exists to remove. The counter is replaced by a delimiter **stack** replayed from the element's own tokens (`OpenDelimitersBetween`/`TrackDelimiter`), so the scan resumes at the nesting actually open at the failure point; a `}` that cannot close whatever is innermost-open is treated as the enclosing literal's own brace and stops the scan **unconsumed**, so an element that leaves a bracket permanently open (`{ "a": (1, "b": 2 }`) no longer promotes that bracket's internal `,` to an outer entry boundary. Three regression tests pin both directions (map and anon-struct closed-pair recovery, and the never-closed-pair case). **No gold master needed regenerating**: `docs/errors/examples/` was searched for any expected output with two diagnostics for one mistake; none exist for map-literal or anon-struct keys or any other construct — the malformed-key/field parse path was never exercised by that corpus. New/updated tests: `ParserMapLiteralTests.cs` (three pre-existing malformed-key tests tightened from `Assert.Equal(2, …)` to the full diagnostic contract — code, message, `Range.Start.Line`/`Column` — asserting exactly one; the two-distinct-mistakes test; the unterminated-plus-malformed-key edge case; a full-pipeline parse-then-type-check recovery test), `ParserAnonStructLiteralTests.cs` (new file — the anon-struct equivalents of all of the above, plus two well-formed parser-level control tests that did not previously exist at this layer); the PR #191 review added three nesting regressions, the §3.1.1/D-311 identifier-annotation assertions on both parse-then-type-check tests, and the missing line/column on the unterminated edge case. Full solution `dotnet test` green (3,832 tests across eight projects), `Grob.Compiler` line coverage 97.11%. No opcode change. No new error code; `E2001` unchanged, count stays **121**. Refines D-300 (§29 synchronisation set — matched exactly, the spec-model gap this entry's fix works around rather than amends). Cites D-376 (the map-literal key rule this entry does not change — only the diagnostic count), D-404 (most recent prior entry in this area, unrelated subsystem). |
 | D-406 | August 2026 | Compiler — parser error recovery (four remaining `{}`-delimited constructs: named-struct construction, switch arms, `type`/`param` bodies) | Closes the open finding D-405 recorded and left unfixed. All four constructs reproduced D-405's identical double-diagnostic shape, including the two-mistakes lost-diagnostic case. `SkipToNextLiteralElementBoundary` (D-405) widened to take an explicit `boundaryToken` parameter instead of a hardcoded `,`; the two D-405 comma-boundary call sites pass `TokenKind.Comma` unchanged. Named-struct construction reuses `ParseFieldInitOrError` as-is (deliberately left out of D-405's narrow scope), restructured to `ParseAnonStructLiteral`'s own loop shape and extracted into `ParseStructConstruction` to stay under the S3776 complexity gate. Switch arms get a new comma-boundary wrapper, `ParseSwitchArmOrError`; `ParseSwitchArms` now also returns a `HadRecoveredArm` bool. `type`/`param` bodies are newline-separated, not comma-separated, so the helper gained a `TokenKind.Newline` mode that additionally anchors on a top-level declaration keyword — confirmed necessary by tracing a real over-swallowing failure (an unterminated field default value followed by a further top-level declaration), gated on a `Synchronise()`-style plain-brace-depth counter rather than the finer multi-bracket delimiter stack, since a reserved keyword can never appear as expression content at any paren depth. Both loops also gained `ParseBlock`-style top-level-keyword pre-checks so the shared zero-consumption-progress guard cannot force-advance over the keyword the resync left unconsumed. **Two type-checker interactions found and confirmed, not assumed**: the switch-arm/`CheckMergeIdentity` (D-404) interaction carries no risk (a dropped arm is simply absent from `SwitchExprNode.Arms`, pinned both directions); a second, separately-found risk — a dropped exhaustiveness-bearing arm (`_`/bool/nil) spuriously triggering `E0505` — is real and closed by a new `SwitchExprNode.HadRecoveredArm` field suppressing the diagnostic, mirroring the existing `subjectType != Error` cascade-suppression guard alongside it. All four constructs' delimiter-stack and EOF-safety regressions pinned per D-405's own three-shape precedent; `type`/`param` additionally get the keyword-anchor regression. No gold master needed regenerating. D-405's open finding is now fully closed. Aside, recorded not fixed: a separate pre-existing gap where ordinary non-last-statement recovery inside a nested block can silently drop subsequent genuine statements with no diagnostic — flagged for a future increment. New tests across six files (`ParserStructConstructionRecoveryTests.cs`, `SwitchExprParserTests.cs`, `ParserTypeDeclRecoveryTests.cs`, `ParserParamBlockRecoveryTests.cs`, `MergeIdentityTypeCheckerTests.cs`, `SwitchExprTypeCheckerTests.cs`). Full solution `dotnet test` green (3,865 tests across eight projects), `Grob.Compiler` line coverage 96.77%. No opcode change. No new error code; count stays **121**. Refines D-405 (the survey, the shared wrapper, the open finding closed here). Cites D-404 (the merge-identity guard confirmed unaffected), D-300 (§29 keyword-anchor gating and cascade suppression), D-376 (corpus continuity). |
 | D-407 | August 2026 | Runtime error taxonomy (`E5102` given its throw sites: `substring`/`left`/`right` string-bounds violations distinguished from `E5101`'s array-index domain) | Closes the correctness-batch finding D-382 reported and deliberately deferred: `E5102` ("substring bounds out of range") was defined in `ErrorCatalog` and the registry but had no throw site — `Substring`/`Left`/`Right` all reused `E5101` instead. **Adopted, not retired** — the two-code split is kept and `E5102` is wired up, rather than removing the dead row and letting `E5101` cover both. **The deciding argument is latency, not present observability**: the CLI message today is already accurate (`error[E5101]: substring: start 2 and length 99…` correctly names the operation in its own text), and no `--explain` command exists yet to expose the code-title mismatch to a user. The mismatch is latent but certain — it surfaces the moment `--explain` ships and long-form `docs/errors/Exxxx.md` pages are authored from the registry's `E5101` title ("array index out of range"), at which point ADR-0017 has already frozen the code permanently. `pre-release` is the only window in which the taxonomy can still be corrected, exactly D-382's own framing for the same deadline. **Leaf unaffected**: `IndexError` already covers both array and string bounds by design from D-284's original hierarchy (`IndexError (array bounds, substring bounds)`); no script-level `catch` behaviour changes, confirmed empirically — `GrobError` exposes no `.code` member to Grob source, so a script could never have distinguished the two by code, only by leaf (unchanged) or by parsing `.message` text (already operation-specific pre-fix). **Registry prose widened, not just repointed** — found during review that `E5102`'s existing description ("A substring start or end index was outside the source string's bounds") covered only `substring`'s start/length-pair shape and not `left`/`right`'s count-overrun shape; repointing `left`/`right` to `E5102` unchanged would have reproduced the exact code-title/actual-condition mismatch this entry exists to fix, one level down. Title widened from "substring bounds out of range" to "string bounds out of range" and the long-form description rewritten to name both shapes explicitly. `left`/`right` considered and rejected for a split into `E5905`'s size-limit domain instead: `E5905` guards a fixed allocation ceiling independent of the receiver's actual length, while `left`/`right`'s bound is relative to the receiver string's own current length — the same shape as `substring`'s bound, not the same shape as a ceiling breach. **Mechanics**: three throw sites repointed in `StringMethodsPlugin.cs` (`Substring`, `Left`, `Right`) from `ErrorCatalog.E5101.Code` to `ErrorCatalog.E5102.Code`; `padLeft`/`padRight`/`repeat`'s `E5905` ceiling guards untouched. No opcode change, no new error code — an existing `pre-release` code repointed to its intended throw sites; count stays **121**. **Twelve test assertions repointed** across two files, re-enumerated exactly rather than estimated: `tests/Grob.Stdlib.Tests/StringMethodsPluginTests.cs` (11 — lines 237, 249, 260, 269, 278 for `substring`; 357, 368, 376 for `left`; 391, 399, 407 for `right`) and `tests/Grob.Integration.Tests/Sprint9StringInstanceMethodsTests.cs:103` (1, CLI stderr assertion); each confirmed red against the unmodified production code before the throw-site change, then green after. No gold master regenerated — `docs/errors/examples/` has no `substring`/`left`/`right` example; the only `E5101` examples (`array-index-out-of-range`, `array-index-out-of-range-in-function`) are genuinely array-based and unaffected. **Aside, recorded not acted on**: ADR-0017's "retired codes are never reused, marked retired in the registry" mechanism is written for codes that have shipped; it does not say what happens to a `pre-release` code that is fully removed, never having shipped at all (the case this entry's rejected retirement branch would have been). Not resolved here since retirement was not the outcome, but the gap is real and undocumented — flagged for the pre-v1 corpus sweep to clarify ADR-0017 before any future pre-release retirement needs the answer. Full solution `dotnet test` green. Cites D-382 (the finding this closes, and the `pre-release`-deadline framing this entry's deciding argument mirrors exactly), ADR-0017 (immutability once shipped — the reason `pre-release` was the only window), ADR-0014 (`E5xxx` numbering; gaps from retirement are expected, not relevant here since no code was retired), D-284 (the `IndexError` leaf hierarchy, unchanged), D-316 (the consistency gate, re-verified green at count 121). |
+| D-408 | August 2026 | Compiler — type system (method-call path diagnostic parity) | Brings `ResolveMemberAccessCall`'s diagnostic behaviour into line with `VisitMemberAccess`'s, closing D-380's remaining two findings (its third, the nullable-receiver gap, was already closed by D-402 — confirmed empirically and by code reading, nothing left to fix). **Finding 2**: an ordinary user `type` struct or an anonymous struct (`#{ }`) has no method surface in v1 (D-043/D-080), but `someStruct.anyMethodName()` type-checked clean and then crashed the VM at runtime with an internal "please report this bug" error, not a diagnostic — worse than D-380's already-closed array/map case. Fixed with a new `ValidateStructMemberCall` arm in `DispatchMemberAccessCall`, field-lookup-based (reusing `ResolveStructFieldAccess`'s own by-name lookup against `UserTypeInfo.Fields`) rather than a blanket rejection, so it raises **E1002** — the same code and wording the property path already raises for an unrecognised field — only when the member names no declared field at all; a call through a genuinely declared field whose value happens to be callable (`box.callback()`, a function-typed field) stays permissive exactly as before, confirmed unmodified via `Sprint6IncrementCTests.ClosureInField_Integration_CallsAfterReturn`, the one fixture the breaking-change sweep found. **Finding 3**: `ResolveMemberAccessCall` had no `Error`-receiver cascade-suppression arm mirroring `VisitMemberAccess`'s (`if (targetType == GrobType.Error) return GrobType.Error;`), so a method call on an already-errored receiver (an undefined identifier) resolved `Unknown` instead of `Error` — `Unknown` has no universal excusal the way `Error` does (D-300), and `VisitReturn`/`VisitThrow`/the free-function argument-type check each excuse only `Error`, so one root cause cascaded into up to three diagnostics (`take(undefinedThing.compute(), 42)` produced E1001 plus a spurious E0004 on the first argument plus a genuine E0004 on the second, against one E1001 plus the one genuine E0004 on the property-access equivalent). Fixed by mirroring the arm exactly, placed after argument-type visiting (so a genuinely separate mistake inside an argument still surfaces — §3.1.1 identifiers are visited unconditionally) and before the nullable-receiver dispatch; confirmed the fix does not over-suppress a distinct later mistake (the `take(...)` case above collapses to exactly two diagnostics, not one). **Arm-by-arm diff table produced as the durable record** (fifteen rows spanning namespace/nullable/named-type/primitive/array/map/function dispatch, matching every one of D-403's/D-404's/D-406's own side-channel-survey precedents) and now pinned by a new, mutation-verified regression test (`TypeCheckerMemberAccessCallDiagnosticsTests.ArmParity_ErrorReceiver_...`/`ArmParity_UnresolvableStructMember_...`) — each new arm was temporarily removed during development, the corresponding parity test confirmed to fail for the expected reason, then restored — so a future divergence between the two dispatch paths fails a test rather than being found by accident a fourth time. D-362's permissive-`Unknown` catalogue (the `EmitArithmetic` two-item list) is unaffected — findings 2/3 are a different, broader class of permissive-`Unknown` production inside `ResolveMemberAccessCall`/`DispatchMemberAccessCall` itself, not members of that specific arithmetic-operand list; both findings' fixes remove permissive-`Unknown`/cascade sources from their own dispatch, not from the catalogue. No new opcode, no new error code (E0101 already fine and untouched, E1002 reused); count stays **121**. Eleven new tests in `TypeCheckerMemberAccessCallDiagnosticsTests.cs`; every existing member-access, struct, nullable and error-recovery test stays green unmodified, including the one enumerated `box.callback()`-shaped fixture, confirmed still passing rather than updated. Full solution `dotnet test` green (3,876 tests across eight projects), `Grob.Compiler.Tests` line coverage 92.5% (the touched class, `TypeChecker`, 97.7%). Refines D-380 (its remaining two findings, closed; the third already closed by D-402, confirmed not re-opened), D-402 (finding 1's closure, confirmed and cited rather than re-derived). Cites D-403, D-404, D-405, D-406 (the side-channel/arm-parity-survey precedent this entry's regression test follows), D-300 (`Error`'s universal-assignability cascade-suppression design), D-362 (the permissive-`Unknown` catalogue, confirmed unaffected), D-043/D-080 (v1 gives structs no method surface — the framing this entry's diagnostic makes correct without widening the language). |
 
 ---
 
@@ -11772,6 +11773,155 @@ unchanged by this entry), D-316 (the consistency gate, re-verified green at coun
 
 ---
 
+### D-408 — Method-call path diagnostic parity: `ResolveMemberAccessCall` gains an `Error`-receiver cascade-suppression arm and a struct/anon-struct member arm, closing D-380's remaining findings (August 2026)
+
+Area: Compiler — type system (member-access diagnostic parity)
+Supersedes: none
+Superseded by: none
+
+**One concern**: bring `ResolveMemberAccessCall`'s diagnostic behaviour into line with
+`VisitMemberAccess`'s (the property-access path), closing a structural gap between the
+two dispatch paths that D-380 recorded eight increments ago as three "identified but
+not fixed" findings.
+
+**The three reproductions, empirical first.** (1) A non-optional `.` method call on a
+nullable ordinary struct (`p: Point? := nil; p.compute()`) raised `E0101` before any
+change here — identical wording to the property path's `'struct?'` message. (2)
+`someStruct.anyMethodName()` on a user `type` value (and the anon-struct equivalent)
+type-checked clean and then crashed the VM at runtime with an internal "please
+report this bug" error — not a diagnostic, and worse than D-380's already-closed
+array/map case. (3) `undefinedThing.compute()` used inside a context that consumes
+the call's result type — `throw`, `return`, a typed `:=`, a typed call argument —
+produced up to three diagnostics for one root cause; `take(undefinedThing.compute(),
+42)` against `fn take(a: int, b: string)` produced E1001 plus a spurious E0004 on
+argument `a` plus a genuine E0004 on argument `b`, against one E1001 plus the one
+genuine E0004 on the property-access equivalent (`take(undefinedThing.length, 42)`).
+
+**Finding 1 (the nullable-receiver gap) is already closed, by D-402, and needed no
+work here.** D-402's generic `GrobTypeHelpers.IsNullable(receiverType)` guard, hoisted
+before any receiver-kind dispatch in `ResolveMemberAccessCall`, is unconditional on
+which of the nine nullable variants — `NullableStruct` and `NullableAnonStruct`
+included — so it was already reached for every nullable receiver kind, confirmed
+both empirically (the `Point?` reproduction above) and by reading the guard and
+`GrobTypeHelpers.IsNullable` directly for the one kind that cannot currently be
+constructed from real `.grob` source (`NullableAnonStruct` — no `#{` type-annotation
+grammar exists, and no ternary/`??` merge widens an `AnonStruct` value against a bare
+`nil`). D-402's own prose sweep ("array/map/string/int/float/bool; struct: only the
+two registered named types") answers a narrower question — which kinds had a working
+*dispatch arm* before that fix — not the reach of the new generic guard itself, which
+is unconditional on receiver kind. No code change follows from this finding; it is
+recorded here as a closure, not a remainder.
+
+**The arm-by-arm diff, the durable record.** `VisitMemberAccess`
+(`TypeChecker.Expressions.cs`) and `ResolveMemberAccessCall` each delegate their
+receiver-kind dispatch to an extracted helper — `DispatchMemberAccessProperty` and
+`DispatchMemberAccessCall` respectively. Read arm by arm (fifteen rows: namespace
+receiver, two-level namespace chain, `formatAs` bare-access misuse, receiver
+visiting, **`Error`-receiver cascade suppression**, argument visiting, nullable-
+receiver guard, registered named type, **ordinary user struct**, **anonymous
+struct**, primitive, array, map, function type, final fallback), the two paths are
+symmetric everywhere except two rows: `VisitMemberAccess` short-circuits an
+`Error`-typed receiver to `Error` before dispatch (line drifted since D-380's own
+`:1294` citation, now at `:1541`, shape unchanged); `ResolveMemberAccessCall` had no
+equivalent, falling through every dispatch arm (none matches `Error`) to the generic
+`Unknown` fallback. `VisitMemberAccess` resolves an ordinary user `type`/anon-struct
+receiver via `ResolveStructFieldAccess` (E1002 on an unrecognised field);
+`ResolveMemberAccessCall` had no arm at all for either receiver kind, reaching the
+same generic `Unknown` fallback — which the compiler then emits as a plain
+`GetProperty`-then-`Call`, faulting the VM at runtime since no such field exists to
+read. Both gaps map exactly onto D-380's findings 2 and 3; no arm the call path had
+that the property path lacked, beyond argument visiting (call-path-only by
+construction, not a gap).
+
+**Finding 2, fixed.** A new `ValidateStructMemberCall` arm added to
+`DispatchMemberAccessCall`, reached when `receiverType is GrobType.Struct or
+GrobType.AnonStruct` and no registered-named-type arm above it has already matched.
+Deliberately field-lookup-based, not a blanket "any call on a Struct/AnonStruct
+receiver is E1002": it reuses `GetStructTypeName`/`TryGetTypeInfo` to look up the
+struct's `UserTypeInfo.Fields` by name — a name that names a declared field, of any
+type, stays `Unknown` (the same permissive outcome the call already reached before
+this fix); a name that names no field at all raises **E1002**, the exact code and
+wording (`Type '{typeName}' has no member '{member}'.`) `ResolveStructFieldAccess`
+already raises for the identical mistake on the property path, confirmed to read
+correctly for a method-call site with no wording change needed. This is what
+preserves `box.callback()` (`tests/fixtures/sprint-6e/types.grob`, wired through
+`Sprint6IncrementCTests.ClosureInField_Integration_CallsAfterReturn`) — a call
+*through* a declared field whose value happens to be callable, the one fixture the
+breaking-change sweep found across 191 corpus files, and the only shape that would
+have broken under a blanket-rejection fix. Confirmed still passing, unmodified, not
+updated to accept new behaviour. Structs gain **no method surface** by this fix —
+v1's framing that they have none (D-380's own assertion, corroborated by there never
+having been a method-body grammar for `type`, rather than a standalone ADR-style ban
+— D-043 establishes struct *field* declarations, D-080 is unrelated constrained-
+generics prose; both cited per the increment's own citation-looseness flag, not
+relitigated here) — this fix makes the *diagnostic* correct, not the language larger.
+
+**Finding 3, fixed.** A new cascade-suppression arm added to
+`ResolveMemberAccessCall`, mirroring `VisitMemberAccess`'s `Error` arm exactly
+(`if (receiverType == GrobType.Error) return GrobType.Error;`), placed after
+argument-type visiting (so a genuinely separate mistake inside a call argument still
+surfaces — §3.1.1 identifiers are visited unconditionally, regardless of the
+receiver's own type) and before the nullable-receiver dispatch. `Unknown` has no
+universal excusal the way `Error` does (D-300's `Error`-is-universally-assignable
+design) — `VisitReturn`, `VisitThrow` and the free-function argument-type check each
+excuse only `Error`, not `Unknown` — so returning `Error` instead of `Unknown` for an
+already-errored receiver routes through those three pre-existing `== Error` checks
+and collapses the cascade back to one diagnostic. Confirmed this does not
+over-suppress a genuinely separate, later mistake: `take(undefinedThing.compute(),
+42)` collapses from three diagnostics to exactly **two** (E1001 plus the one genuine
+E0004 on argument `b`), not one — argument `b`'s own defect is unrelated to the
+receiver's error and survives untouched, the same D-405/D-406 suppression-without-
+swallowing distinction proven again here for a fourth construct.
+
+**The regression test, mutation-verified.** `TypeCheckerMemberAccessCallDiagnosticsTests.cs`
+(new, eleven tests) asserts both findings directly — E1002 on an unrecognised
+struct/anon-struct method call, the `box.callback()` shape staying error-free, exactly
+one diagnostic on each of the throw/return/typed-assignment `Error`-receiver shapes,
+exactly two (not three) on the `take(...)` two-argument shape — plus two arm-parity
+tests (`ArmParity_ErrorReceiver_PropertyAndCallPathsBothSuppressCascade`,
+`ArmParity_UnresolvableStructMember_PropertyAndCallPathsBothEmitE1002`) asserting the
+specific structural property the diff table records: both dispatch paths handle an
+`Error` receiver and an unresolvable struct/anon-struct member identically. Each new
+arm was temporarily removed during development and the corresponding parity test
+confirmed to fail for the expected reason (extra diagnostics for the `Error`-receiver
+case; the struct-member case falling to the generic `Unknown` fallback instead of
+E1002), then restored and re-confirmed green — the same mutation-verification
+standard D-403/D-404/D-406 set, so a future divergence between the two dispatch
+paths fails a test here rather than being found by accident a fourth time.
+
+**D-362's permissive-`Unknown` catalogue is unaffected.** That catalogue (the
+`EmitArithmetic` comment's two-item list: an untyped lambda-parameter identifier; a
+D-360 `Unknown`-receiver-field property access) is scoped to sources reaching
+`EmitArithmetic`'s specific int/float optimistic-default fallback. Findings 2 and 3
+are a different, broader class of permissive-`Unknown`/cascade production inside
+`ResolveMemberAccessCall`/`DispatchMemberAccessCall` itself — both fixes remove a
+source from their own dispatch, not from the two-item arithmetic-operand list, which
+is untouched either way.
+
+**This closes the correctness batch** — D-380's three findings are now all resolved
+(finding 1 by D-402, findings 2 and 3 here), with no further open item from that
+entry's "identified but not fixed" list.
+
+No opcode change. No new error code — E0101 already correct and untouched, E1002
+reused for the new struct/anon-struct call arm; count stays **121**. Full solution
+`dotnet test` green (3,876 tests across eight projects), `Grob.Compiler.Tests` line
+coverage 92.5% (`TypeChecker`, the touched class, 97.7%).
+
+Refines D-380 (its remaining two findings, closed; the third confirmed already closed
+by D-402, not re-opened or re-derived here), D-402 (finding 1's closure confirmed and
+cited).
+
+Cites D-403, D-404, D-405, D-406 (the side-channel-helper/arm-parity-survey
+precedent this entry's mutation-verified regression test follows — the third
+increment on this exact "two dispatch paths quietly diverge" theme after D-402/D-403),
+D-300 (`Error`'s universal-assignability cascade-suppression design, the mechanism
+finding 3's fix relies on), D-362 (the permissive-`Unknown` catalogue, confirmed
+unaffected by either finding), D-043/D-080 (v1 gives structs no method surface — the
+framing finding 2's fix makes the diagnostic correct against, without widening the
+language).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -11993,7 +12143,37 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — E5102 given its throw sites, D-407 added: closes the correctness-batch_
+_August 2026 — Method-call path diagnostic parity, D-408 added: brings_
+_ResolveMemberAccessCall's diagnostic behaviour into line with VisitMemberAccess's,_
+_closing D-380's remaining two findings (its third, the nullable-receiver gap, was_
+_already closed by D-402 — confirmed, nothing left to fix). Finding 2: an ordinary_
+_user type struct or an anon-struct has no method surface in v1 (D-043/D-080), but_
+_someStruct.anyMethodName() type-checked clean and crashed the VM at runtime with an_
+_internal bug-report error, not a diagnostic. Fixed with a new field-lookup-based arm_
+_(ValidateStructMemberCall, reusing ResolveStructFieldAccess's own by-name lookup)_
+_raising E1002 — the property path's existing wording — only when the member names no_
+_declared field at all; a call through a genuinely declared function-typed field_
+_(box.callback()) stays permissive exactly as before, confirmed unmodified via_
+_Sprint6IncrementCTests.ClosureInField_Integration_CallsAfterReturn, the one fixture_
+_the breaking-change sweep found. Finding 3: ResolveMemberAccessCall had no_
+_Error-receiver cascade-suppression arm mirroring VisitMemberAccess's, so a call on an_
+_already-errored receiver resolved Unknown instead of Error — Unknown has no universal_
+_excusal the way Error does (D-300), so one root cause cascaded into up to three_
+_diagnostics at return/throw/typed-argument consumption sites. Fixed by mirroring the_
+_arm exactly, after argument-type visiting so a genuinely separate argument mistake_
+_still surfaces; confirmed the fix collapses the cascade without swallowing a distinct_
+_later mistake (take(undefinedThing.compute(), 42) drops from three diagnostics to_
+_exactly two, not one). Arm-by-arm diff table (fifteen rows) produced as the durable_
+_record and pinned by a new, mutation-verified regression test — each new arm_
+_temporarily removed, the parity test confirmed to fail for the expected reason, then_
+_restored — matching D-403/D-404/D-406's own precedent. D-362's permissive-Unknown_
+_catalogue unaffected — findings 2/3 are a different, broader class. Closes the_
+_correctness batch: D-380's three findings are now all resolved. Eleven new tests in_
+_TypeCheckerMemberAccessCallDiagnosticsTests.cs. No opcode change, no new error code_
+_(E0101 untouched, E1002 reused), count unchanged at 121. Full solution dotnet test_
+_green (3,876 tests across eight projects), Grob.Compiler.Tests line coverage 92.5%._
+_Refines D-380, D-402. Cites D-403, D-404, D-405, D-406, D-300, D-362, D-043/D-080._
+_Previous: August 2026 — E5102 given its throw sites, D-407 added: closes the correctness-batch_
 _finding D-382 reported and deferred — E5102 (substring bounds out of range) was defined_
 _in ErrorCatalog and the registry but had no throw site, Substring/Left/Right all reusing_
 _E5101 instead. Adopted, not retired, after empirical reproduction confirmed E5101 fires_
