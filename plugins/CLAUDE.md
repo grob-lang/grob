@@ -13,13 +13,10 @@ well-authored plugin. When in doubt, follow its shape.
 
 ## The contract
 
-```csharp
-public interface IGrobPlugin
-{
-    string Name { get; }
-    void Register(GrobVM vm);
-}
-```
+The current `IGrobPlugin` interface is defined in `src/Grob.Runtime/IGrobPlugin.cs` —
+read it there rather than from a snapshot here, since the registration surface has
+moved since this file was last updated (it now takes an `IPluginRegistrar`, not a
+`GrobVM`).
 
 - Reference the `Grob.Runtime` NuGet package for `IGrobPlugin`, `GrobVM`,
   `FunctionSignature`, `Parameter` and the `GrobError` hierarchy. Reference nothing
