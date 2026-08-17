@@ -11973,12 +11973,12 @@ scripts imports at least one of six modules that exist nowhere in `src/` or
 `plugins/` — `fs`, `json`, `csv`, `process` (Sprint 9 Increments C–G) or
 `Grob.Http`/`Grob.Crypto` (Sprint 11 plugins). Confirmed by `git log --all`: no
 commit anywhere adds an `IFileSystem`, `FsPlugin`, `JsonPlugin`, `CsvPlugin`,
-`ProcessPlugin`, or any content under `plugins/Grob.Http`/`plugins/Grob.Crypto`
+`ProcessPlugin` or any content under `plugins/Grob.Http`/`plugins/Grob.Crypto`
 (both directories hold zero `.cs` files — empty scaffolding only). Only
 `DatePlugin.cs` (Sprint 9 Increment B, PR #143) landed from the original Sprint 9
 A–H plan; development after that diverted into the array/map/type-registry/
 diagnostic-correctness thread this corpus (D-356–D-408) actually documents. The
-consolidation work was real, it was simply on a different axis (language/collection
+consolidation work was real, but it ran on a different axis (language/collection
 surface) from the one these scripts need (capability-interface stdlib modules). The
 `sprint-9-c.md` through `sprint-9-g.md` prompt files present in
 `prompts/archive/sprint-9/` are not evidence those increments landed — they were
