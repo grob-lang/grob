@@ -404,6 +404,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-406 | August 2026 | Compiler — parser error recovery (four remaining `{}`-delimited constructs: named-struct construction, switch arms, `type`/`param` bodies) | Closes the open finding D-405 recorded and left unfixed. All four constructs reproduced D-405's identical double-diagnostic shape, including the two-mistakes lost-diagnostic case. `SkipToNextLiteralElementBoundary` (D-405) widened to take an explicit `boundaryToken` parameter instead of a hardcoded `,`; the two D-405 comma-boundary call sites pass `TokenKind.Comma` unchanged. Named-struct construction reuses `ParseFieldInitOrError` as-is (deliberately left out of D-405's narrow scope), restructured to `ParseAnonStructLiteral`'s own loop shape and extracted into `ParseStructConstruction` to stay under the S3776 complexity gate. Switch arms get a new comma-boundary wrapper, `ParseSwitchArmOrError`; `ParseSwitchArms` now also returns a `HadRecoveredArm` bool. `type`/`param` bodies are newline-separated, not comma-separated, so the helper gained a `TokenKind.Newline` mode that additionally anchors on a top-level declaration keyword — confirmed necessary by tracing a real over-swallowing failure (an unterminated field default value followed by a further top-level declaration), gated on a `Synchronise()`-style plain-brace-depth counter rather than the finer multi-bracket delimiter stack, since a reserved keyword can never appear as expression content at any paren depth. Both loops also gained `ParseBlock`-style top-level-keyword pre-checks so the shared zero-consumption-progress guard cannot force-advance over the keyword the resync left unconsumed. **Two type-checker interactions found and confirmed, not assumed**: the switch-arm/`CheckMergeIdentity` (D-404) interaction carries no risk (a dropped arm is simply absent from `SwitchExprNode.Arms`, pinned both directions); a second, separately-found risk — a dropped exhaustiveness-bearing arm (`_`/bool/nil) spuriously triggering `E0505` — is real and closed by a new `SwitchExprNode.HadRecoveredArm` field suppressing the diagnostic, mirroring the existing `subjectType != Error` cascade-suppression guard alongside it. All four constructs' delimiter-stack and EOF-safety regressions pinned per D-405's own three-shape precedent; `type`/`param` additionally get the keyword-anchor regression. No gold master needed regenerating. D-405's open finding is now fully closed. Aside, recorded not fixed: a separate pre-existing gap where ordinary non-last-statement recovery inside a nested block can silently drop subsequent genuine statements with no diagnostic — flagged for a future increment. New tests across six files (`ParserStructConstructionRecoveryTests.cs`, `SwitchExprParserTests.cs`, `ParserTypeDeclRecoveryTests.cs`, `ParserParamBlockRecoveryTests.cs`, `MergeIdentityTypeCheckerTests.cs`, `SwitchExprTypeCheckerTests.cs`). Full solution `dotnet test` green (3,865 tests across eight projects), `Grob.Compiler` line coverage 96.77%. No opcode change. No new error code; count stays **121**. Refines D-405 (the survey, the shared wrapper, the open finding closed here). Cites D-404 (the merge-identity guard confirmed unaffected), D-300 (§29 keyword-anchor gating and cascade suppression), D-376 (corpus continuity). |
 | D-407 | August 2026 | Runtime error taxonomy (`E5102` given its throw sites: `substring`/`left`/`right` string-bounds violations distinguished from `E5101`'s array-index domain) | Closes the correctness-batch finding D-382 reported and deliberately deferred: `E5102` ("substring bounds out of range") was defined in `ErrorCatalog` and the registry but had no throw site — `Substring`/`Left`/`Right` all reused `E5101` instead. **Adopted, not retired** — the two-code split is kept and `E5102` is wired up, rather than removing the dead row and letting `E5101` cover both. **The deciding argument is latency, not present observability**: the CLI message today is already accurate (`error[E5101]: substring: start 2 and length 99…` correctly names the operation in its own text), and no `--explain` command exists yet to expose the code-title mismatch to a user. The mismatch is latent but certain — it surfaces the moment `--explain` ships and long-form `docs/errors/Exxxx.md` pages are authored from the registry's `E5101` title ("array index out of range"), at which point ADR-0017 has already frozen the code permanently. `pre-release` is the only window in which the taxonomy can still be corrected, exactly D-382's own framing for the same deadline. **Leaf unaffected**: `IndexError` already covers both array and string bounds by design from D-284's original hierarchy (`IndexError (array bounds, substring bounds)`); no script-level `catch` behaviour changes, confirmed empirically — `GrobError` exposes no `.code` member to Grob source, so a script could never have distinguished the two by code, only by leaf (unchanged) or by parsing `.message` text (already operation-specific pre-fix). **Registry prose widened, not just repointed** — found during review that `E5102`'s existing description ("A substring start or end index was outside the source string's bounds") covered only `substring`'s start/length-pair shape and not `left`/`right`'s count-overrun shape; repointing `left`/`right` to `E5102` unchanged would have reproduced the exact code-title/actual-condition mismatch this entry exists to fix, one level down. Title widened from "substring bounds out of range" to "string bounds out of range" and the long-form description rewritten to name both shapes explicitly. `left`/`right` considered and rejected for a split into `E5905`'s size-limit domain instead: `E5905` guards a fixed allocation ceiling independent of the receiver's actual length, while `left`/`right`'s bound is relative to the receiver string's own current length — the same shape as `substring`'s bound, not the same shape as a ceiling breach. **Mechanics**: three throw sites repointed in `StringMethodsPlugin.cs` (`Substring`, `Left`, `Right`) from `ErrorCatalog.E5101.Code` to `ErrorCatalog.E5102.Code`; `padLeft`/`padRight`/`repeat`'s `E5905` ceiling guards untouched. No opcode change, no new error code — an existing `pre-release` code repointed to its intended throw sites; count stays **121**. **Twelve test assertions repointed** across two files, re-enumerated exactly rather than estimated: `tests/Grob.Stdlib.Tests/StringMethodsPluginTests.cs` (11 — lines 237, 249, 260, 269, 278 for `substring`; 357, 368, 376 for `left`; 391, 399, 407 for `right`) and `tests/Grob.Integration.Tests/Sprint9StringInstanceMethodsTests.cs:103` (1, CLI stderr assertion); each confirmed red against the unmodified production code before the throw-site change, then green after. No gold master regenerated — `docs/errors/examples/` has no `substring`/`left`/`right` example; the only `E5101` examples (`array-index-out-of-range`, `array-index-out-of-range-in-function`) are genuinely array-based and unaffected. **Aside, recorded not acted on**: ADR-0017's "retired codes are never reused, marked retired in the registry" mechanism is written for codes that have shipped; it does not say what happens to a `pre-release` code that is fully removed, never having shipped at all (the case this entry's rejected retirement branch would have been). Not resolved here since retirement was not the outcome, but the gap is real and undocumented — flagged for the pre-v1 corpus sweep to clarify ADR-0017 before any future pre-release retirement needs the answer. Full solution `dotnet test` green. Cites D-382 (the finding this closes, and the `pre-release`-deadline framing this entry's deciding argument mirrors exactly), ADR-0017 (immutability once shipped — the reason `pre-release` was the only window), ADR-0014 (`E5xxx` numbering; gaps from retirement are expected, not relevant here since no code was retired), D-284 (the `IndexError` leaf hierarchy, unchanged), D-316 (the consistency gate, re-verified green at count 121). |
 | D-408 | August 2026 | Compiler — type system (method-call path diagnostic parity) | Brings `ResolveMemberAccessCall`'s diagnostic behaviour into line with `VisitMemberAccess`'s, closing D-380's remaining two findings (its third, the nullable-receiver gap, was already closed by D-402 — confirmed empirically and by code reading, nothing left to fix). **Finding 2**: an ordinary user `type` struct or an anonymous struct (`#{ }`) has no method surface in v1 (D-043/D-080), but `someStruct.anyMethodName()` type-checked clean and then crashed the VM at runtime with an internal "please report this bug" error, not a diagnostic — worse than D-380's already-closed array/map case. Fixed with a new `ValidateStructMemberCall` arm in `DispatchMemberAccessCall`, field-lookup-based (reusing `ResolveStructFieldAccess`'s own by-name lookup against `UserTypeInfo.Fields`) rather than a blanket rejection, so it raises **E1002** — the same code and wording the property path already raises for an unrecognised field — only when the member names no declared field at all; a call through a genuinely declared field whose value happens to be callable (`box.callback()`, a function-typed field) stays permissive exactly as before, confirmed unmodified via `Sprint6IncrementCTests.ClosureInField_Integration_CallsAfterReturn`, the one fixture the breaking-change sweep found. **Finding 3**: `ResolveMemberAccessCall` had no `Error`-receiver cascade-suppression arm mirroring `VisitMemberAccess`'s (`if (targetType == GrobType.Error) return GrobType.Error;`), so a method call on an already-errored receiver (an undefined identifier) resolved `Unknown` instead of `Error` — `Unknown` has no universal excusal the way `Error` does (D-300), and `VisitReturn`/`VisitThrow`/the free-function argument-type check each excuse only `Error`, so one root cause cascaded into up to three diagnostics (`take(undefinedThing.compute(), 42)` produced E1001 plus a spurious E0004 on the first argument plus a genuine E0004 on the second, against one E1001 plus the one genuine E0004 on the property-access equivalent). Fixed by mirroring the arm exactly, placed after argument-type visiting (so a genuinely separate mistake inside an argument still surfaces — §3.1.1 identifiers are visited unconditionally) and before the nullable-receiver dispatch; confirmed the fix does not over-suppress a distinct later mistake (the `take(...)` case above collapses to exactly two diagnostics, not one). **Arm-by-arm diff table produced as the durable record** (fifteen rows spanning namespace/nullable/named-type/primitive/array/map/function dispatch, matching every one of D-403's/D-404's/D-406's own side-channel-survey precedents) and now pinned by a new, mutation-verified regression test (`TypeCheckerMemberAccessCallDiagnosticsTests.ArmParity_ErrorReceiver_...`/`ArmParity_UnresolvableStructMember_...`) — each new arm was temporarily removed during development, the corresponding parity test confirmed to fail for the expected reason, then restored — so a future divergence between the two dispatch paths fails a test rather than being found by accident a fourth time. D-362's permissive-`Unknown` catalogue (the `EmitArithmetic` two-item list) is unaffected — findings 2/3 are a different, broader class of permissive-`Unknown` production inside `ResolveMemberAccessCall`/`DispatchMemberAccessCall` itself, not members of that specific arithmetic-operand list; both findings' fixes remove permissive-`Unknown`/cascade sources from their own dispatch, not from the catalogue. No new opcode, no new error code (E0101 already fine and untouched, E1002 reused); count stays **121**. Eleven new tests in `TypeCheckerMemberAccessCallDiagnosticsTests.cs`; every existing member-access, struct, nullable and error-recovery test stays green unmodified, including the one enumerated `box.callback()`-shaped fixture, confirmed still passing rather than updated. Full solution `dotnet test` green (3,876 tests across eight projects), `Grob.Compiler.Tests` line coverage 92.5% (the touched class, `TypeChecker`, 97.7%). Refines D-380 (its remaining two findings, closed; the third already closed by D-402, confirmed not re-opened), D-402 (finding 1's closure, confirmed and cited rather than re-derived). Cites D-403, D-404, D-405, D-406 (the side-channel/arm-parity-survey precedent this entry's regression test follows), D-300 (`Error`'s universal-assignability cascade-suppression design), D-362 (the permissive-`Unknown` catalogue, confirmed unaffected), D-043/D-080 (v1 gives structs no method surface — the framing this entry's diagnostic makes correct without widening the language). |
+| D-409 | August 2026 | Language spec — declaration grammar; Tooling — benchmarking (F8 readiness) | Decision-only plan-mode gate for the F8 `endToEnd`-benchmark increment (`grob-principal-review-sprint9b.md`, kept open by D-386); no source, `policy.json`, baseline or harness change lands. Two findings. **First, ranked above F8 itself**: `grob-language-fundamentals.md` §19's worked example and all eleven `grob-sample-scripts.md` validation scripts write `param name: type = value` repeated per line with no braces; the live parser (`Parser.ParseParamBlockDecl`) requires a single `param { ... }` block, confirmed against the actively-maintained `ParserParamBlockRecoveryTests.cs` (D-405/D-406). Every one of the eleven scripts fails to parse at its first `param` line, independent of any module gap. Neither prior audit caught it — the advertised-vs-built sweep (D-401, "the fifth instance") checked members/functions/codes/type-variants; `grob-grammar-audit.md` confirmed `param { }` parses but never checked the documented per-line syntax against it. Recorded as the **sixth** advertised-but-unbuilt instance and the first in declaration-syntax-vs-implementation divergence; which form is correct is an open language-design question, not resolved here, and must be settled before Sprint 9 Increments C–G make these scripts runnable. **Second**: F8 reassessed from "roughly seven of eleven, very likely higher" to **zero of eleven** runnable today — every script needs at least one of `fs`/`json`/`csv`/`process` (Sprint 9 Increments C–G, none built — confirmed via `git log --all`) or `Grob.Http`/`Grob.Crypto` (Sprint 11 plugins, both empty scaffolding). Only `DatePlugin.cs` (Sprint 9 Increment B) landed from the original plan; the consolidation work since was array/map/type-registry/diagnostic hardening, a different axis from the capability-interface modules these scripts need. Full runnable-script table recorded with each script's blocking dependency. Two further, unfixed findings noted for the F6 sweep and the strategy doc: `grob-sample-scripts.md` holds eleven scripts, not `grob-benchmarking-strategy.md` §4.3/§7.3's "thirteen"; and §4.3's synthetic-large-script requirement is mis-cited from §4.1/§7.4, where `compile`'s own copy of that requirement is itself still unbuilt. Also recorded: §4.3 and §7.5 contradict each other on whether VM construction sits inside or outside the timed region; `AttributionBenchmarks`, not `VmBenchmarks`, is the correct structural precedent for the eventual `EndToEndBenchmarks`, avoiding D-391's `InvocationCount=1` caveat entirely. F8 remains open — no harness lands until the module gap and the `param`-grammar question are both resolved. No opcode change. No new error code; count stays **121**. |
 
 ---
 
@@ -11922,6 +11923,137 @@ language).
 
 ---
 
+### D-409 — `param` declaration syntax diverges from every validation script and its own spec worked example (sixth advertised-but-unbuilt instance); F8 (`endToEnd` benchmark corpus) reassessed to zero of eleven runnable, build-out deferred (August 2026)
+
+Area: Language spec — declaration grammar; Tooling — benchmarking (F8 readiness)
+Supersedes: none
+Superseded by: none
+
+**Decision-only session, plan-mode gate for the F8 `endToEnd`-benchmark increment
+(`grob-principal-review-sprint9b.md`, kept deliberately open by D-386). No source,
+`policy.json`, baseline or benchmark-harness change lands here** — the gate's own
+findings changed what the increment could honestly build, and building infrastructure
+around a corpus that does not exist was rejected in favour of recording the corrected
+state and deferring. Runs against the corpus carrying D-356 through D-408. Error-code
+count unchanged at 121.
+
+**The `param` grammar divergence, found first and ranked above F8 itself.**
+`grob-language-fundamentals.md` §19's own worked example, and all eleven of
+`grob-sample-scripts.md`'s validation scripts, write parameters as `param name: type
+= value`, repeated one per line with no enclosing braces. The live parser
+(`Parser.ParseParamBlockDecl`, `src/Grob.Compiler/Parser.cs:372`) requires a single
+`param { ... }` block instead — confirmed against the actively-maintained
+`ParserParamBlockRecoveryTests.cs`, which D-405 and D-406 both extended within the
+last few sessions, so this is deliberately-maintained, current behaviour, not
+neglect. Empirically reproduced: every one of the eleven validation scripts fails to
+parse at its very first `param` line (`E2001: expected '{' to open param block`),
+independent of any stdlib module gap — even a hypothetical Sprint-9-complete build
+could not run these scripts verbatim today. **Neither prior audit caught it, for the
+same reason each time: they checked a different question.** The advertised-vs-built
+consolidation sweep (D-358 through D-401) covered members, stdlib functions, error
+codes and, at D-401, type-variant coverage — D-401 recorded itself as "the fifth
+advertised-but-unbuilt instance the consolidation phase has found." `grob-grammar-audit.md`
+separately confirmed "`param` blocks with `@` decorators... parse" — true, and not in
+dispute — but never checked the _documented example syntax_ against the implemented
+grammar, a different axis entirely. This is the **sixth** advertised-but-unbuilt
+instance, and the first in declaration-syntax-vs-implementation divergence rather
+than surface coverage. **Which form is correct is a real language-design question,
+not resolved here** — the block form could be right and the spec/scripts wrong, or
+the reverse, or both need to change — and it must be settled before Sprint 9
+Increments C–G make any of these scripts runnable: fixing it once real scripts
+depend on the current grammar is a breaking change to passing code; fixing it now,
+pre-implementation, is a documentation correction. Recorded as the next thing to
+decide, not decided here.
+
+**F8 reassessed: zero of eleven scripts run today, not "roughly seven... very
+likely higher."** The increment's own estimate assumed consolidation-phase work
+(string/numeric/array/map instance methods, map literals, default arguments) had
+made most of the corpus runnable. Empirically false: every one of the eleven
+scripts imports at least one of six modules that exist nowhere in `src/` or
+`plugins/` — `fs`, `json`, `csv`, `process` (Sprint 9 Increments C–G) or
+`Grob.Http`/`Grob.Crypto` (Sprint 11 plugins). Confirmed by `git log --all`: no
+commit anywhere adds an `IFileSystem`, `FsPlugin`, `JsonPlugin`, `CsvPlugin`,
+`ProcessPlugin`, or any content under `plugins/Grob.Http`/`plugins/Grob.Crypto`
+(both directories hold zero `.cs` files — empty scaffolding only). Only
+`DatePlugin.cs` (Sprint 9 Increment B, PR #143) landed from the original Sprint 9
+A–H plan; development after that diverted into the array/map/type-registry/
+diagnostic-correctness thread this corpus (D-356–D-408) actually documents. The
+consolidation work was real, it was simply on a different axis (language/collection
+surface) from the one these scripts need (capability-interface stdlib modules). The
+`sprint-9-c.md` through `sprint-9-g.md` prompt files present in
+`prompts/archive/sprint-9/` are not evidence those increments landed — they were
+scaffolded ahead of time in commit `832c5d8` ("archive sprint 8, scaffold sprint 9
+prompts") alongside the sprint kickoff, not archived on completion the way this
+session's own prompt is.
+
+The runnable-script table, the durable record of what the category will eventually
+cover:
+
+| # | Title | Runs today? | Blocking dependency |
+|---|---|---|---|
+| 1 | Bulk File Rename by Pattern | No | `fs` |
+| 2 | Organise Photos by Date | No | `fs` |
+| 3 | Find Large Files and Report | No | `fs` |
+| 4 | GitHub Repos Backup | No | `fs`, `Grob.Http`, `process` |
+| 5 | CSV Data Processing / Report | No | `csv` |
+| 6 | Azure CLI Wrapper / Bicep Deployment | No | `process` |
+| 7 | REST API Data Pull and JSON Report | No | `Grob.Http` |
+| 8 | Stale Git Branches Report | No | `process` |
+| 9 | Disk Space Monitor with Log | No | `json`, `process` |
+| 10 | Download and Verify a File | No | `Grob.Http`, `Grob.Crypto` |
+| 11 | Azure Resource Provisioning Helper | No | `Grob.Http`, `Grob.Crypto`, `json` |
+
+Every row also fails independently at the `param` line described above; the module
+gap alone is already sufficient to block all eleven, so the table records module
+dependency only. `date`, `path`, `log`, `env`, `guid`, `math`, `formatAs` are all
+implemented and used by several scripts, but no script depends on those alone.
+
+**Two further findings from the same read-only pass, recorded for the corpus sweep
+and for the benchmarking strategy doc, neither fixed here.** Script count: direct
+count of `docs/design/grob-sample-scripts.md` confirms **eleven** scripts
+(`## Script 1` through `## Script 11`), matching F6's finding, not
+`grob-benchmarking-strategy.md` §4.3/§7.3's "thirteen" nor the same document's own
+header claim — for the F6 thirteen-to-eleven sweep, not resolved here. Separately,
+`grob-benchmarking-strategy.md` §4.3 (End-to-End) says nothing about a synthetic
+large script; that requirement is textually §4.1's (Compile-Time Benchmarks,
+detailed in §7.4) — the F8 increment prompt's Authority section mis-cited it to
+§4.3. `compile`'s own synthetic-large-script requirement is itself still unbuilt (no
+`Generators/` directory exists under `bench/`; `CompileBenchmarks.cs` has only two
+fixtures) — a separate, already-open gap, not addressed here. Also found: §4.3
+states the `endToEnd` measured region "deliberately includes VM construction,"
+while §7.5's "End-to-end script benchmarks" subsection describes `[IterationSetup]`
+constructing the VM — untimed by BenchmarkDotNet, contradicting §4.3's own stated
+intent. For whoever eventually builds the category: `AttributionBenchmarks`
+(`bench/Grob.Benchmarks/Attribution/AttributionBenchmarks.cs`), not `VmBenchmarks`,
+is the correct structural precedent — its `RunSource(string)` pattern (fresh
+`Lexer`/`Parser`/`TypeChecker`/`Compiler`/`VirtualMachine` constructed inside the
+timed `[Benchmark]` method, no `[IterationSetup]`) satisfies §4.3's stated intent
+directly and avoids D-391's `InvocationCount=1`/`UnrollFactor=1`
+timing-comparability caveat entirely, since no state persists across invocations to
+protect.
+
+**F8 remains open.** No `EndToEndBenchmarks` class, no `Fixtures/EndToEnd/`
+content, no synthetic-script generator and no baseline files land in this session —
+building the harness around a corpus of zero real validation scripts would reproduce
+the shape D-386 already rejected (populating the category with content that does
+not match its own §4.3 definition), just with a committed class instead of a
+proposal. What would close F8: (1) the `param`-grammar question above resolved,
+and, if the scripts are the side that moves, `grob-sample-scripts.md`'s eleven
+scripts updated to match; (2) Sprint 9 Increments C–G landing `fs`/`json`/`csv`/
+`process`, unblocking seven of the eleven; (3) Sprint 11 landing `Grob.Http`/
+`Grob.Crypto`, unblocking the remaining four (scripts 4, 7, 10, 11, which also need
+one or both of those specifically). No opcode change. No new error code; count
+stays **121**. Cites F8/`grob-principal-review-sprint9b.md` (the finding this
+reassesses), D-386 (kept the category deliberately empty — confirmed still correct
+by this entry), D-385 Q6/§9.1 (the flip condition, not satisfied), D-391 (the
+`InvocationCount=1` precedent this entry recommends avoiding), D-401 (the fifth
+advertised-but-unbuilt instance; this entry's `param` finding is the sixth),
+D-405/D-406 (the `param`-block parser code found unchanged and correct against its
+own tests), F6 (the eleven-vs-thirteen count, not resolved here),
+`grob-benchmarking-strategy.md` §4.1, §4.3, §7.3, §7.4, §7.5, §9.1.
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -12143,7 +12275,33 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — Method-call path diagnostic parity, D-408 added: brings_
+_August 2026 — Decision-only session, D-409 added: the F8 endToEnd-benchmark_
+_plan-mode gate found the param declaration grammar in grob-language-fundamentals.md_
+_§19 and all eleven grob-sample-scripts.md validation scripts (param name: type,_
+_repeated per line, no braces) diverges from the live parser (param { ... }, one_
+_block — confirmed against ParserParamBlockRecoveryTests.cs, extended by D-405/D-406_
+_within the last few sessions). Every one of the eleven scripts fails to parse at its_
+_first param line, independent of any module gap. Recorded as the sixth_
+_advertised-but-unbuilt instance (D-401 was the fifth) and the first in_
+_declaration-syntax-vs-implementation divergence; grob-grammar-audit.md checked that_
+_param { } parses, never the documented per-line form against it. Which form is_
+_correct is an open language-design question, left unresolved, to be settled before_
+_Sprint 9 Increments C-G make these scripts runnable. Second finding: F8's own_
+_estimate ("roughly seven of eleven, very likely higher") reassessed to zero of_
+_eleven runnable today — every script needs fs/json/csv/process (Sprint 9 Increments_
+_C-G, none built) or Grob.Http/Grob.Crypto (Sprint 11 plugins, empty scaffolding);_
+_only DatePlugin.cs landed from the original plan, confirmed via git log --all._
+_Full runnable-script table recorded, each script's blocking dependency named. Also_
+_recorded, not fixed: the eleven-vs-thirteen script count for the F6 sweep; §4.3's_
+_synthetic-large-script requirement mis-cited from §4.1/§7.4 (compile's own copy_
+_still unbuilt); §4.3 and §7.5 contradicting each other on whether VM construction_
+_sits inside or outside the timed region; AttributionBenchmarks recommended over_
+_VmBenchmarks as the eventual EndToEndBenchmarks precedent, avoiding D-391's_
+_InvocationCount=1 caveat entirely. F8 remains open — D-386's rejection of a_
+_synthetic-only corpus still holds; no harness lands until the module gap and the_
+_param-grammar question are both resolved. No opcode change, no new error code,_
+_count stays 121._
+_Previous: August 2026 — Method-call path diagnostic parity, D-408 added: brings_
 _ResolveMemberAccessCall's diagnostic behaviour into line with VisitMemberAccess's,_
 _closing D-380's remaining two findings (its third, the nullable-receiver gap, was_
 _already closed by D-402 — confirmed, nothing left to fix). Finding 2: an ordinary_
