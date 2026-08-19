@@ -1571,7 +1571,7 @@ import Grob.Crypto
 
 @secure                             // 2. Params (if any)
 param token: string
-param days: int = 30
+param days:  int = 30
 
 type Repo {                          // 3. Type declarations (if any)
     name: string
@@ -1604,6 +1604,67 @@ An `import` after a `param` or `type` is a compile error. A `param` after a
 `readonly`, `const`) at the top level share a single name space. Declaring
 the same name twice — regardless of the two kinds involved — is a compile
 error (E1102, D-324). The diagnostic fires at the second declaration.
+
+### The `param` declaration
+
+**Normative grammar (D-410).** A parameter is declared by a single `param`
+line. There is no enclosing block.
+
+```
+param-decl  := { decorator newline } "param" identifier ":" type [ "=" expression ] newline
+decorator   := "@" identifier [ "(" [ argument-list ] ")" ]
+```
+
+Rules:
+
+- **One parameter per `param` keyword.** Consecutive `param` declarations form
+  a **parameter group by contiguity**, not by delimiter — the same way
+  consecutive `import` declarations do. There is no `param { ... }` block form.
+- **The type annotation is mandatory.** Parameters are never inferred. This
+  matches function parameters (§12) and differs deliberately from `:=`
+  bindings, whose whole purpose is inference.
+- **A default uses `=`, never `:=`.** `:=` declares *and* assigns a new
+  binding; a `param` default supplies a value for a binding the `param`
+  declaration has already introduced. Writing `:=` in a `param` declaration is
+  a syntax error (E4201).
+- **Defaults are evaluated at parameter-binding time**, before the script body
+  runs, in declaration order. A parameter supplied on the command line or in a
+  `.grobparams` file does not evaluate its default.
+- **Decorators sit on their own line immediately above** the `param` they
+  modify. Multiple decorators stack, one per line, with no blank line inside
+  the stack. The decorator set is fixed by D-411.
+- **`param` bindings are implicitly `readonly`** (§24). The `readonly` keyword
+  is not written on a `param` declaration.
+
+The canonical form:
+
+```grob
+@secure
+param token: string
+
+@minValue(0)
+@maxValue(100)
+param threshold: int = 80
+
+param output_dir: string = `C:\Reports`
+```
+
+**Why contiguity and not a block.** Every other top-level declaration form in
+Grob — `import`, `const`, `readonly`, `fn`, `type` — is keyword-led and
+one-per-line, and `import` already establishes ordering by rule rather than by
+delimiter. A `param { }` block would be the only grouping brace in the language
+with nothing named in front of it: `type T {`, `fn f() {` and every statement
+block carry a name or a signature, which is what keeps the bare-brace rule
+(§10) a principle rather than a list of exceptions. The braceless form also
+keeps a decorator attached to a keyword-led declaration; inside a block a
+decorator would sit above a bare `name: type` pair and read as an annotated
+struct field, a syntactic position Grob does not otherwise have.
+
+**Ordering.** A `param` declaration may appear only after `import` declarations
+and before any `type` declaration, `fn` declaration or top-level statement. The
+parameter group ends at the first line that is neither a `param` declaration
+nor one of its decorators; a `param` after that point is a compile error
+(E2202).
 
 ---
 
@@ -2534,7 +2595,19 @@ without noise.
 
 ---
 
-_Document updated May 2026 — §29.3 gains a "Confinement" paragraph_
+_Document updated August 2026 — §19 gains "The `param` declaration", a_
+_normative grammar for the `param` declaration form, authorised by D-410._
+_The braceless per-line form (`param name: type = value`, repeated, decorators_
+_stacked one per line above) is ratified as canonical and the `param { ... }`_
+_block form the parser previously required is retired. §19's worked example is_
+_unchanged in form — it was already correct — but the section no longer rests_
+_on an example alone, which is the mechanism by which the divergence D-409_
+_found stayed hidden through two audits. Records that a default uses `=` and_
+_never `:=`, that the type annotation is mandatory, that the parameter group is_
+_delimited by contiguity rather than by braces, and that `param` bindings are_
+_implicitly `readonly` (§24). Decorator set fixed separately by D-411._
+
+_Previous: Document updated May 2026 — §29.3 gains a "Confinement" paragraph_
 _specifying that the `Error` type's universal assignability is local to_
 _error nodes and subtrees that transitively contain one; it is never_
 _inferred for, propagated into, or assigned to a cleanly parsed node, and_

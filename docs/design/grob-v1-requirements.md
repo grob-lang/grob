@@ -935,13 +935,15 @@ Process execution captures stdout/stderr.
 
 ### Sprint 10 — Script Parameters and Decorators
 
-**Delivers:** `param` block, `.grobparams` files, `@secure`, `@allowed`,
-`@minLength`, `@maxLength` decorators, CLI parameter passing.
+**Delivers:** `param` declarations, `.grobparams` files, the seven param
+decorators (D-411), CLI parameter passing.
 
 **Scope:**
 
-- `param` block at top of script: `param name: Type`,
-  `param name: Type = default`.
+- `param` declarations at top of script, one per line, no enclosing
+  block (D-410): `param name: Type`, `param name: Type = default`.
+  Grammar in `grob-language-fundamentals.md` §19, "The `param`
+  declaration".
 - Type checker validates param types at compile time.
 - Required params (no default) must be provided — compile error if
   missing.
@@ -949,9 +951,19 @@ Process execution captures stdout/stderr.
 - Param file: `grob run script.grob --params file.grobparams`.
 - `.grobparams` format: `key = value`, `//` comments.
 - Command line overrides param file values.
-- Decorators: `@secure` (not echoed, not logged, not in error messages),
-  `@allowed("dev", "staging", "prod")` (compile-time validation),
-  `@minLength(n)`, `@maxLength(n)`.
+- Decorators (the full v1 set, D-411 — none is a scope-cut candidate):
+  `@secure` (not echoed, not logged, not in error messages),
+  `@allowed("dev", "staging", "prod")`, `@minLength(n)`, `@maxLength(n)`,
+  `@minValue(n)`, `@maxValue(n)`. Each is validated at the parameter
+  boundary before the script body runs. `@pattern(...)` is the seventh
+  and lands with the `regex` increment, not here — it needs a compiled
+  pattern value to validate against.
+- **Release-gate coverage is an obligation, not an assumption.** D-186
+  observed that the validation decorators had zero coverage across the
+  validation suite; that remains true — `@secure` is the only decorator
+  any of the eleven scripts uses. Shipping all seven in v1 means at
+  least one release-gate script must exercise the full decorator
+  surface before v1, or the set ships advertised-and-ungated (D-411).
 - `@secure` params warned if present in `.grobparams` in plain text.
 
 **Acceptance:** Scripts accept typed parameters from CLI and param files.
@@ -1053,9 +1065,9 @@ string literal forms (D-127, D-128, D-129, D-130, D-161), `if` /
 `select` / `break` / `continue` / ternary / switch expression control
 flow, `fn` functions with explicit return types and named parameter
 calling (D-016, D-087, D-113), `type` declarations with named and
-anonymous (`#{ }`) construction (D-043, D-114), `param` blocks with
-`@secure` / `@allowed` / `@minLength` / `@maxLength` decorators
-(D-098, D-101, D-102), `try` / `catch` with typed and catch-all
+anonymous (`#{ }`) construction (D-043, D-114), `param` declarations
+with the seven-decorator set (D-098, D-101, D-102, D-410, D-411),
+`try` / `catch` with typed and catch-all
 handlers (D-082, D-083), and `print` / `input` / `exit` built-ins
 (D-110, D-139).
 
@@ -1494,24 +1506,20 @@ consulted only when needed and shelved when not.
 
 ### Candidates (in activation order)
 
-**1. Validation decorators** — `@allowed(...)`, `@minLength(n)`,
-`@maxLength(n)` on param blocks.
+**1. Validation decorators — REMOVED from this list (D-411, August 2026).**
 
-- `@secure` is **not** on this list. It remains in v1 and is exercised
-  in Scripts 4, 7, 11 and 13.
-- v1 fallback: manual validation in the script body, typically three
-  to five lines per validated param (`if (!["dev", "staging", "prod"].contains(env)) { log.error(...); exit(1) }`).
-- Savings on activation: one sprint item in Sprint 10 (Script
-  Parameters and Decorators). The decorator parsing infrastructure
-  remains for `@secure`, so the activation saves implementation time
-  on the three validation decorators only, not the decorator system as
-  a whole.
-- v1.1 re-add is pure grammar addition. No scripts break.
-- Scripts affected on activation: Script 13 uses `@allowed`,
-  `@minLength` and `@maxLength` directly. Activating this cut requires
-  rewriting Script 13 with manual in-body validation (the same
-  five-lines-per-param pattern the PowerShell original exhibits) before
-  v1 ships. Scripts 1–12 are unaffected.
+The whole param decorator set ships in v1 and none of it is a cut
+candidate. D-411 fixes the set at seven — `@secure`, `@allowed`,
+`@minLength`, `@maxLength`, `@minValue`, `@maxValue`, `@pattern` — and
+takes the three validation decorators off this list by owner decision.
+The v1 fallback this entry described (three to five lines of manual
+in-body validation per validated param) is exactly the PowerShell
+ceremony Grob exists to remove, and cutting the set would have left a
+`param` block that can declare a constraint's shape but not enforce it.
+
+The obligation this creates is recorded in the Sprint 10 scope above:
+the decorators have no release-gate coverage today beyond `@secure`, so
+a script exercising the full surface is required before v1.
 
 **2. Regex literal grammar** — `/pattern/flags` with context-sensitive
 `/` disambiguation.
@@ -1530,9 +1538,26 @@ consulted only when needed and shelved when not.
   `isMatch`, capture-group access — is unchanged on activation.
   Scripts 1–11 and Script 13 are unaffected.
 
+> **Finding, August 2026 (D-411) — this candidate's stated saving no
+> longer exists.** The "savings on activation" above assume the
+> context-sensitive lexing is still ahead of us. It is not: the literal's
+> front end is built and tested — `TokenKind.RegexLiteral`,
+> `Lexer.CanStartRegex()` with the after-a-value-is-division rule,
+> `ScanRegexLiteral()`, `ConsumeRegexFlags` restricted to `i`/`m`,
+> `RegexLiteralExpr`, and E2007/E2008 with real throw sites. Activating
+> this cut today would mean *deleting* working code, not deferring work.
+> What is genuinely absent is everything behind the front end: no
+> `GrobType.Regex`, no compiler emission (`VisitRegexLiteral` appears in
+> three files, none of them the compiler or the VM), no runtime
+> representation, no `regex` module. Recorded, not decided — whether the
+> candidate is struck outright is the project owner's call, and D-411
+> does not make it. Note also that no decision ever activated this cut;
+> `sprint-9-g.md` asserts it was resolved at the Sprint 9 kickoff and
+> the log contains no such entry.
+
 ### Defer-gracefully constraints
 
-Both candidates meet the "defer gracefully" constraint: v1 scripts
+The remaining candidate meets the "defer gracefully" constraint: v1 scripts
 using the fallback forms continue to work in v1.1 unchanged; v1.1 adds
 are purely additive; and no v1 feature becomes useless because a
 candidate is cut.
@@ -1554,6 +1579,18 @@ Candidates considered and rejected during Session C Part 2:
   slip the sprint, not to cut the feature.
 
 -----
+
+*This document was updated August 2026 — D-410 and D-411 wired in. The Sprint 10*
+*scope now describes `param` declarations rather than a `param` block, pointing at*
+*the normative grammar D-410 added to `grob-language-fundamentals.md` §19. The*
+*decorator list grows to the seven of D-411 (`@minValue`/`@maxValue` added,*
+*`@pattern` named and sequenced to the `regex` increment) and gains the*
+*release-gate coverage obligation that shipping the whole set creates — today*
+*`@secure` is the only decorator any of the eleven validation scripts uses.*
+*Scope-cut candidate 1 (validation decorators) is removed by owner decision;*
+*candidate 2 (regex literal grammar) is retained but carries a finding that its*
+*stated saving is already spent, the front end being built and tested. Neither*
+*edit touches an error code's title or the registry total, which stays at 121.*
 
 *This document was updated July 2026 — adversarial testing strategy wired in:*
 *§12 gains an Adversarial Testing (Pre-Alpha) subsection and the §4 build plan gains*

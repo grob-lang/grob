@@ -983,7 +983,7 @@ read by `grob --explain Exxxx`.
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A decorator was applied that is not one of the recognised decorators (`@secure`, `@allowed`, `@minLength`, `@maxLength`).
+- **Description:** A decorator was applied that is not one of the recognised decorators. The v1 set is fixed at seven by D-411: `@secure`, `@allowed`, `@minLength`, `@maxLength`, `@minValue`, `@maxValue`, `@pattern`. `@pattern` is specified but not yet built — it lands with the `regex` increment, which supplies the compiled-pattern value it validates against.
 - **Source decision:** D-072.
 
 ---
@@ -1022,8 +1022,8 @@ read by `grob --explain Exxxx`.
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A `param` block contains a malformed parameter declaration — missing type annotation on a defaultless param, missing `:=` before a default, etc.
-- **Source:** `grob-language-fundamentals.md` §19.
+- **Description:** A `param` declaration is malformed — a missing type annotation (the annotation is mandatory; parameters are never inferred), a default introduced with `:=` instead of `=`, or a decorator line not followed by a `param` declaration. Per D-410 a parameter is one `param` line with no enclosing block; `param {` is not a Grob form.
+- **Source:** `grob-language-fundamentals.md` §19, "The `param` declaration"; D-410.
 
 ---
 
@@ -1032,7 +1032,7 @@ read by `grob --explain Exxxx`.
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A `param` declaration appeared after the `param` block has been closed by a non-`param` statement.
+- **Description:** A `param` declaration appeared after the parameter group was closed by a line that is neither a `param` declaration nor one of its decorators. **Retirement pending (D-410):** with the braceless grammar and §19's ordering rule this condition is a subset of E2202 (`param` after a `type`, `fn` or top-level statement). E4202 is to be removed and E2202's title widened when the grammar change lands; the removal is deferred to that increment because retiring a code requires the `ErrorCatalog` edit in the same commit to keep the D-316 agreement gate green. Under D-410's clarification of ADR-0017, E4202's number is permanently burned on removal and is never reused.
 
 ---
 
@@ -1422,6 +1422,8 @@ _Updated June 2026 (interlude A, D-316) — canonical total corrected from a sta
 _Updated June 2026 — Sprint 5 Increment B added the four named-argument call-site diagnostics E0008–E0011 (named-before-positional, naming a required parameter, duplicate named argument, unknown parameter name) in the E00xx sub-block of the Type category, bringing the total to 107 codes. Source decision D-318 (D-113)._
 
 _Updated June 2026 — Sprint 5 correctness increment added E1103 (reserved identifier used as a binding name) in the E11xx sub-block of the Name resolution category, bringing the total to 108 codes. The code covers both `select` (D-320) and `formatAs` (D-282) — D-282's reserved-identifier rule had shipped with no code. Source decision D-320._
+
+_Updated August 2026 — description-only corrections authorised by D-410 and D-411; no code added, removed or retitled, so the D-316 catalog-to-registry agreement gate is unaffected and the total stays at 121. E4001's description enumerated the four decorators of D-102; it now names the seven of D-411 and flags `@pattern` as specified-not-yet-built. E4201's description required `:=` before a param default — wrong against §19, the formatter's operator table and all eleven validation scripts, every one of which uses `=`; `:=` declares and assigns a new binding and has never been valid in a `param` declaration in either grammar. E4202 is marked retirement-pending: under D-410's braceless grammar its condition is a subset of E2202's, and both the removal and E2202's title widening are deferred to the increment that lands the grammar, since a title change or a removal needs the `ErrorCatalog` edit in the same commit. D-410 also clarifies ADR-0017 for the pre-release case it never covered: a `pre-release` code that never shipped may be removed outright, and its number is permanently burned — never reused, exactly as for a retired shipped code._
 
 _Updated July 2026 — Sprint 7 Increment A added two codes: E0014 (`throw` operand is not a `GrobError` subtype) in the E00xx sub-block of the Type category, and E5904 (unhandled exception reached the top level) in the E59xx sub-block of the Runtime category, bringing the total from 112 to 114. E5904's `Throws` leaf is `GrobError` (a new `GrobErrorLeaf` member) rather than one of the ten typed leaves — the code re-raises whatever the script itself threw, so it carries no single fixed leaf the way every other Runtime code does. Allocated per `allocating-an-error-code` (D-330/D-318 precedent for a dedicated construction/throw-site code over folding into an ill-fitting existing one)._
 
