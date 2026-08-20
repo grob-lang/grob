@@ -60,7 +60,7 @@ files from a download folder into year/month subfolders based on file
 date.** This is Script 2 from the sample scripts document — one of the
 most common personal automation tasks on GitHub. It exercises:
 
-- `param` block with typed, defaultable script parameters
+- `param` declarations with typed, defaultable script parameters
 - `fs.list()` and `File` type properties
 - `date` type — component access (`year`, `month`)
 - String interpolation
@@ -508,7 +508,7 @@ new features interactively, and the increment can run meaningful scripts.
   `exit()`, `if`/`else if`/`else`, `while`, `for...in` collection,
   `for...in` numeric range, `select`/`case`/`default`, `break`,
   `continue`, `fn` declarations, `return`, `type` declarations, `try`/
-  `catch`, `param` block, `import`, `const`, `readonly`).
+  `catch`, `param` declarations, `import`, `const`, `readonly`).
 - **Error-recovering parser per D-300 — day-one requirement.** The
   parser must recover from syntax errors using the synchronisation set
   specified in `grob-language-fundamentals.md` §29.1 (statement-boundary
@@ -945,8 +945,11 @@ decorators (D-411), CLI parameter passing.
   Grammar in `grob-language-fundamentals.md` §19, "The `param`
   declaration".
 - Type checker validates param types at compile time.
-- Required params (no default) must be provided — compile error if
-  missing.
+- Required params (no default) must be provided — a missing one is
+  diagnosed at parameter-binding time, before the script body runs
+  (§19, "The `param` declaration"), because the value arrives from the
+  command line or a `.grobparams` file at invocation and is not
+  available to the compiler.
 - Command line passing: `grob run script.grob --name value`.
 - Param file: `grob run script.grob --params file.grobparams`.
 - `.grobparams` format: `key = value`, `//` comments.
@@ -1515,7 +1518,8 @@ takes the three validation decorators off this list by owner decision.
 The v1 fallback this entry described (three to five lines of manual
 in-body validation per validated param) is exactly the PowerShell
 ceremony Grob exists to remove, and cutting the set would have left a
-`param` block that can declare a constraint's shape but not enforce it.
+`param` declaration that can declare a constraint's shape but not
+enforce it.
 
 The obligation this creates is recorded in the Sprint 10 scope above:
 the decorators have no release-gate coverage today beyond `@secure`, so

@@ -794,7 +794,7 @@ read by `grob --explain Exxxx`.
 - **Category:** Syntax
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** `param` blocks must precede `type` declarations, function declarations, and top-level code.
+- **Description:** `param` declarations must precede `type` declarations, function declarations and top-level code.
 - **Source:** `grob-language-fundamentals.md` §19.
 
 ---
@@ -993,7 +993,7 @@ read by `grob --explain Exxxx`.
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A decorator was applied to a target where it is not valid, e.g. `@secure` on a non-string param or a validation decorator outside a `param` block.
+- **Description:** A decorator was applied to a target where it is not valid, e.g. `@secure` on a non-string param or a validation decorator not attached to a `param` declaration.
 - **Source decision:** D-072.
 
 ---
@@ -1423,7 +1423,7 @@ _Updated June 2026 — Sprint 5 Increment B added the four named-argument call-s
 
 _Updated June 2026 — Sprint 5 correctness increment added E1103 (reserved identifier used as a binding name) in the E11xx sub-block of the Name resolution category, bringing the total to 108 codes. The code covers both `select` (D-320) and `formatAs` (D-282) — D-282's reserved-identifier rule had shipped with no code. Source decision D-320._
 
-_Updated August 2026 — description-only corrections authorised by D-410 and D-411; no code added, removed or retitled, so the D-316 catalog-to-registry agreement gate is unaffected and the total stays at 121. E4001's description enumerated the four decorators of D-102; it now names the seven of D-411 and flags `@pattern` as specified-not-yet-built. E4201's description required `:=` before a param default — wrong against §19, the formatter's operator table and all eleven validation scripts, every one of which uses `=`; `:=` declares and assigns a new binding and has never been valid in a `param` declaration in either grammar. E4202 is marked retirement-pending: under D-410's braceless grammar its condition is a subset of E2202's, and both the removal and E2202's title widening are deferred to the increment that lands the grammar, since a title change or a removal needs the `ErrorCatalog` edit in the same commit. D-410 also clarifies ADR-0017 for the pre-release case it never covered: a `pre-release` code that never shipped may be removed outright, and its number is permanently burned — never reused, exactly as for a retired shipped code._
+_Updated August 2026 — description-only corrections authorised by D-410 and D-411; no code added, removed or retitled, so the D-316 catalog-to-registry agreement gate is unaffected and the total stays at 121. E4001's description enumerated the four decorators of D-102; it now names the seven of D-411 and flags `@pattern` as specified-not-yet-built. E4201's description required `:=` before a param default — wrong against §19, the formatter's operator table and all eleven validation scripts, every one of which uses `=`; `:=` declares and assigns a new binding and has never been valid in a `param` declaration in either grammar. E4202 is marked retirement-pending: under D-410's braceless grammar its condition is a subset of E2202's, and both the removal and E2202's title widening are deferred to the increment that lands the grammar, since a title change or a removal needs the `ErrorCatalog` edit in the same commit. D-410 also clarifies ADR-0017 for the pre-release case it never covered: a `pre-release` code that never shipped may be removed outright, and its number is permanently burned — never reused, exactly as for a retired shipped code. E2202's and E4002's descriptions are aligned to the braceless terminology in the same pass ("`param` declarations", not "`param` blocks"); both are description-only and neither title moves._
 
 _Updated July 2026 — Sprint 7 Increment A added two codes: E0014 (`throw` operand is not a `GrobError` subtype) in the E00xx sub-block of the Type category, and E5904 (unhandled exception reached the top level) in the E59xx sub-block of the Runtime category, bringing the total from 112 to 114. E5904's `Throws` leaf is `GrobError` (a new `GrobErrorLeaf` member) rather than one of the ten typed leaves — the code re-raises whatever the script itself threw, so it carries no single fixed leaf the way every other Runtime code does. Allocated per `allocating-an-error-code` (D-330/D-318 precedent for a dedicated construction/throw-site code over folding into an ill-fitting existing one)._
 

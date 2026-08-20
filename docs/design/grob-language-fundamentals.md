@@ -1590,8 +1590,8 @@ print(repos.length)
 **Order rules:**
 
 - `import` statements must appear before any other declarations or code.
-- `param` blocks must appear before `type` declarations, function declarations
-  and top-level code. `param` may appear after `import`.
+- `param` declarations must appear before `type` declarations, function
+  declarations and top-level code. `param` may appear after `import`.
 - `type` and `fn` declarations may appear in any order relative to each other
   (forward references are resolved by the two-pass type checker).
 - Top-level code (statements, expressions) appears after all declarations.
@@ -1610,7 +1610,7 @@ error (E1102, D-324). The diagnostic fires at the second declaration.
 **Normative grammar (D-410).** A parameter is declared by a single `param`
 line. There is no enclosing block.
 
-```
+```ebnf
 param-decl  := { decorator newline } "param" identifier ":" type [ "=" expression ] newline
 decorator   := "@" identifier [ "(" [ argument-list ] ")" ]
 ```
@@ -2003,10 +2003,11 @@ Semantics:
 - The binding must be initialised at declaration. No deferred initialisation
   syntax exists, consistent with §9 (no uninitialised variables).
 
-**`param` bindings are implicitly `readonly`.** A parameter declared in a
-`param` block has the same immutability guarantees — it cannot be reassigned
-and cannot be mutated. The `readonly` keyword is not written on `param`
-declarations; it would be redundant. An attempt to reassign a `param` produces:
+**`param` bindings are implicitly `readonly`.** A parameter introduced by a
+`param` declaration has the same immutability guarantees — it cannot be
+reassigned and cannot be mutated. The `readonly` keyword is not written on
+`param` declarations; it would be redundant. An attempt to reassign a `param`
+produces:
 
 ```
 error: cannot reassign 'param' 'token' — parameters are implicitly readonly.
@@ -2378,7 +2379,7 @@ a struct field access (`obj.field`), or an array index (`arr[i]`). Other
 expressions on the left are a compile error.
 
 The name must already exist (declared earlier with `:=`, as a function
-parameter, or as a `param` block entry). Assigning to an undeclared name is
+parameter, or by a `param` declaration). Assigning to an undeclared name is
 a compile error.
 
 Compound assignment is compile-time sugar: `x += y` lowers to `x = x + y`.
