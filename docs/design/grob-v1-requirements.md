@@ -935,8 +935,9 @@ Process execution captures stdout/stderr.
 
 ### Sprint 10 — Script Parameters and Decorators
 
-**Delivers:** `param` declarations, `.grobparams` files, the seven param
-decorators (D-411), CLI parameter passing.
+**Delivers:** `param` declarations, `.grobparams` files, six of the seven
+param decorators (D-411 — `@pattern` lands with the `regex` increment), CLI
+parameter passing.
 
 **Scope:**
 
@@ -1514,7 +1515,8 @@ consulted only when needed and shelved when not.
 The whole param decorator set ships in v1 and none of it is a cut
 candidate. D-411 fixes the set at seven — `@secure`, `@allowed`,
 `@minLength`, `@maxLength`, `@minValue`, `@maxValue`, `@pattern` — and
-takes the three validation decorators off this list by owner decision.
+takes the three this candidate named — `@allowed`, `@minLength` and
+`@maxLength` — off the list by owner decision.
 The v1 fallback this entry described (three to five lines of manual
 in-body validation per validated param) is exactly the PowerShell
 ceremony Grob exists to remove, and cutting the set would have left a

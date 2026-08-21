@@ -1571,7 +1571,7 @@ import Grob.Crypto
 
 @secure                             // 2. Params (if any)
 param token: string
-param days:  int = 30
+param days: int = 30
 
 type Repo {                          // 3. Type declarations (if any)
     name: string
@@ -1662,9 +1662,12 @@ struct field, a syntactic position Grob does not otherwise have.
 
 **Ordering.** A `param` declaration may appear only after `import` declarations
 and before any `type` declaration, `fn` declaration or top-level statement. The
-parameter group ends at the first line that is neither a `param` declaration
-nor one of its decorators; a `param` after that point is a compile error
-(E2202).
+parameter group ends at the first significant line that is neither a `param`
+declaration nor one of its decorators; a `param` after that point is a compile
+error (E2202). Blank lines and comment-only lines are not significant for this
+purpose and do not end the group — the canonical form above separates its
+declarations with blank lines. Inside a decorator stack a blank line remains
+disallowed by the decorator rule above.
 
 ---
 
@@ -2005,7 +2008,9 @@ Semantics:
 
 **`param` bindings are implicitly `readonly`.** A parameter introduced by a
 `param` declaration has the same immutability guarantees — it cannot be
-reassigned and cannot be mutated. The `readonly` keyword is not written on
+reassigned and cannot be mutated through the parameter binding itself. The
+same aliasing caveat applies: the guarantee is binding-scoped, not
+object-level freezing (D-372). The `readonly` keyword is not written on
 `param` declarations; it would be redundant. An attempt to reassign a `param`
 produces:
 
