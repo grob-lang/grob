@@ -596,8 +596,8 @@ read by `grob --explain Exxxx`.
 - **Category:** Name resolution
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A binding-introducing form (`:=`, `readonly`, `const`, `fn`, `type`) declared a name that is already bound in the same scope. The diagnostic is emitted at the second (offending) declaration. For `:=` use `=` to reassign an existing variable binding. For `fn`/`type`/`readonly`/`const` rename the declaration.
-- **Source decision:** Sprint 3 Increment A; broadened to all top-level binding forms by D-324.
+- **Description:** A binding-introducing form (`:=`, `readonly`, `const`, `fn`, `type`, `param`) declared a name that is already bound in the same scope. The diagnostic is emitted at the second (offending) declaration. For `:=` use `=` to reassign an existing variable binding. For `fn`/`type`/`readonly`/`const` rename the declaration.
+- **Source decision:** Sprint 3 Increment A; broadened to all top-level binding forms by D-324; extended to `param` declarations by D-412.
 
 ---
 
@@ -794,8 +794,8 @@ read by `grob --explain Exxxx`.
 - **Category:** Syntax
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** `param` declarations must precede `type` declarations, function declarations and top-level code.
-- **Source:** `grob-language-fundamentals.md` §19.
+- **Description:** `param` declarations must precede `type` declarations, function declarations, `const` and `readonly` declarations and top-level code (D-412 places `const`/`readonly` in the top-level-code category). Where a misplaced `param` also collides with an existing top-level name, only this ordering error is reported; the E1102 collision is suppressed as a cascade (D-412).
+- **Source:** `grob-language-fundamentals.md` §19; D-412.
 
 ---
 
@@ -1422,6 +1422,8 @@ _Updated June 2026 (interlude A, D-316) — canonical total corrected from a sta
 _Updated June 2026 — Sprint 5 Increment B added the four named-argument call-site diagnostics E0008–E0011 (named-before-positional, naming a required parameter, duplicate named argument, unknown parameter name) in the E00xx sub-block of the Type category, bringing the total to 107 codes. Source decision D-318 (D-113)._
 
 _Updated June 2026 — Sprint 5 correctness increment added E1103 (reserved identifier used as a binding name) in the E11xx sub-block of the Name resolution category, bringing the total to 108 codes. The code covers both `select` (D-320) and `formatAs` (D-282) — D-282's reserved-identifier rule had shipped with no code. Source decision D-320._
+
+_Updated August 2026 — description-only corrections authorised by D-412; no code added, removed or retitled, so the D-316 agreement gate is unaffected and the total stays at 121. E1102's description gains `param` to the list of binding-introducing forms sharing the top-level name space, and its source line records D-412's extension of D-324. E2202's description names `const` and `readonly` among the forms a `param` must precede, D-412 having placed them in the top-level-code category, and records that a coincident E1102 collision is suppressed in favour of this ordering error._
 
 _Updated August 2026 — description-only corrections authorised by D-410 and D-411; no code added, removed or retitled, so the D-316 catalog-to-registry agreement gate is unaffected and the total stays at 121. E4001's description enumerated the four decorators of D-102; it now names the seven of D-411 and flags `@pattern` as specified-not-yet-built. E4201's description required `:=` before a param default — wrong against §19, the formatter's operator table and all eleven validation scripts, every one of which uses `=`; `:=` declares and assigns a new binding and has never been valid in a `param` declaration in either grammar. E4202 is marked retirement-pending: under D-410's braceless grammar its condition is a subset of E2202's, and both the removal and E2202's title widening are deferred to the increment that lands the grammar, since a title change or a removal needs the `ErrorCatalog` edit in the same commit. D-410 also clarifies ADR-0017 for the pre-release case it never covered: a `pre-release` code that never shipped may be removed outright, and its number is permanently burned — never reused, exactly as for a retired shipped code. E2202's and E4002's descriptions are aligned to the braceless terminology in the same pass ("`param` declarations", not "`param` blocks"); both are description-only and neither title moves._
 

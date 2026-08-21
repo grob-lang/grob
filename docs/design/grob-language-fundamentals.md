@@ -1594,16 +1594,33 @@ print(repos.length)
   declarations and top-level code. `param` may appear after `import`.
 - `type` and `fn` declarations may appear in any order relative to each other
   (forward references are resolved by the two-pass type checker).
+- `const` and `readonly` declarations are top-level code (category 5) and
+  must follow all `param` declarations (D-412). `readonly` evaluates its
+  right-hand side at the point of declaration (D-291), which makes it
+  order-dependent; `const` is inlined at every reference (D-288, D-289) and
+  is placed with it so the two read alike at the point of use.
 - Top-level code (statements, expressions) appears after all declarations.
 - Comments may appear anywhere.
 
 An `import` after a `param` or `type` is a compile error. A `param` after a
-`fn` or top-level statement is a compile error.
+`type`, `fn`, `const`, `readonly` or top-level statement is a compile error
+(E2202).
 
 **Name uniqueness.** All binding-introducing forms (`fn`, `type`, `:=`,
-`readonly`, `const`) at the top level share a single name space. Declaring
-the same name twice — regardless of the two kinds involved — is a compile
-error (E1102, D-324). The diagnostic fires at the second declaration.
+`readonly`, `const`, `param`) at the top level share a single name space.
+Declaring the same name twice — regardless of the two kinds involved — is a
+compile error (E1102, D-324, extended to `param` by D-412). The diagnostic
+fires at the second declaration. Because §19 requires `param` declarations
+ahead of every other declaration form, a `param` is always the earlier
+declaration in a cross-kind collision, so the diagnostic lands on the
+colliding `fn`, `type`, `const`, `readonly` or `:=` and never on the `param`.
+
+**Coincident ordering and collision errors (D-412).** A misplaced `param`
+that also collides with an existing name — `const token := "x"` followed by
+`param token: string` — reports **only** the ordering error (E2202). The
+`param` is already rejected for its position, so the collision is suppressed
+rather than reported alongside it: one root cause, one diagnostic, the same
+principle §29 applies to parser cascades.
 
 ### The `param` declaration
 
@@ -2601,7 +2618,23 @@ without noise.
 
 ---
 
-_Document updated August 2026 — §19 gains "The `param` declaration", a_
+_Document updated August 2026 — §19's order rules and name-uniqueness_
+_paragraph completed by D-412, closing a gap D-410 did not contemplate. `param`_
+_joins the top-level shared name space, so a name shared with an `fn`, `type`,_
+_`const`, `readonly` or `:=` binding is E1102 — the uniform code D-324_
+_established — and never E2202, which diagnoses position rather than name_
+_reuse. Because §19 puts `param` ahead of every other declaration form, the_
+_diagnostic always lands on the later colliding declaration and never on the_
+_`param`. `const` and `readonly`, previously named as binding-introducing forms_
+_but placed nowhere in the ordering, are fixed as category 5 (top-level code)_
+_and must follow all `param` declarations. Where an ordering violation and a_
+_name collision coincide, only the ordering error is reported. Not addressed_
+_here and deliberately kept separate: §19's two worked examples both violate_
+_`grob-formatter-specification.md` §3.10's blank-line rules for decorated and_
+_undecorated parameter groups, which turns on whether that two-group model_
+_survives D-411's seven decorators._
+
+_Previous: Document updated August 2026 — §19 gains "The `param` declaration", a_
 _normative grammar for the `param` declaration form, authorised by D-410._
 _The braceless per-line form (`param name: type = value`, repeated, decorators_
 _stacked one per line above) is ratified as canonical and the `param { ... }`_
