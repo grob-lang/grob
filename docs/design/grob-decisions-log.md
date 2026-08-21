@@ -405,6 +405,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-407 | August 2026 | Runtime error taxonomy (`E5102` given its throw sites: `substring`/`left`/`right` string-bounds violations distinguished from `E5101`'s array-index domain) | Closes the correctness-batch finding D-382 reported and deliberately deferred: `E5102` ("substring bounds out of range") was defined in `ErrorCatalog` and the registry but had no throw site — `Substring`/`Left`/`Right` all reused `E5101` instead. **Adopted, not retired** — the two-code split is kept and `E5102` is wired up, rather than removing the dead row and letting `E5101` cover both. **The deciding argument is latency, not present observability**: the CLI message today is already accurate (`error[E5101]: substring: start 2 and length 99…` correctly names the operation in its own text), and no `--explain` command exists yet to expose the code-title mismatch to a user. The mismatch is latent but certain — it surfaces the moment `--explain` ships and long-form `docs/errors/Exxxx.md` pages are authored from the registry's `E5101` title ("array index out of range"), at which point ADR-0017 has already frozen the code permanently. `pre-release` is the only window in which the taxonomy can still be corrected, exactly D-382's own framing for the same deadline. **Leaf unaffected**: `IndexError` already covers both array and string bounds by design from D-284's original hierarchy (`IndexError (array bounds, substring bounds)`); no script-level `catch` behaviour changes, confirmed empirically — `GrobError` exposes no `.code` member to Grob source, so a script could never have distinguished the two by code, only by leaf (unchanged) or by parsing `.message` text (already operation-specific pre-fix). **Registry prose widened, not just repointed** — found during review that `E5102`'s existing description ("A substring start or end index was outside the source string's bounds") covered only `substring`'s start/length-pair shape and not `left`/`right`'s count-overrun shape; repointing `left`/`right` to `E5102` unchanged would have reproduced the exact code-title/actual-condition mismatch this entry exists to fix, one level down. Title widened from "substring bounds out of range" to "string bounds out of range" and the long-form description rewritten to name both shapes explicitly. `left`/`right` considered and rejected for a split into `E5905`'s size-limit domain instead: `E5905` guards a fixed allocation ceiling independent of the receiver's actual length, while `left`/`right`'s bound is relative to the receiver string's own current length — the same shape as `substring`'s bound, not the same shape as a ceiling breach. **Mechanics**: three throw sites repointed in `StringMethodsPlugin.cs` (`Substring`, `Left`, `Right`) from `ErrorCatalog.E5101.Code` to `ErrorCatalog.E5102.Code`; `padLeft`/`padRight`/`repeat`'s `E5905` ceiling guards untouched. No opcode change, no new error code — an existing `pre-release` code repointed to its intended throw sites; count stays **121**. **Twelve test assertions repointed** across two files, re-enumerated exactly rather than estimated: `tests/Grob.Stdlib.Tests/StringMethodsPluginTests.cs` (11 — lines 237, 249, 260, 269, 278 for `substring`; 357, 368, 376 for `left`; 391, 399, 407 for `right`) and `tests/Grob.Integration.Tests/Sprint9StringInstanceMethodsTests.cs:103` (1, CLI stderr assertion); each confirmed red against the unmodified production code before the throw-site change, then green after. No gold master regenerated — `docs/errors/examples/` has no `substring`/`left`/`right` example; the only `E5101` examples (`array-index-out-of-range`, `array-index-out-of-range-in-function`) are genuinely array-based and unaffected. **Aside, recorded not acted on**: ADR-0017's "retired codes are never reused, marked retired in the registry" mechanism is written for codes that have shipped; it does not say what happens to a `pre-release` code that is fully removed, never having shipped at all (the case this entry's rejected retirement branch would have been). Not resolved here since retirement was not the outcome, but the gap is real and undocumented — flagged for the pre-v1 corpus sweep to clarify ADR-0017 before any future pre-release retirement needs the answer. Full solution `dotnet test` green. Cites D-382 (the finding this closes, and the `pre-release`-deadline framing this entry's deciding argument mirrors exactly), ADR-0017 (immutability once shipped — the reason `pre-release` was the only window), ADR-0014 (`E5xxx` numbering; gaps from retirement are expected, not relevant here since no code was retired), D-284 (the `IndexError` leaf hierarchy, unchanged), D-316 (the consistency gate, re-verified green at count 121). |
 | D-408 | August 2026 | Compiler — type system (method-call path diagnostic parity) | Brings `ResolveMemberAccessCall`'s diagnostic behaviour into line with `VisitMemberAccess`'s, closing D-380's remaining two findings (its third, the nullable-receiver gap, was already closed by D-402 — confirmed empirically and by code reading, nothing left to fix). **Finding 2**: an ordinary user `type` struct or an anonymous struct (`#{ }`) has no method surface in v1 (D-043/D-080), but `someStruct.anyMethodName()` type-checked clean and then crashed the VM at runtime with an internal "please report this bug" error, not a diagnostic — worse than D-380's already-closed array/map case. Fixed with a new `ValidateStructMemberCall` arm in `DispatchMemberAccessCall`, field-lookup-based (reusing `ResolveStructFieldAccess`'s own by-name lookup against `UserTypeInfo.Fields`) rather than a blanket rejection, so it raises **E1002** — the same code and wording the property path already raises for an unrecognised field — only when the member names no declared field at all; a call through a genuinely declared field whose value happens to be callable (`box.callback()`, a function-typed field) stays permissive exactly as before, confirmed unmodified via `Sprint6IncrementCTests.ClosureInField_Integration_CallsAfterReturn`, the one fixture the breaking-change sweep found. **Finding 3**: `ResolveMemberAccessCall` had no `Error`-receiver cascade-suppression arm mirroring `VisitMemberAccess`'s (`if (targetType == GrobType.Error) return GrobType.Error;`), so a method call on an already-errored receiver (an undefined identifier) resolved `Unknown` instead of `Error` — `Unknown` has no universal excusal the way `Error` does (D-300), and `VisitReturn`/`VisitThrow`/the free-function argument-type check each excuse only `Error`, so one root cause cascaded into up to three diagnostics (`take(undefinedThing.compute(), 42)` produced E1001 plus a spurious E0004 on the first argument plus a genuine E0004 on the second, against one E1001 plus the one genuine E0004 on the property-access equivalent). Fixed by mirroring the arm exactly, placed after argument-type visiting (so a genuinely separate mistake inside an argument still surfaces — §3.1.1 identifiers are visited unconditionally) and before the nullable-receiver dispatch; confirmed the fix does not over-suppress a distinct later mistake (the `take(...)` case above collapses to exactly two diagnostics, not one). **Arm-by-arm diff table produced as the durable record** (fifteen rows spanning namespace/nullable/named-type/primitive/array/map/function dispatch, matching every one of D-403's/D-404's/D-406's own side-channel-survey precedents) and now pinned by a new, mutation-verified regression test (`TypeCheckerMemberAccessCallDiagnosticsTests.ArmParity_ErrorReceiver_...`/`ArmParity_UnresolvableStructMember_...`) — each new arm was temporarily removed during development, the corresponding parity test confirmed to fail for the expected reason, then restored — so a future divergence between the two dispatch paths fails a test rather than being found by accident a fourth time. D-362's permissive-`Unknown` catalogue (the `EmitArithmetic` two-item list) is unaffected — findings 2/3 are a different, broader class of permissive-`Unknown` production inside `ResolveMemberAccessCall`/`DispatchMemberAccessCall` itself, not members of that specific arithmetic-operand list; both findings' fixes remove permissive-`Unknown`/cascade sources from their own dispatch, not from the catalogue. No new opcode, no new error code (E0101 already fine and untouched, E1002 reused); count stays **121**. Eleven new tests in `TypeCheckerMemberAccessCallDiagnosticsTests.cs`; every existing member-access, struct, nullable and error-recovery test stays green unmodified, including the one enumerated `box.callback()`-shaped fixture, confirmed still passing rather than updated. Full solution `dotnet test` green (3,876 tests across eight projects), `Grob.Compiler.Tests` line coverage 92.5% (the touched class, `TypeChecker`, 97.7%). Refines D-380 (its remaining two findings, closed; the third already closed by D-402, confirmed not re-opened), D-402 (finding 1's closure, confirmed and cited rather than re-derived). Cites D-403, D-404, D-405, D-406 (the side-channel/arm-parity-survey precedent this entry's regression test follows), D-300 (`Error`'s universal-assignability cascade-suppression design), D-362 (the permissive-`Unknown` catalogue, confirmed unaffected), D-043/D-080 (v1 gives structs no method surface — the framing this entry's diagnostic makes correct without widening the language). |
 | D-409 | August 2026 | Language spec — declaration grammar; Tooling — benchmarking (F8 readiness) | Decision-only plan-mode gate for the F8 `endToEnd`-benchmark increment (`grob-principal-review-sprint9b.md`, kept open by D-386); no source, `policy.json`, baseline or harness change lands. Two findings. **First, ranked above F8 itself**: `grob-language-fundamentals.md` §19's worked example and all eleven `grob-sample-scripts.md` validation scripts write `param name: type = value` repeated per line with no braces; the live parser (`Parser.ParseParamBlockDecl`) requires a single `param { ... }` block, confirmed against the actively-maintained `ParserParamBlockRecoveryTests.cs` (D-405/D-406). Every one of the eleven scripts fails to parse at its first `param` line, independent of any module gap. Neither prior audit caught it — the advertised-vs-built sweep (D-401, "the fifth instance") checked members/functions/codes/type-variants; `grob-grammar-audit.md` confirmed `param { }` parses but never checked the documented per-line syntax against it. Recorded as the **sixth** advertised-but-unbuilt instance and the first in declaration-syntax-vs-implementation divergence; which form is correct is an open language-design question, not resolved here, and must be settled before Sprint 9 Increments C–G make these scripts runnable. **Second**: F8 reassessed from "roughly seven of eleven, very likely higher" to **zero of eleven** runnable today — every script needs at least one of `fs`/`json`/`csv`/`process` (Sprint 9 Increments C–G, none built — confirmed via `git log --all`) or `Grob.Http`/`Grob.Crypto` (Sprint 11 plugins, both empty scaffolding). Only `DatePlugin.cs` (Sprint 9 Increment B) landed from the original plan; the consolidation work since was array/map/type-registry/diagnostic hardening, a different axis from the capability-interface modules these scripts need. Full runnable-script table recorded with each script's blocking dependency. Two further, unfixed findings noted for the F6 sweep and the strategy doc: `grob-sample-scripts.md` holds eleven scripts, not `grob-benchmarking-strategy.md` §4.3/§7.3's "thirteen"; and §4.3's synthetic-large-script requirement is mis-cited from §4.1/§7.4, where `compile`'s own copy of that requirement is itself still unbuilt. Also recorded: §4.3 and §7.5 contradict each other on whether VM construction sits inside or outside the timed region; `AttributionBenchmarks`, not `VmBenchmarks`, is the correct structural precedent for the eventual `EndToEndBenchmarks`, avoiding D-391's `InvocationCount=1` caveat entirely. F8 remains open — no harness lands until the module gap and the `param`-grammar question are both resolved. No opcode change. No new error code; count stays **121**. |
+| D-410 | August 2026 | Language spec — declaration grammar | Settles the open question D-409 recorded and left unresolved. **The braceless per-line form is canonical**: `param name: type = value`, repeated, decorators stacked one per line above, consecutive declarations forming a parameter group **by contiguity** rather than by delimiter. The `param { ... }` block form the live parser requires is **retired**. Normative grammar lands in `grob-language-fundamentals.md` §19 as a new subsection, "The `param` declaration" — §19 previously carried only a worked example, the mechanism by which the divergence survived two audits, so the fix is a normative production rather than a corrected example. **Evidence is wider than D-409 recorded — six corpus sites, not two.** Four found this session, all braceless: `grob-formatter-specification.md` §3.10 (decorators on their own line, decorated/undecorated alignment groups separated by a blank line) and §3.3 ("consecutive `param`s within an alignment group"), neither of which has a referent in the block form; **E4202**, whose condition ("the `param` block has been closed by a non-`param` statement") can only arise when the group is implicit; **§29's synchronisation set**, which lists `param` among top-level declaration start keywords — near-inert under the block form, load-bearing under the braceless one; and `grob-open-questions.md`'s **May 2026 changelog**, recording an OQ-014 example corrected *from* `param { ... }` *to* the bare-line form, so the corpus has already once treated the block form as the mistake. **Rationale**: Bicep — use case one — declares parameters exactly this way, so it is the target reader's muscle memory, the alternative precedent being PowerShell's `param(...)`, the syntax Grob exists to escape; a decorator needs a keyword-led declaration to attach to, since inside a block it would sit above a bare `name: type` pair and read as an annotated struct field, a position Grob has nowhere else (and this weighs more now D-411 fixes the set at seven); every other top-level declaration (`import`, `const`, `readonly`, `fn`, `type`) is keyword-led and per-line, with `import` already ordering by rule rather than delimiter, so `param { }` would be the only grouping brace with nothing named in front of it — what turns the bare-brace rule (§10) from a principle into a list of exceptions; and two lines plus an indent level for three parameters is the ceremony Grob sells against. **The one argument on the other side, rejected**: the block form has working code and actively maintained recovery tests (D-405/D-406 both extended `ParserParamBlockRecoveryTests.cs` recently, so this is deliberate current behaviour, not neglect) — a cost, not a reason, and the process-convenience argument the standing rule excludes. It is also the cheapest moment the change will ever have: no user code exists, no validation script parses today, and all eleven are already written in the target form; fixing it after Increments C–G make them runnable would break passing code. **Net simplification of recovery**: a braceless `param` needs no bespoke recovery — each declaration is an ordinary top-level declaration, so §29's keyword-anchored `Synchronise()` already covers it. D-406's newline-boundary mode was built for `type` and `param` bodies together; **the `type` path is untouched**, only the `param`-body call site retires with `ParseParamBlockDecl`'s brace handling. `ParserParamBlockRecoveryTests.cs` is rewritten to assert new correct behaviour, never weakened. **Registry consequences split by the D-316 gate**, which diffs the registry against `ErrorCatalog.cs` — a type carrying no description field, so a description edit is safe from a design session and a title change, addition or removal is not. Landing now: E4001's description (four decorators → D-411's seven) and E4201's, which required `:=` before a param default — wrong against §19, the formatter's operator table and all eleven scripts, every one using `=`; E4202's, now marked **retirement-pending**; and E2202's and E4002's, aligned to the braceless terminology. Deferred to the implementing increment: **E4202's removal** (its condition is a subset of E2202's; the one gap is a `param` after a `type`, which E2202's title does not name, so E2202 widens and E4202 goes — two codes for one condition being the smell D-407 has just removed from E5101/E5102) and E4102's title widening for D-411's value pair. **ADR-0017 clarified for the pre-release case**, D-407 having flagged and not resolved that its "mark retired, never reuse" mechanism is written for **shipped** codes and silent on a `pre-release` code removed outright. E4202 is the first consumer: a `pre-release` code that never shipped **may be removed rather than marked retired, and its number is permanently burned** — never reused. Number gaps cost nothing (ADR-0014 expects them); a reused number means one string with two meanings across a public record. Recorded here, not deferred to the sweep, because the sweep runs after the increment that needs the answer. `.grobparams`, CLI passing and decorator semantics remain Sprint 10, unchanged. No opcode change. No new error code; count stays **121**. |
+| D-411 | August 2026 | Language spec — param decorators; v1 scope; Sprint 9 increment ordering | The v1 param decorator set is fixed at **seven**, and **none of it is a scope-cut candidate**: `@secure` (D-101), `@allowed`, `@minLength`, `@maxLength` (D-102), plus **`@minValue`**, **`@maxValue`** and **`@pattern`** new here. D-102 fixed the set at four in one pass in April 2026 and it was never revisited; there is no rejected-candidates record, so this entry is that record. **`@minValue`/`@maxValue` close an asymmetry with no justification** — Grob could constrain a string's length but not an integer's range, and the corpus already holds the case (Script 9's `warn_percent`/`crit_percent`, percentages that must land in `0..100` and cannot say so). `@range(0..100)` was considered and **rejected**: §8 narrows `..` deliberately to a range-specific operator absent from expression positions outside a loop header, and the compiler lowers range loops to `while` so the VM never sees a range value; `@range` would re-open that narrowing for one feature. **`@pattern` is the one place the set beats Bicep** (resource-name rules, semver, GUID shapes — the cases people approximate by combining the length pair) and is **delivered with the `regex` increment**, not before: unlike the other six it needs a compiled-pattern value to hold and a compile-time pattern-validity check, and neither exists. **Verified against a current `src.zip`: the regex front end is built and everything behind it is not** — present are `TokenKind.RegexLiteral`, `Lexer.CanStartRegex()` with the after-a-value-is-division rule, `ScanRegexLiteral()`, `ConsumeRegexFlags` (`i`/`m` only), `RegexLiteralExpr`, and E2007/E2008 with real throw sites; absent are any `GrobType.Regex`, any compiler emission (`VisitRegexLiteral` appears in three files, none of them compiler or VM, and the checker returns `Unknown`), any runtime representation and any `regex` namespace registration. **This corrects F9's premise** — the D-376-era changelog's "regex literals **are** built (`ScanRegexLiteral`, `RegexLiteralExpr`)" is true of exactly those two symbols and was generalised into "documentation, not implementation"; the same shape as D-407's referenced-as-defined-is-not-thrown limitation. `@pattern`'s argument form (regex literal or D-285 backtick raw string) is left to the increment that has the type in front of it. **D-186 candidate 1 (validation decorators) struck by owner decision** — its stated v1 fallback was three to five lines of manual in-body validation per param, precisely the PowerShell ceremony Grob exists to remove, and cutting would have left a `param` declaration able to state a constraint's shape but not enforce it. **The obligation this creates is recorded**: D-186's own rationale was that these decorators have **zero release-gate coverage**, confirmed live — `@secure` appears four times across the eleven scripts, `@allowed`/`@minLength`/`@maxLength` nowhere (the requirements' "Script 13 uses `@allowed`" line is a thirteen-to-eleven casualty, F6/F10's territory). Six of seven would ship unexercised, which is the advertised-but-unbuilt shape in advance, so **at least one release-gate script must exercise the full decorator surface before v1**, on the same footing as the `regex.compile()` script D-186 required for its other candidate. **Rejected with reasons so they are not re-proposed by default**: `@description` — no consumer, `grob --help` being the CLI's own command listing (D-312) with no per-script parameter help, and Grob already reserving `///` for post-MVP `grob doc`, which is recorded as the intended mechanism for param help text; `@metadata` — an arbitrary untyped bag with no downstream, carried by Bicep only because ARM's JSON schema demands it; `@env` — duplicating D-103's `env.require()`, already the canonical credential pattern. **Sprint 9 increment ordering corrected: `regex` is F, `process` is G** — the requirements' Sprint 9 scope lists `fs`, `date`, `json`, `csv`, **`regex`**, **`process`** and the session handoff independently agrees; only the scaffolded `sprint-9-f.md`/`sprint-9-g.md` are reversed. **Finding on the scaffold, recorded not fixed**: `sprint-9-g.md` asserts the `/pattern/flags` literal is deferred and forbids the grammar in three places, all of which exists in the tree — run as written it would delete working lexer, parser and AST code plus two wired error codes. **No decision ever activated that cut** (D-186 lists it "at Chris's discretion. No fixed gate"; the log holds no activating entry), and the prompt's provisional D-350 is really array/map index-store emission, every scaffold number being stale the same way (D-347 is baseline recapture, D-348 the array read emission, D-349 the guid reconciliation). D-409's "scaffolded ahead of time in `832c5d8`" made concrete. **Disposition: the Sprint 9 C-onward prompts are rebuilt, not corrected**, at the head of each run against a current tree; the scaffold files stay in `prompts/archive/` as a record of intent. **Recorded and explicitly not decided**: D-186 candidate 2's stated saving ("the single most architecturally novel piece of lexer work in Sprint 1") is already spent, so activating that cut today would mean deleting working code rather than deferring work — annotated under candidate 2, left standing, the owner's call. E4001's description lands now; E4102's title widening for the value pair is deferred to the implementing increment per the D-316 constraint. No opcode change. No new error code; count stays **121**. |
 
 ---
 
@@ -12054,6 +12056,332 @@ own tests), F6 (the eleven-vs-thirteen count, not resolved here),
 
 ---
 
+### D-410 — `param` declaration grammar ratified: the braceless per-line form is canonical, the `param { ... }` block form is retired (August 2026)
+
+Area: Language spec — declaration grammar
+Supersedes: none
+Superseded by: none
+
+**Decision-only session. No source, test or `ErrorCatalog` change lands here** —
+this settles the open language-design question D-409 recorded and deliberately
+left unresolved. Runs against the corpus carrying D-356 through D-409.
+Error-code count unchanged at 121.
+
+**The decision.** A Grob parameter is declared by a single `param` line:
+`param name: type = value`, repeated, with decorators stacked one per line
+above the declaration they modify. Consecutive `param` declarations form a
+parameter group **by contiguity**, not by delimiter. The `param { ... }` block
+form the live parser requires is retired. Normative grammar lands in
+`grob-language-fundamentals.md` §19 as a new subsection, "The `param`
+declaration" — §19 previously carried only a worked example, which is the
+mechanism by which the divergence survived two audits, so the fix is a
+normative production, not a corrected example.
+
+**The evidence is wider than D-409 recorded — six corpus sites, not two.**
+D-409 named §19's worked example and the eleven validation scripts. Four
+further sites were found in this session, all on the braceless side:
+
+- **`grob-formatter-specification.md` §3.10** is written entirely against the
+  braceless form — decorators on their own line above the param, decorated and
+  undecorated params forming separate alignment groups separated by one blank
+  line, `:` and `=` aligned per group. §3.3's blank-line rules likewise speak
+  of "consecutive `param`s within an alignment group". Neither sentence has a
+  referent in the block form.
+- **E4202** ("a `param` declaration appeared after the `param` block has been
+  closed by a non-`param` statement") describes a condition that can only
+  arise when the group is implicit. Under `param { ... }` the closing brace
+  closes it and the condition does not exist.
+- **§29's synchronisation set** lists `param` among the start keywords of a
+  top-level declaration. Under the block form there is exactly one `param`
+  token per file, so its presence in the anchor set is close to inert; under
+  the braceless form it is load-bearing.
+- **`grob-open-questions.md`'s May 2026 changelog** records an OQ-014 example
+  being corrected *from* `param { ... }` *to* the bare-line form "per
+  `grob-language-fundamentals.md`". The corpus has already, once, treated the
+  block form as the mistake.
+
+**Rationale.** Four arguments, in decreasing weight.
+
+*Bicep is the form the target audience already reads.* Azure and Bicep
+scripting is use case one, and Bicep declares parameters as `param name type =
+default`, one per line, decorators above. The eleven validation scripts did not
+drift into that shape by accident — it is the muscle memory of the reader Grob
+is written for. The alternative precedent is PowerShell's `param(...)`, which
+is the syntax Grob exists to get away from.
+
+*Decorators need a keyword to attach to.* `@secure` above `param token: string`
+binds to a declaration. Inside a block it would sit above `token: string` and
+read as an annotated struct field — and Grob has no field-level annotations
+anywhere, so the block form invents a syntactic position the language does not
+otherwise have. This weighs more, not less, now that D-411 fixes the set at
+seven and stacking is common.
+
+*Every other top-level declaration is keyword-led and per-line.* `import`,
+`const`, `readonly`, `fn` and `type` all are, and `import` already establishes
+ordering by rule rather than by delimiter, enforced by a diagnostic (E2201)
+that nobody has wanted to replace with a brace. `param { }` would be the only
+grouping brace in the language with nothing named in front of it, which is what
+turns the bare-brace rule (§10) from a principle into a list of exceptions.
+
+*Ceremony is what Grob is selling against.* Two lines and an indent level to
+declare three parameters is the Go tax in miniature.
+
+**The rejected argument, named because it is the only one on the other side.**
+The block form has working parser code and actively maintained recovery tests —
+D-405 and D-406 both extended `ParserParamBlockRecoveryTests.cs` within the
+last few sessions, so this is current, deliberate behaviour and not neglect.
+That is a cost, not a reason, and it is the process-convenience argument the
+project's own standing rule rules out. It is also the cheapest moment this
+change will ever have: no user code exists, no validation script parses today,
+and all eleven are already written in the target form. Fixing it after
+Increments C–G make those scripts runnable would be a breaking change to
+passing code; fixing it now is a parser correction plus a documentation
+correction.
+
+**The change is smaller than it looks, and is a net simplification of
+recovery.** A braceless `param` needs no bespoke error recovery: each
+declaration is an ordinary top-level declaration, so §29's existing
+keyword-anchored `Synchronise()` handles it — the next `param`/`type`/`fn` is
+already an anchor. D-406's newline-boundary mode was built for `type` and
+`param` bodies together; **the `type` path is untouched and stays**, and only
+the `param`-body call site retires along with `ParseParamBlockDecl`'s brace
+handling. `ParserParamBlockRecoveryTests.cs` is rewritten to assert the new
+correct behaviour — never weakened or deleted to accommodate the change, per
+the standing discipline.
+
+**Error-registry consequences, and why only two of them land now.** The D-316
+agreement gate diffs `grob-error-codes.md` against `ErrorCatalog.cs`, which
+carries `Code`, `Title`, `Category`, `Status`, `Severity` and `Throws` — but no
+description field. A description edit is therefore safe from a design session;
+a title change, an addition or a removal is not, and would turn the gate red on
+the next commit unless the source lands in the same change. So:
+
+- **Landing now (description-only):** E4001's description, which enumerated
+  D-102's four decorators and now names D-411's seven; and E4201's, which
+  required `:=` before a param default — wrong against §19, the formatter's
+  operator table and all eleven scripts, every one of which uses `=`. `:=`
+  declares *and* assigns a new binding and has never been valid in a `param`
+  declaration under either grammar. E4202 is marked retirement-pending in its
+  description. E2202's and E4002's descriptions are aligned to the braceless
+  terminology in the same pass — description-only, no title moves.
+- **Deferred to the implementing increment:** E4202's removal, E2202's title
+  widening to name `type` declarations alongside `fn` and top-level statements
+  (its current title is narrower than its actual condition), and E4102's title
+  widening for D-411's value pair.
+
+**E4202 versus E2202 — why removal rather than a narrowed domain.** With the
+braceless grammar and §19's ordering rule, E4202's condition is a subset of
+E2202's. The one gap is a `param` after a `type` declaration, which E2202's
+current title does not name — so the fix is to widen E2202's title to its real
+condition and remove E4202, rather than keep two codes for one source
+situation. Two codes for one condition is the taxonomy smell D-407 has just
+finished removing from E5101/E5102, in the opposite direction.
+
+**ADR-0017 clarified for the pre-release case, because this decision creates
+its first consumer.** D-407 flagged, and deliberately did not resolve, that
+ADR-0017's "retired codes are never reused, marked retired in the registry"
+mechanism is written for codes that have **shipped** and is silent on a
+`pre-release` code removed entirely, never having shipped at all. E4202 is that
+case. The clarification: **a `pre-release` code that never shipped may be
+removed outright rather than marked retired, and its number is permanently
+burned — never reused, exactly as for a retired shipped code.** Number gaps
+cost nothing (ADR-0014 already expects them); a reused number means one string
+carrying two meanings across a public record, and the wiki, the `--explain`
+documentation and the LinkedIn series are all public. Recorded here rather than
+deferred to the corpus sweep because the sweep runs after the increment that
+needs the answer.
+
+**What this does not decide.** The `.grobparams` file format, CLI parameter
+passing and the decorator *semantics* are Sprint 10 and unchanged. The
+decorator *set* is D-411, taken as a separate decision in the same session.
+
+Cites D-409 (the finding this settles, recorded there as the sixth
+advertised-but-unbuilt instance and explicitly left open), D-405/D-406 (the
+`param`-block parser and recovery tests that move; D-406's `type`-body path
+confirmed unaffected), D-300/§29 (the keyword-anchored synchronisation set that
+makes braceless recovery free), D-407 (the ADR-0017 pre-release gap this entry
+closes, and the E5101/E5102 precedent for not keeping two codes for one
+condition), D-308/D-316 (the catalog-to-registry agreement gate that constrains
+which registry edits can land from a design session), ADR-0017 (clarified, not
+superseded), ADR-0014 (numbering; gaps expected), D-102 (the decorator set this
+grammar carries, revised by D-411), D-186 (the scope-cut list, amended by
+D-411), D-324/§19 (the name-uniqueness paragraph the new subsection sits
+beside).
+
+---
+
+### D-411 — v1 param decorator set fixed at seven and removed from the scope-cut list; `@pattern` sequenced to the `regex` increment, which is F not G (August 2026)
+
+Area: Language spec — param decorators; v1 scope; Sprint 9 increment ordering
+Supersedes: none (revises D-102's set; amends D-186's candidate 1)
+Superseded by: none
+
+**Decision-only session, taken alongside D-410 against the same corpus.** No
+source change lands. Error-code count unchanged at 121.
+
+**The decision.** The v1 param decorator set is **seven**, and none of it is a
+scope-cut candidate:
+
+| Decorator | Applies to | Status |
+|---|---|---|
+| `@secure` | `string` | v1 — D-101, unchanged |
+| `@allowed(...)` | any param type | v1 — D-102 |
+| `@minLength(n)` | `string`, arrays | v1 — D-102 |
+| `@maxLength(n)` | `string`, arrays | v1 — D-102 |
+| `@minValue(n)` | `int`, `float` | v1 — **new here** |
+| `@maxValue(n)` | `int`, `float` | v1 — **new here** |
+| `@pattern(...)` | `string` | v1 — **new here**, lands with the `regex` increment |
+
+D-102 fixed the set at four in April 2026 in a single pass and it was never
+revisited; there is no rejected-candidates record, so nothing had previously
+been considered and turned down. This entry is that record.
+
+**`@minValue`/`@maxValue` — the asymmetry that had no justification.** Grob
+could constrain the length of a string and not the range of an integer. The
+corpus already holds the case: Script 9 declares `param warn_percent: int = 80`
+and `param crit_percent: int = 90`, both percentages that must land in `0..100`
+and currently cannot say so. Same validation machinery, same parameter
+boundary, same failure mode as the length pair. Bicep has both; the omission
+was an oversight rather than a position.
+
+*`@range(0..100)` considered and rejected.* One decorator instead of two,
+reusing Grob's own range syntax, and better than Bicep on the face of it — but
+`grob-language-fundamentals.md` §8 narrows `..` deliberately to a range-specific
+operator that does not appear in expression positions outside a loop header,
+and the compiler lowers range loops to `while` so the VM never sees a range
+value. `@range` would re-open that narrowing for one feature and make `..` an
+expression after all. Bicep's two-decorator form is taken instead.
+
+**`@pattern(...)` — the one place the set improves on Bicep, and its
+dependency.** A regex constraint on a string param covers Azure resource-name
+rules, semver, GUID shapes and connection-string forms — most of the real cases
+people currently approximate by combining `@minLength` and `@maxLength`. Bicep
+has no equivalent. It is specified here and **delivered with the `regex`
+increment**, not before, because unlike the other six it is not just a new
+validator: it needs a compiled-pattern value to hold and a compile-time
+pattern-validity check, and neither exists.
+
+*The regex front end is built; everything behind it is not.* Verified against a
+current `src.zip` this session. Present: `TokenKind.RegexLiteral`,
+`Lexer.CanStartRegex()` with the after-a-value-is-division disambiguation,
+`ScanRegexLiteral()`, `ConsumeRegexFlags` restricted to `i` and `m`,
+`RegexLiteralExpr` carrying `Pattern` and `Flags`, and E2007/E2008 with real
+throw sites. Absent: any `GrobType.Regex`; any compiler emission
+(`VisitRegexLiteral` appears in exactly three files, none of them the compiler
+or the VM, and returns `GrobType.Unknown` from the type checker); any runtime
+representation; any `regex` namespace registration anywhere in `src/`. **This
+corrects F9's premise** — the D-376-era changelog states "regex literals **are**
+built (`ScanRegexLiteral`, `RegexLiteralExpr`)", which is true of exactly those
+two symbols and was generalised in the session handoff into "documentation, not
+implementation". The same shape as D-407's referenced-as-defined-is-not-thrown
+limitation: a component passes the check someone happened to run while the
+thing it is claimed to be is absent. A regex literal today lexes, parses, types
+as `Unknown` and emits nothing.
+
+*`@pattern`'s argument form is left open* — a regex literal or a backtick raw
+string (D-285's canonical idiom for patterns) both work, and the choice belongs
+to the increment that has the type in front of it, not to this entry.
+
+**Removed from the v1 scope-cut list (D-186 candidate 1), by owner decision.**
+The whole set ships. D-186's stated v1 fallback was three to five lines of
+manual in-body validation per validated param, which is precisely the
+PowerShell ceremony Grob exists to remove, and cutting the set would have left
+a `param` declaration able to state a constraint's shape but not enforce it.
+`grob-v1-requirements.md`'s candidate 1 is struck.
+
+**The obligation this creates, recorded because it is the same shape as the
+defect this session convened to fix.** D-186's own rationale for listing the
+validation decorators as cuttable was that they have **zero release-gate
+coverage** — confirmed against the live corpus: `@secure` appears four times
+across the eleven scripts and `@allowed`, `@minLength` and `@maxLength` appear
+nowhere. (The requirements' "Script 13 uses `@allowed`" line is a casualty of
+the thirteen-to-eleven count, F6/F10's territory.) Taking all seven into v1
+means six of them ship with no script exercising them, which is the
+advertised-but-unbuilt shape in advance. **At least one release-gate script
+must exercise the full decorator surface before v1**, on the same footing as
+the `regex.compile()` release-gate script D-186 required for its other
+candidate. Recorded in the Sprint 10 scope.
+
+**Rejected, with reasons, so they are not re-proposed by default:**
+
+- **`@description("...")`** — no consumer. `grob --help` is the CLI's own
+  command listing (D-312); there is no `grob run script.grob --help` that
+  enumerates a script's parameters, so description text would be metadata
+  nothing reads. Grob already has `///` doc comments, lexed and discarded,
+  reserved for post-MVP `grob doc` tooling. **Param help text belongs on `///`
+  when a consumer exists**, which reads correctly to any C# or Go developer and
+  costs no decorator. Recorded as the intended mechanism so `@description` is
+  not reinvented by default later.
+- **`@metadata({ ... })`** — an arbitrary untyped bag with no consumer, in a
+  language whose pitch is static typing. Bicep carries it because ARM's JSON
+  schema does; Grob has no such downstream.
+- **`@env("VAR")`** — duplicates an existing answer. D-103 already makes
+  `env.require()` the canonical pattern for credentials and states that
+  `@secure` params should be absent from `.grobparams`, supplied from the
+  command line or `env.require()`. Two answers to one question.
+
+**Registry consequences, deferred for the same D-316 reason as D-410's.**
+E4001's description (which enumerated four decorators) lands now, description
+edits being safe against the agreement gate. E4102's title — currently "invalid
+`@minLength` / `@maxLength` argument" — must widen to cover the value pair, or
+gain a sibling code, when the decorators are built; a title change requires the
+`ErrorCatalog` edit in the same commit. No code is added or removed here; count
+stays 121.
+
+**Sprint 9 increment ordering corrected: `regex` is F, `process` is G.**
+`grob-v1-requirements.md`'s Sprint 9 scope lists the modules `fs`, `date`,
+`json`, `csv`, **`regex`**, **`process`** in that order, and the session handoff
+independently lists "fs, json, csv, regex, process". Only the scaffolded
+prompts `sprint-9-f.md` (process) and `sprint-9-g.md` (regex) have them
+reversed. The requirements order stands; `@pattern` therefore lands one
+increment earlier than the scaffold implies.
+
+**A finding on the scaffolded prompts, recorded not fixed.** `sprint-9-g.md`
+asserts that the `/pattern/flags` literal is deferred post-MVP, that the cut was
+"resolved at this sprint's kickoff", and forbids the grammar in three places —
+"no lexer `/` disambiguation, no `RegexLiteral` token", a stop instruction and
+an out-of-scope line naming the `TokenKind`. All of it exists in the tree, so
+run as written that prompt would delete working lexer, parser and AST code plus
+two wired error codes. **No decision ever activated that cut**: D-186 lists the
+literal as a candidate "at Chris's discretion. No fixed gate," and the log holds
+no entry activating it. The prompt provisionally numbers the deferral D-350; the
+real D-350 is array/map index-store emission, and every provisional number in
+the scaffold is stale the same way (D-347 is compile-time baseline recapture,
+not array read emission; D-348 is the read emission; D-349 is the guid
+reconciliation, not `mapAs<T>`). This is D-409's "scaffolded ahead of time in
+commit `832c5d8`" observation made concrete, and it is the argument for the
+standing convention that increment prompts are authored one at a time at the
+head of each run against a current tree. **Disposition: the Sprint 9 C-onward
+prompts are rebuilt, not corrected**, when each increment is reached — a
+corrected prompt inherits the parts nobody thought to re-check, which is how
+these rotted. The scaffold files stay in `prompts/archive/` as a record of
+intent.
+
+**A related finding for the project owner, recorded and explicitly not
+decided.** D-186's candidate 2 (regex literal grammar) states its saving as
+"context-sensitive lexing is the single most architecturally novel piece of
+lexer work in Sprint 1. Cutting it simplifies the lexer materially." That saving
+is already spent — the work is built and tested, so activating the cut today
+would mean deleting working code rather than deferring work. Whether the
+candidate is struck outright is the owner's call and this entry does not make
+it. A note to that effect is added under candidate 2 in
+`grob-v1-requirements.md`; the candidate itself is left standing.
+
+Cites D-102 (the four-decorator set this revises), D-101 (`@secure` as a
+handling instruction, unchanged), D-103 (`env.require()` as the credential
+pattern — the reason `@env` is rejected), D-186 (candidate 1 struck; candidate 2
+annotated; the zero-release-gate-coverage observation this entry turns into an
+obligation), D-285 (backtick raw strings as the canonical pattern idiom, one of
+the two candidate argument forms for `@pattern`), D-312 (bare `grob` equals
+`grob --help` — the reason `@description` has no consumer), D-410 (the grammar
+that carries these decorators, decided in the same session), D-407 (the
+referenced-as-defined-is-not-thrown limitation whose shape the F9 regex claim
+repeats), D-308/D-316 (the agreement gate constraining registry edits), D-409
+(the scaffold-numbering observation this entry evidences), §8 of
+`grob-language-fundamentals.md` (the `..` narrowing that rejects `@range`).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -12275,7 +12603,64 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — Decision-only session, D-409 added: the F8 endToEnd-benchmark_
+_August 2026 — Decision-only session, D-410 and D-411 added; no source change._
+_D-410 settles the param grammar question D-409 raised and left open: the_
+_braceless per-line form is canonical — param name: type = value, repeated,_
+_decorators stacked one per line above, the parameter group delimited by_
+_contiguity rather than by braces — and the param { ... } block form the live_
+_parser requires is retired. A normative grammar lands in_
+_grob-language-fundamentals.md §19 as a new subsection, because §19 previously_
+_carried only a worked example and that is the mechanism by which the_
+_divergence survived two audits. The evidence proved wider than D-409 recorded:_
+_six corpus sites, not two, the four new ones being the formatter spec's_
+_§3.10 and §3.3, E4202's condition (which only exists when the group is_
+_implicit), §29's synchronisation set listing param as a top-level declaration_
+_keyword, and grob-open-questions.md's May 2026 changelog recording an OQ-014_
+_example corrected from the block form to the bare-line form. Rationale: Bicep_
+_is the target reader's muscle memory; a decorator needs a keyword-led_
+_declaration to attach to; every other top-level declaration is keyword-led and_
+_per-line; and the block form is ceremony. The counter-argument — working_
+_parser code with maintained recovery tests from D-405/D-406 — is a cost, not a_
+_reason, and this is the cheapest moment the change will ever have. Recovery_
+_gets simpler, not harder: §29's keyword anchoring already covers a braceless_
+_param, and D-406's type-body path is untouched. Registry work splits on the_
+_D-316 gate, which diffs against an ErrorCatalog carrying no description field:_
+_E4001's and E4201's descriptions land now (E4201 required := before a param_
+_default, wrong against §19, the formatter and all eleven scripts), E4202's_
+_description is marked retirement-pending and E2202's and E4002's descriptions_
+_are aligned to the braceless terminology, while E4202's removal, E2202's title_
+_widening and E4102's are deferred to the implementing increment. D-410 also_
+_closes the ADR-0017 pre-release gap D-407_
+_flagged: a pre-release code that never shipped may be removed outright and its_
+_number is permanently burned, never reused._
+_D-411 fixes the param decorator set at seven and removes all of it from the_
+_scope-cut list: @secure, @allowed, @minLength, @maxLength, plus new @minValue,_
+_@maxValue and @pattern. D-102 fixed the set at four in one April pass and it_
+_was never revisited, with no rejected-candidates record — this entry is that_
+_record. @minValue/@maxValue close an asymmetry (a string's length was_
+_constrainable, an integer's range was not; Script 9's percentages are the live_
+_case); @range(0..100) was rejected because §8 narrows .. deliberately to a_
+_loop-header operator. @pattern is the one place the set beats Bicep and lands_
+_with the regex increment, since it needs a compiled-pattern value and a_
+_compile-time validity check. Verified against a current src.zip: the regex_
+_front end is built (RegexLiteral token, CanStartRegex, ScanRegexLiteral,_
+_RegexLiteralExpr, E2007/E2008 wired) and everything behind it is not (no_
+_GrobType.Regex, no emission, no runtime value, no regex namespace) — which_
+_corrects F9's premise, the same referenced-as-defined-is-not-thrown shape_
+_D-407 recorded. D-186 candidate 1 is struck by owner decision, and the_
+_obligation it created is recorded: the decorators have zero release-gate_
+_coverage beyond @secure, so a script exercising the full surface is required_
+_before v1. @description, @metadata and @env are rejected with reasons on_
+_record, with ///-on-param named as the future help-text mechanism. Sprint 9_
+_ordering corrected — regex is F, process is G, per the requirements and the_
+_handoff against the scaffolded prompts. Finding recorded not fixed:_
+_sprint-9-g.md forbids regex-literal grammar that already exists and would_
+_delete working code if run, no decision ever activated that cut, and every_
+_provisional D-number in the scaffold is stale — so the Sprint 9 C-onward_
+_prompts are rebuilt, not corrected, at the head of each run. Also recorded and_
+_explicitly not decided: D-186 candidate 2's stated saving is already spent._
+_No opcode change, no new error code, count stays 121._
+_Previous: August 2026 — Decision-only session, D-409 added: the F8 endToEnd-benchmark_
 _plan-mode gate found the param declaration grammar in grob-language-fundamentals.md_
 _§19 and all eleven grob-sample-scripts.md validation scripts (param name: type,_
 _repeated per line, no braces) diverges from the live parser (param { ... }, one_
