@@ -596,7 +596,7 @@ read by `grob --explain Exxxx`.
 - **Category:** Name resolution
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A binding-introducing form (`:=`, `readonly`, `const`, `fn`, `type`, `param`) declared a name that is already bound in the same scope. The diagnostic is emitted at the second (offending) declaration. For `:=` use `=` to reassign an existing variable binding. For `fn`/`type`/`readonly`/`const` rename the declaration.
+- **Description:** A binding-introducing form (`:=`, `readonly`, `const`, `fn`, `type`, `param`) declared a name that is already bound in the same scope. The diagnostic is emitted at the second (offending) declaration. For `:=` use `=` to reassign an existing variable binding. For `fn`/`type`/`readonly`/`const`/`param` rename the declaration. A `param` carries the diagnostic only when it collides with another `param`; in a cross-kind collision §19's ordering rule makes the `param` the earlier declaration, so the diagnostic lands on the other form (D-412).
 - **Source decision:** Sprint 3 Increment A; broadened to all top-level binding forms by D-324; extended to `param` declarations by D-412.
 
 ---

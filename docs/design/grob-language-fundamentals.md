@@ -1611,9 +1611,12 @@ An `import` after a `param` or `type` is a compile error. A `param` after a
 Declaring the same name twice — regardless of the two kinds involved — is a
 compile error (E1102, D-324, extended to `param` by D-412). The diagnostic
 fires at the second declaration. Because §19 requires `param` declarations
-ahead of every other declaration form, a `param` is always the earlier
-declaration in a cross-kind collision, so the diagnostic lands on the
+ahead of every other declaration form, a correctly placed `param` is always the
+earlier declaration in a cross-kind collision, so the diagnostic lands on the
 colliding `fn`, `type`, `const`, `readonly` or `:=` and never on the `param`.
+A misplaced `param` is the exception to the ordering half of that, and is
+covered by the rule below. Two colliding `param` declarations follow the
+general rule: the diagnostic fires at the second `param`.
 
 **Coincident ordering and collision errors (D-412).** A misplaced `param`
 that also collides with an existing name — `const token := "x"` followed by
@@ -2623,13 +2626,15 @@ _paragraph completed by D-412, closing a gap D-410 did not contemplate. `param`_
 _joins the top-level shared name space, so a name shared with an `fn`, `type`,_
 _`const`, `readonly` or `:=` binding is E1102 — the uniform code D-324_
 _established — and never E2202, which diagnoses position rather than name_
-_reuse. Because §19 puts `param` ahead of every other declaration form, the_
-_diagnostic always lands on the later colliding declaration and never on the_
-_`param`. `const` and `readonly`, previously named as binding-introducing forms_
-_but placed nowhere in the ordering, are fixed as category 5 (top-level code)_
-_and must follow all `param` declarations. Where an ordering violation and a_
-_name collision coincide, only the ordering error is reported. Not addressed_
-_here and deliberately kept separate: §19's two worked examples both violate_
+_reuse. Because §19 puts `param` ahead of every other declaration form, a_
+_correctly placed `param` is the earlier declaration, so the diagnostic lands on_
+_the later colliding declaration and never on the `param`; a misplaced `param`_
+_reports E2202 instead. `const` and `readonly`, previously named as_
+_binding-introducing forms but placed nowhere in the ordering, are fixed as_
+_category 5 (top-level code) and must follow all `param` declarations. Where_
+_an ordering violation and a name collision coincide, only the ordering error_
+_is reported. Not addressed here and deliberately kept separate: §19's two_
+_worked examples both violate_
 _`grob-formatter-specification.md` §3.10's blank-line rules for decorated and_
 _undecorated parameter groups, which turns on whether that two-group model_
 _survives D-411's seven decorators._
