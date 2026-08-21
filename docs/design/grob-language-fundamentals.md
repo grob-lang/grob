@@ -1571,6 +1571,7 @@ import Grob.Crypto
 
 @secure                             // 2. Params (if any)
 param token: string
+
 param days: int = 30
 
 type Repo {                          // 3. Type declarations (if any)
@@ -1652,7 +1653,10 @@ Rules:
   `.grobparams` file does not evaluate its default.
 - **Decorators sit on their own line immediately above** the `param` they
   modify. Multiple decorators stack, one per line, with no blank line inside
-  the stack. The decorator set is fixed by D-411.
+  the stack. The decorator set is fixed by D-411. A decorated declaration is
+  separated from any adjacent `param` declaration by a blank line, so a
+  decorator's scope can never be misread as reaching the declaration below
+  (D-413; `grob fmt` inserts the line if it is absent).
 - **`param` bindings are implicitly `readonly`** (§24). The `readonly` keyword
   is not written on a `param` declaration.
 
@@ -2621,7 +2625,17 @@ without noise.
 
 ---
 
-_Document updated August 2026 — §19's order rules and name-uniqueness_
+_Document updated August 2026 — §19's canonical structure example gains the_
+_blank line D-413 requires between a decorated `param` declaration and the_
+_declaration below it, and the decorator rule in "The `param` declaration"_
+_records the separation. The example previously ran `@secure param token`_
+_straight into an undecorated `param days`, which invites the reader to ask_
+_whether `days` is secure too. The worked example in "The `param` declaration"_
+_is unchanged — it was already correct under D-413, where grouping is the_
+_author's. Formatter rules in `grob-formatter-specification.md` §3.3, §3.10,_
+_§3.14 and §7._
+
+_Previous: Document updated August 2026 — §19's order rules and name-uniqueness_
 _paragraph completed by D-412, closing a gap D-410 did not contemplate. `param`_
 _joins the top-level shared name space, so a name shared with an `fn`, `type`,_
 _`const`, `readonly` or `:=` binding is E1102 — the uniform code D-324_
