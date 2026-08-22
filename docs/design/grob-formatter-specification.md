@@ -155,10 +155,12 @@ declarations of different kinds" rule.
 **Between import groups** (groups defined by user-authored blank-line
 separators): exactly one blank line.
 
-**Between `param` groups** (groups defined by user-authored blank-line
-separators, exactly as for imports): exactly one blank line. The formatter
-preserves the author's grouping and never merges two groups into one
-(D-413).
+**Between `param` formatting groups** (groups defined by user-authored
+blank-line separators, exactly as for imports): exactly one blank line. The
+formatter preserves the author's grouping and never merges two groups into one
+(D-413). These are formatting groups only — not the contiguity-delimited
+parameter group §19 of `grob-language-fundamentals.md` uses for ordering; see
+§3.10.
 
 **Around a decorated `param` declaration:** exactly one blank line above the
 decorator stack and one below the declaration, inserted by the formatter if
@@ -522,12 +524,23 @@ opening line.
 line, regardless of length.
 
 **Grouping is the author's (D-413).** A run of `param` declarations
-uninterrupted by a blank line is one **group**. The formatter preserves the
-author's blank lines, collapses runs of two or more to one, and never
-inserts a blank line between two undecorated declarations. This is the same
-mechanism §3.3 already applies to import groups. A parameter list of any
+uninterrupted by a blank line is one **formatting group**. The formatter
+preserves the author's blank lines, collapses runs of two or more to one, and
+never inserts a blank line between two undecorated declarations. This is the
+same mechanism §3.3 already applies to import groups. A parameter list of any
 length is a reading problem before it is a formatting problem, and the
 author is the only one who knows which parameters belong together.
+
+**A formatting group is not §19's parameter group.** `grob fmt`'s group is
+delimited by blank lines and scopes nothing but alignment columns and
+blank-line handling. The **parameter group** of
+`grob-language-fundamentals.md` §19 is delimited by **contiguity**: it ends at
+the first significant line that is neither a `param` declaration nor one of
+its decorators, and a blank line does not end it. The two are deliberately
+different — a script's params may form several formatting groups and still be
+one parameter group, so the blank lines this section requires never turn a
+later `param` into an E2202 ordering violation. Do not apply either rule in
+the other's place.
 
 **Decorated declarations are isolated (D-413).** Exactly one blank line sits
 above a decorator stack and one below the declaration it decorates, inserted
@@ -588,9 +601,9 @@ parameter per line, trailing comma on every parameter including the last,
 closing `)` on its own line at the column of the `fn` keyword, return
 type annotation `: Type` after the closing paren, same-line `{`.
 
-**Alignment in multi-line form** follows the same rule as `param` blocks
-(§3.10). `:` aligns one space after the longest parameter name. `=`
-aligns one space after the longest type annotation.
+**Alignment in multi-line form** follows the same rule as `param`
+declarations (§3.10). `:` aligns one space after the longest parameter name.
+`=` aligns one space after the longest type annotation.
 
 **Single-line form:** no alignment. Standard spacing per §3.6.
 
@@ -939,10 +952,13 @@ What the formatter did:
 - **Imports** (§3.13): stripped double blank lines within and between
   groups, normalised to single blank line between the two groups,
   normalised spacing around the `import` keyword.
-- **Decorated params** (§3.10): one blank line between the decorated
-  `@secure` group and the undecorated group; `:` and `=` aligned within
-  the undecorated group; `=` aligns at column set by `string` (the
-  longest type in the undecorated group).
+- **Param declarations** (§3.10): the blank line below `@secure param
+  token` inserted, isolating the decorated declaration in a formatting
+  group of its own (D-413); `repo` and `days_old` left as the author wrote
+  them, one group; `:` and `=` aligned within that group, `=` at the column
+  set by `string`, the longest type in it. Both declarations remain in one
+  parameter group for §19's ordering rule — the inserted blank line does
+  not end it.
 - **Type declaration** (§3.8): indented one level, `:` aligned across
   fields.
 - **Spacing** (§3.6): normalised around `:=`, `:`, `,`, `=>`, `<`, `>`.
@@ -1009,7 +1025,14 @@ a new row.
 *New §3.14 states the whole-formatter prohibition on reordering declarations*
 *and parameters, previously implied only by a narrow "does not reorder across*
 *groups" clause in §3.10. §7's alignment summary item 2 updated to match, and*
-*"param blocks" retired as terminology throughout per D-410.*
+*"param blocks" retired as terminology throughout per D-410 — including*
+*§3.11's function-signature alignment rule, the last site still carrying it.*
+*§3.3 and §3.10 now say "formatting group" and state explicitly that it is*
+*not §19's contiguity-delimited parameter group, so the blank lines this*
+*specification requires are never read as ending a parameter group for the*
+*E2202 ordering rule. §6's worked example was already correct as output;*
+*its commentary bullet, which still described the retired binary, is*
+*re-authored in the new terms.*
 
 *Formatter specification — Session D Part 2, April 2026.*
 *Authored as language design partner and spec author.*

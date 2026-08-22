@@ -1693,6 +1693,16 @@ purpose and do not end the group — the canonical form above separates its
 declarations with blank lines. Inside a decorator stack a blank line remains
 disallowed by the decorator rule above.
 
+**The parameter group is not the formatter's group.** This one is a
+language-level concept, delimited by contiguity and consumed by the E2202
+ordering rule. `grob-formatter-specification.md` §3.10 uses "group" for a run
+of `param` declarations _delimited by blank lines_, which scopes alignment
+columns and blank-line handling and nothing else (D-413). The canonical form
+above is three formatting groups and one parameter group. A blank line — the
+one the formatter requires around a decorated declaration included — never
+ends the parameter group, so it can never make a following `param` an
+ordering error.
+
 ---
 
 ## 19.1 Top-Level Initialisation Order
@@ -2633,7 +2643,12 @@ _straight into an undecorated `param days`, which invites the reader to ask_
 _whether `days` is secure too. The worked example in "The `param` declaration"_
 _is unchanged — it was already correct under D-413, where grouping is the_
 _author's. Formatter rules in `grob-formatter-specification.md` §3.3, §3.10,_
-_§3.14 and §7._
+_§3.14 and §7. §19's "Ordering" paragraph also separates the two senses of_
+_"group" the two documents now share: §19's **parameter group** is delimited_
+_by contiguity and ends only at the first significant non-`param` line, while_
+_the formatter's **formatting group** is delimited by blank lines and scopes_
+_alignment alone — so the blank line D-413 requires around a decorated_
+_declaration can never make a following `param` an E2202 ordering error._
 
 _Previous: Document updated August 2026 — §19's order rules and name-uniqueness_
 _paragraph completed by D-412, closing a gap D-410 did not contemplate. `param`_
