@@ -2645,8 +2645,9 @@ _is unchanged — it was already correct under D-413, where grouping is the_
 _author's. Formatter rules in `grob-formatter-specification.md` §3.3, §3.10,_
 _§3.14 and §7. §19's "Ordering" paragraph also separates the two senses of_
 _"group" the two documents now share: §19's **parameter group** is delimited_
-_by contiguity and ends only at the first significant non-`param` line, while_
-_the formatter's **formatting group** is delimited by blank lines and scopes_
+_by contiguity and ends only at the first significant line that is_
+_neither a `param` declaration nor one of its decorators, while the_
+_formatter's **formatting group** is delimited by blank lines and scopes_
 _alignment alone — so the blank line D-413 requires around a decorated_
 _declaration can never make a following `param` an E2202 ordering error._
 
