@@ -407,6 +407,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-409 | August 2026 | Language spec — declaration grammar; Tooling — benchmarking (F8 readiness) | Decision-only plan-mode gate for the F8 `endToEnd`-benchmark increment (`grob-principal-review-sprint9b.md`, kept open by D-386); no source, `policy.json`, baseline or harness change lands. Two findings. **First, ranked above F8 itself**: `grob-language-fundamentals.md` §19's worked example and all eleven `grob-sample-scripts.md` validation scripts write `param name: type = value` repeated per line with no braces; the live parser (`Parser.ParseParamBlockDecl`) requires a single `param { ... }` block, confirmed against the actively-maintained `ParserParamBlockRecoveryTests.cs` (D-405/D-406). Every one of the eleven scripts fails to parse at its first `param` line, independent of any module gap. Neither prior audit caught it — the advertised-vs-built sweep (D-401, "the fifth instance") checked members/functions/codes/type-variants; `grob-grammar-audit.md` confirmed `param { }` parses but never checked the documented per-line syntax against it. Recorded as the **sixth** advertised-but-unbuilt instance and the first in declaration-syntax-vs-implementation divergence; which form is correct is an open language-design question, not resolved here, and must be settled before Sprint 9 Increments C–G make these scripts runnable. **Second**: F8 reassessed from "roughly seven of eleven, very likely higher" to **zero of eleven** runnable today — every script needs at least one of `fs`/`json`/`csv`/`process` (Sprint 9 Increments C–G, none built — confirmed via `git log --all`) or `Grob.Http`/`Grob.Crypto` (Sprint 11 plugins, both empty scaffolding). Only `DatePlugin.cs` (Sprint 9 Increment B) landed from the original plan; the consolidation work since was array/map/type-registry/diagnostic hardening, a different axis from the capability-interface modules these scripts need. Full runnable-script table recorded with each script's blocking dependency. Two further, unfixed findings noted for the F6 sweep and the strategy doc: `grob-sample-scripts.md` holds eleven scripts, not `grob-benchmarking-strategy.md` §4.3/§7.3's "thirteen"; and §4.3's synthetic-large-script requirement is mis-cited from §4.1/§7.4, where `compile`'s own copy of that requirement is itself still unbuilt. Also recorded: §4.3 and §7.5 contradict each other on whether VM construction sits inside or outside the timed region; `AttributionBenchmarks`, not `VmBenchmarks`, is the correct structural precedent for the eventual `EndToEndBenchmarks`, avoiding D-391's `InvocationCount=1` caveat entirely. F8 remains open — no harness lands until the module gap and the `param`-grammar question are both resolved. No opcode change. No new error code; count stays **121**. |
 | D-410 | August 2026 | Language spec — declaration grammar | Settles the open question D-409 recorded and left unresolved. **The braceless per-line form is canonical**: `param name: type = value`, repeated, decorators stacked one per line above, consecutive declarations forming a parameter group **by contiguity** rather than by delimiter. The `param { ... }` block form the live parser requires is **retired**. Normative grammar lands in `grob-language-fundamentals.md` §19 as a new subsection, "The `param` declaration" — §19 previously carried only a worked example, the mechanism by which the divergence survived two audits, so the fix is a normative production rather than a corrected example. **Evidence is wider than D-409 recorded — six corpus sites, not two.** Four found this session, all braceless: `grob-formatter-specification.md` §3.10 (decorators on their own line, decorated/undecorated alignment groups separated by a blank line) and §3.3 ("consecutive `param`s within an alignment group"), neither of which has a referent in the block form; **E4202**, whose condition ("the `param` block has been closed by a non-`param` statement") can only arise when the group is implicit; **§29's synchronisation set**, which lists `param` among top-level declaration start keywords — near-inert under the block form, load-bearing under the braceless one; and `grob-open-questions.md`'s **May 2026 changelog**, recording an OQ-014 example corrected *from* `param { ... }` *to* the bare-line form, so the corpus has already once treated the block form as the mistake. **Rationale**: Bicep — use case one — declares parameters exactly this way, so it is the target reader's muscle memory, the alternative precedent being PowerShell's `param(...)`, the syntax Grob exists to escape; a decorator needs a keyword-led declaration to attach to, since inside a block it would sit above a bare `name: type` pair and read as an annotated struct field, a position Grob has nowhere else (and this weighs more now D-411 fixes the set at seven); every other top-level declaration (`import`, `const`, `readonly`, `fn`, `type`) is keyword-led and per-line, with `import` already ordering by rule rather than delimiter, so `param { }` would be the only grouping brace with nothing named in front of it — what turns the bare-brace rule (§10) from a principle into a list of exceptions; and two lines plus an indent level for three parameters is the ceremony Grob sells against. **The one argument on the other side, rejected**: the block form has working code and actively maintained recovery tests (D-405/D-406 both extended `ParserParamBlockRecoveryTests.cs` recently, so this is deliberate current behaviour, not neglect) — a cost, not a reason, and the process-convenience argument the standing rule excludes. It is also the cheapest moment the change will ever have: no user code exists, no validation script parses today, and all eleven are already written in the target form; fixing it after Increments C–G make them runnable would break passing code. **Net simplification of recovery**: a braceless `param` needs no bespoke recovery — each declaration is an ordinary top-level declaration, so §29's keyword-anchored `Synchronise()` already covers it. D-406's newline-boundary mode was built for `type` and `param` bodies together; **the `type` path is untouched**, only the `param`-body call site retires with `ParseParamBlockDecl`'s brace handling. `ParserParamBlockRecoveryTests.cs` is rewritten to assert new correct behaviour, never weakened. **Registry consequences split by the D-316 gate**, which diffs the registry against `ErrorCatalog.cs` — a type carrying no description field, so a description edit is safe from a design session and a title change, addition or removal is not. Landing now: E4001's description (four decorators → D-411's seven) and E4201's, which required `:=` before a param default — wrong against §19, the formatter's operator table and all eleven scripts, every one using `=`; E4202's, now marked **retirement-pending**; and E2202's and E4002's, aligned to the braceless terminology. Deferred to the implementing increment: **E4202's removal** (its condition is a subset of E2202's; the one gap is a `param` after a `type`, which E2202's title does not name, so E2202 widens and E4202 goes — two codes for one condition being the smell D-407 has just removed from E5101/E5102) and E4102's title widening for D-411's value pair. **ADR-0017 clarified for the pre-release case**, D-407 having flagged and not resolved that its "mark retired, never reuse" mechanism is written for **shipped** codes and silent on a `pre-release` code removed outright. E4202 is the first consumer: a `pre-release` code that never shipped **may be removed rather than marked retired, and its number is permanently burned** — never reused. Number gaps cost nothing (ADR-0014 expects them); a reused number means one string with two meanings across a public record. Recorded here, not deferred to the sweep, because the sweep runs after the increment that needs the answer. `.grobparams`, CLI passing and decorator semantics remain Sprint 10, unchanged. No opcode change. No new error code; count stays **121**. |
 | D-411 | August 2026 | Language spec — param decorators; v1 scope; Sprint 9 increment ordering | The v1 param decorator set is fixed at **seven**, and **none of it is a scope-cut candidate**: `@secure` (D-101), `@allowed`, `@minLength`, `@maxLength` (D-102), plus **`@minValue`**, **`@maxValue`** and **`@pattern`** new here. D-102 fixed the set at four in one pass in April 2026 and it was never revisited; there is no rejected-candidates record, so this entry is that record. **`@minValue`/`@maxValue` close an asymmetry with no justification** — Grob could constrain a string's length but not an integer's range, and the corpus already holds the case (Script 9's `warn_percent`/`crit_percent`, percentages that must land in `0..100` and cannot say so). `@range(0..100)` was considered and **rejected**: §8 narrows `..` deliberately to a range-specific operator absent from expression positions outside a loop header, and the compiler lowers range loops to `while` so the VM never sees a range value; `@range` would re-open that narrowing for one feature. **`@pattern` is the one place the set beats Bicep** (resource-name rules, semver, GUID shapes — the cases people approximate by combining the length pair) and is **delivered with the `regex` increment**, not before: unlike the other six it needs a compiled-pattern value to hold and a compile-time pattern-validity check, and neither exists. **Verified against a current `src.zip`: the regex front end is built and everything behind it is not** — present are `TokenKind.RegexLiteral`, `Lexer.CanStartRegex()` with the after-a-value-is-division rule, `ScanRegexLiteral()`, `ConsumeRegexFlags` (`i`/`m` only), `RegexLiteralExpr`, and E2007/E2008 with real throw sites; absent are any `GrobType.Regex`, any compiler emission (`VisitRegexLiteral` appears in three files, none of them compiler or VM, and the checker returns `Unknown`), any runtime representation and any `regex` namespace registration. **This corrects F9's premise** — the D-376-era changelog's "regex literals **are** built (`ScanRegexLiteral`, `RegexLiteralExpr`)" is true of exactly those two symbols and was generalised into "documentation, not implementation"; the same shape as D-407's referenced-as-defined-is-not-thrown limitation. `@pattern`'s argument form (regex literal or D-285 backtick raw string) is left to the increment that has the type in front of it. **D-186 candidate 1 (validation decorators) struck by owner decision** — its stated v1 fallback was three to five lines of manual in-body validation per param, precisely the PowerShell ceremony Grob exists to remove, and cutting would have left a `param` declaration able to state a constraint's shape but not enforce it. **The obligation this creates is recorded**: D-186's own rationale was that these decorators have **zero release-gate coverage**, confirmed live — `@secure` appears four times across the eleven scripts, `@allowed`/`@minLength`/`@maxLength` nowhere (the requirements' "Script 13 uses `@allowed`" line is a thirteen-to-eleven casualty, F6/F10's territory). Six of seven would ship unexercised, which is the advertised-but-unbuilt shape in advance, so **at least one release-gate script must exercise the full decorator surface before v1**, on the same footing as the `regex.compile()` script D-186 required for its other candidate. **Rejected with reasons so they are not re-proposed by default**: `@description` — no consumer, `grob --help` being the CLI's own command listing (D-312) with no per-script parameter help, and Grob already reserving `///` for post-MVP `grob doc`, which is recorded as the intended mechanism for param help text; `@metadata` — an arbitrary untyped bag with no downstream, carried by Bicep only because ARM's JSON schema demands it; `@env` — duplicating D-103's `env.require()`, already the canonical credential pattern. **Sprint 9 increment ordering corrected: `regex` is F, `process` is G** — the requirements' Sprint 9 scope lists `fs`, `date`, `json`, `csv`, **`regex`**, **`process`** and the session handoff independently agrees; only the scaffolded `sprint-9-f.md`/`sprint-9-g.md` are reversed. **Finding on the scaffold, recorded not fixed**: `sprint-9-g.md` asserts the `/pattern/flags` literal is deferred and forbids the grammar in three places, all of which exists in the tree — run as written it would delete working lexer, parser and AST code plus two wired error codes. **No decision ever activated that cut** (D-186 lists it "at Chris's discretion. No fixed gate"; the log holds no activating entry), and the prompt's provisional D-350 is really array/map index-store emission, every scaffold number being stale the same way (D-347 is baseline recapture, D-348 the array read emission, D-349 the guid reconciliation). D-409's "scaffolded ahead of time in `832c5d8`" made concrete. **Disposition: the Sprint 9 C-onward prompts are rebuilt, not corrected**, at the head of each run against a current tree; the scaffold files stay in `prompts/archive/` as a record of intent. **Recorded and explicitly not decided**: D-186 candidate 2's stated saving ("the single most architecturally novel piece of lexer work in Sprint 1") is already spent, so activating that cut today would mean deleting working code rather than deferring work — annotated under candidate 2, left standing, the owner's call. E4001's description lands now; E4102's title widening for the value pair is deferred to the implementing increment per the D-316 constraint. No opcode change. No new error code; count stays **121**. |
+| D-412 | August 2026 | Language spec — declaration order and name resolution | Closes a gap D-410 did not contemplate, raised by a CodeRabbit review of the D-410/D-411 documentation pass and flagged for the owner rather than resolved in-review. **Decision 1 — `param` joins the top-level shared name space.** A `param` declaration introduces a binding that is implicitly `readonly` (§24) and in scope for the whole body, so `param token: string` alongside `const token := "x"` was previously unspecified. §19's name-uniqueness list becomes `fn`, `type`, `:=`, `readonly`, `const`, **`param`**, and a collision is **E1102** — the uniform code D-324 established. **E2202 was considered and rejected**: it diagnoses *position*, and a `param`/`const` collision in correct declaration order is not an ordering violation at all — both declarations sit exactly where §19 puts them. D-324 broadened E1102 from `:=`-only precisely so a name collision has one code regardless of kinds; a second mechanism for one kind would undo that. **The case is narrower than D-324's general one**: because §19 requires `param` ahead of every other declaration form, a correctly placed `param` is always the *earlier* declaration in a cross-kind collision, so D-324's fire-at-the-second rule lands the diagnostic on the colliding `fn`/`type`/`const`/`readonly`/`:=` and never on the `param`; a misplaced `param` is the later declaration but reports E2202 instead (decision 3), so E1102 never fires at a `param` in a cross-kind collision either way. No new predicate — Sprint 10 registers params provisionally in pass 1 and calls D-324's existing `FinalizeTopLevelBinding` in pass 2, extending the `RegisterProvisionalValueBinding` guard so a value-binding provisional cannot overwrite a param's. **Decision 2 — `const` and `readonly` placed in §19's order rules, because decision 1 cannot be applied without them.** §19's canonical structure and its five order bullets named `import`, `param`, `type`, `fn` and top-level code, while the very next paragraph listed `const` and `readonly` as binding-introducing forms — so whether `const TIMEOUT := 30` may precede a `param` had no answer, and neither did "is a `param`/`const` collision also an ordering error?". **Both are top-level code (category 5) and must follow all `param` declarations.** `readonly` evaluates its right-hand side at declaration (D-291), making it genuinely order-dependent and initialisation-order material (D-321); `const` is inlined with no runtime slot (D-288/D-289) so its placement is readability rather than semantics, but splitting the two would mean two rules for forms that read identically at the point of use. **Decision 3 — where an ordering violation and a name collision coincide, the ordering diagnostic wins.** `const token := "x"` followed by `param token: string` is both a misplaced `param` (E2202) and a collision (E1102); only E2202 is emitted, the `param` being already rejected for its position. One root cause, one diagnostic — the cascade-suppression principle §29 and D-300 establish for the parser, applied here to the type checker and recorded so Sprint 10 implements it deliberately rather than meeting it as duplicate-diagnostic noise in a fixture. **Decision-only; no source change.** `VisitParamBlockDecl` registers nothing today and parameter binding is Sprint 10, so there is no collision to detect yet — this supplies the normative answer Sprint 10 builds against. Spec edits to §19's order rules, name-uniqueness paragraph and closing prose; E1102's and E2202's descriptions updated, description-only with no title or status moves, so D-316 is unaffected and the count stays **121**. **Refines D-410 rather than amending it** — D-410 is merged, and append-only discipline means a later entry records what it did not contemplate rather than D-410 retroactively appearing to have covered it. **Deliberately not decided here:** §19's two worked examples both violate `grob-formatter-specification.md` §3.10, which separates decorated and undecorated parameter groups by exactly one blank line and forbids a blank line within a group — the canonical structure example runs them adjacent, and the "The `param` declaration" example puts a blank line inside the decorated group and splits two decorated params §3.10 would group together. Behind it sits whether a strict decorated/undecorated binary survives D-411's seven decorators, since it clumps every decorated param together regardless of which decorators it carries. A formatter-design call, kept separate. |
+| D-413 | August 2026 | Tooling — formatter specification | Retires §3.10's decorated/undecorated alignment-group binary, written when `@secure` was effectively the only decorator in practice and outgrown by D-411's seven. Raised by a CodeRabbit review of PR #200 against §19's worked examples; the implementing agent declined to fix mechanically because doing so would settle a question D-412 explicitly deferred — the right call. **Two rules, cleanly divided.** **The author owns grouping**: a run of `param` declarations uninterrupted by a blank line is one group; the formatter preserves the author's blank lines, collapses runs to one, never inserts a line between two undecorated declarations and never merges groups — the mechanism §3.3 already applies to import groups, so params stop being the one construct grouped mechanically. **The formatter owns the separation that prevents misreading**: exactly one blank line above a decorator stack and one below the declaration it decorates, inserted if absent and not removable, so a decorated declaration is always alone in its group. **Alignment is retained, computed per group**, so distinct columns reinforce the author's grouping rather than flattening it. **Why the binary failed.** It produces a worse artefact as the set grows — `@secure token` and `@minValue`/`@maxValue threshold` are both "decorated" and must sit adjacent with stacks interleaved between aligned lines, reading as one block of unrelated constraints. Grouping by decorator-**combination**, the obvious repair, is **incoherent**: §3.10 forbids reordering, so `@secure a`, `@minValue b`, `@secure c` yields three groups with two identical `@secure` params separated by an unrelated one; making it coherent needs reordering. **The decisive objection was a readability defect, not a style preference** — `@secure` above `param token` running straight into `param days` invites "is `days` secure as well?", and for a decorator whose job is marking a value sensitive, ambiguity about scope is the worst available failure; hence rule 2 belongs to the formatter, not the author. **And the binary forbade what a reader would do anyway**: §3.3 classified consecutive `param`s as a no-blank-lines block, so breaking a long list into readable chunks would have been undone by `grob fmt` — a worse defect than the one that started the review, found by asking what a tired developer does with a wall of parameters. A parameter list of any length is a reading problem before it is a formatting problem, and only the author knows which parameters belong together. **Bicep already does this** — Learn's canonical structure example isolates a decorated `param` with a blank line and runs two undecorated ones adjacent. **Grob deliberately diverges on alignment**: Bicep aligns nothing anywhere, so its non-alignment is an absence of a rule rather than a rejection of one, while §7 calls alignment "the defining stylistic rule for Grob's declarative constructs" and a `param` run is the same shape as a `type` field run. **New §3.14 — `grob fmt` never reorders declarations or parameters**, stated once as a whole-formatter prohibition instead of §3.10's narrow "does not reorder across groups", which read as a grouping detail. The stakes differ and both are unacceptable: **function parameter lists are positional**, so reordering silently breaks every call site — the dangerous case; **script `param` declarations are passed by name** (`--name value`, `.grobparams` `key = value`), so no positional swap is possible and reordering would only churn diffs, `--help` order and template output. Recorded because the risk was raised as a positional swap and the honest answer is that it is real for one construct and not the other. **Decision-only; no source change** — `grob fmt` has no implementation (Sprint 12). Spec edits: formatter §3.3, §3.10 (retitled "Parameter Declarations") and its worked example, new §3.14, §7 item 2, "param blocks" terminology retired per D-410 (§3.11 the last site carrying it); fundamentals §19's canonical structure example gains the blank line after `@secure param token` and the decorator rule records the separation. **One term, two meanings, separated explicitly**: rule 1's blank-line-delimited **formatting group** is not §19's contiguity-delimited **parameter group**, which a blank line deliberately does not end and which is what E2202 scans. The failure is asymmetric — reading §3.10 into §19 would end the parameter group at the very blank line rule 2 *requires* above a decorator stack, turning correct code into an ordering error — so §3.3 and §3.10 say "formatting group" and cross-reference §19, and §19's "Ordering" paragraph states the distinction from its side. **§19's second worked example is unchanged — it was already correct as authored**, a useful check on the rule. Not decided: whether `grob fmt` should have an opinion on parameter *count*, and D-411's `@description`-versus-`///` question. No opcode change. No new error code; count stays **121**. |
 
 ---
 
@@ -12382,6 +12384,263 @@ repeats), D-308/D-316 (the agreement gate constraining registry edits), D-409
 
 ---
 
+### D-412 — `param` joins the top-level name space (E1102); `const` and `readonly` placed in §19's declaration order (August 2026)
+
+Area: Language spec — declaration order and name resolution
+Supersedes: none (refines D-324; refines D-410)
+Superseded by: none
+
+**Decision-only. No source change lands here** — parameter binding is Sprint 10
+and `VisitParamBlockDecl` registers nothing today, so there is no collision to
+detect yet. This entry supplies the normative answer Sprint 10 builds against.
+Error-code count unchanged at 121.
+
+**Origin.** A CodeRabbit review of the D-410/D-411 documentation pass raised
+that §19's name-uniqueness rule lists `fn`, `type`, `:=`, `readonly` and
+`const` and omits `param`, leaving `param token: string` alongside
+`const token := "x"` unspecified. The finding was flagged for the project owner
+rather than resolved in-review, correctly — it needs a normative call that
+neither D-410 nor D-411 makes.
+
+**Decision 1 — `param` is a top-level binding-introducing form and joins the
+single shared name space.** A `param` declaration introduces a binding that is
+implicitly `readonly` (§24) and in scope for the whole script body. Two
+top-level declarations sharing a name are a compile error at **E1102**,
+whatever the two kinds involved, and `param` is now one of those kinds.
+§19's name-uniqueness list becomes `fn`, `type`, `:=`, `readonly`, `const`,
+`param`.
+
+**E2202 was considered and is not the code.** E2202 diagnoses **position** — a
+`param` appearing after a `fn`, `type`, `const`, `readonly` or top-level
+statement (decision 2 below places `const` and `readonly` in that last
+category, so they are named explicitly rather than left implied). A `param token`
+/ `const token` collision in correct declaration order is not an ordering
+violation at all: both declarations sit exactly where §19 puts them. Using
+E2202 would carve an exception into a rule whose entire value is that it has
+none. D-324 broadened E1102 from `:=`-only precisely so that a name collision
+has one code regardless of the kinds involved; adding a second mechanism for
+one kind would undo that.
+
+**The ordering rule makes this a narrower case than D-324's general one.**
+Because §19 requires `param` ahead of `type`, `fn` and top-level code, a
+`param` that is **correctly placed** is always the **earlier** declaration in a
+cross-kind collision. D-324 fires the diagnostic at the second declaration, so
+in any collision that passes the ordering check it lands on the
+`fn`/`type`/`const`/`readonly`/`:=` and never on the `param` itself. A
+**misplaced** `param` is the exception and is governed by decision 3 below: it
+is the later declaration, but E2202 is reported in place of the collision, so
+E1102 still never fires at a `param` in a cross-kind collision. Two `param`
+declarations colliding follow the same rule unchanged — there the second
+`param` does carry the E1102. No new
+predicate: Sprint 10 registers params as provisional in pass 1 and calls
+D-324's existing `FinalizeTopLevelBinding` helper in pass 2, exactly as
+`VisitConstDecl` and `VisitReadonlyDecl` do, and extends D-324's
+`RegisterProvisionalValueBinding` guard so a value-binding provisional cannot
+overwrite a param's.
+
+**Decision 2 — `const` and `readonly` are placed in §19's order rules, because
+decision 1 cannot be applied without them.** §19's canonical structure runs
+`import` → `param` → `type` → `fn` → top-level code, and its five order-rule
+bullets name `import`, `param`, `type`, `fn` and top-level code. `const` and
+`readonly` appear in the very next paragraph as binding-introducing forms and
+**nowhere in the ordering** — so whether `const TIMEOUT := 30` may precede a
+`param` was unspecified, and "is a `param`/`const` collision also an ordering
+error?" had no answer.
+
+**`const` and `readonly` are top-level code (category 5) and must follow all
+`param` declarations.** `readonly`'s right-hand side is evaluated at
+declaration (D-291), which makes it genuinely order-dependent and squarely
+initialisation-order material (D-321). `const` is compile-time-constant and
+inlined with no runtime slot (D-288/D-289), so its placement is a readability
+rule rather than a semantic one, but splitting the two would mean two rules for
+forms that read identically at the point of use. Both go in category 5.
+
+**Decision 3 — when an ordering violation and a name collision coincide, the
+ordering diagnostic wins and the collision is suppressed.** `const token := "x"`
+followed by `param token: string` is both a misplaced `param` (E2202) and a
+name collision (E1102). One root cause should produce one diagnostic, per the
+cascade-suppression philosophy §29 and D-300 establish for the parser: the
+`param` is already rejected for its position, so reporting the collision as
+well is noise. E2202 alone is emitted. This is a type-checker rule, not a
+parser one — recorded here so Sprint 10 implements it deliberately rather than
+discovering it as duplicate-diagnostic noise in a fixture.
+
+**Spec edits.** §19's name-uniqueness paragraph gains `param`, citing D-412
+alongside D-324. §19's order rules gain a bullet placing `const` and `readonly`
+in category 5, and the closing prose gains the coincident-error rule. E1102's
+and E2202's descriptions are updated — description-only, no title or status
+moves, so the D-316 agreement gate is unaffected and the count stays 121.
+
+**Not decided here, and deliberately kept separate.** §19's two worked examples
+both violate `grob-formatter-specification.md` §3.10, which requires decorated
+and undecorated params to be separated by exactly one blank line and forbids a
+blank line within a group. The canonical structure example runs the two
+adjacent; the "The `param` declaration" example additionally places a blank
+line inside the decorated group and separates two decorated params that §3.10's
+two-group model would put together. Behind that sits a live question — whether
+a strict decorated/undecorated binary survives D-411's seven decorators, since
+it now clumps every decorated param into one group regardless of which
+decorators it carries. That is a formatter-design call with its own
+consequences and it is not folded in here.
+
+Cites D-324 (the uniform-E1102 decision this extends, and the
+`FinalizeTopLevelBinding` / `RegisterProvisionalValueBinding` machinery Sprint
+10 reuses), D-410 (the `param` grammar this completes; refined, not amended —
+D-410 is merged and append-only discipline means a later entry says what it did
+not contemplate), D-411 (the decorator set, and the seven-decorator question
+the deferred §3.10 item turns on), D-291/D-288/D-289 (`readonly` evaluated at
+declaration, `const` inlined — the reason both land in category 5), D-321
+(top-level initialisation order), D-300/§29 (the cascade-suppression philosophy
+decision 3 applies to the type checker), D-308/D-316 (the agreement gate that
+keeps these registry edits description-only).
+
+---
+
+### D-413 — `param` grouping is the author's; the formatter isolates decorated declarations and never reorders (August 2026)
+
+Area: Tooling — formatter specification
+Supersedes: none (supersedes the decorated/undecorated alignment-group rule of §3.10)
+Superseded by: none
+
+**Decision-only. No source change** — `grob fmt` has no implementation
+(Sprint 12). Error-code count unchanged at 121.
+
+**Origin.** A CodeRabbit review of PR #200 found that §19's two worked
+examples violate `grob-formatter-specification.md` §3.10. The finding was
+factually correct, and the implementing agent declined to fix it mechanically
+on the grounds that doing so would silently settle a question D-412 had
+explicitly deferred. That was the right call: §3.10's rule was written when
+`@secure` was effectively the only decorator in practice, and D-411 has since
+fixed the set at seven, several of which combine.
+
+**The decision.** §3.10's decorated/undecorated alignment-group binary is
+retired and replaced by two rules with a clean division of ownership:
+
+**1. The author owns grouping.** A run of `param` declarations uninterrupted
+by a blank line is one group. The formatter preserves the author's blank
+lines, collapses runs of two or more to one, never inserts a blank line
+between two undecorated declarations and never merges two groups. This is the
+mechanism §3.3 already applies to import groups ("groups defined by
+user-authored blank-line separators"), so params stop being the one construct
+whose grouping is derived mechanically.
+
+**2. The formatter owns the separation that prevents misreading.** Exactly one
+blank line sits above a decorator stack and one below the declaration it
+decorates, inserted if the author omitted it and not removable. A decorated
+declaration is therefore always alone in its group.
+
+**Alignment is retained and computed per group** — `:` one space after the
+longest name in the group, `=` one space after the longest type. Because each
+group aligns independently, distinct columns reinforce the author's grouping
+rather than flattening it.
+
+**Why the binary failed, in the order the arguments arrived.**
+
+*It produces a worse artefact as the decorator set grows.* Under the binary,
+`@secure param token` and `@minValue`/`@maxValue param threshold` are both
+"decorated" and must sit adjacent with their stacks interleaved between
+aligned lines. That reads as one undifferentiated block mixing unrelated
+constraints — the case D-411 created by taking the set past `@secure`.
+
+*Grouping by decorator-combination — the obvious repair — is incoherent.*
+§3.10 forbids reordering, so combination-derived groups follow declaration
+order: `@secure a`, `@minValue b`, `@secure c` yields three groups with two
+identical `@secure` params separated by an unrelated one. Making it coherent
+requires reordering, which is forbidden for good reason (see below). Rejected.
+
+*Adjacency across a decorator boundary is a readability defect, not a style
+preference.* The decisive objection came from the project owner reading the
+output rather than the rule:
+
+```grob
+@secure
+param token: string
+param days:  int = 30
+```
+
+invites the question "is `days` secure as well?". For a decorator whose entire
+job is to mark a value as sensitive, ambiguity about its scope is the worst
+available failure. A stack bounded by whitespace above and below cannot be
+misread. This is why rule 2 is the formatter's and not the author's.
+
+*And the binary actively forbade what a reader would do anyway.* §3.3 as
+written classified consecutive `param`s as a same-kind declaration block with
+"no blank lines", so a developer breaking a long parameter list into readable
+chunks would have had `grob fmt` put it back into one slab. That is a worse
+defect than the question that started the review, and it was found only
+because the owner asked what a tired developer would do at the end of the day
+with a wall of parameters. A parameter list of any length is a reading problem
+before it is a formatting problem, and the author is the only party who knows
+which parameters belong together.
+
+**Bicep, the north star, already does this.** Microsoft Learn's canonical
+Bicep structure example declares a decorator stack above one `param`, then a
+blank line, then two undecorated `param`s adjacent. Decorated isolated,
+undecorated run together — rules 2 and 1 respectively.
+
+**Where Grob deliberately diverges from Bicep: alignment is kept.** Bicep
+applies no column alignment to anything, so its non-alignment of params is the
+absence of a rule rather than a rejection of one. Grob aligns `type` fields,
+named construction and anonymous struct literals — §7 calls alignment "the
+defining stylistic rule for Grob's declarative constructs" — and a `param` run
+is the same shape as a `type` field run. Dropping alignment for params alone
+would break an internal consistency to import an external non-decision.
+
+**The reordering prohibition, stated once as new §3.14.** `grob fmt` never
+reorders declarations or parameters: not `param` declarations, not function
+signature parameters, not `type` fields, not `import`s within a group, not
+top-level declarations of any kind. Previously this existed only as §3.10's
+narrow "does not reorder params across groups", which reads as a grouping
+detail rather than a safety rule.
+
+The stakes differ by construct and both are unacceptable. **Function
+parameter lists are positional**, so reordering one silently breaks every call
+site — this is the dangerous case. **Script `param` declarations are passed by
+name** (`grob run script.grob --name value`, and `.grobparams` is `key =
+value`), so no positional swap is possible there; reordering would "only"
+churn diffs, `--help` ordering and `.grobparams` template output. Recorded
+because the question was raised as a positional-swap risk, and the honest
+answer is that the risk is real for one construct and not the other, while the
+prohibition should cover both.
+
+**Spec edits.** `grob-formatter-specification.md`: §3.3's param-group and
+same-kind-block rules rewritten; §3.10's grouping and alignment paragraphs
+replaced and its worked example re-authored; new §3.14; §7's alignment summary
+item 2 updated; "param blocks" retired as terminology per D-410, §3.11's
+function-signature alignment rule being the last site carrying it.
+`grob-language-fundamentals.md`: §19's canonical structure example gains the
+blank line after `@secure param token`, and the decorator rule in "The `param`
+declaration" records the separation.
+
+**One term, two meanings — separated explicitly.** Rule 1 gives `grob fmt` a
+blank-line-delimited **formatting group**, while §19 already had a
+contiguity-delimited **parameter group** that a blank line deliberately does
+*not* end (it is what E2202 scans). Left implicit, the two would be applied in
+each other's place, and the failure is not symmetric: reading §3.10's rule into
+§19 would end the parameter group at the very blank line rule 2 *requires*
+above a decorator stack, turning correct code into an E2202 ordering error.
+§3.3 and §3.10 therefore say "formatting group" and cross-reference §19, and
+§19's "Ordering" paragraph states the distinction from its side. Raised by the
+follow-up CodeRabbit review of PR #200 against this entry's own spec edits. **§19's second worked example is
+unchanged** — under D-413 it was already correct as authored, which is a useful
+check on the rule.
+
+**What this does not decide.** Whether `grob fmt` should have an opinion on
+parameter *count* (a very long list may want splitting into a `.grobparams`
+file rather than formatting), and the `@description`-versus-`///` question
+D-411 left for a future `grob doc` consumer. Neither is formatter work.
+
+Cites D-411 (the seven-decorator set whose growth exposed the binary, and the
+`@minValue`/`@maxValue` stacking that makes multi-decorator params ordinary),
+D-410 (the braceless grammar and the "param declarations" terminology), D-412
+(which deferred this question explicitly and named it as a formatter-design
+call), §3.3's import-group rule (the precedent rule 1 aligns to), §7 (the
+cross-construct alignment principle that keeps alignment for params), and the
+Sprint 10 scope in `grob-v1-requirements.md` (named parameter passing, the
+basis for the positional-risk analysis in §3.14).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -12603,7 +12862,49 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — Decision-only session, D-410 and D-411 added; no source change._
+_August 2026 — Decision-only session, D-413 added; no source change._
+_Retires the decorated/undecorated alignment-group binary in formatter §3.10,_
+_written when `@secure` was effectively the only decorator in practice and_
+_outgrown by D-411's seven. Grouping becomes the author's, delimited by blank_
+_lines exactly as §3.3 already delimits import groups; the one separation the_
+_formatter owns is a blank line above and below a decorated declaration,_
+_inserted if absent and not removable, so a decorator's scope cannot be_
+_misread as reaching the declaration below. Alignment is retained and computed_
+_per group, reinforcing the author's grouping rather than flattening it._
+_Grouping by decorator-combination was rejected as incoherent without_
+_reordering, which is forbidden. Two defects drove the change: `@secure` above_
+_one param running straight into an undecorated one invites "is that one_
+_secure too?", and §3.3's no-blank-lines rule would have had `grob fmt` undo_
+_the very blank lines a reader adds to break up a long parameter list. Bicep,_
+_the north star, already isolates decorated params and runs undecorated ones_
+_together; Grob diverges only on alignment, which Bicep lacks everywhere and_
+_§7 makes Grob's defining declarative rule. New §3.14 states the_
+_whole-formatter prohibition on reordering — dangerous for positional function_
+_parameter lists, merely disruptive for named script params. Raised by a_
+_CodeRabbit review of PR #200 and correctly refused as a mechanical fix,_
+_because it would have settled a question D-412 explicitly deferred._
+_Previous: August 2026 — Decision-only session, D-412 added; no source change. Closes a_
+_gap D-410 did not contemplate, raised by a CodeRabbit review of the D-410/D-411_
+_documentation pass and flagged for the owner rather than resolved in-review._
+_`param` joins the top-level shared name space: a name shared with an `fn`,_
+_`type`, `const`, `readonly` or `:=` binding is E1102, the uniform code D-324_
+_established, and not E2202 — which diagnoses position, and a collision in_
+_correct declaration order is not an ordering violation at all. Because §19 puts_
+_`param` ahead of every other declaration form, D-324's fire-at-the-second rule_
+_always lands the diagnostic on the later colliding declaration and never on the_
+_`param`, so Sprint 10 reuses `FinalizeTopLevelBinding` unchanged. `const` and_
+_`readonly` — named as binding-introducing forms but placed nowhere in §19's_
+_ordering, which made the collision question unanswerable — are fixed as_
+_category 5 and must follow all `param` declarations. Where an ordering_
+_violation and a collision coincide, only the ordering error is reported._
+_Decision-only: `VisitParamBlockDecl` registers nothing today and parameter_
+_binding is Sprint 10, so this supplies the answer Sprint 10 builds against._
+_Refines D-410 rather than amending it, D-410 being merged. E1102's and E2202's_
+_descriptions updated, description-only, count stays 121. Kept separate and not_
+_decided: §19's two worked examples both violate formatter §3.10's blank-line_
+_rules for parameter groups, which turns on whether that two-group model_
+_survives D-411's seven decorators._
+_Previous: August 2026 — Decision-only session, D-410 and D-411 added; no source change._
 _D-410 settles the param grammar question D-409 raised and left open: the_
 _braceless per-line form is canonical — param name: type = value, repeated,_
 _decorators stacked one per line above, the parameter group delimited by_

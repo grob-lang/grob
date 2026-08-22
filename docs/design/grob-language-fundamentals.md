@@ -1571,6 +1571,7 @@ import Grob.Crypto
 
 @secure                             // 2. Params (if any)
 param token: string
+
 param days: int = 30
 
 type Repo {                          // 3. Type declarations (if any)
@@ -1594,16 +1595,36 @@ print(repos.length)
   declarations and top-level code. `param` may appear after `import`.
 - `type` and `fn` declarations may appear in any order relative to each other
   (forward references are resolved by the two-pass type checker).
+- `const` and `readonly` declarations are top-level code (category 5) and
+  must follow all `param` declarations (D-412). `readonly` evaluates its
+  right-hand side at the point of declaration (D-291), which makes it
+  order-dependent; `const` is inlined at every reference (D-288, D-289) and
+  is placed with it so the two read alike at the point of use.
 - Top-level code (statements, expressions) appears after all declarations.
 - Comments may appear anywhere.
 
 An `import` after a `param` or `type` is a compile error. A `param` after a
-`fn` or top-level statement is a compile error.
+`type`, `fn`, `const`, `readonly` or top-level statement is a compile error
+(E2202).
 
 **Name uniqueness.** All binding-introducing forms (`fn`, `type`, `:=`,
-`readonly`, `const`) at the top level share a single name space. Declaring
-the same name twice — regardless of the two kinds involved — is a compile
-error (E1102, D-324). The diagnostic fires at the second declaration.
+`readonly`, `const`, `param`) at the top level share a single name space.
+Declaring the same name twice — regardless of the two kinds involved — is a
+compile error (E1102, D-324, extended to `param` by D-412). The diagnostic
+fires at the second declaration. Because §19 requires `param` declarations
+ahead of every other declaration form, a correctly placed `param` is always the
+earlier declaration in a cross-kind collision, so the diagnostic lands on the
+colliding `fn`, `type`, `const`, `readonly` or `:=` and never on the `param`.
+A misplaced `param` is the exception to the ordering half of that, and is
+covered by the rule below. Two colliding `param` declarations follow the
+general rule: the diagnostic fires at the second `param`.
+
+**Coincident ordering and collision errors (D-412).** A misplaced `param`
+that also collides with an existing name — `const token := "x"` followed by
+`param token: string` — reports **only** the ordering error (E2202). The
+`param` is already rejected for its position, so the collision is suppressed
+rather than reported alongside it: one root cause, one diagnostic, the same
+principle §29 applies to parser cascades.
 
 ### The `param` declaration
 
@@ -1632,7 +1653,10 @@ Rules:
   `.grobparams` file does not evaluate its default.
 - **Decorators sit on their own line immediately above** the `param` they
   modify. Multiple decorators stack, one per line, with no blank line inside
-  the stack. The decorator set is fixed by D-411.
+  the stack. The decorator set is fixed by D-411. A decorated declaration is
+  separated from any adjacent `param` declaration by a blank line, so a
+  decorator's scope can never be misread as reaching the declaration below
+  (D-413; `grob fmt` inserts the line if it is absent).
 - **`param` bindings are implicitly `readonly`** (§24). The `readonly` keyword
   is not written on a `param` declaration.
 
@@ -1668,6 +1692,16 @@ error (E2202). Blank lines and comment-only lines are not significant for this
 purpose and do not end the group — the canonical form above separates its
 declarations with blank lines. Inside a decorator stack a blank line remains
 disallowed by the decorator rule above.
+
+**The parameter group is not the formatter's group.** This one is a
+language-level concept, delimited by contiguity and consumed by the E2202
+ordering rule. `grob-formatter-specification.md` §3.10 uses "group" for a run
+of `param` declarations _delimited by blank lines_, which scopes alignment
+columns and blank-line handling and nothing else (D-413). The canonical form
+above is three formatting groups and one parameter group. A blank line — the
+one the formatter requires around a decorated declaration included — never
+ends the parameter group, so it can never make a following `param` an
+ordering error.
 
 ---
 
@@ -2601,7 +2635,41 @@ without noise.
 
 ---
 
-_Document updated August 2026 — §19 gains "The `param` declaration", a_
+_Document updated August 2026 — §19's canonical structure example gains the_
+_blank line D-413 requires between a decorated `param` declaration and the_
+_declaration below it, and the decorator rule in "The `param` declaration"_
+_records the separation. The example previously ran `@secure param token`_
+_straight into an undecorated `param days`, which invites the reader to ask_
+_whether `days` is secure too. The worked example in "The `param` declaration"_
+_is unchanged — it was already correct under D-413, where grouping is the_
+_author's. Formatter rules in `grob-formatter-specification.md` §3.3, §3.10,_
+_§3.14 and §7. §19's "Ordering" paragraph also separates the two senses of_
+_"group" the two documents now share: §19's **parameter group** is delimited_
+_by contiguity and ends only at the first significant line that is_
+_neither a `param` declaration nor one of its decorators, while the_
+_formatter's **formatting group** is delimited by blank lines and scopes_
+_alignment alone — so the blank line D-413 requires around a decorated_
+_declaration can never make a following `param` an E2202 ordering error._
+
+_Previous: Document updated August 2026 — §19's order rules and name-uniqueness_
+_paragraph completed by D-412, closing a gap D-410 did not contemplate. `param`_
+_joins the top-level shared name space, so a name shared with an `fn`, `type`,_
+_`const`, `readonly` or `:=` binding is E1102 — the uniform code D-324_
+_established — and never E2202, which diagnoses position rather than name_
+_reuse. Because §19 puts `param` ahead of every other declaration form, a_
+_correctly placed `param` is the earlier declaration, so the diagnostic lands on_
+_the later colliding declaration and never on the `param`; a misplaced `param`_
+_reports E2202 instead. `const` and `readonly`, previously named as_
+_binding-introducing forms but placed nowhere in the ordering, are fixed as_
+_category 5 (top-level code) and must follow all `param` declarations. Where_
+_an ordering violation and a name collision coincide, only the ordering error_
+_is reported. Not addressed here and deliberately kept separate: §19's two_
+_worked examples both violate_
+_`grob-formatter-specification.md` §3.10's blank-line rules for decorated and_
+_undecorated parameter groups, which turns on whether that two-group model_
+_survives D-411's seven decorators._
+
+_Previous: Document updated August 2026 — §19 gains "The `param` declaration", a_
 _normative grammar for the `param` declaration form, authorised by D-410._
 _The braceless per-line form (`param name: type = value`, repeated, decorators_
 _stacked one per line above) is ratified as canonical and the `param { ... }`_
