@@ -411,6 +411,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-413 | August 2026 | Tooling — formatter specification | Retires §3.10's decorated/undecorated alignment-group binary, written when `@secure` was effectively the only decorator in practice and outgrown by D-411's seven. Raised by a CodeRabbit review of PR #200 against §19's worked examples; the implementing agent declined to fix mechanically because doing so would settle a question D-412 explicitly deferred — the right call. **Two rules, cleanly divided.** **The author owns grouping**: a run of `param` declarations uninterrupted by a blank line is one group; the formatter preserves the author's blank lines, collapses runs to one, never inserts a line between two undecorated declarations and never merges groups — the mechanism §3.3 already applies to import groups, so params stop being the one construct grouped mechanically. **The formatter owns the separation that prevents misreading**: exactly one blank line above a decorator stack and one below the declaration it decorates, inserted if absent and not removable, so a decorated declaration is always alone in its group. **Alignment is retained, computed per group**, so distinct columns reinforce the author's grouping rather than flattening it. **Why the binary failed.** It produces a worse artefact as the set grows — `@secure token` and `@minValue`/`@maxValue threshold` are both "decorated" and must sit adjacent with stacks interleaved between aligned lines, reading as one block of unrelated constraints. Grouping by decorator-**combination**, the obvious repair, is **incoherent**: §3.10 forbids reordering, so `@secure a`, `@minValue b`, `@secure c` yields three groups with two identical `@secure` params separated by an unrelated one; making it coherent needs reordering. **The decisive objection was a readability defect, not a style preference** — `@secure` above `param token` running straight into `param days` invites "is `days` secure as well?", and for a decorator whose job is marking a value sensitive, ambiguity about scope is the worst available failure; hence rule 2 belongs to the formatter, not the author. **And the binary forbade what a reader would do anyway**: §3.3 classified consecutive `param`s as a no-blank-lines block, so breaking a long list into readable chunks would have been undone by `grob fmt` — a worse defect than the one that started the review, found by asking what a tired developer does with a wall of parameters. A parameter list of any length is a reading problem before it is a formatting problem, and only the author knows which parameters belong together. **Bicep already does this** — Learn's canonical structure example isolates a decorated `param` with a blank line and runs two undecorated ones adjacent. **Grob deliberately diverges on alignment**: Bicep aligns nothing anywhere, so its non-alignment is an absence of a rule rather than a rejection of one, while §7 calls alignment "the defining stylistic rule for Grob's declarative constructs" and a `param` run is the same shape as a `type` field run. **New §3.14 — `grob fmt` never reorders declarations or parameters**, stated once as a whole-formatter prohibition instead of §3.10's narrow "does not reorder across groups", which read as a grouping detail. The stakes differ and both are unacceptable: **function parameter lists are positional**, so reordering silently breaks every call site — the dangerous case; **script `param` declarations are passed by name** (`--name value`, `.grobparams` `key = value`), so no positional swap is possible and reordering would only churn diffs, `--help` order and template output. Recorded because the risk was raised as a positional swap and the honest answer is that it is real for one construct and not the other. **Decision-only; no source change** — `grob fmt` has no implementation (Sprint 12). Spec edits: formatter §3.3, §3.10 (retitled "Parameter Declarations") and its worked example, new §3.14, §7 item 2, "param blocks" terminology retired per D-410 (§3.11 the last site carrying it); fundamentals §19's canonical structure example gains the blank line after `@secure param token` and the decorator rule records the separation. **One term, two meanings, separated explicitly**: rule 1's blank-line-delimited **formatting group** is not §19's contiguity-delimited **parameter group**, which a blank line deliberately does not end and which is what E2202 scans. The failure is asymmetric — reading §3.10 into §19 would end the parameter group at the very blank line rule 2 *requires* above a decorator stack, turning correct code into an ordering error — so §3.3 and §3.10 say "formatting group" and cross-reference §19, and §19's "Ordering" paragraph states the distinction from its side. **§19's second worked example is unchanged — it was already correct as authored**, a useful check on the rule. Not decided: whether `grob fmt` should have an opinion on parameter *count*, and D-411's `@description`-versus-`///` question. No opcode change. No new error code; count stays **121**. |
 | D-414 | August 2026 | Corpus hygiene — terminology; Tooling — formatter specification; Error registry | Documentation-only sweep of what the retired `param { }` form left behind. **The method point matters more than the fixes**: D-410's evidence sweep found six sites by asking *which form is correct*, and never asked *what silently depends on the form being retired*. Different queries; only the first was run, so three later review passes missed the leftovers because they were reviewing changes rather than sweeping the corpus. **Standing note: retiring a language form requires both queries — the first proves the decision, the second finds what breaks.** **The substantive defect.** Formatter §3.8 closed its alignment list with "Alignment is computed independently within each brace pair" and §7 repeated it as "Each brace pair is an independent alignment scope" — both correct while `param { }` existed, since the block *was* the param alignment scope. D-410 retired the braces and neither sentence moved, so **`param` declarations had no alignment scope at all**, six lines below the list item describing their alignment and in direct contradiction of D-413's formatting-group rule; an implementer scoping param alignment to a brace pair would find none. Both now name the §3.10 formatting group for params and keep the brace pair for braced constructs; §3.8's "In multi-line form" framing reworded likewise, `param` declarations having no multi-line form. **§3.14's rationale was false in the document making it** — D-413 claimed the reordering prohibition is stated "once, as a whole-formatter prohibition", but §4's rule 9 ("Does not reorder parameters or fields") already said it. §3.14 is reframed as the full statement of a rule §4 summarises and rule 9 points at it; **D-413's body is not amended**, append-only, an overstated rationale being not a wrong decision. **E4202's description contradicted D-413**: it closed the parameter group at "a line" rather than §19's **significant** line, so as written the blank line `grob fmt` now inserts around a decorated declaration would close the group and make the next `param` an ordering error — the fourth instance of a sentence the D-413 review pass fixed in three other places. Inert (no throw site, retirement-pending) but wrong if the retirement slips. **Terminology, four prose sites**: `grob-sample-scripts.md`, `grob-playground-architecture.md`, `grob-open-questions.md` twice — the latter two not cosmetic, both describing `param`→JSON-Schema reflection for an MCP tool surface where an implementer would go looking for a block node. **Three sites deliberately left**, being records of what was true when written: OQ-014's correction changelog, the grammar audit's finding, and D-409's verbatim quote of the live `E2001: expected '{' to open param block` diagnostic — the same principle as never retrofitting an archived prompt. **What cannot be fixed in documentation, and why this is an entry rather than a commit message.** E4201 ("`param` block syntax error") and E4202 ("`param` after `param` block ends") carry the retired form in their **titles**, which live in `ErrorCatalog.cs` and are diffed by the D-316 gate — a title change needs the source edit in the same commit. E4202's was already covered by D-410's deferral; **E4201's was on no list**, despite being the code that same increment wires to its first throw site, and would have shipped titled after a form the language does not have. D-410's deferred-registry list cannot be extended in place, so the addition is recorded here: **the grammar increment retitles E4201 to "`param` declaration syntax error"** alongside E4202's removal, E2202's widening and E4102's. No source change, no rule change, no opcode change; count stays **121**. |
 | D-415 | August 2026 | Compiler — parser, AST; Language spec — parser error recovery | Implements D-410's braceless `param` declaration grammar. **AST**: `ParamBlockDecl` (group node) replaced by one `ParamDecl` per declaration, per D-410's own recommendation — no dedicated grouping code, contiguity falls out of the existing per-item top-level loop. **Dispatch**: `ParseTopLevelItem` gains `TokenKind.At => ParseParamDecl()` alongside the existing `TokenKind.Param` arm, both calling the same method (the decorator stack is part of the `param-decl` production, not a separate lookahead target), which also gives `Expect(Param, E4201, ...)` a natural home for "decorator not followed by `param`". **Recovery**: `@` added to §29's synchronisation anchor set (`IsSyncAnchor`, not the shared `IsTopLevelKeyword` predicate the `type`-body path also uses) — confirmed empirically that without it, an adversarial open-bracket default disables the newline anchor and `Synchronise` silently swallows an intact decorator stack sitting above the next `param`; fixed and mutation-verified (guard test confirmed red with the clause removed, green restored). The anchor is **context-gated, not unconditional** (corrected under PR review): `@` is also legal inside a function parameter list via the shared `SkipParameterDecorators`, so an unconditional anchor stranded recovery mid-`fn`-header and cascaded a spurious second `E4201` out of one malformed `fn` (`fn f(a: , @secure b: int): int { return 1 }` gave `E2001` at 1:9 plus `E4201` at 1:19). Bracket depth cannot separate the cases — the swallow case sits at non-zero depth itself — so `ParseTopLevelItemOrError` gates the anchor on the failed item's own start token being `param` or `@`; statement- and expression-level recovery never enable it. Both guarantees tested independently. This is a §29 amendment, both `grob-language-fundamentals.md` and the `Synchronise()` doc comment updated to name `@` as a seventh anchor kind with its context condition. **Type checker**: `VisitParamDecl` visits the default expression (registering no symbol — binding stays Sprint 10/D-412), so §3.1.1 holds for identifiers inside a default; without it an undefined name in `param limit: int = fallback` went unreported with `ResolvedType`/`Declaration` both unset, out of step with `AstWalker.VisitParamDecl`, which already walked it. D-406's `param`-specific recovery machinery (`ParseDeclaredParameterOrError`, the `param` call site of `SkipToNextLiteralElementBoundary`'s newline mode) is deleted outright — the `type` path and `ParseDeclaredParameter`/`ParseParameterList` (function parameter lists) are unchanged, proven by their existing tests passing unmodified. **E4201** given its first throw site (missing type annotation, decorator not followed by `param`, `:=` for a default — all three of its registry-described cases, plus a fourth from follow-up review: a top-level decorator not followed by a newline, which §19's production requires and the shared decorator scanner admitted without) on the D-407 pattern, and retitled from "`param` block syntax error" to "`param` declaration syntax error" in `ErrorCatalog.cs` and `grob-error-codes.md` in the same commit, closing D-414's deferral; D-316 confirmed green after. E4202's removal and E2202's widening remain deferred to Sprint 10 per D-410/D-414. **Corpus**: the eleven validation scripts, markdown-only until now, extracted verbatim to `tests/fixtures/validation-scripts/` (no prior cross-sprint corpus convention existed; read via a repo-root walk-up rather than new csproj wiring). The D-409 param blocker is cleared for all eleven — five parse to completion cleanly, and the other six fail only on two pre-existing gaps unrelated to `param` (confirmed by minimal repro and by every one of their pinned diagnostics being plain `E2001` on an unrelated construct): generic-argument method calls via member access (`x.mapAs<T>()`) do not parse, and named-struct/anonymous-struct literal fields require comma separation even across lines (the `type`-body newline convention does not extend to them). Both reported, not fixed — a future increment's scope. A stale gold master found and not fixed: `docs/errors/examples/param-after-param-block-ends/` (E4202) uses the now-unparseable block form as its subject and cannot be reached; not test-harnessed, so nothing broke silently. No opcode change, no `GrobValueKind` change, no new error code; count stays **121**. |
+| D-416 | August 2026 | Compiler — parser, AST | Closes D-415's Gap A: `x.mapAs<Employee>()` and the free-function form `mapAs<Employee>(x)` now parse. Scope is parse-only — `<T>` resolution, result-typing and `E0401`/`E0402` stay with a future increment. **Investigation corrected D-415's own framing before any code was written**: the true determinant is argument-list arity, not receiver shape — empty-argument generic calls hard-failed to parse, non-empty-argument ones **silently misparsed with no diagnostic at all** as a comparison feeding a call, member-access and free-function forms affected identically. **D-415's "affects... script 11" does not hold** — script 11 has no generic call at all; corrected in `ValidationScriptCorpusTests.cs` rather than repeated. **Rule**: `Parser.LooksLikeTypeArgumentList()`, a non-consuming lookahead structurally identical to D-376's `LooksLikeMapLiteral`, fires on `Less` in `ParsePostfix` and commits to a type-argument list only when the `<...>` run closes and the very next token is `(`. Safe specifically because of **D-080** (users cannot declare generics, only consume a fixed compiler-known set, so every legal generic call is immediately invoked) — a strictly tighter trigger than a general C-family parser can use. Turbofish (`::<>`) and a name-keyed member allowlist both considered and rejected (alien syntax; bakes stdlib names into the parser). **Deliberately decides one case wrongly**: `a < b > (c)` now parses as a one-type-argument generic call rather than a chained comparison — pinned by test, no existing fixture asserted the old reading, rewritable with explicit parens. **AST**: `CallExpr` gains a fourth positional field `TypeArguments: IReadOnlyList<TypeRef>`, defaulted via an explicit 3-argument constructor overload rather than `= []` (`CS1736` forbids a non-constant positional-record default) — confirmed source-compatible with every existing call site. **Recovery**: no new synchronisation anchor — `<`/`>` are not bracket-depth tokens and none of Grob's grammar needs them to be; the pre-fix single-diagnostic recovery baseline is preserved, and the empty-list case now gets a materially better-targeted diagnostic for free. 18 new tests, mutation-verified (guard disabled, canonical test failed for the predicted pre-fix diagnostic, restored). Full solution `dotnet test`: 3,931 passed, 0 failed. `Grob.Compiler` coverage 97.12%. D-316 green; error count stays **121**. No opcode change, no `GrobValueKind` change. Gap B (struct-literal comma separation across lines) remains open, reported and not fixed. |
 
 ---
 
@@ -12992,6 +12993,201 @@ question its own investigation gate raised).
 
 ---
 
+### D-416 — Generic type arguments parse at call sites, closing D-415's Gap A; its "affects script 11" attribution corrected (August 2026)
+
+Area: Compiler — parser, AST
+
+Supersedes: none (closes D-415's Gap A finding)
+Superseded by: none
+
+Closes Gap A, one of the two pre-existing gaps D-415 isolated and filed to
+"most plausibly the corpus sweep" — the wrong owner, since the sweep is
+documentation-only and cannot add a parser production. `x.mapAs<Employee>()`
+and the free-function form `mapAs<Employee>(x)` now parse. Scope is parse
+only, per the implementing prompt (`prompts/archive/sprint-9/generic-call-type-arguments.md`,
+archived verbatim with this entry's commit): resolving `<T>` to a concrete
+type, result-typing the call, and wiring `E0401`/`E0402` stay with a future
+increment. Runs against the corpus carrying D-356 through D-415. No opcode
+change, no `GrobValueKind` change, no new error code; count stays **121**.
+
+**The investigation gate corrected D-415's own framing before any code was
+written.** D-415 isolated Gap A as "a generic-argument method call reached
+via member access does not parse", naming `a.mapAs<Employee>()` as the sole
+repro and scripts 04, 05, 07, 09 and 11 as affected. Reproducing against the
+live CLI (not merely reading) showed the true determinant is **argument-list
+arity, not receiver shape**: an empty-argument call (`x.mapAs<T>()`,
+`mapAs<T>()`) hard-fails to parse (`E2001` on the empty `()`, since `<T>`
+lexes as a comparison and `()` then has no operand); a non-empty-argument
+call (`x.mapAs<T>(a)`, `mapAs<T>(a)`) **parses silently with no diagnostic at
+all**, misreading as `(x.mapAs < T) > (a)`, and only fails later at
+type-checking with diagnostics that make no sense against the code actually
+written (`Type 'int' has no member 'mapAs'`, `Undefined identifier 'T'`) —
+the more dangerous half of the two, since it is silent rather than merely
+wrong. Member-access and free-function forms are affected identically; the
+one production this entry adds covers both. **D-415's "affects... 11" does
+not hold**: script 11 contains no `mapAs`/generic call anywhere — its only
+near-collision use of `<`/`>` is the already-working `map<string, string>{
+}` literal (D-376), unrelated to this gap. The claim was carried forward
+uncritically from an isolation that was never re-verified against the actual
+script; `ValidationScriptCorpusTests.cs`'s doc comment is corrected to say so
+rather than repeat it. Scripts 04, 05 and 09 each carried exactly one Gap-A
+diagnostic and now parse with **zero** diagnostics. Script 07 carried one
+Gap-A diagnostic plus two unrelated Gap-B ones; only the two Gap-B
+diagnostics remain, pinned exactly as before. Script 11's single diagnostic,
+both before and after this entry, is Gap B alone.
+
+**The disambiguation rule: bounded, non-consuming lookahead on `Less` in
+`ParsePostfix`, committing only when the run closes and is immediately
+followed by `(`.** `a.mapAs<Employee>()` is lexically ambiguous with
+`((a.mapAs) < Employee) > ()`; every C-family language with generics rules
+on this. `Parser.LooksLikeTypeArgumentList()` (`Parser.cs:1194`) is the
+structural twin of `LooksLikeMapLiteral` (D-376): a pure index scan over
+`_tokens[_pos...]` that never calls `Advance`/`Expect`/`Match`, tracking
+`<`/`>` nesting depth over the same restricted token run
+`ParseTypeRef` itself accepts (`Identifier`, `Comma`, `LeftBracket`,
+`RightBracket`, `Question`), so a failed scan leaves `_pos` untouched and
+`<` falls straight through to `ParseComparison` unchanged — no rewind
+primitive needed, same property D-376 established. It differs from the
+map-literal scan only in its anchor token: the matching top-level `>` must
+be immediately followed by `LeftParen`, not `LeftBrace`, since a
+type-argument list at a call site is always followed by an invocation, never
+a literal body. **Safe specifically because of D-080**: users cannot declare
+generic functions or types in v1, only consume a fixed, compiler-known set
+(`mapAs<T>`, `sort<U: Comparable>`, …), so every legal generic call is
+immediately invoked and no legal Grob construct has a closed, well-formed
+`<...>` run standing alone as a value — "the run closes, and the very next
+token is `(`" has no other legal meaning. This is a strictly tighter trigger
+than a general C-family generics parser can use (C# additionally has to
+account for a bare `List<int> x;` type reference with no following call, and
+falls back to symbol-table lookback in some contexts); D-080 forecloses that
+case entirely.
+
+**Alternatives considered and rejected.** Explicit turbofish (`::<>`,
+Rust-style): unambiguous and needs no lookahead, but alien to the C-family
+surface Grob's audience should read without prior exposure, for a problem
+D-080 already makes tractable without it. A name-keyed allowlist of known
+generic members (`mapAs`, `sort`, …): rejected in advance by the implementing
+prompt and confirmed correctly so — it would bake stdlib member names into
+the parser, which has no business knowing them (that belongs to the type
+registry, consulted only by the checker), and would silently stop covering
+any future plugin-registered generic member without a matching parser
+change.
+
+**The rule decides one case wrongly, by design, and it is pinned by test
+rather than left to be discovered.** `a < b > (c)` — a three-term relational
+chain where `b` happens to be a bare identifier and `(c)` happens to follow
+— is indistinguishable from a one-type-argument generic call to `a` under
+this rule, and is now parsed as `CallExpr(Callee: a, TypeArguments: [b],
+Arguments: [c])` rather than `(a < b) > (c)`
+(`ChainedRelational_ClosesThenCall_ParsesAsGenericCallNotComparison`).
+Accepted: it mirrors C#'s own accepted trade-off for the equivalent
+ambiguity, no existing test asserted the old reading (confirmed by a
+breaking-change survey of `tests/` — the closest precedent,
+`Comparison_Then_Equality_Binding`'s `a < b == c`, chains into `==` and is
+never call-followed, so it is unaffected and passes unmodified), and the
+rewrite `(a < b) > (c)` is always available per §7's "parentheses override
+precedence at any level". `a < b`, `a > b`, `x := a<b`, `a < b == c` (scan
+bails immediately — `==` is outside the accepted token set) and a
+longer chain such as `a < b > c > (d)` (scan returns at the _first_ `>`,
+whose next token is `c` not `(`, so it fails and the whole chain falls
+through to `ParseComparison` unchanged) are all confirmed unaffected, each
+with its own regression pin.
+
+**AST shape: `CallExpr` gains a fourth positional field, `TypeArguments:
+IReadOnlyList<TypeRef>`, defaulted empty — not a type-checker side channel,
+since it is syntax the parser produces directly, exactly like `Callee` and
+`Arguments`.** Confirmed source-compatible before writing it: the one
+production call site used three positional arguments, and every consuming
+site (`Compiler.Expressions.cs`, `TypeChecker.Expressions.cs`) matches by
+property, never position, so the new field is invisible until a site chooses
+to read it — Increment D's job. **A C# restriction changed the mechanism
+from the one first planned, not the behaviour**: `= []` on a positional
+record parameter fails `CS1736` ("must be a compile-time constant"), so the
+default is instead carried by an explicit three-argument constructor
+overload (`: this(Range, Callee, Arguments, [])`) — functionally identical,
+confirmed by every pre-existing `new CallExpr(range, callee, args)` call
+site compiling unchanged. Each `TypeRef` produced by the (unchanged)
+`ParseTypeArgumentList()` already carries a `SourceRange` by construction;
+§3.1.1's `ResolvedType`/`Declaration` invariant does not apply to `TypeRef`
+— it names identifier _expression_ nodes, and `TypeRef` is not one; it
+resolves the same way every other `TypeRef` in the codebase does, via
+`TypeChecker.ResolveTypeRef`, a pure function storing no state on the node.
+Resolving `CallExpr.TypeArguments` and deciding where the resolved
+`GrobType`s live is left to the increment that consumes them.
+
+**Recovery: no new synchronisation anchor.** Unlike D-415's `@` case, `<`/`>`
+are not, and do not become, bracket-depth tokens — confirmed against
+`Lexer.cs` (depth touched only by `(`/`[`/`{` and their closers) and
+empirically against the pre-fix baseline, where a malformed
+`a.mapAs<Employee(` already recovered with exactly one diagnostic and no
+cascade before this entry's production was even reachable. A malformed
+type-argument list now throws the ordinary `ParseFailedException` any other
+expression-level failure throws, recovered by whichever `...OrError` wrapper
+is active, with no widening of `IsSyncAnchor` needed: there is no legal Grob
+construct where an intentionally open `<` should suppress the newline
+anchor the way an intentionally open `(` does. `a.mapAs<>()` now reports
+`E2001 "expected type name"` at the empty `<>` — a materially better,
+correctly targeted diagnostic than the pre-fix misparse's `"unexpected token
+')' — expected expression"` against the empty call parens — while
+`a.mapAs<Employee(` (genuinely unclosed) still falls through the lookahead
+unchanged (its accepted token set excludes `(`) and hits the pre-existing,
+unrelated §29 behaviour already documented for a permanently-open bracket
+(`BracketDepth` stays nonzero, so the newline anchor stays suppressed and
+recovery lands at the next top-level keyword, not the next statement) —
+confirmed as correct, pre-existing behaviour, not a regression, and worth a
+future `.grob` fixture author knowing it is there.
+
+**Tests: 18 new (`ParserCallTypeArgumentsTests.cs`)** — eight happy-path
+shapes (single/array/nested-generic/multiple type arguments, both receiver
+forms, empty and non-empty call arguments, and the no-type-argument case
+proven unchanged), six disambiguation pins (the chosen misdecision plus five
+confirmed-unaffected shapes), three recovery cases (empty list, genuinely
+unclosed list, and a full-pipeline type-check-survives-recovery proof on the
+D-311 sentinels). **Mutation-verified**: the `LooksLikeTypeArgumentList()`
+guard on the new `Less` case was disabled (`when false &&
+LooksLikeTypeArgumentList()`); `MemberAccessCall_SingleTypeArgument_Parses`
+failed for the predicted reason — `E2001: unexpected token ')' — expected
+expression` at the empty call parens, the exact pre-fix misparse diagnostic
+— then the guard was restored and the suite reconfirmed green. Full solution
+`dotnet test`: **3,931 passed, 0 failed, 0 skipped** across all eight test
+projects. `Grob.Compiler` line coverage **97.12%**, both the lookahead's
+success and rejection paths covered — its one uncovered line
+(`LooksLikeTypeArgumentList`'s final `return false;`, structurally
+unreachable since the token stream always ends on a token the earlier
+`default:` branch catches first) mirrors `LooksLikeMapLiteral`'s own
+identically-uncovered final line, an accepted pre-existing pattern, not
+excluded. `LooksLikeMapLiteral` and `ParseTypePrimary`'s generic-argument
+path are byte-for-byte untouched, confirmed by `git diff` and by
+`ParserMapLiteralTests.cs` passing unmodified. D-316 (error-catalog
+agreement) and the 121-code count both confirmed green
+(`ErrorCodeCountTests.Corpus_HasTheExpectedLiveCountOf121`, unchanged). No
+test weakened or deleted — `ValidationScriptCorpusTests.cs`'s affected-script
+assertions became strictly stronger (zero diagnostics for 04/05/09) or
+unchanged (07's two Gap-B diagnostics, 11's one).
+
+**Gap B remains open, reported and not fixed here, per the standing
+discipline** — named-struct and anonymous-struct literal fields requiring
+comma separation even across lines, unlike the `type`-body convention.
+Untouched, not investigated beyond what D-415 already recorded. `sprint-9-d.md`'s
+grammar-first gate is now answered for the generic-call-type-argument
+grammar it depends on; its own stated premise that "the `sort<U>`/`map<K,
+V>` machinery already parses `<…>` in the relevant positions" was false for
+the call-site position and should not be carried into a rebuilt prompt, per
+D-411's rebuilt-not-corrected convention.
+
+Cites D-415 (the entry whose Gap A finding this closes and whose script-11
+attribution this corrects), D-080 (constrained, consume-only generics — the
+load-bearing safety argument for the lookahead trigger), D-376 (the
+map-literal work `LooksLikeTypeArgumentList` and the reused
+`ParseTypeArgumentList` both derive from), D-331 (the `extending-the-grammar`
+procedure this entry runs, since the production did not exist rather than
+being mis-wired), D-311 (the `GrobType.Error`/`UnresolvedDecl.Instance`
+sentinels the recovery test asserts by reference), D-308 (`ErrorCatalog` —
+no new descriptor added), D-409 (the corpus this entry's parse-through result
+extends).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -13213,7 +13409,26 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — D-415 added: the braceless `param` declaration grammar (D-410)_
+_August 2026 — D-416 added: generic type arguments now parse at call sites_
+_(`x.mapAs<Employee>()`, `mapAs<Employee>(x)`), closing D-415's Gap A._
+_Investigation found Gap A's true determinant is argument-list arity, not_
+_receiver shape — non-empty-argument generic calls silently misparsed with_
+_no diagnostic at all, a worse failure than the empty-argument case D-415_
+_isolated — and corrected D-415's "affects script 11" attribution, which did_
+_not hold. `Parser.LooksLikeTypeArgumentList()`, a non-consuming lookahead_
+_structurally identical to D-376's `LooksLikeMapLiteral`, commits to a_
+_type-argument list only when the `<...>` run closes and is immediately_
+_followed by `(` — safe because D-080 means every legal generic call is_
+_immediately invoked, a tighter trigger than a general C-family parser can_
+_use. Deliberately misreads `a < b > (c)` as a generic call rather than a_
+_comparison chain, pinned by test rather than left to be found. `CallExpr`_
+_gains a fourth positional `TypeArguments` field, defaulted via a 3-argument_
+_constructor overload since `CS1736` forbids `= []` on a positional record_
+_parameter. No new synchronisation anchor needed. 18 new tests,_
+_mutation-verified; full solution `dotnet test` 3,931 passed, 0 failed;_
+_`Grob.Compiler` coverage 97.12%; D-316 green; error count stays 121. No_
+_opcode or `GrobValueKind` change. Gap B remains open, reported not fixed._
+_Previous: August 2026 — D-415 added: the braceless `param` declaration grammar (D-410)_
 _implemented. `ParamBlockDecl` replaced by one `ParamDecl` per declaration;_
 _`ParseTopLevelItem` gains a `TokenKind.At` arm sharing `ParseParamDecl` with_
 _the existing `TokenKind.Param` arm; `@` added to §29's synchronisation anchor_
