@@ -148,6 +148,37 @@ public sealed class ParserParamDeclTests {
         Assert.Equal("f", fn.Name);
     }
 
+    /// <summary>
+    /// §19's production is <c>{ decorator newline } "param" …</c> — the newline
+    /// after each decorator is part of the grammar, not layout, and the prose
+    /// rule ("decorators sit on their own line immediately above the `param`
+    /// they modify") says the same. The inline form is therefore rejected.
+    /// </summary>
+    [Fact]
+    public void DecoratorOnSameLineAsParam_IsE4201() {
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("@secure param token: string\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E4201", d.Code);
+        Assert.Equal("expected a newline after the decorator — a decorator sits on its own line above 'param'",
+            d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(9, d.Range.Start.Column);
+        Assert.NotNull(unit);
+    }
+
+    /// <summary>
+    /// The companion to the above: the newline requirement belongs to the
+    /// top-level production alone. A function parameter list (§12) shares the
+    /// same decorator syntax and keeps it inline, so the rejection must not
+    /// leak through the scanner both productions call.
+    /// </summary>
+    [Fact]
+    public void DecoratorInlineInFunctionParameterList_StillParses() {
+        CompilationUnit unit = ParseOk("fn f(@secure a: int): int { return 1 }\n");
+        FnDecl fn = Single<FnDecl>(unit);
+        Assert.Equal("a", Assert.Single(fn.Parameters).Name);
+    }
+
     // -----------------------------------------------------------------------
     // Layer invariant (tdd-cycle step 4): malformed but parseable param input
     // never crashes the parser — always a node or a diagnostic.

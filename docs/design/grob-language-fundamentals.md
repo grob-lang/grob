@@ -2475,8 +2475,10 @@ later requires touching every parse method.
 
 When the parser fails to parse a construct, it skips tokens until it sees
 a **recovery anchor**, then resumes at that anchor. The anchor set is
-fixed by the spec. The parser does not adapt the set based on context —
-the same anchors apply everywhere.
+fixed by the spec, with exactly one context gate: the `@` anchor below
+applies only while recovery is unwinding a `param`-led or decorator-led
+top-level item (D-415). Every other anchor applies everywhere, and the
+parser adapts the set to context in no other way.
 
 **Anchors.** A token is an anchor if any of the following holds:
 
@@ -2503,9 +2505,11 @@ the same anchors apply everywhere.
   header that fails before one of its decorated parameters would otherwise
   strand recovery mid-header; the top-level loop then reads that `@` as a
   decorated `param` and reports a second, spurious `E4201` for a single
-  malformed `fn`. Since a decorator stack only ever attaches to a `param`
-  declaration, restricting the anchor to `param`-led recovery keeps the
-  anti-swallow guarantee and drops the cascade. Statement- and
+  malformed `fn`. Since a _top-level_ decorator stack only ever attaches
+  to a `param` declaration — the qualifier is load-bearing, a function
+  parameter list having decorators of its own — restricting the anchor to
+  `param`-led recovery keeps the anti-swallow guarantee and drops the
+  cascade. Statement- and
   expression-level recovery never treat `@` as an anchor.
 
 The parser skips tokens that are neither anchors nor part of any nested

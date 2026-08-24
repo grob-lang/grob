@@ -142,9 +142,10 @@ public sealed class Parser {
     //     'fn' header. Treating that one as an anchor stops recovery mid-header
     //     and hands the top-level loop a '@' it dispatches to ParseParamDecl,
     //     cascading a bogus second E4201 out of a single malformed 'fn'. A
-    //     decorator stack only ever attaches to a 'param' declaration, so
-    //     restricting the anchor to 'param'-led recovery keeps D-415's fix and
-    //     drops the cascade.
+    //     TOP-LEVEL decorator stack only ever attaches to a 'param'
+    //     declaration — the qualifier is load-bearing, function parameter
+    //     lists having decorators of their own — so restricting the anchor to
+    //     'param'-led recovery keeps D-415's fix and drops the cascade.
     //   * EOF (unconditional terminator).
     // The cursor stops AT the anchor; the anchor is not consumed.
     // -----------------------------------------------------------------------
@@ -431,12 +432,13 @@ public sealed class Parser {
     /// <see cref="ParseTypeRef"/> or <see cref="ParseExpression"/>, which stay
     /// generic E2001) is reported as <see cref="ErrorCatalog.E4201"/> — the
     /// mandatory-type-annotation check, the decorator-must-be-followed-by-'param'
-    /// check, and the <c>:=</c>-instead-of-<c>=</c> default check all give E4201
-    /// its throw sites (D-407 pattern).
+    /// check, the decorator-must-end-in-a-newline check and the
+    /// <c>:=</c>-instead-of-<c>=</c> default check all give E4201 its throw
+    /// sites (D-407 pattern).
     /// </para>
     /// </summary>
     private ParamDecl ParseParamDecl() {
-        SkipParameterDecorators();
+        SkipParameterDecorators(requireNewline: true);
         SourceLocation start = Current.Location;
         Expect(TokenKind.Param, ErrorCatalog.E4201, "expected 'param' after decorator");
         Token name = Expect(TokenKind.Identifier, ErrorCatalog.E4201, "expected parameter name after 'param'");
@@ -458,7 +460,7 @@ public sealed class Parser {
         // consume them as opaque sequences in v1 — the type checker handles
         // their semantic content later.
         SourceLocation start = Current.Location;
-        SkipParameterDecorators();
+        SkipParameterDecorators(requireNewline: false);
         Token name = Expect(TokenKind.Identifier, _e2001, "expected parameter name");
         Expect(TokenKind.Colon, _e2001, "expected ':' after parameter name");
         TypeRef type = ParseTypeRef();
@@ -469,11 +471,28 @@ public sealed class Parser {
         return new Parameter(RangeFrom(start), name.Lexeme, type, defaultValue);
     }
 
-    private void SkipParameterDecorators() {
+    /// <summary>
+    /// Scans and discards a decorator stack. Shared by the two productions that
+    /// admit one, which differ on a single point: §19's top-level production is
+    /// <c>{ decorator newline } "param" …</c>, so the newline after each
+    /// decorator is grammar there ("decorators sit on their own line
+    /// immediately above the `param` they modify"), while a function parameter
+    /// list (§12) keeps the inline form. Hence the flag rather than two
+    /// scanners — the decorator syntax itself is identical.
+    /// </summary>
+    /// <param name="requireNewline">
+    /// Whether each decorator must be followed by a newline (top level), or may
+    /// be followed directly by the thing it decorates (function parameters).
+    /// </param>
+    private void SkipParameterDecorators(bool requireNewline) {
         while (Match(TokenKind.At)) {
             Expect(TokenKind.Identifier, _e2001, "expected decorator name after '@'");
             if (Match(TokenKind.LeftParen)) {
                 SkipBalancedDecoratorArgs();
+            }
+            if (requireNewline) {
+                Expect(TokenKind.Newline, ErrorCatalog.E4201,
+                    "expected a newline after the decorator — a decorator sits on its own line above 'param'");
             }
             SkipNewlines();
         }

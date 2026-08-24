@@ -84,11 +84,14 @@ public sealed class TypeCheckerParamDeclTests {
         Assert.False(bag.HasErrors,
             $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
 
+        ConstDecl fallback = Assert.IsType<ConstDecl>(unit.TopLevel[0]);
         ParamDecl p = Assert.IsType<ParamDecl>(unit.TopLevel[^1]);
         IdentifierExpr id = Assert.IsType<IdentifierExpr>(p.DefaultValue);
-        Assert.NotNull(id.ResolvedType);
-        Assert.NotEqual(GrobType.Error, id.ResolvedType);
-        Assert.NotSame(UnresolvedDecl.Instance, id.Declaration);
+        // Asserted by equality, not by "not the sentinel": the mirror of the
+        // error-path test above, so the pair pins both outcomes exactly.
+        // GrobType is an enum, so there is no null to assert against.
+        Assert.Equal(GrobType.Int, id.ResolvedType);
+        Assert.Same(fallback, id.Declaration);
     }
 
     /// <summary>
