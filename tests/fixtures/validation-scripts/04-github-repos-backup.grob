@@ -1,0 +1,30 @@
+import Grob.Http   // http.* and auth.* both available
+
+@secure
+param token: string
+
+param org:        string
+param backup_dir: string = `C:\github-backup`
+
+type Repo {
+    name:    string
+    ssh_url: string
+}
+
+fs.ensureDir(backup_dir)
+
+token_header := auth.bearer(token)
+url          := "https://api.github.com/orgs/${org}/repos?per_page=100"
+repos        := http.get(url, token_header).asJson().mapAs<Repo>()
+
+for repo in repos {
+    dest := path.join(backup_dir, repo.name)
+
+    if (fs.exists(dest)) {
+        print("Updating ${repo.name}...")
+        process.runOrFail("git", ["-C", dest, "pull"])
+    } else {
+        print("Cloning ${repo.name}...")
+        process.runOrFail("git", ["clone", repo.ssh_url, dest])
+    }
+}

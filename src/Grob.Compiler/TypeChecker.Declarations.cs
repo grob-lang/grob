@@ -596,7 +596,26 @@ public sealed partial class TypeChecker {
     }
 
     /// <inheritdoc/>
-    public override GrobType VisitParamBlockDecl(ParamBlockDecl node) => GrobType.Unknown;
+    /// <remarks>
+    /// Registers no symbol — parameter <i>binding</i> is Sprint 10 (D-412), so the
+    /// declaration contributes no type of its own and returns
+    /// <see cref="GrobType.Unknown"/>. The default expression is visited all the
+    /// same: it is an ordinary expression in the tree, and §3.1.1 admits no
+    /// exemption for it — every identifier node must carry a non-null
+    /// <c>ResolvedType</c> and <c>Declaration</c> after type-check (D-311's
+    /// sentinels on the error path). <see cref="AstWalker.VisitParamDecl"/> already
+    /// walks into the default; leaving the checker out of step with it let an
+    /// undefined name in a default go unreported with both fields unset.
+    /// Its type is not yet checked <i>against</i> the annotation — that is binding,
+    /// and belongs with D-412.
+    /// </remarks>
+    public override GrobType VisitParamDecl(ParamDecl node) {
+        if (node.DefaultValue is not null) {
+            Visit(node.DefaultValue);
+        }
+
+        return GrobType.Unknown;
+    }
 
     /// <inheritdoc/>
     public override GrobType VisitImportDecl(ImportDecl node) => GrobType.Unknown;

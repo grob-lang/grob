@@ -395,7 +395,8 @@ one level. Closing `}` on its own line at the column of the opening
 statement's first token.
 
 **Alignment** is the defining stylistic rule for Grob's declarative
-constructs. In multi-line form, `:` is aligned across:
+constructs. `:` is aligned across the following, in multi-line form where
+the construct has one:
 
 1. **`type` field declarations.** `:` aligned one space after the longest
    field name.
@@ -408,9 +409,15 @@ constructs. In multi-line form, `:` is aligned across:
    literals** (`#{ ... }`). `:` aligned one space after the longest field
    name.
 
-Alignment is computed independently within each brace pair. Two adjacent
-type declarations do not align to a shared column; each type aligns
-within itself.
+**Alignment scope.** For the braced constructs above — `type`
+declarations, named type construction and anonymous struct literals —
+alignment is computed independently within each brace pair. Two adjacent
+type declarations do not align to a shared column; each type aligns within
+itself. **`param` declarations have no brace pair** (D-410 retired the
+`param { ... }` form), so their alignment scope is the formatting group
+defined in §3.10 — a run of declarations delimited by blank lines. The
+principle is the same in both cases: alignment never reaches across an
+independent scope.
 
 **No alignment** is applied in:
 
@@ -725,8 +732,10 @@ declarations, not function signature parameters, not `type` fields, not
 Formatting changes whitespace; it never changes what the program means or
 the order in which a reader meets its parts (D-413).
 
-This is stated once, as a whole-formatter prohibition, rather than as a
-clause inside each construct's rules. The stakes differ by construct —
+This restates §4's rule 9 as a rule rather than a summary line, and
+replaces §3.10's narrower "does not reorder params across groups", which
+read as a grouping detail rather than a safety property. The stakes differ
+by construct —
 reordering a function's parameter list silently breaks every positional call
 site, whereas reordering script `param` declarations (which are passed by
 name, never positionally) would "only" churn diffs, `--help` ordering and
@@ -764,7 +773,8 @@ because users will ask.
    `` `...` ``, and `` ```...``` `` remain as written, including for
    Windows paths.
 9. **Does not reorder parameters or fields.** Extension of rule 1 for
-   declarations.
+   declarations. Stated in full, with the differing stakes per construct,
+   in §3.14.
 10. **Does not wrap long expressions.** Only bracketed constructs wrap.
     Long binary expressions, long strings, long identifiers stay long.
 11. **Does not collapse or expand method chains based on anything other
@@ -985,9 +995,12 @@ What the formatter did:
 - **Idempotence is tested, not assumed.** The test suite includes a
   fixture for every rule in §3. Each fixture is formatted twice and
   verified to produce identical output.
-- **Alignment columns computed per brace pair.** The formatter does not
-  perform cross-declaration or cross-block alignment. Each brace pair is
-  an independent alignment scope.
+- **Alignment scopes are independent, and are not always brace pairs.**
+  The formatter does not perform cross-declaration or cross-block
+  alignment. For braced constructs the scope is the brace pair; for
+  `param` declarations, which have no braces since D-410, it is the §3.10
+  formatting group. An implementer scoping param alignment to a brace will
+  find none.
 
 -----
 
@@ -1033,6 +1046,18 @@ a new row.
 *E2202 ordering rule. §6's worked example was already correct as output;*
 *its commentary bullet, which still described the retired binary, is*
 *re-authored in the new terms.*
+
+*Updated August 2026 — D-414 terminology and scope corrections; no rule*
+*changes. §3.8's alignment-scope paragraph and §7's implementation note both*
+*scoped alignment to "each brace pair", which was correct while `param { }`*
+*existed and became wrong when D-410 retired it — `param` declarations have no*
+*brace, so as written they had no alignment scope at all, six lines below the*
+*list item that describes their alignment. Both now name the §3.10 formatting*
+*group as the param scope and keep the brace pair for braced constructs.*
+*§3.8's "In multi-line form" framing reworded for the same reason. §3.14's*
+*claim that the reordering prohibition is "stated once" was false in the*
+*document making it — §4's rule 9 already stated it — so §3.14 is reframed as*
+*the full statement and rule 9 now points at it.*
 
 *Formatter specification — Session D Part 2, April 2026.*
 *Authored as language design partner and spec author.*

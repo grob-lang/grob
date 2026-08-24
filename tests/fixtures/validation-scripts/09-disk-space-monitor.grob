@@ -1,0 +1,42 @@
+param warn_percent: int = 80
+param crit_percent: int = 90
+
+type DriveStatus {
+    name:     string
+    used_pct: float
+    status:   string
+}
+
+// [GAP] No disk/drive introspection in current stdlib design
+// This script requires a system info module or process-based approach
+
+drives := process.run("powershell", [
+    "-Command",
+    "Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 } | ConvertTo-Json"
+]).stdout
+
+// [ASSUMPTION] parsing PowerShell JSON output
+type PsDrive {
+    name: string
+    used: int
+    free: int
+}
+
+ps_drives := json.parse(drives).mapAs<PsDrive[]>()   // [ASSUMPTION] array from JSON
+
+for d in ps_drives {
+    total    := d.used + d.free
+    used_pct := ((d.used.toFloat() / total.toFloat()) * 100.0).roundTo(1)
+    status   := used_pct switch {
+        >= crit_percent => "CRITICAL",
+        >= warn_percent => "WARNING",
+        _               => "OK"
+    }
+
+    msg := "${d.name}: ${used_pct}% used (${status})"
+    if (status == "CRITICAL" || status == "WARNING") {
+        log.warning(msg)
+    } else {
+        log.info(msg)
+    }
+}

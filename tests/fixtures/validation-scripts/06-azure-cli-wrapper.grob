@@ -1,0 +1,35 @@
+param resource_group: string
+param location:       string
+param template_path:  string = `.\main.bicep`
+param environment:    string = "staging"
+
+log.info("Deploying to ${resource_group} in ${location}...")
+
+// Verify az CLI is available
+try {
+    process.runOrFail("az", ["version"])
+} catch e {
+    log.error("Azure CLI not found. Install from https://aka.ms/installazurecliwindows")
+    exit(1)
+}
+
+// Build Bicep template
+process.runOrFail("az", ["bicep", "build", "--file", template_path])
+
+// Deploy and capture output
+result := process.run("az", [
+    "deployment", "group", "create",
+    "--resource-group", resource_group,
+    "--template-file",  template_path,
+    "--parameters",     "environment=${environment}",
+    "--query",          "properties.outputs",
+    "--output",         "json"
+])
+
+if (result.exitCode != 0) {
+    log.error("Deployment failed: ${result.stderr}")
+    exit(1)
+} else {
+    log.info("Deployment complete")
+    print(result.stdout)
+}

@@ -1,0 +1,38 @@
+import Grob.Http   // http.* and auth.* both available
+
+@secure
+param token: string
+
+param repo:      string
+param days_old:  int = 30
+
+type Issue {
+    number:     int
+    title:      string
+    created_at: string
+    state:      string
+    user:       IssueUser
+}
+
+type IssueUser {
+    login: string
+}
+
+cutoff := date.today().addDays(-days_old)
+
+issues := http.get(
+    "https://api.github.com/repos/${repo}/issues?state=open&per_page=100",
+    auth.bearer(token)
+).asJson().mapAs<Issue>()
+
+print(
+    issues
+        .filter(i => date.parse(i.created_at) < cutoff)
+        .select(i => #{
+            number: i.number
+            title:  i.title
+            age:    date.parse(i.created_at).daysUntil(date.today())
+            author: i.user.login
+        })
+        .formatAs.table()
+)
