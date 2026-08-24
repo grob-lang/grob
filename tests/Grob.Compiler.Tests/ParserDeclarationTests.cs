@@ -1,4 +1,5 @@
 using Grob.Compiler.Ast;
+using Grob.Core;
 
 using Xunit;
 
@@ -73,15 +74,30 @@ public class ParserDeclarationTests {
         Assert.Equal("string", r.AnnotatedType!.Name);
     }
 
+    /// <summary>
+    /// D-410: the braceless per-line form is canonical. A decorator stack is
+    /// parsed and skipped (not yet captured into the AST — Sprint 10) and does
+    /// not disturb the resulting <see cref="ParamDecl"/>.
+    /// </summary>
     [Fact]
-    public void ParamBlock_WithDecorators() {
-        CompilationUnit unit = ParseOk(
-            "param {\n@allowed(\"a\", \"b\")\nmode: string\nlen: int = 0\n}\n");
-        ParamBlockDecl p = Single<ParamBlockDecl>(unit);
-        Assert.Equal(2, p.Parameters.Count);
-        Assert.Equal("mode", p.Parameters[0].Name);
-        Assert.Equal("string", p.Parameters[0].Type!.Name);
-        Assert.NotNull(p.Parameters[1].DefaultValue);
+    public void Param_Decorated_ParsesToSingleDeclaration() {
+        CompilationUnit unit = ParseOk("@allowed(\"a\", \"b\")\nparam mode: string\n");
+        ParamDecl p = Single<ParamDecl>(unit);
+        Assert.Equal("mode", p.Name);
+        Assert.Equal("string", p.Type.Name);
+        Assert.Null(p.DefaultValue);
+    }
+
+    /// <summary>D-410: <c>param { ... }</c> is retired and no longer parses.</summary>
+    [Fact]
+    public void ParamBlock_NoLongerParses() {
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("param {\nmode: string\n}\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E4201", d.Code);
+        Assert.Equal("expected parameter name after 'param'", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(7, d.Range.Start.Column); // the '{' that is no longer a param form
+        Assert.NotNull(unit);
     }
 
     [Fact]

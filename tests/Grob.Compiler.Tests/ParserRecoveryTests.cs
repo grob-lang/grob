@@ -54,11 +54,19 @@ public class ParserRecoveryTests {
 
     [Fact]
     public void MissingClosingBrace_RecoversAtNextTopLevelKeyword() {
+        // Uses ':::' rather than '@@@' as the "broken statement" filler: since
+        // D-415 made '@' a synchronisation anchor (it opens a decorator stack),
+        // a run of '@' tokens no longer behaves as generic unparseable garbage —
+        // each '@' now independently halts recovery and is its own diagnosable
+        // attempt. ':' has no top-level, statement or primary-expression role
+        // and — unlike ',' or '.' — is not a §14 line-continuation token, so it
+        // preserves this test's original intent (generic garbage recovers with
+        // the missing-brace diagnostic alone, not amplified).
         const string src =
             "fn broken(): Int {\n" +
             "    return 1\n" +
             "// no closing brace — and broken statement below\n" +
-            "    @@@\n" +
+            "    :::\n" +
             "fn good(): Int { return 2 }\n";
 
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
@@ -98,8 +106,10 @@ public class ParserRecoveryTests {
 
     [Fact]
     public void GarbageAtTopLevel_RecoversAndContinues() {
+        // ':::' rather than '@@@' — see MissingClosingBrace_RecoversAtNextTopLevelKeyword
+        // for why '@' no longer serves as inert garbage since D-415.
         const string src =
-            "@@@ !!!\n" +
+            "::: !!!\n" +
             "x := 1\n";
 
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
@@ -175,13 +185,18 @@ public class ParserRecoveryTests {
     /// </summary>
     [Fact]
     public void Section29_2_ErrorDecl_RangeExcludesAnchor() {
-        // '@@' is not a valid top-level item. Recovery anchors at the newline.
-        // The ErrorDecl range should cover '@@' and stop before the newline.
-        const string src = "@@\nx := 1\n";
+        // ':::' rather than '@@' — since D-415, '@' is itself a synchronisation
+        // anchor (it opens a decorator stack), so a second '@' would stop
+        // recovery immediately rather than being swallowed with the first,
+        // defeating this test's premise. ':' is not a valid top-level item, has
+        // no anchor role, and — unlike ',' or '.' — is not a line-continuation
+        // token (§14), so the newline immediately after it is a genuine
+        // statement boundary exactly as '@' was before D-415.
+        const string src = ":::\nx := 1\n";
 
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
 
-        // Full diagnostic contract: code and position at the first '@'.
+        // Full diagnostic contract: code and position at the first ':'.
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", d.Code);
         Assert.Equal(1, d.Range.Start.Line);
@@ -189,11 +204,16 @@ public class ParserRecoveryTests {
 
         AstNode first = unit.TopLevel[0];
         ErrorDecl err = Assert.IsType<ErrorDecl>(first);
-        // The error range starts at '@' and must not extend to the newline anchor.
+        // The error range starts at ':' and must not extend to the newline anchor.
         Assert.Equal(1, err.Range.Start.Line);
         // At least one token was consumed before anchoring — the range end must
         // remain on line 1, not spill into line 2.
         Assert.Equal(1, err.Range.End.Line);
+
+        // The follow-on declaration recovers cleanly and independently.
+        Assert.Equal(2, unit.TopLevel.Count);
+        VarDeclStmt tail = Assert.IsType<VarDeclStmt>(unit.TopLevel[1]);
+        Assert.Equal("x", tail.Name);
     }
 
     /// <summary>

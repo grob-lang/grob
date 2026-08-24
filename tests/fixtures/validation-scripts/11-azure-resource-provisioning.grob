@@ -1,0 +1,72 @@
+import Grob.Http
+import Grob.Crypto
+
+@secure
+param subscriptionId: string
+
+@secure
+param tenantId:       string
+
+param resourceGroup:  string
+param environment:    string = "dev"
+param templatePath:   string = "main.bicep"
+param expectedHash:   string
+
+// Verify template integrity before deploying
+actual := crypto.sha256File(templatePath)
+if (!crypto.verifySha256(templatePath, expectedHash)) {
+    log.error("Template integrity check failed.")
+    log.error("Expected: ${expectedHash}")
+    log.error("Got:      ${actual}")
+    exit(1)
+}
+log.info("Template verified ✓")
+
+// Generate deterministic resource IDs — same inputs always produce same GUIDs
+storageId  := guid.newV5(guid.namespaces.url, subscriptionId, resourceGroup, "storage",  environment)
+functionId := guid.newV5(guid.namespaces.url, subscriptionId, resourceGroup, "function", environment)
+cosmosId   := guid.newV5(guid.namespaces.url, subscriptionId, resourceGroup, "cosmos",   environment)
+
+log.info("Resource IDs (deterministic):")
+log.info("  storage:  ${storageId}")
+log.info("  function: ${functionId}")
+log.info("  cosmos:   ${cosmosId}")
+
+// Build deployment tags as a map
+tags := map<string, string>{
+    "environment": environment,
+    "deployedBy":  "grob",
+    "storageId":   storageId.toString(),
+    "functionId":  functionId.toString(),
+}
+
+log.info("Deployment tags:")
+for k, v in tags {
+    log.info("  ${k}: ${v}")
+}
+
+// Deploy via Azure REST API
+token  := env.require("AZURE_TOKEN")
+url    := "https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.Resources/deployments/grob-deploy?api-version=2021-04-01"
+
+body := #{
+    properties: #{
+        mode: "Incremental"
+        templateLink: #{ uri: templatePath }
+        parameters: #{
+            environment: #{ value: environment }
+            storageId:   #{ value: storageId.toString() }
+        }
+    }
+    tags: tags
+}
+
+response := http.put(url, json.encode(body), auth.bearer(token))
+
+if (response.isSuccess) {
+    log.info("Deployment accepted. Status: ${response.statusCode}")
+} else {
+    log.error("Deployment failed. Status: ${response.statusCode}")
+    log.error(response.asText())
+    exit(1)
+}

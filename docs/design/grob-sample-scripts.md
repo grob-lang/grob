@@ -77,7 +77,7 @@ for file in fs.list(dir) {
 
 **What this demonstrates:**
 
-- `param` block for reusable, parameterised scripts
+- `param` declarations for reusable, parameterised scripts
 - `fs.list()` returning typed file objects with `.name`, `.rename()`
 - Fluent string methods — `.contains()`, `.replace()`
 - `for...in` loop over a collection

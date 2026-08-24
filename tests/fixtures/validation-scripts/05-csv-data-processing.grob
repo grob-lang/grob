@@ -1,0 +1,19 @@
+param input_file:  string = `.\staff.csv`
+param department:  string = "Engineering"
+param max_salary:  int    = 60000
+
+type Employee {
+    name:       string
+    job_title:  string
+    department: string
+    salary:     int
+    start_date: string
+}
+
+print(
+    csv.read(input_file).mapAs<Employee>()
+        .filter(e => e.department == department && e.salary < max_salary)
+        .select(e => #{ name: e.name, job_title: e.job_title, salary: e.salary, start_date: e.start_date })
+        .sort(e => e.salary, descending: true)
+        .formatAs.table()
+)

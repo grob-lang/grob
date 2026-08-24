@@ -799,10 +799,10 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
-    /// <summary>`param` block syntax error</summary>
+    /// <summary>`param` declaration syntax error</summary>
     public static readonly ErrorDescriptor E4201 = new(
         Code: "E4201",
-        Title: "`param` block syntax error",
+        Title: "`param` declaration syntax error",
         Category: ErrorCategory.ParamDecorator,
         Status: ErrorStatus.PreRelease,
         Severity: DiagnosticSeverity.Error,

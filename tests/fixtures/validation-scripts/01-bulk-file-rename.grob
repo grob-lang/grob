@@ -1,0 +1,11 @@
+param dir:  string = `C:\Reports`
+param from: string
+param to:   string
+
+for file in fs.list(dir) {
+    if (file.name.contains(from)) {
+        new_name := file.name.replace(from, to)
+        file.rename(new_name)
+        print("Renamed: ${file.name} → ${new_name}")
+    }
+}
