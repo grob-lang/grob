@@ -76,6 +76,8 @@ public sealed class ParserParamDeclRecoveryTests {
         CompilationUnit unit = Parser.Parse(tokens, bag);
         Diagnostic parseDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Equal("E4201", parseDiagnostic.Code);
+        Assert.Equal(1, parseDiagnostic.Range.Start.Line);
+        Assert.Equal(10, parseDiagnostic.Range.Start.Column);
 
         new TypeChecker(bag).Check(unit);
 
@@ -193,8 +195,52 @@ public sealed class ParserParamDeclRecoveryTests {
         (CompilationUnit unit, DiagnosticBag bag) = Parse("param bad\n");
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E4201", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(10, d.Range.Start.Column);
         Assert.NotNull(unit);
         Assert.Single(unit.TopLevel);
         Assert.IsType<ErrorDecl>(unit.TopLevel[0]);
+    }
+
+    // -----------------------------------------------------------------------
+    // D-415's '@' anchor is a *top-level `param`* anchor, not a universal one.
+    // `SkipParameterDecorators` also serves function parameter lists, so a '@'
+    // can legally sit inside a `fn` header. Recovery from a failure earlier in
+    // that header must not stop there: stopping hands the top-level loop a '@'
+    // it dispatches to `ParseParamDecl`, cascading a second, wholly bogus E4201
+    // out of one malformed `fn`. Bracket depth cannot separate the two cases —
+    // D-415's own swallow case sits at depth 1 too, on an unclosed bracket left
+    // by a failed default. What separates them is which top-level item failed:
+    // a decorator stack only ever attaches to a `param`, so '@' is an anchor
+    // only while recovering from a `param`/decorator-led item.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void MalformedFnParameterList_NestedDecorator_DoesNotCascadeAParamDiagnostic() {
+        (CompilationUnit unit, DiagnosticBag bag) =
+            Parse("fn f(a: , @secure b: int): int { return 1 }\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+        Assert.Equal("expected type name", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(9, d.Range.Start.Column);
+        Assert.NotNull(unit);
+    }
+
+    /// <summary>
+    /// The companion to the above: after recovering from the malformed <c>fn</c>
+    /// header, a genuine top-level decorator stack below it still parses. The
+    /// narrowed anchor skips the nested '@' without also losing the real one.
+    /// </summary>
+    [Fact]
+    public void MalformedFnParameterList_NestedDecorator_LaterTopLevelDecoratorStackStillParses() {
+        (CompilationUnit unit, DiagnosticBag bag) =
+            Parse("fn f(a: , @secure b: int): int { return 1 }\n@secure\nparam z: int\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2001", d.Code);
+
+        ParamDecl z = Assert.IsType<ParamDecl>(unit.TopLevel[^1]);
+        Assert.Equal("z", z.Name);
+        Assert.Equal("int", z.Type.Name);
     }
 }

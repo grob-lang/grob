@@ -72,7 +72,7 @@ public sealed class ParserParamDeclTests {
     /// line, followed by a run of undecorated declarations with no blank
     /// lines between them. All three are one parameter group by contiguity
     /// (§19) even though they span two formatting groups — no dedicated
-    /// grouping code exists; each is simply its own top-level item.
+    /// grouping code exists; each is just its own top-level item.
     /// </summary>
     [Fact]
     public void MixedGroup_DecoratedAndUndecorated_AllParseIndependently() {
@@ -97,12 +97,15 @@ public sealed class ParserParamDeclTests {
     // -----------------------------------------------------------------------
 
     [Theory]
-    [InlineData("param {\ntoken: string\n}\n")]
-    [InlineData("param{}\n")]
-    public void BlockForm_NoLongerParses_ProducesE4201(string src) {
+    [InlineData("param {\ntoken: string\n}\n", 1, 7)]
+    [InlineData("param{}\n", 1, 6)]
+    public void BlockForm_NoLongerParses_ProducesE4201(string src, int line, int column) {
         (CompilationUnit unit, DiagnosticBag bag) = Parse(src);
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E4201", d.Code);
+        Assert.Equal("expected parameter name after 'param'", d.Message);
+        Assert.Equal(line, d.Range.Start.Line);
+        Assert.Equal(column, d.Range.Start.Column);
         Assert.NotNull(unit);
     }
 

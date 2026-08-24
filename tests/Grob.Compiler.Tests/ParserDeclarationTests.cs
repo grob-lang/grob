@@ -95,6 +95,8 @@ public class ParserDeclarationTests {
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E4201", d.Code);
         Assert.Equal("expected parameter name after 'param'", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(7, d.Range.Start.Column); // the '{' that is no longer a param form
         Assert.NotNull(unit);
     }
 

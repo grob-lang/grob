@@ -2488,15 +2488,25 @@ the same anchors apply everywhere.
 - It is the **start keyword of a top-level declaration**: `fn`, `type`,
   `param`, `import`, `const`, `readonly`.
 - It is `@`, **the token that opens a top-level declaration's decorator
-  stack** (D-415). Unlike the newline anchor this is not gated on bracket
-  depth — `@` has no legal position anywhere in the grammar except
-  immediately above a `param` declaration (or, via the same shared parameter
-  grammar, a function parameter's default), so landing recovery there is
-  never the wrong place to stop. Without this anchor, an adversarial `param`
-  default that leaves a bracket permanently open disables the newline anchor
-  for the rest of the file, and recovery would otherwise skip straight over
-  an intact decorator stack sitting above the next declaration, silently
-  discarding it before it is ever parsed.
+  stack** (D-415), **and the item recovery is unwinding from is itself
+  `param`-led or decorator-led**. Without this anchor, an adversarial
+  `param` default that leaves a bracket permanently open disables the
+  newline anchor for the rest of the file, and recovery would otherwise skip
+  straight over an intact decorator stack sitting above the next
+  declaration, silently discarding it before it is ever parsed.
+
+  The context condition is load-bearing, and bracket depth cannot replace
+  it: the swallow case above sits at a non-zero depth itself, on the very
+  bracket the failed default left open. What separates the two cases is
+  which construct failed. `@` also has a legal position inside a **function
+  parameter list**, which shares the same decorator grammar, so a `fn`
+  header that fails before one of its decorated parameters would otherwise
+  strand recovery mid-header; the top-level loop then reads that `@` as a
+  decorated `param` and reports a second, spurious `E4201` for a single
+  malformed `fn`. Since a decorator stack only ever attaches to a `param`
+  declaration, restricting the anchor to `param`-led recovery keeps the
+  anti-swallow guarantee and drops the cascade. Statement- and
+  expression-level recovery never treat `@` as an anchor.
 
 The parser skips tokens that are neither anchors nor part of any nested
 bracket structure. Brackets are tracked: a `(` inside the skipped region
@@ -2651,11 +2661,14 @@ _decorator stack. Confirmed empirically that without it, an adversarial_
 _`param` default that leaves a bracket permanently open disables the newline_
 _anchor for the rest of the file, and recovery silently swallows an intact_
 _decorator stack sitting above the next declaration before it is ever parsed._
-_Unlike the newline anchor, `@` is not gated on bracket depth — it has no_
-_legal position anywhere in the grammar except immediately above a `param`_
-_declaration (or a function parameter's default, via the same shared_
-_parameter grammar), so landing recovery there is never the wrong place to_
-_stop. The braceless `param` declaration grammar itself (§19, "The `param`_
+_The anchor is gated on context rather than on bracket depth: it applies only_
+_while recovery is unwinding a `param`-led or decorator-led top-level item._
+_Bracket depth cannot serve, because the swallow case sits at a non-zero depth_
+_itself. The gate is required because `@` is also legal inside a function_
+_parameter list, which shares the same decorator grammar; treating that one as_
+_an anchor strands recovery mid-`fn`-header and cascades a spurious second_
+_`E4201` out of a single malformed `fn`._
+_The braceless `param` declaration grammar itself (§19, "The `param`_
 _declaration") is unchanged by this entry — it was already normative from_
 _D-410; this entry amends only the recovery machinery §29 describes._
 _Previous: Document updated August 2026 — §19's canonical structure example gains the_

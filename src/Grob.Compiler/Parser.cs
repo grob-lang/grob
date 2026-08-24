@@ -129,17 +129,34 @@ public sealed class Parser {
     //   * }  closing an enclosing block (not one we opened inside the skip).
     //   * Top-level declaration keywords (fn/type/param/import/const/readonly).
     //   * '@' — the token that opens a top-level declaration's decorator stack
-    //     (D-415). Not bracket-depth-gated, matching '}' — a decorator can only
-    //     ever legally appear immediately above a param declaration, so landing
-    //     recovery there is never the wrong place to stop, unlike a bare newline.
-    //     Without this, a still-open bracket from an earlier failure (an
-    //     unterminated param default) leaves the newline anchor permanently
-    //     disabled, and Synchronise would otherwise skip straight over an intact
-    //     decorator stack to the param keyword below it — silently discarding it
-    //     before the '@' dispatch arm ever sees it.
+    //     (D-415), but ONLY while recovering from a 'param'/decorator-led
+    //     top-level item (see _atIsSyncAnchor). Not bracket-depth-gated,
+    //     matching '}': the case D-415 fixes sits at a non-zero depth itself,
+    //     on a bracket an unterminated param default left permanently open,
+    //     which disables the newline anchor — without the '@' anchor
+    //     Synchronise would skip straight over an intact decorator stack to the
+    //     param keyword below it, silently discarding it before the '@'
+    //     dispatch arm ever sees it.
+    //     The context gate is required because SkipParameterDecorators also
+    //     serves function parameter lists, so a '@' can legally sit inside a
+    //     'fn' header. Treating that one as an anchor stops recovery mid-header
+    //     and hands the top-level loop a '@' it dispatches to ParseParamDecl,
+    //     cascading a bogus second E4201 out of a single malformed 'fn'. A
+    //     decorator stack only ever attaches to a 'param' declaration, so
+    //     restricting the anchor to 'param'-led recovery keeps D-415's fix and
+    //     drops the cascade.
     //   * EOF (unconditional terminator).
     // The cursor stops AT the anchor; the anchor is not consumed.
     // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Whether <see cref="Synchronise"/> should treat <see cref="TokenKind.At"/>
+    /// as an anchor. Set by <see cref="ParseTopLevelItemOrError"/> for the
+    /// duration of one recovery sweep, from the failed item's own start token;
+    /// false everywhere else, including statement- and expression-level
+    /// recovery, where a '@' is never the start of a top-level declaration.
+    /// </summary>
+    private bool _atIsSyncAnchor;
 
     private void Synchronise() {
         int localOpenBraces = 0;
@@ -158,7 +175,7 @@ public sealed class Parser {
     private bool IsSyncAnchor(TokenKind k) {
         if (k == TokenKind.Newline && Current.BracketDepth == 0) return true;
         if (k == TokenKind.RightBrace) return true;
-        if (k == TokenKind.At) return true;
+        if (k == TokenKind.At) return _atIsSyncAnchor;
         return IsTopLevelKeyword(k);
     }
 
@@ -188,13 +205,19 @@ public sealed class Parser {
     private AstNode ParseTopLevelItemOrError() {
         SourceLocation start = Current.Location;
         int startPos = _pos;
+        // A decorator stack is only ever part of a 'param' declaration, so '@'
+        // earns anchor status only when the item that failed was itself
+        // 'param'-led or decorator-led (D-415, narrowed).
+        bool atIsAnchor = Current.Kind is TokenKind.Param or TokenKind.At;
         try {
             return ParseTopLevelItem();
         } catch (ParseFailedException ex) {
             if (_pos == startPos && !IsAtEnd) {
                 Advance();
             }
+            _atIsSyncAnchor = atIsAnchor;
             Synchronise();
+            _atIsSyncAnchor = false;
             // §29.2: error-node range is exclusive of the anchor token — use the
             // last consumed token's location as End, not Current (the anchor).
             SourceLocation end = _pos > 0 ? _tokens[_pos - 1].Location : start;
