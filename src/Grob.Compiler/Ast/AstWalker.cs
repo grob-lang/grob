@@ -285,8 +285,10 @@ public abstract class AstWalker : AstVisitor<Unit> {
     }
 
     /// <inheritdoc/>
-    public override Unit VisitParamBlockDecl(ParamBlockDecl node) {
-        VisitParameterDefaults(node.Parameters);
+    public override Unit VisitParamDecl(ParamDecl node) {
+        if (node.DefaultValue is not null) {
+            Visit(node.DefaultValue);
+        }
         return default;
     }
 

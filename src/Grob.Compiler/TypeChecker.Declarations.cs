@@ -596,7 +596,12 @@ public sealed partial class TypeChecker {
     }
 
     /// <inheritdoc/>
-    public override GrobType VisitParamBlockDecl(ParamBlockDecl node) => GrobType.Unknown;
+    /// <remarks>
+    /// Registers nothing — parameter binding is Sprint 10 (D-412). Grammar only
+    /// here; the default expression, if any, is deliberately not visited, matching
+    /// this stub's pre-existing behaviour for the retired <c>ParamBlockDecl</c>.
+    /// </remarks>
+    public override GrobType VisitParamDecl(ParamDecl node) => GrobType.Unknown;
 
     /// <inheritdoc/>
     public override GrobType VisitImportDecl(ImportDecl node) => GrobType.Unknown;

@@ -16,6 +16,6 @@ const := 5
 
 fn third(): int { return 3 }
 
-@@@
+:::
 
 fn fourth(): int { return 4 }

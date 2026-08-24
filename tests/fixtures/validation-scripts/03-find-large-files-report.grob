@@ -1,0 +1,24 @@
+param path:         string = `C:\`
+param threshold_mb: int    = 100
+
+type FileEntry {
+    name:    string
+    folder:  string
+    size_mb: float
+}
+
+threshold := threshold_mb * 1024 * 1024
+
+entries := fs.list(path, recursive: true)
+    .filter(f => f.size > threshold)
+    .select(f => FileEntry {
+        name:    f.name
+        folder:  f.directory
+        size_mb: (f.size / 1024.0 / 1024.0).roundTo(2)
+    })
+
+print(
+    entries
+        .sort(e => e.size_mb, descending: true)
+        .formatAs.table()
+)

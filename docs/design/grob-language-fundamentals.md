@@ -2487,6 +2487,16 @@ the same anchors apply everywhere.
   not skip past the surrounding block — the `}` ends the recovery.
 - It is the **start keyword of a top-level declaration**: `fn`, `type`,
   `param`, `import`, `const`, `readonly`.
+- It is `@`, **the token that opens a top-level declaration's decorator
+  stack** (D-415). Unlike the newline anchor this is not gated on bracket
+  depth — `@` has no legal position anywhere in the grammar except
+  immediately above a `param` declaration (or, via the same shared parameter
+  grammar, a function parameter's default), so landing recovery there is
+  never the wrong place to stop. Without this anchor, an adversarial `param`
+  default that leaves a bracket permanently open disables the newline anchor
+  for the rest of the file, and recovery would otherwise skip straight over
+  an intact decorator stack sitting above the next declaration, silently
+  discarding it before it is ever parsed.
 
 The parser skips tokens that are neither anchors nor part of any nested
 bracket structure. Brackets are tracked: a `(` inside the skipped region
@@ -2635,7 +2645,20 @@ without noise.
 
 ---
 
-_Document updated August 2026 — §19's canonical structure example gains the_
+_Document updated August 2026 — D-415: §29.1's synchronisation anchor set_
+_gains a seventh anchor, `@` — the token that opens a top-level declaration's_
+_decorator stack. Confirmed empirically that without it, an adversarial_
+_`param` default that leaves a bracket permanently open disables the newline_
+_anchor for the rest of the file, and recovery silently swallows an intact_
+_decorator stack sitting above the next declaration before it is ever parsed._
+_Unlike the newline anchor, `@` is not gated on bracket depth — it has no_
+_legal position anywhere in the grammar except immediately above a `param`_
+_declaration (or a function parameter's default, via the same shared_
+_parameter grammar), so landing recovery there is never the wrong place to_
+_stop. The braceless `param` declaration grammar itself (§19, "The `param`_
+_declaration") is unchanged by this entry — it was already normative from_
+_D-410; this entry amends only the recovery machinery §29 describes._
+_Previous: Document updated August 2026 — §19's canonical structure example gains the_
 _blank line D-413 requires between a decorated `param` declaration and the_
 _declaration below it, and the decorator rule in "The `param` declaration"_
 _records the separation. The example previously ran `@secure param token`_

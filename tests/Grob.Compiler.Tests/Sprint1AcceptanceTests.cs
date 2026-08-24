@@ -138,7 +138,7 @@ public class Sprint1AcceptanceTests {
         string[] fnNames = unit.TopLevel.OfType<FnDecl>().Select(f => f.Name).ToArray();
         Assert.Equal(new[] { "first", "broken_expr", "second", "third", "fourth" }, fnNames);
 
-        // Two of the failures became ErrorDecls (the `const := 5`, the @@@).
+        // Two of the failures became ErrorDecls (the `const := 5`, the `:::`).
         // The `broken_expr` function's header parsed fine — its failure lives
         // inside the body as an ErrorExpr, not as an ErrorDecl.
         Assert.Equal(2, unit.TopLevel.OfType<ErrorDecl>().Count());

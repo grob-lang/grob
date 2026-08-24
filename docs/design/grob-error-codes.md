@@ -138,7 +138,7 @@ read by `grob --explain Exxxx`.
 | E4002 | decorator not permitted here                       | Param / decorator | pre-release           |
 | E4101 | invalid `@allowed` argument                        | Param / decorator | pre-release           |
 | E4102 | invalid `@minLength` / `@maxLength` argument       | Param / decorator | pre-release           |
-| E4201 | `param` block syntax error                         | Param / decorator | pre-release           |
+| E4201 | `param` declaration syntax error                   | Param / decorator | pre-release           |
 | E4202 | `param` after `param` block ends                   | Param / decorator | pre-release           |
 | E5001 | integer overflow                                   | Runtime           | pre-release           |
 | E5002 | integer division by zero                           | Runtime           | pre-release           |
@@ -1017,13 +1017,13 @@ read by `grob --explain Exxxx`.
 
 ---
 
-### E4201 — `param` block syntax error
+### E4201 — `param` declaration syntax error
 
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
 - **Description:** A `param` declaration is malformed — a missing type annotation (the annotation is mandatory; parameters are never inferred), a default introduced with `:=` instead of `=`, or a decorator line not followed by a `param` declaration. Per D-410 a parameter is one `param` line with no enclosing block; `param {` is not a Grob form.
-- **Source:** `grob-language-fundamentals.md` §19, "The `param` declaration"; D-410.
+- **Source:** `grob-language-fundamentals.md` §19, "The `param` declaration"; D-410; D-415 (first throw site, and the retitle from "`param` block syntax error").
 
 ---
 
@@ -1032,7 +1032,7 @@ read by `grob --explain Exxxx`.
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A `param` declaration appeared after the parameter group was closed by a line that is neither a `param` declaration nor one of its decorators. **Retirement pending (D-410):** with the braceless grammar and §19's ordering rule this condition is a subset of E2202 (`param` after a `type`, `fn` or top-level statement). E4202 is to be removed and E2202's title widened when the grammar change lands; the removal is deferred to that increment because retiring a code requires the `ErrorCatalog` edit in the same commit to keep the D-316 agreement gate green. Under D-410's clarification of ADR-0017, E4202's number is permanently burned on removal and is never reused.
+- **Description:** A `param` declaration appeared after the parameter group was closed by a **significant** line that is neither a `param` declaration nor one of its decorators. Blank and comment-only lines do not close the group (§19), so the blank line `grob fmt` requires around a decorated declaration (D-413) never triggers this. **Retirement pending (D-410):** with the braceless grammar and §19's ordering rule this condition is a subset of E2202 (`param` after a `type`, `fn` or top-level statement). E4202 is to be removed and E2202's title widened when the grammar change lands; the removal is deferred to that increment because retiring a code requires the `ErrorCatalog` edit in the same commit to keep the D-316 agreement gate green. Under D-410's clarification of ADR-0017, E4202's number is permanently burned on removal and is never reused.
 
 ---
 
@@ -1423,6 +1423,8 @@ _Updated June 2026 — Sprint 5 Increment B added the four named-argument call-s
 
 _Updated June 2026 — Sprint 5 correctness increment added E1103 (reserved identifier used as a binding name) in the E11xx sub-block of the Name resolution category, bringing the total to 108 codes. The code covers both `select` (D-320) and `formatAs` (D-282) — D-282's reserved-identifier rule had shipped with no code. Source decision D-320._
 
+_Updated August 2026 — description-only correction authorised by D-414. E4202's description said the parameter group closes at "a line" that is neither a `param` declaration nor a decorator; §19 says a **significant** line, blank and comment-only lines excluded. Left unqualified it contradicted D-413's requirement that `grob fmt` insert a blank line around a decorated declaration, which would have read as closing the group and making the next `param` an ordering error. Inert today — E4202 has no throw site and is retirement-pending — but wrong if the retirement slips. **Also recorded, and not fixable here:** E4201's title ("`param` block syntax error") and E4202's ("`param` after `param` block ends") both name a form D-410 retired. Titles are carried in `ErrorCatalog.cs` and diffed by the D-316 agreement gate, so a title change needs the source edit in the same commit; both are deferred to the increment that implements the braceless grammar. No code added, removed or retitled here; total stays at 121._
+
 _Updated August 2026 — description-only corrections authorised by D-412; no code added, removed or retitled, so the D-316 agreement gate is unaffected and the total stays at 121. E1102's description gains `param` to the list of binding-introducing forms sharing the top-level name space, and its source line records D-412's extension of D-324. E2202's description names `const` and `readonly` among the forms a `param` must precede, D-412 having placed them in the top-level-code category, and records that a coincident E1102 collision is suppressed in favour of this ordering error._
 
 _Updated August 2026 — description-only corrections authorised by D-410 and D-411; no code added, removed or retitled, so the D-316 catalog-to-registry agreement gate is unaffected and the total stays at 121. E4001's description enumerated the four decorators of D-102; it now names the seven of D-411 and flags `@pattern` as specified-not-yet-built. E4201's description required `:=` before a param default — wrong against §19, the formatter's operator table and all eleven validation scripts, every one of which uses `=`; `:=` declares and assigns a new binding and has never been valid in a `param` declaration in either grammar. E4202 is marked retirement-pending: under D-410's braceless grammar its condition is a subset of E2202's, and both the removal and E2202's title widening are deferred to the increment that lands the grammar, since a title change or a removal needs the `ErrorCatalog` edit in the same commit. D-410 also clarifies ADR-0017 for the pre-release case it never covered: a `pre-release` code that never shipped may be removed outright, and its number is permanently burned — never reused, exactly as for a retired shipped code. E2202's and E4002's descriptions are aligned to the braceless terminology in the same pass ("`param` declarations", not "`param` blocks"); both are description-only and neither title moves._
@@ -1438,3 +1440,5 @@ _Updated July 2026 — Sprint 8 Increment D added one code: E0601 (invalid `guid
 _Updated July 2026 — map-literal construction (`map<K, V>{ ... }`) added one code: E0016 (duplicate key in map literal) in the E00xx sub-block of the Type category, bringing the total from 118 to 119. Dedicated rather than folded into E0010 (duplicate named argument, call-site only), E2208 (duplicate field name, `type` declaration only) or E2213 (duplicate `catch`, exception-handling only) — none of the three existing duplicate-entry codes covers a map-literal entry, confirmed against the live registry before allocating, per the E0014/E0015 precedent for a distinct, more-actionable construction-site code. Source decision D-376._
 
 _Updated July 2026 — correctness batch (runtime error taxonomy) added two codes in the E59xx sub-block of the Runtime category: E5905 (result exceeds maximum size) and E5906 (sort key type does not implement Comparable), bringing the total from 119 to 121. Both repoint wrong-category misuses found while the two codes involved were still `pre-release`: D-366's allocation-ceiling guard (`string.repeat`/`padLeft`/`padRight`) had reused E5101 ("array index out of range") for a size limit, not a bounds violation; D-371's `GrobValueComparer` sort-key comparator had reused the compile-time E0004 ("argument type mismatch") for a runtime fault. E5101 and E0004 are retained, unretired, for their legitimate call sites. Neither existing code fit either condition (Step 1 of `allocating-an-error-code` — confirmed against the live registry before allocating). Source decision D-382._
+
+_Updated August 2026 — D-415: the braceless `param` declaration grammar (D-410) implemented. E4201 given its first throw site, on the D-407 pattern — a missing type annotation, a decorator not followed by `param`, and a default introduced with `:=` instead of `=` are now reported as E4201 rather than the generic E2001. E4201 retitled from "`param` block syntax error" to "`param` declaration syntax error" in the same commit as the `ErrorCatalog.cs` edit, closing the deferral D-414 recorded and keeping the D-316 agreement gate green. No code added or removed; total stays at 121. E4202 is unaffected — its removal and E2202's title widening remain deferred to the Sprint 10 increment that implements ordering enforcement, per D-410/D-414._

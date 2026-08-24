@@ -3,8 +3,10 @@ using Grob.Core;
 namespace Grob.Compiler.Ast;
 
 /// <summary>
-/// A formal parameter — used in <see cref="FnDecl"/>, <see cref="LambdaExpr"/>,
-/// and <see cref="ParamBlockDecl"/>.
+/// A formal parameter — used in <see cref="FnDecl"/> and <see cref="LambdaExpr"/>.
+/// Not used by <see cref="ParamDecl"/> (a top-level <c>param</c> declaration),
+/// which carries its name/type/default directly since its type annotation is
+/// mandatory, unlike this record's nullable <see cref="Type"/>.
 /// </summary>
 /// <param name="Range">Source range covered by the parameter declaration.</param>
 /// <param name="Name">The parameter name.</param>

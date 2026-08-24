@@ -124,10 +124,19 @@ public sealed class Parser {
     private SourceRange RangeFrom(SourceLocation start) => RangeBetween(start, Current.Location);
 
     // -----------------------------------------------------------------------
-    // Synchronise (§29). Anchors:
+    // Synchronise (§29, amended by D-415). Anchors:
     //   * Newline at BracketDepth == 0 and no locally-opened brace.
     //   * }  closing an enclosing block (not one we opened inside the skip).
     //   * Top-level declaration keywords (fn/type/param/import/const/readonly).
+    //   * '@' — the token that opens a top-level declaration's decorator stack
+    //     (D-415). Not bracket-depth-gated, matching '}' — a decorator can only
+    //     ever legally appear immediately above a param declaration, so landing
+    //     recovery there is never the wrong place to stop, unlike a bare newline.
+    //     Without this, a still-open bracket from an earlier failure (an
+    //     unterminated param default) leaves the newline anchor permanently
+    //     disabled, and Synchronise would otherwise skip straight over an intact
+    //     decorator stack to the param keyword below it — silently discarding it
+    //     before the '@' dispatch arm ever sees it.
     //   * EOF (unconditional terminator).
     // The cursor stops AT the anchor; the anchor is not consumed.
     // -----------------------------------------------------------------------
@@ -149,6 +158,7 @@ public sealed class Parser {
     private bool IsSyncAnchor(TokenKind k) {
         if (k == TokenKind.Newline && Current.BracketDepth == 0) return true;
         if (k == TokenKind.RightBrace) return true;
+        if (k == TokenKind.At) return true;
         return IsTopLevelKeyword(k);
     }
 
@@ -243,7 +253,12 @@ public sealed class Parser {
     private AstNode ParseTopLevelItem() => Current.Kind switch {
         TokenKind.Fn => ParseFnDecl(),
         TokenKind.Type => ParseTypeDecl(),
-        TokenKind.Param => ParseParamBlockDecl(),
+        TokenKind.Param => ParseParamDecl(),
+        // A decorator stack is part of the param-declaration production it
+        // precedes (§19: "{ decorator newline } 'param' ..."), so it is parsed
+        // by the same method rather than a separate lookahead that re-derives
+        // the same fact (D-415 gate item 5).
+        TokenKind.At => ParseParamDecl(),
         TokenKind.Import => ParseImportDecl(),
         TokenKind.Const => ParseConstDecl(false),
         TokenKind.Readonly => ParseReadonlyDecl(),
@@ -369,45 +384,50 @@ public sealed class Parser {
         }
     }
 
-    private ParamBlockDecl ParseParamBlockDecl() {
-        SourceLocation start = Current.Location;
-        Expect(TokenKind.Param, _e2001, "expected 'param'");
-        Expect(TokenKind.LeftBrace, _e2001, "expected '{' to open param block");
-        SkipNewlines();
-        List<Parameter> parameters = [];
-        while (!Check(TokenKind.RightBrace) && !IsAtEnd) {
-            // Mirrors ParseTypeDecl's own top-level-keyword anchor above (D-406).
-            if (IsTopLevelKeyword(Current.Kind)) break;
-            Parameter? parameter = ParseDeclaredParameterOrError();
-            if (parameter is not null) parameters.Add(parameter);
-            SkipNewlines();
-        }
-        Expect(TokenKind.RightBrace, _e2001, "expected '}' to close param block");
-        return new ParamBlockDecl(RangeFrom(start), parameters);
-    }
-
     /// <summary>
-    /// Local recovery wrapper (D-406) around <see cref="ParseDeclaredParameter"/>,
-    /// used only by <see cref="ParseParamBlockDecl"/>'s own entry loop — the
-    /// newline-separated declaration-body sibling of <see cref="ParseTypeFieldOrError"/>.
-    /// <see cref="ParseParameterList"/> (function parameter lists, comma-separated
-    /// inside parens) keeps calling <see cref="ParseDeclaredParameter"/> directly and
-    /// is out of scope — a malformed parameter there is not one of the four
-    /// constructs D-406 closes. Returns <see langword="null"/> for a malformed
-    /// entry — the entry is omitted from the param block, not replaced by a
-    /// placeholder node.
+    /// A single braceless <c>param</c> declaration (D-410): <c>{ decorator
+    /// newline } "param" identifier ":" type [ "=" expression ] newline</c>. One
+    /// <c>param</c> keyword per parameter — there is no enclosing block, so
+    /// (unlike the retired <c>ParseParamBlockDecl</c>) this needs no local element
+    /// loop and no local recovery wrapper of its own: each declaration is an
+    /// ordinary top-level item, already covered by <see cref="ParseTopLevelItemOrError"/>
+    /// and the keyword/'@'-anchored <see cref="Synchronise"/> (D-415) exactly as
+    /// <c>const</c>/<c>readonly</c>/<c>import</c> are. Consecutive <c>param</c>
+    /// declarations form a parameter group by contiguity purely because the
+    /// top-level loop (<see cref="ParseCompilationUnit"/>) parses each one as its
+    /// own item — no dedicated grouping code exists or is needed.
+    /// <para>
+    /// Reachable via two dispatch arms in <see cref="ParseTopLevelItem"/>: directly
+    /// at <see cref="TokenKind.Param"/> (no decorators), and at
+    /// <see cref="TokenKind.At"/> (a decorator stack precedes it). Both call this
+    /// method, which itself starts by skipping any decorator stack — the stack is
+    /// part of this production (§19), not a separate construct.
+    /// </para>
+    /// <para>
+    /// Every failure inside this production's own grammar (not inside
+    /// <see cref="ParseTypeRef"/> or <see cref="ParseExpression"/>, which stay
+    /// generic E2001) is reported as <see cref="ErrorCatalog.E4201"/> — the
+    /// mandatory-type-annotation check, the decorator-must-be-followed-by-'param'
+    /// check, and the <c>:=</c>-instead-of-<c>=</c> default check all give E4201
+    /// its throw sites (D-407 pattern).
+    /// </para>
     /// </summary>
-    private Parameter? ParseDeclaredParameterOrError() {
-        int startPos = _pos;
-        try {
-            return ParseDeclaredParameter();
-        } catch (ParseFailedException) {
-            if (_pos == startPos && !IsAtEnd) {
-                Advance();
-            }
-            SkipToNextLiteralElementBoundary(startPos, TokenKind.Newline);
-            return null;
+    private ParamDecl ParseParamDecl() {
+        SkipParameterDecorators();
+        SourceLocation start = Current.Location;
+        Expect(TokenKind.Param, ErrorCatalog.E4201, "expected 'param' after decorator");
+        Token name = Expect(TokenKind.Identifier, ErrorCatalog.E4201, "expected parameter name after 'param'");
+        Expect(TokenKind.Colon, ErrorCatalog.E4201,
+            "expected ':' after parameter name — the type annotation is mandatory");
+        TypeRef type = ParseTypeRef();
+        Expression? defaultValue = null;
+        if (Check(TokenKind.ColonAssign)) {
+            throw Fail(ErrorCatalog.E4201, "expected '=' for a parameter default, not ':='");
         }
+        if (Match(TokenKind.Assign)) {
+            defaultValue = ParseExpression();
+        }
+        return new ParamDecl(RangeFrom(start), name.Lexeme, type, defaultValue);
     }
 
     private Parameter ParseDeclaredParameter() {
