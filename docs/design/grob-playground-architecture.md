@@ -281,7 +281,7 @@ OS-touching host implementations the CLI carries.
 - Confirm the diagnostics surface is consumable as structured data, not only
   formatted text (shared with the LSP).
 - Playground UX: lead with **Check** (all-errors-at-once, the actual differentiator)
-  over **Run**. `param` blocks can drive an input form via the same introspection
+  over **Run**. `param` declarations can drive an input form via the same introspection
   the MCP `param`→JSON-Schema reflection uses (OQ-014).
 - Reproducible output: `PinnedClock` + `SeededRandom` if shared snippets should
   render identically (as Topaz pins its output). Free, given `IClock` / `IRandomSource`.

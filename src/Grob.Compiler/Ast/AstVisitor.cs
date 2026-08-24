@@ -167,8 +167,8 @@ public abstract class AstVisitor<T> {
     /// <summary>Hook for <see cref="TypeDecl"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
     public virtual T VisitTypeDecl(TypeDecl node) => DefaultVisit(node);
 
-    /// <summary>Hook for <see cref="ParamBlockDecl"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
-    public virtual T VisitParamBlockDecl(ParamBlockDecl node) => DefaultVisit(node);
+    /// <summary>Hook for <see cref="ParamDecl"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
+    public virtual T VisitParamDecl(ParamDecl node) => DefaultVisit(node);
 
     /// <summary>Hook for <see cref="ImportDecl"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
     public virtual T VisitImportDecl(ImportDecl node) => DefaultVisit(node);

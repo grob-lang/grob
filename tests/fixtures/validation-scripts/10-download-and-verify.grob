@@ -1,0 +1,18 @@
+import Grob.Http
+import Grob.Crypto
+
+param url:           string
+param destination:   string
+param expected_hash: string
+
+log.info("Downloading ${url}...")
+http.download(url, destination)
+
+if (crypto.verifySha256(destination, expected_hash)) {
+    log.info("Checksum verified ✓")
+} else {
+    actual := crypto.sha256File(destination)
+    log.error("Checksum mismatch! Expected: ${expected_hash}  Got: ${actual}")
+    fs.delete(destination)
+    exit(1)
+}

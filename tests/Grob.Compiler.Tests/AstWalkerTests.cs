@@ -187,7 +187,7 @@ public class AstWalkerTests {
             new ContinueStmt(R),
         ]);
 
-        // Declaration composites: TypeDecl (TypeField with default), ParamBlockDecl, ConstDecl,
+        // Declaration composites: TypeDecl (TypeField with default), ParamDecl, ConstDecl,
         // ReadonlyDecl, ImportDecl (leaf).
         BlockStmt body = new(R, [
             new ExpressionStmt(R, expressionTree),
@@ -212,8 +212,7 @@ public class AstWalkerTests {
         TypeDecl typeDecl = new(R, "T",
             [new TypeField(R, "tf", intType, Id("tf-default"))]);
 
-        ParamBlockDecl paramBlock = new(R,
-            [new Parameter(R, "pb", intType, Id("pb-default"))]);
+        ParamDecl paramDecl = new(R, "pb", intType, Id("pb-default"));
 
         ConstDecl constDecl = new(R, "K", null, Id("ck"));
         ReadonlyDecl readonlyDecl = new(R, "R", null, Id("rk"));
@@ -221,7 +220,7 @@ public class AstWalkerTests {
         IdentifierCollector c = new();
         c.Visit(fn);
         c.Visit(typeDecl);
-        c.Visit(paramBlock);
+        c.Visit(paramDecl);
         c.Visit(constDecl);
         c.Visit(readonlyDecl);
         // Leaf declaration:

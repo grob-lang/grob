@@ -1,0 +1,16 @@
+param source_dir: string = `C:\Users\Chris\Downloads\Photos`
+param dest_dir:   string = `C:\Photos`
+
+readonly extensions := [".jpg", ".jpeg", ".png", ".cr2"]
+
+for file in fs.list(source_dir, recursive: true) {
+    if (extensions.contains(file.extension)) {
+        year     := file.modified.year.toString()
+        month    := file.modified.format("MM-MMMM")
+        dest_sub := path.join(dest_dir, year, month)
+
+        fs.ensureDir(dest_sub)
+        file.moveTo(dest_sub)
+        print("Moved ${file.name} → ${dest_sub}")
+    }
+}

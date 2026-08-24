@@ -91,8 +91,8 @@ both directions of the protocol. Pure protocol implementation — JSON-RPC 2.0,
 capability negotiation, tool/resource/prompt primitives. Knows nothing about any
 LLM provider. Sits alongside `Grob.Llm` (OQ-013) but does not depend on it.
 
-**Server side — the design point:** a script that already declares a `param`
-block can be exposed as an MCP tool with one call. The existing typed `param`
+**Server side — the design point:** a script that already declares its
+parameters can be exposed as an MCP tool with one call. The existing typed `param`
 declarations and their decorators (`@allowed`, `@minLength`, `@maxLength`,
 `@secure`) reflect into the JSON Schema that the MCP protocol requires for tool
 input descriptors. No new decorators, no schema DSL, no boilerplate — the
@@ -152,7 +152,7 @@ Foundation in December 2025 with co-stewardship from Anthropic, Block, and
 OpenAI. An official C# SDK exists, which lowers the implementation cost
 substantially. The protocol is now the cross-vendor standard for AI tool
 integration — equivalent to LSP’s role for editors. Grob’s design strengths
-(typed `param` blocks, JSON stdin/stdout pipeline, opinionated low-ceremony
+(typed `param` declarations, JSON stdin/stdout pipeline, opinionated low-ceremony
 syntax) align with the shape of a well-formed MCP tool. The market signal in
 2026 is consistent — small, focused, governed agents beat autonomous systems —
 and that is exactly the shape of script Grob is designed for.
