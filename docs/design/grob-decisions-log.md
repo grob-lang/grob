@@ -13056,9 +13056,19 @@ generic functions or types in v1, only consume a fixed, compiler-known set
 immediately invoked and no legal Grob construct has a closed, well-formed
 `<...>` run standing alone as a **value or as a type reference awaiting a
 later use**. This is a strictly tighter trigger than a general C-family
-generics parser can use (C# additionally has to account for a bare
-`List<int> x;` type reference with no following call, and falls back to
-symbol-table lookback in some contexts); D-080 forecloses that case entirely.
+generics parser can use, and the comparison is worth stating precisely
+(corrected under PR review, the first wording having claimed a C# fallback to
+symbol-table lookback that its specification does not describe). C#'s
+equivalent is the same technique — a bounded, non-consuming look at the token
+after the closing `>` (ECMA-334's _Grammar ambiguities_ rule) — but it must
+admit a **set** of follow tokens rather than one, because a type-argument
+list in expression position there can be followed by more than an
+invocation. It also has type-argument lists outside expression position
+altogether, the bare `List<int> x;` declaration, which that rule does not
+govern at all: those are resolved during name binding, by arity. D-080
+removes both problems — Grob has no type-reference position at a call site
+and no user-declared arity to resolve — so the permitted follow set collapses
+to the single token `(`.
 **What D-080 does not foreclose is the relational reading**, which stays
 grammatically available for the same token shape — `a < b > (c)` is a
 well-formed comparison chain, and the trigger decides against it
