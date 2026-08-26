@@ -195,6 +195,69 @@ public sealed class ParserCallTypeArgumentsTests {
         Assert.IsType<GroupingExpr>(outer.Right);
     }
 
+    [Fact]
+    public void RelationalChainWithCallOperand_StillParsesAsComparison() {
+        // 'a < f(b) > (c)' — the boundary pin for the deliberate narrowness of
+        // LooksLikeTypeArgumentList's accepted token set (see the two pins below).
+        // '(' is *not* in that set, so the scan bails at 'f(' and the chain falls
+        // through to ParseComparison as ((a < f(b)) > (c)). Widening the scan to the
+        // full ParseTypeRef grammar — which does accept '(' — would silently flip this
+        // shape to a generic call, adding a second deliberate misdecision on top of
+        // D-416's one accepted 'a < b > (c)' case. This test is the tripwire for that.
+        Expression e = ExprOf(ParseOk("a < f(b) > (c)\n"));
+        BinaryExpr outer = Assert.IsType<BinaryExpr>(e);
+        Assert.Equal(BinaryOperator.Greater, outer.Operator);
+        BinaryExpr inner = Assert.IsType<BinaryExpr>(outer.Left);
+        Assert.Equal(BinaryOperator.Less, inner.Operator);
+        CallExpr call = Assert.IsType<CallExpr>(inner.Right);
+        Assert.Equal("f", Assert.IsType<IdentifierExpr>(call.Callee).Name);
+        Assert.Empty(call.TypeArguments);
+        Assert.IsType<GroupingExpr>(outer.Right);
+    }
+
+    // -----------------------------------------------------------------------
+    // Deliberately outside the accepted token set — the two TypeRef forms the
+    // lookahead does not recognise (D-080 bounds the reachable type-argument
+    // surface to named types with '[]'/'?' suffixes, so neither of these shapes
+    // has a valid v1 Grob program behind it). Pinned rather than left implicit,
+    // so a future increment that introduces a function-typed generic parameter
+    // has a failing assertion to flip rather than silent behaviour to discover.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void FunctionTypeArgument_IsNotRecognised_AndFailsToParse() {
+        // 'f<fn(): int>(x)' — 'fn' is outside the scan's accepted token set, so the
+        // scan bails immediately and '<' falls to ParseComparison, where 'fn' in
+        // expression position is a declaration keyword rather than an operand.
+        (_, DiagnosticBag bag) = Parse("f<fn(): int>(x)\n");
+        Assert.Equal(2, bag.Count);
+        Assert.Equal("E2001", bag.Diagnostics[0].Code);
+        Assert.Equal("expected expression after '<'", bag.Diagnostics[0].Message);
+        Assert.Equal(1, bag.Diagnostics[0].Range.Start.Line);
+        Assert.Equal(2, bag.Diagnostics[0].Range.Start.Column);
+        Assert.Equal("E2001", bag.Diagnostics[1].Code);
+        Assert.Equal("expected function name after 'fn'", bag.Diagnostics[1].Message);
+        Assert.Equal(1, bag.Diagnostics[1].Range.Start.Line);
+        Assert.Equal(5, bag.Diagnostics[1].Range.Start.Column);
+    }
+
+    [Fact]
+    public void ParenthesisedTypeArgument_IsNotRecognised_AndParsesAsComparison() {
+        // 'f<(Employee)>(x)' — '(' is outside the accepted token set (see
+        // RelationalChainWithCallOperand_StillParsesAsComparison for why it stays
+        // out), so this falls through to ParseComparison as ((f < (Employee)) > (x)).
+        // A parenthesised type reference exists only to bind a '?'/'[]' suffix to a
+        // whole function type (D-327), so at a v1 call site the parens are redundant
+        // and no valid program is lost.
+        Expression e = ExprOf(ParseOk("f<(Employee)>(x)\n"));
+        BinaryExpr outer = Assert.IsType<BinaryExpr>(e);
+        Assert.Equal(BinaryOperator.Greater, outer.Operator);
+        BinaryExpr inner = Assert.IsType<BinaryExpr>(outer.Left);
+        Assert.Equal(BinaryOperator.Less, inner.Operator);
+        Assert.IsType<GroupingExpr>(inner.Right);
+        Assert.IsType<GroupingExpr>(outer.Right);
+    }
+
     // -----------------------------------------------------------------------
     // Error recovery — malformed type-argument list
     // -----------------------------------------------------------------------
@@ -242,6 +305,8 @@ public sealed class ParserCallTypeArgumentsTests {
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", d.Code);
         Assert.Equal("expected ')' to close call", d.Message);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(3, d.Range.Start.Column); // ':=' on line 3 — the first token that is not a call argument
 
         FnDecl tail = Assert.IsType<FnDecl>(unit.TopLevel[^1]);
         Assert.Equal("good", tail.Name);
@@ -259,6 +324,9 @@ public sealed class ParserCallTypeArgumentsTests {
         CompilationUnit unit = Parser.Parse(tokens, bag);
         Diagnostic parseDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", parseDiagnostic.Code);
+        Assert.Equal("expected type name", parseDiagnostic.Message);
+        Assert.Equal(2, parseDiagnostic.Range.Start.Line);
+        Assert.Equal(14, parseDiagnostic.Range.Start.Column); // the '>' immediately after '<'
 
         new TypeChecker(bag).Check(unit);
 

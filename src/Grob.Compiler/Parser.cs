@@ -1171,24 +1171,36 @@ public sealed class Parser {
     /// mirrors <see cref="LooksLikeMapLiteral"/> (D-376): a pure index scan over
     /// <c>_tokens[_pos...]</c> that never calls <see cref="Advance"/>/<see
     /// cref="Expect"/>/<see cref="Match"/>, tracking <c>&lt;</c>/<c>&gt;</c> nesting
-    /// depth over the same restricted token run (identifiers, commas, <c>[</c>/<c>]</c>
-    /// for an array-typed argument, <c>?</c> for a nullable one — exactly what <see
-    /// cref="ParseTypeRef"/> itself accepts), so a failed scan leaves <c>_pos</c>
-    /// untouched and <c>'&lt;'</c> falls straight through to <see
+    /// depth over a restricted token run (identifiers, commas, <c>[</c>/<c>]</c> for
+    /// an array-typed argument, <c>?</c> for a nullable one), so a failed scan leaves
+    /// <c>_pos</c> untouched and <c>'&lt;'</c> falls straight through to <see
     /// cref="ParseComparison"/> unchanged.
+    /// <para>
+    /// That run is deliberately a <em>subset</em> of what <see cref="ParseTypeRef"/>
+    /// accepts, not a mirror of it: the function-type (<c>fn(): T</c>) and
+    /// parenthesised-grouping (<c>(T)</c>) primaries are excluded. D-080 bounds the
+    /// reachable type-argument surface at a v1 call site to named types with
+    /// <c>[]</c>/<c>?</c> suffixes — users consume a fixed, compiler-known set of
+    /// generic functions and cannot declare their own — so neither excluded form has
+    /// a valid program behind it, while admitting <c>'('</c> would newly misread
+    /// <c>a &lt; f(b) &gt; (c)</c> as a generic call. Both exclusions are pinned by
+    /// test in <c>ParserCallTypeArgumentsTests</c>; an increment that introduces a
+    /// function-typed generic parameter flips those pins rather than discovering the
+    /// behaviour.
+    /// </para>
     /// <para>
     /// The anchor token differs from the map-literal scan: here the matching
     /// top-level <c>'&gt;'</c> must be immediately followed by <see
     /// cref="TokenKind.LeftParen"/>, not <see cref="TokenKind.LeftBrace"/> — a
     /// type-argument list at a call site is always followed by an invocation, never a
-    /// literal body. D-080 (users consume generic functions but cannot declare them)
-    /// is what makes this trigger safe: no legal Grob construct has a closed, well-
-    /// formed <c>'&lt;...&gt;'</c> run standing alone as a value, so "the run closes,
-    /// and the very next token is '('" has no meaning other than a generic call. This
-    /// is deliberately a tighter trigger than a general C-family generics parser can
-    /// use — see D-416 for the cases it decides against an ordinary relational chain
-    /// (<c>a &lt; b &gt; (c)</c>, read as a one-type-argument generic call to
-    /// <c>a</c>) and why that trade is accepted.
+    /// literal body. D-080 is what makes this trigger safe: because generic functions
+    /// can only be consumed, every legal generic call is immediately invoked and no
+    /// legal Grob construct has a closed <c>'&lt;...&gt;'</c> run standing alone as a
+    /// value or as a type reference awaiting later use. It does <em>not</em> rule out
+    /// a relational chain that happens to have this shape — <c>a &lt; b &gt; (c)</c>
+    /// remains grammatically a comparison and is decided against, deliberately, as
+    /// the one accepted misdecision; see D-416 for why that trade is taken and for
+    /// the <c>(a &lt; b) &gt; (c)</c> rewrite that recovers it.
     /// </para>
     /// </summary>
     private bool LooksLikeTypeArgumentList() {
