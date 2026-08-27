@@ -26,34 +26,45 @@ namespace Grob.Compiler.Tests;
 /// without incident.
 /// </para>
 /// <para>
-/// <b>Finding, reported and not fixed here (out of this increment's scope,
-/// per the standing "report, don't fix" discipline):</b> six of the eleven
-/// still fail to parse to completion, for two pre-existing gaps that are
-/// entirely unrelated to <c>param</c> — confirmed by isolating each failure
-/// to a minimal repro with no <c>param</c> involved at all, and by every
-/// pinned diagnostic below being ordinary <c>E2001</c> on an unrelated
-/// construct, never <c>E4201</c>/<c>E2202</c>/<c>E4202</c>. <b>Gap A:</b> a
-/// generic-argument method call reached via member access (<c>x.mapAs&lt;T&gt;()</c>)
-/// does not parse — isolated with <c>a.mapAs&lt;Employee&gt;()</c> alone, no
-/// receiver chain and no <c>param</c> in sight. Affects scripts 04, 05, 07, 09
-/// and 11. <b>Gap B:</b> named-struct construction and anonymous-struct
-/// literal fields require comma separation even across lines — the
-/// <c>type</c>-declaration-body convention of bare-newline-separated fields
-/// (D-406/§10) does not extend to these two literal forms — isolated with a
-/// bare <c>Point { a: 1\nb: 2\n}</c>. Affects scripts 03, 07 and 11 (07 and 11
-/// hit both gaps). Script 08's <c>BranchInfo</c> construction is the control
-/// that confirms Gap B precisely: it is multi-line but comma-separated, and
-/// parses cleanly. This is left for a future increment to scope — most
-/// plausibly the corpus sweep the next chat's hand-off already queues, or the
-/// D-405/D-406 style local-recovery survey extended to these two call sites.
+/// <b>D-416 closes Gap A.</b> D-415 isolated Gap A as "a generic-argument method
+/// call reached via member access does not parse", with <c>a.mapAs&lt;Employee&gt;()</c>
+/// as its repro, and listed scripts 04, 05, 07, 09 and 11 as affected. D-416's own
+/// investigation gate found that framing narrower than the actual defect: the
+/// determinant was never receiver shape but argument-list arity — an
+/// <i>empty</i>-argument generic call (<c>x.mapAs&lt;T&gt;()</c>) hard-failed to
+/// parse, while a <i>non-empty</i>-argument one (<c>x.mapAs&lt;T&gt;(a)</c>)
+/// silently misparsed as a comparison feeding a call, with no parse diagnostic at
+/// all — and free-function calls of both shapes were affected identically to
+/// member-access ones. Confirmed against this corpus directly: scripts 04, 05 and
+/// 09 each carried exactly one Gap-A diagnostic (the empty-argument shape) and now
+/// parse with <b>zero</b> diagnostics — moved to <c>_cleanScripts</c> below. Script
+/// 07 carried one Gap-A diagnostic plus two unrelated Gap-B ones; only the two
+/// Gap-B diagnostics remain. <b>Script 11 was never actually Gap-A-affected</b> —
+/// it contains no <c>mapAs</c>/generic call at all (its only near-collision use of
+/// <c>&lt;</c>/<c>&gt;</c> is the unrelated, already-working <c>map&lt;string,
+/// string&gt;{ }</c> literal on line 36, D-376); its single diagnostic, both
+/// before and after D-416, is Gap B alone. D-415's "affects... 11" was carried
+/// forward uncritically from a claim never re-verified against the actual
+/// script — corrected here rather than repeated.
 /// </para>
 /// <para>
-/// The split below is deliberately not a weaker acceptance test: the five
-/// clean scripts assert zero diagnostics outright, and the six gap-affected
-/// scripts pin their <i>exact</i> diagnostic set (code, message, line,
-/// column) rather than merely "some error" — a regression that introduced a
-/// new, unexpected diagnostic (a param one, in particular) would still fail
-/// this test.
+/// <b>Gap B remains open, reported and not fixed here (out of this increment's
+/// scope):</b> named-struct construction and anonymous-struct literal fields
+/// require comma separation even across lines — the <c>type</c>-declaration-body
+/// convention of bare-newline-separated fields (D-406/§10) does not extend to
+/// these two literal forms — isolated with a bare <c>Point { a: 1\nb: 2\n}</c>.
+/// Affects scripts 03, 07 and 11. Script 08's <c>BranchInfo</c> construction is
+/// the control that confirms Gap B precisely: it is multi-line but
+/// comma-separated, and parses cleanly. Left for a future increment to scope —
+/// most plausibly the corpus sweep D-415's own hand-off already queues.
+/// </para>
+/// <para>
+/// The split below is deliberately not a weaker acceptance test: the eight clean
+/// scripts assert zero diagnostics outright, and the three Gap-B-affected scripts
+/// pin their <i>exact</i> diagnostic set (code, message, line, column) rather than
+/// merely "some error" — a regression that introduced a new, unexpected
+/// diagnostic (a param- or type-argument-shaped one, in particular) would still
+/// fail this test.
 /// </para>
 /// </summary>
 public sealed class ValidationScriptCorpusTests {
@@ -76,39 +87,31 @@ public sealed class ValidationScriptCorpusTests {
     private static readonly string[] _cleanScripts = [
         "01-bulk-file-rename.grob",
         "02-organise-photos-by-date.grob",
+        "04-github-repos-backup.grob",
+        "05-csv-data-processing.grob",
         "06-azure-cli-wrapper.grob",
         "08-stale-git-branches.grob",
+        "09-disk-space-monitor.grob",
         "10-download-and-verify.grob",
     ];
 
     private sealed record ExpectedDiagnostic(string Code, string Message, int Line, int Column);
 
     /// <summary>
-    /// The scripts affected by Gap A and/or Gap B (see the type doc comment),
-    /// each with its exact, currently-observed diagnostic set pinned so a
-    /// regression — including a spurious param-related diagnostic — is
-    /// caught, while the pre-existing unrelated gap is not silently
-    /// mischaracterised as this increment's problem.
+    /// The scripts still affected by Gap B (see the type doc comment) now that
+    /// D-416 has closed Gap A, each with its exact, currently-observed diagnostic
+    /// set pinned so a regression — including a spurious param- or
+    /// type-argument-related diagnostic — is caught, while the pre-existing
+    /// unrelated gap is not silently mischaracterised as this increment's problem.
     /// </summary>
     private static readonly Dictionary<string, ExpectedDiagnostic[]> _knownGapScripts = new() {
         ["03-find-large-files-report.grob"] = [
             new("E2001", "expected '}' to close struct construction", 16, 9),
             new("E2001", "unexpected token '}' — expected expression", 18, 5),
         ],
-        ["04-github-repos-backup.grob"] = [
-            new("E2001", "unexpected token ')' — expected expression", 18, 66),
-        ],
-        ["05-csv-data-processing.grob"] = [
-            new("E2001", "unexpected token ')' — expected expression", 14, 42),
-            new("E2001", "unexpected token '}' — expected expression", 16, 106),
-        ],
         ["07-rest-api-data-pull.grob"] = [
-            new("E2001", "unexpected token ')' — expected expression", 26, 25),
             new("E2001", "expected '}' to close anonymous struct literal", 33, 13),
             new("E2001", "unexpected token '}' — expected expression", 36, 9),
-        ],
-        ["09-disk-space-monitor.grob"] = [
-            new("E2001", "unexpected token ']' — expected expression", 25, 47),
         ],
         ["11-azure-resource-provisioning.grob"] = [
             new("E2001", "expected '}' to close anonymous struct literal", 55, 9),

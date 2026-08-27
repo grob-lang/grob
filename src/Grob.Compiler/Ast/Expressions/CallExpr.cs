@@ -1,3 +1,4 @@
+using Grob.Compiler.Ast;
 using Grob.Core;
 
 namespace Grob.Compiler.Ast.Expressions;
@@ -6,10 +7,30 @@ namespace Grob.Compiler.Ast.Expressions;
 /// <param name="Range">Source range covered by the whole call.</param>
 /// <param name="Callee">The callee expression.</param>
 /// <param name="Arguments">The arguments in source order, possibly with names attached.</param>
+/// <param name="TypeArguments">
+/// Explicit generic type arguments supplied at the call site (<c>a.mapAs&lt;Employee&gt;()</c>),
+/// parsed by <see cref="Parser.ParsePostfix"/>'s <c>Less</c> case (D-416, closing D-415's Gap
+/// A) via the unchanged <see cref="Parser.ParseTypeArgumentList"/>. Empty for every ordinary
+/// call. Parser-supplied syntax, not a type-checker side channel — carries only
+/// <see cref="TypeRef.Range"/> per node; resolving each argument to a concrete
+/// <see cref="GrobType"/> and validating count/constraints (E0401/E0402) is a later
+/// increment's job, deliberately left undone here.
+/// </param>
 public sealed record CallExpr(
     SourceRange Range,
     Expression Callee,
-    IReadOnlyList<CallArgument> Arguments) : Expression(Range) {
+    IReadOnlyList<CallArgument> Arguments,
+    IReadOnlyList<TypeRef> TypeArguments) : Expression(Range) {
+    /// <summary>
+    /// Every call site before D-416 — a positional record parameter default must be a
+    /// compile-time constant (CS1736), which an empty <see cref="IReadOnlyList{T}"/>
+    /// literal is not, so the "defaults to empty for an ordinary call" behaviour is
+    /// carried by this overload rather than a <c>= []</c> parameter default.
+    /// </summary>
+    public CallExpr(SourceRange Range, Expression Callee, IReadOnlyList<CallArgument> Arguments)
+        : this(Range, Callee, Arguments, []) {
+    }
+
     /// <summary>
     /// Set by the type checker (Sprint 8 Increment E) when this call resolves to a
     /// <c>formatAs.table</c>/<c>list</c>/<c>csv</c> call — the function form

@@ -1086,6 +1086,13 @@ public sealed class Parser {
 
     private Expression ParsePostfix() {
         Expression e = ParsePrimary();
+        // D-416 (closing D-415's Gap A): type arguments parsed by the 'Less' case
+        // below are held here across one loop iteration, so the very next iteration's
+        // (guaranteed, by LooksLikeTypeArgumentList's own success condition) LeftParen
+        // case can attach them to the CallExpr it builds. Reset to empty immediately
+        // after being consumed, so an ordinary call — no preceding 'Less' case this
+        // iteration — keeps building a CallExpr with no type arguments, unchanged.
+        List<TypeRef> pendingTypeArguments = [];
         while (true) {
             switch (Current.Kind) {
                 case TokenKind.Dot: {
@@ -1100,11 +1107,27 @@ public sealed class Parser {
                         e = new MemberAccessExpr(RangeBetween(e.Range.Start, name.Location), e, name.Lexeme, IsOptional: true);
                         break;
                     }
+                // D-416: a generic-argument list at a call site — 'a.mapAs<Employee>()'
+                // — is lexically ambiguous with a relational comparison chain,
+                // '(a.mapAs < Employee) > (...)'. LooksLikeTypeArgumentList() is a
+                // bounded, non-consuming lookahead (mirroring LooksLikeMapLiteral's
+                // D-376 precedent) that commits to the generic-call reading only when
+                // the '<'...'>' run closes and is immediately followed by '(' — safe
+                // specifically because D-080 means every legal generic call in v1 Grob
+                // is immediately invoked, so a closed run followed by '(' has no
+                // other legal meaning. On failure, nothing is consumed and '<' falls
+                // through to the ordinary Pratt comparison level exactly as before.
+                case TokenKind.Less when LooksLikeTypeArgumentList(): {
+                        Advance(); // consume '<'
+                        pendingTypeArguments = ParseTypeArgumentList();
+                        break;
+                    }
                 case TokenKind.LeftParen: {
                         Advance();
                         List<CallArgument> args = ParseCallArguments();
                         Token rp = Expect(TokenKind.RightParen, _e2001, "expected ')' to close call");
-                        e = new CallExpr(RangeBetween(e.Range.Start, rp.Location), e, args);
+                        e = new CallExpr(RangeBetween(e.Range.Start, rp.Location), e, args, pendingTypeArguments);
+                        pendingTypeArguments = [];
                         break;
                     }
                 case TokenKind.LeftBracket: {
@@ -1138,6 +1161,76 @@ public sealed class Parser {
                     return e;
             }
         }
+    }
+
+    /// <summary>
+    /// Non-consuming forward scan deciding whether the <c>'&lt;'</c> at <see
+    /// cref="Current"/> opens a generic-argument list at a call site
+    /// (<c>a.mapAs&lt;Employee&gt;()</c>) rather than starting a relational
+    /// comparison (<c>a &lt; b</c>) — D-416, closing D-415's Gap A. Structurally
+    /// mirrors <see cref="LooksLikeMapLiteral"/> (D-376): a pure index scan over
+    /// <c>_tokens[_pos...]</c> that never calls <see cref="Advance"/>/<see
+    /// cref="Expect"/>/<see cref="Match"/>, tracking <c>&lt;</c>/<c>&gt;</c> nesting
+    /// depth over a restricted token run (identifiers, commas, <c>[</c>/<c>]</c> for
+    /// an array-typed argument, <c>?</c> for a nullable one), so a failed scan leaves
+    /// <c>_pos</c> untouched and <c>'&lt;'</c> falls straight through to <see
+    /// cref="ParseComparison"/> unchanged.
+    /// <para>
+    /// That run is deliberately a <em>subset</em> of what <see cref="ParseTypeRef"/>
+    /// accepts, not a mirror of it: the function-type (<c>fn(): T</c>) and
+    /// parenthesised-grouping (<c>(T)</c>) primaries are excluded. D-080 bounds the
+    /// reachable type-argument surface at a v1 call site to named types with
+    /// <c>[]</c>/<c>?</c> suffixes — users consume a fixed, compiler-known set of
+    /// generic functions and cannot declare their own — so neither excluded form has
+    /// a valid program behind it, while admitting <c>'('</c> would newly misread
+    /// <c>a &lt; f(b) &gt; (c)</c> as a generic call. Both exclusions are pinned by
+    /// test in <c>ParserCallTypeArgumentsTests</c>; an increment that introduces a
+    /// function-typed generic parameter flips those pins rather than discovering the
+    /// behaviour.
+    /// </para>
+    /// <para>
+    /// The anchor token differs from the map-literal scan: here the matching
+    /// top-level <c>'&gt;'</c> must be immediately followed by <see
+    /// cref="TokenKind.LeftParen"/>, not <see cref="TokenKind.LeftBrace"/> — a
+    /// type-argument list at a call site is always followed by an invocation, never a
+    /// literal body. D-080 is what makes this trigger safe: because generic functions
+    /// can only be consumed, every legal generic call is immediately invoked and no
+    /// legal Grob construct has a closed <c>'&lt;...&gt;'</c> run standing alone as a
+    /// value or as a type reference awaiting later use. It does <em>not</em> rule out
+    /// a relational chain that happens to have this shape — <c>a &lt; b &gt; (c)</c>
+    /// remains grammatically a comparison and is decided against, deliberately, as
+    /// the one accepted misdecision; see D-416 for why that trade is taken and for
+    /// the <c>(a &lt; b) &gt; (c)</c> rewrite that recovers it.
+    /// </para>
+    /// </summary>
+    private bool LooksLikeTypeArgumentList() {
+        int i = _pos + 1; // first token after '<'
+        int depth = 1;
+        while (i < _tokens.Count) {
+            switch (_tokens[i].Kind) {
+                case TokenKind.Less:
+                    depth++;
+                    i++;
+                    break;
+                case TokenKind.Greater:
+                    depth--;
+                    i++;
+                    if (depth == 0) {
+                        return i < _tokens.Count && _tokens[i].Kind == TokenKind.LeftParen;
+                    }
+                    break;
+                case TokenKind.Identifier:
+                case TokenKind.Comma:
+                case TokenKind.LeftBracket:
+                case TokenKind.RightBracket:
+                case TokenKind.Question:
+                    i++;
+                    break;
+                default:
+                    return false;
+            }
+        }
+        return false;
     }
 
     /// <summary>
