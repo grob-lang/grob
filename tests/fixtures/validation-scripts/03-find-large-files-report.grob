@@ -12,9 +12,9 @@ threshold := threshold_mb * 1024 * 1024
 entries := fs.list(path, recursive: true)
     .filter(f => f.size > threshold)
     .select(f => FileEntry {
-        name:    f.name
-        folder:  f.directory
-        size_mb: (f.size / 1024.0 / 1024.0).roundTo(2)
+        name:    f.name,
+        folder:  f.directory,
+        size_mb: (f.size / 1024.0 / 1024.0).roundTo(2),
     })
 
 print(

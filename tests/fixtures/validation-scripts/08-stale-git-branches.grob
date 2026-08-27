@@ -12,7 +12,7 @@ cutoff := date.today().addDays(-stale_days)
 raw := process.runOrFail("git", [
     "-C", repo_path,
     "branch", "-r",
-    "--format=%(refname:short)|%(committerdate:iso)|%(authorname)"
+    "--format=%(refname:short)|%(committerdate:iso)|%(authorname)",
 ])
 
 print(
@@ -24,7 +24,7 @@ print(
             BranchInfo {
                 branch: parts[0],
                 date:   parts[1],
-                author: parts[2]
+                author: parts[2],
             }
         })
         .filter(b => !b.branch.contains("HEAD") && date.parse(b.date) < cutoff)

@@ -210,9 +210,9 @@ threshold := threshold_mb * 1024 * 1024
 entries := fs.list(path, recursive: true)
     .filter(f => f.size > threshold)
     .select(f => FileEntry {
-        name:    f.name
-        folder:  f.directory
-        size_mb: (f.size / 1024.0 / 1024.0).roundTo(2)
+        name:    f.name,
+        folder:  f.directory,
+        size_mb: (f.size / 1024.0 / 1024.0).roundTo(2),
     })
 
 print(
@@ -480,7 +480,7 @@ result := process.run("az", [
     "--template-file",  template_path,
     "--parameters",     "environment=${environment}",
     "--query",          "properties.outputs",
-    "--output",         "json"
+    "--output",         "json",
 ])
 
 if (result.exitCode != 0) {
@@ -582,10 +582,10 @@ print(
     issues
         .filter(i => date.parse(i.created_at) < cutoff)
         .select(i => #{
-            number: i.number
-            title:  i.title
-            age:    date.parse(i.created_at).daysUntil(date.today())
-            author: i.user.login
+            number: i.number,
+            title:  i.title,
+            age:    date.parse(i.created_at).daysUntil(date.today()),
+            author: i.user.login,
         })
         .formatAs.table()
 )
@@ -656,7 +656,7 @@ cutoff := date.today().addDays(-stale_days)
 raw := process.runOrFail("git", [
     "-C", repo_path,
     "branch", "-r",
-    "--format=%(refname:short)|%(committerdate:iso)|%(authorname)"
+    "--format=%(refname:short)|%(committerdate:iso)|%(authorname)",
 ])
 
 print(
@@ -668,7 +668,7 @@ print(
             BranchInfo {
                 branch: parts[0],
                 date:   parts[1],
-                author: parts[2]
+                author: parts[2],
             }
         })
         .filter(b => !b.branch.contains("HEAD") && date.parse(b.date) < cutoff)
@@ -751,7 +751,7 @@ type DriveStatus {
 
 drives := process.run("powershell", [
     "-Command",
-    "Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 } | ConvertTo-Json"
+    "Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 } | ConvertTo-Json",
 ]).stdout
 
 // [ASSUMPTION] parsing PowerShell JSON output
@@ -977,14 +977,14 @@ url    := "https://management.azure.com/subscriptions/${subscriptionId}/resource
 
 body := #{
     properties: #{
-        mode: "Incremental"
-        templateLink: #{ uri: templatePath }
+        mode: "Incremental",
+        templateLink: #{ uri: templatePath },
         parameters: #{
-            environment: #{ value: environment }
-            storageId:   #{ value: storageId.toString() }
-        }
-    }
-    tags: tags
+            environment: #{ value: environment },
+            storageId:   #{ value: storageId.toString() },
+        },
+    },
+    tags: tags,
 }
 
 response := http.put(url, json.encode(body), auth.bearer(token))

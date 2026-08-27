@@ -29,10 +29,10 @@ print(
     issues
         .filter(i => date.parse(i.created_at) < cutoff)
         .select(i => #{
-            number: i.number
-            title:  i.title
-            age:    date.parse(i.created_at).daysUntil(date.today())
-            author: i.user.login
+            number: i.number,
+            title:  i.title,
+            age:    date.parse(i.created_at).daysUntil(date.today()),
+            author: i.user.login,
         })
         .formatAs.table()
 )

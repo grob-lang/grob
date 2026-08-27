@@ -12,7 +12,7 @@ type DriveStatus {
 
 drives := process.run("powershell", [
     "-Command",
-    "Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 } | ConvertTo-Json"
+    "Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 } | ConvertTo-Json",
 ]).stdout
 
 // [ASSUMPTION] parsing PowerShell JSON output

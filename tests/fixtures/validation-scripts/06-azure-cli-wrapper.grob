@@ -23,7 +23,7 @@ result := process.run("az", [
     "--template-file",  template_path,
     "--parameters",     "environment=${environment}",
     "--query",          "properties.outputs",
-    "--output",         "json"
+    "--output",         "json",
 ])
 
 if (result.exitCode != 0) {
