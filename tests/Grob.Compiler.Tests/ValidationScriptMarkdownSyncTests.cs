@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 
 using Xunit;
+using Xunit.Sdk;
 
 namespace Grob.Compiler.Tests;
 
@@ -20,7 +21,10 @@ namespace Grob.Compiler.Tests;
 /// every one of the eleven sections contains exactly one <c>```grob</c> fence —
 /// confirmed for all eleven before this guard was written. No document
 /// restructuring or marker comment was needed; the existing heading structure
-/// is reliable on its own.
+/// is reliable on its own. That uniqueness is <em>enforced, not assumed</em>:
+/// extraction fails loudly on a duplicate <c>## Script N</c> heading or on a
+/// second fence in the section, rather than silently taking whichever came
+/// first, so a later edit cannot quietly turn this guard into a decoy check.
 /// </para>
 /// <para>
 /// <b>Comparison policy: exact byte-for-byte match, no whitespace
@@ -53,21 +57,131 @@ public sealed class ValidationScriptMarkdownSyncTests {
         Assert.Equal(corpusContent, markdownBlock);
     }
 
-    private static string ExtractMarkdownBlock(int scriptNumber) {
-        string text = File.ReadAllText(_markdownPath);
+    /// <summary>
+    /// The guard is only as good as its identification step: if it silently
+    /// takes the <em>first</em> matching heading or the <em>first</em> fence, a
+    /// later edit that adds a duplicate heading or a second Grob fence makes it
+    /// compare a decoy and pass while the published sample drifts from its
+    /// corpus file — the exact failure this class exists to catch. These four
+    /// cases pin the identification as unambiguous-or-fail. Raised by CodeRabbit
+    /// on PR #205.
+    /// </summary>
+    [Fact]
+    public void ExtractMarkdownBlock_RejectsDuplicateHeadingForTheSameScript() {
+        string markdown = """
+            ## Script 3 — The real one
+
+            ```grob
+            real
+            ```
+
+            ## Script 3 — A decoy added later
+
+            ```grob
+            decoy
+            ```
+            """;
+
+        XunitException failure = Assert.ThrowsAny<XunitException>(
+            () => ExtractMarkdownBlock(markdown, 3));
+        Assert.Contains("exactly one", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExtractMarkdownBlock_RejectsSecondGrobFenceInTheSameSection() {
+        string markdown = """
+            ## Script 3 — The real one
+
+            ```grob
+            real
+            ```
+
+            Prose, then a second Grob example that is not the sample.
+
+            ```grob
+            decoy
+            ```
+
+            ## Script 4 — Next
+            """;
+
+        XunitException failure = Assert.ThrowsAny<XunitException>(
+            () => ExtractMarkdownBlock(markdown, 3));
+        Assert.Contains("exactly one", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExtractMarkdownBlock_ReportsMissingHeading() {
+        string markdown = """
+            ## Script 4 — Not the one asked for
+
+            ```grob
+            other
+            ```
+            """;
+
+        XunitException failure = Assert.ThrowsAny<XunitException>(
+            () => ExtractMarkdownBlock(markdown, 3));
+        Assert.Contains("## Script 3", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExtractMarkdownBlock_ReportsMissingFence() {
+        string markdown = """
+            ## Script 3 — Heading with no Grob fence
+
+            ```powershell
+            Get-ChildItem
+            ```
+            """;
+
+        XunitException failure = Assert.ThrowsAny<XunitException>(
+            () => ExtractMarkdownBlock(markdown, 3));
+        Assert.Contains("grob fence", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExtractMarkdownBlock_ReturnsTheSoleFenceOfTheNamedSection() {
+        string markdown = """
+            ## Script 3 — The real one
+
+            ```grob
+            real
+            ```
+
+            ## Script 4 — Next
+
+            ```grob
+            other
+            ```
+            """;
+
+        Assert.Equal("real", ExtractMarkdownBlock(markdown, 3).Trim());
+    }
+
+    private static string ExtractMarkdownBlock(int scriptNumber) =>
+        ExtractMarkdownBlock(File.ReadAllText(_markdownPath), scriptNumber);
+
+    private static string ExtractMarkdownBlock(string text, int scriptNumber) {
         List<Match> headings = [.. _sectionHeading.Matches(text).Cast<Match>()];
 
-        Match? heading = headings.FirstOrDefault(m => int.Parse(m.Groups[1].Value) == scriptNumber);
-        Assert.True(heading is not null, $"No '## Script {scriptNumber}' heading found in {_markdownPath}.");
+        List<Match> matching = [.. headings.Where(m => int.Parse(m.Groups[1].Value) == scriptNumber)];
+        Assert.True(
+            matching.Count == 1,
+            $"Expected exactly one '## Script {scriptNumber}' heading in {_markdownPath}, found {matching.Count}.");
 
-        int start = heading!.Index + heading.Length;
+        Match heading = matching[0];
+        int start = heading.Index + heading.Length;
         Match? next = headings.FirstOrDefault(m => m.Index > heading.Index);
         int end = next?.Index ?? text.Length;
         string section = text[start..end];
 
-        Match fence = _grobFence.Match(section);
-        Assert.True(fence.Success, $"Script {scriptNumber}: no ```grob fence found in its section.");
-        return fence.Groups[1].Value;
+        List<Match> fences = [.. _grobFence.Matches(section).Cast<Match>()];
+        Assert.True(
+            fences.Count == 1,
+            $"Script {scriptNumber}: expected exactly one ```grob fence in its section, found {fences.Count}.");
+
+        return fences[0].Groups[1].Value;
     }
 
     private static string LocateDirectory(params string[] relativeSegments) {
