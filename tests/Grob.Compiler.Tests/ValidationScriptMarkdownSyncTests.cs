@@ -62,9 +62,10 @@ public sealed class ValidationScriptMarkdownSyncTests {
     /// takes the <em>first</em> matching heading or the <em>first</em> fence, a
     /// later edit that adds a duplicate heading or a second Grob fence makes it
     /// compare a decoy and pass while the published sample drifts from its
-    /// corpus file — the exact failure this class exists to catch. These four
-    /// cases pin the identification as unambiguous-or-fail. Raised by CodeRabbit
-    /// on PR #205.
+    /// corpus file — the exact failure this class exists to catch. These five
+    /// cases — duplicate heading, duplicate fence, missing heading, missing
+    /// fence and successful extraction — pin the identification as
+    /// unambiguous-or-fail. Raised by CodeRabbit on PR #205.
     /// </summary>
     [Fact]
     public void ExtractMarkdownBlock_RejectsDuplicateHeadingForTheSameScript() {
