@@ -479,7 +479,7 @@ read by `grob --explain Exxxx`.
 - **Category:** Type
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A generic type argument does not satisfy the constraint declared on the type parameter, e.g. `sort<U: Comparable>` called with a non-comparable `U`.
+- **Description:** A generic type argument does not satisfy the constraint declared on the type parameter of the native being called. Constraints are declared per-signature by the native that owns the parameter, never written in Grob source (D-418) — v1 has no declaration-site constraint syntax. Example: `csv.Table.mapAs<T>()` constrains `T` to an array of named struct types, so `table.mapAs<Employee>()` is E0402 and `table.mapAs<Employee[]>()` is correct.
 - **Source decision:** D-281.
 
 ---
@@ -1422,6 +1422,8 @@ _Updated June 2026 (interlude A, D-316) — canonical total corrected from a sta
 _Updated June 2026 — Sprint 5 Increment B added the four named-argument call-site diagnostics E0008–E0011 (named-before-positional, naming a required parameter, duplicate named argument, unknown parameter name) in the E00xx sub-block of the Type category, bringing the total to 107 codes. Source decision D-318 (D-113)._
 
 _Updated June 2026 — Sprint 5 correctness increment added E1103 (reserved identifier used as a binding name) in the E11xx sub-block of the Name resolution category, bringing the total to 108 codes. The code covers both `select` (D-320) and `formatAs` (D-282) — D-282's reserved-identifier rule had shipped with no code. Source decision D-320._
+
+_Updated August 2026 — description-only correction authorised by D-418. E0402's description illustrated the code with `sort<U: Comparable>`, a declaration-site constraint syntax v1 does not have and that D-418 rules out: constraints are declared per-signature by the native owning the type parameter, never in Grob source. Re-illustrated with the real v1 case — `csv.Table.mapAs<T>()` constraining `T` to an array of named struct types. No code added, removed or retitled; the D-316 agreement gate is unaffected and the total stays at 121._
 
 _Updated August 2026 — description-only correction authorised by D-414. E4202's description said the parameter group closes at "a line" that is neither a `param` declaration nor a decorator; §19 says a **significant** line, blank and comment-only lines excluded. Left unqualified it contradicted D-413's requirement that `grob fmt` insert a blank line around a decorated declaration, which would have read as closing the group and making the next `param` an ordering error. Inert today — E4202 has no throw site and is retirement-pending — but wrong if the retirement slips. **Also recorded, and not fixable here:** E4201's title ("`param` block syntax error") and E4202's ("`param` after `param` block ends") both name a form D-410 retired. Titles are carried in `ErrorCatalog.cs` and diffed by the D-316 agreement gate, so a title change needs the source edit in the same commit; both are deferred to the increment that implements the braceless grammar. No code added, removed or retitled here; total stays at 121._
 
