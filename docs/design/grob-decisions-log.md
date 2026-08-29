@@ -413,6 +413,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-415 | August 2026 | Compiler — parser, AST; Language spec — parser error recovery | Implements D-410's braceless `param` declaration grammar. **AST**: `ParamBlockDecl` (group node) replaced by one `ParamDecl` per declaration, per D-410's own recommendation — no dedicated grouping code, contiguity falls out of the existing per-item top-level loop. **Dispatch**: `ParseTopLevelItem` gains `TokenKind.At => ParseParamDecl()` alongside the existing `TokenKind.Param` arm, both calling the same method (the decorator stack is part of the `param-decl` production, not a separate lookahead target), which also gives `Expect(Param, E4201, ...)` a natural home for "decorator not followed by `param`". **Recovery**: `@` added to §29's synchronisation anchor set (`IsSyncAnchor`, not the shared `IsTopLevelKeyword` predicate the `type`-body path also uses) — confirmed empirically that without it, an adversarial open-bracket default disables the newline anchor and `Synchronise` silently swallows an intact decorator stack sitting above the next `param`; fixed and mutation-verified (guard test confirmed red with the clause removed, green restored). The anchor is **context-gated, not unconditional** (corrected under PR review): `@` is also legal inside a function parameter list via the shared `SkipParameterDecorators`, so an unconditional anchor stranded recovery mid-`fn`-header and cascaded a spurious second `E4201` out of one malformed `fn` (`fn f(a: , @secure b: int): int { return 1 }` gave `E2001` at 1:9 plus `E4201` at 1:19). Bracket depth cannot separate the cases — the swallow case sits at non-zero depth itself — so `ParseTopLevelItemOrError` gates the anchor on the failed item's own start token being `param` or `@`; statement- and expression-level recovery never enable it. Both guarantees tested independently. This is a §29 amendment, both `grob-language-fundamentals.md` and the `Synchronise()` doc comment updated to name `@` as a seventh anchor kind with its context condition. **Type checker**: `VisitParamDecl` visits the default expression (registering no symbol — binding stays Sprint 10/D-412), so §3.1.1 holds for identifiers inside a default; without it an undefined name in `param limit: int = fallback` went unreported with `ResolvedType`/`Declaration` both unset, out of step with `AstWalker.VisitParamDecl`, which already walked it. D-406's `param`-specific recovery machinery (`ParseDeclaredParameterOrError`, the `param` call site of `SkipToNextLiteralElementBoundary`'s newline mode) is deleted outright — the `type` path and `ParseDeclaredParameter`/`ParseParameterList` (function parameter lists) are unchanged, proven by their existing tests passing unmodified. **E4201** given its first throw site (missing type annotation, decorator not followed by `param`, `:=` for a default — all three of its registry-described cases, plus a fourth from follow-up review: a top-level decorator not followed by a newline, which §19's production requires and the shared decorator scanner admitted without) on the D-407 pattern, and retitled from "`param` block syntax error" to "`param` declaration syntax error" in `ErrorCatalog.cs` and `grob-error-codes.md` in the same commit, closing D-414's deferral; D-316 confirmed green after. E4202's removal and E2202's widening remain deferred to Sprint 10 per D-410/D-414. **Corpus**: the eleven validation scripts, markdown-only until now, extracted verbatim to `tests/fixtures/validation-scripts/` (no prior cross-sprint corpus convention existed; read via a repo-root walk-up rather than new csproj wiring). The D-409 param blocker is cleared for all eleven — five parse to completion cleanly, and the other six fail only on two pre-existing gaps unrelated to `param` (confirmed by minimal repro and by every one of their pinned diagnostics being plain `E2001` on an unrelated construct): generic-argument method calls via member access (`x.mapAs<T>()`) do not parse, and named-struct/anonymous-struct literal fields require comma separation even across lines (the `type`-body newline convention does not extend to them). Both reported, not fixed — a future increment's scope. A stale gold master found and not fixed: `docs/errors/examples/param-after-param-block-ends/` (E4202) uses the now-unparseable block form as its subject and cannot be reached; not test-harnessed, so nothing broke silently. No opcode change, no `GrobValueKind` change, no new error code; count stays **121**. |
 | D-416 | August 2026 | Compiler — parser, AST | Closes D-415's Gap A: `x.mapAs<Employee>()` and the free-function form `mapAs<Employee>(x)` now parse. Scope is parse-only — `<T>` resolution, result-typing and `E0401`/`E0402` stay with a future increment. **Investigation corrected D-415's own framing before any code was written**: the true determinant is argument-list arity, not receiver shape — empty-argument generic calls hard-failed to parse, non-empty-argument ones **silently misparsed with no diagnostic at all** as a comparison feeding a call, member-access and free-function forms affected identically. **D-415's "affects... script 11" does not hold** — script 11 has no generic call at all; corrected in `ValidationScriptCorpusTests.cs` rather than repeated. **Rule**: `Parser.LooksLikeTypeArgumentList()`, a non-consuming lookahead structurally identical to D-376's `LooksLikeMapLiteral`, fires on `Less` in `ParsePostfix` and commits to a type-argument list only when the `<...>` run closes and the very next token is `(`. Safe specifically because of **D-080** (users cannot declare generics, only consume a fixed compiler-known set, so every legal generic call is immediately invoked) — a strictly tighter trigger than a general C-family parser can use. Turbofish (`::<>`) and a name-keyed member allowlist both considered and rejected (alien syntax; bakes stdlib names into the parser). **Deliberately decides one case wrongly**: `a < b > (c)` now parses as a one-type-argument generic call rather than a chained comparison — pinned by test, no existing fixture asserted the old reading, rewritable with explicit parens. **AST**: `CallExpr` gains a fourth positional field `TypeArguments: IReadOnlyList<TypeRef>`, defaulted via an explicit 3-argument constructor overload rather than `= []` (`CS1736` forbids a non-constant positional-record default) — confirmed source-compatible with every existing call site. **Recovery**: no new synchronisation anchor — `<`/`>` are not bracket-depth tokens and none of Grob's grammar needs them to be; the pre-fix single-diagnostic recovery baseline is preserved, and the empty-list case now gets a materially better-targeted diagnostic for free. 21 new tests, mutation-verified (guard disabled, canonical test failed for the predicted pre-fix diagnostic, restored). **The lookahead's accepted token run is a deliberate subset of `ParseTypeRef`, not a mirror of it** — the function-type and parenthesised-grouping primaries are excluded, both unreachable under D-080 and admitting `(` would newly misread `a < f(b) > (c)`; pinned by test under PR review. Full solution `dotnet test`: 3,931 passed, 0 failed. `Grob.Compiler` coverage 97.12%. D-316 green; error count stays **121**. No opcode change, no `GrobValueKind` change. Gap B (struct-literal comma separation across lines) remains open, reported and not fixed. |
 | D-417 | August 2026 | Language spec — sample corpus; Testing — corpus drift guard | Closes D-415's Gap B, clearing the D-409 release-gate blocker for all eleven validation scripts. **Gap B was a corpus defect, not a parser one** — `grob-formatter-specification.md` §3.5's normative Category A/B separator rule already settled this, and the parser implements it correctly for struct/anon-struct/array/map literals; scripts 03, 07 and 11 were written in Category A (newline-separated) style for Category B (comma-separated) constructs. **Corrects D-415's framing**, which presented the newline-vs-comma split as an unexplained asymmetry rather than citing §3.5's pre-existing rule. **19 actual violations found against 5 prior diagnostics** — the parser stops at the first failure per construct (masking further missing commas in the same construct), and a missing *trailing* comma on a literal is grammatically optional and never surfaces a diagnostic at all; 18 of the 19 were fixed across six scripts (03, 06, 07, 08, 09, 11). **The 19th was found unsafe to fix and left as-is**: §3.5 also lists call-argument lists as Category B requiring a trailing comma, but the parser rejects a trailing comma on call-argument lists and function parameter lists unconditionally — confirmed on the minimal case `foo(1, 2,)`, which does not parse, directly contradicting `grob-language-fundamentals.md`'s own worked example. Script 07's `http.get(...)` call is left without its trailing comma; this is a genuine parser/spec mismatch, not a corpus defect, and needs a grammar decision, not a documentation fix. **`ValidationScriptCorpusTests`** strengthened: the three-script exact-pinned-diagnostic list (`_knownGapScripts`) is removed and folded into the same zero-diagnostic assertion the other eight scripts already used — strictly stronger, no coverage lost. **Drift guard**: `ValidationScriptMarkdownSyncTests` (new), asserting each of `grob-sample-scripts.md`'s eleven `## Script N` sections' single ` ```grob ` fence is byte-for-byte identical to its `tests/fixtures/validation-scripts/*.grob` file. Identification is heading-anchored (`## Script (\d+)` → the section's one fence) — confirmed reliable for all eleven without any markdown restructuring or marker comment. Normalisation policy: exact match, no whitespace normalisation — the two sides were already identical character-for-character before this entry's fixes, so exact match is both the strongest guard and free to adopt. Mutation-verified both directions (a one-character markdown perturbation and a one-character corpus perturbation each failed the guard, naming the perturbed script; both restored). **Survey (gate item 5, reported not fixed)**: the same trailing-comma-only pattern recurs outside the eleven scripts — 3 sites in `grob-language-fundamentals.md` (`Repo`, `Config`, `Person` construction examples) and 4 in the wiki (`Language-Specification/Types.md` ×2 — `Repo` and `Config` — `Language-Specification/Expressions.md` ×1, `Standard-Library/formatAs.md` ×1), 7 sites in total, one of which is a cross-document inconsistency against the formatter spec's own worked example (`grob-language-fundamentals.md`'s `Person`/`Address` example lacks the trailing comma that `grob-formatter-specification.md`'s identical worked example carries). Not corpus-wide; recommended owner is the same corpus-sweep thread this entry's own hand-off names. **Spec-gap noted, not resolved**: §3.5's Category A/B enumeration does not name switch-expression arms at all, though every example found (including script 09) uses commas consistent with Category B by convention. No grammar, parser, `OpCode` or `GrobValueKind` change. No new error code; count stays **121**. Full solution `dotnet test`: 3,950 passed, 0 failed. D-316 green. Coverage 96.11%, clearing D-328's 90% line-coverage bar (the `-Threshold 80` in the local gate command is that script's interim-ratchet default, not the repository requirement). |
+| D-418 | August 2026 | Language design — generics; Type system | Fixes the v1 generic-consumption scope, taken before Sprint 9C after a forward review found `CallExpr.TypeArguments` (D-416) parsed and read by nothing, E0401/E0402 with zero throw sites, and no type-parameter, substitution or constraint machinery anywhere — `mapAs<T>` will be the language's first generic consumption with nothing underneath it. **Type parameters and constraints become first-class in the native-signature representation, designed once before the first consumer; no declaration syntax; no inference; constraints declared per-signature by the native that owns the parameter, never written in Grob source.** Bounds D-080 rather than changing it. **The "we're building most of it anyway" argument was tested and is false** — `mapAs<T>` builds roughly **10–15%** of user-definable generics. Full generics needs declaration syntax, type-parameter scoping, general substitution, **call-site inference**, constraint checking, generic *type* declarations, an erasure-versus-reification runtime decision, generic dispatch, variance, and generic-aware diagnostics; `mapAs<T>` needs two of those in trivial form and none of the other eight, which is where the cost and the risk both live. **Four reasons against full generics now.** *No consumer* — generics earn their keep in libraries, Grob's library layer is plugins written in C# which already has them, and the owner has confirmed Grob will not be self-hosted; none of the eleven scripts would declare a generic, and the corpus's only generic is `mapAs<T>`, a consumption. Designing inference, variance and a runtime representation against a corpus with zero generic declarations is design without usage pressure. *Inference collides with four load-bearing features* — the universally-assignable `Error` type (D-300) would poison unification by binding parameters from error nodes; `int → float` (D-303) forces a rule most languages got wrong first; `T?` where `T` is already nullable needs a rule since nullability lives in the type; named arguments interact with inference ordering. *Generic **types** reopen Sprint 6* — `UserTypeRegistry` parameterised, `ResolvedFieldInfo.Kind` as a parameter reference, §17.1's cycle DFS handling `type Node<T> { next: Node<T>? }`, and erasure-versus-reification touching the VM, `ValueDisplay` (D-336, dispatching on `GrobStruct.TypeName`) and the exception hierarchy — **which qualifies D-080's "no architectural rework required"**: true of generic functions with explicit arguments, false of generic types and of inference. *Shipped inference would impede a future port* — TypeScript 7.0 (GA July 2026) moved a million-line compiler to Go in ~15 months at 8–12x as a faithful **port** because ~20,000 conformance tests pinned the semantics, matching in all but 74 cases; inference is the hardest thing to reproduce faithfully because its rules end up discovered rather than written. **The strongest counter-argument, stated and rejected**: no ship date means the cut list is self-imposed — true, and the wrong frame, because unlimited time does not make a feature free, it makes it permanent. What is preserved: adding syntax and inference later becomes one new thing (unification) on working machinery rather than eight. **D-081 exists, is correct, and was never implemented — recorded as a finding.** It requires plugins to express type parameters via `FunctionSignature` in `Grob.Runtime`, "designed in from the start, not retrofitted". `FunctionSignature` does not exist. What exists is `NamespaceRegistry.NativeMember`, an **`internal` record inside `Grob.Compiler`** holding every native signature in a hardcoded static dictionary, grown six parameters incrementally; `IPluginRegistrar` registers runtime behaviour only (`RegisterNative(string, NativeFunction)`) with no types, arity or return type — **a plugin tells the VM what to run and tells the checker nothing**. Invisible while the stdlib is first-party, fatal for Sprint 11's `import Grob.Http`. Same class as the advertised-versus-built findings, one level up: a shipped decision the implementation diverged from. **D-419 owns the remedy.** **`mapAs<T>` means `T` uniformly, settling a live corpus contradiction.** `wiki/Standard-Library/csv.md` declares `csv.Table.mapAs<T>() → T[]` (T is the *row* type); `wiki/Standard-Library/json.md` uses `mapAs<Repo[]>()` (T is the *whole* type); `grob-stdlib-reference.md` and script 04 use `mapAs<Repo>()` for a plural binding, contradicting the wiki's json convention; script 11 carries an explicit `[ASSUMPTION]` marker on `mapAs<PsDrive[]>()`. Left alone, `mapAs<Employee>()` would mean `Employee[]` on a table and `Employee` on a node — one spelling, two meanings. **Decision: `mapAs<T>(): T` on both receivers**, the argument always naming the whole result type; a table is not an `Employee`, it is `Employee[]`. The cost — `csv.Table`'s `[]` is never optional — is accepted and **converted into a diagnostic by the constraint mechanism**: `csv.Table`'s parameter is constrained to *array of named struct*, so `table.mapAs<Employee>()` is **E0402** with a message suggesting `Employee[]`; `json.Node`'s is *named struct, or array of named struct*. The two differ, which is the point — constraints are per-signature, as "constrained generics" always implied, and E0402 gains a real throw site from the language's first generic. **E0402's registry description corrected** — it illustrated the code with `sort<U: Comparable>`, a declaration-site constraint syntax v1 does not have; description-only, so `ErrorCatalog.cs` and D-316 are untouched. **Corpus corrections recorded, not applied**: the scripts are `.grob` files gated by `ValidationScriptCorpusTests` and byte-matched to their markdown by `ValidationScriptMarkdownSyncTests` (D-417), so editing one side from a decision-only session would break that guard — assigned to the increment implementing `mapAs<T>`, which corrects both sides in one commit and removes script 11's `[ASSUMPTION]` marker. Not decided here: the signature type's shape and home, the SDK freeze, and `GrobType` closure — all **D-419**. No opcode change; count stays **121**. |
 
 ---
 
@@ -13452,6 +13453,211 @@ descriptor added).
 
 ---
 
+### D-418 — Generic consumption scope fixed for v1: type parameters and constraints are first-class in native signatures; no declaration syntax and no inference; `mapAs<T>` returns `T` uniformly (August 2026)
+
+Area: Language design — generics; Type system
+Supersedes: none (reaffirms and bounds D-080; revives D-081)
+Superseded by: none
+
+**Decision-only. No source change.** Error-code count unchanged at 121.
+
+**Origin.** A forward review of the tree against the rest of v1, run before
+Sprint 9C starts, found that `CallExpr.TypeArguments` (D-416) is parsed and
+read by nothing, that E0401 and E0402 have zero throw sites, and that no
+type-parameter, substitution or constraint machinery exists anywhere in the
+compiler. `mapAs<T>` will be the first generic consumption in the language,
+with nothing underneath it. That raised the question of whether v1 should
+simply ship user-definable generics rather than build a narrow mechanism twice.
+
+**The decision.** It should not. The v1 position is:
+
+- **Type parameters and constraints are first-class** in the native-signature
+  representation, designed once, deliberately, before the first consumer.
+- **No declaration syntax.** Users cannot write `fn map<T, U>(...)` or
+  `type Box<T>` in v1.
+- **No inference.** Every generic consumption carries an explicit type
+  argument. There is no unification anywhere in the checker.
+- **Constraints are per-signature**, declared by the native that owns the type
+  parameter, not written in Grob source.
+
+This bounds D-080 rather than changing it. D-080 confirmed constrained
+generics with consume-not-declare and said evolution to user-facing generics
+is "additive — grammar extension only, no architectural rework required".
+That claim is examined and qualified below.
+
+**How much of full generics `mapAs<T>` actually builds: roughly 10–15%, not
+most of it.** The question mattered because "we are building most of it
+anyway" would have been a strong argument for finishing the job. It is false.
+User-definable generics needs: declaration syntax; type-parameter scoping;
+substitution across the whole type representation; **call-site inference**;
+constraints and constraint checking; generic *type* declarations; a runtime
+representation decision (erasure versus reification); generic method dispatch;
+variance; and diagnostics that render generic types readably. `mapAs<T>` needs
+substitution in a trivial form and constraint checking in a trivial form. It
+needs none of the other eight, and the eight are where both the cost and the
+risk live.
+
+**Why not full generics now — four reasons, in decreasing weight.**
+
+*It has no consumer.* Generics earn their keep in libraries. Grob's library
+layer is plugins written in **C#**, which already has generics, and the
+project owner has confirmed Grob will not be self-hosted — a Grob stdlib
+written in Grob is not the plan, now or later. None of the eleven validation
+scripts would declare a generic function; the only generic in the entire
+corpus is `mapAs<T>`, which is *consumption* of a built-in. Designing
+inference rules, variance and a runtime representation against a corpus
+containing zero generic declarations means designing without usage pressure,
+and a design with no usage pressure is wrong in ways only usage reveals. Every
+other decision on this project has been driven by the eleven scripts and the
+four real use cases; generics has no such driver.
+
+*Inference collides with four features that are already load-bearing.* The
+`Error` type is universally assignable (D-300's cascade suppression), and a
+type that unifies with everything is poison for inference — binding a type
+parameter from an error node would propagate silent nonsense into cleanly
+parsed subtrees. `int → float` is the one implicit conversion (D-303's numeric
+model), and whether it participates in inference is a rule most languages got
+wrong before they got it right. `T?` where `T` is itself nullable needs a rule,
+because Grob's nullability lives in the type rather than in a wrapper.
+And named arguments interact with inference ordering. None of these is
+insurmountable; all of them are language design that would be done blind.
+
+*Generic type declarations would reopen Sprint 6, not extend it.*
+`type Box<T>` makes `UserTypeRegistry` parameterised, lets
+`ResolvedFieldInfo.Kind` be a parameter reference, and requires §17.1's
+cycle-detection DFS to handle `type Node<T> { next: Node<T>? }`. The runtime
+question is no cheaper: `GrobStruct.TypeName` is a string, `ValueDisplay`
+dispatches on it (D-336) and `catch (e: IoError)` matches on it, so erasure
+versus reification touches the VM, the display service and the exception
+hierarchy — three subsystems that are currently simple precisely because types
+are monomorphic. **This qualifies D-080's "no architectural rework required"**:
+that is true of generic *functions* with explicit arguments, and not true of
+generic *types* or of inference.
+
+*Shipped inference rules would make a future implementation port harder.*
+TypeScript 7.0 (GA July 2026) ported a million-line compiler from
+TypeScript/JavaScript to Go in about fifteen months, achieving 8–12x, and it
+was possible as a faithful *port* rather than a rewrite because the semantics
+were pinned by roughly 20,000 conformance tests — the Go compiler matched 6.0's
+behaviour in all but 74 cases. If a Rust or C++ Grob is ever conceivable, the
+asset that makes it possible is a specified, conformance-tested language, and
+inference is the single hardest thing to reproduce faithfully because most of
+its rules end up as discovered behaviour rather than written spec. Deferring
+the inference design costs a port nothing; shipping it costs a port a great
+deal.
+
+**The counter-argument, stated because it is the strongest one against this
+decision.** There is no ship date, so the cut list is self-imposed and
+unlimited time is available. That is true and it is the wrong frame: unlimited
+time does not make a feature free, it makes it **permanent**. Every inference
+rule shipped now is supported forever, on a corpus that declares zero
+generics. Go waited a decade for usage evidence and got generics right; the
+languages that shipped early on speculation carry the scar tissue.
+
+**What is deliberately preserved.** Because type parameters and constraints
+are first-class in the signature representation from the start, adding
+declaration syntax and inference later is a language addition on working
+machinery rather than a retrofit. The v1.1 work is one genuinely new thing —
+unification — instead of eight.
+
+**D-081 exists, is correct, and was never implemented — recorded as a finding.**
+D-081 (April 2026) states that plugins exposing generic functions must express
+type parameters via `FunctionSignature` in `Grob.Runtime`, and that this "must
+be designed into `Grob.Runtime` from the start, not retrofitted".
+`FunctionSignature` does not exist anywhere in the tree. What exists instead is
+`NamespaceRegistry.NativeMember` — an **`internal` record inside
+`Grob.Compiler`**, holding every native signature in a hardcoded static
+dictionary, which has grown six parameters incrementally as each sprint needed
+one (variadic element type, named type name, parameter named type names,
+parameter defaults). `IPluginRegistrar`, the published surface, registers
+runtime behaviour only: `RegisterNative(string name, NativeFunction fn)`, with
+no types, no arity and no return type. **A plugin currently tells the VM what
+to run and tells the type checker nothing.** That is invisible while the stdlib
+is first-party and its signatures can be hardcoded beside the compiler; it is
+fatal for Sprint 11, where `import Grob.Http` must type-check
+`http.get(url, auth.bearer(token))` against a DLL loaded from NuGet. This is
+the same class as the advertised-versus-built findings D-409 onward have been
+closing, one level up: a shipped decision the implementation quietly diverged
+from. **D-419 owns the remedy**; D-418 records that the type-parameter slot
+D-081 requires is now specified.
+
+**`mapAs<T>` means `T`, uniformly — settling a live corpus contradiction.**
+The corpus currently uses two incompatible conventions for the same member
+name:
+
+- `docs/wiki/Standard-Library/csv.md` declares `csv.Table.mapAs<T>() → T[]`,
+  with `csv.read(...).mapAs<Employee>()` — so `T` is the **row** type and the
+  array-ness is supplied by the signature.
+- `docs/wiki/Standard-Library/json.md` uses `json.read(...).mapAs<Repo[]>()` —
+  so `T` is the **whole** target type and the array-ness is written by the
+  caller.
+- `grob-stdlib-reference.md` line 317 and validation script 04 use
+  `json.read(...).mapAs<Repo>()` assigned to a plural binding, contradicting
+  the wiki's json convention for the identical idiom.
+- Validation script 11 uses `json.parse(drives).mapAs<PsDrive[]>()` and carries
+  an explicit `[ASSUMPTION]` marker in its own commentary — an author flag that
+  this was never settled.
+
+Left alone, `mapAs<Employee>()` would mean `Employee[]` on a `csv.Table` and
+`Employee` on a `json.Node`: one spelling, two meanings, and a reader who
+learns one gets the other wrong.
+
+**The decision: `mapAs<T>(): T` on both receivers.** The type argument always
+names the whole result type. `json.Node.mapAs<Config>()` yields `Config`;
+`json.Node.mapAs<Repo[]>()` yields `Repo[]`; `csv.Table.mapAs<Employee[]>()`
+yields `Employee[]`. It also reads correctly: a table is not an `Employee`, it
+is `Employee[]`.
+
+The cost is that `csv.Table`'s `[]` is never optional and carries no
+information. That is accepted, and **the constraint mechanism turns it into a
+good diagnostic rather than noise**: `csv.Table`'s type parameter is
+constrained to *array of named struct*, so `table.mapAs<Employee>()` is a
+compile error at **E0402** whose message can say the argument must be an array
+type and suggest `Employee[]`. `json.Node`'s parameter is constrained to
+*named struct, or array of named struct*. The two constraints differ, which is
+the point: constraints are per-signature, which is what "constrained generics"
+(D-080) has always implied, and E0402 gets a real, non-contrived throw site
+from the language's first generic rather than a hypothetical one.
+
+**E0402's registry description needs correcting** — it currently illustrates
+the code with `sort<U: Comparable>`, a declaration-site constraint syntax that
+v1 does not have and that this entry rules out. Description-only, so it lands
+here without touching `ErrorCatalog.cs` or the D-316 agreement gate; the title,
+category, status and count are untouched.
+
+**Corpus corrections recorded, not applied.** `grob-stdlib-reference.md`,
+validation script 04 and any wiki page using the element-type convention need
+updating to the whole-type convention. They are **not** edited here: the
+validation scripts exist as `.grob` corpus files gated by
+`ValidationScriptCorpusTests`, and their markdown publication is byte-matched
+by `ValidationScriptMarkdownSyncTests` (D-417) — editing one side from a
+decision-only session would break the guard that entry just built. Assigned to
+the increment that implements `mapAs<T>`, which must correct both sides in the
+same commit. Script 11's `[ASSUMPTION]` marker is resolved by this entry and
+should be removed at the same time.
+
+**What this entry does not decide.** The shape and home of the signature type
+itself, when the public SDK surface freezes, and whether `GrobType` gets
+ADR-0013-style closure — all D-419. The `mapAs` runtime coercion contract and
+its `JsonError` shape-mismatch path remain Increment D's. Declaration syntax
+and inference are v1.1 at the earliest, and reopen only on usage evidence,
+which by this entry's own reasoning cannot arrive from a C#-implemented stdlib.
+
+Cites D-080 (constrained generics, consume-not-declare — bounded here, and its
+"no architectural rework required" claim qualified for generic types and
+inference), D-081 (the `FunctionSignature` requirement this entry finds
+unimplemented and revives), D-416 (the parsed-but-unread `CallExpr.
+TypeArguments` that prompted the review), D-300 (the universally-assignable
+`Error` type that inference would collide with), D-303 (the numeric model whose
+`int → float` conversion inference would have to rule on), D-336 (`ValueDisplay`
+dispatching on `GrobStruct.TypeName`, part of the erasure-versus-reification
+cost), D-351 (`ArrayTypeDescriptor`, the element-type machinery a constrained
+array parameter reuses), D-281 (E0401/E0402's allocation), D-417 (the
+markdown/corpus sync guard that makes the corpus correction an increment's
+work), ADR-0013 (the closed-surface precedent D-419 will weigh for `GrobType`).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -13673,7 +13879,34 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — D-417 added: closes D-415's Gap B, clearing the D-409_
+_August 2026 — Decision-only session, D-418 added; no source change. Fixes the_
+_v1 generic-consumption scope before Sprint 9C. Type parameters and constraints_
+_become first-class in the native-signature representation, designed once_
+_before the first consumer; no declaration syntax and no inference in v1;_
+_constraints are per-signature. The "we are building most of it anyway"_
+_argument was tested and is false — `mapAs<T>` builds roughly 10–15% of_
+_user-definable generics and none of the eight parts where the risk lives._
+_Rejected on four grounds: generics has no v1 consumer, since the stdlib is C#_
+_and Grob will not be self-hosted; inference collides with the universally_
+_assignable `Error` type, the `int → float` conversion, nullable-in-the-type_
+_and named-argument ordering; generic **types** would reopen Sprint 6 and the_
+_VM's monomorphic assumptions, qualifying D-080's "no architectural rework_
+_required"; and shipped inference rules would impede a future implementation_
+_port, per TypeScript 7.0's Go port succeeding as a faithful port because_
+_20,000 conformance tests pinned its semantics. The counter-argument that an_
+_open-ended schedule makes the cut list self-imposed is answered: unlimited_
+_time does not make a feature free, it makes it permanent. Records that D-081_
+_(April 2026) required `FunctionSignature` in `Grob.Runtime` "from the start,_
+_not retrofitted" and was never implemented — signatures live in an internal_
+_hardcoded table inside `Grob.Compiler`, and a plugin currently tells the VM_
+_what to run and the checker nothing, which is fatal for Sprint 11. D-419 owns_
+_that. Settles `mapAs<T>` as returning `T` uniformly on both `json.Node` and_
+_`csv.Table`, resolving a corpus contradiction in which the same spelling meant_
+_two different things; the resulting redundant `[]` on `csv.Table` becomes an_
+_E0402 diagnostic rather than noise. E0402's description corrected;_
+_count stays 121. Corpus corrections recorded and assigned, not applied — the_
+_D-417 sync guard makes them an increment's work._
+_Previous: August 2026 — D-417 added: closes D-415's Gap B, clearing the D-409_
 _release-gate blocker for all eleven validation scripts. Gap B was a corpus_
 _defect, not a parser one — `grob-formatter-specification.md` §3.5's_
 _normative Category A/B separator rule already settled it, correcting D-415's_
