@@ -414,6 +414,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-416 | August 2026 | Compiler — parser, AST | Closes D-415's Gap A: `x.mapAs<Employee>()` and the free-function form `mapAs<Employee>(x)` now parse. Scope is parse-only — `<T>` resolution, result-typing and `E0401`/`E0402` stay with a future increment. **Investigation corrected D-415's own framing before any code was written**: the true determinant is argument-list arity, not receiver shape — empty-argument generic calls hard-failed to parse, non-empty-argument ones **silently misparsed with no diagnostic at all** as a comparison feeding a call, member-access and free-function forms affected identically. **D-415's "affects... script 11" does not hold** — script 11 has no generic call at all; corrected in `ValidationScriptCorpusTests.cs` rather than repeated. **Rule**: `Parser.LooksLikeTypeArgumentList()`, a non-consuming lookahead structurally identical to D-376's `LooksLikeMapLiteral`, fires on `Less` in `ParsePostfix` and commits to a type-argument list only when the `<...>` run closes and the very next token is `(`. Safe specifically because of **D-080** (users cannot declare generics, only consume a fixed compiler-known set, so every legal generic call is immediately invoked) — a strictly tighter trigger than a general C-family parser can use. Turbofish (`::<>`) and a name-keyed member allowlist both considered and rejected (alien syntax; bakes stdlib names into the parser). **Deliberately decides one case wrongly**: `a < b > (c)` now parses as a one-type-argument generic call rather than a chained comparison — pinned by test, no existing fixture asserted the old reading, rewritable with explicit parens. **AST**: `CallExpr` gains a fourth positional field `TypeArguments: IReadOnlyList<TypeRef>`, defaulted via an explicit 3-argument constructor overload rather than `= []` (`CS1736` forbids a non-constant positional-record default) — confirmed source-compatible with every existing call site. **Recovery**: no new synchronisation anchor — `<`/`>` are not bracket-depth tokens and none of Grob's grammar needs them to be; the pre-fix single-diagnostic recovery baseline is preserved, and the empty-list case now gets a materially better-targeted diagnostic for free. 21 new tests, mutation-verified (guard disabled, canonical test failed for the predicted pre-fix diagnostic, restored). **The lookahead's accepted token run is a deliberate subset of `ParseTypeRef`, not a mirror of it** — the function-type and parenthesised-grouping primaries are excluded, both unreachable under D-080 and admitting `(` would newly misread `a < f(b) > (c)`; pinned by test under PR review. Full solution `dotnet test`: 3,931 passed, 0 failed. `Grob.Compiler` coverage 97.12%. D-316 green; error count stays **121**. No opcode change, no `GrobValueKind` change. Gap B (struct-literal comma separation across lines) remains open, reported and not fixed. |
 | D-417 | August 2026 | Language spec — sample corpus; Testing — corpus drift guard | Closes D-415's Gap B, clearing the D-409 release-gate blocker for all eleven validation scripts. **Gap B was a corpus defect, not a parser one** — `grob-formatter-specification.md` §3.5's normative Category A/B separator rule already settled this, and the parser implements it correctly for struct/anon-struct/array/map literals; scripts 03, 07 and 11 were written in Category A (newline-separated) style for Category B (comma-separated) constructs. **Corrects D-415's framing**, which presented the newline-vs-comma split as an unexplained asymmetry rather than citing §3.5's pre-existing rule. **19 actual violations found against 5 prior diagnostics** — the parser stops at the first failure per construct (masking further missing commas in the same construct), and a missing *trailing* comma on a literal is grammatically optional and never surfaces a diagnostic at all; 18 of the 19 were fixed across six scripts (03, 06, 07, 08, 09, 11). **The 19th was found unsafe to fix and left as-is**: §3.5 also lists call-argument lists as Category B requiring a trailing comma, but the parser rejects a trailing comma on call-argument lists and function parameter lists unconditionally — confirmed on the minimal case `foo(1, 2,)`, which does not parse, directly contradicting `grob-language-fundamentals.md`'s own worked example. Script 07's `http.get(...)` call is left without its trailing comma; this is a genuine parser/spec mismatch, not a corpus defect, and needs a grammar decision, not a documentation fix. **`ValidationScriptCorpusTests`** strengthened: the three-script exact-pinned-diagnostic list (`_knownGapScripts`) is removed and folded into the same zero-diagnostic assertion the other eight scripts already used — strictly stronger, no coverage lost. **Drift guard**: `ValidationScriptMarkdownSyncTests` (new), asserting each of `grob-sample-scripts.md`'s eleven `## Script N` sections' single ` ```grob ` fence is byte-for-byte identical to its `tests/fixtures/validation-scripts/*.grob` file. Identification is heading-anchored (`## Script (\d+)` → the section's one fence) — confirmed reliable for all eleven without any markdown restructuring or marker comment. Normalisation policy: exact match, no whitespace normalisation — the two sides were already identical character-for-character before this entry's fixes, so exact match is both the strongest guard and free to adopt. Mutation-verified both directions (a one-character markdown perturbation and a one-character corpus perturbation each failed the guard, naming the perturbed script; both restored). **Survey (gate item 5, reported not fixed)**: the same trailing-comma-only pattern recurs outside the eleven scripts — 3 sites in `grob-language-fundamentals.md` (`Repo`, `Config`, `Person` construction examples) and 4 in the wiki (`Language-Specification/Types.md` ×2 — `Repo` and `Config` — `Language-Specification/Expressions.md` ×1, `Standard-Library/formatAs.md` ×1), 7 sites in total, one of which is a cross-document inconsistency against the formatter spec's own worked example (`grob-language-fundamentals.md`'s `Person`/`Address` example lacks the trailing comma that `grob-formatter-specification.md`'s identical worked example carries). Not corpus-wide; recommended owner is the same corpus-sweep thread this entry's own hand-off names. **Spec-gap noted, not resolved**: §3.5's Category A/B enumeration does not name switch-expression arms at all, though every example found (including script 09) uses commas consistent with Category B by convention. No grammar, parser, `OpCode` or `GrobValueKind` change. No new error code; count stays **121**. Full solution `dotnet test`: 3,950 passed, 0 failed. D-316 green. Coverage 96.11%, clearing D-328's 90% line-coverage bar (the `-Threshold 80` in the local gate command is that script's interim-ratchet default, not the repository requirement). |
 | D-418 | August 2026 | Language design — generics; Type system | Fixes the v1 generic-consumption scope, taken before Sprint 9C after a forward review found `CallExpr.TypeArguments` (D-416) parsed and read by nothing, E0401/E0402 with zero throw sites, and no type-parameter, substitution or constraint machinery anywhere — `mapAs<T>` will be the language's first generic consumption with nothing underneath it. **Type parameters and constraints become first-class in the native-signature representation, designed once before the first consumer; no declaration syntax; no inference; constraints declared per-signature by the native that owns the parameter, never written in Grob source.** Bounds D-080 rather than changing it. **The "we're building most of it anyway" argument was tested and is false** — `mapAs<T>` builds roughly **10–15%** of user-definable generics. Full generics need declaration syntax, type-parameter scoping, general substitution, **call-site inference**, constraint checking, generic *type* declarations, an erasure-versus-reification runtime decision, generic dispatch, variance, and generic-aware diagnostics; `mapAs<T>` needs two of those in trivial form and none of the other eight, which is where the cost and the risk both live. **Four reasons against full generics now.** *No consumer* — generics earn their keep in libraries, Grob's library layer is plugins written in C# which already has them, and the owner has confirmed Grob will not be self-hosted; none of the eleven scripts would declare a generic, and the corpus's only generic is `mapAs<T>`, a consumption. Designing inference, variance and a runtime representation against a corpus with zero generic declarations is design without usage pressure. *Inference collides with four load-bearing features* — the universally-assignable `Error` type (D-300) would poison unification by binding parameters from error nodes; `int → float` (D-303) forces a rule most languages got wrong first; `T?` where `T` is already nullable needs a rule since nullability lives in the type; named arguments interact with inference ordering. *Generic **types** reopen Sprint 6* — `UserTypeRegistry` parameterised, `ResolvedFieldInfo.Kind` as a parameter reference, §17.1's cycle DFS handling `type Node<T> { next: Node<T>? }`, and erasure-versus-reification touching the VM, `ValueDisplay` (D-336, dispatching on `GrobStruct.TypeName`) and the exception hierarchy — **which qualifies D-080's "no architectural rework required"**: true of generic functions with explicit arguments, false of generic types and of inference. *Shipped inference would impede a future port* — TypeScript 7.0 (GA July 2026) moved a million-line compiler to Go in ~15 months at 8–12x as a faithful **port** because ~20,000 conformance tests pinned the observable diagnostics — **error-reporting parity** with 6.0 in all but 74 of the ~6,000 error-producing cases, which is parity of diagnostics rather than proof of semantic equivalence; inference is the hardest thing to reproduce faithfully because its rules end up discovered rather than written. **The strongest counter-argument, stated and rejected**: no ship date means the cut list is self-imposed — true, and the wrong frame, because unlimited time does not make a feature free, it makes it permanent. What is preserved: adding syntax and inference later becomes one new thing (unification) on working machinery rather than eight. **D-081 exists, is correct, and was never implemented — recorded as a finding.** It requires plugins to express type parameters via `FunctionSignature` in `Grob.Runtime`, "designed in from the start, not retrofitted". `FunctionSignature` **is not implemented** — no such type is declared under `src/` or `plugins/` — while `grob-plugins.md`, `grob-vm-architecture.md`, `grob-solution-architecture.md`, `grob-v1-requirements.md`, `Writing-Plugins.md` and both `CLAUDE.md` files advertise it as published surface, so that documentation is aspirational rather than descriptive. What exists is `NamespaceRegistry.NativeMember`, an **`internal` record inside `Grob.Compiler`** holding every native signature in a hardcoded static dictionary, grown six parameters incrementally; `IPluginRegistrar` registers runtime behaviour only (`RegisterNative(string, NativeFunction)`) with no types, arity or return type — **a plugin tells the VM what to run and tells the checker nothing**. Invisible while the stdlib is first-party, fatal for Sprint 11's `import Grob.Http`. Same class as the advertised-versus-built findings, one level up: a shipped decision the implementation diverged from. **D-419 owns the remedy.** **`mapAs<T>` means `T` uniformly, settling a live corpus contradiction.** `wiki/Standard-Library/csv.md` declares `csv.Table.mapAs<T>() → T[]` (T is the *row* type) and `grob-type-registry.md` carries the same `→ T[]` on `csv.Table` beside the opposite `→ T` on `json.Node`; `wiki/Standard-Library/json.md` uses `mapAs<Repo[]>()` (T is the *whole* type); `grob-stdlib-reference.md` and script 04 use `mapAs<Repo>()` for a plural binding, contradicting the wiki's json convention; script 11 carries an explicit `[ASSUMPTION]` marker on `mapAs<PsDrive[]>()`. Left alone, `mapAs<Employee>()` would mean `Employee[]` on a table and `Employee` on a node — one spelling, two meanings. **Decision: `mapAs<T>(): T` on both receivers**, the argument always naming the whole result type; a table is not an `Employee`, it is `Employee[]`. The cost — `csv.Table`'s `[]` is never optional — is accepted and **converted into a diagnostic by the constraint mechanism**: `csv.Table`'s parameter is constrained to *array of named struct*, so `table.mapAs<Employee>()` is **E0402** with a message suggesting `Employee[]`; `json.Node`'s is *named struct, or array of named struct*. The two differ, which is the point — constraints are per-signature, as "constrained generics" always implied, and E0402 gains a real throw site from the language's first generic. **E0402's registry description corrected** — it illustrated the code with `sort<U: Comparable>`, a declaration-site constraint syntax v1 does not have; description-only, so `ErrorCatalog.cs` and D-316 are untouched. **Corpus corrections recorded, not applied** — `grob-type-registry.md`'s `csv.Table.mapAs<T>() → T[]` included: the scripts are `.grob` files gated by `ValidationScriptCorpusTests` and byte-matched to their markdown by `ValidationScriptMarkdownSyncTests` (D-417), so editing one side from a decision-only session would break that guard — assigned to the increment implementing `mapAs<T>`, which corrects both sides in one commit and removes script 11's `[ASSUMPTION]` marker. Not decided here: the signature type's shape and home, the SDK freeze, and `GrobType` closure — all **D-419**. No opcode change; count stays **121**. |
+| D-419 | August 2026 | Solution architecture — plugin SDK; Type system — `GrobType` closure; Harness | Specifies `FunctionSignature`, the contract D-081 required in April 2026 "from the start, not retrofitted" and that has never existed — the remedy D-418 deferred. **The problem**: the checker's knowledge of every native lives in `NamespaceRegistry`, an `internal static` class inside `Grob.Compiler` holding a hardcoded dictionary of `internal record NativeMember` grown six parameters by accretion, while `IPluginRegistrar` offers only `RegisterNative(string, NativeFunction)` — no types, arity or return type. A plugin tells the VM what to run and the checker nothing; invisible while every native is first-party, fatal for Sprint 11's `import Grob.Http`. **Decision 1 — `FunctionSignature` is data, not behaviour**, and the single source of truth for a native's type: name, parameters (name, type, default, variadic), return type, and type parameters with constraints (D-418). No delegate, no C# callable, no implementation reference; registration binds it to a `NativeFunction`. *Why it matters*: TypeScript 7.0 ported a million-line compiler to Go in ~15 months and **still could not carry its public API across**, shipping without a stable programmatic API and stranding Vue, Angular, Svelte, Astro, MDX and typescript-eslint until 7.1, because the API was entangled with the implementation. A C#-shaped plugin contract strands every Grob plugin the same way on any future port; a contract that is *description* survives one. Plugins are C# assemblies and always will be — what must be portable is the description, not the delegate. *Consequence designed for now*: signature metadata must be readable **without executing plugin code**, since `grob check` on an untrusted script must not run a third party's static constructors, which Sprint 11's stated `Assembly.LoadFrom()`-then-instantiate path does at compile time. Inert data makes a manifest possible; **the manifest format is Sprint 11's**, the property that permits it is fixed here. **Decision 2 — a signature's return type is its own closed union**, not a `GrobType`: a concrete type (with named-type name for `Struct`), a type-parameter reference, or an array of one. `mapAs<T>(): T` is the first native whose return type references its own type parameter, and expressing that as a `GrobType.TypeParameter` variant would grow the enum for exactly the reason it should be frozen. Parameter types use the same union. **Decision 3 — `GrobType` becomes a closed surface under ADR-0013's discipline.** Its twenty variants are **eleven type shapes with nullable twins for nine** — `Nil` and `Error` correctly have none, `Nil` being already nil and `Error` universally assignable (D-300). It enumerates type *shapes*, not identities: `date`, `guid` and `json.Node` are `Struct` plus a `NamedTypeName`, as `Regex`, `File`, `ProcessResult`, `csv.Table` and `CsvRow` will be, so **every remaining v1 module adds named types, not shapes**, and Decision 2 removes the one pressure that would have added one. Closure matters more here than for `OpCode` or `GrobValueKind` because `GrobType` is the only closed surface that becomes **public SDK API** — every plugin signature is written in terms of it, so a post-publication variant breaks third-party code. **Decision 4 — the SDK spans two assemblies, accepted.** `FunctionSignature`, `Parameter`, `IGrobPlugin`, `IPluginRegistrar`, the capability interfaces and `ExitSignal` in `Grob.Runtime` per D-081; `GrobType`, `GrobValue`, `GrobValueKind` and the `GrobError` hierarchy in `Grob.Core`; the published package takes `Grob.Core` as a dependency. Moving `GrobType` up was **rejected** — `Grob.Core` is the DAG's only shared ground and both `Grob.Compiler` and `Grob.Vm` depend on it while neither may depend on the other, so relocating a language primitive to satisfy packaging would invert the architecture. **Consequence recorded and owned by Sprint 11**: `Grob.Core`'s public surface becomes SDK surface, and it currently holds `Chunk`, `BytecodeFunction`, `CatchHandler`, `DiagnosticBag` and `IVmCallHost`, none of which a plugin author should see — what stays public and what becomes `internal` must be settled **before** publication, narrowing afterwards being a breaking change. **Decision 5 — `NamespaceRegistry` becomes a producer, not a parallel truth**: the hardcoded table stops defining a native's type and becomes one source of `FunctionSignature` values alongside plugin-supplied ones, so first-party and third-party natives are checked by one path and `NativeMember`'s six accreted parameters are subsumed rather than carried forward. `IPluginRegistrar.RegisterNative` gains the signature — registration without one becomes impossible rather than discouraged. **The harness has been advertising this API and instructing authors to use it.** Worse than D-418's six design documents, because the harness is what implementers read: `.claude/skills/authoring-a-plugin/SKILL.md` calls typed registration "non-negotiable", says an untyped registration "is a defect", and shows `vm.RegisterNative(name:, signature: new FunctionSignature(...), implementation:)` — a **three-argument call that would not compile** against the real two-argument method; `.claude/skills/adding-a-stdlib-function/SKILL.md` has it as a checklist item; `src/CLAUDE.md` lists it among `Grob.Runtime`'s contents. Every increment that added a native worked under an instruction naming a type that has never existed, and either ignored the checklist item or worked around it without surfacing the gap — **a different failure mode from a stale design doc**, since the harness was actively directing implementation toward a phantom, and the advertised-versus-built scrutiny applied to the design corpus has never been pointed at `.claude/`. **Standing item recorded: the harness needs the same audit.** Skills and `CLAUDE.md` are corrected in the commit that makes the instruction true, never before. **Sequencing**: specified here; implemented by the increment building `mapAs<T>`, the first native that cannot be expressed by `NativeMember`, which also carries D-418's corpus corrections; publication, manifest format, `Grob.Core` narrowing and the loading path are Sprint 11. **The freeze point is first package publication**, not first implementation — the shape may move on evidence until then and may not after. No opcode change; count stays **121**. |
 
 ---
 
@@ -13674,6 +13675,202 @@ work), ADR-0013 (the closed-surface precedent D-419 will weigh for `GrobType`).
 
 ---
 
+### D-419 — `FunctionSignature` specified and given a home; signature return types get their own shape so `GrobType` can be closed; the public SDK is data, not behaviour (August 2026)
+
+Area: Solution architecture — plugin SDK; Type system — `GrobType` closure; Harness
+Supersedes: none (implements D-081; completes D-418)
+Superseded by: none
+
+**Decision-only. No source change.** Error-code count unchanged at 121. This
+entry specifies the contract; the increment that builds `mapAs<T>` is its first
+implementer, and Sprint 11 is where it becomes published NuGet surface.
+
+**Origin.** D-418 recorded that D-081 (April 2026) required plugins to express
+type parameters via `FunctionSignature` in `Grob.Runtime`, "designed into
+`Grob.Runtime` from the start, not retrofitted", and that no such type has ever
+existed. D-419 is the remedy D-418 deferred.
+
+**The problem, stated precisely.** The type checker's knowledge of every native
+in the language lives in `NamespaceRegistry` — an `internal static` class inside
+`Grob.Compiler` holding a hardcoded dictionary of `internal record
+NativeMember`, which has accreted six parameters as successive sprints needed
+one. `IPluginRegistrar`, the surface a plugin actually sees, is
+`RegisterNative(string name, NativeFunction fn)`: no parameter types, no arity,
+no return type. **A plugin tells the VM what to run and tells the checker
+nothing.** That is invisible while every native is first-party and its signature
+can be hardcoded beside the compiler. It is fatal for Sprint 11, where
+`import Grob.Http` must type-check `http.get(url, auth.bearer(token))` against a
+package acquired from NuGet.
+
+---
+
+**Decision 1 — `FunctionSignature` is data, not behaviour, and it is the single
+source of truth for a native's type.**
+
+It carries the native's name, its parameters (each with a name, a type, an
+optional default, and whether it is variadic), its return type, and its type
+parameters with their constraints (D-418). It contains no delegate, no C#
+callable, and no reference to an implementation. Registration binds a
+`FunctionSignature` to a `NativeFunction`; the signature itself is inert
+description.
+
+*Why this matters beyond tidiness.* TypeScript 7.0 ported a million-line
+compiler to Go in about fifteen months and **still could not carry its public
+API across** — 7.0 shipped without a stable programmatic API, stranding Vue,
+Angular, Svelte, Astro, MDX and typescript-eslint until 7.1. The API was
+entangled with the implementation. If Grob's plugin contract is C#-shaped
+behaviour, a future Rust or C++ Grob strands every plugin the same way. If the
+contract is *data describing a signature*, the binding to a C# delegate is an
+implementation detail of the C# host, and the description survives a port.
+Plugins are C# assemblies and always will be; what must be portable is the
+description, not the delegate.
+
+*A consequence to design for now, not in Sprint 11.* Signature metadata must be
+readable **without executing plugin code**. `grob check` on an untrusted script
+must not run a third party's static constructors, and Sprint 11's stated
+mechanism — `Assembly.LoadFrom()`, find `IGrobPlugin`, instantiate, register —
+does exactly that at compile time. Because `FunctionSignature` is inert data, a
+plugin's signatures can be emitted as a manifest (embedded resource or
+side-car) that the checker reads without loading the assembly. **D-419 does not
+settle the manifest format** — that is Sprint 11's — but it fixes the property
+that makes it possible, which is the part that must be true from the start.
+
+---
+
+**Decision 2 — a signature's return type is its own shape, so `GrobType` stays
+closed.**
+
+D-418 makes `mapAs<T>(): T` the first native whose return type is not a
+concrete type but a reference to its own type parameter. Expressing that as a
+new `GrobType.TypeParameter` variant would grow the enum for precisely the
+reason it should be frozen.
+
+Instead a signature's return type is a small closed union: **a concrete type**
+(a `GrobType` plus, for `Struct`, its named-type name), **a type-parameter
+reference**, or **an array of a type-parameter reference**. Two shapes cover
+every v1 case and the third is there because `csv.Table.mapAs<T>()` would have
+needed it under the rejected element-type convention and a future native may.
+Parameter types use the same union, so a native could later take a `T`.
+
+`GrobType` is untouched by generics as a result.
+
+---
+
+**Decision 3 — `GrobType` is a closed surface under ADR-0013's discipline.**
+
+It has twenty variants, and the structure is **eleven type shapes with nullable
+twins for nine of them** — `Nil` and `Error` correctly have none, `Nil` being
+already nil and `Error` being universally assignable (D-300). It enumerates
+type *shapes*, not type *identities*: `date`, `guid` and `json.Node` are
+`Struct` plus a `NamedTypeName`, and `Regex`, `File`, `ProcessResult`,
+`csv.Table` and `CsvRow` will be too. **Every remaining v1 module adds named
+types, not shapes**, and Decision 2 removes the one pressure that would have
+added one.
+
+The enum therefore closes on the same footing as `OpCode` and `GrobValueKind`
+(ADR-0013): a variant may not be added without a decision entry recording why
+the existing shapes are insufficient. This matters more than for the other two
+closed surfaces, because `GrobType` is the only one that becomes **public SDK
+API** — a plugin's every signature is written in terms of it, so a variant added
+after publication is a breaking change to third-party code.
+
+---
+
+**Decision 4 — the SDK spans two assemblies, and that is accepted.**
+
+`FunctionSignature`, `Parameter`, `IGrobPlugin`, `IPluginRegistrar`, the
+capability interfaces and `ExitSignal` live in `Grob.Runtime`, per D-081.
+`GrobType`, `GrobValue`, `GrobValueKind` and the `GrobError` hierarchy live in
+`Grob.Core`. A plugin author needs both, so **the published package includes
+`Grob.Core` as a dependency**; `Grob.Runtime` is the package a plugin
+references, and `Grob.Core` comes with it.
+
+Moving `GrobType` into `Grob.Runtime` was considered and rejected: `Grob.Core`
+is the only shared ground in the DAG, and both `Grob.Compiler` and `Grob.Vm`
+depend on `GrobType` while neither may depend on the other. Relocating it to
+satisfy a packaging preference would put a language primitive above the
+assembly that exists to hold language primitives.
+
+The consequence is that **`Grob.Core`'s public surface is also SDK surface**,
+which is not currently how it is treated — it holds `Chunk`, `BytecodeFunction`,
+`CatchHandler`, `DiagnosticBag` and `IVmCallHost`, none of which a plugin
+author should see. Sprint 11 must decide what in `Grob.Core` is public API and
+what becomes `internal` with `InternalsVisibleTo`. **Recorded, owned by Sprint
+11, not settled here** — but it must be settled *before* the package ships,
+because narrowing a public surface afterwards is a breaking change.
+
+---
+
+**Decision 5 — `NamespaceRegistry` becomes a producer, not a parallel truth.**
+
+The hardcoded table stops being the definition of a native's type and becomes
+one source of `FunctionSignature` values, alongside plugin-supplied ones. The
+checker resolves calls against `FunctionSignature` regardless of origin, so a
+first-party stdlib native and a third-party plugin native are checked by one
+path. `NativeMember`'s six accreted parameters are subsumed by the signature's
+shape rather than carried forward.
+
+`IPluginRegistrar.RegisterNative` gains the signature: registration without one
+is not possible, rather than merely discouraged.
+
+---
+
+**The harness has been advertising this API for months, and instructing authors
+to use it.** D-418 found `FunctionSignature` described as published surface in
+six design documents. It is worse in the harness, which is what implementers
+actually read:
+
+- `.claude/skills/authoring-a-plugin/SKILL.md` calls typed registration
+  "non-negotiable", says "an untyped registration defeats Grob's static checking
+  and is a defect", and shows
+  `vm.RegisterNative(name:, signature: new FunctionSignature(...),
+  implementation:)` — a **three-argument call that would not compile** against
+  the real two-argument `IPluginRegistrar.RegisterNative(string,
+  NativeFunction)`.
+- `.claude/skills/adding-a-stdlib-function/SKILL.md` has "Registered with a full
+  `FunctionSignature`" as a checklist item.
+- `src/CLAUDE.md` lists `FunctionSignature` and `Parameter` among
+  `Grob.Runtime`'s contents.
+
+So every increment that added a native worked under an instruction naming a type
+that has never existed, and either silently ignored the checklist item or
+worked around it without surfacing the gap. **This is a different failure mode
+from a stale design document**: the harness was actively directing
+implementation toward a phantom, and the mechanism that has been catching
+advertised-versus-built defects in the design corpus has never been pointed at
+`.claude/`. **Recorded as a standing item: the harness needs the same
+advertised-versus-built audit the design corpus has had.** The skills and
+`CLAUDE.md` files are corrected in the same commit that makes the instruction
+true, not before — a corrected skill describing an unbuilt API is the same
+defect in a new place.
+
+---
+
+**Sequencing.** The contract is specified here. It is **implemented by the
+increment that builds `mapAs<T>`**, which is the first native needing a type
+parameter and therefore the first that cannot be expressed by `NativeMember`.
+That increment also carries D-418's corpus corrections. Publication as NuGet,
+the manifest format, the `Grob.Core` public-surface narrowing and the
+`Assembly.LoadFrom` path are Sprint 11. The freeze point is **first package
+publication**, not first implementation — the shape may still move between now
+and Sprint 11 on evidence, and may not move after.
+
+**What this entry does not decide.** The manifest format. What in `Grob.Core`
+becomes internal. Semver and package identity. Whether the capability
+interfaces are published in the same package. All Sprint 11.
+
+Cites D-081 (the requirement this implements, unimplemented since April), D-418
+(the type-parameter and constraint model Decision 1 carries, and the finding
+that raised this), D-080 (constrained generics), ADR-0013 (the closed-surface
+discipline Decision 3 extends to `GrobType`), D-300 (the universally-assignable
+`Error` type, why it has no nullable twin), D-303 (`GrobValue`'s tagged union
+and the `Struct` discriminator that makes named types shape-free), D-343 (the
+capability interfaces that share the published surface), D-319 (the playground
+host, the other consumer of a portable contract), and
+`grob-solution-architecture.md`'s DAG (why `GrobType` stays in `Grob.Core`).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -13895,7 +14092,36 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — Decision-only session, D-418 added; no source change. Fixes the_
+_August 2026 — Decision-only session, D-419 added; no source change. Specifies_
+_`FunctionSignature` — the contract D-081 required in April "from the start,_
+_not retrofitted" and that has never existed — as **data, not behaviour**: name,_
+_parameters, return type and type parameters with constraints, carrying no_
+_delegate and no implementation reference. The reason is portability of the_
+_contract rather than tidiness: TypeScript 7.0 ported a million-line compiler_
+_to Go and still could not carry its public API across, shipping without a_
+_stable programmatic API. A second property is fixed now because it cannot be_
+_added later — signature metadata must be readable without executing plugin_
+_code, since `grob check` on an untrusted script must not run a third party's_
+_constructors, which Sprint 11's `Assembly.LoadFrom`-then-instantiate path_
+_would. A signature's return type becomes its own closed union — concrete,_
+_type-parameter reference, or array of one — so D-418's `mapAs<T>(): T` does_
+_not grow `GrobType`, which is then closed under ADR-0013's discipline: its_
+_twenty variants are eleven shapes with nullable twins for nine, it enumerates_
+_shapes rather than identities, and every remaining v1 module adds named types_
+_rather than shapes. Closure matters more here than for `OpCode` or_
+_`GrobValueKind` because `GrobType` is the only closed surface that becomes_
+_public SDK API. The SDK spans `Grob.Runtime` and `Grob.Core`, accepted, with_
+_moving `GrobType` up rejected on DAG grounds — and the consequence recorded_
+_for Sprint 11 that `Grob.Core`'s public surface becomes SDK surface while it_
+_still holds `Chunk`, `DiagnosticBag` and `IVmCallHost`. `NamespaceRegistry`_
+_becomes a producer of signatures rather than a parallel truth, and_
+_`RegisterNative` gains the signature. Records that the harness — two skills_
+_and `src/CLAUDE.md` — has been instructing authors to supply a_
+_`FunctionSignature`, with a three-argument registration example that would not_
+_compile, so `.claude/` needs the advertised-versus-built audit the design_
+_corpus has had. Freeze point is first package publication, not first_
+_implementation._
+_Previous: August 2026 — Decision-only session, D-418 added; no source change. Fixes the_
 _v1 generic-consumption scope before Sprint 9C. Type parameters and constraints_
 _become first-class in the native-signature representation, designed once_
 _before the first consumer; no declaration syntax and no inference in v1;_
