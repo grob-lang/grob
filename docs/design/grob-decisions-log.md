@@ -412,6 +412,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-414 | August 2026 | Corpus hygiene — terminology; Tooling — formatter specification; Error registry | Documentation-only sweep of what the retired `param { }` form left behind. **The method point matters more than the fixes**: D-410's evidence sweep found six sites by asking *which form is correct*, and never asked *what silently depends on the form being retired*. Different queries; only the first was run, so three later review passes missed the leftovers because they were reviewing changes rather than sweeping the corpus. **Standing note: retiring a language form requires both queries — the first proves the decision, the second finds what breaks.** **The substantive defect.** Formatter §3.8 closed its alignment list with "Alignment is computed independently within each brace pair" and §7 repeated it as "Each brace pair is an independent alignment scope" — both correct while `param { }` existed, since the block *was* the param alignment scope. D-410 retired the braces and neither sentence moved, so **`param` declarations had no alignment scope at all**, six lines below the list item describing their alignment and in direct contradiction of D-413's formatting-group rule; an implementer scoping param alignment to a brace pair would find none. Both now name the §3.10 formatting group for params and keep the brace pair for braced constructs; §3.8's "In multi-line form" framing reworded likewise, `param` declarations having no multi-line form. **§3.14's rationale was false in the document making it** — D-413 claimed the reordering prohibition is stated "once, as a whole-formatter prohibition", but §4's rule 9 ("Does not reorder parameters or fields") already said it. §3.14 is reframed as the full statement of a rule §4 summarises and rule 9 points at it; **D-413's body is not amended**, append-only, an overstated rationale being not a wrong decision. **E4202's description contradicted D-413**: it closed the parameter group at "a line" rather than §19's **significant** line, so as written the blank line `grob fmt` now inserts around a decorated declaration would close the group and make the next `param` an ordering error — the fourth instance of a sentence the D-413 review pass fixed in three other places. Inert (no throw site, retirement-pending) but wrong if the retirement slips. **Terminology, four prose sites**: `grob-sample-scripts.md`, `grob-playground-architecture.md`, `grob-open-questions.md` twice — the latter two not cosmetic, both describing `param`→JSON-Schema reflection for an MCP tool surface where an implementer would go looking for a block node. **Three sites deliberately left**, being records of what was true when written: OQ-014's correction changelog, the grammar audit's finding, and D-409's verbatim quote of the live `E2001: expected '{' to open param block` diagnostic — the same principle as never retrofitting an archived prompt. **What cannot be fixed in documentation, and why this is an entry rather than a commit message.** E4201 ("`param` block syntax error") and E4202 ("`param` after `param` block ends") carry the retired form in their **titles**, which live in `ErrorCatalog.cs` and are diffed by the D-316 gate — a title change needs the source edit in the same commit. E4202's was already covered by D-410's deferral; **E4201's was on no list**, despite being the code that same increment wires to its first throw site, and would have shipped titled after a form the language does not have. D-410's deferred-registry list cannot be extended in place, so the addition is recorded here: **the grammar increment retitles E4201 to "`param` declaration syntax error"** alongside E4202's removal, E2202's widening and E4102's. No source change, no rule change, no opcode change; count stays **121**. |
 | D-415 | August 2026 | Compiler — parser, AST; Language spec — parser error recovery | Implements D-410's braceless `param` declaration grammar. **AST**: `ParamBlockDecl` (group node) replaced by one `ParamDecl` per declaration, per D-410's own recommendation — no dedicated grouping code, contiguity falls out of the existing per-item top-level loop. **Dispatch**: `ParseTopLevelItem` gains `TokenKind.At => ParseParamDecl()` alongside the existing `TokenKind.Param` arm, both calling the same method (the decorator stack is part of the `param-decl` production, not a separate lookahead target), which also gives `Expect(Param, E4201, ...)` a natural home for "decorator not followed by `param`". **Recovery**: `@` added to §29's synchronisation anchor set (`IsSyncAnchor`, not the shared `IsTopLevelKeyword` predicate the `type`-body path also uses) — confirmed empirically that without it, an adversarial open-bracket default disables the newline anchor and `Synchronise` silently swallows an intact decorator stack sitting above the next `param`; fixed and mutation-verified (guard test confirmed red with the clause removed, green restored). The anchor is **context-gated, not unconditional** (corrected under PR review): `@` is also legal inside a function parameter list via the shared `SkipParameterDecorators`, so an unconditional anchor stranded recovery mid-`fn`-header and cascaded a spurious second `E4201` out of one malformed `fn` (`fn f(a: , @secure b: int): int { return 1 }` gave `E2001` at 1:9 plus `E4201` at 1:19). Bracket depth cannot separate the cases — the swallow case sits at non-zero depth itself — so `ParseTopLevelItemOrError` gates the anchor on the failed item's own start token being `param` or `@`; statement- and expression-level recovery never enable it. Both guarantees tested independently. This is a §29 amendment, both `grob-language-fundamentals.md` and the `Synchronise()` doc comment updated to name `@` as a seventh anchor kind with its context condition. **Type checker**: `VisitParamDecl` visits the default expression (registering no symbol — binding stays Sprint 10/D-412), so §3.1.1 holds for identifiers inside a default; without it an undefined name in `param limit: int = fallback` went unreported with `ResolvedType`/`Declaration` both unset, out of step with `AstWalker.VisitParamDecl`, which already walked it. D-406's `param`-specific recovery machinery (`ParseDeclaredParameterOrError`, the `param` call site of `SkipToNextLiteralElementBoundary`'s newline mode) is deleted outright — the `type` path and `ParseDeclaredParameter`/`ParseParameterList` (function parameter lists) are unchanged, proven by their existing tests passing unmodified. **E4201** given its first throw site (missing type annotation, decorator not followed by `param`, `:=` for a default — all three of its registry-described cases, plus a fourth from follow-up review: a top-level decorator not followed by a newline, which §19's production requires and the shared decorator scanner admitted without) on the D-407 pattern, and retitled from "`param` block syntax error" to "`param` declaration syntax error" in `ErrorCatalog.cs` and `grob-error-codes.md` in the same commit, closing D-414's deferral; D-316 confirmed green after. E4202's removal and E2202's widening remain deferred to Sprint 10 per D-410/D-414. **Corpus**: the eleven validation scripts, markdown-only until now, extracted verbatim to `tests/fixtures/validation-scripts/` (no prior cross-sprint corpus convention existed; read via a repo-root walk-up rather than new csproj wiring). The D-409 param blocker is cleared for all eleven — five parse to completion cleanly, and the other six fail only on two pre-existing gaps unrelated to `param` (confirmed by minimal repro and by every one of their pinned diagnostics being plain `E2001` on an unrelated construct): generic-argument method calls via member access (`x.mapAs<T>()`) do not parse, and named-struct/anonymous-struct literal fields require comma separation even across lines (the `type`-body newline convention does not extend to them). Both reported, not fixed — a future increment's scope. A stale gold master found and not fixed: `docs/errors/examples/param-after-param-block-ends/` (E4202) uses the now-unparseable block form as its subject and cannot be reached; not test-harnessed, so nothing broke silently. No opcode change, no `GrobValueKind` change, no new error code; count stays **121**. |
 | D-416 | August 2026 | Compiler — parser, AST | Closes D-415's Gap A: `x.mapAs<Employee>()` and the free-function form `mapAs<Employee>(x)` now parse. Scope is parse-only — `<T>` resolution, result-typing and `E0401`/`E0402` stay with a future increment. **Investigation corrected D-415's own framing before any code was written**: the true determinant is argument-list arity, not receiver shape — empty-argument generic calls hard-failed to parse, non-empty-argument ones **silently misparsed with no diagnostic at all** as a comparison feeding a call, member-access and free-function forms affected identically. **D-415's "affects... script 11" does not hold** — script 11 has no generic call at all; corrected in `ValidationScriptCorpusTests.cs` rather than repeated. **Rule**: `Parser.LooksLikeTypeArgumentList()`, a non-consuming lookahead structurally identical to D-376's `LooksLikeMapLiteral`, fires on `Less` in `ParsePostfix` and commits to a type-argument list only when the `<...>` run closes and the very next token is `(`. Safe specifically because of **D-080** (users cannot declare generics, only consume a fixed compiler-known set, so every legal generic call is immediately invoked) — a strictly tighter trigger than a general C-family parser can use. Turbofish (`::<>`) and a name-keyed member allowlist both considered and rejected (alien syntax; bakes stdlib names into the parser). **Deliberately decides one case wrongly**: `a < b > (c)` now parses as a one-type-argument generic call rather than a chained comparison — pinned by test, no existing fixture asserted the old reading, rewritable with explicit parens. **AST**: `CallExpr` gains a fourth positional field `TypeArguments: IReadOnlyList<TypeRef>`, defaulted via an explicit 3-argument constructor overload rather than `= []` (`CS1736` forbids a non-constant positional-record default) — confirmed source-compatible with every existing call site. **Recovery**: no new synchronisation anchor — `<`/`>` are not bracket-depth tokens and none of Grob's grammar needs them to be; the pre-fix single-diagnostic recovery baseline is preserved, and the empty-list case now gets a materially better-targeted diagnostic for free. 21 new tests, mutation-verified (guard disabled, canonical test failed for the predicted pre-fix diagnostic, restored). **The lookahead's accepted token run is a deliberate subset of `ParseTypeRef`, not a mirror of it** — the function-type and parenthesised-grouping primaries are excluded, both unreachable under D-080 and admitting `(` would newly misread `a < f(b) > (c)`; pinned by test under PR review. Full solution `dotnet test`: 3,931 passed, 0 failed. `Grob.Compiler` coverage 97.12%. D-316 green; error count stays **121**. No opcode change, no `GrobValueKind` change. Gap B (struct-literal comma separation across lines) remains open, reported and not fixed. |
+| D-417 | August 2026 | Language spec — sample corpus; Testing — corpus drift guard | Closes D-415's Gap B, clearing the D-409 release-gate blocker for all eleven validation scripts. **Gap B was a corpus defect, not a parser one** — `grob-formatter-specification.md` §3.5's normative Category A/B separator rule already settled this, and the parser implements it correctly for struct/anon-struct/array/map literals; scripts 03, 07 and 11 were written in Category A (newline-separated) style for Category B (comma-separated) constructs. **Corrects D-415's framing**, which presented the newline-vs-comma split as an unexplained asymmetry rather than citing §3.5's pre-existing rule. **19 actual violations found against 5 prior diagnostics** — the parser stops at the first failure per construct (masking further missing commas in the same construct), and a missing *trailing* comma on a literal is grammatically optional and never surfaces a diagnostic at all; 18 of the 19 were fixed across six scripts (03, 06, 07, 08, 09, 11). **The 19th was found unsafe to fix and left as-is**: §3.5 also lists call-argument lists as Category B requiring a trailing comma, but the parser rejects a trailing comma on call-argument lists and function parameter lists unconditionally — confirmed on the minimal case `foo(1, 2,)`, which does not parse, directly contradicting `grob-language-fundamentals.md`'s own worked example. Script 07's `http.get(...)` call is left without its trailing comma; this is a genuine parser/spec mismatch, not a corpus defect, and needs a grammar decision, not a documentation fix. **`ValidationScriptCorpusTests`** strengthened: the three-script exact-pinned-diagnostic list (`_knownGapScripts`) is removed and folded into the same zero-diagnostic assertion the other eight scripts already used — strictly stronger, no coverage lost. **Drift guard**: `ValidationScriptMarkdownSyncTests` (new), asserting each of `grob-sample-scripts.md`'s eleven `## Script N` sections' single ` ```grob ` fence is byte-for-byte identical to its `tests/fixtures/validation-scripts/*.grob` file. Identification is heading-anchored (`## Script (\d+)` → the section's one fence) — confirmed reliable for all eleven without any markdown restructuring or marker comment. Normalisation policy: exact match, no whitespace normalisation — the two sides were already identical character-for-character before this entry's fixes, so exact match is both the strongest guard and free to adopt. Mutation-verified both directions (a one-character markdown perturbation and a one-character corpus perturbation each failed the guard, naming the perturbed script; both restored). **Survey (gate item 5, reported not fixed)**: the same trailing-comma-only pattern recurs outside the eleven scripts — 3 sites in `grob-language-fundamentals.md` (`Repo`, `Config`, `Person` construction examples) and 4 in the wiki (`Language-Specification/Types.md` ×2 — `Repo` and `Config` — `Language-Specification/Expressions.md` ×1, `Standard-Library/formatAs.md` ×1), 7 sites in total, one of which is a cross-document inconsistency against the formatter spec's own worked example (`grob-language-fundamentals.md`'s `Person`/`Address` example lacks the trailing comma that `grob-formatter-specification.md`'s identical worked example carries). Not corpus-wide; recommended owner is the same corpus-sweep thread this entry's own hand-off names. **Spec-gap noted, not resolved**: §3.5's Category A/B enumeration does not name switch-expression arms at all, though every example found (including script 09) uses commas consistent with Category B by convention. No grammar, parser, `OpCode` or `GrobValueKind` change. No new error code; count stays **121**. Full solution `dotnet test`: 3,950 passed, 0 failed. D-316 green. Coverage 96.11%, clearing D-328's 90% line-coverage bar (the `-Threshold 80` in the local gate command is that script's interim-ratchet default, not the repository requirement). |
 
 ---
 
@@ -13232,6 +13233,225 @@ extends).
 
 ---
 
+### D-417 — Gap B closed: the eleven validation scripts corrected to §3.5's Category B separator rule; a markdown/corpus drift guard lands for them; a call-argument trailing-comma parser gap found and reported, not fixed (August 2026)
+
+Area: Language spec — sample corpus; Testing — corpus drift guard
+
+Supersedes: none (closes D-415's Gap B finding)
+Superseded by: none
+
+Closes Gap B, the second of the two pre-existing gaps D-415 isolated and
+filed — clearing the D-409 release-gate blocker for all eleven validation
+scripts (the first, Gap A, closed by D-416). Runs against the corpus carrying
+D-356 through D-416. No opcode change, no `GrobValueKind` change, no new
+error code; count stays **121**.
+
+**Gap B was a corpus defect, not a parser defect, and the investigation gate
+corrected D-415's own framing before any fix was written.** D-415 recorded
+Gap B as "named-struct construction and anonymous-struct literal fields
+requiring comma separation even across lines... the `type`-body convention
+of bare-newline-separated fields does not extend to these two literal
+forms" — presented as an unexplained asymmetry the corpus was silent on.
+The corpus is not silent. `grob-formatter-specification.md` §3.5 carries a
+normative two-category separator rule that predates both audits: **Category
+A** (declaration bodies — `type` field lists) separates by newline; **Category
+B** (value lists — call arguments, signature parameters, array literals, map
+literals, named type construction and anonymous struct literals) separates
+by comma, with a trailing comma after every element including the last in
+multi-line form. `ParseBracedFieldInitList`'s comma loop implements Category
+B correctly for struct/anon-struct/array/map literals; `ParseTypeDecl`'s
+newline loop implements Category A correctly. The parser was not the
+problem for those constructs — the eleven validation scripts were written
+in Category A style for Category B constructs, and nothing before this
+entry had checked them against §3.5.
+
+**19 actual violations found by reading the six affected scripts directly
+(03, 06, 07, 08, 09, 11), against 5 diagnostics the parser had previously
+surfaced.** The gap between the two counts has two independent causes,
+neither of which is a defect in the diagnostic machinery: the parser stops
+at the first failure inside a construct, so a construct with several missing
+interior commas surfaces at most one or two diagnostics for the whole
+construct (script 11's seven-comma nested `body := #{ ... }` produced a
+single diagnostic; the other six of its seven missing commas were never
+reached); and a *trailing* comma on a literal is grammatically optional, so
+its absence never surfaces a diagnostic at all regardless of how the
+construct is otherwise formed (confirmed by script 08's `BranchInfo`
+construction, cited in D-415/D-416 as the "control" that parses cleanly
+despite being multi-line — it was in fact one comma short of full §3.5
+conformance the whole time, invisible to any diagnostic-based sweep).
+Full per-file, per-line enumeration was produced at the investigation gate
+and is not reproduced here; the corrected `.grob` files are the record.
+
+**18 of the 19 were fixed — purely syntactic, no script's behaviour,
+structure or intent changed.** Every fix is the addition of a comma (an
+interior separator or a required trailing one) to a struct construction,
+anonymous struct literal, or array literal already present in the script.
+`ValidationScriptCorpusTests` was strengthened first, TDD-style: the
+three-script exact-pinned-diagnostic dictionary (`_knownGapScripts`) and its
+own test method were deleted, and 03/07/11 were folded into the same
+`_cleanScripts` list and zero-diagnostic assertion the other eight scripts
+already used — confirmed red (03/07/11 failing with their known diagnostics)
+before any `.grob` file was touched, then green after the 18 fixes landed.
+This is a strictly stronger assertion than what it replaces, not a
+weakening: a zero-diagnostic assertion catches every diagnostic the
+exact-pinned list caught, plus any it did not anticipate.
+
+**The 19th site was found unsafe to fix and is deliberately left as-is —
+a genuine parser/spec mismatch, not a corpus defect.** §3.5 lists
+call-argument lists as Category B, requiring a trailing comma in multi-line
+form; script 07's `http.get(...)` call (its two arguments each on their own
+line, matching the worked example's own multi-line shape exactly) is
+missing one on its last argument. Adding it does not parse — confirmed
+empirically, escalating to the minimal single-line case `foo(1, 2,)`, which
+also fails, as does the parameter-list analogue `fn foo(a: int, b: int,):
+int { }`. Call-argument lists and function parameter lists reject a
+trailing comma unconditionally; only struct/anon-struct/array/map literals
+accept one. This directly contradicts `grob-language-fundamentals.md`'s own
+worked example at its §29 grammar-appendix aside (`fn foo(a: int, b: int,):
+int { }` and `foo(1, 2,)`), which is itself wrong as written — both fail to
+parse. Per the standing "report, don't fix" discipline and this entry's own
+explicit brief ("if any fix would change meaning rather than just add a
+separator, stop and flag it instead of applying it" — read here as
+"if a fix does not parse, it is not a safe application of the rule"), the
+comma is not added; script 07's `http.get` call is left exactly as found.
+Fixing this needs a grammar decision — either the parser gains trailing-comma
+tolerance for call-argument and parameter lists (an `extending-the-grammar`
+change, since it is new grammar acceptance, not a corrected mis-wiring), or
+§3.5's own text is narrowed to exclude these two constructs from the
+trailing-comma requirement — not decided here. `ValidationScriptCorpusTests`
+records this finding in its own doc comment rather than silently accepting
+17 fixes as 18; all eleven scripts nonetheless parse with zero diagnostics,
+since this site never produced a diagnostic before or after (a missing
+trailing comma is invisible to the parser on both the accepted and the
+rejected construct kinds).
+
+**The markdown/corpus drift guard: `ValidationScriptMarkdownSyncTests`,
+comparison-based, exact match.** `docs/design/grob-sample-scripts.md`
+publishes the same eleven scripts as fenced ` ```grob ` blocks, interleaved
+with non-Grob (PowerShell/Bash) originals and other Grob examples that are
+not among the eleven. Investigated at the gate and confirmed reliable
+without any markdown restructuring: every one of the eleven sits under a
+`## Script N — Title` heading, and every one of those eleven sections
+contains exactly one ` ```grob ` fence — the identification mechanism is
+"the section's one fence", found by heading number, no marker comment
+needed. Direction of authority confirmed: a full-repo grep run **at the
+investigation gate, before this entry added its own guard**, found no build
+script, generator or test that reads the markdown as input (`grep
+grob-sample-scripts.md` across `tests/`, `src/`, `tooling/` returned only doc
+comments citing it for context, never a live read); the `.grob` corpus files
+are the sole authority and the markdown is a publication of them.
+**`ValidationScriptMarkdownSyncTests` is the one live read of the markdown in
+the repository from this entry onward, and it does not change that direction**
+— it reads the markdown to _compare_, never as the input a corpus file is
+derived from, and on divergence the `.grob` file is the side that is right.
+Re-running that grep after this entry therefore returns one hit by design; the
+claim above is the pre-guard state, not a standing invariant that nothing
+reads the file.
+Before this entry's fixes, both sides were already identical, character for
+character, across all eleven scripts — confirmed programmatically — so there
+was no other divergence to preserve and no normalisation policy to design
+around: the guard asserts **exact byte-for-byte match, no whitespace
+normalisation**, the strongest available comparison and the correct one
+given the confirmed baseline. Comparison-based (the test reads both sides
+and diffs) rather than generation-based, per the investigation gate's own
+recommendation: no build step, works when only the docs change, and
+`Assert.Equal` on two strings gives a readable diff on failure.
+**Mutation-verified in both directions**: a single-character perturbation of
+`grob-sample-scripts.md`'s script 01 block failed
+`MarkdownBlock_MatchesCorpusFileExactly(fileName: "01-bulk-file-rename.grob")`
+with `Assert.Equal() Failure: Strings differ` naming the perturbed
+substring exactly; a single-character perturbation of the corresponding
+`.grob` file failed the same test the same way, from the other direction.
+Both perturbations were reverted before this entry's commit; the guard was
+confirmed green afterwards, and no perturbation remains in either file.
+
+**Survey (gate item 5): the same trailing-comma-only pattern recurs outside
+the eleven scripts, reported here and not fixed, sized for a future
+sweep.** `grob-language-fundamentals.md` carries three instances — the
+`Repo`, `Config` and `Person` construction worked examples (§ "Construction"
+and § "Nested construction") each end their last field without the trailing
+comma §3.5 requires for a multi-line construction. The wiki carries four
+more, enumerated individually so the total is checkable: the `Repo` and the
+`Config` construction examples in `Language-Specification/Types.md` (two
+distinct sites in one document, not one), the `Repo` example again in
+`Language-Specification/Expressions.md` (a copy of the fundamentals example,
+carrying the defect with it), and one independent instance in
+`Standard-Library/formatAs.md` — its `FileEntry` projection, an anonymous-
+struct `#{ ... }` literal rather than a named construction, the only site of
+the seven in that shape. **Three of the seven are the same `Repo` example
+copied across three documents**, which is why a per-document count and a
+per-example count diverge; the seven below are counted as sites. **One of
+these is a cross-document inconsistency worth flagging on its own**:
+`grob-language-fundamentals.md`'s `Person`/`Address` nested-construction
+example is the same example `grob-formatter-specification.md` §3.5 itself
+uses as its worked illustration of the trailing-comma rule — and the
+formatter spec's own copy carries the trailing comma while
+`grob-language-fundamentals.md`'s copy does not. Two design documents
+disagree on the canonical rendering of the identical example. `grob-stdlib-
+reference.md` and the 115-file error-examples library (`docs/errors/
+examples/`) were checked and carry no Category B violation of this kind —
+the library's four brace-pattern matches are unrelated retired-`param`-block
+staleness (already flagged by D-415) or a `try`/`catch` chain. **Not
+corpus-wide** — this is a narrow, identifiable set (7 sites, all
+trailing-comma-only, none breaking parsing), not the near-total comma
+absence the eleven scripts had. Recommended owner: the same standing
+corpus-sweep thread this entry's own hand-off queues — "every public code
+sample must exist as a corpus file compiled by the release gate" — since
+these sites are a strict subset of the shape that guard already checks once
+it exists for a document.
+
+**A related spec gap noted, not resolved.** §3.5's Category A/B enumeration
+does not name switch-expression arms at all. Every switch-expression example
+encountered during this survey (script 09; `grob-language-fundamentals.md`;
+`docs/wiki/Language-Specification/Expressions.md`) already uses commas,
+consistent with Category B by convention — so there is nothing to fix in the
+corpus — but the rule's own text is silent on this construct. Left for a
+future formatter-spec amendment or decision-log note; not addressed here.
+
+**Tests.** `ValidationScriptCorpusTests`: the exact-pinned `_knownGapScripts`
+dictionary and `KnownGapScript_FailsOnlyOnThePreExistingUnrelatedGap` are
+removed; all eleven scripts now run through
+`CleanScript_ParsesToCompletionWithZeroDiagnostics`. `Corpus_
+ContainsExactlyElevenScripts` simplified to a single list now that there is
+no gap-affected subset. `ValidationScriptMarkdownSyncTests` (new, 11
+theory cases): asserts each script's markdown fence against its corpus
+file, mutation-verified as above. Its extraction step is additionally
+**unambiguous-or-fail** — a duplicate `## Script N` heading or a second
+` ```grob ` fence inside one section throws rather than silently comparing
+whichever matched first (raised by CodeRabbit on PR #205; the extractor was
+made a pure function of the markdown text so the five failure modes are
+tested against synthetic documents instead of by perturbing the real one).
+Full solution `dotnet test`: **3,950 passed, 0 failed, 0 skipped** across
+all eight test projects (up from 3,934 at D-416, reflecting the new
+drift-guard theory cases, the five extraction-guard cases and no losses
+elsewhere). No parser, lexer, AST, `OpCode` or `GrobValueKind` file touched
+— confirmed by `git status` naming only the six corrected `.grob` fixtures,
+the markdown, the strengthened test file and the new drift-guard test file.
+D-316 (error-catalog agreement) green; the 121-code count unchanged
+(`ErrorCodeCountTests`). Local coverage gate: **96.11%** aggregate line
+coverage, no regression — this entry adds no production code. **The bar this
+clears is D-328's 90%, not the 80 in the command line.** The run was
+`tooling/coverage-gate.ps1 -Threshold 80`, and 80 is that script's default —
+an _interim ratchet_ on overall in-scope coverage, documented as such in the
+script's own header ("D-328 is not satisfied until it reaches 90"). The
+repository requirement is the 90% line-coverage hard bar of D-328 and
+`CLAUDE.md`. 96.11% clears both, so nothing here is contingent on the
+distinction — it is recorded so a future entry citing this one cannot read
+"above the 80 floor" as licence to land at 85.
+
+Cites D-415 (the entry whose Gap B finding this closes and whose framing
+this corrects), D-416 (closes the companion Gap A finding in the same
+corpus, cited for the parse-through baseline this entry extends to all
+eleven), D-409 (the release-gate blocker this entry fully clears — every
+script that could not parse since the sprint began now parses with zero
+diagnostics), D-406 (`ParseTypeDecl`'s newline-mode Category A path, cited
+by contrast — untouched by this entry), D-376 (`ParseBracedFieldInitList`'s
+comma-loop Category B path, cited by contrast — also untouched; this entry
+is a corpus and test change only), D-308 (`ErrorCatalog` — no new
+descriptor added).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -13453,7 +13673,33 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — D-416 added: generic type arguments now parse at call sites_
+_August 2026 — D-417 added: closes D-415's Gap B, clearing the D-409_
+_release-gate blocker for all eleven validation scripts. Gap B was a corpus_
+_defect, not a parser one — `grob-formatter-specification.md` §3.5's_
+_normative Category A/B separator rule already settled it, correcting D-415's_
+_framing of an "unexplained asymmetry." 19 actual violations found against 5_
+_prior diagnostics (the parser stops at the first failure per construct, and_
+_a missing trailing comma on a literal is grammatically optional and never_
+_surfaces a diagnostic); 18 fixed across six scripts (03, 06, 07, 08, 09, 11)._
+_The 19th — a missing trailing comma on script 07's multi-line `http.get(...)`_
+_call — was found unsafe to fix: call-argument and parameter lists reject a_
+_trailing comma unconditionally, contradicting both §3.5 and_
+_`grob-language-fundamentals.md`'s own worked example (`foo(1, 2,)` also_
+_fails to parse); reported as a genuine parser/spec mismatch, not fixed._
+_`ValidationScriptCorpusTests` strengthened to assert zero diagnostics for_
+_all eleven, replacing the three-script exact-pinned-diagnostic list — a_
+_strictly stronger assertion. New drift guard_
+_`ValidationScriptMarkdownSyncTests` asserts each of the eleven markdown_
+_fences in `grob-sample-scripts.md` matches its corpus `.grob` file exactly_
+_(heading-anchored identification, byte-for-byte comparison, no_
+_normalisation), mutation-verified in both directions. Survey found the same_
+_trailing-comma-only pattern in 7 further sites outside the eleven scripts_
+_(`grob-language-fundamentals.md` ×3, wiki ×4) — reported, not fixed, sized_
+_for a future sweep. §3.5's own silence on switch-expression arms also noted._
+_No opcode, `GrobValueKind` or error-code change; count stays 121. Full_
+_solution `dotnet test`: 3,950 passed, 0 failed. D-316 green. Coverage 96.11%,_
+_clearing D-328's 90% bar._
+_Previous: August 2026 — D-416 added: generic type arguments now parse at call sites_
 _(`x.mapAs<Employee>()`, `mapAs<Employee>(x)`), closing D-415's Gap A._
 _Investigation found Gap A's true determinant is argument-list arity, not_
 _receiver shape — non-empty-argument generic calls silently misparsed with_

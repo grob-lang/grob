@@ -48,23 +48,47 @@ namespace Grob.Compiler.Tests;
 /// script — corrected here rather than repeated.
 /// </para>
 /// <para>
-/// <b>Gap B remains open, reported and not fixed here (out of this increment's
-/// scope):</b> named-struct construction and anonymous-struct literal fields
-/// require comma separation even across lines — the <c>type</c>-declaration-body
-/// convention of bare-newline-separated fields (D-406/§10) does not extend to
-/// these two literal forms — isolated with a bare <c>Point { a: 1\nb: 2\n}</c>.
-/// Affects scripts 03, 07 and 11. Script 08's <c>BranchInfo</c> construction is
-/// the control that confirms Gap B precisely: it is multi-line but
-/// comma-separated, and parses cleanly. Left for a future increment to scope —
-/// most plausibly the corpus sweep D-415's own hand-off already queues.
+/// <b>Gap B closed (D-417).</b> Named-struct construction and anonymous-struct
+/// literal fields require comma separation even across lines — the
+/// <c>type</c>-declaration-body convention of bare-newline-separated fields
+/// (D-406/§10) does not extend to these two literal forms, per the formatter
+/// specification's own §3.5 Category A/B rule, which the parser already
+/// implemented correctly for struct/anon-struct/array/map literals. The
+/// corpus scripts were the defect, not the parser, for those constructs:
+/// scripts 03, 07 and 11 were written in Category A style for Category B
+/// literal constructs. D-417 corrects eighteen of the nineteen missing/wrong
+/// separators the investigation gate found across the six affected scripts
+/// (03, 06, 07, 08, 09, 11) — more sites than the five diagnostics the parser
+/// had previously surfaced, since the parser stops at the first failure per
+/// construct and a missing *trailing* comma on a literal alone (grammatically
+/// optional there) never surfaces a diagnostic at all.
 /// </para>
 /// <para>
-/// The split below is deliberately not a weaker acceptance test: the eight clean
-/// scripts assert zero diagnostics outright, and the three Gap-B-affected scripts
-/// pin their <i>exact</i> diagnostic set (code, message, line, column) rather than
-/// merely "some error" — a regression that introduced a new, unexpected
-/// diagnostic (a param- or type-argument-shaped one, in particular) would still
-/// fail this test.
+/// <b>The nineteenth site was found unsafe to fix and was deliberately left
+/// as-is.</b> §3.5 lists call-argument lists as Category B, requiring a
+/// trailing comma in multi-line form, and script 07's <c>http.get(...)</c>
+/// call (lines 23–26) is missing one on its last argument. Adding it does
+/// not parse — confirmed empirically, including the minimal single-line case
+/// <c>foo(1, 2,)</c> — call-argument lists and function parameter lists
+/// reject a trailing comma unconditionally, unlike struct/array/map/
+/// anon-struct literals, which accept one. This directly contradicts
+/// <c>grob-language-fundamentals.md</c>'s own worked example
+/// (<c>fn foo(a: int, b: int,): int { }</c> and <c>foo(1, 2,)</c>, both of
+/// which also fail to parse as written) and is a genuine parser/spec
+/// mismatch, not a corpus defect — fixing it would need a grammar change,
+/// out of this increment's scope. Reported for a decision, not fixed;
+/// script 07's <c>http.get</c> call is left exactly as found. All eleven
+/// scripts nonetheless parse with zero diagnostics, since this site never
+/// produced a diagnostic in the first place (the missing trailing comma is
+/// invisible to the parser either way).
+/// </para>
+/// <para>
+/// The assertion below is strictly stronger than what it replaces: the three
+/// previously Gap-B-affected scripts (03, 07, 11) moved from an exact-pinned
+/// diagnostic list to a zero-diagnostic assertion, folded into the same clean
+/// list the other eight scripts already used. No coverage was lost — a
+/// zero-diagnostic assertion catches every diagnostic the pinned list caught,
+/// plus any diagnostic the pinned list did not anticipate.
 /// </para>
 /// </summary>
 public sealed class ValidationScriptCorpusTests {
@@ -87,42 +111,19 @@ public sealed class ValidationScriptCorpusTests {
     private static readonly string[] _cleanScripts = [
         "01-bulk-file-rename.grob",
         "02-organise-photos-by-date.grob",
+        "03-find-large-files-report.grob",
         "04-github-repos-backup.grob",
         "05-csv-data-processing.grob",
         "06-azure-cli-wrapper.grob",
+        "07-rest-api-data-pull.grob",
         "08-stale-git-branches.grob",
         "09-disk-space-monitor.grob",
         "10-download-and-verify.grob",
+        "11-azure-resource-provisioning.grob",
     ];
-
-    private sealed record ExpectedDiagnostic(string Code, string Message, int Line, int Column);
-
-    /// <summary>
-    /// The scripts still affected by Gap B (see the type doc comment) now that
-    /// D-416 has closed Gap A, each with its exact, currently-observed diagnostic
-    /// set pinned so a regression — including a spurious param- or
-    /// type-argument-related diagnostic — is caught, while the pre-existing
-    /// unrelated gap is not silently mischaracterised as this increment's problem.
-    /// </summary>
-    private static readonly Dictionary<string, ExpectedDiagnostic[]> _knownGapScripts = new() {
-        ["03-find-large-files-report.grob"] = [
-            new("E2001", "expected '}' to close struct construction", 16, 9),
-            new("E2001", "unexpected token '}' — expected expression", 18, 5),
-        ],
-        ["07-rest-api-data-pull.grob"] = [
-            new("E2001", "expected '}' to close anonymous struct literal", 33, 13),
-            new("E2001", "unexpected token '}' — expected expression", 36, 9),
-        ],
-        ["11-azure-resource-provisioning.grob"] = [
-            new("E2001", "expected '}' to close anonymous struct literal", 55, 9),
-        ],
-    };
 
     public static IEnumerable<object[]> CleanScriptCases =>
         _cleanScripts.Select(name => new object[] { name });
-
-    public static IEnumerable<object[]> KnownGapScriptCases =>
-        _knownGapScripts.Keys.Select(name => new object[] { name });
 
     /// <summary>
     /// The release-gate blocker itself: the corpus is exactly eleven scripts,
@@ -136,10 +137,11 @@ public sealed class ValidationScriptCorpusTests {
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray()!;
         Assert.Equal(ExpectedScripts.OrderBy(n => n, StringComparer.Ordinal), onDisk);
-        // Every script is accounted for by exactly one of the two groups below.
+        // Every script is accounted for — now that Gap B is closed, all eleven
+        // are clean scripts, so the two lists are the same set.
         Assert.Equal(
             ExpectedScripts.OrderBy(n => n, StringComparer.Ordinal),
-            _cleanScripts.Concat(_knownGapScripts.Keys).OrderBy(n => n, StringComparer.Ordinal));
+            _cleanScripts.OrderBy(n => n, StringComparer.Ordinal));
     }
 
     [Theory]
@@ -149,26 +151,6 @@ public sealed class ValidationScriptCorpusTests {
         Assert.True(bag.Count == 0,
             $"{fileName}: parser diagnostics:\n{string.Join('\n', bag.Diagnostics)}");
         Assert.NotEmpty(unit.TopLevel);
-    }
-
-    [Theory]
-    [MemberData(nameof(KnownGapScriptCases))]
-    public void KnownGapScript_FailsOnlyOnThePreExistingUnrelatedGap(string fileName) {
-        DiagnosticBag bag = ParseCorpusFile(fileName, out _);
-        ExpectedDiagnostic[] expected = _knownGapScripts[fileName];
-
-        Assert.Equal(expected.Length, bag.Diagnostics.Count);
-        for (int i = 0; i < expected.Length; i++) {
-            Diagnostic actual = bag.Diagnostics[i];
-            Assert.Equal(expected[i].Code, actual.Code);
-            Assert.Equal(expected[i].Message, actual.Message);
-            Assert.Equal(expected[i].Line, actual.Range.Start.Line);
-            Assert.Equal(expected[i].Column, actual.Range.Start.Column);
-            // None of the pre-existing gap's diagnostics are param-related —
-            // the D-409 blocker this increment clears would regress silently
-            // if a future change reintroduced a param-shaped failure here.
-            Assert.DoesNotContain("param", actual.Message, StringComparison.OrdinalIgnoreCase);
-        }
     }
 
     private static DiagnosticBag ParseCorpusFile(string fileName, out CompilationUnit unit) {

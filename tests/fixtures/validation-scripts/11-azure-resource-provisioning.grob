@@ -51,14 +51,14 @@ url    := "https://management.azure.com/subscriptions/${subscriptionId}/resource
 
 body := #{
     properties: #{
-        mode: "Incremental"
-        templateLink: #{ uri: templatePath }
+        mode: "Incremental",
+        templateLink: #{ uri: templatePath },
         parameters: #{
-            environment: #{ value: environment }
-            storageId:   #{ value: storageId.toString() }
-        }
-    }
-    tags: tags
+            environment: #{ value: environment },
+            storageId:   #{ value: storageId.toString() },
+        },
+    },
+    tags: tags,
 }
 
 response := http.put(url, json.encode(body), auth.bearer(token))
