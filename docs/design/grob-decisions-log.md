@@ -415,6 +415,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-417 | August 2026 | Language spec — sample corpus; Testing — corpus drift guard | Closes D-415's Gap B, clearing the D-409 release-gate blocker for all eleven validation scripts. **Gap B was a corpus defect, not a parser one** — `grob-formatter-specification.md` §3.5's normative Category A/B separator rule already settled this, and the parser implements it correctly for struct/anon-struct/array/map literals; scripts 03, 07 and 11 were written in Category A (newline-separated) style for Category B (comma-separated) constructs. **Corrects D-415's framing**, which presented the newline-vs-comma split as an unexplained asymmetry rather than citing §3.5's pre-existing rule. **19 actual violations found against 5 prior diagnostics** — the parser stops at the first failure per construct (masking further missing commas in the same construct), and a missing *trailing* comma on a literal is grammatically optional and never surfaces a diagnostic at all; 18 of the 19 were fixed across six scripts (03, 06, 07, 08, 09, 11). **The 19th was found unsafe to fix and left as-is**: §3.5 also lists call-argument lists as Category B requiring a trailing comma, but the parser rejects a trailing comma on call-argument lists and function parameter lists unconditionally — confirmed on the minimal case `foo(1, 2,)`, which does not parse, directly contradicting `grob-language-fundamentals.md`'s own worked example. Script 07's `http.get(...)` call is left without its trailing comma; this is a genuine parser/spec mismatch, not a corpus defect, and needs a grammar decision, not a documentation fix. **`ValidationScriptCorpusTests`** strengthened: the three-script exact-pinned-diagnostic list (`_knownGapScripts`) is removed and folded into the same zero-diagnostic assertion the other eight scripts already used — strictly stronger, no coverage lost. **Drift guard**: `ValidationScriptMarkdownSyncTests` (new), asserting each of `grob-sample-scripts.md`'s eleven `## Script N` sections' single ` ```grob ` fence is byte-for-byte identical to its `tests/fixtures/validation-scripts/*.grob` file. Identification is heading-anchored (`## Script (\d+)` → the section's one fence) — confirmed reliable for all eleven without any markdown restructuring or marker comment. Normalisation policy: exact match, no whitespace normalisation — the two sides were already identical character-for-character before this entry's fixes, so exact match is both the strongest guard and free to adopt. Mutation-verified both directions (a one-character markdown perturbation and a one-character corpus perturbation each failed the guard, naming the perturbed script; both restored). **Survey (gate item 5, reported not fixed)**: the same trailing-comma-only pattern recurs outside the eleven scripts — 3 sites in `grob-language-fundamentals.md` (`Repo`, `Config`, `Person` construction examples) and 4 in the wiki (`Language-Specification/Types.md` ×2 — `Repo` and `Config` — `Language-Specification/Expressions.md` ×1, `Standard-Library/formatAs.md` ×1), 7 sites in total, one of which is a cross-document inconsistency against the formatter spec's own worked example (`grob-language-fundamentals.md`'s `Person`/`Address` example lacks the trailing comma that `grob-formatter-specification.md`'s identical worked example carries). Not corpus-wide; recommended owner is the same corpus-sweep thread this entry's own hand-off names. **Spec-gap noted, not resolved**: §3.5's Category A/B enumeration does not name switch-expression arms at all, though every example found (including script 09) uses commas consistent with Category B by convention. No grammar, parser, `OpCode` or `GrobValueKind` change. No new error code; count stays **121**. Full solution `dotnet test`: 3,950 passed, 0 failed. D-316 green. Coverage 96.11%, clearing D-328's 90% line-coverage bar (the `-Threshold 80` in the local gate command is that script's interim-ratchet default, not the repository requirement). |
 | D-418 | August 2026 | Language design — generics; Type system | Fixes the v1 generic-consumption scope, taken before Sprint 9C after a forward review found `CallExpr.TypeArguments` (D-416) parsed and read by nothing, E0401/E0402 with zero throw sites, and no type-parameter, substitution or constraint machinery anywhere — `mapAs<T>` will be the language's first generic consumption with nothing underneath it. **Type parameters and constraints become first-class in the native-signature representation, designed once before the first consumer; no declaration syntax; no inference; constraints declared per-signature by the native that owns the parameter, never written in Grob source.** Bounds D-080 rather than changing it. **The "we're building most of it anyway" argument was tested and is false** — `mapAs<T>` builds roughly **10–15%** of user-definable generics. Full generics need declaration syntax, type-parameter scoping, general substitution, **call-site inference**, constraint checking, generic *type* declarations, an erasure-versus-reification runtime decision, generic dispatch, variance, and generic-aware diagnostics; `mapAs<T>` needs two of those in trivial form and none of the other eight, which is where the cost and the risk both live. **Four reasons against full generics now.** *No consumer* — generics earn their keep in libraries, Grob's library layer is plugins written in C# which already has them, and the owner has confirmed Grob will not be self-hosted; none of the eleven scripts would declare a generic, and the corpus's only generic is `mapAs<T>`, a consumption. Designing inference, variance and a runtime representation against a corpus with zero generic declarations is design without usage pressure. *Inference collides with four load-bearing features* — the universally-assignable `Error` type (D-300) would poison unification by binding parameters from error nodes; `int → float` (D-303) forces a rule most languages got wrong first; `T?` where `T` is already nullable needs a rule since nullability lives in the type; named arguments interact with inference ordering. *Generic **types** reopen Sprint 6* — `UserTypeRegistry` parameterised, `ResolvedFieldInfo.Kind` as a parameter reference, §17.1's cycle DFS handling `type Node<T> { next: Node<T>? }`, and erasure-versus-reification touching the VM, `ValueDisplay` (D-336, dispatching on `GrobStruct.TypeName`) and the exception hierarchy — **which qualifies D-080's "no architectural rework required"**: true of generic functions with explicit arguments, false of generic types and of inference. *Shipped inference would impede a future port* — TypeScript 7.0 (GA July 2026) moved a million-line compiler to Go in ~15 months at 8–12x as a faithful **port** because ~20,000 conformance tests pinned the observable diagnostics — **error-reporting parity** with 6.0 in all but 74 of the ~6,000 error-producing cases, which is parity of diagnostics rather than proof of semantic equivalence; inference is the hardest thing to reproduce faithfully because its rules end up discovered rather than written. **The strongest counter-argument, stated and rejected**: no ship date means the cut list is self-imposed — true, and the wrong frame, because unlimited time does not make a feature free, it makes it permanent. What is preserved: adding syntax and inference later becomes one new thing (unification) on working machinery rather than eight. **D-081 exists, is correct, and was never implemented — recorded as a finding.** It requires plugins to express type parameters via `FunctionSignature` in `Grob.Runtime`, "designed in from the start, not retrofitted". `FunctionSignature` **is not implemented** — no such type is declared under `src/` or `plugins/` — while `grob-plugins.md`, `grob-vm-architecture.md`, `grob-solution-architecture.md`, `grob-v1-requirements.md`, `Writing-Plugins.md` and both `CLAUDE.md` files advertise it as published surface, so that documentation is aspirational rather than descriptive. What exists is `NamespaceRegistry.NativeMember`, an **`internal` record inside `Grob.Compiler`** holding every native signature in a hardcoded static dictionary, grown six parameters incrementally; `IPluginRegistrar` registers runtime behaviour only (`RegisterNative(string, NativeFunction)`) with no types, arity or return type — **a plugin tells the VM what to run and tells the checker nothing**. Invisible while the stdlib is first-party, fatal for Sprint 11's `import Grob.Http`. Same class as the advertised-versus-built findings, one level up: a shipped decision the implementation diverged from. **D-419 owns the remedy.** **`mapAs<T>` means `T` uniformly, settling a live corpus contradiction.** `wiki/Standard-Library/csv.md` declares `csv.Table.mapAs<T>() → T[]` (T is the *row* type) and `grob-type-registry.md` carries the same `→ T[]` on `csv.Table` beside the opposite `→ T` on `json.Node`; `wiki/Standard-Library/json.md` uses `mapAs<Repo[]>()` (T is the *whole* type); `grob-stdlib-reference.md` and script 04 use `mapAs<Repo>()` for a plural binding, contradicting the wiki's json convention; script 11 carries an explicit `[ASSUMPTION]` marker on `mapAs<PsDrive[]>()`. Left alone, `mapAs<Employee>()` would mean `Employee[]` on a table and `Employee` on a node — one spelling, two meanings. **Decision: `mapAs<T>(): T` on both receivers**, the argument always naming the whole result type; a table is not an `Employee`, it is `Employee[]`. The cost — `csv.Table`'s `[]` is never optional — is accepted and **converted into a diagnostic by the constraint mechanism**: `csv.Table`'s parameter is constrained to *array of named struct*, so `table.mapAs<Employee>()` is **E0402** with a message suggesting `Employee[]`; `json.Node`'s is *named struct, or array of named struct*. The two differ, which is the point — constraints are per-signature, as "constrained generics" always implied, and E0402 gains a real throw site from the language's first generic. **E0402's registry description corrected** — it illustrated the code with `sort<U: Comparable>`, a declaration-site constraint syntax v1 does not have; description-only, so `ErrorCatalog.cs` and D-316 are untouched. **Corpus corrections recorded, not applied** — `grob-type-registry.md`'s `csv.Table.mapAs<T>() → T[]` included: the scripts are `.grob` files gated by `ValidationScriptCorpusTests` and byte-matched to their markdown by `ValidationScriptMarkdownSyncTests` (D-417), so editing one side from a decision-only session would break that guard — assigned to the increment implementing `mapAs<T>`, which corrects both sides in one commit and removes script 11's `[ASSUMPTION]` marker. Not decided here: the signature type's shape and home, the SDK freeze, and `GrobType` closure — all **D-419**. No opcode change; count stays **121**. |
 | D-419 | August 2026 | Solution architecture — plugin SDK; Type system — `GrobType` closure; Harness | Specifies `FunctionSignature`, the contract D-081 required in April 2026 "from the start, not retrofitted" and that has never existed — the remedy D-418 deferred. **The problem**: the checker's knowledge of every native lives in `NamespaceRegistry`, an `internal static` class inside `Grob.Compiler` holding a hardcoded dictionary of `internal record NativeMember` grown six parameters by accretion, while `IPluginRegistrar` offers only `RegisterNative(string, NativeFunction)` — no types, arity or return type. A plugin tells the VM what to run and the checker nothing; invisible while every native is first-party, fatal for Sprint 11's `import Grob.Http`. **Decision 1 — `FunctionSignature` is data, not behaviour**, and the single source of truth for a native's type: name, parameters (name, type, default, variadic), return type and type parameters with constraints (D-418). No delegate, no C# callable, no implementation reference; registration binds it to a `NativeFunction`. *Why it matters*: TypeScript 7.0 ported a million-line compiler to Go in ~15 months and **still could not carry its public API across**, shipping without a stable programmatic API and stranding Vue, Angular, Svelte, Astro, MDX and typescript-eslint until 7.1, because the API was entangled with the implementation. A C#-shaped plugin contract strands every Grob plugin the same way on any future port; a contract that is *description* survives one. Plugins are C# assemblies and always will be — what must be portable is the description, not the delegate. *Consequence designed for now*: signature metadata must be readable **without executing plugin code**, since `grob check` on an untrusted script must not run a third party's static constructors, which Sprint 11's stated `Assembly.LoadFrom()`-then-instantiate path does at compile time. Inert data makes a manifest possible; **the manifest format is Sprint 11's**, the property that permits it is fixed here. **Decision 2 — a signature's return type is its own closed union**, not a `GrobType`: a concrete type (with named-type name for `Struct`), a type-parameter reference or an array of one. `mapAs<T>(): T` is the first native whose return type references its own type parameter, and expressing that as a `GrobType.TypeParameter` variant would grow the enum for exactly the reason it should be frozen. Parameter types use the same union. **Decision 3 — `GrobType` becomes a closed surface under ADR-0013's discipline.** Its twenty variants are **eleven type shapes with nullable twins for nine** — `Nil` and `Error` correctly have none, `Nil` being already nil and `Error` universally assignable (D-300). It enumerates type *shapes*, not identities: `date`, `guid` and `json.Node` are `Struct` plus a `NamedTypeName`, as `Regex`, `File`, `ProcessResult`, `csv.Table` and `CsvRow` will be, so **every remaining v1 module adds named types, not shapes**, and Decision 2 removes the one pressure that would have added one. Closure matters more here than for `OpCode` or `GrobValueKind` because `GrobType` is the only closed surface that becomes **public SDK API** — every plugin signature is written in terms of it, so a post-publication variant breaks third-party code. **Decision 4 — the SDK spans two assemblies, accepted.** `FunctionSignature`, `Parameter`, `IGrobPlugin`, `IPluginRegistrar`, the capability interfaces and `ExitSignal` in `Grob.Runtime` per D-081; `GrobType`, `GrobValue`, `GrobValueKind` and the `GrobError` hierarchy in `Grob.Core`; the published package takes `Grob.Core` as a dependency. Moving `GrobType` up was **rejected** — `Grob.Core` is the DAG's only shared ground and both `Grob.Compiler` and `Grob.Vm` depend on it while neither may depend on the other, so relocating a language primitive to satisfy packaging would invert the architecture. **Consequence recorded and owned by Sprint 11**: `Grob.Core`'s public surface becomes SDK surface, and it currently holds `Chunk`, `BytecodeFunction`, `CatchHandler`, `DiagnosticBag` and `IVmCallHost`, none of which a plugin author should see — what stays public and what becomes `internal` must be settled **before** publication, narrowing afterwards being a breaking change. **Decision 5 — `NamespaceRegistry` becomes a producer, not a parallel truth**: the hardcoded table stops defining a native's type and becomes one source of `FunctionSignature` values alongside plugin-supplied ones, so first-party and third-party natives are checked by one path and `NativeMember`'s six accreted parameters are subsumed rather than carried forward. `IPluginRegistrar.RegisterNative` gains the signature — registration without one becomes impossible rather than discouraged. **The harness has been advertising this API and instructing authors to use it.** Worse than D-418's six design documents, because the harness is what implementers read: `.claude/skills/authoring-a-plugin/SKILL.md` calls typed registration "non-negotiable", says an untyped registration "is a defect" and shows `vm.RegisterNative(name:, signature: new FunctionSignature(...), implementation:)` — a **three-argument call that would not compile** against the real two-argument method; `.claude/skills/adding-a-stdlib-function/SKILL.md` has it as a checklist item; `src/CLAUDE.md` lists it among `Grob.Runtime`'s contents. Every increment that added a native worked under an instruction naming a type that has never existed, and either ignored the checklist item or worked around it without surfacing the gap — **a different failure mode from a stale design doc**, since the harness was actively directing implementation toward a phantom, and the advertised-versus-built scrutiny applied to the design corpus has never been pointed at `.claude/`. **Standing item recorded: the harness needs the same audit.** Skills and `CLAUDE.md` are corrected in the commit that makes the instruction true, never before. **Sequencing**: specified here; implemented by the increment building `mapAs<T>`, the first native that cannot be expressed by `NativeMember`, which also carries D-418's corpus corrections; publication, manifest format, `Grob.Core` narrowing and the loading path are Sprint 11. **The freeze point is first package publication**, not first implementation — the shape may move on evidence until then and may not after. No opcode change; count stays **121**. |
+| D-420 | August 2026 | Process — decision tracking; Sprint sequencing | **Decision 1 — a Deferred Work Register**, a new section in `grob-open-questions.md` between Open and Resolved, giving work that is *decided but not yet done* a single tracking home with an owner and a checkable completion criterion per item; twelve items on creation, R-01 to R-12. **The problem it solves**: a deferral recorded only in prose inside an append-only entry has nowhere to record its own current state — the deferring entry is frozen at the moment of deferral and can never say "done" or "still outstanding", so status can only be reconstructed by re-reading every entry since, at a cost that grows with every decision. **The register replaces the reconstruction, not a failure.** Two real instances: **D-081**, which required `FunctionSignature` in April 2026 "from the start, not retrofitted" and went unimplemented until D-419 in August, four months during which two `.claude/` skills and `src/CLAUDE.md` instructed authors to supply it with an example that would not compile; and **D-419's own sequencing**, refined below within days of landing. **One instance considered and rejected as evidence**, recorded because getting it wrong is why this entry was rewritten: D-410's three deferred registry changes (E4202's removal, E2202's and E4102's widenings) are **not** leakage. D-414 scheduled them explicitly with a technical reason — they turn on the **E2202 ordering rule** rather than the grammar, and E4202's condition only becomes a subset of E2202's once ordering is enforced, so removing it earlier would strand the ordering diagnostic. D-415, the grammar increment, did the one item due (E4201's retitle) and recorded the other three outstanding exactly as directed. **The mechanism worked.** A draft of this entry claimed otherwise, miscounted the list as four, and supported it with a sentence presented as a quotation from D-414 that appears nowhere in the corpus — **an argument that a tracking mechanism is needed must not itself rest on an untracked recollection.** Housed in the existing document because two lists diverging is the failure being avoided and a third artefact would be a fourth place to look; an open question asks *what should we do*, a register item has that answer and asks *who does it, and when*. Items are added by the decision that defers them and move to Closed with the D-number that closed them, never deleted. Every item carries an owner — a named increment, a named sprint, or `unowned`, which is permitted and honest, R-06 and R-10 being genuinely unowned — but an item **without a completion criterion may not be added**, because "done" must be checkable by someone who was not in the conversation. The authority model is unchanged: the log authorises, the register tracks status. **Decision 2 — `FunctionSignature` re-sequenced ahead of Sprint 9C** (R-12). D-419 as merged has it implemented by the `mapAs<T>` increment, which is Increment D and sits behind Increment C — so `fs` would add a module's worth of natives through `NamespaceRegistry.NativeMember`, **the accretion path D-419 exists to stop**, adding a fifth module to the migration for no reason but sequencing inertia and reproducing D-081's outcome with the specification now written down. It gets its own increment before 9C, scoped as a migration with no behaviour change: the existing native surface routes through `FunctionSignature`, `RegisterNative` requires one, `NamespaceRegistry` becomes a producer rather than the definition (D-419 Decision 5), with type parameters and the return-type union (D-418, D-419 Decision 2) present but unexercised until `mapAs<T>`. Two reasons beyond consistency: the **migration cost only grows** — `fs`, `json`, `csv`, `regex` and `process` are five modules of natives — and the acceptance criterion is unusually strong, **a pure refactor with the existing suite as its guard**, though with a known weakness (a refactor touching every registration is exactly where a test passing for the wrong reason goes green for a new wrong one), so the prompt must require mutation verification on the signature-arity and return-type paths rather than resting on a green suite. D-419 is append-only, so its sequencing paragraph stands and this refines it. **The revised pre-9C run, six increments**: (1) trailing comma — the §3.5 grammar decision and parser change, without which `grob fmt` would emit unparseable output in Sprint 12; (2) finish the param concern — ordering enforcement via E4202/E2202 throw sites, closing R-01, R-02 and R-03; (3) **`FunctionSignature`**, R-12; (4) error-examples harness, R-11; (5) public samples compile; (6) corpus sweep. Then Sprint 9C, rebuilt from scratch per D-411. Increment 3 sits after 1 and 2 because both touch the parser and neither touches natives, and before 4 so the harness gold-masters diagnostics from the final signature path rather than reconciling them twice. **Stopping rule, stated so the run terminates**: every increment of the recent consolidation produced one to three findings, so without a rule "bottom everything out" does not converge — **findings from these six go to the register, not into the run**, unless they block the increment that found them or block Sprint 9C. The run is defined by that list and does not grow; forty stale gold masters would be a register entry with an owner, not a seventh increment. No source change; count stays **121**. |
 
 ---
 
@@ -13871,6 +13872,152 @@ host, the other consumer of a portable contract) and
 
 ---
 
+### D-420 — Deferred Work Register established in `grob-open-questions.md`; `FunctionSignature` re-sequenced ahead of Sprint 9C (August 2026)
+
+Area: Process — decision tracking; Sprint sequencing
+Supersedes: none (refines D-419's sequencing)
+Superseded by: none
+
+**Decision-only, documentation-only. No source change.** Error-code count
+unchanged at 121.
+
+---
+
+**Decision 1 — a Deferred Work Register, in `grob-open-questions.md`.**
+
+Work that is **decided but not yet done** now has a single tracking home: a new
+section in `grob-open-questions.md`, between Open Questions and Resolved
+Questions, with an owner and a completion criterion per item. Twelve items on
+creation, R-01 through R-12.
+
+**The problem it solves.** A deferral recorded only in prose inside an
+append-only decision entry has nowhere to record its own current state. The
+entry that defers is frozen at the moment of deferral; nothing in it can ever
+say "this is now done" or "this is still outstanding". Determining the status of
+a deferred item therefore means re-reading every entry since, and the cost of
+that reconstruction grows with every decision. **The register replaces the
+reconstruction, not a failure.**
+
+**Two real instances, stated precisely.**
+
+- **D-081** required `FunctionSignature` in `Grob.Runtime` in April 2026,
+  "designed in from the start, not retrofitted". It went unimplemented until
+  D-419 in August — four months during which two `.claude/` skills and
+  `src/CLAUDE.md` instructed authors to supply it, with a registration example
+  that would not compile. Nothing tracked it, and nothing was in a position to.
+- **D-419's own sequencing**, refined by Decision 2 below within days of
+  landing, because it deferred `FunctionSignature` to an increment that sits
+  behind the module work the contract exists to govern.
+
+**One instance considered and rejected as evidence, because getting this wrong
+is the reason the entry was rewritten.** D-410's three deferred registry
+changes (E4202's removal, E2202's and E4102's title widenings) are **not**
+evidence of leakage. D-414 scheduled them explicitly and gave the technical
+reason: they turn on the **E2202 ordering rule** rather than on the grammar, and
+E4202's condition only becomes a subset of E2202's once ordering is enforced, so
+removing it earlier would leave the ordering diagnostic with no code to fall
+back to. D-415 — the grammar increment — did the one item that was due, E4201's
+retitle, and recorded the other three as outstanding exactly as D-414 directed.
+**The mechanism worked.** A draft of this entry claimed otherwise, miscounted
+D-410's list as four, and supported the claim with a sentence presented as a
+quotation from D-414 that appears nowhere in the corpus. Recorded here because
+the correction is more instructive than the entry: **an argument that a tracking
+mechanism is needed must not itself be built on an untracked recollection.**
+
+**Why `grob-open-questions.md` rather than a new document.** Two lists diverging
+is the failure mode being avoided; a third tracking artefact would be a fourth
+place to look. That document already holds Open and Resolved sections and is
+already the corpus's home for "not yet settled". The register is the third
+state: settled, but not yet done.
+
+**The rules.** Items are added by the decision that defers them and move to a
+Closed section with the D-number that closed them — never deleted, so the record
+of what was deferred and for how long survives. Every item carries an owner: a
+named increment, a named sprint, or `unowned`. **`unowned` is permitted and
+honest** — R-06 and R-10 are genuinely unowned and a fabricated schedule would
+be worse. An item **without a completion criterion may not be added**, because
+"done" must be checkable by someone who was not in the conversation that
+deferred it.
+
+The register does not change the authority model. The decisions log remains the
+authority; the register tracks the status of work the log has already
+authorised.
+
+---
+
+**Decision 2 — `FunctionSignature` is re-sequenced ahead of Sprint 9C.**
+
+D-419 stated that `FunctionSignature` is "implemented by the increment building
+`mapAs<T>`". That is Increment D, which sits behind Increment C (`fs`) — so as
+merged, `fs` would add an entire module's worth of natives through
+`NamespaceRegistry.NativeMember`, the accretion path D-419 exists to stop.
+
+**That reproduces D-081's outcome with the specification now written down.**
+D-081 required the contract and nothing built it, so four months of natives
+accumulated in an internal hardcoded table. Specifying it in D-419 and then
+building `fs` the old way would add a fifth module to the migration for no
+reason other than sequencing inertia.
+
+**`FunctionSignature` gets its own increment, before Sprint 9C** (R-12). Its
+scope is a migration with no behaviour change: the existing native surface
+routes through `FunctionSignature`, `IPluginRegistrar.RegisterNative` requires
+one, and `NamespaceRegistry` becomes a producer rather than the definition
+(D-419's Decision 5). Type parameters and the return-type union (D-418, D-419's
+Decision 2) are present but unexercised until `mapAs<T>`.
+
+Two reasons beyond consistency. The **migration cost only grows** — `fs`,
+`json`, `csv`, `regex` and `process` are five modules of natives, and migrating
+after them is several times the work of migrating what exists now. And the
+increment has an unusually strong acceptance criterion: **a pure refactor with
+the existing suite as its guard**, so "no behaviour change" is checkable rather
+than argued. That criterion has a known weakness — a refactor touching every
+registration is exactly where a test passing for the wrong reason goes green for
+a new wrong one — so the increment prompt must require mutation verification on
+the signature-arity and return-type paths rather than resting on a green suite.
+
+D-419 is merged and append-only, so its sequencing paragraph stands as written
+and this entry refines it.
+
+---
+
+**The revised pre-9C run**, six increments:
+
+1. Trailing comma — the grammar decision and parser change for call-argument
+   and parameter lists (§3.5 conformance; `grob fmt` would otherwise emit
+   unparseable output in Sprint 12)
+2. Finish the param concern — ordering enforcement: E4202 and E2202 throw
+   sites, closing R-01, R-02 and R-03
+3. **`FunctionSignature`** — R-12
+4. Error-examples harness — R-11
+5. Public samples compile
+6. Corpus sweep
+
+Then Sprint 9C, rebuilt from scratch per D-411.
+
+Ordering: 3 sits after 1 and 2 because both touch the parser and neither
+touches natives, and before 4 because the harness should gold-master
+diagnostics produced by the final signature path rather than reconcile them
+twice.
+
+**The stopping rule, stated so the run terminates.** Every increment of the
+recent consolidation produced one to three findings; without a rule,
+"bottom everything out" does not converge. **Findings from these six increments
+go to the register, not into the run**, unless they block the increment that
+found them or block Sprint 9C. The run is defined by the list above and does
+not grow. If the error-examples harness finds forty stale gold masters, that is
+a register entry with an owner, not a seventh increment.
+
+Cites D-081 (the four-month unimplemented deferral that is the register's first
+real instance), D-419 (whose sequencing this refines and whose Decisions 2 and 5
+R-12 implements), D-418 (the type-parameter model carried unexercised), D-414
+(whose scheduling of D-410's three registry changes is preserved in R-01 to
+R-03, and whose reasoning a draft of this entry misread), D-410 (the origin of
+those three), D-415 (which did the one item due and correctly left three
+outstanding), D-411 (the rebuild-not-correct rule for the Sprint 9 C-onward
+prompts), D-417 (the sync guard that makes R-07 an increment's work).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -14092,7 +14239,34 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — Decision-only session, D-419 added; no source change. Specifies_
+_August 2026 — Decision-only session, D-420 added; no source change._
+_Establishes a **Deferred Work Register** in `grob-open-questions.md`, between_
+_Open and Resolved, for work that is decided but not yet done — twelve items,_
+_R-01 to R-12, each with an owner and a checkable completion criterion. The_
+_problem it solves is structural: a deferral recorded in prose inside an_
+_append-only entry has nowhere to record its own current state, since the_
+_deferring entry is frozen and can never say "done", so status can only be_
+_reconstructed by re-reading every entry since. Two real instances — D-081,_
+_unimplemented from April to August while the harness told authors to use it,_
+_and D-419's own sequencing, refined here. **One instance rejected as_
+_evidence**: D-410's three registry changes are not leakage — D-414 scheduled_
+_them to the ordering increment with a technical reason, and D-415 did the one_
+_item due. A draft of this entry claimed otherwise on a miscount and a_
+_fabricated quotation, and the correction is recorded because an argument for a_
+_tracking mechanism must not rest on an untracked recollection. `unowned` is_
+_permitted; a missing completion criterion is not._
+_Also re-sequences `FunctionSignature` ahead of Sprint 9C: D-419 as merged has_
+_it implemented by the `mapAs<T>` increment, which sits behind `fs`, so `fs`_
+_would add a module of natives through the accretion path D-419 exists to stop._
+_It becomes its own increment, a migration with no behaviour change guarded by_
+_the existing suite — with mutation verification required, since a refactor_
+_touching every registration is where a test passing for the wrong reason goes_
+_green for a new one. The revised pre-9C run is six increments — trailing_
+_comma, finish the param concern, `FunctionSignature`, error-examples harness,_
+_public samples compile, corpus sweep — with a stated stopping rule: findings_
+_from those six go to the register, not into the run, unless they block their_
+_own increment or 9C._
+_Previous: August 2026 — Decision-only session, D-419 added; no source change. Specifies_
 _`FunctionSignature` — the contract D-081 required in April "from the start,_
 _not retrofitted" and that has never existed — as **data, not behaviour**: name,_
 _parameters, return type and type parameters with constraints, carrying no_
