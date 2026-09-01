@@ -1,7 +1,9 @@
 # Grob — Open Questions
 
 > Design questions requiring decisions before implementation reaches them,
-> and resolved questions with their full rationale preserved.
+> the deferred work register — decided work with an owner or `unowned` and a
+> completion criterion — and resolved questions with their full rationale
+> preserved.
 > Decisions authorised in the decisions log — April 2026 design sessions.
 > This document preserves the reasoning behind each question and resolution.
 > When this document and the decisions log conflict, the decisions log wins.
@@ -440,6 +442,52 @@ framing error and is corrected here.
 
 ---
 
+## Deferred Work Register
+
+**Authority: D-420.** This is the single tracking home for work that is
+**decided but not yet done**. It exists because a deferral recorded only in
+prose inside an append-only decision entry has nowhere to record its own
+current state: the entry that defers is frozen at the moment of deferral, so
+whether an item is still outstanding can only be reconstructed by re-reading
+every entry since. That reconstruction is what the register replaces.
+
+An open question asks *what should we do*. A register item has that answer and
+asks *who does it, and when*. Items are added by the decision that defers them
+and move to **Closed** below with the D-number that closed them — never
+deleted, so the record of what was deferred and for how long survives.
+
+Every item carries an **owner**: a named increment, a named sprint, or
+`unowned`. An item may sit as `unowned` — that is honest — but an item without
+a **completion criterion** may not be added, because "done" must be checkable
+by someone who was not in the conversation that deferred it.
+
+The register does not change the authority model. The decisions log remains the
+authority; the register tracks the status of work the log has already
+authorised, and every item cites the decision that raised it.
+
+### Open items
+
+| # | Item | Raised by | Owner | Done when |
+|---|---|---|---|---|
+| R-01 | **E4202 removed.** Its condition becomes a subset of E2202's once ordering is enforced, so it may not be removed earlier — doing so would leave the ordering diagnostic with no code to fall back to (D-414). Requires the `ErrorCatalog.cs` and registry edits in one commit (D-316); number permanently burned, never reused (D-410). | D-410, scheduled by D-414 | *Finish the param concern* increment (ordering enforcement) | E4202 absent from `ErrorCatalog.cs` and `grob-error-codes.md`; count 120; D-316 green |
+| R-02 | **E2202's title widened** to name `type`, `const` and `readonly` declarations alongside `fn` and top-level statements — its current title is narrower than its actual condition (D-412). Title lives in `ErrorCatalog.cs`. | D-410, D-412, scheduled by D-414 | *Finish the param concern* increment (ordering enforcement) | Title updated in both locations in one commit; D-316 green |
+| R-03 | **E4102's title widened** for `@minValue`/`@maxValue` — currently "invalid `@minLength` / `@maxLength` argument" — or a sibling code minted. D-414 groups it with R-01 and R-02 as turning on the ordering rule rather than on the grammar. | D-410, D-411, scheduled by D-414 | *Finish the param concern* increment (ordering enforcement) | Title covers the value pair, or a sibling exists; D-316 green |
+| R-04 | **`Grob.Core`'s public surface narrowed.** It becomes SDK surface when `Grob.Runtime` publishes, while holding `Chunk`, `BytecodeFunction`, `CatchHandler`, `DiagnosticBag` and `IVmCallHost` — internals a plugin author should not see. Narrowing after publication is a breaking change. | D-419 | Sprint 11, **before first package publication** | An explicit allow-list names every type in `Grob.Core`'s intended public SDK surface; `Chunk`, `BytecodeFunction`, `CatchHandler`, `DiagnosticBag` and `IVmCallHost` are `internal` with `InternalsVisibleTo` to the assemblies that need them, and no public type sits outside the allow-list |
+| R-05 | **Harness advertised-versus-built audit.** `.claude/` has never had the scrutiny the design corpus has had. Known: two skills and `src/CLAUDE.md` instruct authors to supply a `FunctionSignature` that has never existed, with a three-argument registration example that would not compile. | D-419 | `FunctionSignature` increment (known sites); full sweep `unowned` | Known sites corrected in the commit that makes them true, **and** the full `.claude/` sweep is complete with every stale advertised interface it finds corrected or removed — scheduling the sweep does not close this item, only finishing it does |
+| R-06 | **Type-name LSP mechanism specified.** §3.1.1 requires `ResolvedType`/`Declaration` on identifier *expression* nodes; D-416 ruled `TypeRef` is outside it. Go-to-definition on a type name therefore resolves by some path no document names — plausibly `UserTypeRegistry` plus `Symbol.DeclaredAt`, but unstated. | D-416 | `unowned` — before any LSP work | A document states how a type name resolves to its declaration, and §3.1.1 says whether it is in scope |
+| R-07 | **D-418's corpus corrections.** `grob-type-registry.md` (which carries both `mapAs` conventions side by side), `grob-stdlib-reference.md`, wiki `json.md`/`csv.md`, and validation script 04, to the uniform whole-type convention; script 11's `[ASSUMPTION]` marker removed. Script edits touch `.grob` corpus files and their markdown publication together (D-417's sync guard). | D-418 | `mapAs<T>` increment (Sprint 9D) | All sites use `mapAs<T>(): T`; `ValidationScriptCorpusTests` and `ValidationScriptMarkdownSyncTests` green |
+| R-08 | **Decorator release-gate coverage.** All seven decorators ship in v1 (D-411), but only `@secure` appears in any validation script — six would ship unexercised, which is the advertised-but-unbuilt shape in advance. | D-411 | Sprint 10 | At least one release-gate script exercises the full decorator surface |
+| R-09 | **§3.5's construct enumeration completed.** It lists Category A and B members but omits switch-expression arms, which §16 separately permits a trailing comma on. The formatter needs a rule for a construct its own categorisation does not mention. | D-417 | Sprint 12 (`grob fmt`) | §3.5 names every comma-or-newline-separated construct in the language |
+| R-10 | **`docs/errors/Exxxx.md` written.** 121 codes at creation, zero documents; `--explain Exxxx` is specified to read them. Four sections each: cause, example, fix, see-also. | v1 requirements §10 | `unowned` — v1 release gate | A document exists for every code currently in the registry (count may move — R-01 alone drops it to 120 — so this checks against the registry's live contents, not a fixed number), and `--explain` resolves for each of them |
+| R-11 | **Error-examples library harnessed.** 57 gold-master pairs, zero references anywhere in `tests/`, `src/` or `tooling/` — the negative-test release gate does not currently exist, and every expected-output file is unverified against the current compiler. | D-415, D-417 | *Error-examples harness* increment | A test runs all 57 pairs; every stale master is reconciled or quarantined with a documented reason |
+| R-12 | **`FunctionSignature` implemented** — the contract D-081 required in April 2026 and D-419 specified. Re-sequenced ahead of Sprint 9C by D-420 so `fs` is the first module built on it rather than the fifth migrated onto it. | D-081, D-419, D-420 | *`FunctionSignature`* increment, **before Sprint 9C** | Every native routes through `FunctionSignature`; `RegisterNative` requires one; `NamespaceRegistry` produces rather than defines; no behaviour change |
+
+### Closed items
+
+*None yet. Items move here with the D-number that closed them.*
+
+---
+
 ## Resolved Questions
 
 These questions have been decided. Full rationale is preserved here for reference.
@@ -838,7 +886,19 @@ _table of `grob-decisions-log.md`. The full rationale is preserved here._
 
 ---
 
-_Document updated June 2026 (interlude B) — OQ-018 (code signing and release_
+_Document updated August 2026 — Deferred Work Register added (D-420), giving_
+_work that is decided but not yet done a single tracking home with a named_
+_owner and a checkable completion criterion per item. Twelve items on creation,_
+_R-01 through R-12. It sits between Open Questions and Resolved Questions_
+_because it is the third state: settled, but not yet done. Created because a_
+_deferral recorded only in prose inside an append-only entry has nowhere to_
+_record its own current state — the deferring entry is frozen, so whether an_
+_item is still outstanding can only be reconstructed by re-reading every entry_
+_since. R-01 to R-03 carry D-414's scheduling: D-410's three registry changes_
+_turn on the ordering rule rather than the grammar, so they are correctly_
+_outstanding rather than overdue._
+
+_Previous: Document updated June 2026 (interlude B) — OQ-018 (code signing and release_
 _provenance for the first public artifact) added, deferred until the first_
 _public release of a `grob` executable or installer. Authorised by D-317, which_
 _scaffolds the SBOM and build-provenance chain this question completes. Noted as_
