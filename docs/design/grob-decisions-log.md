@@ -417,6 +417,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-419 | August 2026 | Solution architecture — plugin SDK; Type system — `GrobType` closure; Harness | Specifies `FunctionSignature`, the contract D-081 required in April 2026 "from the start, not retrofitted" and that has never existed — the remedy D-418 deferred. **The problem**: the checker's knowledge of every native lives in `NamespaceRegistry`, an `internal static` class inside `Grob.Compiler` holding a hardcoded dictionary of `internal record NativeMember` grown six parameters by accretion, while `IPluginRegistrar` offers only `RegisterNative(string, NativeFunction)` — no types, arity or return type. A plugin tells the VM what to run and the checker nothing; invisible while every native is first-party, fatal for Sprint 11's `import Grob.Http`. **Decision 1 — `FunctionSignature` is data, not behaviour**, and the single source of truth for a native's type: name, parameters (name, type, default, variadic), return type and type parameters with constraints (D-418). No delegate, no C# callable, no implementation reference; registration binds it to a `NativeFunction`. *Why it matters*: TypeScript 7.0 ported a million-line compiler to Go in ~15 months and **still could not carry its public API across**, shipping without a stable programmatic API and stranding Vue, Angular, Svelte, Astro, MDX and typescript-eslint until 7.1, because the API was entangled with the implementation. A C#-shaped plugin contract strands every Grob plugin the same way on any future port; a contract that is *description* survives one. Plugins are C# assemblies and always will be — what must be portable is the description, not the delegate. *Consequence designed for now*: signature metadata must be readable **without executing plugin code**, since `grob check` on an untrusted script must not run a third party's static constructors, which Sprint 11's stated `Assembly.LoadFrom()`-then-instantiate path does at compile time. Inert data makes a manifest possible; **the manifest format is Sprint 11's**, the property that permits it is fixed here. **Decision 2 — a signature's return type is its own closed union**, not a `GrobType`: a concrete type (with named-type name for `Struct`), a type-parameter reference or an array of one. `mapAs<T>(): T` is the first native whose return type references its own type parameter, and expressing that as a `GrobType.TypeParameter` variant would grow the enum for exactly the reason it should be frozen. Parameter types use the same union. **Decision 3 — `GrobType` becomes a closed surface under ADR-0013's discipline.** Its twenty variants are **eleven type shapes with nullable twins for nine** — `Nil` and `Error` correctly have none, `Nil` being already nil and `Error` universally assignable (D-300). It enumerates type *shapes*, not identities: `date`, `guid` and `json.Node` are `Struct` plus a `NamedTypeName`, as `Regex`, `File`, `ProcessResult`, `csv.Table` and `CsvRow` will be, so **every remaining v1 module adds named types, not shapes**, and Decision 2 removes the one pressure that would have added one. Closure matters more here than for `OpCode` or `GrobValueKind` because `GrobType` is the only closed surface that becomes **public SDK API** — every plugin signature is written in terms of it, so a post-publication variant breaks third-party code. **Decision 4 — the SDK spans two assemblies, accepted.** `FunctionSignature`, `Parameter`, `IGrobPlugin`, `IPluginRegistrar`, the capability interfaces and `ExitSignal` in `Grob.Runtime` per D-081; `GrobType`, `GrobValue`, `GrobValueKind` and the `GrobError` hierarchy in `Grob.Core`; the published package takes `Grob.Core` as a dependency. Moving `GrobType` up was **rejected** — `Grob.Core` is the DAG's only shared ground and both `Grob.Compiler` and `Grob.Vm` depend on it while neither may depend on the other, so relocating a language primitive to satisfy packaging would invert the architecture. **Consequence recorded and owned by Sprint 11**: `Grob.Core`'s public surface becomes SDK surface, and it currently holds `Chunk`, `BytecodeFunction`, `CatchHandler`, `DiagnosticBag` and `IVmCallHost`, none of which a plugin author should see — what stays public and what becomes `internal` must be settled **before** publication, narrowing afterwards being a breaking change. **Decision 5 — `NamespaceRegistry` becomes a producer, not a parallel truth**: the hardcoded table stops defining a native's type and becomes one source of `FunctionSignature` values alongside plugin-supplied ones, so first-party and third-party natives are checked by one path and `NativeMember`'s six accreted parameters are subsumed rather than carried forward. `IPluginRegistrar.RegisterNative` gains the signature — registration without one becomes impossible rather than discouraged. **The harness has been advertising this API and instructing authors to use it.** Worse than D-418's six design documents, because the harness is what implementers read: `.claude/skills/authoring-a-plugin/SKILL.md` calls typed registration "non-negotiable", says an untyped registration "is a defect" and shows `vm.RegisterNative(name:, signature: new FunctionSignature(...), implementation:)` — a **three-argument call that would not compile** against the real two-argument method; `.claude/skills/adding-a-stdlib-function/SKILL.md` has it as a checklist item; `src/CLAUDE.md` lists it among `Grob.Runtime`'s contents. Every increment that added a native worked under an instruction naming a type that has never existed, and either ignored the checklist item or worked around it without surfacing the gap — **a different failure mode from a stale design doc**, since the harness was actively directing implementation toward a phantom, and the advertised-versus-built scrutiny applied to the design corpus has never been pointed at `.claude/`. **Standing item recorded: the harness needs the same audit.** Skills and `CLAUDE.md` are corrected in the commit that makes the instruction true, never before. **Sequencing**: specified here; implemented by the increment building `mapAs<T>`, the first native that cannot be expressed by `NativeMember`, which also carries D-418's corpus corrections; publication, manifest format, `Grob.Core` narrowing and the loading path are Sprint 11. **The freeze point is first package publication**, not first implementation — the shape may move on evidence until then and may not after. No opcode change; count stays **121**. |
 | D-420 | August 2026 | Process — decision tracking; Sprint sequencing | **Decision 1 — a Deferred Work Register**, a new section in `grob-open-questions.md` between Open and Resolved, giving work that is *decided but not yet done* a single tracking home with an owner and a checkable completion criterion per item; twelve items on creation, R-01 to R-12. **The problem it solves**: a deferral recorded only in prose inside an append-only entry has nowhere to record its own current state — the deferring entry is frozen at the moment of deferral and can never say "done" or "still outstanding", so status can only be reconstructed by re-reading every entry since, at a cost that grows with every decision. **The register replaces the reconstruction, not a failure.** Two real instances: **D-081**, which required `FunctionSignature` in April 2026 "from the start, not retrofitted" and went unimplemented until D-419 in August, four months during which two `.claude/` skills and `src/CLAUDE.md` instructed authors to supply it with an example that would not compile; and **D-419's own sequencing**, refined below within days of landing. **One instance considered and rejected as evidence**, recorded because getting it wrong is why this entry was rewritten: D-410's three deferred registry changes (E4202's removal, E2202's and E4102's widenings) are **not** leakage. D-414 scheduled them explicitly with a technical reason — they turn on the **E2202 ordering rule** rather than the grammar, and E4202's condition only becomes a subset of E2202's once ordering is enforced, so removing it earlier would strand the ordering diagnostic. D-415, the grammar increment, did the one item due (E4201's retitle) and recorded the other three outstanding exactly as directed. **The mechanism worked.** A draft of this entry claimed otherwise, miscounted the list as four, and supported it with a sentence presented as a quotation from D-414 that appears nowhere in the corpus — **an argument that a tracking mechanism is needed must not itself rest on an untracked recollection.** Housed in the existing document because two lists diverging is the failure being avoided and a third artefact would be a fourth place to look; an open question asks *what should we do*, a register item has that answer and asks *who does it, and when*. Items are added by the decision that defers them and move to Closed with the D-number that closed them, never deleted. Every item carries an owner — a named increment, a named sprint, or `unowned`, which is permitted and honest, R-06 and R-10 being genuinely unowned — but an item **without a completion criterion may not be added**, because "done" must be checkable by someone who was not in the conversation. The authority model is unchanged: the log authorises, the register tracks status. **Decision 2 — `FunctionSignature` re-sequenced ahead of Sprint 9C** (R-12). D-419 as merged has it implemented by the `mapAs<T>` increment, which is Increment D and sits behind Increment C — so `fs` would add a module's worth of natives through `NamespaceRegistry.NativeMember`, **the accretion path D-419 exists to stop**, adding a fifth module to the migration for no reason but sequencing inertia and reproducing D-081's outcome with the specification now written down. It gets its own increment before 9C, scoped as a migration with no behaviour change: the existing native surface routes through `FunctionSignature`, `RegisterNative` requires one, `NamespaceRegistry` becomes a producer rather than the definition (D-419 Decision 5), with type parameters and the return-type union (D-418, D-419 Decision 2) present but unexercised until `mapAs<T>`. Two reasons beyond consistency: the **migration cost only grows** — `fs`, `json`, `csv`, `regex` and `process` are five modules of natives — and the acceptance criterion is unusually strong, **a pure refactor with the existing suite as its guard**, though with a known weakness (a refactor touching every registration is exactly where a test passing for the wrong reason goes green for a new wrong one), so the prompt must require mutation verification on the signature-arity and return-type paths rather than resting on a green suite. D-419 is append-only, so its sequencing paragraph stands and this refines it. **The revised pre-9C run, six increments**: (1) trailing comma — the §3.5 grammar decision and parser change, without which `grob fmt` would emit unparseable output in Sprint 12; (2) finish the param concern — ordering enforcement via E4202/E2202 throw sites, closing R-01, R-02 and R-03; (3) **`FunctionSignature`**, R-12; (4) error-examples harness, R-11; (5) public samples compile; (6) corpus sweep. Then Sprint 9C, rebuilt from scratch per D-411. Increment 3 sits after 1 and 2 because both touch the parser and neither touches natives, and before 4 so the harness gold-masters diagnostics from the final signature path rather than reconciling them twice. **Stopping rule, stated so the run terminates**: every increment of the recent consolidation produced one to three findings, so without a rule "bottom everything out" does not converge — **findings from these six go to the register, not into the run**, unless they block the increment that found them or block Sprint 9C. The run is defined by that list and does not grow; forty stale gold masters would be a register entry with an owner, not a seventh increment. No source change; count stays **121**. |
 | D-421 | August 2026 | Language spec — list grammar; Compiler — parser; Error taxonomy; Tooling — formatter specification | Implements D-165 (April 2026), which permitted a trailing comma "in all comma-separated lists" and named array literals, struct construction, map literals, function parameters and function arguments — and which the parser implemented in **four** constructs and rejects in **six**. **Not a grammar extension and not a D-331 surfaced decision**, which is how D-420's queue recorded it; correcting that framing here rather than amending D-420. It is the advertised-but-unbuilt shape, same class as D-081/`FunctionSignature` (D-418/D-419): a shipped decision the implementation diverged from, invisible because the rule lived in prose while the enumeration lived in eleven separate parser loops. **Five documented examples do not parse today** — `grob-language-fundamentals.md` §16's `fn foo(a: int, b: int,): int { }` and `foo(1, 2,)`, `grob-formatter-specification.md` §3.2's wrap example, §3.11's four-parameter signature example, and — decisively — **§6's worked example, the specification's single end-to-end statement of what `grob fmt` emits**. That is the concrete form of "the formatter would emit unparseable output in Sprint 12": not a projection, an artefact already in the corpus. §6 also settles a question no rule stated — a call whose **single** argument wraps is still a multi-line argument list and its one argument takes the trailing comma. **Decision 1 — uniform.** Every comma-separated list accepts an optional trailing comma. Six parser sites change: function signature parameters, call arguments, lambda parameters, function-type parameters (`fn(T1, T2): R`), generic/map type-argument lists, and `select` case pattern lists. The last four are new authority — D-165 did not name them — and are decided the same way for one reason: a per-construct allowlist is the mechanism that produced this divergence, and a rule with four exceptions has to be remembered rather than known. The four already-compliant constructs (array literals, map literals, the shared braced field-init list, switch arms) change no behaviour but gain regression tests, so the accept/reject split cannot silently reopen. **`for k, v in` is unchanged** — a fixed pair of loop variables, not a list. **The `case` row is gate-conditional**: `case 1, 2, {` must be confirmed not to steal the block, `_allowStructLiteral` already being false in that position; if the hazard is real the row is excluded with a recorded reason and §16's example and §3.5's Category C are corrected in the same commit. **Closes a D-416 interaction**: `LooksLikeTypeArgumentList` admits `,` in its accepted token run, so `x.mapAs<T,>()` commits to the generic-call reading and then hard-fails in a consumer that rejects what the lookahead promised. **Decision 2 — E2209 gets its first throw sites.** "Trailing comma not permitted here" has existed in `ErrorCatalog.cs` with `Throws: null` since the registry was written, and its description already names the carve-outs. With Decision 1 there is no list that rejects a trailing comma, so the code's whole remaining domain is the two comma positions that are **not** lists: `(x,)`, a grouping parenthesis with a stray comma (Grob has no tuples, so `( expr )` is always a grouping), and `foo(,)`, an argument list whose only content is a comma. Both currently raise a generic E2001 "expected ')'". This is the D-407/D-415 pattern — a defined-but-unthrown code wired to the sites its own description already describes — and it means the increment removes a zero-throw-site code from the registry's inventory rather than adding one. **Leading and doubled commas stay E2001**, deliberately: `[, 1]` and `foo(1,, 2)` are a different mistake, reported where an element was expected. **Decision 3 — single-line trailing commas remain legal.** §3.5's "single-line forms have no trailing comma" is the formatter's normalisation, not a grammar rule; D-165's "optional, never required" is unqualified by line count. **Decision 4 — no AST field records the trailing comma.** §3.2 states the user cannot lock single- versus multi-line form: the formatter chooses from the 100-column rule and §3.11's parameter-count threshold alone, so the source's trailing comma carries nothing the formatter reads back. Recorded so Sprint 12 does not ask for one and find the answer undocumented. **Decision 5 — §3.5's construct enumeration completed, closing R-09** — the register's first closed item. §3.5 named six Category B constructs and omitted five comma-separated ones. Switch-expression arms join Category B and are added to §3.2's wrappable list, which §3.1 had already treated them as being; a new **Category C** covers the four comma-separated constructs that are not wrappable and therefore never take a trailing comma from the formatter even though the grammar permits one; `for k, v in` is named as a fixed pair so the enumeration has no silent omissions. Closed ahead of its Sprint 12 owner because Decision 1 could not be stated without knowing which constructs it governs. **Two findings recorded, not fixed.** §3.5's Category A still reads "`param` **blocks**" — D-414's terminology sweep recorded §3.11 as the last surviving site of the form D-410 retired, and missed this one, in the section D-417 subsequently made normative; corrected here as part of the rewrite, and noted because it is the third time D-414's own second-query lesson has proved right. And two harness sites widen R-05: `plugins/CLAUDE.md:27` instructs plugin authors to supply a `FunctionSignature` that has never existed and was not on D-419's list, and `tests/CLAUDE.md:60` documents the error-example pair naming as `*_grob.txt`/`*_expected.txt` while all 57 pairs on disk are `<case>.grob`/`<case>.expected.txt`. **Corpus scope corrected**: D-420's queue recorded "five sites across four scripts". Verified against the tree, exactly **one** validation-script site is affected — script 07's `http.get(` at lines 23–26, D-417's nineteenth violation, left unfixed because it did not parse. The other seven multi-line parens across scripts 03, 05, 06, 08 and 09 are single wrapped arguments or nested array literals; each gains a trailing comma when `grob fmt` runs, but none is a fixture defect today. "Five" was the pre-D-417 diagnostic count carried forward. Script edits touch `.grob` fixtures and their markdown publication together under D-417's sync guard, so they belong to this increment's commit, not to a design session. **No new error code, no code retitled, no code removed; count stays 121, and D-316 needs no source/registry co-commit** — E2209 gains throw sites, which is a `Throws` change, not a title, addition or removal. No opcode change, no `GrobValueKind` change. Implements D-165. Cites D-331 (the sanctioned-growth procedure this is explicitly *not* an instance of), D-407 and D-415 (the wire-an-unthrown-code pattern), D-416 (the lookahead interaction closed), D-417 (the survey that found it and the nineteenth site now fixable), D-420 (whose queue framing this corrects), ADR-0017 (unaffected — no code changes status). |
+| D-422 | September 2026 | Compiler — parser; Error taxonomy; Tests; Validation corpus | Implements D-421: lands the six parser guards, E2209's two throw sites, the regression pins and the corpus fix D-421 specified, and records where the implementation found more (or less) than D-421 predicted. All six sites use the exact `if (Check(terminator)) break;` shape already used by the four already-compliant loops — `ParseParameterList` via its existing `terminator` parameter, the other five hardcoded to their own terminator (`RightParen` ×4, `Greater`, `LeftBrace`). No shared helper introduced across the five: three different element parsers and three different terminators would have cost more to abstract than the mechanical repetition costs to read. The `select` case-pattern row confirmed safe exactly as D-421's gate anticipated — `ParsePrimary`'s `LeftBrace` throw never advances `_pos`, so a `Check(TokenKind.LeftBrace)` guard intercepts before it can fire, and a leading comma stays distinguishable from a trailing one (different `ParsePrimary` arms: default-case "unexpected token" versus never reached at all). **Two loops also gained a `SkipNewlines()` call they did not have before** (`ParseTypeArgumentList` and the `fn(...)`-type-parameter loop inside `ParseTypePrimary`) — mechanical parity with the shape the four already-compliant loops use, not a new decision; without it a multi-line trailing-comma form immediately followed by the terminator on its own line would have been inconsistent with the other five sites. **E2209's two throw sites generalise beyond D-421's two named examples, deliberately.** The grouping-paren site fires on _any_ comma following a grouping's inner expression, not only a literal trailing `(x,)` — `(1, 2)` is E2209 at the first comma too, since Grob has no tuples and a comma there is never a separator to continue past. The empty-argument-list site is scoped precisely to a comma immediately followed by the closing paren (`Check(Comma) && PeekAt(1).Kind == RightParen`), so `foo(,)` is E2209 but `foo(, 1)` — a real argument follows, the list is not actually empty — stays E2001, the ordinary leading-comma mistake. Both throw sites mutation-verified: the throw removed, the predicted failure (`Assert.Equal() Failure: Expected E2209 Actual E2001`, same shape both times) reproduced exactly before restoring. **A ripple the two named examples did not anticipate**: three pre-existing tests (`ParserStructConstructionRecoveryTests`/`ParserMapLiteralTests`/`SwitchExprParserTests`, each a `*_ValueLeavesBracketPairOpen_DoesNotReuseInnerComma` variant) asserted the pre-D-421 generic `E2001 "expected ')'"` for a comma inside a still-open grouping paren nested in a literal's malformed field/entry/arm value. The grouping-paren site's generalisation now reports E2209 there instead — updated to assert the new code, per D-421's own "tests may be updated to assert new correct behaviour, never weakened, never deleted"; the recovery mechanics each test pins (the paren stays unclosed, the inner comma is never reused as the outer list's boundary) are unchanged, only the root-cause code corrected. **Two pre-existing gaps found, reported to the Deferred Work Register, not fixed** — neither blocks this increment or Sprint 9C, per D-420's stopping rule. (1) The lexer's line-continuation suppression (`ApplyLineContinuation`) elides a newline before a closing bracket only when that closer is `RightParen` or `RightBracket`; `Greater` (`ParseTypeArgumentList`) and `LeftBrace` (`select` case patterns) are not covered, so a genuinely multi-line list of either kind with **no** trailing comma and its closer on its own line still fails to parse (confirmed empirically both ways: `m: map<string,\n    int\n> := …` and `select (x) { case 200,\n201\n{ … } }` both raise `E2001` at the closer's position on the tree before this increment). Both this increment's row-3 and row-5 multi-line-without-trailing-comma tests therefore keep the closer glued to the last token rather than on its own line — the trailing-comma variant is unaffected, since the comma itself is continuation-eligible and already suppresses the newline. Not fixed here: it is a lexer-level gap orthogonal to D-421's comma-acceptance scope, and fixing it was not named in D-421's implementation notes. (2) `ParseSelect`'s case-pattern loop has no D-405/D-406 local recovery wrapper, unlike the map-entry/field-init/switch-arm loops it otherwise mirrors — a malformed case pattern's exception propagates uncaught to top-level recovery, cascading into a second, unrelated diagnostic (confirmed: `case , 200 { a }` inside an otherwise well-formed script produces the root-cause `E2001` plus a second `E2001` at the file's next resync point). Recovery-unchanged tests for row 5 assert only the root-cause diagnostic (`diagnostics[0]`) for this reason; a future increment applying the `ParseXOrError`/`SkipToNextLiteralElementBoundary` pattern to `ParseSelect` would close it. **One evidence correction from D-421's own gate**: the prompt that ran the investigation predicted `foo(,)`'s pre-fix diagnostic as `E2001 "expected ')'"`; the measured pre-fix diagnostic was `E2001 "unexpected token ',' — expected expression"` at the comma's own position — same code, different message and site, recorded as the accurate before-state rather than the predicted one. Script 07's `http.get(...)` call gains its D-421-required trailing comma in both `tests/fixtures/validation-scripts/07-rest-api-data-pull.grob` and its `grob-sample-scripts.md` fence in this commit (`ValidationScriptMarkdownSyncTests`, D-417); all eleven validation scripts still parse with zero diagnostics. The five documented target-state examples (`grob-language-fundamentals.md` §16 ×2, `grob-formatter-specification.md` §3.2, §3.11, §6) verified parsing via new tests reproducing them verbatim, not re-authored. `ErrorCatalog.cs` unchanged in shape — E2209's descriptor untouched, no code added/retitled/removed/status-changed, count stays **121**, D-316 gate green. `Grob.Compiler` coverage 97.11% (≥ D-328's 90% bar). Full solution: **3,993 tests, all passing**. No opcode change, no `GrobValueKind` change, no AST field added (D-421 Decision 4 holds). Cites D-421 (the plan this implements), D-405/D-406 (the local-recovery pattern the select-loop gap names as the fix shape), D-417 (the sync guard governing the script 07 edit), D-420 (the stopping rule governing the two reported-not-fixed gaps). |
 
 ---
 
@@ -14264,6 +14265,236 @@ no code changes status).
 
 ---
 
+### D-422 — Trailing-comma uniformity implemented: D-421's plan landed, with three findings the plan did not anticipate (September 2026)
+
+Area: Compiler — parser; Error taxonomy; Tests; Validation corpus
+Supersedes: none (implements D-421)
+Superseded by: none
+
+**This is a landing record for D-421, not a new decision.** D-421 specified six
+parser sites, E2209's two throw sites and the corpus/documentation fixes; this
+entry records what building it actually found. Where the two differ, this entry
+is the accurate account and D-421 stands unedited (append-only).
+
+---
+
+**The six sites, landed as specified.** `ParseParameterList` (function
+signature parameters), the `fn(...)`-type-parameter loop inside
+`ParseTypePrimary`, `ParseTypeArgumentList` (generic/map type arguments),
+`ParseSelect`'s case-pattern loop, `ParseCallArguments` and `ParseLambda`'s
+parameter loop each gained the identical `if (Check(terminator)) break;` shape
+already used by the four already-compliant loops (`ParseBracedFieldInitList`,
+`ParseSwitchArms`, `ParseArrayLiteral`, `ParseMapLiteral`) — `ParseParameterList`
+through its existing `terminator` parameter, per D-421's own instruction; the
+other five hardcoded to their own terminator (`RightParen` ×4, `Greater`,
+`LeftBrace`), since each is reached from exactly one call site and a shared
+`terminator` parameter would have been unused generality. **No shared helper
+was introduced across the five new sites**, considered and rejected per D-421's
+own invitation to say so either way: three different element parsers
+(`ParseDeclaredParameter`, `ParseTypeRef`, `ParseCallArgument`/
+`ParseLambdaParameter`/`ParseExpression`) and three different terminators would
+have cost an abstraction layer to save five near-identical four-line loops —
+the mechanical repetition is cheaper to read than the indirection would have
+been.
+
+**The `select` case-pattern row confirmed safe exactly as D-421's gate
+anticipated**, not merely assumed. `ParsePrimary`'s `LeftBrace` arm
+(`throw Fail(ErrorCatalog.E2101, …)`) never calls `Advance()` before throwing,
+so `_pos` is left pointing at the `{` — a `Check(TokenKind.LeftBrace)` guard
+placed immediately after `Match(TokenKind.Comma)` therefore always intercepts
+before `ParseExpression()` could reach that throw. A leading comma
+(`case , 200 { … }`) stays distinguishable from a trailing one because it never
+reaches the guard at all — the very first, unconditional
+`patterns = [ParseExpression()]` call lands on the comma in `ParsePrimary`'s
+**default** arm (`"unexpected token ',' — expected expression"`), a different
+code path from the `LeftBrace` arm the trailing case takes.
+
+**Two loops also gained a `SkipNewlines()` call they did not have before** —
+`ParseTypeArgumentList` and the `fn(...)`-type-parameter loop, neither of which
+called it anywhere prior to this increment. This is mechanical parity with the
+shape the four already-compliant loops use (each calls `SkipNewlines()`
+immediately after `Match(TokenKind.Comma)`), not a fresh decision: without it,
+a multi-line trailing-comma form whose comma is directly followed by a newline
+then the terminator would have behaved inconsistently with the other five
+sites, which all either already had the call or reach an equivalent state via
+the lexer's own comma-adjacent newline suppression (`Comma` is
+continuation-eligible in `Lexer.IsContinuationEligible`, so a newline
+immediately after any comma is already elided from the token stream before the
+parser sees it — the parser-level `SkipNewlines()` calls are consequently a
+no-op in that specific position on every site, kept for the same reason the
+four already-compliant loops keep theirs: uniform shape over a proof that any
+one instance is currently redundant).
+
+---
+
+**E2209's two throw sites generalise beyond D-421's two named examples,
+deliberately, and this is the increment's own scoping decision, not an
+extension of D-421.** D-421 named `(x,)` and `foo(,)` as the two throw sites'
+motivating examples; the implementation reasons from the rule each example
+states, not from the literal string:
+
+- **Grouping paren** (`ParsePrimary`'s `LeftParen` case): fires on _any_ comma
+  found immediately after the grouped inner expression, not only a single
+  trailing one. `(1, 2)` is E2209 at the first comma, exactly as `(1,)` is —
+  Grob has no tuples, so `( expr )` always holds one expression and a comma
+  there is never a separator to continue past, regardless of how many follow.
+  Narrowing the guard to fire only when the comma is immediately followed by
+  `)` would have left `(1, 2)` raising the pre-D-421 generic
+  `E2001 "expected ')'"` — the exact defect Decision 2 exists to close — so
+  the broader guard is required by D-421's own stated rationale, not a
+  liberty taken with it.
+- **Empty argument list** (`ParseCallArguments`): scoped precisely to a comma
+  immediately followed by the closing paren
+  (`Check(TokenKind.Comma) && PeekAt(1).Kind == TokenKind.RightParen`), so
+  `foo(,)` is E2209 but `foo(, 1)` — a real argument follows the comma, so the
+  list is not "whose only content is a comma" — stays E2001, the ordinary
+  leading-comma mistake D-421 Decision 2 keeps out of E2209's domain. This
+  scope needed stating explicitly since D-421's prose ("an argument list whose
+  only content is a comma") is compatible with either reading; the narrower
+  one is what was built and is pinned by a dedicated test
+  (`ArgumentList_LeadingCommaBeforeRealArgument_StaysE2001NotE2209`).
+
+Both throw sites mutation-verified per D-421/the prompt's requirement: the
+throw removed, the corresponding test's failure predicted
+(`Assert.Equal() Failure: … Expected: "E2209" Actual: "E2001"`, the same shape
+at both sites since each falls back to a pre-existing generic-E2001 path once
+its own guard is absent), the prediction reproduced exactly, the throw
+restored.
+
+**A ripple the two named examples did not anticipate.** Three pre-existing
+tests — `ParserStructConstructionRecoveryTests.MalformedField_
+ValueLeavesBracketPairOpen_DoesNotReuseInnerComma`,
+`ParserMapLiteralTests.MalformedEntry_ValueLeavesBracketPairOpen_
+DoesNotReuseInnerComma` and `SwitchExprParserTests.MalformedArm_
+ResultLeavesBracketPairOpen_DoesNotReuseInnerComma` — each construct a
+malformed literal value containing a still-open grouping paren followed by a
+comma (e.g. `Point { a: (1, b: 2 }`), and each asserted the pre-D-421 generic
+`E2001 "expected ')'"` for that inner comma as their root-cause diagnostic.
+The grouping-paren throw site's `_any_`-comma scope (above) now reports E2209
+there instead, since the comma is still exactly "inside a still-open grouping
+paren, following its expression" regardless of what encloses the paren. Per
+D-421's own licence ("tests may be updated to assert new correct behaviour,
+never weakened, never deleted"), all three were updated to assert `E2209`; the
+recovery mechanics each test actually pins — the `(` stays unclosed, the inner
+comma is never reused as the outer literal's field/entry/arm boundary, the
+well-formed tail still parses — are unchanged, since none of those three tests
+asserted the diagnostic's message text, only its code and position, and the
+position is identical before and after (the comma's own location; the code
+change is a strict improvement in diagnostic quality, not a behaviour change
+to the thing under test).
+
+---
+
+**Two pre-existing gaps found and reported to the Deferred Work Register, not
+fixed** — per D-420's stopping rule, neither blocks this increment or Sprint
+9C.
+
+1. **The lexer's line-continuation suppression does not cover `Greater` or
+   `LeftBrace` as a following token.** `Lexer.ApplyLineContinuation` elides a
+   newline immediately before a closing bracket only when that closer is
+   `RightParen` or `RightBracket` (`nextReal is { Kind: TokenKind.RightParen
+   or TokenKind.RightBracket }`); `Greater` (`ParseTypeArgumentList`'s
+   terminator) and `LeftBrace` (`select` case patterns' terminator) are not in
+   that set. Confirmed empirically both ways, independent of this increment's
+   change: `m: map<string,\n    int\n> := …` and
+   `select (x) { case 200,\n201\n{ … } }` both raised `E2001` at the closer's
+   position on this tree before this increment, and still do — the gap is
+   orthogonal to trailing-comma acceptance, since it reproduces identically
+   with no comma in the source at all. Consequently this increment's own
+   multi-line-without-trailing-comma tests for rows 3 and 5 (`TypeArgs_
+   MultiLine_NoTrailingComma_Parses`, `CasePatterns_MultiLine_
+   NoTrailingComma_Parses`) keep the closer glued to the last real token
+   rather than placed on its own line — the trailing-comma variant of each is
+   unaffected regardless, since the comma itself is continuation-eligible and
+   already suppresses the newline in front of the closer. Not fixed here: it
+   is a lexer-level limitation, not named in D-421's implementation notes, and
+   fixing it would touch `Lexer.cs`'s `IsContinuationEligible`/
+   `ApplyLineContinuation` — a different surface from the parser-only change
+   this increment scoped.
+2. **`ParseSelect`'s case-pattern loop has no D-405/D-406 local recovery
+   wrapper**, unlike the map-entry/field-init/switch-arm loops it otherwise
+   mirrors closely (all four are comma-separated literal/clause interiors with
+   an enclosing brace still open at the point of failure). A malformed case
+   pattern's exception therefore propagates uncaught out of `ParseSelect`
+   entirely, cascading into a second, unrelated diagnostic once top-level
+   recovery resynchronises — confirmed: `case , 200 { a }` inside an otherwise
+   well-formed script produces the root-cause `E2001` at the leading comma
+   plus a second `E2001` ("unexpected token '}' — expected expression") at the
+   file's next resync point, both before and after this increment (the guard
+   added here does not touch this path — it only intercepts the `LeftBrace`
+   token, never a genuinely malformed pattern). This increment's own
+   recovery-unchanged tests for row 5 (`CasePatterns_LeadingComma_
+   StillDistinguishableAsE2001`, `CasePatterns_TrailingCommaThenGenuinely
+   MalformedPattern_StillFailsAtThatToken`) assert only the root-cause
+   diagnostic (`bag.Diagnostics[0]`) rather than `Assert.Single`, recording the
+   cascade rather than hiding it. A future increment applying the
+   `ParseXOrError`/`SkipToNextLiteralElementBoundary` pattern (D-405/D-406) to
+   `ParseSelect`'s pattern loop would close this — not attempted here, since
+   it is pre-existing and unrelated to trailing-comma acceptance.
+
+**One evidence correction, carried from the increment's own read-only
+investigation gate.** The increment prompt predicted `foo(,)`'s pre-fix
+diagnostic as a generic `E2001 "expected ')'"` (by analogy with `(x,)`); the
+measured pre-fix diagnostic was `E2001 "unexpected token ',' — expected
+expression"` at the comma's own position, not a `)`, because `ParseCallArguments`
+had no `Expect(RightParen, …)` in its path to a bare leading comma — it called
+`ParseCallArgument()` unconditionally, landing in `ParsePrimary`'s default arm.
+Same code, different message and site. Recorded as the accurate before-state;
+does not change Decision 2's design.
+
+---
+
+**Corpus and documentation.** Script 07's `http.get(...)` call (lines 23–26)
+gains the trailing comma §3.5 Category B requires, in both
+`tests/fixtures/validation-scripts/07-rest-api-data-pull.grob` and its
+`grob-sample-scripts.md` fence, in this commit — `ValidationScriptMarkdownSyncTests`
+(D-417) byte-matches the two. All eleven validation scripts still parse with
+zero diagnostics (`ValidationScriptCorpusTests`, whose XML-doc prose describing
+the pre-D-421 unconditional-rejection state as current fact is also corrected
+here — it had gone stale the moment D-421 landed the plan this entry
+implements). The five documented target-state examples D-421 listed
+(`grob-language-fundamentals.md` §16 ×2, `grob-formatter-specification.md`
+§3.2, §3.11, §6) are verified, not re-authored — new tests reproduce each
+snippet verbatim and assert it parses (`LanguageFundamentals16_
+FullWorkedExample_Parses`, `FormatterSpec32_WrappedCallExample_Parses`,
+`FormatterSpec311_FourParameterSignature_Parses`,
+`FormatterSpec6_WorkedExampleOutput_Parses`). No documentation body text
+required correction — D-421's own commit had already brought §16 and §3.2/
+§3.5/§3.11/§6 to their target state; this increment confirms it against a
+working parser rather than editing prose.
+
+Out-of-scope items D-421 named stayed out of scope: the seven other multi-line
+parenthesised calls across scripts 03, 05, 06, 08 and 09 are untouched (they
+gain a trailing comma from `grob fmt` in Sprint 12, not from a hand-edit now);
+`grob fmt` itself is untouched; leading and doubled commas are still `E2001` by
+decision, pinned by `ArrayLiteral_LeadingComma_StillE2001AtElementPosition` and
+`CallArgs_DoubledComma_StillE2001AtElementPosition`; `for k, v, in map` still
+raises `E2001 "expected 'in' in for-loop header"` at the second comma, pinned
+by `ForIn_ThirdComma_StillE2001AtTheComma`.
+
+---
+
+**Mechanics and gates.** `ErrorCatalog.cs` unchanged in shape — E2209's
+descriptor (`Title`, `Category`, `Status`, `Severity`, `Throws`) is untouched;
+only its two throw sites are new, in `Parser.cs`. No error code added,
+retitled, removed or status-changed. Count stays **121**; the D-316
+consistency gate (`ErrorCodeCountTests`) is green. No opcode change, no
+`GrobValueKind` change. No AST field added — D-421 Decision 4 holds; no node
+gained a field recording whether a trailing comma was present.
+`Grob.Compiler` line coverage: **97.11%**, at or above the D-328 90% bar. Full
+solution `dotnet test`: **3,993 tests, all passing** (`Grob.BenchCheck.Tests`
+76, `Grob.Core.Tests` 388, `Grob.Consistency.Tests` 38, `Grob.Runtime.Tests`
+82, `Grob.Stdlib.Tests` 330, `Grob.Integration.Tests` 456, `Grob.Vm.Tests` 481,
+`Grob.Compiler.Tests` 2,142).
+
+Implements D-421. Cites D-405 and D-406 (the local-recovery pattern named as
+the fix shape for the `ParseSelect` gap this entry reports but does not
+close), D-417 (the sync guard governing the script 07 edit), D-420 (the
+stopping rule under which both reported-not-fixed gaps go to the register
+rather than into this run).
+
+---
+
 ## Post-MVP Decisions
 
 ---
@@ -14485,7 +14716,45 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_August 2026 — D-421 added. Implements D-165 (April 2026), which permitted a_
+_September 2026 — D-422 added. Landing record for D-421 (append-only; D-421_
+_stands unedited). All six parser sites gained the identical_
+_`if (Check(terminator)) break;` shape the four already-compliant loops use —_
+_`ParseParameterList` via its existing `terminator` parameter, the other five_
+_hardcoded to their own; no shared helper across the five, considered and_
+_rejected — three element parsers and three terminators cost more to abstract_
+_than to repeat. The `select` case-pattern row confirmed safe exactly as_
+_D-421's gate predicted: `ParsePrimary`'s `LeftBrace` throw never advances_
+_`_pos`, so the guard always intercepts first, and a leading comma stays on a_
+_structurally different path (the default "unexpected token" arm) from a_
+_trailing one. Two loops (`ParseTypeArgumentList`, the `fn(...)`-type-parameter_
+_loop) also gained a `SkipNewlines()` call for parity with the other four,_
+_which already had one._
+_E2209's two throw sites generalise beyond D-421's two named examples: the_
+_grouping-paren site fires on any comma after the inner expression, not only a_
+_single trailing one — `(1, 2)` is E2209 too, since Grob has no tuples; the_
+_empty-argument-list site is scoped to a comma immediately followed by the_
+_closing paren, so `foo(, 1)` (a real argument follows) stays E2001. Both_
+_mutation-verified: throw removed, predicted `Expected E2209 Actual E2001`_
+_failure reproduced, restored. A ripple the two examples did not anticipate:_
+_three pre-existing tests asserting the old generic E2001 for a comma inside a_
+_still-open grouping paren nested in a malformed literal value now assert_
+_E2209 — updated per D-421's own licence, recovery mechanics unchanged._
+_Two pre-existing gaps found, reported to the register, not fixed: the lexer's_
+_line-continuation suppression does not cover `Greater`/`LeftBrace` as a_
+_following token, so a genuinely multi-line type-argument or case-pattern list_
+_with no trailing comma and the closer on its own line still fails to parse —_
+_independent of this increment, reproduces with no comma present at all; and_
+_`ParseSelect`'s case-pattern loop has no D-405/D-406 local recovery wrapper,_
+_so a malformed pattern cascades into a second diagnostic, also pre-existing._
+_One evidence correction: `foo(,)`'s measured pre-fix diagnostic was_
+_`E2001 "unexpected token ',' — expected expression"` at the comma, not the_
+_predicted generic `"expected ')'"` — same code, different message and site._
+_Script 07's `http.get` gains its trailing comma in both the fixture and its_
+_markdown fence; all eleven scripts still parse clean. The five D-421 target-_
+_state examples verified via new tests reproducing them verbatim. No error_
+_code added, retitled, removed or status-changed; count stays 121, D-316 green._
+_`Grob.Compiler` coverage 97.11%. Full solution: 3,993 tests, all passing._
+_Previous: August 2026 — D-421 added. Implements D-165 (April 2026), which permitted a_
 _trailing comma "in all comma-separated lists" and named five of them; the_
 _parser implements it in four constructs and rejects it in six. **Not a grammar_
 _extension**, which is how D-420's queue recorded it, but the_

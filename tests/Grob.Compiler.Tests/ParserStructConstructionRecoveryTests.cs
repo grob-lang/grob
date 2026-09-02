@@ -128,11 +128,16 @@ public sealed class ParserStructConstructionRecoveryTests {
 
     [Fact]
     public void MalformedField_ValueLeavesBracketPairOpen_DoesNotReuseInnerComma() {
+        // The comma inside the still-open '(' now raises E2209 (D-421 Decision 2:
+        // a grouping paren holds a single expression, so a comma inside one is
+        // never a list separator) rather than the pre-D-421 generic
+        // "expected ')'" — the recovery mechanics this test pins are otherwise
+        // unchanged: the '(' is still unclosed, and the comma is still not
+        // reused as the outer field-list boundary.
         (CompilationUnit unit, DiagnosticBag bag) = Parse("x := Point { a: (1, b: 2 }\nq := 9\n");
 
         Diagnostic d = Assert.Single(bag.Diagnostics);
-        Assert.Equal("E2001", d.Code);
-        Assert.Equal("expected ')'", d.Message);
+        Assert.Equal("E2209", d.Code);
         Assert.Equal(1, d.Range.Start.Line);
         Assert.Equal(19, d.Range.Start.Column); // the ',' inside the still-open '('
 

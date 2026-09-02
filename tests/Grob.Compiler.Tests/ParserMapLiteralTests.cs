@@ -446,13 +446,15 @@ public sealed class ParserMapLiteralTests {
         // paren, not to the entry list. A from-zero scan stopped at the first inner
         // ',' and wrongly promoted '"b": 2' to an outer entry. Carrying the nesting in
         // means the scan stops only at the literal's own '}' — which cannot close a
-        // '(' — leaving it unconsumed for Expect(RightBrace).
+        // '(' — leaving it unconsumed for Expect(RightBrace). The comma inside the
+        // still-open '(' now raises E2209 (D-421 Decision 2) rather than the
+        // pre-D-421 generic "expected ')'" — the recovery mechanics this test pins
+        // are otherwise unchanged.
         (CompilationUnit unit, DiagnosticBag bag) =
             Parse("m := map<string, int>{\"a\": (1, \"b\": 2}\nx := 9\n");
 
         Diagnostic d = Assert.Single(bag.Diagnostics);
-        Assert.Equal("E2001", d.Code);
-        Assert.Equal("expected ')'", d.Message);
+        Assert.Equal("E2209", d.Code);
         Assert.Equal(1, d.Range.Start.Line);
         Assert.Equal(30, d.Range.Start.Column); // the ',' inside the still-open '('
 

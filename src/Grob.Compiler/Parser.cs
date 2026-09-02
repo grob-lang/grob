@@ -516,6 +516,7 @@ public sealed class Parser {
         list.Add(ParseDeclaredParameter());
         while (Match(TokenKind.Comma)) {
             SkipNewlines();
+            if (Check(terminator)) break; // trailing comma
             list.Add(ParseDeclaredParameter());
         }
         SkipNewlines();
@@ -569,7 +570,11 @@ public sealed class Parser {
             List<TypeRef> paramTypes = [];
             if (!Check(TokenKind.RightParen) && !IsAtEnd) {
                 paramTypes.Add(ParseTypeRef());
-                while (Match(TokenKind.Comma)) paramTypes.Add(ParseTypeRef());
+                while (Match(TokenKind.Comma)) {
+                    SkipNewlines();
+                    if (Check(TokenKind.RightParen)) break; // trailing comma
+                    paramTypes.Add(ParseTypeRef());
+                }
             }
             Expect(TokenKind.RightParen, _e2001, "expected ')' to close function type parameters");
             Expect(TokenKind.Colon, _e2001, "expected ':' after function type parameters");
@@ -598,6 +603,8 @@ public sealed class Parser {
     private List<TypeRef> ParseTypeArgumentList() {
         List<TypeRef> args = [ParseTypeRef()];
         while (Match(TokenKind.Comma)) {
+            SkipNewlines();
+            if (Check(TokenKind.Greater)) break; // trailing comma
             args.Add(ParseTypeRef());
         }
         Expect(TokenKind.Greater, _e2001, "expected '>' to close generic arguments");
@@ -859,6 +866,13 @@ public sealed class Parser {
             try {
                 patterns = [ParseExpression()];
                 while (Match(TokenKind.Comma)) {
+                    // No SkipNewlines() here (unlike rows 6/7/9/10): the terminator is
+                    // '{', not a bracket, and ParsePrimary's own LeftBrace throw never
+                    // advances _pos, so this guard would intercept the token whether or
+                    // not a newline sat in front of it. A bare newline immediately before
+                    // '{' with no trailing comma is a separate, pre-existing gap (see the
+                    // increment's decisions-log entry) this change does not touch.
+                    if (Check(TokenKind.LeftBrace)) break; // trailing comma
                     patterns.Add(ParseExpression());
                 }
             } finally {
@@ -1378,9 +1392,18 @@ public sealed class Parser {
         List<CallArgument> args = [];
         SkipNewlines();
         if (Check(TokenKind.RightParen)) return args;
+        // An argument list whose only content is a comma (D-421) — reported through
+        // E2209, distinct from the ordinary leading-comma mistake ('foo(, 1)') where a
+        // real argument follows and the list is not actually empty.
+        if (Check(TokenKind.Comma) && PeekAt(1).Kind == TokenKind.RightParen) {
+            throw Fail(ErrorCatalog.E2209,
+                "an argument list can't be just a comma — add the missing argument, "
+                + "or remove the parentheses' comma.");
+        }
         args.Add(ParseCallArgument());
         while (Match(TokenKind.Comma)) {
             SkipNewlines();
+            if (Check(TokenKind.RightParen)) break; // trailing comma
             args.Add(ParseCallArgument());
         }
         SkipNewlines();
@@ -1455,6 +1478,14 @@ public sealed class Parser {
                     SkipNewlines();
                     Expression inner = ParseExpression();
                     SkipNewlines();
+                    // A grouping '(...)' always holds exactly one expression — Grob has
+                    // no tuples — so a comma here is never a separator to continue past.
+                    // Reported through E2209, not the generic "expected ')'" (D-421).
+                    if (Check(TokenKind.Comma)) {
+                        throw Fail(ErrorCatalog.E2209,
+                            "a grouping '(...)' holds a single expression — Grob has no tuples. "
+                            + "Remove the comma.");
+                    }
                     Token rp = Expect(TokenKind.RightParen, _e2001, "expected ')'");
                     return new GroupingExpr(new SourceRange(t.Location, rp.Location), inner);
                 }
@@ -1939,6 +1970,7 @@ public sealed class Parser {
                 parameters.Add(ParseLambdaParameter());
                 while (Match(TokenKind.Comma)) {
                     SkipNewlines();
+                    if (Check(TokenKind.RightParen)) break; // trailing comma
                     parameters.Add(ParseLambdaParameter());
                 }
                 SkipNewlines();
