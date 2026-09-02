@@ -112,6 +112,9 @@ Wrappable constructs are:
 - Map literals
 - Struct literals (anonymous `#{ ... }` and named `TypeName { ... }`)
 - `type` field declarations (always multi-line — see §3.8)
+- Switch-expression arms (D-421 — §3.1 already indents them as a multi-line
+  bracketed construct; listed here so §3.5's Category B membership has a
+  referent)
 - Method chains (subject to the receiver rule in §3.9)
 
 The wrap rule is symmetric: if a single-line form fits within 100 columns,
@@ -254,11 +257,13 @@ c := Config { }
 
 ### 3.5. Separator Normalisation
 
-Grob uses two separator conventions, distinguished by construct category.
+Grob uses three separator conventions, distinguished by construct category.
+The enumeration below is **complete** — every comma-or-newline-separated
+construct in the language appears in exactly one category (D-421).
 
 **Category A — declaration lists.** `type` field declarations and `param`
-blocks use newline-only separation. The formatter emits no commas between
-field declarations in multi-line form. If commas are present in the input,
+declarations use newline-only separation. The formatter emits no commas
+between field or parameter declarations; if commas are present in the input,
 the formatter removes them.
 
 ```grob
@@ -269,11 +274,15 @@ type FileEntry {
 }
 ```
 
-**Category B — value lists.** Function call arguments, function signature
-parameters, array literals, map literals, named type construction, and
-anonymous struct literals use comma separation. Multi-line forms have a
-trailing comma after every element including the last. Single-line forms
-have no trailing comma.
+**Category B — wrappable value lists.** Function call arguments, function
+signature parameters, array literals, map literals, named type construction,
+anonymous struct literals, and switch-expression arms use comma separation
+and are wrappable under §3.2. Multi-line forms have a trailing comma after
+every element including the last. Single-line forms have no trailing comma.
+
+A call with a **single** argument that wraps is still a multi-line argument
+list, and its one argument takes the trailing comma. The §6 worked example is
+the canonical instance.
 
 ```grob
 // Multi-line — trailing comma on every element
@@ -284,7 +293,32 @@ p := Person {
 
 // Single-line — no trailing comma
 nums := [1, 2, 3]
+
+// One wrapped argument — still a trailing comma
+print(
+    entries.sort(e => e.size_mb, descending: true).formatAs.table(),
+)
 ```
+
+**Category C — comma-separated, never wrapped.** Lambda parameter lists,
+function-type parameter lists (`fn(int, string): bool`), generic and map
+type-argument lists (`map<K, V>`, `mapAs<T>`), and `select` case pattern
+lists are comma-separated but are **not** wrappable constructs under §3.2,
+so the formatter never produces a multi-line form of one. They are therefore
+always emitted single-line with no trailing comma. The grammar permits a
+trailing comma in all four (§16); the formatter removes it.
+
+```grob
+f := (a: int, b: int) => a + b
+rows := table.mapAs<Employee>()
+select (code) {
+    case 200, 201 { print("ok") }
+}
+```
+
+**Not a list.** `for k, v in map { }` uses a comma to separate a fixed pair
+of loop variables. It is not a separator convention and the formatter takes
+no action on it beyond §3.6 spacing.
 
 **Spacing around commas:** one space after, no space before. No exceptions.
 
@@ -1021,6 +1055,27 @@ to reflect the formatter's opinions:
 
 The "Line length: No opinion" row is replaced. Struct/type alignment is
 a new row.
+
+-----
+
+*Updated August 2026 — D-421. §3.5's construct enumeration is completed and is*
+*now declared complete, closing register item R-09. It previously named six*
+*Category B constructs and omitted five comma-separated ones — switch-expression*
+*arms, lambda parameter lists, function-type parameter lists, type-argument*
+*lists and `select` case pattern lists — so the formatter had no rule for*
+*constructs its own categorisation did not mention. Switch-expression arms join*
+*Category B and are added to §3.2's wrappable list, which §3.1 had already*
+*treated them as being. A new **Category C** covers the four comma-separated*
+*constructs that are not wrappable under §3.2 and therefore never take a*
+*trailing comma from the formatter, even though the grammar permits one. `for*
+*k, v in` is named explicitly as a fixed pair rather than a list, so the*
+*enumeration has no silent omissions. Category B gains an explicit statement*
+*that a call with one wrapped argument is still a multi-line argument list and*
+*takes the trailing comma — the reading §6's worked example already assumed and*
+*no rule stated. Category A's "`param` blocks" is corrected to "`param`*
+*declarations": D-414's terminology sweep recorded §3.11 as the last surviving*
+*site of the form D-410 retired, and this one, in the section D-417 made*
+*normative, was missed. No rule changes beyond the completed enumeration.*
 
 -----
 

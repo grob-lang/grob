@@ -473,18 +473,19 @@ authorised, and every item cites the decision that raised it.
 | R-02 | **E2202's title widened** to name `type`, `const` and `readonly` declarations alongside `fn` and top-level statements — its current title is narrower than its actual condition (D-412). Title lives in `ErrorCatalog.cs`. | D-410, D-412, scheduled by D-414 | *Finish the param concern* increment (ordering enforcement) | Title updated in both locations in one commit; D-316 green |
 | R-03 | **E4102's title widened** for `@minValue`/`@maxValue` — currently "invalid `@minLength` / `@maxLength` argument" — or a sibling code minted. D-414 groups it with R-01 and R-02 as turning on the ordering rule rather than on the grammar. | D-410, D-411, scheduled by D-414 | *Finish the param concern* increment (ordering enforcement) | Title covers the value pair, or a sibling exists; D-316 green |
 | R-04 | **`Grob.Core`'s public surface narrowed.** It becomes SDK surface when `Grob.Runtime` publishes, while holding `Chunk`, `BytecodeFunction`, `CatchHandler`, `DiagnosticBag` and `IVmCallHost` — internals a plugin author should not see. Narrowing after publication is a breaking change. | D-419 | Sprint 11, **before first package publication** | An explicit allow-list names every type in `Grob.Core`'s intended public SDK surface; `Chunk`, `BytecodeFunction`, `CatchHandler`, `DiagnosticBag` and `IVmCallHost` are `internal` with `InternalsVisibleTo` to the assemblies that need them, and no public type sits outside the allow-list |
-| R-05 | **Harness advertised-versus-built audit.** `.claude/` has never had the scrutiny the design corpus has had. Known: two skills and `src/CLAUDE.md` instruct authors to supply a `FunctionSignature` that has never existed, with a three-argument registration example that would not compile. | D-419 | `FunctionSignature` increment (known sites); full sweep `unowned` | Known sites corrected in the commit that makes them true, **and** the full `.claude/` sweep is complete with every stale advertised interface it finds corrected or removed — scheduling the sweep does not close this item, only finishing it does |
+| R-05 | **Harness advertised-versus-built audit.** `.claude/` has never had the scrutiny the design corpus has had. Known: two skills, `src/CLAUDE.md` and — found by D-421, not on D-419's list — `plugins/CLAUDE.md:27` instruct authors to supply a `FunctionSignature` that has never existed, with a three-argument registration example that would not compile. Also found by D-421: `tests/CLAUDE.md:60` documents the error-example pair naming as `*_grob.txt`/`*_expected.txt`, while all 57 pairs on disk are `<case>.grob`/`<case>.expected.txt` — a convention an author would follow into a file the harness would not find. | D-419 | `FunctionSignature` increment (known sites); full sweep `unowned` | Known sites corrected in the commit that makes them true, **and** the full `.claude/` sweep is complete with every stale advertised interface it finds corrected or removed — scheduling the sweep does not close this item, only finishing it does |
 | R-06 | **Type-name LSP mechanism specified.** §3.1.1 requires `ResolvedType`/`Declaration` on identifier *expression* nodes; D-416 ruled `TypeRef` is outside it. Go-to-definition on a type name therefore resolves by some path no document names — plausibly `UserTypeRegistry` plus `Symbol.DeclaredAt`, but unstated. | D-416 | `unowned` — before any LSP work | A document states how a type name resolves to its declaration, and §3.1.1 says whether it is in scope |
 | R-07 | **D-418's corpus corrections.** `grob-type-registry.md` (which carries both `mapAs` conventions side by side), `grob-stdlib-reference.md`, wiki `json.md`/`csv.md`, and validation script 04, to the uniform whole-type convention; script 11's `[ASSUMPTION]` marker removed. Script edits touch `.grob` corpus files and their markdown publication together (D-417's sync guard). | D-418 | `mapAs<T>` increment (Sprint 9D) | All sites use `mapAs<T>(): T`; `ValidationScriptCorpusTests` and `ValidationScriptMarkdownSyncTests` green |
 | R-08 | **Decorator release-gate coverage.** All seven decorators ship in v1 (D-411), but only `@secure` appears in any validation script — six would ship unexercised, which is the advertised-but-unbuilt shape in advance. | D-411 | Sprint 10 | At least one release-gate script exercises the full decorator surface |
-| R-09 | **§3.5's construct enumeration completed.** It lists Category A and B members but omits switch-expression arms, which §16 separately permits a trailing comma on. The formatter needs a rule for a construct its own categorisation does not mention. | D-417 | Sprint 12 (`grob fmt`) | §3.5 names every comma-or-newline-separated construct in the language |
 | R-10 | **`docs/errors/Exxxx.md` written.** 121 codes at creation, zero documents; `--explain Exxxx` is specified to read them. Four sections each: cause, example, fix, see-also. | v1 requirements §10 | `unowned` — v1 release gate | A document exists for every code currently in the registry (count may move — R-01 alone drops it to 120 — so this checks against the registry's live contents, not a fixed number), and `--explain` resolves for each of them |
 | R-11 | **Error-examples library harnessed.** 57 gold-master pairs, zero references anywhere in `tests/`, `src/` or `tooling/` — the negative-test release gate does not currently exist, and every expected-output file is unverified against the current compiler. | D-415, D-417 | *Error-examples harness* increment | A test runs all 57 pairs; every stale master is reconciled or quarantined with a documented reason |
 | R-12 | **`FunctionSignature` implemented** — the contract D-081 required in April 2026 and D-419 specified. Re-sequenced ahead of Sprint 9C by D-420 so `fs` is the first module built on it rather than the fifth migrated onto it. | D-081, D-419, D-420 | *`FunctionSignature`* increment, **before Sprint 9C** | Every native routes through `FunctionSignature`; `RegisterNative` requires one; `NamespaceRegistry` produces rather than defines; no behaviour change |
 
 ### Closed items
 
-*None yet. Items move here with the D-number that closed them.*
+| # | Item | Raised by | Closed by | How |
+|---|---|---|---|---|
+| R-09 | **§3.5's construct enumeration completed.** | D-417 | **D-421** | `grob-formatter-specification.md` §3.5 now enumerates every comma-or-newline-separated construct in the language and states that the enumeration is complete. Switch-expression arms joined Category B (and §3.2's wrappable list); a new Category C covers the four comma-separated constructs that are never wrapped — lambda parameter lists, function-type parameter lists, type-argument lists and `select` case pattern lists; `for k, v in` is named as a fixed pair rather than a list. Closed ahead of its Sprint 12 owner because D-421 could not state the grammar rule without it. |
 
 ---
 
@@ -886,7 +887,22 @@ _table of `grob-decisions-log.md`. The full rationale is preserved here._
 
 ---
 
-_Document updated August 2026 — Deferred Work Register added (D-420), giving_
+_Document updated August 2026 — D-421. **R-09 is the register's first closed_
+_item**, moved to the Closed Items table with the D-number that closed it,_
+_exercising the mechanism D-420 built and confirming an item can leave Open_
+_without being deleted. It closed ahead of its Sprint 12 owner because D-421_
+_could not state the trailing-comma grammar rule without knowing which_
+_constructs the rule applies to. **R-05 widened by two sites**, both found by_
+_D-421 while verifying something else: `plugins/CLAUDE.md:27` is a third_
+_harness file instructing plugin authors to supply a `FunctionSignature` that_
+_has never existed, and was not on D-419's list of known sites; and_
+_`tests/CLAUDE.md:60` documents the error-example pair naming as_
+_`*_grob.txt`/`*_expected.txt` while all 57 pairs on disk use_
+_`<case>.grob`/`<case>.expected.txt`. Both are the R-05 shape — harness_
+_documentation describing an interface the tree does not have — and both are_
+_recorded rather than fixed, since R-05's criterion requires the full sweep,_
+_not a running correction of sites found in passing._
+_Previous: August 2026 — Deferred Work Register added (D-420), giving_
 _work that is decided but not yet done a single tracking home with a named_
 _owner and a checkable completion criterion per item. Twelve items on creation,_
 _R-01 through R-12. It sits between Open Questions and Resolved Questions_
