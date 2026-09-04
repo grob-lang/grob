@@ -14088,10 +14088,10 @@ Six parser sites change:
 | Generic and map type-argument lists | **new here** |
 | `select` case pattern lists | **new here**, gate-conditional |
 
-The four already-compliant constructs — array literals, map literals, the
-braced field-init list shared by anonymous and named struct construction, and
-switch-expression arms — change no behaviour, but each gains a regression test
-so the accept/reject split cannot silently reopen.
+The four already-compliant constructs — array literals, map literals,
+switch-expression arms and the braced field-init list shared by anonymous and
+named struct construction — change no behaviour, but each gains a regression
+test so the accept/reject split cannot silently reopen.
 
 The four new ones are decided the same way as the two D-165 named, for one
 reason: a per-construct allowlist is exactly the mechanism that produced this
@@ -14286,7 +14286,7 @@ parameter loop each gained the identical `if (Check(terminator)) break;` shape
 already used by the four already-compliant loops (`ParseBracedFieldInitList`,
 `ParseSwitchArms`, `ParseArrayLiteral`, `ParseMapLiteral`) — `ParseParameterList`
 through its existing `terminator` parameter, per D-421's own instruction; the
-other five hardcoded to their own terminator (`RightParen` ×4, `Greater`,
+other five hardcoded to their own terminator (`RightParen` ×3, `Greater`,
 `LeftBrace`), since each is reached from exactly one call site and a shared
 `terminator` parameter would have been unused generality. **No shared helper
 was introduced across the five new sites**, considered and rejected per D-421's
@@ -14315,7 +14315,7 @@ called it anywhere prior to this increment. This is mechanical parity with the
 shape the four already-compliant loops use (each calls `SkipNewlines()`
 immediately after `Match(TokenKind.Comma)`), not a fresh decision: without it,
 a multi-line trailing-comma form whose comma is directly followed by a newline
-then the terminator would have behaved inconsistently with the other five
+then the terminator would have behaved inconsistently with the other four
 sites, which all either already had the call or reach an equivalent state via
 the lexer's own comma-adjacent newline suppression (`Comma` is
 continuation-eligible in `Lexer.IsContinuationEligible`, so a newline

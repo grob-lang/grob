@@ -482,6 +482,19 @@ public sealed class ParserTrailingCommaTests {
     }
 
     [Fact]
+    public void EmptyArgumentList_LoneComma_AcrossNewlines_IsStillE2209() {
+        // The lexer's §14 line-continuation pass suppresses a newline after '(' and
+        // after ',', and one immediately before ')' — so the wrapped form reduces to
+        // the same 'foo(,)' token stream and reaches the same E2209 site. Pinned so a
+        // change to IsContinuationEligible cannot silently downgrade this to E2001.
+        (_, DiagnosticBag bag) = Parse("foo(\n,\n)\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2209", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column); // the ','
+    }
+
+    [Fact]
     public void ArgumentList_LeadingCommaBeforeRealArgument_StaysE2001NotE2209() {
         // 'foo(, 1)' is not "an argument list whose only content is a comma" — an
         // argument follows the comma, so this is the ordinary leading-comma mistake

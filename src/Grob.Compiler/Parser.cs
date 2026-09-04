@@ -1394,7 +1394,10 @@ public sealed class Parser {
         if (Check(TokenKind.RightParen)) return args;
         // An argument list whose only content is a comma (D-421) — reported through
         // E2209, distinct from the ordinary leading-comma mistake ('foo(, 1)') where a
-        // real argument follows and the list is not actually empty.
+        // real argument follows and the list is not actually empty. PeekAt(1) needs no
+        // newline skip: Comma is continuation-eligible and a newline immediately before
+        // ')' is suppressed too (Lexer.ApplyLineContinuation, §14), so the wrapped
+        // 'foo(\n,\n)' form reaches here as the very same three tokens.
         if (Check(TokenKind.Comma) && PeekAt(1).Kind == TokenKind.RightParen) {
             throw Fail(ErrorCatalog.E2209,
                 "an argument list can't be just a comma — add the missing argument, "

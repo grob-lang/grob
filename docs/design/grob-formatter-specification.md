@@ -258,8 +258,11 @@ c := Config { }
 ### 3.5. Separator Normalisation
 
 Grob uses three separator conventions, distinguished by construct category.
-The enumeration below is **complete** — every comma-or-newline-separated
-construct in the language appears in exactly one category (D-421).
+The enumeration below is **complete** over separated *lists* — every
+comma-or-newline-separated list in the language appears in exactly one
+category (D-421). One construct separates with a comma without being a list —
+`for k, v in map { }`, a fixed pair rather than a list — and belongs to no
+category; it is named at the end of this section.
 
 **Category A — declaration lists.** `type` field declarations and `param`
 declarations use newline-only separation. The formatter emits no commas

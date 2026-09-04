@@ -895,7 +895,7 @@ _could not state the trailing-comma grammar rule without knowing which_
 _constructs the rule applies to. **R-05 widened by two sites**, both found by_
 _D-421 while verifying something else: `plugins/CLAUDE.md:27` is a third_
 _harness file instructing plugin authors to supply a `FunctionSignature` that_
-_has never existed, and was not on D-419's list of known sites; and_
+_has never existed, and was not on D-419's list of known sites;_
 _`tests/CLAUDE.md:60` documents the error-example pair naming as_
 _`*_grob.txt`/`*_expected.txt` while all 57 pairs on disk use_
 _`<case>.grob`/`<case>.expected.txt`. Both are the R-05 shape — harness_
