@@ -110,3 +110,13 @@ repos:
         stages: [pre-push]
         pass_filenames: false
         always_run: true
+
+  - repo: local
+    hooks:
+      - id: prose-check
+        name: house-style prose check (warn only)
+        entry: pwsh -NoProfile -ExecutionPolicy Bypass -File tooling/prose-check.ps1
+        language: system
+        files: \.md$
+        pass_filenames: false
+        verbose: true

@@ -59,7 +59,7 @@ consistency review catches. Cite the `D-###` that authorised the addition.
 
 Wrap failures as the appropriate `GrobError` leaf (`IoError`, `JsonError`,
 `ProcessError`, etc.) with a quality message. Results to stdout, errors to stderr, no
-emoji, British English. Windows path conventions throughout.
+emoji; prose follows `house-style/SKILL.md`. Windows path conventions throughout.
 
 ## Step 6 — Test
 

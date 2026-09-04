@@ -51,7 +51,8 @@ Do not hand-write it from memory — generate it from the actual implementation,
 read it to confirm it is the diagnostic you intend.
 
 The expected output must meet the quality bar: clear statement of what went wrong, exact
-location, and a suggested fix where the fix is obvious. No emoji. British English. If
+location, and a suggested fix where the fix is obvious. No emoji; prose follows
+`house-style/SKILL.md`. If
 the generated diagnostic is poor, the fix is to improve the diagnostic in the compiler,
 then regenerate — not to bless poor output as the gold master.
 
@@ -81,7 +82,7 @@ script.
 - [ ] Error code reused or newly registered in the correct category range
 - [ ] `*_grob.txt` triggers exactly one error, minimal, idiomatic, named for the error
 - [ ] `*_expected.txt` generated from the implementation, not hand-written
-- [ ] Diagnostic meets the quality bar (location, cause, fix, no emoji, British English)
+- [ ] Diagnostic meets the quality bar (location, cause, fix) and the `house-style` checklist
 - [ ] On a wording change: full set of affected masters found by grep and regenerated
 - [ ] Diff reviewed deliberately — every change intended
 - [ ] Pair wired into the negative-test gate

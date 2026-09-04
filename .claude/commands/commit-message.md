@@ -74,8 +74,8 @@ be split.
 ## Subject, body, footer
 
 - **Subject:** imperative mood ("add lexer for string literals", not "added"/"adds").
-  Lowercase first letter, no trailing full stop. British English, no Oxford comma,
-  never "simply".
+  Lowercase first letter, no trailing full stop. Prose follows the `house-style`
+  skill.
 - **Body:** wrap at 72. Explain *why*, not *what* — the diff shows what. Reference the
   decision (`Implements D-300 (error-recovering parser).`). **Note coverage changes**:
   adding `[ExcludeFromCodeCoverage]`, removing tested code or lowering a project's
@@ -138,6 +138,22 @@ answer is "no", surface it before committing:
 
 If staged changes contain a feature *without* tests, do not commit them as `feat`.
 Surface the gap.
+
+## Prose pass
+
+If the staged diff touches `docs/`, any `*.md` file, or a changed diagnostic message
+string, run the `house-style` checklist over the added and changed lines before
+proposing the message — not over the whole file, only over what this commit adds.
+
+Gate on what the diff touches, not on how big it is. Large code commits are already
+the best-covered surface in this project: TDD, `dotnet format`, the coverage gate,
+Sonar and CodeRabbit all see them. A two-line Oxford comma in a spec document is seen
+by none of those, which is exactly why it lands.
+
+If `tooling/prose-check.ps1` flagged candidates at pre-commit, clear or dismiss each
+one here rather than committing over the warning. It is a high-recall detector and
+some hits are legitimate two-clause sentences — dismissing a false positive is a
+judgement you make and state, not one you skip.
 
 ## Output
 

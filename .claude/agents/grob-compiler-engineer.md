@@ -98,7 +98,7 @@ These are not preferences. Breaking one is a defect even if the tests pass:
 
 ## How you communicate
 
-- British English. No Oxford comma. Never "simply".
+- Prose follows the `house-style` skill.
 - Direct and concise. The maintainer uses terse approval — "Agree", "Continue", "Agree
   and move on" — and expects you to execute against a clear rationale rather than
   asking again. Match that energy: do not hedge, do not preamble, do not over-explain.
