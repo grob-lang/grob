@@ -863,7 +863,7 @@ read by `grob --explain Exxxx`.
 - **Category:** Syntax
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** Trailing commas are permitted in most list-shaped constructs (`grob-language-fundamentals.md` §16) but not in single-element parenthesised expressions or empty argument lists.
+- **Description:** A trailing comma is permitted in every comma-separated **list** in the language (`grob-language-fundamentals.md` §16, D-165/D-421) — there are no list constructs that reject one. This code covers the two comma positions that are not lists: a grouping parenthesis carrying a stray comma (`(x,)` — Grob has no tuples, so `( expr )` is always a grouping and a comma inside it terminates nothing), and an argument list whose only content is a comma (`foo(,)`). A **leading** or **doubled** comma (`[, 1]`, `foo(1,, 2)`) is a different mistake and raises E2001 at the position where an element was expected, not this code.
 
 ---
 

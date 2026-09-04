@@ -1372,21 +1372,50 @@ supported — use `.toInt()`. The only implicit conversion in the language is
 
 ## 16. Trailing Commas
 
-Trailing commas are permitted in all comma-separated lists:
+A trailing comma is permitted in **every** comma-separated list in the language.
+There are no exceptions by construct (D-165, enumerated and completed by D-421):
 
 ```grob
-items := [1, 2, 3,]                 // array literal
-r := Repo { name: "grob", url: "...", }  // struct construction
+items := [1, 2, 3,]                        // array literal
+r := Repo { name: "grob", url: "...", }    // named struct construction
+a := #{ name: "grob", stars: 1200, }       // anonymous struct literal
 m := map<string, string>{
     "key": "value",
-}                                    // map literal
-fn foo(a: int, b: int,): int { }    // function parameters
-foo(1, 2,)                           // function arguments
+}                                          // map literal
+fn foo(a: int, b: int,): int { }           // function parameters
+foo(1, 2,)                                 // function arguments
+f := (a: int, b: int,) => a + b            // lambda parameters
+h: fn(int, string,): bool := check         // function-type parameters
+rows := table.mapAs<Employee,>()           // type arguments
+select (code) {
+    case 200, 201, { print("ok") }         // case pattern list
+}
+label := status switch {
+    200 => "ok",
+    _   => "other",                        // switch-expression arms
+}
 ```
 
 Trailing commas are optional — never required. They are permitted to simplify
 code generation, reduce diff noise on version control, and align with modern
-language conventions. `grob fmt` normalises trailing comma usage.
+language conventions. `grob fmt` normalises trailing comma usage: it emits one
+after every element of a wrapped list and removes one from any list it keeps on
+a single line (`grob-formatter-specification.md` §3.5).
+
+**The rule is about lists, not commas.** Two comma positions are not covered by
+it, because neither is a list:
+
+- `for k, v in map { }` — a fixed pair of loop variables, not a list. `for k, v,
+  in map` is an error.
+- `(x,)` — a grouping parenthesis with a stray comma. Grob has no tuples, so
+  `( expr )` is always a grouping, and a comma inside it terminates nothing.
+
+Both, along with an argument list containing nothing but a comma (`foo(,)`),
+raise **E2209** — *trailing comma not permitted here*.
+
+A **leading** or **doubled** comma (`[, 1]`, `foo(1,, 2)`) is a different
+mistake and is not an E2209 case; it raises E2001 at the position where an
+element was expected.
 
 ---
 

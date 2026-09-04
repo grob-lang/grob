@@ -64,23 +64,19 @@ namespace Grob.Compiler.Tests;
 /// optional there) never surfaces a diagnostic at all.
 /// </para>
 /// <para>
-/// <b>The nineteenth site was found unsafe to fix and was deliberately left
-/// as-is.</b> §3.5 lists call-argument lists as Category B, requiring a
-/// trailing comma in multi-line form, and script 07's <c>http.get(...)</c>
-/// call (lines 23–26) is missing one on its last argument. Adding it does
-/// not parse — confirmed empirically, including the minimal single-line case
-/// <c>foo(1, 2,)</c> — call-argument lists and function parameter lists
-/// reject a trailing comma unconditionally, unlike struct/array/map/
-/// anon-struct literals, which accept one. This directly contradicts
+/// <b>The nineteenth site is now fixed (D-421).</b> §3.5 lists call-argument
+/// lists as Category B, requiring a trailing comma in multi-line form, and
+/// script 07's <c>http.get(...)</c> call (lines 23–26) was missing one on its
+/// last argument. Before D-421, adding it did not parse — call-argument
+/// lists and function parameter lists rejected a trailing comma
+/// unconditionally, unlike struct/array/map/anon-struct literals, which
+/// accepted one — a genuine parser/spec mismatch against
 /// <c>grob-language-fundamentals.md</c>'s own worked example
-/// (<c>fn foo(a: int, b: int,): int { }</c> and <c>foo(1, 2,)</c>, both of
-/// which also fail to parse as written) and is a genuine parser/spec
-/// mismatch, not a corpus defect — fixing it would need a grammar change,
-/// out of this increment's scope. Reported for a decision, not fixed;
-/// script 07's <c>http.get</c> call is left exactly as found. All eleven
-/// scripts nonetheless parse with zero diagnostics, since this site never
-/// produced a diagnostic in the first place (the missing trailing comma is
-/// invisible to the parser either way).
+/// (<c>fn foo(a: int, b: int,): int { }</c> and <c>foo(1, 2,)</c>), not a
+/// corpus defect. D-421 closes it: every comma-separated list now accepts an
+/// optional trailing comma (six parser sites, D-421's own table), and script
+/// 07's <c>http.get</c> call now carries the trailing comma its own category
+/// requires. All eleven scripts still parse with zero diagnostics.
 /// </para>
 /// <para>
 /// The assertion below is strictly stronger than what it replaces: the three

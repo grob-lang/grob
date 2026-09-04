@@ -183,11 +183,13 @@ public sealed class SwitchExprParserTests {
 
     [Fact]
     public void MalformedArm_ResultLeavesBracketPairOpen_DoesNotReuseInnerComma() {
+        // The comma inside the still-open '(' now raises E2209 (D-421 Decision 2)
+        // rather than the pre-D-421 generic "expected ')'" — the recovery
+        // mechanics this test pins are otherwise unchanged.
         (CompilationUnit unit, DiagnosticBag bag) = Parse("x := n switch { 1 => (1, _ => 0 }\nq := 9\n");
 
         Diagnostic d = Assert.Single(bag.Diagnostics);
-        Assert.Equal("E2001", d.Code);
-        Assert.Equal("expected ')'", d.Message);
+        Assert.Equal("E2209", d.Code);
         Assert.Equal(1, d.Range.Start.Line);
         Assert.Equal(24, d.Range.Start.Column); // the ',' inside the still-open '('
 

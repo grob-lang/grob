@@ -575,7 +575,7 @@ cutoff := date.today().addDays(-days_old)
 
 issues := http.get(
     "https://api.github.com/repos/${repo}/issues?state=open&per_page=100",
-    auth.bearer(token)
+    auth.bearer(token),
 ).asJson().mapAs<Issue>()
 
 print(
