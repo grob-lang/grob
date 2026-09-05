@@ -298,8 +298,15 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // binding would see GrobType.Unknown and trigger a false E0005 (D-323).
         ResolveTopLevelValueBindingTypes(unit);
 
-        // Pass 2 — validate all top-level items in source order.
+        // Pass 2 — validate all top-level items in source order, checking §19's
+        // declaration order as we go (D-424 Decision 5). The ordering check rides
+        // this walk rather than running as a pre-pass so its diagnostics
+        // interleave with the rest in source order; see
+        // TypeChecker.DeclarationOrder.cs for why that placement is load-bearing.
+        _orderHighWater = DeclarationCategory.Import;
+        _orderHighWaterItem = null;
         foreach (AstNode item in unit.TopLevel) {
+            CheckDeclarationOrder(item);
             Visit(item);
         }
 

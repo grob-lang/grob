@@ -75,14 +75,27 @@ public sealed class TypeCheckerParamDeclTests {
     /// The resolving counterpart: a default referring to a declared
     /// <c>const</c> resolves to that declaration, so the invariant holds on the
     /// success path too and not only through the error sentinels.
+    /// <para>
+    /// The fixture is <b>deliberately misordered</b>, and there is no
+    /// alternative: §19 requires every <c>param</c> to precede every
+    /// <c>const</c>, so no ordering-clean Grob source can have a <c>param</c>
+    /// default naming a top-level <c>const</c>. Since D-424 gave E2202 its throw
+    /// site the file therefore reports exactly one diagnostic — the ordering
+    /// error — and the test is strictly stronger for it: it pins the §3.1.1
+    /// success path <i>and</i> D-424 Decision 5's second constraint, that an
+    /// ordering error suppresses nothing else. Binding a supplied value to a
+    /// <c>param</c> is Sprint 10 (R-15); resolving an identifier inside its
+    /// default is not, and still happens here.
+    /// </para>
     /// </summary>
     [Fact]
-    public void ParamDecl_ConstIdentifierDefault_ResolvesToItsDeclaration() {
+    public void ParamDecl_ConstIdentifierDefault_ResolvesToItsDeclaration_AlongsideE2202() {
         DiagnosticBag bag = Check("const fallback := 10\nparam limit: int = fallback\n",
             out CompilationUnit unit);
 
-        Assert.False(bag.HasErrors,
-            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+        Diagnostic ordering = Assert.Single(bag.Diagnostics);
+        Assert.Equal(ErrorCatalog.E2202.Code, ordering.Code);
+        Assert.Equal(2, ordering.Range.Start.Line);
 
         ConstDecl fallback = Assert.IsType<ConstDecl>(unit.TopLevel[0]);
         ParamDecl p = Assert.IsType<ParamDecl>(unit.TopLevel[^1]);
