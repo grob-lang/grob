@@ -983,7 +983,7 @@ read by `grob --explain Exxxx`.
 - **Introduced:** v1
 - **Status:** pre-release
 - **Description:** A decorator was applied that is not one of the recognised decorators. The v1 set is fixed at seven by D-411: `@secure`, `@allowed`, `@minLength`, `@maxLength`, `@minValue`, `@maxValue`, `@pattern`. `@pattern` is specified but not yet built — it lands with the `regex` increment, which supplies the compiled-pattern value it validates against.
-- **Source decision:** D-072.
+- **Source decision:** D-072; D-411 (the seven-decorator set); D-424 (first throw site; `@pattern` is recognised rather than unknown, so it is never E4001).
 
 ---
 
@@ -992,8 +992,8 @@ read by `grob --explain Exxxx`.
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A decorator was applied to a target where it is not valid, e.g. `@secure` on a non-string param or a validation decorator not attached to a `param` declaration.
-- **Source decision:** D-072.
+- **Description:** A decorator was applied where it is not valid. Four distinct conditions share this code, each with its own message (D-424): (1) a decorator outside a `param` declaration — decorators are a `param`-only construct (§19), so one in a function parameter list is rejected here; (2) a decorator applied to a param whose declared type it does not support, such as `@secure` or `@pattern` on a non-`string`; (3) the same decorator applied twice to one `param`; (4) a wrong argument count on `@secure`, which takes none, or `@pattern`, which takes one string literal. The last of those sits here because §19's table assigns E4101 to `@allowed` and E4102 to the four length and value constraints, leaving `@secure` and `@pattern` without a code of their own, and D-424 mints none.
+- **Source decision:** D-072; D-424 (first throw sites, and the `param`-only rule).
 
 ---
 
@@ -1003,7 +1003,7 @@ read by `grob --explain Exxxx`.
 - **Introduced:** v1
 - **Status:** pre-release
 - **Description:** `@allowed(...)` received an argument list that is not a homogeneous set of literals matching the param's type. This is a grammar-level rejection at compile time, distinct from runtime validation failures (which fall under the runtime category if v1 scope-cut is not activated).
-- **Source decision:** D-186 (validation decorators are a v1 scope-cut candidate; the grammar code is allocated regardless).
+- **Source decision:** D-186 (validation decorators are a v1 scope-cut candidate; the grammar code is allocated regardless); D-424 (first throw site). Arity, non-literal arguments, heterogeneous values and a value not assignable to the param's declared type all report here, each at the offending argument's own position.
 
 ---
 
@@ -1022,7 +1022,7 @@ read by `grob --explain Exxxx`.
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A `param` declaration is malformed — a missing type annotation (the annotation is mandatory; parameters are never inferred), a default introduced with `:=` instead of `=`, a decorator line not followed by a `param` declaration, or a decorator not followed by a newline (§19's production is `{ decorator newline } "param" ...`: a top-level decorator sits on its own line above the declaration it modifies, unlike a function-parameter decorator, which is written inline). Per D-410 a parameter is one `param` line with no enclosing block; `param {` is not a Grob form.
+- **Description:** A `param` declaration is malformed — a missing type annotation (the annotation is mandatory; parameters are never inferred), a default introduced with `:=` instead of `=`, a decorator line not followed by a `param` declaration, or a decorator not followed by a newline (§19's production is `{ decorator newline } "param" ...`: a decorator sits on its own line above the declaration it modifies). Decorators are a `param`-only construct (D-424), so there is no second, inline form to distinguish this from. Per D-410 a parameter is one `param` line with no enclosing block; `param {` is not a Grob form.
 - **Source:** `grob-language-fundamentals.md` §19, "The `param` declaration"; D-410; D-415 (first throw site, and the retitle from "`param` block syntax error").
 
 ---
@@ -1429,6 +1429,16 @@ _differ only in the argument's type. A code per decorator pair scales badly agai
 _seven-decorator set and would leave `@pattern` wanting an eighth. The row is wider than_
 _its neighbours, which is a formatting cost worth paying for a title that can be grepped_
 _by decorator name. No code added or removed; total stays at 120._
+
+_Updated September 2026 -- description-only corrections authorised by D-424; no code_
+_added, removed or retitled here, so the D-316 agreement gate is unaffected and the total_
+_stays at 120. E4002's description now names all four conditions the code carries, one of_
+_which -- a wrong argument count on `@secure` or `@pattern` -- lands here only because_
+_§19's Decorators table assigns E4101 to `@allowed` and E4102 to the four length and_
+_value constraints and gives those two decorators no code of their own. E4001's and_
+_E4101's source lines record their first throw sites. E4201's description dropped the_
+_claim that a function-parameter decorator "is written inline": §12 has no decorator_
+_production and never had one, and D-424 Decision 2 makes a decorator there E4002._
 
 _Initial allocation: 94 codes across 7 categories. All `pre-release` until v1.0 ships. Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule)._
 
