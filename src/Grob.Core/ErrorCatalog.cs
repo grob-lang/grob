@@ -588,10 +588,10 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
-    /// <summary>`param` after `fn` or top-level statement</summary>
+    /// <summary>`param` after `type`, `fn`, `const`, `readonly` or top-level statement</summary>
     public static readonly ErrorDescriptor E2202 = new(
         Code: "E2202",
-        Title: "`param` after `fn` or top-level statement",
+        Title: "`param` after `type`, `fn`, `const`, `readonly` or top-level statement",
         Category: ErrorCategory.Syntax,
         Status: ErrorStatus.PreRelease,
         Severity: DiagnosticSeverity.Error,

@@ -115,7 +115,7 @@ read by `grob --explain Exxxx`.
 | E2101 | bare `{` cannot begin an expression                | Syntax            | pre-release           |
 | E2102 | empty type construction missing `{ }`              | Syntax            | pre-release           |
 | E2201 | `import` after declaration                         | Syntax            | pre-release           |
-| E2202 | `param` after `fn` or top-level statement          | Syntax            | pre-release           |
+| E2202 | `param` after `type`, `fn`, `const`, `readonly` or top-level statement | Syntax            | pre-release           |
 | E2203 | top-level `return`                                 | Syntax            | pre-release           |
 | E2204 | `try` without `catch` or `finally`                 | Syntax            | pre-release           |
 | E2205 | `catch` after catch-all                            | Syntax            | pre-release           |
@@ -788,13 +788,13 @@ read by `grob --explain Exxxx`.
 
 ---
 
-### E2202 — `param` after `fn` or top-level statement
+### E2202 — `param` after `type`, `fn`, `const`, `readonly` or top-level statement
 
 - **Category:** Syntax
 - **Introduced:** v1
 - **Status:** pre-release
 - **Description:** `param` declarations must precede `type` declarations, function declarations, `const` and `readonly` declarations and top-level code (D-412 places `const`/`readonly` in the top-level-code category). Where a misplaced `param` also collides with an existing top-level name, only this ordering error is reported; the E1102 collision is suppressed as a cascade (D-412).
-- **Source:** `grob-language-fundamentals.md` §19; D-412.
+- **Source:** `grob-language-fundamentals.md` §19; D-412; D-424 (first throw site, and the retitle from "`param` after `fn` or top-level statement").
 
 ---
 
@@ -1409,6 +1409,15 @@ _`ErrorCatalog.cs` deletion, this registry edit and the count anchor in_
 _`ErrorCodeCountTests` are one commit, which is what keeps the D-316 agreement gate_
 _green. `docs/errors/examples/param-after-param-block-ends/` is removed with it -- a_
 _worked example for a code that no longer exists._
+
+_Updated September 2026 -- D-424, R-02. **E2202 retitled** from "`param` after `fn` or_
+_top-level statement" to "`param` after `type`, `fn`, `const`, `readonly` or top-level_
+_statement". The old title named one of the five forms a `param` must precede, and D-412_
+_had already placed `const` and `readonly` in the top-level-code category without the_
+_title following. A title carried in `ErrorCatalog.cs` and diffed by the D-316 agreement_
+_gate cannot be corrected without the source edit in the same commit, which is why this_
+_waited for the increment that gave E2202 its throw site. No code added or removed;_
+_total stays at 120._
 
 _Initial allocation: 94 codes across 7 categories. All `pre-release` until v1.0 ships. Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule)._
 
