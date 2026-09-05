@@ -65,3 +65,6 @@ coverage/
 # BenchmarkDotNet local run artifacts (D-309).
 # Only the workflow-produced JSON in bench/Grob.Benchmarks/baseline/ is tracked.
 BenchmarkDotNet.Artifacts/
+
+# Session scratch — hand-offs, investigation reports
+.grob-session/

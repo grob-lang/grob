@@ -33,6 +33,23 @@ work that happens _inside_ a branch, see:
    _and_ keep every project at or above 90% line coverage. You don't merge
    red. You don't merge below the coverage bar. Chris doesn't either.
 
+## Where increment prompts live
+
+Increment prompts live in `prompts/` and are read by path. They are **never**
+copied into `.claude/commands/`.
+
+`.claude/commands/` holds workflow commands — the ones that recur across every
+sprint. An increment prompt is a one-shot artefact scoped to a single run, and a
+copy sitting in the command list is a stale, invokable version of a document that
+has moved on. Keeping the single copy in `prompts/` removes the failure by
+construction rather than by remembering to archive it afterwards.
+
+To run an increment, read its prompt from `prompts/` and execute against it. The
+current sprint's prompts sit in `prompts/<sprint>/`; closed sprints move to
+`prompts/archive/<sprint>/`. Neither is invokable, and a kickoff or hand-off that
+still names a `/sprint-N-x` slash command is stale — fix the reference rather than
+restoring the command.
+
 ## Branch naming
 
 ```
@@ -120,7 +137,7 @@ short version:
   percentage dropped. Silent coverage drops are how 90% becomes 70%.
 - **Reference issues** in the footer if applicable: `Refs: #42` or
   `Closes: #42`.
-- **British English**, no Oxford comma, never "simply".
+- Prose follows `house-style/SKILL.md`.
 
 ## Commit cadence
 

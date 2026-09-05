@@ -73,7 +73,7 @@ A plugin must never let a raw .NET exception escape into the VM. Catch at the bo
 and throw the appropriate `GrobError` leaf — `NetworkError` for HTTP failures,
 `IoError` for file/stream problems, and so on — with a message that meets the quality
 bar: what went wrong, and a fix where obvious. Errors go to stderr; results to stdout;
-no emoji; British English.
+no emoji; prose follows `house-style/SKILL.md`.
 
 ## Step 6 — No runtime auto-download
 

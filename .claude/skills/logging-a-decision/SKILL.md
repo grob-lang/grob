@@ -82,6 +82,8 @@ a diff or a patch. Every session output is a complete, ready-to-use file.
 - [ ] Decision was actually made (this records it; it does not invent it)
 - [ ] Next free `D-###` used; format matches existing entries exactly
 - [ ] Body leads with the decision, then rationale, rejected alternatives named
+- [ ] Prose passes the `house-style` checklist — the log is the densest prose in the
+      project and the surface where style drift is most expensive
 - [ ] Points at the spec doc for full detail rather than duplicating it
 - [ ] Summary index row added in lockstep
 - [ ] Footer changelog updated

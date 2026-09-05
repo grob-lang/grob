@@ -132,7 +132,7 @@ The full commit conventions are carried by the `/commit-message` command and the
 
 **13. Conventions.**
 
-- British English. No Oxford comma. No "simply".
+- Prose follows the `house-style` skill.
 - File-scoped namespaces. One public type per file. Same-line (K&R) braces.
 - Nullable reference types enabled. No silent null suppression (`!` operator) without
   justification.

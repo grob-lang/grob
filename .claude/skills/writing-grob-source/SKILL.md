@@ -143,7 +143,7 @@ explicit method call (`.toFloat()`, `.toInt()`, `.toString()`).
 ## Style for `.grob` files in this repo
 
 - Windows paths in backticks, always.
-- British English in string literals and comments where it is prose.
+- Prose in string literals and comments follows `house-style/SKILL.md`.
 - Four-space indentation (the formatter enforces this; write it that way to begin
   with). Same-line braces. No semicolons.
 - A fixture should exercise exactly the feature its test targets — minimal, not a
