@@ -139,7 +139,6 @@ read by `grob --explain Exxxx`.
 | E4101 | invalid `@allowed` argument                        | Param / decorator | pre-release           |
 | E4102 | invalid `@minLength` / `@maxLength` argument       | Param / decorator | pre-release           |
 | E4201 | `param` declaration syntax error                   | Param / decorator | pre-release           |
-| E4202 | `param` after `param` block ends                   | Param / decorator | pre-release           |
 | E5001 | integer overflow                                   | Runtime           | pre-release           |
 | E5002 | integer division by zero                           | Runtime           | pre-release           |
 | E5003 | integer modulo by zero                             | Runtime           | pre-release           |
@@ -1027,15 +1026,6 @@ read by `grob --explain Exxxx`.
 
 ---
 
-### E4202 — `param` after `param` block ends
-
-- **Category:** Param / decorator
-- **Introduced:** v1
-- **Status:** pre-release
-- **Description:** A `param` declaration appeared after the parameter group was closed by a **significant** line that is neither a `param` declaration nor one of its decorators. Blank and comment-only lines do not close the group (§19), so the blank line `grob fmt` requires around a decorated declaration (D-413) never triggers this. **Retirement pending (D-410):** with the braceless grammar and §19's ordering rule this condition is a subset of E2202 (`param` after a `type`, `fn` or top-level statement). E4202 is to be removed and E2202's title widened when ordering enforcement lands in Sprint 10 — the grammar change itself landed in D-415 without disturbing E4202; the removal is deferred to that later increment because retiring a code requires the `ErrorCatalog` edit in the same commit to keep the D-316 agreement gate green. Under D-410's clarification of ADR-0017, E4202's number is permanently burned on removal and is never reused.
-
----
-
 ### E5001 — integer overflow
 
 - **Category:** Runtime
@@ -1401,11 +1391,24 @@ None as of v1.
 
 ---
 
-**Total: 121 codes across 7 categories.** This is the canonical current count;
+**Total: 120 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
 changed; this line is the single source for the present total.
+
+_Updated September 2026 — D-424, R-01. **E4202 removed; 121 -> 120.** Its condition_
+_-- a `param` declaration after the parameter group has closed -- is a strict subset_
+_of E2202's, which D-424 gave its first throw site in the same increment, so the two_
+_codes could not both survive ordering enforcement. The removal was deferred from_
+_D-410 to here for a technical reason D-414 recorded: removing E4202 before E2202_
+_had a throw site would have left the ordering condition with no code at all._
+_**E4202's number is permanently burned and is never reused**, per D-410's_
+_clarification of ADR-0017 for the never-shipped pre-release case. The_
+_`ErrorCatalog.cs` deletion, this registry edit and the count anchor in_
+_`ErrorCodeCountTests` are one commit, which is what keeps the D-316 agreement gate_
+_green. `docs/errors/examples/param-after-param-block-ends/` is removed with it -- a_
+_worked example for a code that no longer exists._
 
 _Initial allocation: 94 codes across 7 categories. All `pre-release` until v1.0 ships. Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule)._
 

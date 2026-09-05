@@ -808,15 +808,6 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
-    /// <summary>`param` after `param` block ends</summary>
-    public static readonly ErrorDescriptor E4202 = new(
-        Code: "E4202",
-        Title: "`param` after `param` block ends",
-        Category: ErrorCategory.ParamDecorator,
-        Status: ErrorStatus.PreRelease,
-        Severity: DiagnosticSeverity.Error,
-        Throws: null);
-
     // ---- Runtime — E5001–E5999 ----
 
     /// <summary>integer overflow</summary>
@@ -1207,7 +1198,6 @@ public static class ErrorCatalog {
         E4101,
         E4102,
         E4201,
-        E4202,
         E5001,
         E5002,
         E5003,
