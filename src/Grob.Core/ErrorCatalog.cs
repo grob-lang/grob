@@ -790,10 +790,10 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
-    /// <summary>invalid `@minLength` / `@maxLength` argument</summary>
+    /// <summary>invalid `@minLength` / `@maxLength` / `@minValue` / `@maxValue` argument</summary>
     public static readonly ErrorDescriptor E4102 = new(
         Code: "E4102",
-        Title: "invalid `@minLength` / `@maxLength` argument",
+        Title: "invalid `@minLength` / `@maxLength` / `@minValue` / `@maxValue` argument",
         Category: ErrorCategory.ParamDecorator,
         Status: ErrorStatus.PreRelease,
         Severity: DiagnosticSeverity.Error,

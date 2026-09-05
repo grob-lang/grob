@@ -137,7 +137,7 @@ read by `grob --explain Exxxx`.
 | E4001 | unknown decorator                                  | Param / decorator | pre-release           |
 | E4002 | decorator not permitted here                       | Param / decorator | pre-release           |
 | E4101 | invalid `@allowed` argument                        | Param / decorator | pre-release           |
-| E4102 | invalid `@minLength` / `@maxLength` argument       | Param / decorator | pre-release           |
+| E4102 | invalid `@minLength` / `@maxLength` / `@minValue` / `@maxValue` argument | Param / decorator | pre-release           |
 | E4201 | `param` declaration syntax error                   | Param / decorator | pre-release           |
 | E5001 | integer overflow                                   | Runtime           | pre-release           |
 | E5002 | integer division by zero                           | Runtime           | pre-release           |
@@ -1007,12 +1007,13 @@ read by `grob --explain Exxxx`.
 
 ---
 
-### E4102 — invalid `@minLength` / `@maxLength` argument
+### E4102 — invalid `@minLength` / `@maxLength` / `@minValue` / `@maxValue` argument
 
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** `@minLength(n)` or `@maxLength(n)` received an argument that is not a non-negative integer literal, or was applied to a param whose type does not support length constraints.
+- **Description:** One of the four length and value constraints received a bad argument, or was applied to a param whose declared type does not support it. `@minLength(n)` and `@maxLength(n)` take one non-negative integer literal and apply to a `string` or an array; `@minValue(n)` and `@maxValue(n)` take one numeric literal and apply to an `int` or a `float`. The four share one validation shape and differ only in the argument's type, which is why D-424 widened this code rather than minting a sibling — a code per decorator pair scales badly against a seven-decorator set and would leave `@pattern` wanting an eighth of its own.
+- **Source:** `grob-language-fundamentals.md` §19 (Decorators); D-186; D-411 (the seven-decorator set); D-424 (first throw site, and the retitle that widened this code to all four).
 
 ---
 
@@ -1418,6 +1419,16 @@ _title following. A title carried in `ErrorCatalog.cs` and diffed by the D-316 a
 _gate cannot be corrected without the source edit in the same commit, which is why this_
 _waited for the increment that gave E2202 its throw site. No code added or removed;_
 _total stays at 120._
+
+_Updated September 2026 -- D-424, R-03. **E4102 retitled** from "invalid `@minLength` /_
+_`@maxLength` argument" to name `@minValue` and `@maxValue` alongside them, and its_
+_description rewritten to match. R-03 asked whether the value pair needed a sibling code;_
+_D-424 Decision 7 resolved it by widening instead. The four share one validation shape --_
+_a numeric or integer literal argument checked against the param's declared type -- and_
+_differ only in the argument's type. A code per decorator pair scales badly against a_
+_seven-decorator set and would leave `@pattern` wanting an eighth. The row is wider than_
+_its neighbours, which is a formatting cost worth paying for a title that can be grepped_
+_by decorator name. No code added or removed; total stays at 120._
 
 _Initial allocation: 94 codes across 7 categories. All `pre-release` until v1.0 ships. Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule)._
 
