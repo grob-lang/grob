@@ -51,7 +51,7 @@ filter means a code-only commit never invokes it.
     hooks:
       - id: prose-check
         name: house-style prose check (warn only)
-        entry: pwsh -NoProfile -File tooling/prose-check.ps1
+        entry: pwsh -NoProfile -ExecutionPolicy Bypass -File tooling/prose-check.ps1
         language: system
         files: \.md$
         pass_filenames: false
@@ -61,3 +61,7 @@ filter means a code-only commit never invokes it.
 `verbose: true` matters — without it, `pre-commit` suppresses stdout on a passing
 hook and the warnings are never seen. The script always exits 0 by design; see
 its header for why that must not change.
+
+`-ExecutionPolicy Bypass` matters too. The script is unsigned, and without it the
+local execution policy blocks the hook outright. This snippet matches the live
+`.pre-commit-config.yaml` entry.

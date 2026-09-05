@@ -141,9 +141,15 @@ Surface the gap.
 
 ## Prose pass
 
-If the staged diff touches `docs/`, any `*.md` file, or a changed diagnostic message
-string, run the `house-style` checklist over the added and changed lines before
-proposing the message — not over the whole file, only over what this commit adds.
+If the staged diff touches `docs/`, any `*.md` file, a changed diagnostic message
+string, a `///` doc comment or a code comment, run the `house-style` checklist over
+the added and changed lines before proposing the message — not over the whole file,
+only over what this commit adds.
+
+That trigger list is the whole of `house-style`'s "Where this applies", so a prose
+surface cannot fall between the two documents. `tooling/prose-check.ps1` is scoped to
+markdown and sees none of the comment surfaces, which is why they are named here
+rather than left to the hook.
 
 Gate on what the diff touches, not on how big it is. Large code commits are already
 the best-covered surface in this project: TDD, `dotnet format`, the coverage gate,

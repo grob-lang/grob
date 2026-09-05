@@ -71,7 +71,7 @@ up, not people reading start to finish.
 
 Error message text carries all of the above, plus:
 
-- Says what went wrong, where, and how to fix it where the fix is obvious.
+- Says what went wrong, where and how to fix it where the fix is obvious.
 - Addresses the reader's code, not the compiler's internals. `cannot assign
   string to int` beats `type unification failed`.
 - No blame, no exclamation marks, no personality. Sparky lives on the website,
@@ -90,9 +90,10 @@ that is skipped is worse than none.
 
 - [ ] British spellings throughout the prose; identifiers left alone
 - [ ] Every `, and` / `, or` in a list of three or more had the comma removed
-- [ ] No `simply`, `just`, `obviously`, `merely`
+- [ ] No `simply` anywhere; no `just`, `obviously`, `merely`, `of course` or
+      `straightforward` characterising difficulty
 - [ ] No emoji
-- [ ] No `in order to`, no `it is important to note`
+- [ ] No `in order to`, `at this point in time` or `it is important to note that`
 - [ ] Em dashes spaced, not `--`
 - [ ] Leads with the point
 

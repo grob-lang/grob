@@ -55,7 +55,7 @@ contents into the hand-off; cite the path.
 - Pre-push gate: <run / not run>
 
 ## Decisions taken, not yet logged
-<The highest-value section. Each one: what was decided, the reasoning, and which
+<The highest-value section. Each one: what was decided, the reasoning and which
 D-### it should become. If none, write "none" — do not pad.>
 
 ## Error codes and registry state
@@ -71,7 +71,7 @@ next session burning a third of its budget rediscovering a dead end.>
 
 ## Why this session stopped
 <The STOP condition. Scope exceeded, a finding that needs the maintainer, context
-exhaustion, degradation, or the increment simply not finishing.>
+exhaustion, degradation or the increment not finishing.>
 
 ## Next session, first action
 <One imperative sentence. Not a plan — the first thing to do.>

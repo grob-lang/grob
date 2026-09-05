@@ -44,7 +44,11 @@ copy sitting in the command list is a stale, invokable version of a document tha
 has moved on. Keeping the single copy in `prompts/` removes the failure by
 construction rather than by remembering to archive it afterwards.
 
-To run an increment, read its prompt from `prompts/` and execute against it.
+To run an increment, read its prompt from `prompts/` and execute against it. The
+current sprint's prompts sit in `prompts/<sprint>/`; closed sprints move to
+`prompts/archive/<sprint>/`. Neither is invokable, and a kickoff or hand-off that
+still names a `/sprint-N-x` slash command is stale — fix the reference rather than
+restoring the command.
 
 ## Branch naming
 

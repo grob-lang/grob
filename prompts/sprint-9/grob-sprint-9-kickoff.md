@@ -6,9 +6,11 @@
 > structural decisions settled here (the array-indexer emission fix, the `mapAs<T>`
 > typed-deserialisation model, the regex-literal scope-cut resolution and the
 > capability-seam completion), and the close-gate, kept under `prompts/sprint-9/` with
-> the QA brief. The increment commands live in `.claude/commands/sprint-9-{a..h}.md`,
-> with archive copies under `prompts/archive/sprint-9/`. **Start by invoking
-> `/sprint-9-a`.**
+> the QA brief. The increment prompts live in `prompts/archive/sprint-9/sprint-9-{a..h}.md`
+> and are read by path, per `trunk-flow`. They were once mirrored as `/sprint-9-a`-style
+> slash commands under `.claude/commands/`; that mirror is gone and the single copy in
+> `prompts/` is now authoritative. **Start by reading
+> `prompts/archive/sprint-9/sprint-9-a.md`.**
 
 Begin Sprint 9 — the core standard library, part two. Sprint 8 stood up the
 module machine — the plugin/native-module infrastructure, the compile-time
@@ -332,4 +334,4 @@ H's acceptance is green.
 - **Model (D-314).** Sonnet 4.6 (High) is the code-gen workhorse throughout. The one
   Opus carve-out is the `mapAs<T>` type-argument-resolution sub-problem in Increment D,
   run through an Opus 4.8 subagent.
-- Start with `/sprint-9-a`.
+- Start with `prompts/archive/sprint-9/sprint-9-a.md`, read by path.

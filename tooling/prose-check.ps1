@@ -107,9 +107,12 @@ else {
     $file = $null
     $lineNo = 0
     foreach ($line in $diff) {
+        # Header lines only. An added line whose own text starts with '++' arrives
+        # as '+++...', so the header test must be exact — a '+++*' wildcard swallows
+        # real prose and desynchronises $lineNo for the rest of the hunk.
         if ($line -match '^\+\+\+ b/(.+)$') { $file = $Matches[1]; continue }
+        if ($line -eq '+++ /dev/null') { $file = $null; continue }
         if ($line -match '^@@ -\d+(?:,\d+)? \+(\d+)') { $lineNo = [int]$Matches[1]; continue }
-        if ($line -like '+++*' -or $line -like '---*') { continue }
         if ($line.StartsWith('+')) {
             $targets.Add([pscustomobject]@{ File = $file; Line = $lineNo; Text = $line.Substring(1) })
             $lineNo++

@@ -8,7 +8,7 @@ zip is otherwise a drop-in over `.claude/`, `tooling/` and `prompts/`.
 All ten increment prompts from `.claude/commands/`. They live in `prompts/` only
 from now on, per the amended rule now recorded in `trunk-flow`.
 
-```
+```text
 .claude/commands/sprint-9-a.md
 .claude/commands/sprint-9-a2.md
 .claude/commands/sprint-9-a3.md
@@ -30,8 +30,9 @@ ten by sample. Run the full comparison first — if any file has diverged, the
 Get-ChildItem .claude/commands/sprint-9-*.md | ForEach-Object {
     $archive = "prompts/archive/sprint-9/$($_.Name)"
     if (-not (Test-Path $archive)) { "MISSING ARCHIVE: $($_.Name)"; return }
-    $d = Compare-Object (Get-Content $_.FullName) (Get-Content $archive)
-    if ($d) { "DIVERGED: $($_.Name)" } else { "identical: $($_.Name)" }
+    $mine = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+    $theirs = (Get-FileHash $archive -Algorithm SHA256).Hash
+    if ($mine -ne $theirs) { "DIVERGED: $($_.Name)" } else { "identical: $($_.Name)" }
 }
 ```
 
@@ -46,7 +47,7 @@ their descriptions cost roughly 597 tokens every turn. Kept rather than deleted
 because they are the template for the next carve-out; `grob-namespace-dispatch`
 is the best-written of the four and the one to read first.
 
-```
+```text
 .claude/agents/grob-closure-specialist.md            -> prompts/archive/agents/
 .claude/agents/grob-lowering-specialist.md           -> prompts/archive/agents/
 .claude/agents/grob-unwind-specialist.md             -> prompts/archive/agents/
@@ -58,7 +59,7 @@ The zip contains them at the destination path, so this is a delete from
 
 ## New
 
-```
+```text
 .claude/skills/house-style/SKILL.md
 .claude/commands/handoff.md
 tooling/prose-check.ps1
@@ -66,7 +67,7 @@ tooling/prose-check.ps1
 
 ## Modified
 
-```
+```text
 .claude/skills/trunk-flow/SKILL.md              increment-prompt location rule; style pointer
 .claude/skills/logging-a-decision/SKILL.md      house-style checklist item
 .claude/skills/writing-grob-source/SKILL.md     style pointer
@@ -83,14 +84,26 @@ tooling/prose-check.ps1
 See `snippets/APPLY-THESE.md` — root `CLAUDE.md`, `.gitignore` and
 `.pre-commit-config.yaml` were not in the uploaded zip.
 
-## Not verified
+## Verified
 
-`tooling/prose-check.ps1` has not been executed. This container has no PowerShell,
-so the script is statically reviewed only. Its regex behaviour was validated
-independently against the false positive the July audit named — a two-clause
-`decisions, and the format matters` does not match, and a genuine three-item list
-does — but the PowerShell itself has never run. Give it one dry run against a
-known-dirty file before wiring it into `pre-commit`:
+`tooling/prose-check.ps1` was authored in a container with no PowerShell and so
+shipped statically reviewed only. It has since been executed, and the dry run
+earned its place — it found three defects that static review had missed:
+
+- The `pre-commit` entry needed `-ExecutionPolicy Bypass`. The script is unsigned
+  and the local execution policy blocked it.
+- The emoji rule used JS/ICU `\u{1F300}-\u{1FAFF}` syntax, which .NET's regex
+  engine rejects. Replaced with the surrogate-pair range
+  `[\uD800-\uDBFF][\uDC00-\uDFFF]`.
+- The diff parser discarded added lines whose own text began with `++`, treating
+  them as a `+++` file header. That dropped the line from the scan and left
+  `$lineNo` short for the rest of the hunk, misreporting every later match.
+
+The regex behaviour was also checked against the false positive the July audit
+named — a two-clause `decisions, and the format matters` does not match, and a
+genuine three-item list does.
+
+Repeat the dry run after any change to the script, before trusting the hook:
 
 ```powershell
 pwsh tooling/prose-check.ps1 -Path docs/design/grob-decisions-log.md
