@@ -482,6 +482,7 @@ authorised, and every item cites the decision that raised it.
 | R-12 | **`FunctionSignature` implemented** — the contract D-081 required in April 2026 and D-419 specified. Re-sequenced ahead of Sprint 9C by D-420 so `fs` is the first module built on it rather than the fifth migrated onto it. | D-081, D-419, D-420 | *`FunctionSignature`* increment, **before Sprint 9C** | Every native routes through `FunctionSignature`; `RegisterNative` requires one; `NamespaceRegistry` produces rather than defines; no behaviour change |
 | R-13 | **Lexer line-continuation suppression covers `Greater` and `LeftBrace`.** `Lexer.ApplyLineContinuation` elides a newline before a closing bracket only when the closer is `RightParen` or `RightBracket`. `Greater` (`ParseTypeArgumentList`'s terminator) and `LeftBrace` (`select` case patterns' terminator) are absent, so a multi-line type-argument or case-pattern list whose closer sits on its own line fails to parse with `E2001` at the closer — reproduced by D-422 both before and after its own change, and independent of trailing commas, since it recurs with no comma in the source at all. | D-422 | `unowned` — a lexer-surface change, out of scope for the parser-only increment that found it | `map<string,\n int\n>` and `select (x) { case 200,\n201\n{ … } }` both parse; D-422's two workaround tests (`TypeArgs_MultiLine_NoTrailingComma_Parses`, `CasePatterns_MultiLine_NoTrailingComma_Parses`) are rewritten to put the closer on its own line rather than glued to the last token |
 | R-14 | **`ParseSelect`'s case-pattern loop gains a D-405/D-406 local recovery wrapper.** The map-entry, field-init and switch-arm loops it otherwise mirrors all have one; this loop does not, so a malformed pattern propagates uncaught out of `ParseSelect` and cascades into a second, unrelated diagnostic at the next top-level resync. Confirmed by D-422 before and after its change: `case , 200 { a }` yields the root-cause `E2001` plus a spurious second `E2001` at the file's next resync point. | D-422 | `unowned` — pre-existing and unrelated to the trailing-comma change that found it | `ParseSelect`'s pattern loop uses the `ParseXOrError`/`SkipToNextLiteralElementBoundary` pattern; a single malformed pattern yields exactly one diagnostic, and D-422's two tests (`CasePatterns_LeadingComma_StillDistinguishableAsE2001`, `CasePatterns_TrailingCommaThenGenuinelyMalformedPattern_StillFailsAtThatToken`) are tightened from `bag.Diagnostics[0]` to `Assert.Single` |
+| R-15 | **Decorator constraints enforced at parameter-binding time.** D-424 splits decorator handling in two: static validation (name, arity, literal kind, target type) lands with the decorator AST node; *enforcement* — rejecting a supplied value against `@allowed`, `@minLength`, `@maxLength`, `@minValue`, `@maxValue` or `@pattern` — needs a bound parameter value and is Sprint 10 work. Until it lands, a statically valid decorator has no runtime effect whatsoever, which is a weaker state than "unexercised": the script compiles and the constraint silently does not apply. | D-424 | Sprint 10 (parameter binding) | Each of the seven decorators rejects a violating supplied value with the specified diagnostic, exercised by the release-gate script R-08 requires; `@pattern` may land later with `regex` if that increment has not yet run |
 
 ### Closed items
 
@@ -889,7 +890,17 @@ _table of `grob-decisions-log.md`. The full rationale is preserved here._
 
 ---
 
-_Document updated September 2026 — D-423. **R-13 and R-14 added**, the two_
+_Document updated September 2026 — D-424. **R-15 added**: decorator constraints_
+_enforced at parameter-binding time. D-424 splits decorator handling into static_
+_validation, which lands with the decorator AST node, and enforcement against a_
+_supplied value, which needs parameter binding and is Sprint 10. The deferred_
+_half gets a row because a split without a tracker for the far side is how a_
+_half-built feature reads as finished — the state it leaves behind is weaker_
+_than R-08's "unexercised", since a statically valid decorator compiles clean_
+_and then does nothing at all. Owned rather than `unowned`: Sprint 10 is where_
+_parameter binding lives, and the criterion names R-08's release-gate script as_
+_the exercise, so the two items close together or not at all._
+_Previous: September 2026 — D-423. **R-13 and R-14 added**, the two_
 _pre-existing gaps D-422 found and reported. Both were named only in D-422's_
 _prose; neither reached this document, so for the fifteen days between that_
 _entry landing and this one the register said they did not exist while the_

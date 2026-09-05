@@ -45,14 +45,15 @@ public sealed class ParserParamDeclTests {
     }
 
     [Fact]
-    public void SingleDecorator_IsSkipped_DeclarationParsesCleanly() {
+    public void SingleDecorator_DeclarationParsesCleanly() {
         CompilationUnit unit = ParseOk("@secure\nparam token: string\n");
         ParamDecl p = Single<ParamDecl>(unit);
         Assert.Equal("token", p.Name);
-        // The declaration's own range starts at 'param' (line 2), not the
-        // decorator — decorators are parsed and skipped, not yet captured
-        // into the AST (Sprint 10).
-        Assert.Equal(2, p.Range.Start.Line);
+        // The declaration's own range starts at the decorator stack (line 1),
+        // not at 'param' — D-424 Decision 1 extends it so a diagnostic about a
+        // decorator can point at the declaration it belongs to. See
+        // ParserDecoratorTests for capture and range coverage in full.
+        Assert.Equal(1, p.Range.Start.Line);
         Assert.Equal(1, p.Range.Start.Column);
     }
 
@@ -64,7 +65,8 @@ public sealed class ParserParamDeclTests {
         Assert.Equal("threshold", p.Name);
         Assert.Equal("int", p.Type.Name);
         Assert.Equal(80L, Assert.IsType<IntLiteralExpr>(p.DefaultValue).Value);
-        Assert.Equal(3, p.Range.Start.Line);
+        // The stack's first decorator, not the 'param' keyword on line 3 (D-424).
+        Assert.Equal(1, p.Range.Start.Line);
     }
 
     /// <summary>

@@ -438,8 +438,11 @@ public sealed class Parser {
     /// </para>
     /// </summary>
     private ParamDecl ParseParamDecl() {
-        SkipParameterDecorators(requireNewline: true);
+        // The range starts here, at the first '@' of the decorator stack when there
+        // is one and at 'param' when there is not (D-424 Decision 1) — a diagnostic
+        // about a decorator must be able to point at the declaration it belongs to.
         SourceLocation start = Current.Location;
+        List<Decorator> decorators = ParseParameterDecorators(requireNewline: true);
         Expect(TokenKind.Param, ErrorCatalog.E4201, "expected 'param' after decorator");
         Token name = Expect(TokenKind.Identifier, ErrorCatalog.E4201, "expected parameter name after 'param'");
         Expect(TokenKind.Colon, ErrorCatalog.E4201,
@@ -452,15 +455,12 @@ public sealed class Parser {
         if (Match(TokenKind.Assign)) {
             defaultValue = ParseExpression();
         }
-        return new ParamDecl(RangeFrom(start), name.Lexeme, type, defaultValue);
+        return new ParamDecl(RangeFrom(start), name.Lexeme, type, defaultValue, decorators);
     }
 
     private Parameter ParseDeclaredParameter() {
-        // Decorators (@allowed, @minLength, …) are tokens at this point; we
-        // consume them as opaque sequences in v1 — the type checker handles
-        // their semantic content later.
         SourceLocation start = Current.Location;
-        SkipParameterDecorators(requireNewline: false);
+        ParseParameterDecorators(requireNewline: false);
         Token name = Expect(TokenKind.Identifier, _e2001, "expected parameter name");
         Expect(TokenKind.Colon, _e2001, "expected ':' after parameter name");
         TypeRef type = ParseTypeRef();
@@ -472,41 +472,60 @@ public sealed class Parser {
     }
 
     /// <summary>
-    /// Scans and discards a decorator stack. Shared by the two productions that
-    /// admit one, which differ on a single point: §19's top-level production is
-    /// <c>{ decorator newline } "param" …</c>, so the newline after each
-    /// decorator is grammar there ("decorators sit on their own line
-    /// immediately above the `param` they modify"), while a function parameter
-    /// list (§12) keeps the inline form. Hence the flag rather than two
-    /// scanners — the decorator syntax itself is identical.
+    /// Parses a decorator stack into <see cref="Decorator"/> nodes (D-424
+    /// Decision 1). Shared by the two productions that admit one, which differ on
+    /// a single point: §19's top-level production is <c>{ decorator newline }
+    /// "param" …</c>, so the newline after each decorator is grammar there
+    /// ("decorators sit on their own line immediately above the `param` they
+    /// modify"), while a function parameter list (§12) keeps the inline form.
+    /// Hence the flag rather than two scanners — the decorator syntax itself is
+    /// identical.
     /// </summary>
     /// <param name="requireNewline">
     /// Whether each decorator must be followed by a newline (top level), or may
     /// be followed directly by the thing it decorates (function parameters).
     /// </param>
-    private void SkipParameterDecorators(bool requireNewline) {
-        while (Match(TokenKind.At)) {
-            Expect(TokenKind.Identifier, _e2001, "expected decorator name after '@'");
+    private List<Decorator> ParseParameterDecorators(bool requireNewline) {
+        List<Decorator> decorators = [];
+        while (Check(TokenKind.At)) {
+            SourceLocation start = Current.Location;
+            Advance(); // '@'
+            Token name = Expect(TokenKind.Identifier, _e2001, "expected decorator name after '@'");
+            List<Expression> arguments = [];
             if (Match(TokenKind.LeftParen)) {
-                SkipBalancedDecoratorArgs();
+                arguments = ParseDecoratorArgumentList();
+                Expect(TokenKind.RightParen, _e2001, "expected ')' to close decorator arguments");
             }
+            decorators.Add(new Decorator(RangeFrom(start), name.Lexeme, arguments));
             if (requireNewline) {
                 Expect(TokenKind.Newline, ErrorCatalog.E4201,
                     "expected a newline after the decorator — a decorator sits on its own line above 'param'");
             }
             SkipNewlines();
         }
+        return decorators;
     }
 
-    private void SkipBalancedDecoratorArgs() {
-        int depth = 1;
-        while (depth > 0 && !IsAtEnd) {
-            TokenKind k = Current.Kind;
-            if (k == TokenKind.LeftParen) depth++;
-            else if (k == TokenKind.RightParen) depth--;
-            if (depth > 0) Advance();
+    /// <summary>
+    /// A decorator's argument list. Arguments are parsed as ordinary expressions,
+    /// deliberately (D-424 Decision 1) — the restriction to literals belongs to
+    /// the type checker, so <c>@minLength(x)</c> reaches it and the diagnostic
+    /// lands at the argument's own position rather than becoming a parse error.
+    /// An optional trailing comma is accepted, as it now is on every
+    /// comma-separated list (D-421).
+    /// </summary>
+    private List<Expression> ParseDecoratorArgumentList() {
+        List<Expression> arguments = [];
+        SkipNewlines();
+        if (Check(TokenKind.RightParen)) return arguments;
+        arguments.Add(ParseExpression());
+        while (Match(TokenKind.Comma)) {
+            SkipNewlines();
+            if (Check(TokenKind.RightParen)) break; // trailing comma
+            arguments.Add(ParseExpression());
         }
-        Expect(TokenKind.RightParen, _e2001, "expected ')' to close decorator arguments");
+        SkipNewlines();
+        return arguments;
     }
 
     private List<Parameter> ParseParameterList(TokenKind terminator) {

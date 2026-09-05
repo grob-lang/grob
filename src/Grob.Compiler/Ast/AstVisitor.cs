@@ -170,6 +170,15 @@ public abstract class AstVisitor<T> {
     /// <summary>Hook for <see cref="ParamDecl"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
     public virtual T VisitParamDecl(ParamDecl node) => DefaultVisit(node);
 
+    /// <summary>
+    /// Hook for <see cref="Decorator"/> (D-424 Decision 1). Defaults to
+    /// <see cref="DefaultVisit(AstNode)"/>. A decorator only ever hangs off a
+    /// <see cref="ParamDecl"/> (§19), so a visitor that handles
+    /// <see cref="VisitParamDecl"/> without recursing into the stack never
+    /// reaches this hook.
+    /// </summary>
+    public virtual T VisitDecorator(Decorator node) => DefaultVisit(node);
+
     /// <summary>Hook for <see cref="ImportDecl"/>. Defaults to <see cref="DefaultVisit(AstNode)"/>.</summary>
     public virtual T VisitImportDecl(ImportDecl node) => DefaultVisit(node);
 

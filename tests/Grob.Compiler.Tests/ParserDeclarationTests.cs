@@ -76,8 +76,8 @@ public class ParserDeclarationTests {
 
     /// <summary>
     /// D-410: the braceless per-line form is canonical. A decorator stack is
-    /// parsed and skipped (not yet captured into the AST — Sprint 10) and does
-    /// not disturb the resulting <see cref="ParamDecl"/>.
+    /// captured onto <see cref="ParamDecl.Decorators"/> (D-424) and does not
+    /// disturb the rest of the resulting <see cref="ParamDecl"/>.
     /// </summary>
     [Fact]
     public void Param_Decorated_ParsesToSingleDeclaration() {

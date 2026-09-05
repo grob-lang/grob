@@ -286,8 +286,19 @@ public abstract class AstWalker : AstVisitor<Unit> {
 
     /// <inheritdoc/>
     public override Unit VisitParamDecl(ParamDecl node) {
+        foreach (Decorator decorator in node.Decorators) {
+            Visit(decorator);
+        }
         if (node.DefaultValue is not null) {
             Visit(node.DefaultValue);
+        }
+        return default;
+    }
+
+    /// <inheritdoc/>
+    public override Unit VisitDecorator(Decorator node) {
+        foreach (Expression argument in node.Arguments) {
+            Visit(argument);
         }
         return default;
     }

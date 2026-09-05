@@ -419,6 +419,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-421 | August 2026 | Language spec — list grammar; Compiler — parser; Error taxonomy; Tooling — formatter specification | Implements D-165 (April 2026), which permitted a trailing comma "in all comma-separated lists" and named array literals, struct construction, map literals, function parameters and function arguments — and which the parser implemented in **four** constructs and rejects in **six**. **Not a grammar extension and not a D-331 surfaced decision**, which is how D-420's queue recorded it; correcting that framing here rather than amending D-420. It is the advertised-but-unbuilt shape, same class as D-081/`FunctionSignature` (D-418/D-419): a shipped decision the implementation diverged from, invisible because the rule lived in prose while the enumeration lived in eleven separate parser loops. **Five documented examples do not parse today** — `grob-language-fundamentals.md` §16's `fn foo(a: int, b: int,): int { }` and `foo(1, 2,)`, `grob-formatter-specification.md` §3.2's wrap example, §3.11's four-parameter signature example, and — decisively — **§6's worked example, the specification's single end-to-end statement of what `grob fmt` emits**. That is the concrete form of "the formatter would emit unparseable output in Sprint 12": not a projection, an artefact already in the corpus. §6 also settles a question no rule stated — a call whose **single** argument wraps is still a multi-line argument list and its one argument takes the trailing comma. **Decision 1 — uniform.** Every comma-separated list accepts an optional trailing comma. Six parser sites change: function signature parameters, call arguments, lambda parameters, function-type parameters (`fn(T1, T2): R`), generic/map type-argument lists, and `select` case pattern lists. The last four are new authority — D-165 did not name them — and are decided the same way for one reason: a per-construct allowlist is the mechanism that produced this divergence, and a rule with four exceptions has to be remembered rather than known. The four already-compliant constructs (array literals, map literals, the shared braced field-init list, switch arms) change no behaviour but gain regression tests, so the accept/reject split cannot silently reopen. **`for k, v in` is unchanged** — a fixed pair of loop variables, not a list. **The `case` row is gate-conditional**: `case 1, 2, {` must be confirmed not to steal the block, `_allowStructLiteral` already being false in that position; if the hazard is real the row is excluded with a recorded reason and §16's example and §3.5's Category C are corrected in the same commit. **Closes a D-416 interaction**: `LooksLikeTypeArgumentList` admits `,` in its accepted token run, so `x.mapAs<T,>()` commits to the generic-call reading and then hard-fails in a consumer that rejects what the lookahead promised. **Decision 2 — E2209 gets its first throw sites.** "Trailing comma not permitted here" has existed in `ErrorCatalog.cs` with `Throws: null` since the registry was written, and its description already names the carve-outs. With Decision 1 there is no list that rejects a trailing comma, so the code's whole remaining domain is the two comma positions that are **not** lists: `(x,)`, a grouping parenthesis with a stray comma (Grob has no tuples, so `( expr )` is always a grouping), and `foo(,)`, an argument list whose only content is a comma. Both currently raise a generic E2001 "expected ')'". This is the D-407/D-415 pattern — a defined-but-unthrown code wired to the sites its own description already describes — and it means the increment removes a zero-throw-site code from the registry's inventory rather than adding one. **Leading and doubled commas stay E2001**, deliberately: `[, 1]` and `foo(1,, 2)` are a different mistake, reported where an element was expected. **Decision 3 — single-line trailing commas remain legal.** §3.5's "single-line forms have no trailing comma" is the formatter's normalisation, not a grammar rule; D-165's "optional, never required" is unqualified by line count. **Decision 4 — no AST field records the trailing comma.** §3.2 states the user cannot lock single- versus multi-line form: the formatter chooses from the 100-column rule and §3.11's parameter-count threshold alone, so the source's trailing comma carries nothing the formatter reads back. Recorded so Sprint 12 does not ask for one and find the answer undocumented. **Decision 5 — §3.5's construct enumeration completed, closing R-09** — the register's first closed item. §3.5 named six Category B constructs and omitted five comma-separated ones. Switch-expression arms join Category B and are added to §3.2's wrappable list, which §3.1 had already treated them as being; a new **Category C** covers the four comma-separated constructs that are not wrappable and therefore never take a trailing comma from the formatter even though the grammar permits one; `for k, v in` is named as a fixed pair so the enumeration has no silent omissions. Closed ahead of its Sprint 12 owner because Decision 1 could not be stated without knowing which constructs it governs. **Two findings recorded, not fixed.** §3.5's Category A still reads "`param` **blocks**" — D-414's terminology sweep recorded §3.11 as the last surviving site of the form D-410 retired, and missed this one, in the section D-417 subsequently made normative; corrected here as part of the rewrite, and noted because it is the third time D-414's own second-query lesson has proved right. And two harness sites widen R-05: `plugins/CLAUDE.md:27` instructs plugin authors to supply a `FunctionSignature` that has never existed and was not on D-419's list, and `tests/CLAUDE.md:60` documents the error-example pair naming as `*_grob.txt`/`*_expected.txt` while all 57 pairs on disk are `<case>.grob`/`<case>.expected.txt`. **Corpus scope corrected**: D-420's queue recorded "five sites across four scripts". Verified against the tree, exactly **one** validation-script site is affected — script 07's `http.get(` at lines 23–26, D-417's nineteenth violation, left unfixed because it did not parse. The other seven multi-line parens across scripts 03, 05, 06, 08 and 09 are single wrapped arguments or nested array literals; each gains a trailing comma when `grob fmt` runs, but none is a fixture defect today. "Five" was the pre-D-417 diagnostic count carried forward. Script edits touch `.grob` fixtures and their markdown publication together under D-417's sync guard, so they belong to this increment's commit, not to a design session. **No new error code, no code retitled, no code removed; count stays 121, and D-316 needs no source/registry co-commit** — E2209 gains throw sites, which is a `Throws` change, not a title, addition or removal. No opcode change, no `GrobValueKind` change. Implements D-165. Cites D-331 (the sanctioned-growth procedure this is explicitly *not* an instance of), D-407 and D-415 (the wire-an-unthrown-code pattern), D-416 (the lookahead interaction closed), D-417 (the survey that found it and the nineteenth site now fixable), D-420 (whose queue framing this corrects), ADR-0017 (unaffected — no code changes status). |
 | D-422 | September 2026 | Compiler — parser; Error taxonomy; Tests; Validation corpus | Implements D-421: lands the six parser guards, E2209's two throw sites, the regression pins and the corpus fix D-421 specified, and records where the implementation found more (or less) than D-421 predicted. All six sites use the exact `if (Check(terminator)) break;` shape already used by the four already-compliant loops — `ParseParameterList` via its existing `terminator` parameter, the other five hardcoded to their own terminator (`RightParen` ×4, `Greater`, `LeftBrace`). No shared helper introduced across the five: three different element parsers and three different terminators would have cost more to abstract than the mechanical repetition costs to read. The `select` case-pattern row confirmed safe exactly as D-421's gate anticipated — `ParsePrimary`'s `LeftBrace` throw never advances `_pos`, so a `Check(TokenKind.LeftBrace)` guard intercepts before it can fire, and a leading comma stays distinguishable from a trailing one (different `ParsePrimary` arms: default-case "unexpected token" versus never reached at all). **Two loops also gained a `SkipNewlines()` call they did not have before** (`ParseTypeArgumentList` and the `fn(...)`-type-parameter loop inside `ParseTypePrimary`) — mechanical parity with the shape the four already-compliant loops use, not a new decision; without it a multi-line trailing-comma form immediately followed by the terminator on its own line would have been inconsistent with the other five sites. **E2209's two throw sites generalise beyond D-421's two named examples, deliberately.** The grouping-paren site fires on _any_ comma following a grouping's inner expression, not only a literal trailing `(x,)` — `(1, 2)` is E2209 at the first comma too, since Grob has no tuples and a comma there is never a separator to continue past. The empty-argument-list site is scoped precisely to a comma immediately followed by the closing paren (`Check(Comma) && PeekAt(1).Kind == RightParen`), so `foo(,)` is E2209 but `foo(, 1)` — a real argument follows, the list is not actually empty — stays E2001, the ordinary leading-comma mistake. Both throw sites mutation-verified: the throw removed, the predicted failure (`Assert.Equal() Failure: Expected E2209 Actual E2001`, same shape both times) reproduced exactly before restoring. **A ripple the two named examples did not anticipate**: three pre-existing tests (`ParserStructConstructionRecoveryTests`/`ParserMapLiteralTests`/`SwitchExprParserTests`, each a `*_ValueLeavesBracketPairOpen_DoesNotReuseInnerComma` variant) asserted the pre-D-421 generic `E2001 "expected ')'"` for a comma inside a still-open grouping paren nested in a literal's malformed field/entry/arm value. The grouping-paren site's generalisation now reports E2209 there instead — updated to assert the new code, per D-421's own "tests may be updated to assert new correct behaviour, never weakened, never deleted"; the recovery mechanics each test pins (the paren stays unclosed, the inner comma is never reused as the outer list's boundary) are unchanged, only the root-cause code corrected. **Two pre-existing gaps found, reported to the Deferred Work Register, not fixed** — neither blocks this increment or Sprint 9C, per D-420's stopping rule. (1) The lexer's line-continuation suppression (`ApplyLineContinuation`) elides a newline before a closing bracket only when that closer is `RightParen` or `RightBracket`; `Greater` (`ParseTypeArgumentList`) and `LeftBrace` (`select` case patterns) are not covered, so a genuinely multi-line list of either kind with **no** trailing comma and its closer on its own line still fails to parse (confirmed empirically both ways: `m: map<string,\n    int\n> := …` and `select (x) { case 200,\n201\n{ … } }` both raise `E2001` at the closer's position on the tree before this increment). Both this increment's row-3 and row-5 multi-line-without-trailing-comma tests therefore keep the closer glued to the last token rather than on its own line — the trailing-comma variant is unaffected, since the comma itself is continuation-eligible and already suppresses the newline. Not fixed here: it is a lexer-level gap orthogonal to D-421's comma-acceptance scope, and fixing it was not named in D-421's implementation notes. (2) `ParseSelect`'s case-pattern loop has no D-405/D-406 local recovery wrapper, unlike the map-entry/field-init/switch-arm loops it otherwise mirrors — a malformed case pattern's exception propagates uncaught to top-level recovery, cascading into a second, unrelated diagnostic (confirmed: `case , 200 { a }` inside an otherwise well-formed script produces the root-cause `E2001` plus a second `E2001` at the file's next resync point). Recovery-unchanged tests for row 5 assert only the root-cause diagnostic (`diagnostics[0]`) for this reason; a future increment applying the `ParseXOrError`/`SkipToNextLiteralElementBoundary` pattern to `ParseSelect` would close it. **One evidence correction from D-421's own gate**: the prompt that ran the investigation predicted `foo(,)`'s pre-fix diagnostic as `E2001 "expected ')'"`; the measured pre-fix diagnostic was `E2001 "unexpected token ',' — expected expression"` at the comma's own position — same code, different message and site, recorded as the accurate before-state rather than the predicted one. Script 07's `http.get(...)` call gains its D-421-required trailing comma in both `tests/fixtures/validation-scripts/07-rest-api-data-pull.grob` and its `grob-sample-scripts.md` fence in this commit (`ValidationScriptMarkdownSyncTests`, D-417); all eleven validation scripts still parse with zero diagnostics. The five documented target-state examples (`grob-language-fundamentals.md` §16 ×2, `grob-formatter-specification.md` §3.2, §3.11, §6) verified parsing via new tests reproducing them verbatim, not re-authored. `ErrorCatalog.cs` unchanged in shape — E2209's descriptor untouched, no code added/retitled/removed/status-changed, count stays **121**, D-316 gate green. `Grob.Compiler` coverage 97.11% (≥ D-328's 90% bar). Full solution: **3,993 tests, all passing**. No opcode change, no `GrobValueKind` change, no AST field added (D-421 Decision 4 holds). Cites D-421 (the plan this implements), D-405/D-406 (the local-recovery pattern the select-loop gap names as the fix shape), D-417 (the sync guard governing the script 07 edit), D-420 (the stopping rule governing the two reported-not-fixed gaps). |
 | D-423 | September 2026 | Process — decision tracking; Deferred Work Register | **A landing correction, not a new design decision.** D-422 states that two pre-existing gaps its increment found were "reported to the Deferred Work Register"; the commit message that merged it says the same. **Neither reached the register.** Verified at `f7acb83`: `grob-open-questions.md` holds R-01 to R-12 with R-09 closed, no R-13 or R-14, and no mention anywhere in the file of the lexer's line-continuation gap or `ParseSelect`'s missing recovery wrapper. The merging commit touched that file only to fix a `; and` in a changelog sentence. For fifteen days the decisions log said two items had been filed in the register and the register said they did not exist. **This is the exact failure D-420 built the register to prevent** — a deferral recorded in prose inside an append-only entry, which is frozen and can therefore never record its own current state — recurring in the second increment after the register's creation, which is why it is logged rather than quietly fixed. The mechanism is worth naming precisely, because it is not carelessness: D-422's author *did* the deferral correctly in every respect except the one that persists. The gaps were found empirically, reproduced before and after the change, scoped out with a stated reason under D-420's own stopping rule, and written up in more detail than a register row would hold. What did not happen is the second write. A single artefact that is both the narrative and the tracker will always be written once, and the register exists precisely because narrative and tracking have different lifetimes. **Two rows added, both citing D-422 as their raising decision, so no new authority is claimed here.** R-13 — `Lexer.ApplyLineContinuation` elides a newline before a closer only for `RightParen` and `RightBracket`, omitting `Greater` (`ParseTypeArgumentList`'s terminator) and `LeftBrace` (`select` case patterns'), so a multi-line type-argument or case-pattern list with its closer on its own line fails with `E2001`; reproduced independently of trailing commas, since it recurs with no comma in the source. R-14 — `ParseSelect`'s case-pattern loop has no D-405/D-406 local recovery wrapper, unlike the three sibling loops it otherwise mirrors, so a malformed pattern cascades into a second unrelated diagnostic. Both `unowned`, which D-420 permits and which is the honest answer: neither has a scheduled increment, and a fabricated one would be worse. Each completion criterion names the specific test D-422 wrote around the gap — the two multi-line tests that keep the closer glued to the last token, and the two case-pattern tests that assert `bag.Diagnostics[0]` rather than `Assert.Single` — so "done" is checkable by someone who was not in the conversation that deferred it, and each is the test whose current shape is itself the evidence of the gap. **R-05 sized for the first time**: 39 files in `.claude/`; the `FunctionSignature` claim live at seven sites across four files, including `authoring-a-plugin/SKILL.md`'s registration example that would not compile; the `*_grob.txt`/`*_expected.txt` pair naming live at four files including `writing-an-error-test/SKILL.md`, whose entire step 2 is built on it, against 57 on-disk pairs all named `<case>.grob`/`<case>.expected.txt`. `f7acb83` touched four of those files and changed only their prose-convention lines, so it does not narrow the item. R-05 was raised in August and could not be sized until now because every corpus zip excludes dotfiles — **a class of item the zip-as-known-good-state convention cannot see at all**, which is worth knowing before the next `unowned` harness item is raised. **No source change, no error code change; count stays 121.** Cites D-422 (whose two findings this files), D-420 (whose register this exercises and whose failure mode this instance is), D-421 (which raised R-05's two known sites), D-419 (whose list of `FunctionSignature` sites was incomplete). |
+| D-424 | September 2026 | Language spec — param decorators; Compiler — parser, type checker; Error taxonomy | **Authorises the *finish the param concern* increment at full scope.** Verified at `ea204d1`: **E2201, E2202, E4001, E4002, E4101 and E4102 all have zero throw sites.** §19's declaration-order rules have been normative since April 2026 and nothing enforces them — an `import` after a `param`, or a `param` after a `fn`, compiles clean. The entire decorator surface is likewise unenforced, and for a reason worse than oversight: **decorators are not in the AST at all.** `ParseParamDecl` calls `SkipParameterDecorators`, there is no `Decorator` node, and nothing downstream can see one, so `@bogus`, `@minLength("x")` and `@secure` on an `int` all compile clean today. R-08 already records that six of seven decorators ship unexercised; this is the stronger fact that they ship unvalidated. **Decision 1 — decorators become first-class AST.** A `Decorator` record carrying name, arguments and range; `ParamDecl` gains a decorator list and its `Range` extends to cover the stack, which it currently does not. **Arguments are parsed as ordinary expressions, not restricted to literals at the parse layer**, so a non-literal argument yields a semantic diagnostic at its own position (E4101/E4102) rather than a parse error, and §29 recovery treats a malformed decorator like any other malformed construct. The type checker visits them, so §3.1.1's `ResolvedType`/`Declaration` invariant holds on identifiers appearing there, with D-311's sentinels on the error path. **Decision 2 — decorators are a `param`-only construct.** Not permitted on function parameters, `type` fields or anywhere else; E4002. This is a **behaviour change with a named breaking test**: `DecoratorInlineInFunctionParameterList_StillParses` asserts that `fn f(@secure a: int)` parses clean, and its own doc comment justifies this by claiming "a function parameter list (§12) shares the same decorator syntax and keeps it inline". **§12 says nothing about decorators**, D-411's table is `param`-only, and E4002's registry description has always read "a validation decorator not attached to a `param` declaration". The test pins an unsourced belief that entered via a shared scanner rather than a decision — and its own fixture, `@secure` on an `int`, is invalid under D-411 twice over. It is updated to assert E4002, which is what D-415's `requireNewline` flag was quietly working around: with decorators `param`-only the flag and the shared-scanner branch both disappear. **Decision 3 — static validation now, binding-time enforcement at Sprint 10.** Checked here with no parameter value in hand: decorator name in the seven (E4001), target is a `param` (E4002), duplicate application (E4002), arity, argument literal kind, and applicability to the param's declared type (E4101 for `@allowed`, E4102 for the four length and value constraints). Rejecting a *supplied* value against a constraint needs a bound parameter and is Sprint 10; **R-15 is created to track the deferred half**, because a split without a tracker for the far side is how a half-built feature reads as finished. **Decision 4 — `@pattern` is a recognised decorator, not E4001**, but its pattern is not compiled or validated until the `regex` increment supplies the machinery (D-411). Name, arity, string-literal kind and target type are checked now. **Decision 5 — ordering enforcement is a linear walk over `CompilationUnit.Items`**, which is already a flat ordered list, giving E2201 and E2202 their first throw sites. Diagnostics are emitted in source order and must not suppress pass-1 registration — D-039's two-mode rule means a misordered file still reports every other error it contains. **Decision 6 — `param` joins the top-level name space in pass 1.** Pass 1 registers `fn`, `type` and value bindings; `ParamDecl` is absent from that walk, and `VisitParamDecl` registers no symbol, citing Sprint 10. **Registration is not binding**: entering the name makes E1102 and D-412's coincident-ordering-and-collision cascade work, while `VisitParamDecl` still contributes no type of its own and parameter *binding* stays Sprint 10 exactly as its comment says. **Decision 7 — R-03 resolved by widening E4102, not by minting a sibling.** New title names all four of `@minLength`, `@maxLength`, `@minValue` and `@maxValue`. A code per decorator pair scales badly against a seven-decorator set and would leave `@pattern` wanting an eighth; the four share one validation shape and differ only in argument type. **Error-code count 121 → 120** (E4202 removed, R-01; number permanently burned per D-410's ADR-0017 clarification). **Every catalog and registry edit belongs to the increment's commit, not to this entry** — E4202's removal and the E2202 and E4102 retitles are D-316 co-commits, so this entry makes no change to `grob-error-codes.md`'s table and only `grob-language-fundamentals.md` §19 gains normative text. Closes R-01, R-02 and R-03 when the increment lands. Cites D-410 and D-414 (which scheduled the three registry items here), D-411 (the seven-decorator set and `@pattern`'s dependency), D-412 (the collision and cascade rules this enforces), D-415 (whose `requireNewline` flag Decision 2 retires), D-072 and D-186 (the decorator codes' original allocation), D-039 (two-mode errors), D-311 and §3.1.1 (the invariant decorator arguments must satisfy), D-420 (whose queue this is increment 2 of). |
 
 ---
 
@@ -14616,6 +14617,196 @@ exercises and whose named failure mode this instance is), D-421 (which raised
 R-05's two known sites), D-419 (whose list of `FunctionSignature` sites was
 incomplete — `plugins/CLAUDE.md` was not on it).
 
+### D-424 — Decorators become first-class AST; declaration-order enforcement given its throw sites; R-03 resolved by widening (September 2026)
+
+Area: Language spec — param decorators; Compiler — parser, type checker; Error taxonomy
+Supersedes: none (implements §19's order rules and D-411's decorator set; resolves R-01, R-02, R-03)
+Superseded by: none
+
+**Decision and specification. The source, catalog and registry changes are the
+increment's; §19's new normative text lands here.** Error-code count moves
+**121 → 120** when the increment lands; this entry changes no code.
+
+---
+
+**What is actually unenforced, verified at `ea204d1`.**
+
+Six codes have zero throw sites: **E2201, E2202, E4001, E4002, E4101, E4102**.
+
+§19's declaration-order rules have been normative since April 2026 and nothing
+checks them. An `import` after a `param`, a `param` after a `fn`, a `param`
+after a `const` — all compile clean.
+
+The decorator surface is worse, and the reason is structural rather than an
+oversight: **decorators are not in the AST at all.** `ParseParamDecl` opens with
+`SkipParameterDecorators`, there is no `Decorator` node anywhere in
+`Grob.Compiler.Ast`, and nothing downstream can see one. So `@bogus`,
+`@minLength("x")`, `@secure` on an `int`, and the same decorator applied three
+times all compile clean.
+
+R-08 records that six of the seven decorators ship unexercised by the validation
+suite. The stronger fact is that all seven ship **unvalidated**, and that is not
+visible from the register row.
+
+---
+
+**Decision 1 — decorators become first-class AST.**
+
+A `Decorator` record carrying name, arguments and source range. `ParamDecl`
+gains a decorator list, and its `Range` extends to cover the decorator stack —
+today it starts at the `param` keyword, which is why a diagnostic about a
+decorator cannot currently point at the declaration it belongs to.
+
+**Arguments are parsed as ordinary expressions, not restricted to literals at
+the parse layer.** The restriction to literals is real, but it is enforced by
+the type checker, so `@minLength(x)` produces a diagnostic at the argument's own
+position saying what is wrong with it, rather than a parse error saying an
+expression was not expected. It also keeps §29 recovery uniform: a malformed
+decorator is an ordinary malformed construct with no bespoke recovery path.
+
+The type checker visits decorator arguments, so §3.1.1's
+`ResolvedType`/`Declaration` invariant holds on any identifier appearing in one,
+with D-311's sentinels on the error path. This is the same reasoning that
+already makes the checker visit a `param` default it does not yet type-check.
+
+---
+
+**Decision 2 — decorators are a `param`-only construct.**
+
+Not permitted on function parameters, `type` fields, `fn` declarations or
+anywhere else. A decorator in any of those positions is **E4002**.
+
+**This is a behaviour change, and the test that pins the current behaviour is
+named rather than discovered later.**
+`ParserParamDeclTests.DecoratorInlineInFunctionParameterList_StillParses`
+asserts that `fn f(@secure a: int): int { return 1 }` parses clean. Its doc
+comment justifies this: *"A function parameter list (§12) shares the same
+decorator syntax and keeps it inline."*
+
+**§12 says nothing about decorators.** D-411's table is `param`-only in every
+row. E4002's registry description has read *"a validation decorator not attached
+to a `param` declaration"* since D-072 allocated it. The claim entered the
+corpus through a *shared scanner* — `SkipParameterDecorators` was written once
+and called from both productions — and was then pinned by a test written to
+protect D-415's newline rule from leaking across that shared code. The test is
+correct about what the code does and wrong about why. Its own fixture makes the
+point: `@secure` on an `int` is invalid under D-411 twice over, and the test
+asserts it parses clean.
+
+The test is updated to assert E4002. With decorators `param`-only,
+`SkipParameterDecorators`' `requireNewline` flag and its second call site both
+disappear — the flag existed only to reconcile two productions that should never
+have shared one.
+
+*This is what an unsourced rule looks like when it is caught late: not a wrong
+decision, but a decision nobody made, load-bearing enough by then to have a test
+defending it.*
+
+---
+
+**Decision 3 — static validation now; binding-time enforcement at Sprint 10.**
+
+Checked at compile time, with no parameter value in hand:
+
+- decorator name is one of D-411's seven — **E4001**
+- target is a `param` declaration — **E4002**
+- the same decorator is not applied twice to one `param` — **E4002**
+- `@secure` on a non-`string` param — **E4002**
+- argument arity, literal kind, and applicability to the declared type —
+  **E4101** for `@allowed`, **E4102** for the four length and value constraints
+
+Enforcing a constraint against a *supplied* value — rejecting `threshold: 150`
+under `@maxValue(100)` — requires a bound parameter and is Sprint 10.
+
+**R-15 is created for the deferred half.** A split without a tracker on the far
+side is how a half-built feature comes to read as finished, and the state this
+leaves is weaker than R-08's "unexercised": after this increment a statically
+valid decorator compiles clean and then does nothing at all. R-15's criterion is
+tied to R-08's release-gate script, so the two close together or not at all.
+
+---
+
+**Decision 4 — `@pattern` is recognised, not unknown.**
+
+`@pattern` is in the v1 set (D-411), so it is not E4001. Its name, arity,
+string-literal argument kind and `string` target type are checked here. The
+pattern itself is not compiled or validated until the `regex` increment supplies
+the machinery. Recorded because the alternative — treating it as unknown until
+`regex` lands — would make a specified v1 decorator an error for one sprint and
+then silently stop being one.
+
+---
+
+**Decision 5 — ordering enforcement is a linear walk over `CompilationUnit.Items`.**
+
+`Items` is already a flat, ordered `List<AstNode>`, so the check is a single
+pass classifying each item into §19's five categories and reporting a backward
+step. This gives **E2201** and **E2202** their first throw sites.
+
+Two constraints on it:
+
+- **Diagnostics are emitted in source order.**
+- **An ordering error does not suppress pass-1 registration.** D-039's two-mode
+  rule means a misordered file still reports every other error it contains; a
+  file with a misplaced `param` and three type errors reports four diagnostics,
+  not one.
+
+---
+
+**Decision 6 — `param` joins the top-level name space in pass 1.**
+
+Pass 1 registers top-level `fn`, `type` and value bindings.  `ParamDecl` is not
+in that walk, and `VisitParamDecl` registers no symbol, its comment citing
+Sprint 10.
+
+**Registration is not binding.** Entering the name in the name space is what
+makes E1102 fire on a collision and what makes D-412's coincident-ordering-and-
+collision cascade expressible — a misplaced `param` that also collides reports
+only E2202. Neither needs a parameter *value*. `VisitParamDecl` still
+contributes no type of its own, and parameter binding stays Sprint 10 exactly as
+its comment says. The line is between a name and a value, and it was previously
+drawn around both together.
+
+---
+
+**Decision 7 — R-03 is resolved by widening E4102, not by minting a sibling.**
+
+E4102's title gains `@minValue` and `@maxValue` alongside `@minLength` and
+`@maxLength`. A code per decorator pair scales badly against a seven-decorator
+set and would leave `@pattern` wanting an eighth of its own; the four share one
+validation shape — a numeric or integer literal argument checked against the
+param's declared type — and differ only in the argument's type. The registry row
+will be wider than its neighbours, which is a formatting cost worth paying for a
+title that can be grepped by decorator name.
+
+---
+
+**Mechanics and gates.**
+
+Error-code count moves **121 → 120**: E4202 is removed (R-01), its number
+permanently burned and never reused, per D-410's clarification of ADR-0017 for
+the never-shipped pre-release case.
+
+**Every catalog and registry edit belongs to the increment's commit, not to this
+entry.** E4202's removal and the E2202 and E4102 retitles are all D-316
+co-commits — a title change or a removal needs the `ErrorCatalog.cs` edit in the
+same commit as the registry edit — so this entry leaves `grob-error-codes.md`
+untouched. The only normative text landing here is
+`grob-language-fundamentals.md` §19's new Decorators subsection, which the
+increment implements rather than authors.
+
+R-01, R-02 and R-03 close when the increment lands. R-15 opens now.
+
+Cites D-410 and D-414 (which scheduled the three registry items to this
+increment, with the technical reason that E4202 may not be removed before
+ordering is enforced), D-411 (the seven-decorator set, and `@pattern`'s
+dependency on `regex`), D-412 (the collision and cascade rules Decision 6 makes
+enforceable), D-415 (whose `requireNewline` flag Decision 2 retires, and whose
+test Decision 2 corrects), D-072 and D-186 (the decorator codes' original
+allocation), D-039 (two-mode errors, constraining Decision 5), D-311 and §3.1.1
+(the invariant decorator arguments must satisfy), D-324 (the top-level name
+space Decision 6 joins), D-420 (whose pre-9C queue this is increment 2 of).
+
 ---
 
 ## Post-MVP Decisions
@@ -14839,7 +15030,38 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_September 2026 — D-423 added; no source change. D-422 states that two_
+_September 2026 — D-424 added; no source change. Authorises the *finish the_
+_param concern* increment at full scope. Verified at `ea204d1`, six codes have_
+_zero throw sites — E2201, E2202, E4001, E4002, E4101, E4102. §19's_
+_declaration-order rules have been normative since April 2026 and nothing_
+_enforces them. The decorator surface is unenforced for a structural reason:_
+_**decorators are not in the AST at all**, since `ParseParamDecl` calls_
+_`SkipParameterDecorators` and no `Decorator` node exists, so `@bogus`,_
+_`@minLength("x")` and `@secure` on an `int` all compile clean. R-08 records_
+_that six of seven decorators ship unexercised; the stronger fact is that all_
+_seven ship unvalidated._
+_Seven decisions. Decorators become first-class AST, with arguments parsed as_
+_ordinary expressions so a non-literal argument is a semantic diagnostic at its_
+_own position rather than a parse error. Decorators are `param`-only —_
+_a behaviour change whose breaking test is named: `DecoratorInlineInFunction_
+_ParameterList_StillParses` justifies itself by claiming §12 shares the_
+_decorator syntax, which §12 does not say, D-411's table contradicts and_
+_E4002's description has always contradicted; the rule entered through a shared_
+_scanner and was then defended by a test, and its own fixture (`@secure` on an_
+_`int`) is invalid twice over. Static validation lands now, binding-time_
+_enforcement is Sprint 10 and gets **R-15** so the deferred half is tracked._
+_`@pattern` is recognised rather than unknown, with its pattern unvalidated_
+_until `regex`. Ordering enforcement is a linear walk over `CompilationUnit._
+_Items`, emitting in source order and never suppressing pass-1 registration_
+_(D-039). `param` joins the top-level name space in pass 1 — registration is_
+_not binding, and the previous line was drawn around both together. R-03 is_
+_resolved by widening E4102 to name all four length and value decorators rather_
+_than minting a sibling, since a code per pair scales badly against seven._
+_Count moves 121 → 120 when the increment lands (E4202 removed, number burned)._
+_Every catalog and registry edit is a D-316 co-commit and therefore the_
+_increment's, not this entry's; only `grob-language-fundamentals.md` §19 gains_
+_normative text here. R-01, R-02 and R-03 close with the increment._
+_Previous: September 2026 — D-423 added; no source change. D-422 states that two_
 _pre-existing gaps its increment found were "reported to the Deferred Work_
 _Register", and the merging commit says the same. **Neither reached it.**_
 _Verified at `f7acb83`: R-01 to R-12 with R-09 closed, no R-13 or R-14, and no_
