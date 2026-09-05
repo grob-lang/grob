@@ -18,7 +18,7 @@ Chris.**
 - **Plan before code.** Work in plan mode. Present a numbered implementation
   plan — the type-checker arms, the compiler emission, the VM arms, the tests —
   and wait for Chris's approval before editing anything. The plan is the gate.
-- **TDD is non-negotiable.** Tests are written and confirmed *failing* before
+- **TDD is non-negotiable.** Tests are written and confirmed _failing_ before
   the implementation that makes them pass. Never skip the red step.
 - **One concern per branch.** `main` is protected — never commit to it. Use
   `/start-branch` to propose and create the feature branch, `/commit-message`
@@ -36,13 +36,13 @@ Chris.**
 ## Hard rules that gate acceptance
 
 - **`ErrorCatalog` (D-308).** Every diagnostic is raised through a central
-  catalog descriptor. The `"Exxxx"` string for any code appears *exactly once*
+  catalog descriptor. The `"Exxxx"` string for any code appears _exactly once_
   in the solution — its descriptor. Never a string literal at a call site.
   Codes are immutable once shipped (ADR-0017), so allocating one is a deliberate
   act, never a casual one. Each increment declares its **error-code budget** — the
   codes it expects to touch or add — and those are pre-authorised. When a
   diagnostic needs a code outside that budget, the judgement call —
-  *fold into an existing code, or register a new one* — is surfaced for a
+  _fold into an existing code, or register a new one_ — is surfaced for a
   decision (the E0012-not-E1002 call in D-330 is the model). Once that call is
   made the mechanics follow `allocating-an-error-code`: the next free number in
   the correct category range taken from the **live** registry, three-location
@@ -62,7 +62,7 @@ Chris.**
   casually. The parser and AST carry **no** such contract — they are
   compiler-internal and never serialised — but the front end is built
   incrementally, a feature's grammar surface landing with that feature, so the
-  parser and AST are likewise treated as closed *within an increment*. Most
+  parser and AST are likewise treated as closed _within an increment_. Most
   increments are type-checker, compiler-emission, VM-opcode-arm and CLI work over
   already-parsed nodes, and an increment never silently grows the grammar or the
   enum. If a feature genuinely needs a node, follow `extending-the-grammar`; if it
@@ -111,7 +111,7 @@ Chris.**
 - **Sonnet 4.6 (High)** is the default session workhorse for code generation —
   the settled, rules-inlined transcription work.
 - **Opus 4.8** is reserved for named structural sub-problems, gated behind
-  "only if *this specific thing* gets fiddly", never "this part is hard". It is
+  "only if _this specific thing_ gets fiddly", never "this part is hard". It is
   reached via an Opus-pinned subagent under `.claude/agents/`, invoked for the
   named sub-task only.
 - **Haiku** for genuinely mechanical, self-contained arms.
@@ -127,3 +127,17 @@ Chris.**
 - Decisions-log entries follow ADR style (`D-###`, `Area`, `Supersedes`,
   `Superseded by`), updated in **three-location lockstep**: full entry, summary
   index row, footer changelog — the `logging-a-decision` skill is the procedure.
+
+## Session degradation
+
+Watch for these while you work:
+
+- Re-reading a file already read this session.
+- Restating a constraint already established.
+- Asking a question already answered.
+- Drifting outside the increment's stated scope.
+- Crossing the plan-mode or read-only gate without an explicit approval turn.
+
+Any one alone is ordinary. Two together mean your grip on your own context has
+slipped, and continuing costs more than stopping. Say so plainly and offer
+`/handoff`. Do not push on, and do not wait to be asked.
