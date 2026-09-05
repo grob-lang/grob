@@ -238,7 +238,6 @@ public sealed partial class TypeChecker {
     private static GrobType? LiteralTypeOf(Expression expression) => expression switch {
         IntLiteralExpr => GrobType.Int,
         FloatLiteralExpr => GrobType.Float,
-        StringLiteralExpr => GrobType.String,
         RawStringLiteralExpr => GrobType.String,
         // A double-quoted string is an InterpolatedStringExpr; only one with no
         // interpolation segments is a literal.

@@ -72,6 +72,14 @@ public sealed class TypeCheckerDecoratorTests {
     [InlineData("@minValue(0)\n@maxValue(100)\nparam threshold: int = 80\n")]
     [InlineData("@minLength(1)\n@maxLength(64)\nparam name: string\n")]
     [InlineData("@secure\n@minLength(32)\nparam token: string\n")]
+    // Every literal form the parser produces is accepted as an `@allowed` value:
+    // a float, a double-quoted string (which parses to an InterpolatedStringExpr
+    // with a single text part), a raw backtick string, a bool, and a negated
+    // numeric alongside the int and string rows above.
+    [InlineData("@allowed(1.5, 2.5)\nparam ratio: float\n")]
+    [InlineData("@allowed(`a`, `b`)\nparam s: string\n")]
+    [InlineData("@allowed(true, false)\nparam flag: bool\n")]
+    [InlineData("@allowed(-1, 0, 1)\nparam offset: int\n")]
     public void ValidDecorator_TypeChecksClean(string source) {
         DiagnosticBag bag = Check(source);
         Assert.Empty(bag.Diagnostics);
@@ -185,6 +193,17 @@ public sealed class TypeCheckerDecoratorTests {
     // -----------------------------------------------------------------------
     // E4101 — `@allowed`.
     // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// <c>nil</c> is a literal, so it is not rejected as an expression — it is
+    /// rejected for not being assignable to the declared type, which is the more
+    /// useful of the two diagnostics.
+    /// </summary>
+    [Fact]
+    public void AllowedWithNil_OnANonNullableParam_IsE4101AtTheValue() {
+        DiagnosticBag bag = Check("@allowed(nil)\nparam n: int\n");
+        AssertSingle(bag, "E4101", 1, 10, "'@allowed' value of type 'nil' is not assignable to 'n'");
+    }
 
     [Fact]
     public void AllowedWithNoValues_IsE4101() {

@@ -130,8 +130,13 @@ public sealed partial class TypeChecker {
             ? "an earlier item"
             : $"the {Describe(_orderHighWaterItem)} on line {_orderHighWaterItem.Range.Start.Line}";
 
+    /// <summary>
+    /// Names the high-water item for the diagnostic. There is deliberately no
+    /// <see cref="ImportDecl"/> arm: <c>import</c> is category 1, nothing ranks
+    /// below it, so an <c>import</c> can never be the item a backward step is
+    /// reported against.
+    /// </summary>
     private static string Describe(AstNode item) => item switch {
-        ImportDecl => "'import'",
         ParamDecl => "'param' declaration",
         TypeDecl => "'type' declaration",
         FnDecl => "'fn' declaration",

@@ -43,19 +43,21 @@ public sealed class TypeCheckerDeclarationOrderTests {
     // -----------------------------------------------------------------------
 
     [Theory]
-    [InlineData("param p: int\nimport io\n", 2)]
-    [InlineData("type T {\n    a: int\n}\nimport io\n", 4)]
-    [InlineData("fn f(): int { return 1 }\nimport io\n", 2)]
-    [InlineData("const K := 1\nimport io\n", 2)]
-    [InlineData("readonly R := 1\nimport io\n", 2)]
-    [InlineData("x := 1\nimport io\n", 2)]
-    public void ImportAfterAnyLaterCategory_IsE2201(string source, int line) {
+    [InlineData("param p: int\nimport io\n", 2, "the 'param' declaration on line 1")]
+    [InlineData("type T {\n    a: int\n}\nimport io\n", 4, "the 'type' declaration on line 1")]
+    [InlineData("fn f(): int { return 1 }\nimport io\n", 2, "the 'fn' declaration on line 1")]
+    [InlineData("const K := 1\nimport io\n", 2, "the 'const' declaration on line 1")]
+    [InlineData("readonly R := 1\nimport io\n", 2, "the 'readonly' declaration on line 1")]
+    [InlineData("x := 1\nimport io\n", 2, "the top-level statement on line 1")]
+    public void ImportAfterAnyLaterCategory_IsE2201(string source, int line, string after) {
         DiagnosticBag bag = Check(source);
 
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2201", d.Code);
         Assert.Equal(line, d.Range.Start.Line);
         Assert.Equal(1, d.Range.Start.Column);
+        // The message names what the declaration came after, and where.
+        Assert.Contains(after, d.Message, StringComparison.Ordinal);
     }
 
     // -----------------------------------------------------------------------
@@ -64,18 +66,19 @@ public sealed class TypeCheckerDeclarationOrderTests {
     // -----------------------------------------------------------------------
 
     [Theory]
-    [InlineData("type T {\n    a: int\n}\nparam p: int\n", 4)]
-    [InlineData("fn f(): int { return 1 }\nparam p: int\n", 2)]
-    [InlineData("const K := 1\nparam p: int\n", 2)]
-    [InlineData("readonly R := 1\nparam p: int\n", 2)]
-    [InlineData("x := 1\nparam p: int\n", 2)]
-    public void ParamAfterAnyLaterCategory_IsE2202(string source, int line) {
+    [InlineData("type T {\n    a: int\n}\nparam p: int\n", 4, "the 'type' declaration on line 1")]
+    [InlineData("fn f(): int { return 1 }\nparam p: int\n", 2, "the 'fn' declaration on line 1")]
+    [InlineData("const K := 1\nparam p: int\n", 2, "the 'const' declaration on line 1")]
+    [InlineData("readonly R := 1\nparam p: int\n", 2, "the 'readonly' declaration on line 1")]
+    [InlineData("x := 1\nparam p: int\n", 2, "the top-level statement on line 1")]
+    public void ParamAfterAnyLaterCategory_IsE2202(string source, int line, string after) {
         DiagnosticBag bag = Check(source);
 
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2202", d.Code);
         Assert.Equal(line, d.Range.Start.Line);
         Assert.Equal(1, d.Range.Start.Column);
+        Assert.Contains(after, d.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
