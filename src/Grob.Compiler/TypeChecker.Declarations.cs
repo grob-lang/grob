@@ -628,6 +628,10 @@ public sealed partial class TypeChecker {
             FinalizeTopLevelBinding(node.Name, GrobType.Unknown, node.Range.Start, node, node.Range);
         }
 
+        // The decorator stack sits above the `param` keyword, so checking it
+        // before the default keeps this declaration's diagnostics in source order.
+        CheckDecorators(node);
+
         if (node.DefaultValue is not null) {
             Visit(node.DefaultValue);
         }
