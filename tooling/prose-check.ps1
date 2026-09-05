@@ -104,16 +104,23 @@ else {
         exit 0
     }
 
+    # A '+++' line is a file header or a line of added prose, and no test on its
+    # text alone can tell them apart: an added markdown line reading '++ b/x.md'
+    # or '++ /dev/null' arrives verbatim as '+++ b/x.md' or '+++ /dev/null' once
+    # the '+' diff marker is prepended. Track diff state instead. File headers
+    # only ever sit between a 'diff --git' line and that file's first '@@' hunk
+    # header; once a hunk is open, every '+' line is content. 'diff --git' and
+    # '@@' are themselves unambiguous, because added content always carries the
+    # '+' marker and so can never match them.
     $file = $null
     $lineNo = 0
+    $inHunk = $false
     foreach ($line in $diff) {
-        # Header lines only. An added line whose own text starts with '++' arrives
-        # as '+++...', so the header test must be exact — a '+++*' wildcard swallows
-        # real prose and desynchronises $lineNo for the rest of the hunk.
-        if ($line -match '^\+\+\+ b/(.+)$') { $file = $Matches[1]; continue }
-        if ($line -eq '+++ /dev/null') { $file = $null; continue }
-        if ($line -match '^@@ -\d+(?:,\d+)? \+(\d+)') { $lineNo = [int]$Matches[1]; continue }
-        if ($line.StartsWith('+')) {
+        if ($line -match '^diff --git ') { $inHunk = $false; continue }
+        if (-not $inHunk -and $line -match '^\+\+\+ b/(.+)$') { $file = $Matches[1]; continue }
+        if (-not $inHunk -and $line -eq '+++ /dev/null') { $file = $null; continue }
+        if ($line -match '^@@ -\d+(?:,\d+)? \+(\d+)') { $inHunk = $true; $lineNo = [int]$Matches[1]; continue }
+        if ($inHunk -and $line.StartsWith('+')) {
             $targets.Add([pscustomobject]@{ File = $file; Line = $lineNo; Text = $line.Substring(1) })
             $lineNo++
         }

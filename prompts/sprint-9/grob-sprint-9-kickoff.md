@@ -6,8 +6,9 @@
 > structural decisions settled here (the array-indexer emission fix, the `mapAs<T>`
 > typed-deserialisation model, the regex-literal scope-cut resolution and the
 > capability-seam completion), and the close-gate, kept under `prompts/sprint-9/` with
-> the QA brief. The increment prompts live in `prompts/archive/sprint-9/sprint-9-{a..h}.md`
-> and are read by path, per `trunk-flow`. They were once mirrored as `/sprint-9-a`-style
+> the QA brief. The ten increment prompts live in `prompts/archive/sprint-9/` as
+> `sprint-9-a.md`, `sprint-9-a2.md`, `sprint-9-a3.md` and `sprint-9-b.md` through
+> `sprint-9-h.md`, and are read by path, per `trunk-flow`. They were once mirrored as `/sprint-9-a`-style
 > slash commands under `.claude/commands/`; that mirror is gone and the single copy in
 > `prompts/` is now authoritative. **Start by reading
 > `prompts/archive/sprint-9/sprint-9-a.md`.**
