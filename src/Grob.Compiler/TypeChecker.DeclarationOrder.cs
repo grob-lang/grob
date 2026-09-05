@@ -64,6 +64,17 @@ public sealed partial class TypeChecker {
     private AstNode? _orderHighWaterItem;
 
     /// <summary>
+    /// Whether the top-level item pass 2 is about to visit is a misordered
+    /// <c>param</c> declaration. Set from <see cref="CheckDeclarationOrder"/> one
+    /// statement before the visit and read by <c>VisitParamDecl</c>, which is the
+    /// narrowest coupling available for D-412's cascade: the verdict has to be
+    /// known at the moment the node is visited, and a set keyed on the node
+    /// itself would use record value equality and collide on two identical
+    /// <see cref="ParamDecl"/>s.
+    /// </summary>
+    private bool _paramIsMisordered;
+
+    /// <summary>
     /// Classifies one top-level item and reports a backward step against §19.
     /// Returns <see langword="true"/> when the item is a <c>param</c> declaration
     /// that is out of order — D-412's cascade rule suppresses that declaration's

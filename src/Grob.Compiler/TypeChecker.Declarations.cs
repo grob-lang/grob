@@ -597,19 +597,37 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Registers no symbol — parameter <i>binding</i> is Sprint 10 (D-412), so the
-    /// declaration contributes no type of its own and returns
-    /// <see cref="GrobType.Unknown"/>. The default expression is visited all the
-    /// same: it is an ordinary expression in the tree, and §3.1.1 admits no
-    /// exemption for it — every identifier node must carry a non-null
-    /// <c>ResolvedType</c> and <c>Declaration</c> after type-check (D-311's
-    /// sentinels on the error path). <see cref="AstWalker.VisitParamDecl"/> already
-    /// walks into the default; leaving the checker out of step with it let an
-    /// undefined name in a default go unreported with both fields unset.
-    /// Its type is not yet checked <i>against</i> the annotation — that is binding,
-    /// and belongs with D-412.
+    /// Finalises the pass-1 provisional entry so the name is a real top-level
+    /// binding (D-424 Decision 6), which is what gives E1102 its collision at a
+    /// later declaration of the same name. <b>Registration is not binding:</b> the
+    /// symbol's type is <see cref="GrobType.Unknown"/>, because resolving a
+    /// parameter's declared type against a supplied value is parameter binding and
+    /// is Sprint 10 (R-15). The declaration still contributes no type of its own.
+    /// <para>
+    /// The default expression is visited all the same: it is an ordinary
+    /// expression in the tree, and §3.1.1 admits no exemption for it — every
+    /// identifier node must carry a non-null <c>ResolvedType</c> and
+    /// <c>Declaration</c> after type-check (D-311's sentinels on the error path).
+    /// The same reasoning covers the decorator stack, whose arguments are also
+    /// ordinary expressions (D-424 Decision 1). Its type is not yet checked
+    /// <i>against</i> the annotation — that is binding, and belongs with D-412.
+    /// </para>
+    /// <para>
+    /// <b>D-412's cascade.</b> A misplaced <c>param</c> that also collides with an
+    /// existing name reports only the ordering error: the declaration is already
+    /// rejected for its position, so it does not finalise a binding and no E1102
+    /// is raised alongside — one root cause, one diagnostic, the same principle
+    /// §29 applies to parser cascades.
+    /// </para>
     /// </remarks>
     public override GrobType VisitParamDecl(ParamDecl node) {
+        bool misordered = _paramIsMisordered;
+        _paramIsMisordered = false;
+
+        if (!misordered) {
+            FinalizeTopLevelBinding(node.Name, GrobType.Unknown, node.Range.Start, node, node.Range);
+        }
+
         if (node.DefaultValue is not null) {
             Visit(node.DefaultValue);
         }
