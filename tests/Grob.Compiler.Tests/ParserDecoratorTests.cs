@@ -141,6 +141,63 @@ public sealed class ParserDecoratorTests {
     }
 
     // -----------------------------------------------------------------------
+    // Decorators are a `param`-only construct (§19, D-424 Decision 2).
+    //
+    // Before D-424 `fn f(@secure a: int)` parsed clean, and a test asserted it
+    // did, justified by the claim that "a function parameter list (§12) shares
+    // the same decorator syntax and keeps it inline". §12 says nothing about
+    // decorators; the claim entered the corpus through a scanner shared between
+    // two productions, never through a decision. Its own fixture makes the
+    // point — `@secure` on an `int` is invalid under D-411 twice over.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void DecoratorInFunctionParameterList_IsE4002_AndTheSignatureStillParses() {
+        (CompilationUnit unit, DiagnosticBag bag) =
+            Parse("fn f(@secure a: int): int { return 1 }\n");
+
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E4002", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(6, d.Range.Start.Column);
+
+        // Recovery: the rest of the signature and the body are intact.
+        FnDecl fn = Single<FnDecl>(unit);
+        Parameter p = Assert.Single(fn.Parameters);
+        Assert.Equal("a", p.Name);
+        Assert.Equal("int", p.Type!.Name);
+        Assert.Single(fn.Body.Statements);
+    }
+
+    [Fact]
+    public void DecoratorWithArgumentsInFunctionParameterList_IsE4002() {
+        (CompilationUnit unit, DiagnosticBag bag) =
+            Parse("fn f(@minLength(3) a: string): int { return 1 }\n");
+
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E4002", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(6, d.Range.Start.Column);
+        Assert.Equal("a", Assert.Single(Single<FnDecl>(unit).Parameters).Name);
+    }
+
+    /// <summary>
+    /// Each misplaced decorator is its own mistake and gets its own diagnostic —
+    /// on the same parameter or on different ones.
+    /// </summary>
+    [Fact]
+    public void SeveralDecoratorsInAFunctionParameterList_EachReportsE4002() {
+        (CompilationUnit unit, DiagnosticBag bag) =
+            Parse("fn f(@secure a: string, @minLength(1) b: string): int { return 1 }\n");
+
+        Assert.Equal(2, bag.Diagnostics.Count);
+        Assert.All(bag.Diagnostics, d => Assert.Equal("E4002", d.Code));
+        Assert.Equal(6, bag.Diagnostics[0].Range.Start.Column);
+        Assert.Equal(25, bag.Diagnostics[1].Range.Start.Column);
+        Assert.Equal(2, Single<FnDecl>(unit).Parameters.Count);
+    }
+
+    // -----------------------------------------------------------------------
     // Recovery and layer invariant (§29) — a malformed decorator is an ordinary
     // malformed construct, with no bespoke recovery path.
     // -----------------------------------------------------------------------
