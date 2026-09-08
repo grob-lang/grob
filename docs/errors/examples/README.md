@@ -296,7 +296,6 @@ than a fatal `error[Exxxx]:`.
 | E4001 | `unknown-decorator` | Param / decorator |
 | E4002 | `decorator-not-permitted-here` | Param / decorator |
 | E4101 | `invalid-allowed-argument` | Param / decorator |
-| E4202 | `param-after-param-block-ends` | Param / decorator |
 | E5002 | `integer-division-by-zero` | Runtime |
 | E5101 | `array-index-out-of-range` | Runtime |
 | E5101 | `array-index-out-of-range-in-function` | Runtime |

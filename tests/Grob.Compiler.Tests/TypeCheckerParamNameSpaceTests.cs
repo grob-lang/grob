@@ -51,6 +51,12 @@ public sealed class TypeCheckerParamNameSpaceTests {
         // §3.1.1: the declaration back-reference is the ParamDecl itself, asserted
         // by reference, not merely "not the UnresolvedDecl sentinel" (D-311).
         Assert.Same(declaration, reference.Declaration);
+
+        // §3.1.1's other half. The reference carries the param's declared type,
+        // not GrobType.Unknown — see
+        // ParamReturnedFromAFunction_TypeChecksAgainstItsDeclaredType for why
+        // Unknown here is not merely incomplete but wrong.
+        Assert.Equal(GrobType.String, reference.ResolvedType);
     }
 
     /// <summary>
@@ -61,6 +67,58 @@ public sealed class TypeCheckerParamNameSpaceTests {
     [Fact]
     public void ParamReferencedFromAFunctionBody_Resolves() {
         DiagnosticBag bag = Check("param token: string\nfn f(): int {\n    print(token)\n    return 1\n}\n");
+        Assert.Empty(bag.Diagnostics);
+    }
+
+    // -----------------------------------------------------------------------
+    // The registered symbol carries the param's *declared* type.
+    //
+    // Registration alone resolves the name and removes the E1001, but a symbol
+    // typed GrobType.Unknown is not inert: a return position compares the
+    // value's type against the declared return type and Unknown is assignable
+    // to nothing, so a valid script is rejected with a false E0005. This is the
+    // same failure D-323's phase 1.5 exists to prevent for top-level value
+    // bindings, reached by a different route. §19 puts every `param` ahead of
+    // every `fn`, so pass 2's source-order walk has always finalised the
+    // declaration before any body that reads it is checked.
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("param limit: int\nfn f(): int {\n    return limit\n}\n")]
+    [InlineData("param limit: int\nfn f(): int {\n    return limit + 1\n}\n")]
+    [InlineData("param name: string\nfn f(): string {\n    return name\n}\n")]
+    [InlineData("param ratio: float\nfn f(): float {\n    return ratio\n}\n")]
+    [InlineData("param flag: bool\nfn f(): bool {\n    return flag\n}\n")]
+    [InlineData("param names: string[]\nfn f(): string[] {\n    return names\n}\n")]
+    public void ParamReturnedFromAFunction_TypeChecksAgainstItsDeclaredType(string source) {
+        Assert.Empty(Check(source).Diagnostics);
+    }
+
+    /// <summary>
+    /// The other direction, and the one that proves the type is real rather than
+    /// permissive: returning a <c>string</c> <c>param</c> from a function
+    /// declared <c>int</c> is still E0005, at the operand's own column.
+    /// </summary>
+    [Fact]
+    public void ParamOfAMismatchedType_ReturnedFromAFunction_IsStillE0005() {
+        DiagnosticBag bag = Check("param name: string\nfn f(): int {\n    return name\n}\n");
+
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E0005", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(12, d.Range.Start.Column);
+    }
+
+    /// <summary>
+    /// A user-defined type on a <c>param</c> resolves to <see cref="GrobType.Unknown"/>
+    /// through the same shared <c>ResolveTypeRef</c> the decorator checks already
+    /// use, so the two views of a param's type cannot drift. Binding a value of
+    /// such a type is Sprint 10 (R-15); this pins that the widening does not
+    /// silently change what a user-defined annotation means here.
+    /// </summary>
+    [Fact]
+    public void ParamOfAUserDefinedType_RegistersWithoutADiagnostic() {
+        DiagnosticBag bag = Check("param cfg: Repo\ntype Repo {\n    name: string\n}\n");
         Assert.Empty(bag.Diagnostics);
     }
 
@@ -93,6 +151,7 @@ public sealed class TypeCheckerParamNameSpaceTests {
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E1102", d.Code);
         Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
     }
 
     [Fact]
@@ -118,19 +177,22 @@ public sealed class TypeCheckerParamNameSpaceTests {
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2202", d.Code);
         Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
         Assert.DoesNotContain(bag.Diagnostics, x => x.Code == "E1102");
     }
 
     [Theory]
-    [InlineData("fn token(): int { return 1 }\nparam token: string\n")]
-    [InlineData("type token {\n    a: int\n}\nparam token: string\n")]
-    [InlineData("readonly token := 1\nparam token: string\n")]
-    [InlineData("token := 1\nparam token: string\n")]
-    public void MisplacedAndColliding_AnyEarlierKind_ReportsE2202Alone(string source) {
+    [InlineData("fn token(): int { return 1 }\nparam token: string\n", 2)]
+    [InlineData("type token {\n    a: int\n}\nparam token: string\n", 4)]
+    [InlineData("readonly token := 1\nparam token: string\n", 2)]
+    [InlineData("token := 1\nparam token: string\n", 2)]
+    public void MisplacedAndColliding_AnyEarlierKind_ReportsE2202Alone(string source, int line) {
         DiagnosticBag bag = Check(source);
 
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2202", d.Code);
+        Assert.Equal(line, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
     }
 
     /// <summary>
@@ -146,6 +208,7 @@ public sealed class TypeCheckerParamNameSpaceTests {
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E1102", d.Code);
         Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
         Assert.DoesNotContain(bag.Diagnostics, x => x.Code == "E2202");
     }
 
@@ -159,5 +222,7 @@ public sealed class TypeCheckerParamNameSpaceTests {
 
         Diagnostic d = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2202", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
     }
 }

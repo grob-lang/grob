@@ -599,10 +599,20 @@ public sealed partial class TypeChecker {
     /// <remarks>
     /// Finalises the pass-1 provisional entry so the name is a real top-level
     /// binding (D-424 Decision 6), which is what gives E1102 its collision at a
-    /// later declaration of the same name. <b>Registration is not binding:</b> the
-    /// symbol's type is <see cref="GrobType.Unknown"/>, because resolving a
-    /// parameter's declared type against a supplied value is parameter binding and
-    /// is Sprint 10 (R-15). The declaration still contributes no type of its own.
+    /// later declaration of the same name. <b>Registration is not binding:</b>
+    /// checking a <i>supplied</i> value against the annotation, and against the
+    /// decorators constraining it, is parameter binding and is Sprint 10 (R-15).
+    /// <para>
+    /// The symbol takes the param's <b>declared</b> type, resolved through the same
+    /// <see cref="ResolveTypeRef"/> the decorator checks use so the two views of a
+    /// param's type cannot drift. Registering it as <see cref="GrobType.Unknown"/>
+    /// is not a smaller step but a wrong one: <c>Unknown</c> is assignable to
+    /// nothing, so <c>param limit: int</c> returned from a <c>fn(): int</c> is
+    /// rejected with a false E0005 — the failure D-323's phase 1.5 exists to
+    /// prevent for top-level value bindings, reached by a different route. §19 puts
+    /// every <c>param</c> ahead of every <c>fn</c>, so pass 2's source-order walk
+    /// has always finalised the declaration before a body that reads it is checked.
+    /// </para>
     /// <para>
     /// The default expression is visited all the same: it is an ordinary
     /// expression in the tree, and §3.1.1 admits no exemption for it — every
@@ -625,7 +635,8 @@ public sealed partial class TypeChecker {
         _paramIsMisordered = false;
 
         if (!misordered) {
-            FinalizeTopLevelBinding(node.Name, GrobType.Unknown, node.Range.Start, node, node.Range);
+            FinalizeTopLevelBinding(
+                node.Name, ResolveTypeRef(node.Type), node.Range.Start, node, node.Range);
         }
 
         // The decorator stack sits above the `param` keyword, so checking it

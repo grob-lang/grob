@@ -351,6 +351,10 @@ public sealed class TypeCheckerDecoratorTests {
 
         Assert.Equal(["E4001", "E4102", "E4002"], bag.Diagnostics.Select(d => d.Code));
         Assert.Equal([1, 2, 3], bag.Diagnostics.Select(d => d.Range.Start.Line));
+        // The name and duplicate errors sit on the decorator's '@'; the argument
+        // error sits on the argument's own column, which is the position D-424
+        // Decision 1 bought by parsing arguments as ordinary expressions.
+        Assert.Equal([1, 12, 1], bag.Diagnostics.Select(d => d.Range.Start.Column));
     }
 
     /// <summary>
@@ -363,5 +367,10 @@ public sealed class TypeCheckerDecoratorTests {
         DiagnosticBag bag = Check("x := 1\n@bogus\nparam name: string\n");
 
         Assert.Equal(["E2202", "E4001"], bag.Diagnostics.Select(d => d.Code));
+        // Both land on line 2, the decorator's line rather than the `param`
+        // keyword's: ParamDecl.Range extends over the decorator stack (D-424
+        // Decision 1), so the ordering error names the whole declaration.
+        Assert.Equal([2, 2], bag.Diagnostics.Select(d => d.Range.Start.Line));
+        Assert.Equal([1, 1], bag.Diagnostics.Select(d => d.Range.Start.Column));
     }
 }

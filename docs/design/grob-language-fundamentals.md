@@ -1762,6 +1762,14 @@ arguments are parsed as ordinary expressions so that a non-literal argument
 produces this diagnostic rather than a parse error, and so that parser recovery
 (§29) treats a malformed decorator like any other malformed construct.
 
+The table above allocates a code to `@allowed` and to the four length and value
+constraints, and none to `@secure` or `@pattern`. Their argument checks —
+`@secure` taking no arguments, `@pattern` taking exactly one string literal —
+therefore report **E4002**, on the same footing as `@secure` applied to a
+non-`string` param. This is a gap in the table rather than a preference, and it
+is recorded as such (D-425, R-17): a later increment may give the two checks a
+code of their own.
+
 **Static validation and binding-time enforcement are separate (D-424).**
 Everything in the table's last column is checked at compile time, with no
 parameter value in hand. *Enforcing* a constraint — rejecting a supplied

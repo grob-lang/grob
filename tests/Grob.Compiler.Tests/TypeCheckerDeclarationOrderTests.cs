@@ -158,6 +158,9 @@ public sealed class TypeCheckerDeclarationOrderTests {
         Assert.Equal(["E1001", "E2202", "E1001", "E1001"],
             bag.Diagnostics.Select(d => d.Code));
         Assert.Equal([1, 2, 3, 4], bag.Diagnostics.Select(d => d.Range.Start.Line));
+        // The column completes the contract: each E1001 sits on its initialiser's
+        // undefined name, the ordering error on the `param` keyword itself.
+        Assert.Equal([6, 1, 6, 6], bag.Diagnostics.Select(d => d.Range.Start.Column));
     }
 
     [Fact]
@@ -170,6 +173,8 @@ public sealed class TypeCheckerDeclarationOrderTests {
 
         Assert.Equal(["E2202", "E2201", "E2202"], bag.Diagnostics.Select(d => d.Code));
         Assert.Equal([2, 3, 4], bag.Diagnostics.Select(d => d.Range.Start.Line));
+        // Every ordering diagnostic is pinned at its declaration's own keyword.
+        Assert.Equal([1, 1, 1], bag.Diagnostics.Select(d => d.Range.Start.Column));
     }
 
     // -----------------------------------------------------------------------

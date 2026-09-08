@@ -96,6 +96,7 @@ public sealed class TypeCheckerParamDeclTests {
         Diagnostic ordering = Assert.Single(bag.Diagnostics);
         Assert.Equal(ErrorCatalog.E2202.Code, ordering.Code);
         Assert.Equal(2, ordering.Range.Start.Line);
+        Assert.Equal(1, ordering.Range.Start.Column);
 
         ConstDecl fallback = Assert.IsType<ConstDecl>(unit.TopLevel[0]);
         ParamDecl p = Assert.IsType<ParamDecl>(unit.TopLevel[^1]);
