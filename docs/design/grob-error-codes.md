@@ -115,7 +115,7 @@ read by `grob --explain Exxxx`.
 | E2101 | bare `{` cannot begin an expression                | Syntax            | pre-release           |
 | E2102 | empty type construction missing `{ }`              | Syntax            | pre-release           |
 | E2201 | `import` after declaration                         | Syntax            | pre-release           |
-| E2202 | `param` after `fn` or top-level statement          | Syntax            | pre-release           |
+| E2202 | `param` after `type`, `fn`, `const`, `readonly` or top-level statement | Syntax            | pre-release           |
 | E2203 | top-level `return`                                 | Syntax            | pre-release           |
 | E2204 | `try` without `catch` or `finally`                 | Syntax            | pre-release           |
 | E2205 | `catch` after catch-all                            | Syntax            | pre-release           |
@@ -137,9 +137,8 @@ read by `grob --explain Exxxx`.
 | E4001 | unknown decorator                                  | Param / decorator | pre-release           |
 | E4002 | decorator not permitted here                       | Param / decorator | pre-release           |
 | E4101 | invalid `@allowed` argument                        | Param / decorator | pre-release           |
-| E4102 | invalid `@minLength` / `@maxLength` argument       | Param / decorator | pre-release           |
+| E4102 | invalid `@minLength` / `@maxLength` / `@minValue` / `@maxValue` argument | Param / decorator | pre-release           |
 | E4201 | `param` declaration syntax error                   | Param / decorator | pre-release           |
-| E4202 | `param` after `param` block ends                   | Param / decorator | pre-release           |
 | E5001 | integer overflow                                   | Runtime           | pre-release           |
 | E5002 | integer division by zero                           | Runtime           | pre-release           |
 | E5003 | integer modulo by zero                             | Runtime           | pre-release           |
@@ -789,13 +788,13 @@ read by `grob --explain Exxxx`.
 
 ---
 
-### E2202 — `param` after `fn` or top-level statement
+### E2202 — `param` after `type`, `fn`, `const`, `readonly` or top-level statement
 
 - **Category:** Syntax
 - **Introduced:** v1
 - **Status:** pre-release
 - **Description:** `param` declarations must precede `type` declarations, function declarations, `const` and `readonly` declarations and top-level code (D-412 places `const`/`readonly` in the top-level-code category). Where a misplaced `param` also collides with an existing top-level name, only this ordering error is reported; the E1102 collision is suppressed as a cascade (D-412).
-- **Source:** `grob-language-fundamentals.md` §19; D-412.
+- **Source:** `grob-language-fundamentals.md` §19; D-412; D-424 (first throw site, and the retitle from "`param` after `fn` or top-level statement").
 
 ---
 
@@ -984,7 +983,7 @@ read by `grob --explain Exxxx`.
 - **Introduced:** v1
 - **Status:** pre-release
 - **Description:** A decorator was applied that is not one of the recognised decorators. The v1 set is fixed at seven by D-411: `@secure`, `@allowed`, `@minLength`, `@maxLength`, `@minValue`, `@maxValue`, `@pattern`. `@pattern` is specified but not yet built — it lands with the `regex` increment, which supplies the compiled-pattern value it validates against.
-- **Source decision:** D-072.
+- **Source decision:** D-072; D-411 (the seven-decorator set); D-424 (first throw site; `@pattern` is recognised rather than unknown, so it is never E4001).
 
 ---
 
@@ -993,8 +992,8 @@ read by `grob --explain Exxxx`.
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A decorator was applied to a target where it is not valid, e.g. `@secure` on a non-string param or a validation decorator not attached to a `param` declaration.
-- **Source decision:** D-072.
+- **Description:** A decorator was applied where it is not valid. Four distinct conditions share this code, each with its own message (D-424): (1) a decorator outside a `param` declaration — decorators are a `param`-only construct (§19), so one in a function parameter list is rejected here; (2) a decorator applied to a param whose declared type it does not support, such as `@secure` or `@pattern` on a non-`string`; (3) the same decorator applied twice to one `param`; (4) a wrong argument count on `@secure`, which takes none, or `@pattern`, which takes one string literal. The last of those sits here because §19's table assigns E4101 to `@allowed` and E4102 to the four length and value constraints, leaving `@secure` and `@pattern` without a code of their own, and D-424 mints none.
+- **Source decision:** D-072; D-424 (first throw sites, and the `param`-only rule).
 
 ---
 
@@ -1004,16 +1003,17 @@ read by `grob --explain Exxxx`.
 - **Introduced:** v1
 - **Status:** pre-release
 - **Description:** `@allowed(...)` received an argument list that is not a homogeneous set of literals matching the param's type. This is a grammar-level rejection at compile time, distinct from runtime validation failures (which fall under the runtime category if v1 scope-cut is not activated).
-- **Source decision:** D-186 (validation decorators are a v1 scope-cut candidate; the grammar code is allocated regardless).
+- **Source decision:** D-186 (validation decorators are a v1 scope-cut candidate; the grammar code is allocated regardless); D-424 (first throw site). Arity, non-literal arguments, heterogeneous values and a value not assignable to the param's declared type all report here, each at the offending argument's own position.
 
 ---
 
-### E4102 — invalid `@minLength` / `@maxLength` argument
+### E4102 — invalid `@minLength` / `@maxLength` / `@minValue` / `@maxValue` argument
 
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** `@minLength(n)` or `@maxLength(n)` received an argument that is not a non-negative integer literal, or was applied to a param whose type does not support length constraints.
+- **Description:** One of the four length and value constraints received a bad argument, or was applied to a param whose declared type does not support it. `@minLength(n)` and `@maxLength(n)` take one non-negative integer literal and apply to a `string` or an array; `@minValue(n)` and `@maxValue(n)` take one numeric literal and apply to an `int` or a `float`. The four share one validation shape and differ only in the argument's type, which is why D-424 widened this code rather than minting a sibling — a code per decorator pair scales badly against a seven-decorator set and would leave `@pattern` wanting an eighth of its own.
+- **Source:** `grob-language-fundamentals.md` §19 (Decorators); D-186; D-411 (the seven-decorator set); D-424 (first throw site, and the retitle that widened this code to all four).
 
 ---
 
@@ -1022,17 +1022,8 @@ read by `grob --explain Exxxx`.
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A `param` declaration is malformed — a missing type annotation (the annotation is mandatory; parameters are never inferred), a default introduced with `:=` instead of `=`, a decorator line not followed by a `param` declaration, or a decorator not followed by a newline (§19's production is `{ decorator newline } "param" ...`: a top-level decorator sits on its own line above the declaration it modifies, unlike a function-parameter decorator, which is written inline). Per D-410 a parameter is one `param` line with no enclosing block; `param {` is not a Grob form.
+- **Description:** A `param` declaration is malformed — a missing type annotation (the annotation is mandatory; parameters are never inferred), a default introduced with `:=` instead of `=`, a decorator line not followed by a `param` declaration, or a decorator not followed by a newline (§19's production is `{ decorator newline } "param" ...`: a decorator sits on its own line above the declaration it modifies). Decorators are a `param`-only construct (D-424), so there is no second, inline form to distinguish this from. Per D-410 a parameter is one `param` line with no enclosing block; `param {` is not a Grob form.
 - **Source:** `grob-language-fundamentals.md` §19, "The `param` declaration"; D-410; D-415 (first throw site, and the retitle from "`param` block syntax error").
-
----
-
-### E4202 — `param` after `param` block ends
-
-- **Category:** Param / decorator
-- **Introduced:** v1
-- **Status:** pre-release
-- **Description:** A `param` declaration appeared after the parameter group was closed by a **significant** line that is neither a `param` declaration nor one of its decorators. Blank and comment-only lines do not close the group (§19), so the blank line `grob fmt` requires around a decorated declaration (D-413) never triggers this. **Retirement pending (D-410):** with the braceless grammar and §19's ordering rule this condition is a subset of E2202 (`param` after a `type`, `fn` or top-level statement). E4202 is to be removed and E2202's title widened when ordering enforcement lands in Sprint 10 — the grammar change itself landed in D-415 without disturbing E4202; the removal is deferred to that later increment because retiring a code requires the `ErrorCatalog` edit in the same commit to keep the D-316 agreement gate green. Under D-410's clarification of ADR-0017, E4202's number is permanently burned on removal and is never reused.
 
 ---
 
@@ -1401,11 +1392,53 @@ None as of v1.
 
 ---
 
-**Total: 121 codes across 7 categories.** This is the canonical current count;
+**Total: 120 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
 changed; this line is the single source for the present total.
+
+_Updated September 2026 — D-424, R-01. **E4202 removed; 121 -> 120.** Its condition_
+_-- a `param` declaration after the parameter group has closed -- is a strict subset_
+_of E2202's, which D-424 gave its first throw site in the same increment, so the two_
+_codes could not both survive ordering enforcement. The removal was deferred from_
+_D-410 to here for a technical reason D-414 recorded: removing E4202 before E2202_
+_had a throw site would have left the ordering condition with no code at all._
+_**E4202's number is permanently burned and is never reused**, per D-410's_
+_clarification of ADR-0017 for the never-shipped pre-release case. The_
+_`ErrorCatalog.cs` deletion, this registry edit and the count anchor in_
+_`ErrorCodeCountTests` are one commit, which is what keeps the D-316 agreement gate_
+_green. `docs/errors/examples/param-after-param-block-ends/` is removed with it -- a_
+_worked example for a code that no longer exists._
+
+_Updated September 2026 -- D-424, R-02. **E2202 retitled** from "`param` after `fn` or_
+_top-level statement" to "`param` after `type`, `fn`, `const`, `readonly` or top-level_
+_statement". The old title named one of the five forms a `param` must precede, and D-412_
+_had already placed `const` and `readonly` in the top-level-code category without the_
+_title following. A title carried in `ErrorCatalog.cs` and diffed by the D-316 agreement_
+_gate cannot be corrected without the source edit in the same commit, which is why this_
+_waited for the increment that gave E2202 its throw site. No code added or removed;_
+_total stays at 120._
+
+_Updated September 2026 -- D-424, R-03. **E4102 retitled** from "invalid `@minLength` /_
+_`@maxLength` argument" to name `@minValue` and `@maxValue` alongside them, and its_
+_description rewritten to match. R-03 asked whether the value pair needed a sibling code;_
+_D-424 Decision 7 resolved it by widening instead. The four share one validation shape --_
+_a numeric or integer literal argument checked against the param's declared type -- and_
+_differ only in the argument's type. A code per decorator pair scales badly against a_
+_seven-decorator set and would leave `@pattern` wanting an eighth. The row is wider than_
+_its neighbours, which is a formatting cost worth paying for a title that can be grepped_
+_by decorator name. No code added or removed; total stays at 120._
+
+_Updated September 2026 -- description-only corrections authorised by D-424; no code_
+_added, removed or retitled here, so the D-316 agreement gate is unaffected and the total_
+_stays at 120. E4002's description now names all four conditions the code carries, one of_
+_which -- a wrong argument count on `@secure` or `@pattern` -- lands here only because_
+_§19's Decorators table assigns E4101 to `@allowed` and E4102 to the four length and_
+_value constraints and gives those two decorators no code of their own. E4001's and_
+_E4101's source lines record their first throw sites. E4201's description dropped the_
+_claim that a function-parameter decorator "is written inline": §12 has no decorator_
+_production and never had one, and D-424 Decision 2 makes a decorator there E4002._
 
 _Initial allocation: 94 codes across 7 categories. All `pre-release` until v1.0 ships. Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule)._
 

@@ -1732,6 +1732,55 @@ one the formatter requires around a decorated declaration included — never
 ends the parameter group, so it can never make a following `param` an
 ordering error.
 
+### Decorators
+
+**Decorators are a `param`-declaration construct and appear nowhere else
+(D-424).** They are not permitted on function parameters, on `type` fields, on
+`fn` declarations, or on any other form. A decorator in any of those positions
+is a compile error (E4002). §12's function parameter lists have no decorator
+production; the inline form the parser accepted before D-424 was never
+specified.
+
+**The v1 set is fixed at seven (D-411).** A decorator outside this set is a
+compile error (E4001) — the set does not grow by usage, and there is no
+user-defined decorator mechanism in v1.
+
+| Decorator | Argument | Applies to | Checked statically |
+|---|---|---|---|
+| `@secure` | none | `string` | name, arity, target type |
+| `@allowed(...)` | one or more literals | any param type | name, arity, literal kind, homogeneity, match against the param's type (E4101) |
+| `@minLength(n)` | one integer literal | `string`, arrays | name, arity, non-negative integer literal, target type (E4102) |
+| `@maxLength(n)` | one integer literal | `string`, arrays | name, arity, non-negative integer literal, target type (E4102) |
+| `@minValue(n)` | one numeric literal | `int`, `float` | name, arity, numeric literal, target type (E4102) |
+| `@maxValue(n)` | one numeric literal | `int`, `float` | name, arity, numeric literal, target type (E4102) |
+| `@pattern(s)` | one string literal | `string` | name, arity, string literal, target type — **the pattern itself is not validated until the `regex` increment lands** (D-411) |
+
+**Arguments are literals.** A decorator argument that is not a literal of the
+required kind is a compile error at the argument's own position — E4101 for
+`@allowed`, E4102 for the four length and value constraints. Decorator
+arguments are parsed as ordinary expressions so that a non-literal argument
+produces this diagnostic rather than a parse error, and so that parser recovery
+(§29) treats a malformed decorator like any other malformed construct.
+
+The table above allocates a code to `@allowed` and to the four length and value
+constraints, and none to `@secure` or `@pattern`. Their argument checks —
+`@secure` taking no arguments, `@pattern` taking exactly one string literal —
+therefore report **E4002**, on the same footing as `@secure` applied to a
+non-`string` param. This is a gap in the table rather than a preference, and it
+is recorded as such (D-425, R-17): a later increment may give the two checks a
+code of their own.
+
+**Static validation and binding-time enforcement are separate (D-424).**
+Everything in the table's last column is checked at compile time, with no
+parameter value in hand. *Enforcing* a constraint — rejecting a supplied
+`threshold` of `150` against `@maxValue(100)` — happens at parameter-binding
+time and is Sprint 10 work. A script whose decorators are all statically valid
+therefore compiles today without any constraint being applied to a value yet.
+
+**Duplicate decorators.** The same decorator applied twice to one `param` is a
+compile error (E4002). `@minLength` with `@maxLength`, or `@minValue` with
+`@maxValue`, is the ordinary case and is not a duplicate.
+
 ---
 
 ## 19.1 Top-Level Initialisation Order

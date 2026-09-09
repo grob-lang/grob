@@ -56,6 +56,7 @@ public class AstVisitorDispatchTests {
         public override string VisitFnDecl(FnDecl node) => nameof(VisitFnDecl);
         public override string VisitTypeDecl(TypeDecl node) => nameof(VisitTypeDecl);
         public override string VisitParamDecl(ParamDecl node) => nameof(VisitParamDecl);
+        public override string VisitDecorator(Decorator node) => nameof(VisitDecorator);
         public override string VisitImportDecl(ImportDecl node) => nameof(VisitImportDecl);
         public override string VisitConstDecl(ConstDecl node) => nameof(VisitConstDecl);
         public override string VisitReadonlyDecl(ReadonlyDecl node) => nameof(VisitReadonlyDecl);
@@ -118,7 +119,8 @@ public class AstVisitorDispatchTests {
     public static IEnumerable<object[]> DeclarationCases => [
           [new FnDecl(R, "f", [], _intType, _emptyBlock), nameof(HookNameVisitor.VisitFnDecl)],
         [new TypeDecl(R, "T", []), nameof(HookNameVisitor.VisitTypeDecl)],
-        [new ParamDecl(R, "p", _intType, null), nameof(HookNameVisitor.VisitParamDecl)],
+        [new ParamDecl(R, "p", _intType, null, []), nameof(HookNameVisitor.VisitParamDecl)],
+        [new Decorator(R, "secure", []), nameof(HookNameVisitor.VisitDecorator)],
         [new ImportDecl(R, "m", null), nameof(HookNameVisitor.VisitImportDecl)],
         [new ConstDecl(R, "K", null, Int(1)), nameof(HookNameVisitor.VisitConstDecl)],
         [new ReadonlyDecl(R, "K", null, Int(1)), nameof(HookNameVisitor.VisitReadonlyDecl)],

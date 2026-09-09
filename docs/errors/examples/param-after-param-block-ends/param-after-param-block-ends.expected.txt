@@ -1,9 +1,0 @@
-error[E4202]: `param` after `param` block ends
-  --> param-after-param-block-ends.grob:11:1
-   |
-11 | param {
-   | ^^^^^
-   |
-   = note: a `param` block may not appear after a function declaration
-   = note: first function declaration is on line 7
-   = help: consolidate all `param` blocks before any `fn` or `type` declarations

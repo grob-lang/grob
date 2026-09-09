@@ -45,14 +45,15 @@ public sealed class ParserParamDeclTests {
     }
 
     [Fact]
-    public void SingleDecorator_IsSkipped_DeclarationParsesCleanly() {
+    public void SingleDecorator_DeclarationParsesCleanly() {
         CompilationUnit unit = ParseOk("@secure\nparam token: string\n");
         ParamDecl p = Single<ParamDecl>(unit);
         Assert.Equal("token", p.Name);
-        // The declaration's own range starts at 'param' (line 2), not the
-        // decorator — decorators are parsed and skipped, not yet captured
-        // into the AST (Sprint 10).
-        Assert.Equal(2, p.Range.Start.Line);
+        // The declaration's own range starts at the decorator stack (line 1),
+        // not at 'param' — D-424 Decision 1 extends it so a diagnostic about a
+        // decorator can point at the declaration it belongs to. See
+        // ParserDecoratorTests for capture and range coverage in full.
+        Assert.Equal(1, p.Range.Start.Line);
         Assert.Equal(1, p.Range.Start.Column);
     }
 
@@ -64,7 +65,8 @@ public sealed class ParserParamDeclTests {
         Assert.Equal("threshold", p.Name);
         Assert.Equal("int", p.Type.Name);
         Assert.Equal(80L, Assert.IsType<IntLiteralExpr>(p.DefaultValue).Value);
-        Assert.Equal(3, p.Range.Start.Line);
+        // The stack's first decorator, not the 'param' keyword on line 3 (D-424).
+        Assert.Equal(1, p.Range.Start.Line);
     }
 
     /// <summary>
@@ -167,14 +169,20 @@ public sealed class ParserParamDeclTests {
     }
 
     /// <summary>
-    /// The companion to the above: the newline requirement belongs to the
-    /// top-level production alone. A function parameter list (§12) shares the
-    /// same decorator syntax and keeps it inline, so the rejection must not
-    /// leak through the scanner both productions call.
+    /// The companion to the above, corrected by D-424 Decision 2: the newline
+    /// requirement has no second production to leak into, because decorators are
+    /// a <c>param</c>-only construct. A decorator in a function parameter list is
+    /// E4002, not a clean parse — see
+    /// <c>ParserDecoratorTests.DecoratorInFunctionParameterList_IsE4002_AndTheSignatureStillParses</c>
+    /// for the full assertion including recovery.
     /// </summary>
     [Fact]
-    public void DecoratorInlineInFunctionParameterList_StillParses() {
-        CompilationUnit unit = ParseOk("fn f(@secure a: int): int { return 1 }\n");
+    public void DecoratorInlineInFunctionParameterList_IsE4002() {
+        (CompilationUnit unit, DiagnosticBag bag) = Parse("fn f(@secure a: int): int { return 1 }\n");
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E4002", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(6, d.Range.Start.Column);
         FnDecl fn = Single<FnDecl>(unit);
         Assert.Equal("a", Assert.Single(fn.Parameters).Name);
     }

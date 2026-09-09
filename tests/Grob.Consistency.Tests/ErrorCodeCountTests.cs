@@ -47,7 +47,7 @@ public sealed class ErrorCodeCountTests {
     }
 
     [Fact]
-    public void Corpus_HasTheExpectedLiveCountOf121() {
+    public void Corpus_HasTheExpectedLiveCountOf120() {
         // A standing anchor: if the count legitimately changes, this and the
         // canonical footer line move together, by intent, in the same change.
         // D-320 added E1103 (reserved identifier used as a binding name): 107 -> 108.
@@ -63,8 +63,13 @@ public sealed class ErrorCodeCountTests {
         // D-376 (map-literal construction) added E0016 (duplicate key in map literal): 118 -> 119.
         // D-382 (correctness batch, runtime error taxonomy) added E5905 (result exceeds
         // maximum size) and E5906 (sort key type does not implement Comparable): 119 -> 121.
-        Assert.Equal(121, ConsistencyChecks.ActualErrorCatalogCount());
-        Assert.Equal(121, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
-        Assert.Equal(121, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
+        // D-424 (R-01) removed E4202 (`param` after `param` block ends), whose condition is
+        // a strict subset of E2202's once ordering enforcement lands: 121 -> 120. The number
+        // is permanently burned and never reused (D-410's clarification of ADR-0017 for the
+        // never-shipped pre-release case). This is the first removal, so it is also the
+        // first time this anchor has moved downwards.
+        Assert.Equal(120, ConsistencyChecks.ActualErrorCatalogCount());
+        Assert.Equal(120, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
+        Assert.Equal(120, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
     }
 }
