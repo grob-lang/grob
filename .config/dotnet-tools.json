@@ -3,13 +3,17 @@
   "isRoot": true,
   "tools": {
     "dotnet-sonarscanner": {
-      "version": "11.2.1",
-      "commands": ["dotnet-sonarscanner"],
+      "version": "11.3.0",
+      "commands": [
+        "dotnet-sonarscanner"
+      ],
       "rollForward": false
     },
     "cyclonedx": {
-      "version": "6.2.0",
-      "commands": ["dotnet-CycloneDX"],
+      "version": "6.3.1",
+      "commands": [
+        "dotnet-CycloneDX"
+      ],
       "rollForward": false
     }
   }
