@@ -149,6 +149,38 @@ public sealed class ValidationScriptCorpusTests {
         Assert.NotEmpty(unit.TopLevel);
     }
 
+    /// <summary>
+    /// D-424's release-gate criterion for this corpus. The scripts have never
+    /// type-checked clean and do not here: they call into <c>fs</c>, <c>http</c>,
+    /// <c>auth</c>, <c>process</c>, <c>csv</c>, <c>crypto</c> and <c>json</c>,
+    /// none of which exist yet, so every remaining diagnostic is an E1001 for a
+    /// namespace a later sprint supplies. What this test pins is the part D-424
+    /// owns: no script trips §19's declaration order, and no script carries an
+    /// invalid decorator. All four <c>@secure</c> uses in the corpus (scripts 04,
+    /// 07 and 11 twice) are on <c>string</c> parameters and stay clean.
+    /// <para>
+    /// Script 09's <c>warn_percent</c>/<c>crit_percent</c> are the obvious
+    /// <c>@minValue</c>/<c>@maxValue</c> candidates and are <b>deliberately not
+    /// decorated here</b>. That is R-08's work: until R-15 lands, a decorator
+    /// applies no constraint to any value, so adding one would put an unenforced
+    /// constraint into the release gate.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(CleanScriptCases))]
+    public void CleanScript_TypeChecksWithNoOrderingOrDecoratorDiagnostics(string fileName) {
+        DiagnosticBag bag = ParseCorpusFile(fileName, out CompilationUnit unit);
+        Assert.True(bag.Count == 0,
+            $"{fileName}: parser diagnostics:\n{string.Join('\n', bag.Diagnostics)}");
+
+        new TypeChecker(bag).Check(unit);
+
+        string[] owned = ["E2201", "E2202", "E4001", "E4002", "E4101", "E4102"];
+        Diagnostic[] offenders = bag.Diagnostics.Where(d => owned.Contains(d.Code)).ToArray();
+        Assert.True(offenders.Length == 0,
+            $"{fileName}: ordering/decorator diagnostics:\n{string.Join('\n', offenders.AsEnumerable())}");
+    }
+
     private static DiagnosticBag ParseCorpusFile(string fileName, out CompilationUnit unit) {
         string path = Path.Join(_corpusDir, fileName);
         string source = File.ReadAllText(path);

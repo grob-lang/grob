@@ -137,15 +137,15 @@ public sealed class Parser {
     //     Synchronise would skip straight over an intact decorator stack to the
     //     param keyword below it, silently discarding it before the '@'
     //     dispatch arm ever sees it.
-    //     The context gate is required because SkipParameterDecorators also
-    //     serves function parameter lists, so a '@' can legally sit inside a
-    //     'fn' header. Treating that one as an anchor stops recovery mid-header
-    //     and hands the top-level loop a '@' it dispatches to ParseParamDecl,
-    //     cascading a bogus second E4201 out of a single malformed 'fn'. A
-    //     TOP-LEVEL decorator stack only ever attaches to a 'param'
-    //     declaration — the qualifier is load-bearing, function parameter
-    //     lists having decorators of their own — so restricting the anchor to
-    //     'param'-led recovery keeps D-415's fix and drops the cascade.
+    //     The context gate is required because a '@' can still APPEAR inside a
+    //     'fn' header even though D-424 makes it E4002 there — a decorator is a
+    //     'param'-only construct (§19), but rejecting one is not the same as
+    //     never meeting one. Treating that '@' as an anchor stops recovery
+    //     mid-header and hands the top-level loop a '@' it dispatches to
+    //     ParseParamDecl, cascading a bogus second E4201 out of a single
+    //     malformed 'fn'. A TOP-LEVEL decorator stack only ever attaches to a
+    //     'param' declaration, so restricting the anchor to 'param'-led
+    //     recovery keeps D-415's fix and drops the cascade.
     //   * EOF (unconditional terminator).
     // The cursor stops AT the anchor; the anchor is not consumed.
     // -----------------------------------------------------------------------
@@ -438,8 +438,11 @@ public sealed class Parser {
     /// </para>
     /// </summary>
     private ParamDecl ParseParamDecl() {
-        SkipParameterDecorators(requireNewline: true);
+        // The range starts here, at the first '@' of the decorator stack when there
+        // is one and at 'param' when there is not (D-424 Decision 1) — a diagnostic
+        // about a decorator must be able to point at the declaration it belongs to.
         SourceLocation start = Current.Location;
+        List<Decorator> decorators = ParseParameterDecorators();
         Expect(TokenKind.Param, ErrorCatalog.E4201, "expected 'param' after decorator");
         Token name = Expect(TokenKind.Identifier, ErrorCatalog.E4201, "expected parameter name after 'param'");
         Expect(TokenKind.Colon, ErrorCatalog.E4201,
@@ -452,15 +455,12 @@ public sealed class Parser {
         if (Match(TokenKind.Assign)) {
             defaultValue = ParseExpression();
         }
-        return new ParamDecl(RangeFrom(start), name.Lexeme, type, defaultValue);
+        return new ParamDecl(RangeFrom(start), name.Lexeme, type, defaultValue, decorators);
     }
 
     private Parameter ParseDeclaredParameter() {
-        // Decorators (@allowed, @minLength, …) are tokens at this point; we
-        // consume them as opaque sequences in v1 — the type checker handles
-        // their semantic content later.
         SourceLocation start = Current.Location;
-        SkipParameterDecorators(requireNewline: false);
+        ReportMisplacedDecorators();
         Token name = Expect(TokenKind.Identifier, _e2001, "expected parameter name");
         Expect(TokenKind.Colon, _e2001, "expected ':' after parameter name");
         TypeRef type = ParseTypeRef();
@@ -472,41 +472,91 @@ public sealed class Parser {
     }
 
     /// <summary>
-    /// Scans and discards a decorator stack. Shared by the two productions that
-    /// admit one, which differ on a single point: §19's top-level production is
+    /// Parses a <c>param</c> declaration's decorator stack into
+    /// <see cref="Decorator"/> nodes (D-424 Decision 1). §19's production is
     /// <c>{ decorator newline } "param" …</c>, so the newline after each
-    /// decorator is grammar there ("decorators sit on their own line
-    /// immediately above the `param` they modify"), while a function parameter
-    /// list (§12) keeps the inline form. Hence the flag rather than two
-    /// scanners — the decorator syntax itself is identical.
+    /// decorator is grammar, not layout ("decorators sit on their own line
+    /// immediately above the `param` they modify") and its absence is E4201.
+    /// <para>
+    /// There is exactly one decorator production, because decorators are a
+    /// <c>param</c>-only construct (§19, D-424 Decision 2). D-415's
+    /// <c>requireNewline</c> flag existed only to reconcile this production with
+    /// a function-parameter-list one that was never specified; with that second
+    /// caller retired to <see cref="ReportMisplacedDecorators"/> the flag has
+    /// nothing left to switch between.
+    /// </para>
     /// </summary>
-    /// <param name="requireNewline">
-    /// Whether each decorator must be followed by a newline (top level), or may
-    /// be followed directly by the thing it decorates (function parameters).
-    /// </param>
-    private void SkipParameterDecorators(bool requireNewline) {
-        while (Match(TokenKind.At)) {
-            Expect(TokenKind.Identifier, _e2001, "expected decorator name after '@'");
-            if (Match(TokenKind.LeftParen)) {
-                SkipBalancedDecoratorArgs();
-            }
-            if (requireNewline) {
-                Expect(TokenKind.Newline, ErrorCatalog.E4201,
-                    "expected a newline after the decorator — a decorator sits on its own line above 'param'");
-            }
+    private List<Decorator> ParseParameterDecorators() {
+        List<Decorator> decorators = [];
+        while (Check(TokenKind.At)) {
+            decorators.Add(ParseDecorator());
+            Expect(TokenKind.Newline, ErrorCatalog.E4201,
+                "expected a newline after the decorator — a decorator sits on its own line above 'param'");
             SkipNewlines();
+        }
+        return decorators;
+    }
+
+    /// <summary>
+    /// One decorator: <c>"@" identifier [ "(" [ argument-list ] ")" ]</c>. The
+    /// syntax is the same wherever a <c>@</c> is found; whether it is *permitted*
+    /// there is the caller's business.
+    /// </summary>
+    private Decorator ParseDecorator() {
+        SourceLocation start = Current.Location;
+        Advance(); // '@'
+        Token name = Expect(TokenKind.Identifier, _e2001, "expected decorator name after '@'");
+        List<Expression> arguments = [];
+        if (Match(TokenKind.LeftParen)) {
+            arguments = ParseDecoratorArgumentList();
+            Expect(TokenKind.RightParen, _e2001, "expected ')' to close decorator arguments");
+        }
+        return new Decorator(RangeFrom(start), name.Lexeme, arguments);
+    }
+
+    /// <summary>
+    /// Reports every decorator found at the head of a function parameter
+    /// (§12) as <see cref="ErrorCatalog.E4002"/> and consumes it, so the
+    /// parameter it was attached to still parses (D-424 Decision 2).
+    /// <para>
+    /// Decorators are a <c>param</c>-declaration construct and appear nowhere
+    /// else (§19). §12's parameter lists have no decorator production; the inline
+    /// form the parser accepted before D-424 was never specified — it entered
+    /// through a scanner shared between the two productions rather than through a
+    /// decision. Reported rather than thrown, because the decorator is the whole
+    /// of the mistake: the parameter's name, type and default are all still
+    /// there to be read.
+    /// </para>
+    /// </summary>
+    private void ReportMisplacedDecorators() {
+        while (Check(TokenKind.At)) {
+            Decorator decorator = ParseDecorator();
+            _diagnostics.Add(Diagnostic.Of(ErrorCatalog.E4002, decorator.Range,
+                $"'@{decorator.Name}' can only be applied to a 'param' declaration, "
+                + "not to a function parameter."));
         }
     }
 
-    private void SkipBalancedDecoratorArgs() {
-        int depth = 1;
-        while (depth > 0 && !IsAtEnd) {
-            TokenKind k = Current.Kind;
-            if (k == TokenKind.LeftParen) depth++;
-            else if (k == TokenKind.RightParen) depth--;
-            if (depth > 0) Advance();
+    /// <summary>
+    /// A decorator's argument list. Arguments are parsed as ordinary expressions,
+    /// deliberately (D-424 Decision 1) — the restriction to literals belongs to
+    /// the type checker, so <c>@minLength(x)</c> reaches it and the diagnostic
+    /// lands at the argument's own position rather than becoming a parse error.
+    /// An optional trailing comma is accepted, as it now is on every
+    /// comma-separated list (D-421).
+    /// </summary>
+    private List<Expression> ParseDecoratorArgumentList() {
+        List<Expression> arguments = [];
+        SkipNewlines();
+        if (Check(TokenKind.RightParen)) return arguments;
+        arguments.Add(ParseExpression());
+        while (Match(TokenKind.Comma)) {
+            SkipNewlines();
+            if (Check(TokenKind.RightParen)) break; // trailing comma
+            arguments.Add(ParseExpression());
         }
-        Expect(TokenKind.RightParen, _e2001, "expected ')' to close decorator arguments");
+        SkipNewlines();
+        return arguments;
     }
 
     private List<Parameter> ParseParameterList(TokenKind terminator) {

@@ -588,10 +588,10 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
-    /// <summary>`param` after `fn` or top-level statement</summary>
+    /// <summary>`param` after `type`, `fn`, `const`, `readonly` or top-level statement</summary>
     public static readonly ErrorDescriptor E2202 = new(
         Code: "E2202",
-        Title: "`param` after `fn` or top-level statement",
+        Title: "`param` after `type`, `fn`, `const`, `readonly` or top-level statement",
         Category: ErrorCategory.Syntax,
         Status: ErrorStatus.PreRelease,
         Severity: DiagnosticSeverity.Error,
@@ -790,10 +790,10 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
-    /// <summary>invalid `@minLength` / `@maxLength` argument</summary>
+    /// <summary>invalid `@minLength` / `@maxLength` / `@minValue` / `@maxValue` argument</summary>
     public static readonly ErrorDescriptor E4102 = new(
         Code: "E4102",
-        Title: "invalid `@minLength` / `@maxLength` argument",
+        Title: "invalid `@minLength` / `@maxLength` / `@minValue` / `@maxValue` argument",
         Category: ErrorCategory.ParamDecorator,
         Status: ErrorStatus.PreRelease,
         Severity: DiagnosticSeverity.Error,
@@ -803,15 +803,6 @@ public static class ErrorCatalog {
     public static readonly ErrorDescriptor E4201 = new(
         Code: "E4201",
         Title: "`param` declaration syntax error",
-        Category: ErrorCategory.ParamDecorator,
-        Status: ErrorStatus.PreRelease,
-        Severity: DiagnosticSeverity.Error,
-        Throws: null);
-
-    /// <summary>`param` after `param` block ends</summary>
-    public static readonly ErrorDescriptor E4202 = new(
-        Code: "E4202",
-        Title: "`param` after `param` block ends",
         Category: ErrorCategory.ParamDecorator,
         Status: ErrorStatus.PreRelease,
         Severity: DiagnosticSeverity.Error,
@@ -1207,7 +1198,6 @@ public static class ErrorCatalog {
         E4101,
         E4102,
         E4201,
-        E4202,
         E5001,
         E5002,
         E5003,

@@ -286,6 +286,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
                 case ReadonlyDecl ro:
                     RegisterProvisionalValueBinding(ro.Name, ro.Range.Start, ro);
                     break;
+                // D-424 Decision 6: a `param` name joins the top-level name space
+                // here. Registration is not binding — supplying and validating a
+                // parameter value is Sprint 10 (R-15). Phase 1.5 does not see
+                // ParamDecl at all, so nothing about the declaration's type or its
+                // default is resolved by this line.
+                case ParamDecl pd:
+                    RegisterProvisionalValueBinding(pd.Name, pd.Range.Start, pd);
+                    break;
                 case VarDeclStmt vd:
                     RegisterProvisionalValueBinding(vd.Name, vd.Range.Start, vd);
                     break;
@@ -298,10 +306,19 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // binding would see GrobType.Unknown and trigger a false E0005 (D-323).
         ResolveTopLevelValueBindingTypes(unit);
 
-        // Pass 2 — validate all top-level items in source order.
+        // Pass 2 — validate all top-level items in source order, checking §19's
+        // declaration order as we go (D-424 Decision 5). The ordering check rides
+        // this walk rather than running as a pre-pass so its diagnostics
+        // interleave with the rest in source order; see
+        // TypeChecker.DeclarationOrder.cs for why that placement is load-bearing.
+        _orderHighWater = DeclarationCategory.Import;
+        _orderHighWaterItem = null;
+        _paramIsMisordered = false;
         foreach (AstNode item in unit.TopLevel) {
+            _paramIsMisordered = CheckDeclarationOrder(item);
             Visit(item);
         }
+        _paramIsMisordered = false;
 
         // Phase 2.5 — §17.1 required-non-nullable field-cycle detection (D-287).
         // Must run after all TypeDecl pass-2 visits so every type's fields are resolved.
