@@ -12,21 +12,26 @@ namespace Grob.Compiler.Ast.Declarations;
 /// each their own <see cref="ImportDecl"/>. The type annotation is mandatory
 /// (parameters are never inferred), so <see cref="Type"/> is non-nullable, unlike
 /// <see cref="Parameter.Type"/> which is nullable to allow lambda inference.
-/// <c>param</c> bindings are implicitly <c>readonly</c> (§24); decorator capture
-/// and parameter binding are Sprint 10.
+/// <c>param</c> bindings are implicitly <c>readonly</c> (§24); parameter
+/// <i>binding</i> — supplying and validating a value — is Sprint 10 (R-15).
 /// </summary>
-/// <param name="Range">Source range covered by the declaration (from the <c>param</c>
-/// keyword, not any preceding decorator stack — decorators are parsed and skipped,
-/// not yet captured into the AST).</param>
+/// <param name="Range">Source range covered by the declaration, <b>including any
+/// preceding decorator stack</b> (D-424 Decision 1). Before D-424 the range
+/// started at the <c>param</c> keyword, which is why a diagnostic about a
+/// decorator could not point at the declaration it belongs to.</param>
 /// <param name="Name">The parameter name.</param>
 /// <param name="Type">The mandatory declared type.</param>
 /// <param name="DefaultValue">The default value expression, or <see langword="null"/>
 /// when the parameter has no default.</param>
+/// <param name="Decorators">The decorator stack in source order, empty when the
+/// declaration is undecorated. Decorators are a <c>param</c>-only construct
+/// (§19, D-424 Decision 2).</param>
 public sealed record ParamDecl(
     SourceRange Range,
     string Name,
     TypeRef Type,
-    Expression? DefaultValue) : Declaration(Range) {
+    Expression? DefaultValue,
+    IReadOnlyList<Decorator> Decorators) : Declaration(Range) {
     /// <inheritdoc/>
     public override T Accept<T>(AstVisitor<T> visitor) => visitor.VisitParamDecl(this);
 }

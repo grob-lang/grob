@@ -212,7 +212,10 @@ public class AstWalkerTests {
         TypeDecl typeDecl = new(R, "T",
             [new TypeField(R, "tf", intType, Id("tf-default"))]);
 
-        ParamDecl paramDecl = new(R, "pb", intType, Id("pb-default"));
+        // D-424: the decorator stack is walked before the default, and a
+        // decorator's arguments are ordinary expressions the walker recurses into.
+        ParamDecl paramDecl = new(R, "pb", intType, Id("pb-default"),
+            [new Decorator(R, "allowed", [Id("dec-arg")])]);
 
         ConstDecl constDecl = new(R, "K", null, Id("ck"));
         ReadonlyDecl readonlyDecl = new(R, "R", null, Id("rk"));
@@ -242,6 +245,7 @@ public class AstWalkerTests {
             "tb", "tc-b", "tf",
             "is",
             "tf-default",
+            "dec-arg",
             "pb-default",
             "ck",
             "rk",
