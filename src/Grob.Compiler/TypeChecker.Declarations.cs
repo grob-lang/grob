@@ -637,6 +637,11 @@ public sealed partial class TypeChecker {
         if (!misordered) {
             FinalizeTopLevelBinding(
                 node.Name, ResolveTypeRef(node.Type), node.Range.Start, node, node.Range);
+        } else {
+            // Rejected for its position (E2202), not its type: pass 1 entered the name,
+            // and left as Unknown a function reading it would add a false E0005. Keep it
+            // provisional so no collision is reported alongside the ordering error.
+            UpdateProvisionalType(node.Name, ResolveTypeRef(node.Type));
         }
 
         // The decorator stack sits above the `param` keyword, so checking it

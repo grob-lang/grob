@@ -225,4 +225,25 @@ public sealed class TypeCheckerParamNameSpaceTests {
         Assert.Equal(2, d.Range.Start.Line);
         Assert.Equal(1, d.Range.Start.Column);
     }
+
+    /// <summary>
+    /// A misplaced <c>param</c> is rejected for its position, not for its type:
+    /// pass 1 still entered the name, so a function reading it must see the declared
+    /// type rather than the provisional <see cref="GrobType.Unknown"/>, which is
+    /// assignable to nothing and would add a false E0005 to the one E2202 (PR #214
+    /// review).
+    /// </summary>
+    [Theory]
+    [InlineData("int")]
+    [InlineData("string")]
+    [InlineData("bool")]
+    public void MisplacedParam_ReadByAFunction_ReportsE2202Alone(string type) {
+        DiagnosticBag bag = Check(
+            $"const other := \"x\"\nparam p: {type}\nfn f(): {type} {{\n    return p\n}}\n");
+
+        Diagnostic d = Assert.Single(bag.Diagnostics);
+        Assert.Equal("E2202", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(1, d.Range.Start.Column);
+    }
 }
