@@ -1,0 +1,21 @@
+// Native-call probe corpus: int instance members, clean probes (D-426 Decision 5,
+// condition 2). Captured against b202509 before any signature work. Every line must
+// type-check and compile with zero diagnostics.
+i := 3
+ni: int? := nil
+s := "abc"
+
+i.toString()
+i.toFloat()
+i.abs()
+i.format(s)
+ni?.toString()
+ni?.toFloat()
+ni?.abs()
+ni?.format(s)
+
+rtoString: string := i.toString()
+rtoFloat: float := i.toFloat()
+rabs: int := i.abs()
+rformat: string := i.format(s)
+rabsOpt: int? := ni?.abs()

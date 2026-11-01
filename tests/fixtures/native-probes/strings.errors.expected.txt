@@ -1,0 +1,20 @@
+error[E1003]: Namespace 'strings' has no member 'nope'.
+  --> strings.errors.grob:11:1-11:9
+error[E1003]: Namespace 'strings' has no member 'nope'.
+  --> strings.errors.grob:12:1-12:9
+error[E0003]: 'strings.join' expects 2 arguments, but 0 were supplied.
+  --> strings.errors.grob:15:1-15:14
+error[E0003]: 'strings.join' expects 2 arguments, but 1 was supplied.
+  --> strings.errors.grob:16:1-16:17
+error[E0003]: 'strings.join' expects 2 arguments, but 3 were supplied.
+  --> strings.errors.grob:17:1-17:23
+error[E0004]: Argument 1 to 'strings.join' has type 'string', which is not assignable to parameter of type 'array'.
+  --> strings.errors.grob:18:14
+error[E0004]: Argument 2 to 'strings.join' has type 'int', which is not assignable to parameter of type 'string'.
+  --> strings.errors.grob:19:19
+error[E0004]: Argument 1 to 'strings.join' has type 'array?', which is not assignable to parameter of type 'array'.
+  --> strings.errors.grob:20:14
+error[E0004]: Argument 2 to 'strings.join' has type 'string?', which is not assignable to parameter of type 'string'.
+  --> strings.errors.grob:21:19
+error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
+  --> strings.errors.grob:22:15-22:34

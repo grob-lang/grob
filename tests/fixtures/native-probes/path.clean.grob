@@ -1,0 +1,24 @@
+// Native-call probe corpus: path namespace, clean probes (D-426 Decision 5, condition 2).
+// Captured against b202509 before any signature work. Every line must type-check and
+// compile with zero diagnostics.
+s := "abc"
+arr := ["a", "b"]
+
+csep := path.separator
+
+path.join(s)
+path.join(s, s)
+path.join(s, s, s)
+path.joinAll(arr)
+path.extension(s)
+path.filename(s)
+path.stem(s)
+path.directory(s)
+path.resolve(s)
+path.normalise(s)
+path.isAbsolute(s)
+path.isRelative(s)
+path.changeExtension(s, s)
+
+rjoin: string := path.join(s, s)
+risAbsolute: bool := path.isAbsolute(s)

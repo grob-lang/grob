@@ -1,0 +1,22 @@
+// Native-call probe corpus: date namespace natives, clean probes (D-426 Decision 5,
+// condition 2). Captured against b202509 before any signature work. Every line must
+// type-check and compile with zero diagnostics.
+i := 3
+s := "abc"
+
+date.now()
+date.today()
+date.of(i, i, i)
+date.ofTime(i, i, i, i, i, i)
+date.parse(s)
+date.parse(s, s)
+date.fromUnixSeconds(i)
+date.fromUnixMillis(i)
+
+// return-type threading: a struct-returning native resolves instance members
+date.now().year
+date.today().toIso()
+date.of(i, i, i).addDays(i).month
+date.parse(s).toUtc().toIsoDateTime()
+rnow: date := date.now()
+rparse: date := date.parse(s, s)

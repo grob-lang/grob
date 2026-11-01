@@ -1,0 +1,43 @@
+// Native-call probe corpus: int type-static namespace natives, error probes (D-426
+// Decision 5, condition 2). Captured against b202509 before any signature work. Do not
+// regenerate the expected file to match new output.
+f := 2.5
+i := 3
+ni: int? := nil
+s := "abc"
+
+// unknown member
+int.nope()
+int.nope
+
+// int.min(a: int, b: int): int
+int.min()
+int.min(i)
+int.min(i, i, i)
+int.min(f, i)
+int.min(i, s)
+int.min(ni, i)
+int.min(i, ni)
+rmin: string := int.min(i, i)
+
+// int.max(a: int, b: int): int
+int.max()
+int.max(i)
+int.max(i, i, i)
+int.max(f, i)
+int.max(i, s)
+int.max(ni, i)
+int.max(i, ni)
+rmax: string := int.max(i, i)
+
+// int.clamp(value: int, lo: int, hi: int): int
+int.clamp()
+int.clamp(i, i)
+int.clamp(i, i, i, i)
+int.clamp(f, i, i)
+int.clamp(i, s, i)
+int.clamp(i, i, f)
+int.clamp(ni, i, i)
+int.clamp(i, ni, i)
+int.clamp(i, i, ni)
+rclamp: string := int.clamp(i, i, i)

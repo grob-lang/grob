@@ -1,0 +1,88 @@
+// Native-call probe corpus: string instance members, clean probes (D-426 Decision 5,
+// condition 2). Captured against b202509 before any signature work. Every line must
+// type-check and compile with zero diagnostics. Each member is probed on a
+// non-nullable receiver and through an optional chain on a nullable one.
+i := 3
+s := "abc"
+ns: string? := nil
+
+// properties
+s.length
+s.isEmpty
+ns?.length
+ns?.isEmpty
+rlength: int := s.length
+risEmpty: bool := s.isEmpty
+rlengthOpt: int? := ns?.length
+
+// methods without parameters
+s.toInt()
+s.toFloat()
+s.trim()
+s.trimStart()
+s.trimEnd()
+s.upper()
+s.lower()
+s.toString()
+ns?.toInt()
+ns?.toFloat()
+ns?.trim()
+ns?.trimStart()
+ns?.trimEnd()
+ns?.upper()
+ns?.lower()
+ns?.toString()
+rtoInt: int? := s.toInt()
+rtoFloat: float? := s.toFloat()
+rtrim: string := s.trim()
+rtrimOpt: string? := ns?.trim()
+
+// methods with one string parameter
+s.split(s)
+s.contains(s)
+s.startsWith(s)
+s.endsWith(s)
+s.indexOf(s)
+s.lastIndexOf(s)
+ns?.split(s)
+ns?.contains(s)
+ns?.startsWith(s)
+ns?.endsWith(s)
+ns?.indexOf(s)
+ns?.lastIndexOf(s)
+rsplit: string[] := s.split(s)
+rcontains: bool := s.contains(s)
+rindexOf: int := s.indexOf(s)
+
+// methods with two string parameters
+s.replace(s, s)
+ns?.replace(s, s)
+rreplace: string := s.replace(s, s)
+
+// methods with int parameters
+s.substring(i, i)
+s.repeat(i)
+s.left(i)
+s.right(i)
+ns?.substring(i, i)
+ns?.repeat(i)
+ns?.left(i)
+ns?.right(i)
+rsubstring: string := s.substring(i, i)
+rrepeat: string := s.repeat(i)
+
+// methods with a defaulted trailing parameter
+s.padLeft(i)
+s.padLeft(i, s)
+s.padRight(i)
+s.padRight(i, s)
+s.truncate(i)
+s.truncate(i, s)
+ns?.padLeft(i)
+ns?.padRight(i, s)
+ns?.truncate(i)
+rpadLeft: string := s.padLeft(i)
+rtruncate: string := s.truncate(i, s)
+
+// chained results keep their element type
+s.split(s)[0].upper()

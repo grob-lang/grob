@@ -1,0 +1,61 @@
+// Native-call probe corpus: guid namespace natives and constants, error probes
+// (D-426 Decision 5, condition 2). Captured against b202509 before any signature work.
+// Do not regenerate the expected file to match new output.
+i := 3
+s := "abc"
+ns: string? := nil
+g := guid.newV4()
+ng: guid? := nil
+d := date.now()
+
+// unknown member
+guid.nope()
+guid.nope
+
+// guid.empty / guid.namespaces.*: constants
+guid.empty()
+guid.namespaces.dns()
+cempty: string := guid.empty
+cdns: string := guid.namespaces.dns
+curl: string := guid.namespaces.url
+coid: string := guid.namespaces.oid
+
+// guid.newV4(): guid
+guid.newV4(s)
+rnewV4: string := guid.newV4()
+
+// guid.newV7(): guid
+guid.newV7(s)
+rnewV7: string := guid.newV7()
+
+// guid.newV5(namespace: guid, name: string...): guid, variadic with at least one segment
+guid.newV5()
+guid.newV5(g)
+guid.newV5(s, s)
+guid.newV5(d, s)
+guid.newV5(g, i)
+guid.newV5(g, s, i)
+guid.newV5(ng, s)
+guid.newV5(g, ns)
+rnewV5: string := guid.newV5(g, s)
+
+// guid.parse(value: string): guid, with compile-time literal validation (E0601)
+guid.parse()
+guid.parse(s, s)
+guid.parse(i)
+guid.parse(ns)
+guid.parse("not-a-guid")
+rparse: string := guid.parse(s)
+
+// guid.tryParse(value: string): guid?
+guid.tryParse()
+guid.tryParse(s, s)
+guid.tryParse(i)
+guid.tryParse(ns)
+rtryParse: string := guid.tryParse(s)
+
+// Session B reconciliation addendum: guid.namespaces.url and guid.namespaces.oid called
+// as functions, which the capture above probes only for guid.namespaces.dns. Appended,
+// not inserted, so every diagnostic above keeps its pinned line and column.
+guid.namespaces.url()
+guid.namespaces.oid()

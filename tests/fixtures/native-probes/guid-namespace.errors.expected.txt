@@ -1,0 +1,68 @@
+error[E1003]: Namespace 'guid' has no member 'nope'.
+  --> guid-namespace.errors.grob:12:1-12:6
+error[E1003]: Namespace 'guid' has no member 'nope'.
+  --> guid-namespace.errors.grob:13:1-13:6
+error[E1003]: Namespace 'guid' has no member 'empty'.
+  --> guid-namespace.errors.grob:16:1-16:6
+error[E1003]: Namespace 'guid' has no member 'namespaces'.
+  --> guid-namespace.errors.grob:17:1-17:6
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> guid-namespace.errors.grob:18:19-18:24
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> guid-namespace.errors.grob:19:17-19:33
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> guid-namespace.errors.grob:20:17-20:33
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> guid-namespace.errors.grob:21:17-21:33
+error[E0003]: 'guid.newV4' expects 0 arguments, but 1 was supplied.
+  --> guid-namespace.errors.grob:24:1-24:13
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> guid-namespace.errors.grob:25:19-25:30
+error[E0003]: 'guid.newV7' expects 0 arguments, but 1 was supplied.
+  --> guid-namespace.errors.grob:28:1-28:13
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> guid-namespace.errors.grob:29:19-29:30
+error[E0003]: 'guid.newV5' expects at least 2 arguments, but 0 were supplied.
+  --> guid-namespace.errors.grob:32:1-32:12
+error[E0003]: 'guid.newV5' expects at least 2 arguments, but 1 was supplied.
+  --> guid-namespace.errors.grob:33:1-33:13
+error[E0004]: Argument 1 to 'guid.newV5' has type 'string', which is not assignable to parameter of type 'struct'.
+  --> guid-namespace.errors.grob:34:12
+error[E0004]: Argument 1 to 'guid.newV5' has type 'struct', which is not assignable to parameter of type 'struct'.
+  --> guid-namespace.errors.grob:35:12
+error[E0004]: Argument 2 to 'guid.newV5' has type 'int', which is not assignable to parameter of type 'string'.
+  --> guid-namespace.errors.grob:36:15
+error[E0004]: Argument 3 to 'guid.newV5' has type 'int', which is not assignable to parameter of type 'string'.
+  --> guid-namespace.errors.grob:37:18
+error[E0004]: Argument 1 to 'guid.newV5' has type 'struct?', which is not assignable to parameter of type 'struct'.
+  --> guid-namespace.errors.grob:38:12
+error[E0004]: Argument 2 to 'guid.newV5' has type 'string?', which is not assignable to parameter of type 'string'.
+  --> guid-namespace.errors.grob:39:15
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> guid-namespace.errors.grob:40:19-40:34
+error[E0003]: 'guid.parse' expects 1 argument, but 0 were supplied.
+  --> guid-namespace.errors.grob:43:1-43:12
+error[E0003]: 'guid.parse' expects 1 argument, but 2 were supplied.
+  --> guid-namespace.errors.grob:44:1-44:16
+error[E0004]: Argument 1 to 'guid.parse' has type 'int', which is not assignable to parameter of type 'string'.
+  --> guid-namespace.errors.grob:45:12
+error[E0004]: Argument 1 to 'guid.parse' has type 'string?', which is not assignable to parameter of type 'string'.
+  --> guid-namespace.errors.grob:46:12
+error[E0601]: 'not-a-guid' is not a valid guid literal.
+  --> guid-namespace.errors.grob:47:12-47:23
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> guid-namespace.errors.grob:48:19-48:31
+error[E0003]: 'guid.tryParse' expects 1 argument, but 0 were supplied.
+  --> guid-namespace.errors.grob:51:1-51:15
+error[E0003]: 'guid.tryParse' expects 1 argument, but 2 were supplied.
+  --> guid-namespace.errors.grob:52:1-52:19
+error[E0004]: Argument 1 to 'guid.tryParse' has type 'int', which is not assignable to parameter of type 'string'.
+  --> guid-namespace.errors.grob:53:15
+error[E0004]: Argument 1 to 'guid.tryParse' has type 'string?', which is not assignable to parameter of type 'string'.
+  --> guid-namespace.errors.grob:54:15
+error[E0104]: Cannot assign value of type 'struct?' to binding of type 'string'.
+  --> guid-namespace.errors.grob:55:22-55:37
+error[E1003]: Namespace 'guid' has no member 'namespaces'.
+  --> guid-namespace.errors.grob:60:1-60:6
+error[E1003]: Namespace 'guid' has no member 'namespaces'.
+  --> guid-namespace.errors.grob:61:1-61:6

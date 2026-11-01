@@ -1,0 +1,16 @@
+// Native-call probe corpus: float type-static namespace natives, clean probes (D-426
+// Decision 5, condition 2). Captured against b202509 before any signature work. Every
+// line must type-check and compile with zero diagnostics.
+f := 2.5
+i := 3
+
+float.min(f, f)
+float.min(i, f)
+float.max(f, f)
+float.max(f, i)
+float.clamp(f, f, f)
+float.clamp(i, i, i)
+
+rmin: float := float.min(f, f)
+rmax: float := float.max(f, f)
+rclamp: float := float.clamp(f, f, f)

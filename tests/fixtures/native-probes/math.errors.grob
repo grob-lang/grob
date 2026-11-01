@@ -1,0 +1,140 @@
+// Native-call probe corpus: math namespace, error probes (D-426 Decision 5, condition 2).
+// Captured against b202509 before any signature work. Do not regenerate the expected
+// file to match new output: a difference is a defect in the migration, not in the gold
+// master. Probe kinds per member: wrong arity, wrong argument type, nullable argument
+// for a non-nullable parameter, return type pinned by a mismatched annotation.
+f := 2.0
+nf: float? := nil
+i := 3
+ni: int? := nil
+s := "abc"
+
+// unknown member
+math.nope()
+math.nope
+
+// math.pi / math.e / math.tau: constants
+math.pi()
+math.e()
+math.tau()
+cpi: string := math.pi
+ce: string := math.e
+ctau: string := math.tau
+
+// math.sqrt(n: float): float
+math.sqrt()
+math.sqrt(f, f)
+math.sqrt(s)
+math.sqrt(nf)
+rsqrt: string := math.sqrt(f)
+
+// math.pow(base: float, exp: float): float
+math.pow()
+math.pow(f)
+math.pow(f, f, f)
+math.pow(s, f)
+math.pow(f, s)
+math.pow(nf, f)
+math.pow(f, nf)
+rpow: string := math.pow(f, f)
+
+// math.log(n: float): float
+math.log()
+math.log(f, f)
+math.log(s)
+math.log(nf)
+rlog: string := math.log(f)
+
+// math.log10(n: float): float
+math.log10()
+math.log10(f, f)
+math.log10(s)
+math.log10(nf)
+rlog10: string := math.log10(f)
+
+// math.sin(radians: float): float
+math.sin()
+math.sin(f, f)
+math.sin(s)
+math.sin(nf)
+rsin: string := math.sin(f)
+
+// math.cos(radians: float): float
+math.cos()
+math.cos(f, f)
+math.cos(s)
+math.cos(nf)
+rcos: string := math.cos(f)
+
+// math.tan(radians: float): float
+math.tan()
+math.tan(f, f)
+math.tan(s)
+math.tan(nf)
+rtan: string := math.tan(f)
+
+// math.asin(n: float): float
+math.asin()
+math.asin(f, f)
+math.asin(s)
+math.asin(nf)
+rasin: string := math.asin(f)
+
+// math.acos(n: float): float
+math.acos()
+math.acos(f, f)
+math.acos(s)
+math.acos(nf)
+racos: string := math.acos(f)
+
+// math.atan(n: float): float
+math.atan()
+math.atan(f, f)
+math.atan(s)
+math.atan(nf)
+ratan: string := math.atan(f)
+
+// math.atan2(y: float, x: float): float
+math.atan2()
+math.atan2(f)
+math.atan2(f, f, f)
+math.atan2(s, f)
+math.atan2(f, s)
+math.atan2(nf, f)
+math.atan2(f, nf)
+ratan2: string := math.atan2(f, f)
+
+// math.toRadians(degrees: float): float
+math.toRadians()
+math.toRadians(f, f)
+math.toRadians(s)
+math.toRadians(nf)
+rtoRadians: string := math.toRadians(f)
+
+// math.toDegrees(radians: float): float
+math.toDegrees()
+math.toDegrees(f, f)
+math.toDegrees(s)
+math.toDegrees(nf)
+rtoDegrees: string := math.toDegrees(f)
+
+// math.random(): float
+math.random(f)
+rrandom: string := math.random()
+
+// math.randomInt(min: int, max: int): int
+math.randomInt()
+math.randomInt(i)
+math.randomInt(i, i, i)
+math.randomInt(f, i)
+math.randomInt(i, s)
+math.randomInt(ni, i)
+math.randomInt(i, ni)
+rrandomInt: string := math.randomInt(i, i)
+
+// math.randomSeed(seed: int): void
+math.randomSeed()
+math.randomSeed(i, i)
+math.randomSeed(s)
+math.randomSeed(ni)
+rrandomSeed: int := math.randomSeed(i)
