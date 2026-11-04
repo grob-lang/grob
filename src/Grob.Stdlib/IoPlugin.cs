@@ -9,7 +9,7 @@ namespace Grob.Stdlib;
 /// opcodes, never converted into <c>NativeFunction</c>s dispatched through <c>Call</c>.
 /// Sprint 8 Increment C gives this plugin its first real callable: the bare (no-namespace)
 /// <c>input</c> native, registered under the plain name <c>"input"</c> (no
-/// <c>"module."</c> prefix — <see cref="IPluginRegistrar.RegisterNative"/>'s own doc comment
+/// <c>"module."</c> prefix — <see cref="IPluginRegistrar.RegisterNative(string, NativeFunction)"/>'s own doc comment
 /// anticipates this "a qualified name … or a bare name for a top-level built-in" case).
 /// Writes its prompt argument to <see cref="IStandardStreams.Out"/> with <c>Write</c> (never
 /// <c>WriteLine</c> — a prompt has no trailing newline of its own), flushes, then reads one

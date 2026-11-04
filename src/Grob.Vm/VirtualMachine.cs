@@ -217,10 +217,34 @@ public sealed class VirtualMachine : IPluginRegistrar, IVmCallHost {
     }
 
     /// <summary>
+    /// Registers <paramref name="implementation"/> under the qualified name of
+    /// <paramref name="signature"/> (D-426). Transitional: until change group 7 moves the
+    /// VM onto a <see cref="NativeCatalogue"/>, the signature is not consulted here and
+    /// the write is the same one <see cref="RegisterNative(string, NativeFunction)"/>
+    /// performs.
+    /// </summary>
+    public void RegisterNative(FunctionSignature signature, NativeFunction implementation) {
+        ArgumentNullException.ThrowIfNull(signature);
+        ArgumentNullException.ThrowIfNull(implementation);
+        _globals[signature.Name] = GrobValue.FromFunction(implementation);
+    }
+
+    /// <summary>
+    /// Registers the renderer of <paramref name="definition"/> (D-426 Decision 3).
+    /// Transitional: until change group 7 moves <c>GetProperty</c> dispatch onto the
+    /// catalogue, the VM keeps reading property and method bindings from
+    /// <c>NamedTypeRegistry</c>, so only the renderer takes effect here.
+    /// </summary>
+    public void RegisterNamedType(NamedTypeDefinition definition) {
+        ArgumentNullException.ThrowIfNull(definition);
+        _toStringRegistry.Register(definition.Name, definition.Render);
+    }
+
+    /// <summary>
     /// Register a constant value under <paramref name="name"/> in the global variables
     /// table (D-343) — the runtime counterpart of a namespace constant such as
     /// <c>math.pi</c>, which has no callable behaviour to dispatch through
-    /// <see cref="RegisterNative"/>. Overwrites any previous binding with the same name
+    /// <see cref="RegisterNative(string, NativeFunction)"/>. Overwrites any previous binding with the same name
     /// (last write wins).
     /// </summary>
     public void RegisterConstant(string name, GrobValue value) {
