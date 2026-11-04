@@ -19,57 +19,34 @@ namespace Grob.Runtime;
 /// <c>string := 5</c> stays legal.
 /// </remarks>
 public sealed class NativeCatalogue : IValueToStringRegistry {
-    private readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, NativeEntry>> _natives;
-    private readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, ConstantEntry>> _constants;
-    private readonly IReadOnlyDictionary<GrobType, PrimitiveMemberSurface> _primitives;
-    private readonly IReadOnlyDictionary<string, NamedTypeSurface> _namedTypes;
-    private readonly IReadOnlyDictionary<string, NativeEntry> _builtins;
-    private readonly RendererTable _renderers;
+    private readonly CatalogueTables _tables;
     private readonly ValueDisplay _display;
 
-    internal NativeCatalogue(
-            IReadOnlyList<string> namespaceNames,
-            IReadOnlyDictionary<string, IReadOnlyDictionary<string, NativeEntry>> natives,
-            IReadOnlyDictionary<string, IReadOnlyDictionary<string, ConstantEntry>> constants,
-            IReadOnlyDictionary<GrobType, PrimitiveMemberSurface> primitives,
-            IReadOnlyList<string> namedTypeNames,
-            IReadOnlyDictionary<string, NamedTypeSurface> namedTypes,
-            IReadOnlyDictionary<string, NativeEntry> builtins,
-            IReadOnlyDictionary<string, GrobValue> globals,
-            RendererTable renderers,
-            ValueDisplay display) {
-        NamespaceNames = namespaceNames;
-        _natives = natives;
-        _constants = constants;
-        _primitives = primitives;
-        NamedTypeNames = namedTypeNames;
-        _namedTypes = namedTypes;
-        _builtins = builtins;
-        Globals = globals;
-        _renderers = renderers;
-        _display = display;
+    internal NativeCatalogue(CatalogueTables tables) {
+        _tables = tables;
+        _display = new ValueDisplay(tables.Renderers);
     }
 
     /// <summary>A catalogue with nothing registered. One shared instance.</summary>
     public static NativeCatalogue Empty { get; } = new NativeCatalogueBuilder().Build();
 
     /// <summary>Every namespace, in registration order.</summary>
-    public IReadOnlyList<string> NamespaceNames { get; }
+    public IReadOnlyList<string> NamespaceNames => _tables.NamespaceNames;
 
     /// <summary>Every named type, in registration order.</summary>
-    public IReadOnlyList<string> NamedTypeNames { get; }
+    public IReadOnlyList<string> NamedTypeNames => _tables.NamedTypeNames;
 
     /// <summary>
     /// Every runtime global the VM loads: namespace natives and constants by qualified
     /// name, primitive members under their receiver prefix (<c>string.trim</c>) and bare
     /// built-ins, in registration order.
     /// </summary>
-    public IReadOnlyDictionary<string, GrobValue> Globals { get; }
+    public IReadOnlyDictionary<string, GrobValue> Globals => _tables.Globals;
 
     /// <summary><see langword="true"/> when <paramref name="name"/> is a registered namespace.</summary>
     public bool IsNamespace(string name) {
         ArgumentNullException.ThrowIfNull(name);
-        return _natives.ContainsKey(name) || _constants.ContainsKey(name);
+        return _tables.Natives.ContainsKey(name) || _tables.Constants.ContainsKey(name);
     }
 
     /// <summary>Looks up the native <paramref name="memberName"/> of <paramref name="namespaceName"/>.</summary>
@@ -77,7 +54,7 @@ public sealed class NativeCatalogue : IValueToStringRegistry {
         ArgumentNullException.ThrowIfNull(namespaceName);
         ArgumentNullException.ThrowIfNull(memberName);
         entry = null;
-        return _natives.TryGetValue(namespaceName, out IReadOnlyDictionary<string, NativeEntry>? members)
+        return _tables.Natives.TryGetValue(namespaceName, out IReadOnlyDictionary<string, NativeEntry>? members)
             && members.TryGetValue(memberName, out entry);
     }
 
@@ -86,24 +63,24 @@ public sealed class NativeCatalogue : IValueToStringRegistry {
         ArgumentNullException.ThrowIfNull(namespaceName);
         ArgumentNullException.ThrowIfNull(memberName);
         entry = null;
-        return _constants.TryGetValue(namespaceName, out IReadOnlyDictionary<string, ConstantEntry>? members)
+        return _tables.Constants.TryGetValue(namespaceName, out IReadOnlyDictionary<string, ConstantEntry>? members)
             && members.TryGetValue(memberName, out entry);
     }
 
     /// <summary>Looks up the instance members registered on the primitive <paramref name="receiver"/>.</summary>
     public bool TryGetPrimitiveMembers(GrobType receiver, [NotNullWhen(true)] out PrimitiveMemberSurface? surface) =>
-        _primitives.TryGetValue(receiver, out surface);
+        _tables.Primitives.TryGetValue(receiver, out surface);
 
     /// <summary>Looks up the named type <paramref name="name"/>.</summary>
     public bool TryGetNamedType(string name, [NotNullWhen(true)] out NamedTypeSurface? surface) {
         ArgumentNullException.ThrowIfNull(name);
-        return _namedTypes.TryGetValue(name, out surface);
+        return _tables.NamedTypes.TryGetValue(name, out surface);
     }
 
     /// <summary>Looks up the bare built-in <paramref name="name"/> (<c>input</c>).</summary>
     public bool TryGetBuiltin(string name, [NotNullWhen(true)] out NativeEntry? entry) {
         ArgumentNullException.ThrowIfNull(name);
-        return _builtins.TryGetValue(name, out entry);
+        return _tables.Builtins.TryGetValue(name, out entry);
     }
 
     /// <summary>
@@ -114,5 +91,5 @@ public sealed class NativeCatalogue : IValueToStringRegistry {
     public string RenderValue(GrobValue value) => _display.Display(value);
 
     bool IValueToStringRegistry.TryToString(GrobValue value, [NotNullWhen(true)] out string? rendered) =>
-        _renderers.TryToString(value, out rendered);
+        _tables.Renderers.TryToString(value, out rendered);
 }

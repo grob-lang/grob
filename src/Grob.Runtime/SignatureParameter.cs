@@ -18,8 +18,6 @@ namespace Grob.Runtime;
 /// here (gate report F9).
 /// </remarks>
 public sealed record SignatureParameter {
-    private const string DefaultParamName = "defaultValue";
-
     /// <summary>
     /// Creates a parameter. Throws <see cref="ArgumentException"/> when
     /// <paramref name="name"/> is not an identifier, when <paramref name="type"/> is
@@ -60,22 +58,22 @@ public sealed record SignatureParameter {
     /// <summary><see langword="true"/> when <see cref="Default"/> is set.</summary>
     public bool HasDefault => Default.HasValue;
 
-    private static void RequireDefaultFits(SignatureType type, bool isVariadic, GrobValue value) {
+    private static void RequireDefaultFits(SignatureType type, bool isVariadic, GrobValue defaultValue) {
         if (isVariadic) {
-            throw new ArgumentException("A variadic parameter cannot have a default.", DefaultParamName);
+            throw new ArgumentException("A variadic parameter cannot have a default.", nameof(defaultValue));
         }
         if (type is not SignatureType.Concrete concrete) {
             throw new ArgumentException(
-                "A parameter typed by a type parameter cannot have a default.", DefaultParamName);
+                "A parameter typed by a type parameter cannot have a default.", nameof(defaultValue));
         }
-        if (value.IsNil) {
+        if (defaultValue.IsNil) {
             if (!concrete.IsNullable) {
                 throw new ArgumentException(
-                    $"A nil default is permitted only on a nullable type, not {concrete.Type}.", DefaultParamName);
+                    $"A nil default is permitted only on a nullable type, not {concrete.Type}.", nameof(defaultValue));
             }
             return;
         }
-        GrobType? expected = value.Kind switch {
+        GrobType? expected = defaultValue.Kind switch {
             GrobValueKind.Int => GrobType.Int,
             GrobValueKind.Float => GrobType.Float,
             GrobValueKind.String => GrobType.String,
@@ -84,11 +82,11 @@ public sealed record SignatureParameter {
         };
         if (expected is null) {
             throw new ArgumentException(
-                $"A default must be a scalar (int, float, string, bool or nil); a {value.Kind} value is not.", DefaultParamName);
+                $"A default must be a scalar (int, float, string, bool or nil); a {defaultValue.Kind} value is not.", nameof(defaultValue));
         }
         if (GrobTypeHelpers.ElementType(concrete.Type) != expected) {
             throw new ArgumentException(
-                $"A {value.Kind} default does not fit a parameter of type {concrete.Type}.", DefaultParamName);
+                $"A {defaultValue.Kind} default does not fit a parameter of type {concrete.Type}.", nameof(defaultValue));
         }
     }
 }

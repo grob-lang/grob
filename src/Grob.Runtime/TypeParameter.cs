@@ -8,26 +8,26 @@ namespace Grob.Runtime;
 /// then a checker meeting a generic signature throws (D-426 Decision 4).
 /// </summary>
 public sealed record TypeParameter {
-    private const TypeParameterConstraint AllConstraints =
-        TypeParameterConstraint.NamedStruct | TypeParameterConstraint.ArrayOfNamedStruct;
+    private const TypeParameterConstraints AllConstraints =
+        TypeParameterConstraints.NamedStruct | TypeParameterConstraints.ArrayOfNamedStruct;
 
     /// <summary>
     /// Creates a type parameter. Throws <see cref="ArgumentException"/> when
     /// <paramref name="name"/> is not an identifier or <paramref name="constraint"/>
-    /// carries a bit <see cref="TypeParameterConstraint"/> does not define.
+    /// carries a bit <see cref="TypeParameterConstraints"/> does not define.
     /// </summary>
-    public TypeParameter(string name, TypeParameterConstraint constraint = TypeParameterConstraint.None) {
+    public TypeParameter(string name, TypeParameterConstraints constraint = TypeParameterConstraints.None) {
         Identifiers.RequireIdentifier(name, nameof(name), "A type parameter name");
         if ((constraint & ~AllConstraints) != 0) {
-            throw new ArgumentException($"'{constraint}' is not a defined TypeParameterConstraint.", nameof(constraint));
+            throw new ArgumentException($"'{constraint}' is not a defined TypeParameterConstraints.", nameof(constraint));
         }
         Name = name;
-        Constraint = constraint;
+        Constraints = constraint;
     }
 
     /// <summary>The type parameter's name (<c>T</c>).</summary>
     public string Name { get; }
 
     /// <summary>The constraint on the type argument.</summary>
-    public TypeParameterConstraint Constraint { get; }
+    public TypeParameterConstraints Constraints { get; }
 }

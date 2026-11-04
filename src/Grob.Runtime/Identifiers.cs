@@ -6,7 +6,7 @@ namespace Grob.Runtime;
 /// lexer's <c>IsIdentStart</c>/<c>IsIdentContinue</c> pair rather than referencing it,
 /// because <c>Grob.Runtime</c> cannot see <c>Grob.Compiler</c> (the DAG). A qualified
 /// name is one or more identifiers joined by single dots (<c>"math.sqrt"</c>,
-/// <c>"guid.namespaces.dns"</c>).
+/// <c>"guid.namespaces.dns"</c>); a namespace-qualified name has at least two segments.
 /// </summary>
 internal static class Identifiers {
     /// <summary><see langword="true"/> when <paramref name="value"/> is a single identifier.</summary>
@@ -33,10 +33,11 @@ internal static class Identifiers {
     /// Throws <see cref="ArgumentNullException"/> when <paramref name="value"/> is
     /// <see langword="null"/> and <see cref="ArgumentException"/> when it is not a single
     /// identifier. <paramref name="what"/> names the thing in the message
-    /// (<c>"A parameter name"</c>).
+    /// (<c>"A parameter name"</c>); <paramref name="paramName"/> is the caller's
+    /// parameter, which is why the null check names it explicitly.
     /// </summary>
     internal static void RequireIdentifier(string value, string paramName, string what) {
-        ArgumentNullException.ThrowIfNull(value, paramName);
+        if (value is null) throw new ArgumentNullException(paramName);
         if (!IsIdentifier(value)) {
             throw new ArgumentException($"{what} must be an identifier; '{value}' is not.", paramName);
         }
@@ -48,10 +49,26 @@ internal static class Identifiers {
     /// qualified name.
     /// </summary>
     internal static void RequireQualifiedName(string value, string paramName, string what) {
-        ArgumentNullException.ThrowIfNull(value, paramName);
+        if (value is null) throw new ArgumentNullException(paramName);
         if (!IsQualifiedName(value)) {
             throw new ArgumentException(
                 $"{what} must be an identifier or dot-separated identifiers; '{value}' is not.", paramName);
+        }
+    }
+
+    /// <summary>
+    /// Throws <see cref="ArgumentNullException"/> when <paramref name="value"/> is
+    /// <see langword="null"/> and <see cref="ArgumentException"/> when it is not a
+    /// qualified name of at least two segments (<c>namespace.member</c>). The rule a
+    /// namespace member's name must satisfy on every registrar, so registration does not
+    /// depend on which <see cref="IPluginRegistrar"/> a plugin receives.
+    /// </summary>
+    internal static void RequireNamespaceQualified(string value, string paramName) {
+        if (value is null) throw new ArgumentNullException(paramName);
+        if (!IsQualifiedName(value) || !value.Contains('.')) {
+            throw new ArgumentException(
+                $"'{value}' is not a qualified name; a namespace member's name must be 'namespace.member' with every segment an identifier. A bare built-in registers through the first-party surface.",
+                paramName);
         }
     }
 

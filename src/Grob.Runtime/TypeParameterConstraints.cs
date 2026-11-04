@@ -8,7 +8,7 @@ namespace Grob.Runtime;
 /// adding a flag later is non-breaking.
 /// </summary>
 [Flags]
-public enum TypeParameterConstraint {
+public enum TypeParameterConstraints {
     /// <summary>Any type argument.</summary>
     None = 0,
 

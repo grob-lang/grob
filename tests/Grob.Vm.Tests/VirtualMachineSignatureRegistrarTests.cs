@@ -59,6 +59,19 @@ public sealed class VirtualMachineSignatureRegistrarTests {
     }
 
     [Fact]
+    public void RegisterNative_Typed_BareName_Throws() {
+        var vm = new VirtualMachine(new StringWriter());
+        var bare = new FunctionSignature("input", [], SignatureType.Of(GrobType.String));
+
+        var ex = Assert.Throws<ArgumentException>(() =>
+            vm.RegisterNative(bare, new NativeFunction("input", 0, (_, _) => GrobValue.Nil)));
+
+        Assert.Equal("signature", ex.ParamName);
+        Assert.Contains("qualified", ex.Message);
+        Assert.False(vm.Globals.ContainsKey("input"));
+    }
+
+    [Fact]
     public void RegisterNamedType_InstallsTheRenderer() {
         var vm = new VirtualMachine(new StringWriter());
         var definition = new NamedTypeDefinition("token", [], [], v => "<token>");

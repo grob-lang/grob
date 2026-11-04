@@ -221,11 +221,13 @@ public sealed class VirtualMachine : IPluginRegistrar, IVmCallHost {
     /// <paramref name="signature"/> (D-426). Transitional: until change group 7 moves the
     /// VM onto a <see cref="NativeCatalogue"/>, the signature is not consulted here and
     /// the write is the same one <see cref="RegisterNative(string, NativeFunction)"/>
-    /// performs.
+    /// performs. A bare name is rejected, as the typed surface's contract requires on
+    /// every registrar.
     /// </summary>
     public void RegisterNative(FunctionSignature signature, NativeFunction implementation) {
         ArgumentNullException.ThrowIfNull(signature);
         ArgumentNullException.ThrowIfNull(implementation);
+        Identifiers.RequireNamespaceQualified(signature.Name, nameof(signature));
         _globals[signature.Name] = GrobValue.FromFunction(implementation);
     }
 

@@ -404,6 +404,69 @@ public sealed class NativeCatalogueBuilderTests {
         Assert.Contains("built", ex.Message);
     }
 
+    [Theory]
+    [InlineData("typedNative")]
+    [InlineData("untypedNative")]
+    [InlineData("constant")]
+    [InlineData("toString")]
+    [InlineData("namedType")]
+    public void Register_AfterBuildThroughARetainedRegistrar_ThrowsAndLeavesTheCatalogueUntouched(string call) {
+        IPluginRegistrar? retained = null;
+        var builder = new NativeCatalogueBuilder().Add(new Plugin("keeper", r => retained = r));
+        NativeCatalogue catalogue = builder.Build();
+        Action late = call switch {
+            "typedNative" => () => retained!.RegisterNative(Signature("late.fn"), Native("late.fn")),
+            "untypedNative" => () => retained!.RegisterNative("late.fn", Native("late.fn")),
+            "constant" => () => retained!.RegisterConstant("late.c", GrobValue.FromInt(1)),
+            "toString" => () => retained!.RegisterToString("late", v => "x"),
+            _ => () => retained!.RegisterNamedType(NamedType("late")),
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(late);
+
+        Assert.Contains("built", ex.Message);
+        Assert.Empty(catalogue.Globals);
+        Assert.Empty(catalogue.NamespaceNames);
+        Assert.Empty(catalogue.NamedTypeNames);
+        Assert.Equal("late { value: 1 }", catalogue.RenderValue(StructOf("late", 1)));
+    }
+
+    [Fact]
+    public void RenderValue_AfterBuildThroughARetainedRegistrar_StillRenders() {
+        IPluginRegistrar? retained = null;
+        new NativeCatalogueBuilder()
+            .Add(new Plugin("keeper", r => {
+                retained = r;
+                r.RegisterToString("thing", v => "rendered");
+            }))
+            .Build();
+
+        Assert.Equal("rendered", retained!.RenderValue(StructOf("thing", 1)));
+    }
+
+    [Theory]
+    [InlineData("math.")]
+    [InlineData(".pi")]
+    [InlineData("my ns.pi")]
+    [InlineData("math..pi")]
+    public void RegisterConstant_MalformedQualifiedName_Throws(string name) {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            Build(new Plugin("ns", r => r.RegisterConstant(name, GrobValue.FromFloat(3.14)))));
+
+        Assert.Equal("name", ex.ParamName);
+        Assert.Contains("qualified", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("math.")]
+    [InlineData("a b")]
+    public void RegisterNative_Untyped_MalformedName_Throws(string name) {
+        var ex = Assert.Throws<ArgumentException>(() => Build(new Plugin("p", r => r.RegisterNative(name, Native("x")))));
+
+        Assert.Equal("name", ex.ParamName);
+    }
+
     [Fact]
     public void Build_Twice_Throws() {
         var builder = new NativeCatalogueBuilder();

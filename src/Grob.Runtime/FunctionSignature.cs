@@ -132,12 +132,11 @@ public sealed class FunctionSignature {
         }
         RequireDeclared(returnType, declared, referenced, nameof(returnType));
 
-        foreach (string name in declared) {
-            if (!referenced.Contains(name)) {
-                throw new ArgumentException(
-                    $"Type parameter '{name}' is declared but no parameter or the return type references it.",
-                    nameof(typeParameters));
-            }
+        string? unused = declared.Except(referenced).FirstOrDefault();
+        if (unused is not null) {
+            throw new ArgumentException(
+                $"Type parameter '{unused}' is declared but no parameter or the return type references it.",
+                nameof(typeParameters));
         }
     }
 

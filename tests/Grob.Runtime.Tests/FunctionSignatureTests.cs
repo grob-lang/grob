@@ -94,7 +94,7 @@ public sealed class FunctionSignatureTests {
     public void Constructor_GenericReturn_IsGeneric() {
         var signature = new FunctionSignature(
             "mapAs", [], new SignatureType.TypeParameterReference("T"),
-            [new TypeParameter("T", TypeParameterConstraint.NamedStruct)]);
+            [new TypeParameter("T", TypeParameterConstraints.NamedStruct)]);
 
         Assert.True(signature.IsGeneric);
         TypeParameter declared = Assert.Single(signature.TypeParameters);
@@ -105,7 +105,7 @@ public sealed class FunctionSignatureTests {
     public void Constructor_GenericArrayReturn_IsPermitted() {
         var signature = new FunctionSignature(
             "mapAs", [], new SignatureType.TypeParameterArray("T"),
-            [new TypeParameter("T", TypeParameterConstraint.ArrayOfNamedStruct)]);
+            [new TypeParameter("T", TypeParameterConstraints.ArrayOfNamedStruct)]);
 
         Assert.True(signature.IsGeneric);
     }

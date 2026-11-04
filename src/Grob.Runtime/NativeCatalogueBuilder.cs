@@ -59,18 +59,18 @@ public sealed class NativeCatalogueBuilder {
     public NativeCatalogue Build() {
         RequireNotBuilt();
         _built = true;
-        return new NativeCatalogue(
-            [.. _namespaceNames],
-            Freeze(_natives),
-            Freeze(_constants),
-            new ReadOnlyDictionary<GrobType, PrimitiveMemberSurface>(
+        return new NativeCatalogue(new CatalogueTables {
+            NamespaceNames = [.. _namespaceNames],
+            Natives = Freeze(_natives),
+            Constants = Freeze(_constants),
+            Primitives = new ReadOnlyDictionary<GrobType, PrimitiveMemberSurface>(
                 _primitives.ToDictionary(p => p.Key, p => p.Value.ToSurface(p.Key))),
-            [.. _namedTypeNames],
-            new ReadOnlyDictionary<string, NamedTypeSurface>(_namedTypes),
-            new ReadOnlyDictionary<string, NativeEntry>(_builtins),
-            new ReadOnlyDictionary<string, GrobValue>(_globals),
-            _renderers,
-            _display);
+            NamedTypeNames = [.. _namedTypeNames],
+            NamedTypes = new ReadOnlyDictionary<string, NamedTypeSurface>(_namedTypes),
+            Builtins = new ReadOnlyDictionary<string, NativeEntry>(_builtins),
+            Globals = new ReadOnlyDictionary<string, GrobValue>(_globals),
+            Renderers = _renderers,
+        });
     }
 
     private static ReadOnlyDictionary<string, IReadOnlyDictionary<string, T>> Freeze<T>(
@@ -91,6 +91,7 @@ public sealed class NativeCatalogueBuilder {
     // -----------------------------------------------------------------------
 
     private void RegisterNative(string owner, FunctionSignature signature, NativeFunction implementation) {
+        RequireNotBuilt();
         ArgumentNullException.ThrowIfNull(signature);
         ArgumentNullException.ThrowIfNull(implementation);
         (string namespaceName, string memberName) = SplitQualified(signature.Name, nameof(signature));
@@ -99,13 +100,14 @@ public sealed class NativeCatalogueBuilder {
     }
 
     private void RegisterUntypedNative(string owner, string name, NativeFunction implementation) {
-        ArgumentNullException.ThrowIfNull(name);
+        RequireNotBuilt();
+        Identifiers.RequireQualifiedName(name, nameof(name), "A native name");
         ArgumentNullException.ThrowIfNull(implementation);
         ClaimGlobal(owner, name, GrobValue.FromFunction(implementation));
     }
 
     private void RegisterConstant(string owner, string name, GrobValue value) {
-        ArgumentNullException.ThrowIfNull(name);
+        RequireNotBuilt();
         (string namespaceName, string memberName) = SplitQualified(name, nameof(name));
         SignatureType.Concrete type = DeriveConstantType(value);
         RequireNotReserved(namespaceName, owner);
@@ -116,6 +118,7 @@ public sealed class NativeCatalogueBuilder {
     }
 
     private void RegisterToString(string owner, string typeName, Func<GrobValue, string> render) {
+        RequireNotBuilt();
         ArgumentNullException.ThrowIfNull(typeName);
         ArgumentNullException.ThrowIfNull(render);
         if (!_renderers.TryAdd(typeName, render, owner, out string? existingOwner)) {
@@ -125,6 +128,7 @@ public sealed class NativeCatalogueBuilder {
     }
 
     private void RegisterNamedType(string owner, NamedTypeDefinition definition) {
+        RequireNotBuilt();
         ArgumentNullException.ThrowIfNull(definition);
         if (_namedTypes.TryGetValue(definition.Name, out NamedTypeSurface? existing)) {
             throw new InvalidOperationException(
@@ -146,6 +150,7 @@ public sealed class NativeCatalogueBuilder {
     // -----------------------------------------------------------------------
 
     private void RegisterPrimitiveProperty(string owner, GrobType receiver, PropertySignature signature, NativeFunction implementation) {
+        RequireNotBuilt();
         string prefix = PrimitiveReceivers.NameOf(receiver, nameof(receiver));
         ArgumentNullException.ThrowIfNull(signature);
         ArgumentNullException.ThrowIfNull(implementation);
@@ -155,6 +160,7 @@ public sealed class NativeCatalogueBuilder {
     }
 
     private void RegisterPrimitiveMethod(string owner, GrobType receiver, FunctionSignature signature, NativeFunction implementation) {
+        RequireNotBuilt();
         string prefix = PrimitiveReceivers.NameOf(receiver, nameof(receiver));
         ArgumentNullException.ThrowIfNull(signature);
         ArgumentNullException.ThrowIfNull(implementation);
@@ -165,6 +171,7 @@ public sealed class NativeCatalogueBuilder {
     }
 
     private void RegisterPrimitiveStatic(string owner, FunctionSignature signature, NativeFunction implementation) {
+        RequireNotBuilt();
         ArgumentNullException.ThrowIfNull(signature);
         ArgumentNullException.ThrowIfNull(implementation);
         (string namespaceName, string memberName) = SplitQualified(signature.Name, nameof(signature));
@@ -177,6 +184,7 @@ public sealed class NativeCatalogueBuilder {
     }
 
     private void RegisterBuiltin(string owner, FunctionSignature signature, NativeFunction implementation) {
+        RequireNotBuilt();
         ArgumentNullException.ThrowIfNull(signature);
         ArgumentNullException.ThrowIfNull(implementation);
         RequireBare(signature, "A built-in");
@@ -211,12 +219,8 @@ public sealed class NativeCatalogueBuilder {
     }
 
     private static (string NamespaceName, string MemberName) SplitQualified(string name, string paramName) {
+        Identifiers.RequireNamespaceQualified(name, paramName);
         int dot = name.IndexOf('.');
-        if (dot < 0) {
-            throw new ArgumentException(
-                $"'{name}' is a bare name; a namespace member's name must be qualified ('namespace.member'). A bare built-in registers through the first-party surface.",
-                paramName);
-        }
         return (name[..dot], name[(dot + 1)..]);
     }
 

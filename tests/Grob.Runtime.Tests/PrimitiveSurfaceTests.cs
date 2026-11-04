@@ -133,6 +133,28 @@ public sealed class PrimitiveSurfaceTests {
         Assert.Contains("'second'", ex.Message);
     }
 
+    [Theory]
+    [InlineData("property")]
+    [InlineData("method")]
+    [InlineData("static")]
+    [InlineData("builtin")]
+    public void RegisterPrimitive_AfterBuildThroughARetainedRegistrar_Throws(string call) {
+        IPrimitiveMemberRegistrar? retained = null;
+        var builder = new NativeCatalogueBuilder().Add(new PrimitivePlugin("keeper", r => retained = r));
+        NativeCatalogue catalogue = builder.Build();
+        Action late = call switch {
+            "property" => () => retained!.RegisterPrimitiveProperty(GrobType.String, new PropertySignature("late", Int), Native("x")),
+            "method" => () => retained!.RegisterPrimitiveMethod(GrobType.String, Signature("late"), Native("x")),
+            "static" => () => retained!.RegisterPrimitiveStatic(Signature("int.late"), Native("x")),
+            _ => () => retained!.RegisterBuiltin(Signature("late"), Native("x")),
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(late);
+
+        Assert.Contains("built", ex.Message);
+        Assert.Empty(catalogue.Globals);
+    }
+
     // ----- Type-statics in a primitive-named namespace -----
 
     [Fact]
