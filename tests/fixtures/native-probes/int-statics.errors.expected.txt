@@ -1,0 +1,56 @@
+error[E1003]: Namespace 'int' has no member 'nope'.
+  --> int-statics.errors.grob:10:1-10:5
+error[E1003]: Namespace 'int' has no member 'nope'.
+  --> int-statics.errors.grob:11:1-11:5
+error[E0003]: 'int.min' expects 2 arguments, but 0 were supplied.
+  --> int-statics.errors.grob:14:1-14:9
+error[E0003]: 'int.min' expects 2 arguments, but 1 was supplied.
+  --> int-statics.errors.grob:15:1-15:10
+error[E0003]: 'int.min' expects 2 arguments, but 3 were supplied.
+  --> int-statics.errors.grob:16:1-16:16
+error[E0004]: Argument 1 to 'int.min' has type 'float', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:17:9
+error[E0004]: Argument 2 to 'int.min' has type 'string', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:18:12
+error[E0004]: Argument 1 to 'int.min' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:19:9
+error[E0004]: Argument 2 to 'int.min' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:20:12
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> int-statics.errors.grob:21:17-21:29
+error[E0003]: 'int.max' expects 2 arguments, but 0 were supplied.
+  --> int-statics.errors.grob:24:1-24:9
+error[E0003]: 'int.max' expects 2 arguments, but 1 was supplied.
+  --> int-statics.errors.grob:25:1-25:10
+error[E0003]: 'int.max' expects 2 arguments, but 3 were supplied.
+  --> int-statics.errors.grob:26:1-26:16
+error[E0004]: Argument 1 to 'int.max' has type 'float', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:27:9
+error[E0004]: Argument 2 to 'int.max' has type 'string', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:28:12
+error[E0004]: Argument 1 to 'int.max' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:29:9
+error[E0004]: Argument 2 to 'int.max' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:30:12
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> int-statics.errors.grob:31:17-31:29
+error[E0003]: 'int.clamp' expects 3 arguments, but 0 were supplied.
+  --> int-statics.errors.grob:34:1-34:11
+error[E0003]: 'int.clamp' expects 3 arguments, but 2 were supplied.
+  --> int-statics.errors.grob:35:1-35:15
+error[E0003]: 'int.clamp' expects 3 arguments, but 4 were supplied.
+  --> int-statics.errors.grob:36:1-36:21
+error[E0004]: Argument 1 to 'int.clamp' has type 'float', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:37:11
+error[E0004]: Argument 2 to 'int.clamp' has type 'string', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:38:14
+error[E0004]: Argument 3 to 'int.clamp' has type 'float', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:39:17
+error[E0004]: Argument 1 to 'int.clamp' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:40:11
+error[E0004]: Argument 2 to 'int.clamp' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:41:14
+error[E0004]: Argument 3 to 'int.clamp' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> int-statics.errors.grob:42:17
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> int-statics.errors.grob:43:19-43:36

@@ -1,0 +1,34 @@
+error[E1002]: Type 'guid' has no member 'nope'.
+  --> guid-members.errors.grob:9:1-9:3
+error[E1002]: Type 'guid' has no member 'nope'.
+  --> guid-members.errors.grob:10:1-10:3
+error[E1002]: Type 'guid' has no member 'version'.
+  --> guid-members.errors.grob:13:1-13:3
+error[E0101]: Member access via '.' on nullable type 'struct?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> guid-members.errors.grob:14:1-14:4
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> guid-members.errors.grob:15:21-15:23
+error[E1002]: Type 'guid' has no member 'isEmpty'.
+  --> guid-members.errors.grob:18:1-18:3
+error[E0101]: Member access via '.' on nullable type 'struct?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> guid-members.errors.grob:19:1-19:4
+error[E0001]: Cannot assign value of type 'bool' to binding of type 'string'.
+  --> guid-members.errors.grob:20:21-20:23
+error[E0003]: 'toString' expects 0 arguments, but 1 was supplied.
+  --> guid-members.errors.grob:23:1-23:13
+error[E0101]: Member access via '.' on nullable type 'struct?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> guid-members.errors.grob:24:1-24:4
+error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
+  --> guid-members.errors.grob:25:19-25:30
+error[E0003]: 'toUpperString' expects 0 arguments, but 1 was supplied.
+  --> guid-members.errors.grob:28:1-28:18
+error[E0101]: Member access via '.' on nullable type 'struct?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> guid-members.errors.grob:29:1-29:4
+error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
+  --> guid-members.errors.grob:30:24-30:40
+error[E0003]: 'toCompactString' expects 0 arguments, but 1 was supplied.
+  --> guid-members.errors.grob:33:1-33:20
+error[E0101]: Member access via '.' on nullable type 'struct?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> guid-members.errors.grob:34:1-34:4
+error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
+  --> guid-members.errors.grob:35:26-35:44

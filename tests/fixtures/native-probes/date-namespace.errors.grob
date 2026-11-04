@@ -1,0 +1,79 @@
+// Native-call probe corpus: date namespace natives, error probes (D-426 Decision 5,
+// condition 2). Captured against b202509 before any signature work. Do not regenerate
+// the expected file to match new output.
+f := 2.5
+i := 3
+ni: int? := nil
+s := "abc"
+ns: string? := nil
+
+// unknown member
+date.nope()
+date.nope
+
+// date.now(): date
+date.now(i)
+rnow: string := date.now()
+
+// date.today(): date
+date.today(i)
+rtoday: string := date.today()
+
+// date.of(year: int, month: int, day: int): date
+date.of()
+date.of(i, i)
+date.of(i, i, i, i)
+date.of(f, i, i)
+date.of(i, s, i)
+date.of(i, i, s)
+date.of(ni, i, i)
+date.of(i, ni, i)
+date.of(i, i, ni)
+rof: string := date.of(i, i, i)
+
+// date.ofTime(year: int, month: int, day: int, hour: int, minute: int, second: int): date
+date.ofTime()
+date.ofTime(i, i, i)
+date.ofTime(i, i, i, i, i, i, i)
+date.ofTime(s, i, i, i, i, i)
+date.ofTime(i, i, i, i, i, f)
+date.ofTime(ni, i, i, i, i, i)
+date.ofTime(i, i, i, i, i, ni)
+rofTime: string := date.ofTime(i, i, i, i, i, i)
+
+// date.parse(value: string, pattern: string = ""): date
+date.parse()
+date.parse(s, s, s)
+date.parse(i)
+date.parse(s, i)
+date.parse(ns)
+date.parse(s, ns)
+rparse: string := date.parse(s)
+
+// date.fromUnixSeconds(seconds: int): date
+date.fromUnixSeconds()
+date.fromUnixSeconds(i, i)
+date.fromUnixSeconds(s)
+date.fromUnixSeconds(f)
+date.fromUnixSeconds(ni)
+rfromUnixSeconds: string := date.fromUnixSeconds(i)
+
+// date.fromUnixMillis(millis: int): date
+date.fromUnixMillis()
+date.fromUnixMillis(i, i)
+date.fromUnixMillis(s)
+date.fromUnixMillis(f)
+date.fromUnixMillis(ni)
+rfromUnixMillis: string := date.fromUnixMillis(i)
+
+// Session B reconciliation addendum: date.ofTime wrong type and nullable argument at
+// positions 2 to 5, which the capture above probes only at positions 1 and 6. Appended,
+// not inserted, so every diagnostic above keeps its pinned line and column.
+date.ofTime(i, s, i, i, i, i)
+date.ofTime(i, i, s, i, i, i)
+date.ofTime(i, i, i, s, i, i)
+date.ofTime(i, i, i, i, s, i)
+date.ofTime(i, ni, i, i, i, i)
+date.ofTime(i, i, ni, i, i, i)
+date.ofTime(i, i, i, ni, i, i)
+date.ofTime(i, i, i, i, ni, i)

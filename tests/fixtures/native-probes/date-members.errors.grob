@@ -1,0 +1,191 @@
+// Native-call probe corpus: date instance members (named type), error probes (D-426
+// Decision 5, condition 2). Captured against b202509 before any signature work. Do not
+// regenerate the expected file to match new output. Probe kinds per member: wrong
+// arity, wrong argument type (including a different named type where the parameter is
+// the type's own), nullable argument for a non-nullable parameter, nullable receiver
+// through '.', return type pinned by a mismatched annotation.
+f := 2.5
+i := 3
+ni: int? := nil
+s := "abc"
+ns: string? := nil
+d := date.now()
+nd: date? := nil
+g := guid.newV4()
+
+// unknown member
+d.nope()
+d.nope
+
+// year: int (property)
+d.year()
+nd.year
+ryear: string := d.year
+
+// month: int (property)
+d.month()
+nd.month
+rmonth: string := d.month
+
+// day: int (property)
+d.day()
+nd.day
+rday: string := d.day
+
+// hour: int (property)
+d.hour()
+nd.hour
+rhour: string := d.hour
+
+// minute: int (property)
+d.minute()
+nd.minute
+rminute: string := d.minute
+
+// second: int (property)
+d.second()
+nd.second
+rsecond: string := d.second
+
+// dayOfYear: int (property)
+d.dayOfYear()
+nd.dayOfYear
+rdayOfYear: string := d.dayOfYear
+
+// dayOfWeek: string (property)
+d.dayOfWeek()
+nd.dayOfWeek
+rdayOfWeek: int := d.dayOfWeek
+
+// utcOffset: int (property)
+d.utcOffset()
+nd.utcOffset
+rutcOffset: string := d.utcOffset
+
+// addDays(days: int): date
+d.addDays()
+d.addDays(i, i)
+d.addDays(s)
+d.addDays(f)
+d.addDays(ni)
+nd.addDays(i)
+raddDays: string := d.addDays(i)
+
+// addMonths(months: int): date
+d.addMonths()
+d.addMonths(i, i)
+d.addMonths(s)
+d.addMonths(f)
+d.addMonths(ni)
+nd.addMonths(i)
+raddMonths: string := d.addMonths(i)
+
+// addHours(hours: int): date
+d.addHours()
+d.addHours(i, i)
+d.addHours(s)
+d.addHours(f)
+d.addHours(ni)
+nd.addHours(i)
+raddHours: string := d.addHours(i)
+
+// addMinutes(minutes: int): date
+d.addMinutes()
+d.addMinutes(i, i)
+d.addMinutes(s)
+d.addMinutes(f)
+d.addMinutes(ni)
+nd.addMinutes(i)
+raddMinutes: string := d.addMinutes(i)
+
+// isBefore(other: date): bool
+d.isBefore()
+d.isBefore(d, d)
+d.isBefore(i)
+d.isBefore(g)
+d.isBefore(nd)
+nd.isBefore(d)
+risBefore: string := d.isBefore(d)
+
+// isAfter(other: date): bool
+d.isAfter()
+d.isAfter(d, d)
+d.isAfter(i)
+d.isAfter(g)
+d.isAfter(nd)
+nd.isAfter(d)
+risAfter: string := d.isAfter(d)
+
+// toIso(): string
+d.toIso(i)
+nd.toIso()
+rtoIso: int := d.toIso()
+
+// toIsoDateTime(): string
+d.toIsoDateTime(i)
+nd.toIsoDateTime()
+rtoIsoDateTime: int := d.toIsoDateTime()
+
+// format(pattern: string): string
+d.format()
+d.format(s, s)
+d.format(i)
+d.format(ns)
+nd.format(s)
+rformat: int := d.format(s)
+
+// toUnixSeconds(): int
+d.toUnixSeconds(i)
+nd.toUnixSeconds()
+rtoUnixSeconds: string := d.toUnixSeconds()
+
+// toUnixMillis(): int
+d.toUnixMillis(i)
+nd.toUnixMillis()
+rtoUnixMillis: string := d.toUnixMillis()
+
+// toUtc(): date
+d.toUtc(i)
+nd.toUtc()
+rtoUtc: string := d.toUtc()
+
+// toLocal(): date
+d.toLocal(i)
+nd.toLocal()
+rtoLocal: string := d.toLocal()
+
+// toZone(zoneId: string): date
+d.toZone()
+d.toZone(s, s)
+d.toZone(i)
+d.toZone(ns)
+nd.toZone(s)
+rtoZone: string := d.toZone(s)
+
+// toDateOnly(): date
+d.toDateOnly(i)
+nd.toDateOnly()
+rtoDateOnly: string := d.toDateOnly()
+
+// toTimeOnly(): date
+d.toTimeOnly(i)
+nd.toTimeOnly()
+rtoTimeOnly: string := d.toTimeOnly()
+
+// daysUntil(other: date): int
+d.daysUntil()
+d.daysUntil(d, d)
+d.daysUntil(i)
+d.daysUntil(g)
+d.daysUntil(nd)
+nd.daysUntil(d)
+rdaysUntil: string := d.daysUntil(d)
+
+// daysSince(other: date): int
+d.daysSince()
+d.daysSince(d, d)
+d.daysSince(i)
+d.daysSince(g)
+d.daysSince(nd)
+nd.daysSince(d)
+rdaysSince: string := d.daysSince(d)

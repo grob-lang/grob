@@ -1,0 +1,31 @@
+// Native-call probe corpus: math namespace, clean probes (D-426 Decision 5, condition 2).
+// Captured against b202509 before any signature work. Every line must type-check and
+// compile with zero diagnostics.
+f := 2.0
+i := 3
+
+cpi := math.pi
+ce := math.e
+ctau := math.tau
+
+math.sqrt(f)
+math.sqrt(i)
+math.pow(f, f)
+math.log(f)
+math.log10(f)
+math.sin(f)
+math.cos(f)
+math.tan(f)
+math.asin(0.5)
+math.acos(0.5)
+math.atan(f)
+math.atan2(f, f)
+math.toRadians(f)
+math.toDegrees(f)
+math.random()
+math.randomInt(i, i)
+math.randomSeed(i)
+
+rsqrt: float := math.sqrt(f)
+rrandom: float := math.random()
+rrandomInt: int := math.randomInt(i, i)

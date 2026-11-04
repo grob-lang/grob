@@ -1,0 +1,35 @@
+// Native-call probe corpus: named arguments to natives (D-426 Decision 4). Captured
+// against b202509 before any signature work. Named-argument binding to natives stays
+// unsupported: every call here must produce exactly the diagnostic it produces today,
+// including the named-type method calls that produce none. Do not regenerate the
+// expected file to match new output.
+f := 2.0
+i := 3
+s := "abc"
+arr := ["a", "b"]
+d := date.now()
+g := guid.newV4()
+
+// namespace natives: E0011 today
+math.sqrt(x: 2.0)
+math.sqrt(n: f)
+math.pow(base: f, exp: f)
+date.parse(s, pattern: s)
+date.parse(pattern: s)
+strings.join(parts: arr, separator: s)
+guid.newV5(g, name: s)
+int.min(a: i, b: i)
+path.join(parts: s)
+
+// primitive instance members: E0011 today
+s.padLeft(width: i)
+s.padLeft(i, char: s)
+s.replace(from: s, to: s)
+i.format(pattern: s)
+f.roundTo(decimals: i)
+
+// named-type instance members: accepted without a diagnostic today
+d.addDays(days: i)
+d.format(pattern: s)
+d.isBefore(other: d)
+d.toZone(zoneId: s)

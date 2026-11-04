@@ -1,0 +1,66 @@
+error[E1002]: Type 'float' has no member 'nope'.
+  --> float-members.errors.grob:12:1-12:3
+error[E1002]: Type 'float' has no member 'nope'.
+  --> float-members.errors.grob:13:1-13:3
+error[E0003]: 'toString' expects 0 arguments, but 1 was supplied.
+  --> float-members.errors.grob:16:1-16:13
+error[E0101]: Member access via '.' on nullable type 'float?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> float-members.errors.grob:17:1-17:4
+error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
+  --> float-members.errors.grob:18:19-18:30
+error[E0003]: 'toInt' expects 0 arguments, but 1 was supplied.
+  --> float-members.errors.grob:21:1-21:10
+error[E0101]: Member access via '.' on nullable type 'float?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> float-members.errors.grob:22:1-22:4
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> float-members.errors.grob:23:19-23:27
+error[E0003]: 'round' expects 0 arguments, but 1 was supplied.
+  --> float-members.errors.grob:26:1-26:10
+error[E0101]: Member access via '.' on nullable type 'float?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> float-members.errors.grob:27:1-27:4
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> float-members.errors.grob:28:19-28:27
+error[E0003]: 'roundTo' expects 1 argument, but 0 were supplied.
+  --> float-members.errors.grob:31:1-31:11
+error[E0003]: 'roundTo' expects 1 argument, but 2 were supplied.
+  --> float-members.errors.grob:32:1-32:15
+error[E0004]: Argument to 'roundTo' has type 'string', which is not assignable to parameter of type 'int'.
+  --> float-members.errors.grob:33:11
+error[E0004]: Argument to 'roundTo' has type 'float', which is not assignable to parameter of type 'int'.
+  --> float-members.errors.grob:34:11
+error[E0004]: Argument to 'roundTo' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> float-members.errors.grob:35:11
+error[E0101]: Member access via '.' on nullable type 'float?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> float-members.errors.grob:36:1-36:4
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> float-members.errors.grob:37:21-37:32
+error[E0003]: 'floor' expects 0 arguments, but 1 was supplied.
+  --> float-members.errors.grob:40:1-40:10
+error[E0101]: Member access via '.' on nullable type 'float?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> float-members.errors.grob:41:1-41:4
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> float-members.errors.grob:42:19-42:27
+error[E0003]: 'ceil' expects 0 arguments, but 1 was supplied.
+  --> float-members.errors.grob:45:1-45:9
+error[E0101]: Member access via '.' on nullable type 'float?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> float-members.errors.grob:46:1-46:4
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> float-members.errors.grob:47:18-47:25
+error[E0003]: 'abs' expects 0 arguments, but 1 was supplied.
+  --> float-members.errors.grob:50:1-50:8
+error[E0101]: Member access via '.' on nullable type 'float?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> float-members.errors.grob:51:1-51:4
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> float-members.errors.grob:52:17-52:23
+error[E0003]: 'format' expects 1 argument, but 0 were supplied.
+  --> float-members.errors.grob:55:1-55:10
+error[E0003]: 'format' expects 1 argument, but 2 were supplied.
+  --> float-members.errors.grob:56:1-56:14
+error[E0004]: Argument to 'format' has type 'int', which is not assignable to parameter of type 'string'.
+  --> float-members.errors.grob:57:10
+error[E0004]: Argument to 'format' has type 'string?', which is not assignable to parameter of type 'string'.
+  --> float-members.errors.grob:58:10
+error[E0101]: Member access via '.' on nullable type 'float?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> float-members.errors.grob:59:1-59:4
+error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
+  --> float-members.errors.grob:60:17-60:27

@@ -1,0 +1,10 @@
+error[E1002]: Type 'bool' has no member 'nope'.
+  --> bool-members.errors.grob:9:1-9:3
+error[E1002]: Type 'bool' has no member 'nope'.
+  --> bool-members.errors.grob:10:1-10:3
+error[E0003]: 'toString' expects 0 arguments, but 1 was supplied.
+  --> bool-members.errors.grob:13:1-13:13
+error[E0101]: Member access via '.' on nullable type 'bool?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> bool-members.errors.grob:14:1-14:4
+error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
+  --> bool-members.errors.grob:15:19-15:30
