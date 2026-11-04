@@ -1,0 +1,60 @@
+// Native-call probe corpus: float instance members, error probes (D-426 Decision 5,
+// condition 2). Captured against b202509 before any signature work. Do not regenerate
+// the expected file to match new output.
+f := 2.5
+nf: float? := nil
+i := 3
+ni: int? := nil
+s := "abc"
+ns: string? := nil
+
+// unknown member
+f.nope()
+f.nope
+
+// toString(): string
+f.toString(i)
+nf.toString()
+rtoString: int := f.toString()
+
+// toInt(): int
+f.toInt(i)
+nf.toInt()
+rtoInt: string := f.toInt()
+
+// round(): int
+f.round(i)
+nf.round()
+rround: string := f.round()
+
+// roundTo(decimals: int): float
+f.roundTo()
+f.roundTo(i, i)
+f.roundTo(s)
+f.roundTo(f)
+f.roundTo(ni)
+nf.roundTo(i)
+rroundTo: string := f.roundTo(i)
+
+// floor(): int
+f.floor(i)
+nf.floor()
+rfloor: string := f.floor()
+
+// ceil(): int
+f.ceil(i)
+nf.ceil()
+rceil: string := f.ceil()
+
+// abs(): float
+f.abs(i)
+nf.abs()
+rabs: string := f.abs()
+
+// format(pattern: string): string
+f.format()
+f.format(s, s)
+f.format(i)
+f.format(ns)
+nf.format(s)
+rformat: int := f.format(s)

@@ -1,0 +1,97 @@
+// Native-call probe corpus: path namespace, error probes (D-426 Decision 5, condition 2).
+// Captured against b202509 before any signature work. Do not regenerate the expected
+// file to match new output.
+i := 3
+s := "abc"
+ns: string? := nil
+arr := ["a", "b"]
+narr: string[]? := nil
+
+// unknown member
+path.nope()
+path.nope
+
+// path.separator: constant
+path.separator()
+csep: int := path.separator
+
+// path.join(parts: string...): string, variadic with at least one segment
+path.join()
+path.join(i)
+path.join(s, i)
+path.join(ns)
+path.join(s, ns)
+rjoin: int := path.join(s)
+
+// path.joinAll(parts: string[]): string
+path.joinAll()
+path.joinAll(arr, arr)
+path.joinAll(s)
+path.joinAll(narr)
+rjoinAll: int := path.joinAll(arr)
+
+// path.extension(p: string): string
+path.extension()
+path.extension(s, s)
+path.extension(i)
+path.extension(ns)
+rextension: int := path.extension(s)
+
+// path.filename(p: string): string
+path.filename()
+path.filename(s, s)
+path.filename(i)
+path.filename(ns)
+rfilename: int := path.filename(s)
+
+// path.stem(p: string): string
+path.stem()
+path.stem(s, s)
+path.stem(i)
+path.stem(ns)
+rstem: int := path.stem(s)
+
+// path.directory(p: string): string
+path.directory()
+path.directory(s, s)
+path.directory(i)
+path.directory(ns)
+rdirectory: int := path.directory(s)
+
+// path.resolve(p: string): string
+path.resolve()
+path.resolve(s, s)
+path.resolve(i)
+path.resolve(ns)
+rresolve: int := path.resolve(s)
+
+// path.normalise(p: string): string
+path.normalise()
+path.normalise(s, s)
+path.normalise(i)
+path.normalise(ns)
+rnormalise: int := path.normalise(s)
+
+// path.isAbsolute(p: string): bool
+path.isAbsolute()
+path.isAbsolute(s, s)
+path.isAbsolute(i)
+path.isAbsolute(ns)
+risAbsolute: string := path.isAbsolute(s)
+
+// path.isRelative(p: string): bool
+path.isRelative()
+path.isRelative(s, s)
+path.isRelative(i)
+path.isRelative(ns)
+risRelative: string := path.isRelative(s)
+
+// path.changeExtension(p: string, ext: string): string
+path.changeExtension()
+path.changeExtension(s)
+path.changeExtension(s, s, s)
+path.changeExtension(i, s)
+path.changeExtension(s, i)
+path.changeExtension(ns, s)
+path.changeExtension(s, ns)
+rchangeExtension: int := path.changeExtension(s, s)

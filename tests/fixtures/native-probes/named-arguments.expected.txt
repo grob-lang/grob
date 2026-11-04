@@ -1,0 +1,36 @@
+error[E0011]: 'math.sqrt' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:14:11-14:17
+error[E0011]: 'math.sqrt' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:15:11-15:15
+error[E0011]: 'math.pow' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:16:10-16:17
+error[E0011]: 'math.pow' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:16:19-16:25
+error[E0011]: 'date.parse' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:17:15-17:25
+error[E0011]: 'date.parse' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:18:12-18:22
+error[E0011]: 'strings.join' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:19:14-19:24
+error[E0011]: 'strings.join' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:19:26-19:38
+error[E0011]: 'guid.newV5' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:20:15-20:22
+error[E0011]: 'int.min' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:21:9-21:13
+error[E0011]: 'int.min' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:21:15-21:19
+error[E0011]: 'path.join' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:22:11-22:19
+error[E0011]: 'padLeft' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:25:11-25:19
+error[E0011]: 'padLeft' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:26:14-26:21
+error[E0011]: 'replace' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:27:11-27:18
+error[E0011]: 'replace' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:27:20-27:25
+error[E0011]: 'format' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:28:10-28:20
+error[E0011]: 'roundTo' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:29:11-29:22

@@ -1,0 +1,29 @@
+// Native-call probe corpus: guid instance members (named type), clean probes (D-426
+// Decision 5, condition 2). Captured against b202509 before any signature work. Every
+// line must type-check and compile with zero diagnostics.
+g := guid.newV4()
+ng: guid? := nil
+
+// properties
+g.version
+g.isEmpty
+ng?.version
+ng?.isEmpty
+rversion: int := g.version
+risEmpty: bool := g.isEmpty
+rversionOpt: int? := ng?.version
+
+// methods
+g.toString()
+g.toUpperString()
+g.toCompactString()
+ng?.toString()
+ng?.toUpperString()
+ng?.toCompactString()
+rtoString: string := g.toString()
+rtoUpperString: string := g.toUpperString()
+rtoCompactString: string := g.toCompactString()
+rtoStringOpt: string? := ng?.toString()
+
+// chained through a string result
+g.toCompactString().upper()

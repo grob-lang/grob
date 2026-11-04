@@ -1,0 +1,34 @@
+// Native-call probe corpus: float instance members, clean probes (D-426 Decision 5,
+// condition 2). Captured against b202509 before any signature work. Every line must
+// type-check and compile with zero diagnostics.
+f := 2.5
+nf: float? := nil
+i := 3
+s := "abc"
+
+f.toString()
+f.toInt()
+f.round()
+f.roundTo(i)
+f.floor()
+f.ceil()
+f.abs()
+f.format(s)
+nf?.toString()
+nf?.toInt()
+nf?.round()
+nf?.roundTo(i)
+nf?.floor()
+nf?.ceil()
+nf?.abs()
+nf?.format(s)
+
+rtoString: string := f.toString()
+rtoInt: int := f.toInt()
+rround: int := f.round()
+rroundTo: float := f.roundTo(i)
+rfloor: int := f.floor()
+rceil: int := f.ceil()
+rabs: float := f.abs()
+rformat: string := f.format(s)
+rroundOpt: int? := nf?.round()

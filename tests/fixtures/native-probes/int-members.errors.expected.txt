@@ -1,0 +1,34 @@
+error[E1002]: Type 'int' has no member 'nope'.
+  --> int-members.errors.grob:10:1-10:3
+error[E1002]: Type 'int' has no member 'nope'.
+  --> int-members.errors.grob:11:1-11:3
+error[E0003]: 'toString' expects 0 arguments, but 1 was supplied.
+  --> int-members.errors.grob:14:1-14:13
+error[E0101]: Member access via '.' on nullable type 'int?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> int-members.errors.grob:15:1-15:4
+error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
+  --> int-members.errors.grob:16:19-16:30
+error[E0003]: 'toFloat' expects 0 arguments, but 1 was supplied.
+  --> int-members.errors.grob:19:1-19:12
+error[E0101]: Member access via '.' on nullable type 'int?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> int-members.errors.grob:20:1-20:4
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> int-members.errors.grob:21:21-21:31
+error[E0003]: 'abs' expects 0 arguments, but 1 was supplied.
+  --> int-members.errors.grob:24:1-24:8
+error[E0101]: Member access via '.' on nullable type 'int?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> int-members.errors.grob:25:1-25:4
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> int-members.errors.grob:26:17-26:23
+error[E0003]: 'format' expects 1 argument, but 0 were supplied.
+  --> int-members.errors.grob:29:1-29:10
+error[E0003]: 'format' expects 1 argument, but 2 were supplied.
+  --> int-members.errors.grob:30:1-30:14
+error[E0004]: Argument to 'format' has type 'int', which is not assignable to parameter of type 'string'.
+  --> int-members.errors.grob:31:10
+error[E0004]: Argument to 'format' has type 'string?', which is not assignable to parameter of type 'string'.
+  --> int-members.errors.grob:32:10
+error[E0101]: Member access via '.' on nullable type 'int?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> int-members.errors.grob:33:1-33:4
+error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
+  --> int-members.errors.grob:34:17-34:27

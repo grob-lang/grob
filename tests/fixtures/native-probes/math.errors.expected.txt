@@ -1,0 +1,188 @@
+error[E1003]: Namespace 'math' has no member 'nope'.
+  --> math.errors.grob:13:1-13:6
+error[E1003]: Namespace 'math' has no member 'nope'.
+  --> math.errors.grob:14:1-14:6
+error[E1003]: Namespace 'math' has no member 'pi'.
+  --> math.errors.grob:17:1-17:6
+error[E1003]: Namespace 'math' has no member 'e'.
+  --> math.errors.grob:18:1-18:6
+error[E1003]: Namespace 'math' has no member 'tau'.
+  --> math.errors.grob:19:1-19:6
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:20:16-20:21
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:21:15-21:20
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:22:17-22:22
+error[E0003]: 'math.sqrt' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:25:1-25:11
+error[E0003]: 'math.sqrt' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:26:1-26:15
+error[E0004]: Argument 1 to 'math.sqrt' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:27:11
+error[E0004]: Argument 1 to 'math.sqrt' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:28:11
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:29:18-29:29
+error[E0003]: 'math.pow' expects 2 arguments, but 0 were supplied.
+  --> math.errors.grob:32:1-32:10
+error[E0003]: 'math.pow' expects 2 arguments, but 1 was supplied.
+  --> math.errors.grob:33:1-33:11
+error[E0003]: 'math.pow' expects 2 arguments, but 3 were supplied.
+  --> math.errors.grob:34:1-34:17
+error[E0004]: Argument 1 to 'math.pow' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:35:10
+error[E0004]: Argument 2 to 'math.pow' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:36:13
+error[E0004]: Argument 1 to 'math.pow' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:37:10
+error[E0004]: Argument 2 to 'math.pow' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:38:13
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:39:17-39:30
+error[E0003]: 'math.log' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:42:1-42:10
+error[E0003]: 'math.log' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:43:1-43:14
+error[E0004]: Argument 1 to 'math.log' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:44:10
+error[E0004]: Argument 1 to 'math.log' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:45:10
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:46:17-46:27
+error[E0003]: 'math.log10' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:49:1-49:12
+error[E0003]: 'math.log10' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:50:1-50:16
+error[E0004]: Argument 1 to 'math.log10' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:51:12
+error[E0004]: Argument 1 to 'math.log10' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:52:12
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:53:19-53:31
+error[E0003]: 'math.sin' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:56:1-56:10
+error[E0003]: 'math.sin' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:57:1-57:14
+error[E0004]: Argument 1 to 'math.sin' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:58:10
+error[E0004]: Argument 1 to 'math.sin' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:59:10
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:60:17-60:27
+error[E0003]: 'math.cos' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:63:1-63:10
+error[E0003]: 'math.cos' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:64:1-64:14
+error[E0004]: Argument 1 to 'math.cos' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:65:10
+error[E0004]: Argument 1 to 'math.cos' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:66:10
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:67:17-67:27
+error[E0003]: 'math.tan' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:70:1-70:10
+error[E0003]: 'math.tan' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:71:1-71:14
+error[E0004]: Argument 1 to 'math.tan' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:72:10
+error[E0004]: Argument 1 to 'math.tan' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:73:10
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:74:17-74:27
+error[E0003]: 'math.asin' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:77:1-77:11
+error[E0003]: 'math.asin' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:78:1-78:15
+error[E0004]: Argument 1 to 'math.asin' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:79:11
+error[E0004]: Argument 1 to 'math.asin' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:80:11
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:81:18-81:29
+error[E0003]: 'math.acos' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:84:1-84:11
+error[E0003]: 'math.acos' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:85:1-85:15
+error[E0004]: Argument 1 to 'math.acos' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:86:11
+error[E0004]: Argument 1 to 'math.acos' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:87:11
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:88:18-88:29
+error[E0003]: 'math.atan' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:91:1-91:11
+error[E0003]: 'math.atan' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:92:1-92:15
+error[E0004]: Argument 1 to 'math.atan' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:93:11
+error[E0004]: Argument 1 to 'math.atan' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:94:11
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:95:18-95:29
+error[E0003]: 'math.atan2' expects 2 arguments, but 0 were supplied.
+  --> math.errors.grob:98:1-98:12
+error[E0003]: 'math.atan2' expects 2 arguments, but 1 was supplied.
+  --> math.errors.grob:99:1-99:13
+error[E0003]: 'math.atan2' expects 2 arguments, but 3 were supplied.
+  --> math.errors.grob:100:1-100:19
+error[E0004]: Argument 1 to 'math.atan2' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:101:12
+error[E0004]: Argument 2 to 'math.atan2' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:102:15
+error[E0004]: Argument 1 to 'math.atan2' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:103:12
+error[E0004]: Argument 2 to 'math.atan2' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:104:15
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:105:19-105:34
+error[E0003]: 'math.toRadians' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:108:1-108:16
+error[E0003]: 'math.toRadians' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:109:1-109:20
+error[E0004]: Argument 1 to 'math.toRadians' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:110:16
+error[E0004]: Argument 1 to 'math.toRadians' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:111:16
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:112:23-112:39
+error[E0003]: 'math.toDegrees' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:115:1-115:16
+error[E0003]: 'math.toDegrees' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:116:1-116:20
+error[E0004]: Argument 1 to 'math.toDegrees' has type 'string', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:117:16
+error[E0004]: Argument 1 to 'math.toDegrees' has type 'float?', which is not assignable to parameter of type 'float'.
+  --> math.errors.grob:118:16
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:119:23-119:39
+error[E0003]: 'math.random' expects 0 arguments, but 1 was supplied.
+  --> math.errors.grob:122:1-122:14
+error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
+  --> math.errors.grob:123:20-123:32
+error[E0003]: 'math.randomInt' expects 2 arguments, but 0 were supplied.
+  --> math.errors.grob:126:1-126:16
+error[E0003]: 'math.randomInt' expects 2 arguments, but 1 was supplied.
+  --> math.errors.grob:127:1-127:17
+error[E0003]: 'math.randomInt' expects 2 arguments, but 3 were supplied.
+  --> math.errors.grob:128:1-128:23
+error[E0004]: Argument 1 to 'math.randomInt' has type 'float', which is not assignable to parameter of type 'int'.
+  --> math.errors.grob:129:16
+error[E0004]: Argument 2 to 'math.randomInt' has type 'string', which is not assignable to parameter of type 'int'.
+  --> math.errors.grob:130:19
+error[E0004]: Argument 1 to 'math.randomInt' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> math.errors.grob:131:16
+error[E0004]: Argument 2 to 'math.randomInt' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> math.errors.grob:132:19
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> math.errors.grob:133:23-133:42
+error[E0003]: 'math.randomSeed' expects 1 argument, but 0 were supplied.
+  --> math.errors.grob:136:1-136:17
+error[E0003]: 'math.randomSeed' expects 1 argument, but 2 were supplied.
+  --> math.errors.grob:137:1-137:21
+error[E0004]: Argument 1 to 'math.randomSeed' has type 'string', which is not assignable to parameter of type 'int'.
+  --> math.errors.grob:138:17
+error[E0004]: Argument 1 to 'math.randomSeed' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> math.errors.grob:139:17
+error[E0001]: Cannot assign value of type 'nil' to binding of type 'int'.
+  --> math.errors.grob:140:21-140:38

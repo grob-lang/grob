@@ -1,0 +1,188 @@
+// Native-call probe corpus: string instance members, error probes (D-426 Decision 5,
+// condition 2). Captured against b202509 before any signature work. Do not regenerate
+// the expected file to match new output. Probe kinds per member: wrong arity, wrong
+// argument type, nullable argument for a non-nullable parameter, nullable receiver
+// through '.', return type pinned by a mismatched annotation.
+f := 2.5
+i := 3
+ni: int? := nil
+s := "abc"
+ns: string? := nil
+
+// unknown member
+s.nope()
+s.nope
+
+// length: int (property)
+s.length()
+ns.length
+rlength: string := s.length
+
+// isEmpty: bool (property)
+s.isEmpty()
+ns.isEmpty
+risEmpty: string := s.isEmpty
+
+// toInt(): int?
+s.toInt(i)
+ns.toInt()
+rtoInt: string := s.toInt()
+
+// toFloat(): float?
+s.toFloat(i)
+ns.toFloat()
+rtoFloat: string := s.toFloat()
+
+// trim(): string
+s.trim(i)
+ns.trim()
+rtrim: int := s.trim()
+
+// trimStart(): string
+s.trimStart(i)
+ns.trimStart()
+rtrimStart: int := s.trimStart()
+
+// trimEnd(): string
+s.trimEnd(i)
+ns.trimEnd()
+rtrimEnd: int := s.trimEnd()
+
+// upper(): string
+s.upper(i)
+ns.upper()
+rupper: int := s.upper()
+
+// lower(): string
+s.lower(i)
+ns.lower()
+rlower: int := s.lower()
+
+// split(sep: string): string[]
+s.split()
+s.split(s, s)
+s.split(i)
+s.split(ns)
+ns.split(s)
+rsplit: int := s.split(s)
+
+// contains(s: string): bool
+s.contains()
+s.contains(s, s)
+s.contains(i)
+s.contains(ns)
+ns.contains(s)
+rcontains: string := s.contains(s)
+
+// startsWith(s: string): bool
+s.startsWith()
+s.startsWith(s, s)
+s.startsWith(i)
+s.startsWith(ns)
+ns.startsWith(s)
+rstartsWith: string := s.startsWith(s)
+
+// endsWith(s: string): bool
+s.endsWith()
+s.endsWith(s, s)
+s.endsWith(i)
+s.endsWith(ns)
+ns.endsWith(s)
+rendsWith: string := s.endsWith(s)
+
+// replace(from: string, to: string): string
+s.replace()
+s.replace(s)
+s.replace(s, s, s)
+s.replace(i, s)
+s.replace(s, i)
+s.replace(ns, s)
+s.replace(s, ns)
+ns.replace(s, s)
+rreplace: int := s.replace(s, s)
+
+// indexOf(s: string): int
+s.indexOf()
+s.indexOf(s, s)
+s.indexOf(i)
+s.indexOf(ns)
+ns.indexOf(s)
+rindexOf: string := s.indexOf(s)
+
+// lastIndexOf(s: string): int
+s.lastIndexOf()
+s.lastIndexOf(s, s)
+s.lastIndexOf(i)
+s.lastIndexOf(ns)
+ns.lastIndexOf(s)
+rlastIndexOf: string := s.lastIndexOf(s)
+
+// substring(start: int, length: int): string
+s.substring()
+s.substring(i)
+s.substring(i, i, i)
+s.substring(s, i)
+s.substring(i, f)
+s.substring(ni, i)
+s.substring(i, ni)
+ns.substring(i, i)
+rsubstring: int := s.substring(i, i)
+
+// repeat(count: int): string
+s.repeat()
+s.repeat(i, i)
+s.repeat(s)
+s.repeat(ni)
+ns.repeat(i)
+rrepeat: int := s.repeat(i)
+
+// left(n: int): string
+s.left()
+s.left(i, i)
+s.left(s)
+s.left(ni)
+ns.left(i)
+rleft: int := s.left(i)
+
+// right(n: int): string
+s.right()
+s.right(i, i)
+s.right(s)
+s.right(ni)
+ns.right(i)
+rright: int := s.right(i)
+
+// toString(): string
+s.toString(i)
+ns.toString()
+rtoString: int := s.toString()
+
+// padLeft(width: int, char: string = " "): string
+s.padLeft()
+s.padLeft(i, s, s)
+s.padLeft(s)
+s.padLeft(i, i)
+s.padLeft(ni)
+s.padLeft(i, ns)
+ns.padLeft(i)
+rpadLeft: int := s.padLeft(i)
+
+// padRight(width: int, char: string = " "): string
+s.padRight()
+s.padRight(i, s, s)
+s.padRight(s)
+s.padRight(i, i)
+s.padRight(ni)
+s.padRight(i, ns)
+ns.padRight(i)
+rpadRight: int := s.padRight(i)
+
+// truncate(maxLength: int, suffix: string = "..."): string
+s.truncate()
+s.truncate(i, s, s)
+s.truncate(s)
+s.truncate(i, i)
+s.truncate(ni)
+s.truncate(i, ns)
+ns.truncate(i)
+rtruncate: int := s.truncate(i)

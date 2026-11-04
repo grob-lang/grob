@@ -1,0 +1,111 @@
+// Native-call probe corpus: date instance members (named type), clean probes (D-426
+// Decision 5, condition 2). Captured against b202509 before any signature work. Every
+// line must type-check and compile with zero diagnostics.
+i := 3
+s := "abc"
+d := date.now()
+d2 := date.today()
+nd: date? := nil
+
+// properties
+d.year
+d.month
+d.day
+d.hour
+d.minute
+d.second
+d.dayOfYear
+d.dayOfWeek
+d.utcOffset
+nd?.year
+nd?.month
+nd?.day
+nd?.hour
+nd?.minute
+nd?.second
+nd?.dayOfYear
+nd?.dayOfWeek
+nd?.utcOffset
+ryear: int := d.year
+rmonth: int := d.month
+rday: int := d.day
+rhour: int := d.hour
+rminute: int := d.minute
+rsecond: int := d.second
+rdayOfYear: int := d.dayOfYear
+rdayOfWeek: string := d.dayOfWeek
+rutcOffset: int := d.utcOffset
+ryearOpt: int? := nd?.year
+
+// arithmetic: returns date
+d.addDays(i)
+d.addMonths(i)
+d.addHours(i)
+d.addMinutes(i)
+nd?.addDays(i)
+nd?.addMonths(i)
+nd?.addHours(i)
+nd?.addMinutes(i)
+raddDays: date := d.addDays(i)
+raddMonths: date := d.addMonths(i)
+raddHours: date := d.addHours(i)
+raddMinutes: date := d.addMinutes(i)
+d.addDays(i).year
+d.addMonths(i).toIso()
+
+// comparison: date parameter
+d.isBefore(d2)
+d.isAfter(d2)
+nd?.isBefore(d2)
+nd?.isAfter(d2)
+risBefore: bool := d.isBefore(d2)
+risAfter: bool := d.isAfter(d2)
+
+// formatting
+d.toIso()
+d.toIsoDateTime()
+d.format(s)
+nd?.toIso()
+nd?.toIsoDateTime()
+nd?.format(s)
+rtoIso: string := d.toIso()
+rtoIsoDateTime: string := d.toIsoDateTime()
+rformat: string := d.format(s)
+
+// epoch
+d.toUnixSeconds()
+d.toUnixMillis()
+nd?.toUnixSeconds()
+nd?.toUnixMillis()
+rtoUnixSeconds: int := d.toUnixSeconds()
+rtoUnixMillis: int := d.toUnixMillis()
+
+// zones: returns date
+d.toUtc()
+d.toLocal()
+d.toZone(s)
+nd?.toUtc()
+nd?.toLocal()
+nd?.toZone(s)
+rtoUtc: date := d.toUtc()
+rtoLocal: date := d.toLocal()
+rtoZone: date := d.toZone(s)
+d.toUtc().toIsoDateTime()
+d.toZone(s).utcOffset
+
+// extraction: returns date
+d.toDateOnly()
+d.toTimeOnly()
+nd?.toDateOnly()
+nd?.toTimeOnly()
+rtoDateOnly: date := d.toDateOnly()
+rtoTimeOnly: date := d.toTimeOnly()
+d.toDateOnly().day
+
+// intervals: date parameter
+d.daysUntil(d2)
+d.daysSince(d2)
+nd?.daysUntil(d2)
+nd?.daysSince(d2)
+rdaysUntil: int := d.daysUntil(d2)
+rdaysSince: int := d.daysSince(d2)

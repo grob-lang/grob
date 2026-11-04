@@ -1,0 +1,102 @@
+error[E1003]: Namespace 'date' has no member 'nope'.
+  --> date-namespace.errors.grob:11:1-11:6
+error[E1003]: Namespace 'date' has no member 'nope'.
+  --> date-namespace.errors.grob:12:1-12:6
+error[E0003]: 'date.now' expects 0 arguments, but 1 was supplied.
+  --> date-namespace.errors.grob:15:1-15:11
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> date-namespace.errors.grob:16:17-16:26
+error[E0003]: 'date.today' expects 0 arguments, but 1 was supplied.
+  --> date-namespace.errors.grob:19:1-19:13
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> date-namespace.errors.grob:20:19-20:30
+error[E0003]: 'date.of' expects 3 arguments, but 0 were supplied.
+  --> date-namespace.errors.grob:23:1-23:9
+error[E0003]: 'date.of' expects 3 arguments, but 2 were supplied.
+  --> date-namespace.errors.grob:24:1-24:13
+error[E0003]: 'date.of' expects 3 arguments, but 4 were supplied.
+  --> date-namespace.errors.grob:25:1-25:19
+error[E0004]: Argument 1 to 'date.of' has type 'float', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:26:9
+error[E0004]: Argument 2 to 'date.of' has type 'string', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:27:12
+error[E0004]: Argument 3 to 'date.of' has type 'string', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:28:15
+error[E0004]: Argument 1 to 'date.of' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:29:9
+error[E0004]: Argument 2 to 'date.of' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:30:12
+error[E0004]: Argument 3 to 'date.of' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:31:15
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> date-namespace.errors.grob:32:16-32:31
+error[E0003]: 'date.ofTime' expects 6 arguments, but 0 were supplied.
+  --> date-namespace.errors.grob:35:1-35:13
+error[E0003]: 'date.ofTime' expects 6 arguments, but 3 were supplied.
+  --> date-namespace.errors.grob:36:1-36:20
+error[E0003]: 'date.ofTime' expects 6 arguments, but 7 were supplied.
+  --> date-namespace.errors.grob:37:1-37:32
+error[E0004]: Argument 1 to 'date.ofTime' has type 'string', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:38:13
+error[E0004]: Argument 6 to 'date.ofTime' has type 'float', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:39:28
+error[E0004]: Argument 1 to 'date.ofTime' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:40:13
+error[E0004]: Argument 6 to 'date.ofTime' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:41:28
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> date-namespace.errors.grob:42:20-42:48
+error[E0003]: 'date.parse' expects between 1 and 2 arguments, but 0 were supplied.
+  --> date-namespace.errors.grob:45:1-45:12
+error[E0003]: 'date.parse' expects between 1 and 2 arguments, but 3 were supplied.
+  --> date-namespace.errors.grob:46:1-46:19
+error[E0004]: Argument 1 to 'date.parse' has type 'int', which is not assignable to parameter of type 'string'.
+  --> date-namespace.errors.grob:47:12
+error[E0004]: Argument 2 to 'date.parse' has type 'int', which is not assignable to parameter of type 'string'.
+  --> date-namespace.errors.grob:48:15
+error[E0004]: Argument 1 to 'date.parse' has type 'string?', which is not assignable to parameter of type 'string'.
+  --> date-namespace.errors.grob:49:12
+error[E0004]: Argument 2 to 'date.parse' has type 'string?', which is not assignable to parameter of type 'string'.
+  --> date-namespace.errors.grob:50:15
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> date-namespace.errors.grob:51:19-51:31
+error[E0003]: 'date.fromUnixSeconds' expects 1 argument, but 0 were supplied.
+  --> date-namespace.errors.grob:54:1-54:22
+error[E0003]: 'date.fromUnixSeconds' expects 1 argument, but 2 were supplied.
+  --> date-namespace.errors.grob:55:1-55:26
+error[E0004]: Argument 1 to 'date.fromUnixSeconds' has type 'string', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:56:22
+error[E0004]: Argument 1 to 'date.fromUnixSeconds' has type 'float', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:57:22
+error[E0004]: Argument 1 to 'date.fromUnixSeconds' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:58:22
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> date-namespace.errors.grob:59:29-59:51
+error[E0003]: 'date.fromUnixMillis' expects 1 argument, but 0 were supplied.
+  --> date-namespace.errors.grob:62:1-62:21
+error[E0003]: 'date.fromUnixMillis' expects 1 argument, but 2 were supplied.
+  --> date-namespace.errors.grob:63:1-63:25
+error[E0004]: Argument 1 to 'date.fromUnixMillis' has type 'string', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:64:21
+error[E0004]: Argument 1 to 'date.fromUnixMillis' has type 'float', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:65:21
+error[E0004]: Argument 1 to 'date.fromUnixMillis' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:66:21
+error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
+  --> date-namespace.errors.grob:67:28-67:49
+error[E0004]: Argument 2 to 'date.ofTime' has type 'string', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:72:16
+error[E0004]: Argument 3 to 'date.ofTime' has type 'string', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:73:19
+error[E0004]: Argument 4 to 'date.ofTime' has type 'string', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:74:22
+error[E0004]: Argument 5 to 'date.ofTime' has type 'string', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:75:25
+error[E0004]: Argument 2 to 'date.ofTime' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:76:16
+error[E0004]: Argument 3 to 'date.ofTime' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:77:19
+error[E0004]: Argument 4 to 'date.ofTime' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:78:22
+error[E0004]: Argument 5 to 'date.ofTime' has type 'int?', which is not assignable to parameter of type 'int'.
+  --> date-namespace.errors.grob:79:25

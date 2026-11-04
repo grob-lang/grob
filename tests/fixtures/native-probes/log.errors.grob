@@ -1,0 +1,45 @@
+// Native-call probe corpus: log namespace, error probes (D-426 Decision 5, condition 2).
+// Captured against b202509 before any signature work. Do not regenerate the expected
+// file to match new output.
+i := 3
+s := "abc"
+ns: string? := nil
+
+// unknown member
+log.nope()
+log.nope
+
+// log.debug(message: string): void
+log.debug()
+log.debug(s, s)
+log.debug(i)
+log.debug(ns)
+rdebug: int := log.debug(s)
+
+// log.info(message: string): void
+log.info()
+log.info(s, s)
+log.info(i)
+log.info(ns)
+rinfo: int := log.info(s)
+
+// log.warning(message: string): void
+log.warning()
+log.warning(s, s)
+log.warning(i)
+log.warning(ns)
+rwarning: int := log.warning(s)
+
+// log.error(message: string): void
+log.error()
+log.error(s, s)
+log.error(i)
+log.error(ns)
+rerror: int := log.error(s)
+
+// log.setLevel(level: string): void
+log.setLevel()
+log.setLevel(s, s)
+log.setLevel(i)
+log.setLevel(ns)
+rsetLevel: int := log.setLevel(s)
