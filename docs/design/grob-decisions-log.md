@@ -15020,7 +15020,7 @@ today by **four separate models**, not one:
 | Model | Assembly | Surface | Size at `b202509` |
 |---|---|---|---|
 | `NamespaceRegistry.NativeMember` (six accreted parameters) | `Grob.Compiler`, internal | Namespace natives — `math.sqrt`, `path.join`, `guid.newV5` | 56 natives, 8 constants |
-| `PrimitiveMemberMethod` / `PrimitiveMemberProperty` | `Grob.Core`, public | Instance members on `int`, `float`, `string` | 37 members |
+| `PrimitiveMemberMethod` / `PrimitiveMemberProperty` | `Grob.Core`, public | Instance members on `int`, `float`, `string`, `bool` | 37 members |
 | `NamedTypeMethod` / `NamedTypeProperty` / `NamedTypeParameter` | `Grob.Core`, public | Instance members on `date`, `guid` | 32 members |
 | Bespoke switch arms | `Grob.Compiler` | Array and map higher-order methods, `formatAs`, `print`/`input`/`exit` | — |
 
@@ -15131,7 +15131,7 @@ named type.
   registers members of its own namespaces and its own named types.
 - **Primitive receivers are not.** A public API that lets a plugin add a method
   to `string` is extension methods by the back door, and Grob has none. Instance
-  members on `int`, `float` and `string` register through a surface
+  members on `int`, `float`, `string` and `bool` register through a surface
   `Grob.Stdlib` can reach and a third-party plugin cannot. The gate proposes the
   mechanism; the rule is not negotiable within this increment.
 - **A plugin cannot add members to a type it did not register.** Enforced as the
@@ -15206,7 +15206,7 @@ conditions, all required:
 **Corrections land in the commit that makes them true.** D-419's rule for the
 harness applies equally to the design corpus:
 
-- **R-05's seven `FunctionSignature` sites** in `.claude/skills/authoring-a-plugin`,
+- **R-05's eight `FunctionSignature` sites** in `.claude/skills/authoring-a-plugin`,
   `.claude/skills/adding-a-stdlib-function`, `src/CLAUDE.md` and
   `plugins/CLAUDE.md`.
 - **The design and wiki sites that advertise the API** — `grob-plugins.md`,
