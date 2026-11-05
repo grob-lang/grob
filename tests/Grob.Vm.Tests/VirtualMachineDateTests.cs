@@ -297,12 +297,12 @@ public sealed class VirtualMachineDateTests {
 
         var output = new StringWriter();
         var vm = new VirtualMachine(output,
-            TestCatalogues.RendererFor(DateNatives.TypeName, v => DateNatives.IsoDateTimeString(v.AsStruct())));
+            TestCatalogues.RendererFor(DateLayout.TypeName, v => DateNatives.IsoDateTimeString(v.AsStruct())));
         vm.Run(chunk);
 
         string printed = output.ToString();
         Assert.Equal($"{SampleIso}{Environment.NewLine}", printed);
-        Assert.DoesNotContain(DateNatives.ValueFieldName, printed);
+        Assert.DoesNotContain(DateLayout.ValueFieldName, printed);
         Assert.DoesNotContain("[date]", printed);
     }
 
@@ -317,7 +317,7 @@ public sealed class VirtualMachineDateTests {
         var (vm, output) = NewVm();
         vm.Run(chunk);
 
-        Assert.Contains(DateNatives.ValueFieldName, output.ToString());
+        Assert.Contains(DateLayout.ValueFieldName, output.ToString());
     }
 
     [Fact]

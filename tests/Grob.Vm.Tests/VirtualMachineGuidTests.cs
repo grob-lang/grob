@@ -96,12 +96,12 @@ public sealed class VirtualMachineGuidTests {
 
         var output = new StringWriter();
         var vm = new VirtualMachine(output,
-            TestCatalogues.RendererFor(GuidNatives.TypeName, v => GuidNatives.CanonicalString(v.AsStruct())));
+            TestCatalogues.RendererFor(GuidLayout.TypeName, v => GuidNatives.CanonicalString(v.AsStruct())));
         vm.Run(chunk);
 
         string printed = output.ToString();
         Assert.Equal($"{Canonical}{Environment.NewLine}", printed);
-        Assert.DoesNotContain(GuidNatives.ValueFieldName, printed);
+        Assert.DoesNotContain(GuidLayout.ValueFieldName, printed);
         Assert.DoesNotContain("[guid]", printed);
     }
 
@@ -136,6 +136,6 @@ public sealed class VirtualMachineGuidTests {
         var (vm, output) = NewVm();
         vm.Run(chunk);
 
-        Assert.Contains(GuidNatives.ValueFieldName, output.ToString());
+        Assert.Contains(GuidLayout.ValueFieldName, output.ToString());
     }
 }

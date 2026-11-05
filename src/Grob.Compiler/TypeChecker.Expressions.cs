@@ -295,7 +295,7 @@ public sealed partial class TypeChecker {
     /// without re-deriving the struct name itself (Sprint 9 Increment B, D-354).
     /// </summary>
     private bool IsDateStructPair(BinaryExpr node) =>
-        GetStructTypeName(node.Left) == "date" && GetStructTypeName(node.Right) == "date";
+        GetStructTypeName(node.Left) == DateLayout.TypeName && GetStructTypeName(node.Right) == DateLayout.TypeName;
 
     private GrobType ResolveLogical(BinaryExpr node, GrobType left, GrobType right) {
         if (left == GrobType.Bool && right == GrobType.Bool) return GrobType.Bool;

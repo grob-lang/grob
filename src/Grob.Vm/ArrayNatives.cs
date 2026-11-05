@@ -192,7 +192,7 @@ internal static class ArrayNatives {
     /// </summary>
     private static bool ValuesEqual(GrobValue a, GrobValue b) {
         if (a.TryAsStruct(out GrobStruct? sa) && b.TryAsStruct(out GrobStruct? sb)
-                && sa!.TypeName == DateNatives.TypeName && sb!.TypeName == DateNatives.TypeName) {
+                && sa!.TypeName == DateLayout.TypeName && sb!.TypeName == DateLayout.TypeName) {
             return a.IsNil || b.IsNil
                 ? a.IsNil && b.IsNil
                 : DateNatives.ToDateTimeOffset(sa) == DateNatives.ToDateTimeOffset(sb);
@@ -304,10 +304,10 @@ internal sealed class GrobValueComparer : IComparer<GrobValue> {
     /// mixed <c>date</c>/<c>guid</c> pairing — does not implement <c>Comparable</c>.
     /// </summary>
     private static int CompareStruct(GrobStruct a, GrobStruct b) {
-        if (a.TypeName == DateNatives.TypeName && b.TypeName == DateNatives.TypeName) {
+        if (a.TypeName == DateLayout.TypeName && b.TypeName == DateLayout.TypeName) {
             return DateNatives.ToDateTimeOffset(a).CompareTo(DateNatives.ToDateTimeOffset(b));
         }
-        if (a.TypeName == GuidNatives.TypeName && b.TypeName == GuidNatives.TypeName) {
+        if (a.TypeName == GuidLayout.TypeName && b.TypeName == GuidLayout.TypeName) {
             return string.CompareOrdinal(GuidNatives.CanonicalString(a), GuidNatives.CanonicalString(b));
         }
         throw new NativeFaultException(RuntimeErrorLeaf, ErrorCatalog.E5906.Code,

@@ -17,27 +17,18 @@ namespace Grob.Stdlib;
 /// two instance properties, three instance methods and the renderer that makes
 /// <c>ValueDisplay</c> (D-336) print the canonical form. The type checker reads the member
 /// signatures and the VM dispatches the bindings from the catalogue this registration
-/// builds. A <c>guid</c> runtime value is a <see cref="GrobStruct"/> named <c>"guid"</c>
-/// with exactly one hidden field (<see cref="ValueFieldName"/>) holding the canonical
-/// lowercase-hyphenated string. <c>Grob.Vm</c>'s <c>GuidNatives</c> spells the same layout
-/// for its test fixtures and cannot share this code (DAG siblings), so
-/// <see cref="ValueFieldName"/>/<see cref="TypeName"/> stay in lockstep with its constants
-/// by inspection (R-19).
+/// builds. A <c>guid</c> runtime value is a <see cref="GrobStruct"/> laid out as
+/// <see cref="GuidLayout"/> defines it, the one definition <c>Grob.Vm</c>'s
+/// <c>GuidNatives</c> also reads.
 /// </summary>
 public sealed class GuidPlugin : IGrobPlugin {
-    /// <summary>The hidden field name storing a <c>guid</c> value's canonical string form.</summary>
-    internal const string ValueFieldName = "__value";
-
-    /// <summary>The struct type name every <c>guid</c> value carries.</summary>
-    internal const string TypeName = "guid";
-
     // RFC 4122 §4.3 well-known namespaces.
     private static readonly Guid DnsNamespace = Guid.Parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
     private static readonly Guid UrlNamespace = Guid.Parse("6ba7b811-9dad-11d1-80b4-00c04fd430c8");
     private static readonly Guid OidNamespace = Guid.Parse("6ba7b812-9dad-11d1-80b4-00c04fd430c8");
 
-    private static readonly SignatureType.Concrete GuidType = SignatureType.Named(GrobType.Struct, TypeName);
-    private static readonly SignatureType.Concrete NullableGuidType = SignatureType.Named(GrobType.NullableStruct, TypeName);
+    private static readonly SignatureType.Concrete GuidType = SignatureType.Named(GrobType.Struct, GuidLayout.TypeName);
+    private static readonly SignatureType.Concrete NullableGuidType = SignatureType.Named(GrobType.NullableStruct, GuidLayout.TypeName);
 
     private readonly IRandomSource _randomSource;
     private readonly IClock _clock;
@@ -101,7 +92,7 @@ public sealed class GuidPlugin : IGrobPlugin {
     // -----------------------------------------------------------------------
 
     private static NamedTypeDefinition BuildNamedType() => new(
-        TypeName,
+        GuidLayout.TypeName,
         [
             new NamedTypePropertyBinding(new PropertySignature("version", IntType),
                 r => GrobValue.FromInt(ToGuid(r).Version)),
@@ -125,9 +116,9 @@ public sealed class GuidPlugin : IGrobPlugin {
     // -----------------------------------------------------------------------
 
     private static GrobValue FromGuid(Guid g) => GrobValue.FromStruct(new GrobStruct(
-        TypeName, [new KeyValuePair<string, GrobValue>(ValueFieldName, GrobValue.FromString(g.ToString("D")))]));
+        GuidLayout.TypeName, [new KeyValuePair<string, GrobValue>(GuidLayout.ValueFieldName, GrobValue.FromString(g.ToString("D")))]));
 
-    private static string CanonicalString(GrobStruct receiver) => receiver.GetField(ValueFieldName).AsString();
+    private static string CanonicalString(GrobStruct receiver) => receiver.GetField(GuidLayout.ValueFieldName).AsString();
 
     private static Guid ToGuid(GrobStruct receiver) => Guid.Parse(CanonicalString(receiver));
 

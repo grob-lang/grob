@@ -16,20 +16,10 @@ namespace Grob.Stdlib;
 /// and the renderer that makes <c>ValueDisplay</c> (D-336) print the canonical ISO-8601
 /// form. The type checker reads the member signatures and the VM dispatches the bindings
 /// from the catalogue this registration builds. A <c>date</c> runtime value is a
-/// <see cref="GrobStruct"/> named <c>"date"</c> with exactly one hidden field
-/// (<see cref="ValueFieldName"/>) holding a <see cref="DateTimeOffset"/> formatted with
-/// <see cref="DateLayout.RoundTripFormat"/>. <c>Grob.Vm.DateNatives</c> reads the same
-/// layout for the comparison opcodes (D-367) and cannot share this code (DAG siblings), so
-/// <see cref="ValueFieldName"/>/<see cref="TypeName"/> stay in lockstep with its
-/// constants by inspection (R-19).
+/// <see cref="GrobStruct"/> laid out as <see cref="DateLayout"/> defines it, the one
+/// definition <c>Grob.Vm.DateNatives</c> also reads for the comparison opcodes (D-367).
 /// </summary>
 public sealed class DatePlugin : IGrobPlugin {
-    /// <summary>The hidden field name storing a <c>date</c> value's round-trip string form.</summary>
-    internal const string ValueFieldName = "__value";
-
-    /// <summary>The struct type name every <c>date</c> value carries.</summary>
-    internal const string TypeName = "date";
-
     // The canonical ISO-8601 rendering (the registered renderer, toIso(), toIsoDateTime()).
     // Unlike DateTime, DateTimeOffset's 'K' specifier is equivalent to 'zzz' — it never
     // renders "Z" for a zero offset, always "+00:00" — so the zero-offset case is handled
@@ -41,7 +31,7 @@ public sealed class DatePlugin : IGrobPlugin {
     /// <summary>The parameter name the four date-comparison methods share (Sonar S1192: one spelling).</summary>
     private const string OtherParameter = "other";
 
-    private static readonly SignatureType.Concrete DateType = SignatureType.Named(GrobType.Struct, TypeName);
+    private static readonly SignatureType.Concrete DateType = SignatureType.Named(GrobType.Struct, DateLayout.TypeName);
 
     private readonly IClock _clock;
 
@@ -140,7 +130,7 @@ public sealed class DatePlugin : IGrobPlugin {
     // -----------------------------------------------------------------------
 
     private static NamedTypeDefinition BuildNamedType() => new(
-        TypeName,
+        DateLayout.TypeName,
         [
             IntProperty("year", d => d.Year),
             IntProperty("month", d => d.Month),
@@ -214,12 +204,12 @@ public sealed class DatePlugin : IGrobPlugin {
     private DateTimeOffset Now() => new DateTimeOffset(DateTime.SpecifyKind(_clock.UtcNow, DateTimeKind.Utc)).ToLocalTime();
 
     private static GrobValue FromDateTimeOffset(DateTimeOffset value) => GrobValue.FromStruct(new GrobStruct(
-        TypeName,
+        DateLayout.TypeName,
         [new KeyValuePair<string, GrobValue>(
-            ValueFieldName, GrobValue.FromString(value.ToString(DateLayout.RoundTripFormat, CultureInfo.InvariantCulture)))]));
+            DateLayout.ValueFieldName, GrobValue.FromString(value.ToString(DateLayout.RoundTripFormat, CultureInfo.InvariantCulture)))]));
 
     private static DateTimeOffset ToDateTimeOffset(GrobStruct receiver) => DateTimeOffset.ParseExact(
-        receiver.GetField(ValueFieldName).AsString(), DateLayout.RoundTripFormat, CultureInfo.InvariantCulture, DateTimeStyles.None);
+        receiver.GetField(DateLayout.ValueFieldName).AsString(), DateLayout.RoundTripFormat, CultureInfo.InvariantCulture, DateTimeStyles.None);
 
     private static string IsoDateTimeString(DateTimeOffset value) {
         string format = value.Offset == TimeSpan.Zero ? IsoUtcFormat : IsoOffsetFormat;
