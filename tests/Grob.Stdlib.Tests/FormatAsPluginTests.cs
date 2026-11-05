@@ -3,6 +3,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -15,8 +16,7 @@ namespace Grob.Stdlib.Tests;
 /// </summary>
 public sealed class FormatAsPluginTests {
     private static VirtualMachine NewRegisteredVm() {
-        var vm = new VirtualMachine(new StringWriter());
-        new FormatAsPlugin().Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new FormatAsPlugin()));
         return vm;
     }
 
@@ -148,8 +148,11 @@ public sealed class FormatAsPluginTests {
 
     [Fact]
     public void Table_CellWithRegisteredToString_RendersCanonicalFormNotFields() {
-        var vm = NewRegisteredVm();
-        vm.RegisterToString("guid", v => "canonical-" + v.AsStruct().GetField("__value").AsString());
+        // formatAs registers first and captures RenderValue; the guid renderer arrives
+        // from a later plugin in the same pass, as the real registration order allows.
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(
+            new FormatAsPlugin(),
+            RendererFor("guid", v => "canonical-" + v.AsStruct().GetField("__value").AsString())));
         GrobValue g = GrobValue.FromStruct(new GrobStruct(
             "guid", [new KeyValuePair<string, GrobValue>("__value", GrobValue.FromString("abc"))]));
         GrobValue items = Arr(Row("Item", ("id", g)));

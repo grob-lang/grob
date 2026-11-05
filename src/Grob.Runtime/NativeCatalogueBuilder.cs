@@ -12,9 +12,10 @@ namespace Grob.Runtime;
 /// first-party. Registration invariants are host errors thrown as
 /// <see cref="InvalidOperationException"/> naming the member and both owners:
 /// a runtime global registered twice on any surface, a namespace or named type touched
-/// by a plugin other than the one that first registered it, a renderer registered twice,
-/// and a primitive type name claimed as a namespace from the public surface (gate report
-/// F8). Validation precedes every write, so a rejected registration leaves no trace.
+/// by a plugin other than the one that first registered it, and a primitive type name
+/// claimed as a namespace from the public surface (gate report F8). Validation precedes
+/// every write, so a rejected registration leaves no trace. A renderer arrives only with
+/// its named type, so the named-type guard is the renderer guard too.
 /// </summary>
 public sealed class NativeCatalogueBuilder {
     private readonly Dictionary<string, GrobValue> _globals = new(StringComparer.Ordinal);
@@ -117,16 +118,6 @@ public sealed class NativeCatalogueBuilder {
         Members(_constants, namespaceName)[memberName] = new ConstantEntry(name, type, value, owner);
     }
 
-    private void RegisterToString(string owner, string typeName, Func<GrobValue, string> render) {
-        RequireNotBuilt();
-        ArgumentNullException.ThrowIfNull(typeName);
-        ArgumentNullException.ThrowIfNull(render);
-        if (!_renderers.TryAdd(typeName, render, owner, out string? existingOwner)) {
-            throw new InvalidOperationException(
-                $"A renderer for '{typeName}' is already registered by plugin '{existingOwner}'; plugin '{owner}' cannot register another.");
-        }
-    }
-
     private void RegisterNamedType(string owner, NamedTypeDefinition definition) {
         RequireNotBuilt();
         ArgumentNullException.ThrowIfNull(definition);
@@ -134,7 +125,7 @@ public sealed class NativeCatalogueBuilder {
             throw new InvalidOperationException(
                 $"Named type '{definition.Name}' is already registered by plugin '{existing.Owner}'; plugin '{owner}' cannot register it again.");
         }
-        RegisterToString(owner, definition.Name, definition.Render);
+        _renderers.Add(definition.Name, definition.Render);
         _namedTypeNames.Add(definition.Name);
         _namedTypes[definition.Name] = new NamedTypeSurface(
             definition,
@@ -296,9 +287,6 @@ public sealed class NativeCatalogueBuilder {
 
         public void RegisterConstant(string name, GrobValue value) =>
             builder.RegisterConstant(owner, name, value);
-
-        public void RegisterToString(string typeName, Func<GrobValue, string> toString) =>
-            builder.RegisterToString(owner, typeName, toString);
 
         public void RegisterNamedType(NamedTypeDefinition definition) =>
             builder.RegisterNamedType(owner, definition);

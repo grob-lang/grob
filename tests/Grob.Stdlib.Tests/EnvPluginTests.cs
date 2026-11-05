@@ -3,6 +3,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -15,8 +16,7 @@ namespace Grob.Stdlib.Tests;
 /// </summary>
 public sealed class EnvPluginTests {
     private static VirtualMachine NewRegisteredVm(FakeEnvironment env) {
-        var vm = new VirtualMachine(new StringWriter());
-        new EnvPlugin(env).Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new EnvPlugin(env)));
         return vm;
     }
 

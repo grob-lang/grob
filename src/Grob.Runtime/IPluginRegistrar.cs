@@ -3,13 +3,13 @@ using Grob.Core;
 namespace Grob.Runtime;
 
 /// <summary>
-/// The registration surface an <see cref="IGrobPlugin"/> registers natives and namespace
-/// constants against (Sprint 8 Increment A). Declared in <c>Grob.Runtime</c> — not the
-/// concrete VM type — because the DAG forbids <c>Grob.Runtime</c> from referencing
-/// <c>Grob.Vm</c> (<c>Grob.Vm</c> already references <c>Grob.Runtime</c>; the reverse edge
-/// would cycle). <c>VirtualMachine</c> implements this interface in <c>Grob.Vm</c>, so a
-/// plugin author writing against <c>Grob.Runtime</c> (the published NuGet surface) never
-/// needs to see the VM's concrete type.
+/// The registration surface an <see cref="IGrobPlugin"/> registers natives, namespace
+/// constants and named types against (Sprint 8 Increment A; D-426). Declared in
+/// <c>Grob.Runtime</c>, the published NuGet surface, so a plugin author never sees a host
+/// type. The one implementation is the registrar <see cref="NativeCatalogueBuilder"/>
+/// hands each plugin: every registration lands in one <see cref="NativeCatalogue"/>, which
+/// the type checker reads and the VM is constructed over (D-426 Decision 2). There is no
+/// second registration path.
 /// </summary>
 public interface IPluginRegistrar {
     /// <summary>
@@ -48,24 +48,16 @@ public interface IPluginRegistrar {
     void RegisterConstant(string name, GrobValue value);
 
     /// <summary>
-    /// Registers <paramref name="toString"/> as the <c>ValueDisplay</c> (D-336) renderer
-    /// for every <c>Struct</c>-kind value whose <c>GrobStruct.TypeName</c> is
-    /// <paramref name="typeName"/> — the seam a plugin-owned type (<c>guid</c>, Sprint 8
-    /// Increment D) uses to make <c>print()</c> and string interpolation render its
-    /// canonical form instead of falling through to structural field rendering.
-    /// </summary>
-    void RegisterToString(string typeName, Func<GrobValue, string> toString);
-
-    /// <summary>
-    /// Renders <paramref name="value"/> through the VM's real <c>ValueDisplay</c>
-    /// (D-336) — the same top-level rendering <c>print()</c> uses, including any
-    /// <see cref="RegisterToString"/> registration made by any plugin (regardless of
-    /// registration order, since this always consults the registry's current state, not
-    /// a snapshot taken at <c>Register</c> time). The seam <c>formatAs</c> (Sprint 8
-    /// Increment E, <c>Grob.Stdlib</c>) uses to render cell values — <c>Grob.Stdlib</c>
-    /// cannot reference <c>Grob.Vm</c> to construct its own <c>ValueDisplay</c>, and a
-    /// bare <c>NullRegistry</c>-backed instance would miss a plugin type's registered
-    /// <c>toString()</c> (e.g. <c>guid</c>).
+    /// Renders <paramref name="value"/> through the catalogue's <c>ValueDisplay</c>
+    /// (D-336) — the same top-level rendering <c>print()</c> uses, including the renderer
+    /// of any named type any plugin registers (regardless of registration order, since
+    /// this always consults the renderer table's current state, not a snapshot taken at
+    /// <c>Register</c> time). The seam <c>formatAs</c> (Sprint 8 Increment E,
+    /// <c>Grob.Stdlib</c>) uses to render cell values — a bare <c>ValueDisplay</c> of its
+    /// own would miss a plugin type's renderer (e.g. <c>guid</c>). A renderer arrives only
+    /// with its named type (<see cref="RegisterNamedType"/>): a struct-typed value a
+    /// plugin returns is by construction a named type, so there is no renderer to
+    /// register without one (D-426; the former <c>RegisterToString</c> is retired).
     /// </summary>
     string RenderValue(GrobValue value);
 }

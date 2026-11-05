@@ -184,4 +184,77 @@ public sealed class TypeCheckerNativeCatalogueTests {
         Assert.Same(NamespaceSymbols.For(Acme), NamespaceSymbols.For(Acme));
         Assert.NotSame(NamespaceSymbols.For(Acme), NamespaceSymbols.For(SharedCatalogue.Stdlib));
     }
+
+    // ----- Named types (D-426 Decision 3, change group 7): the checker resolves a named
+    // type's annotation, properties and methods from the catalogue alone. "token" exists
+    // in no hand table, so every resolution below demonstrably comes from the catalogue.
+
+    private static readonly SignatureType.Concrete TokenType = SignatureType.Named(GrobType.Struct, "token");
+
+    private static readonly NativeCatalogue Tokens = CatalogueOf(registrar => {
+        registrar.RegisterNative(new FunctionSignature("tokens.make", [], TokenType), Noop);
+        registrar.RegisterNamedType(new NamedTypeDefinition(
+            "token",
+            [new NamedTypePropertyBinding(new PropertySignature("secret", SignatureType.Of(GrobType.Int)), s => s.GetField("secret"))],
+            [
+                new NamedTypeMethodBinding(new FunctionSignature("twice", [], SignatureType.Of(GrobType.Int)), _ => Noop),
+                new NamedTypeMethodBinding(
+                    new FunctionSignature("pair", [new SignatureParameter("other", TokenType)], TokenType), _ => Noop),
+                new NamedTypeMethodBinding(
+                    new FunctionSignature("cast", [], new SignatureType.TypeParameterReference("T"), [new TypeParameter("T")]),
+                    _ => Noop),
+            ],
+            v => "<token>"));
+    });
+
+    [Fact]
+    public void NamedType_Annotation_ResolvesFromTheCatalogue() {
+        (_, DiagnosticBag bag) = Check("fn secretOf(t: token): int { return t.secret }", Tokens);
+
+        Assert.Empty(bag.Errors);
+    }
+
+    [Fact]
+    public void NamedType_PropertyAndMethod_ResolveTheirDeclaredTypes() {
+        (_, DiagnosticBag bag) = Check("t := tokens.make()\nx: int := t.secret\ny: int := t.twice()", Tokens);
+
+        Assert.Empty(bag.Errors);
+    }
+
+    [Fact]
+    public void NamedType_NominalReturn_ThreadsThroughABinding() {
+        (_, DiagnosticBag bag) = Check("t := tokens.make()\np := t.pair(t)\nx: int := p.secret", Tokens);
+
+        Assert.Empty(bag.Errors);
+    }
+
+    [Fact]
+    public void NamedType_NominalParameter_RejectsAnotherType() {
+        (_, DiagnosticBag bag) = Check("t := tokens.make()\nt.pair(5)", Tokens);
+
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", error.Code);
+        Assert.Equal("Argument to 'pair' has type 'int', which is not assignable to parameter of type 'token'.", error.Message);
+        Assert.Equal(2, error.Range.Start.Line);
+        Assert.Equal(8, error.Range.Start.Column);
+    }
+
+    [Fact]
+    public void NamedType_UnknownMember_ReportsE1002() {
+        (_, DiagnosticBag bag) = Check("t := tokens.make()\nx := t.nope", Tokens);
+
+        Diagnostic error = Assert.Single(bag.Errors);
+        Assert.Equal("E1002", error.Code);
+        Assert.Equal("Type 'token' has no member 'nope'.", error.Message);
+        Assert.Equal(2, error.Range.Start.Line);
+        Assert.Equal(6, error.Range.Start.Column);
+    }
+
+    [Fact]
+    public void NamedType_GenericMethod_ThrowsTheTypeParameterFence() {
+        GrobInternalException ex = Assert.Throws<GrobInternalException>(() => Check("t := tokens.make()\nt.cast()", Tokens));
+
+        Assert.Contains("mapAs<T>", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("'cast'", ex.Message, StringComparison.Ordinal);
+    }
 }

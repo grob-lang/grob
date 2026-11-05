@@ -2,6 +2,7 @@ using Grob.Cli;
 using Grob.Compiler;
 using Grob.Core;
 using Grob.Runtime;
+using Grob.Stdlib;
 using Xunit;
 
 namespace Grob.Integration.Tests;
@@ -36,15 +37,16 @@ public sealed class NamespaceRegistryAgreementTests {
 
         public void RegisterConstant(string name, GrobValue value) { }
 
-        public void RegisterToString(string typeName, Func<GrobValue, string> toString) { }
-
         public string RenderValue(GrobValue value) => string.Empty;
     }
 
     private static List<string> RegisterAllAndCaptureNativeNames() {
         var registrar = new RecordingRegistrar();
         var streams = new TwoWriterStreams(TextWriter.Null, TextWriter.Null, TextReader.Null);
-        PluginRegistration.RegisterAll(registrar, new SystemRandomSource(), new SystemEnvironment(), streams, verbose: false);
+        foreach (IGrobPlugin plugin in StdlibPlugins.Create(
+                new SystemRandomSource(), new SystemEnvironment(), streams, new SystemClock(), verbose: false)) {
+            plugin.Register(registrar);
+        }
         return registrar.RegisteredNativeNames;
     }
 

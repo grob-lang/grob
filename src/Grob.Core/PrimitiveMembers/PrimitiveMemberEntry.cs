@@ -5,7 +5,7 @@ namespace Grob.Core.PrimitiveMembers;
 /// surface — the properties and methods <c>Grob.Compiler</c>'s
 /// <c>ResolveMemberAccessCall</c>/<c>VisitMemberAccess</c> consult to rewrite a
 /// primitive-receiver member access to a qualified native call at compile time
-/// (D-066). Parallel to <see cref="NamedTypes.NamedTypeEntry"/>, not an entry within
+/// (D-066). Parallel to <c>NamedTypeEntry</c>, not an entry within
 /// it: a primitive is never <see cref="GrobValueKind.Struct"/>-discriminated, so it has
 /// no <c>ToStringRenderer</c> (no <c>ValueDisplay</c> hook — primitive rendering is
 /// unconditional) and no runtime <c>Bind</c> shape — dispatch is a pure compile-time

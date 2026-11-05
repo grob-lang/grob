@@ -1,6 +1,7 @@
 using Grob.Compiler;
 using Grob.Compiler.Ast;
 using Grob.Core;
+using Grob.Runtime;
 using Grob.Vm;
 
 using GrobCompiler = Grob.Compiler.Compiler;
@@ -89,10 +90,17 @@ public sealed class RunCommand {
             return 1;
         }
 
+        // One catalogue per run, shared by the type checker and the VM (D-426 Decision 2).
+        // Building it before the check is safe: no plugin touches a capability at
+        // registration (gate report §1.3), so a script that fails to type-check costs no
+        // clock read, environment read or random draw.
+        var streams = new TwoWriterStreams(_stdout, _stderr, _stdin);
+        NativeCatalogue catalogue = PluginRegistration.BuildCatalogue(streams, _verbose);
+
         var bag = new DiagnosticBag();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag, filePath);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag, PluginRegistration.CheckerCatalogue).Check(unit);
+        new TypeChecker(bag, catalogue).Check(unit);
 
         if (bag.HasErrors) {
             DiagnosticFormatter.Write(bag, _stderr);
@@ -107,9 +115,7 @@ public sealed class RunCommand {
         }
 
         try {
-            var streams = new TwoWriterStreams(_stdout, _stderr, _stdin);
-            var vm = new VirtualMachine(streams);
-            PluginRegistration.RegisterAll(vm, new SystemRandomSource(), new SystemEnvironment(), streams, _verbose);
+            var vm = new VirtualMachine(streams, catalogue);
             vm.Run(chunk);
             return 0;
         } catch (GrobExitException exitEx) {

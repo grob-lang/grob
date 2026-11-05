@@ -7,10 +7,10 @@ namespace Grob.Vm.Tests;
 /// <summary>
 /// VM tests for Sprint 8 Increment A's capability-injection seam (D-343):
 /// <see cref="VirtualMachine"/>'s <see cref="IStandardStreams"/> constructor overload
-/// routes <see cref="OpCode.Print"/> through the injected stream, and
-/// <see cref="VirtualMachine.RegisterConstant"/> — the <see cref="IPluginRegistrar"/>
-/// surface's constant-registration half — makes a value retrievable by qualified name.
-/// All chunks are hand-constructed; no compiler dependency.
+/// routes <see cref="OpCode.Print"/> through the injected stream, and the internal
+/// <see cref="VirtualMachine.RegisterConstant"/> test seam makes a value retrievable by
+/// qualified name without building a catalogue. All chunks are hand-constructed; no
+/// compiler dependency.
 /// </summary>
 public sealed class VirtualMachineCapabilitySeamTests {
     private sealed class FakeStreams : IStandardStreams {
@@ -82,12 +82,6 @@ public sealed class VirtualMachineCapabilitySeamTests {
     }
 
     [Fact]
-    public void VirtualMachine_ImplementsIPluginRegistrar() {
-        var vm = new VirtualMachine(new StringWriter());
-        Assert.IsAssignableFrom<IPluginRegistrar>(vm);
-    }
-
-    [Fact]
     public void SingleWriterStreams_Error_IsTextWriterNull() {
         var streams = new SingleWriterStreams(new StringWriter());
         Assert.Same(TextWriter.Null, streams.Error);
@@ -104,43 +98,22 @@ public sealed class VirtualMachineCapabilitySeamTests {
     }
 
     // -----------------------------------------------------------------------
-    // RenderValue (Sprint 8 Increment E) — the seam formatAs's natives (living in
-    // Grob.Stdlib, which cannot reference Grob.Vm) use to render cell values through
-    // the VM's real, registry-backed ValueDisplay (D-336), rather than a bare
-    // NullRegistry-backed instance that would miss a plugin type's registered
-    // toString() (e.g. guid).
+    // Rendering (Sprint 8 Increment E, D-426 group 7) — print() renders through the
+    // catalogue's renderer table, the same table IPluginRegistrar.RenderValue (the
+    // seam formatAs's natives use) rendered through at registration. The VM has no
+    // renderer registration of its own.
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void RenderValue_Scalar_MatchesPrintOutput() {
-        var vm = new VirtualMachine(new StringWriter());
-
-        Assert.Equal("1.5", vm.RenderValue(GrobValue.FromFloat(1.5)));
-        Assert.Equal("hello", vm.RenderValue(GrobValue.FromString("hello")));
-    }
-
-    [Fact]
-    public void RenderValue_StructWithRegisteredToString_RendersCanonicalFormNotFields() {
-        var vm = new VirtualMachine(new StringWriter());
-        vm.RegisterToString("guid", v => "canonical-" + v.AsStruct().GetField("__value").AsString());
+    public void Print_StructWithCatalogueRenderer_RendersCanonicalFormNotFields() {
+        var streams = new FakeStreams();
+        var vm = new VirtualMachine(streams,
+            TestCatalogues.RendererFor("guid", v => "canonical-" + v.AsStruct().GetField("__value").AsString()));
         var g = GrobValue.FromStruct(new GrobStruct(
             "guid", [new KeyValuePair<string, GrobValue>("__value", GrobValue.FromString("abc"))]));
 
-        Assert.Equal("canonical-abc", vm.RenderValue(g));
-    }
+        vm.Run(BuildPrintChunk(g));
 
-    [Fact]
-    public void RenderValue_RegisteredAfterConstruction_StillTakesEffect() {
-        // The VM instance captured by a plugin at Register() time must reflect
-        // registrations made by a LATER plugin in the same registration pass (plugin
-        // order in PluginRegistration.RegisterAll is not required to put formatAs last).
-        var vm = new VirtualMachine(new StringWriter());
-        Func<GrobValue, string> captured = vm.RenderValue;
-
-        vm.RegisterToString("guid", v => "late-" + v.AsStruct().GetField("__value").AsString());
-        var g = GrobValue.FromStruct(new GrobStruct(
-            "guid", [new KeyValuePair<string, GrobValue>("__value", GrobValue.FromString("xyz"))]));
-
-        Assert.Equal("late-xyz", captured(g));
+        Assert.Equal("canonical-abc" + Environment.NewLine, streams.Out.ToString());
     }
 }

@@ -4,6 +4,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -18,8 +19,7 @@ namespace Grob.Stdlib.Tests;
 /// </summary>
 public sealed class NumericMethodsPluginTests {
     private static VirtualMachine NewRegisteredVm() {
-        var vm = new VirtualMachine(new StringWriter());
-        new NumericMethodsPlugin().Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new NumericMethodsPlugin()));
         return vm;
     }
 
@@ -30,8 +30,7 @@ public sealed class NumericMethodsPluginTests {
 
     [Fact]
     public void Register_AddsExactlyTheThirteenQualifiedNatives() {
-        var vm = new VirtualMachine(new StringWriter());
-        new NumericMethodsPlugin().Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new NumericMethodsPlugin()));
 
         IEnumerable<string> expected = PrimitiveMemberRegistry.Int.Methods.Values.Select(m => m.QualifiedNativeName)
             .Concat(PrimitiveMemberRegistry.Float.Methods.Values.Select(m => m.QualifiedNativeName))

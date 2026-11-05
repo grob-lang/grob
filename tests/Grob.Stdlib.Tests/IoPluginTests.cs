@@ -3,6 +3,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -25,8 +26,7 @@ public sealed class IoPluginTests {
     [Fact]
     public void Register_RegistersExactlyInput() {
         var streams = new FakeStandardStreams();
-        var vm = new VirtualMachine(streams);
-        new IoPlugin(streams).Register(vm);
+        var vm = new VirtualMachine(streams, Catalogue(new IoPlugin(streams)));
 
         Assert.True(vm.Globals.ContainsKey("input"));
         Assert.Single(vm.Globals);
@@ -49,8 +49,7 @@ public sealed class IoPluginTests {
     [Fact]
     public void Input_WritesPromptWithNoTrailingNewline_ReturnsTheNextLine() {
         var streams = new FakeStandardStreams(input: new StringReader("Ada\nmore\n"));
-        var vm = new VirtualMachine(streams);
-        new IoPlugin(streams).Register(vm);
+        var vm = new VirtualMachine(streams, Catalogue(new IoPlugin(streams)));
 
         vm.Run(BuildCallChunk("input", GrobValue.FromString("Name: ")));
 
@@ -61,8 +60,7 @@ public sealed class IoPluginTests {
     [Fact]
     public void Input_EmptyPrompt_WritesNothingToStdout_StillReadsLine() {
         var streams = new FakeStandardStreams(input: new StringReader("value\n"));
-        var vm = new VirtualMachine(streams);
-        new IoPlugin(streams).Register(vm);
+        var vm = new VirtualMachine(streams, Catalogue(new IoPlugin(streams)));
 
         vm.Run(BuildCallChunk("input", GrobValue.FromString("")));
 
@@ -73,8 +71,7 @@ public sealed class IoPluginTests {
     [Fact]
     public void Input_ReturnedLine_HasNoTrailingNewline() {
         var streams = new FakeStandardStreams(input: new StringReader("no-newline-in-value"));
-        var vm = new VirtualMachine(streams);
-        new IoPlugin(streams).Register(vm);
+        var vm = new VirtualMachine(streams, Catalogue(new IoPlugin(streams)));
 
         vm.Run(BuildCallChunk("input", GrobValue.FromString("")));
 
@@ -84,8 +81,7 @@ public sealed class IoPluginTests {
     [Fact]
     public void Input_ClosedStdin_ThrowsIoError() {
         var streams = new FakeStandardStreams(input: TextReader.Null);
-        var vm = new VirtualMachine(streams);
-        new IoPlugin(streams).Register(vm);
+        var vm = new VirtualMachine(streams, Catalogue(new IoPlugin(streams)));
 
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildCallChunk("input", GrobValue.FromString("Name: "))));
@@ -126,8 +122,7 @@ public sealed class IoPluginTests {
             [new CatchHandler(["IoError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)]));
 
         var streams = new FakeStandardStreams(input: TextReader.Null);
-        var vm = new VirtualMachine(streams);
-        new IoPlugin(streams).Register(vm);
+        var vm = new VirtualMachine(streams, Catalogue(new IoPlugin(streams)));
         vm.Run(script);
 
         GrobValue bound = vm.Stack.GetSlot(0);

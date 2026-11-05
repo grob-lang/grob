@@ -1,7 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Grob.Compiler.Ast;
 using Grob.Core;
-using Grob.Core.NamedTypes;
 using Grob.Core.PrimitiveMembers;
 using Grob.Runtime;
 
@@ -700,19 +699,19 @@ public sealed partial class TypeChecker {
 
         // D-066: primitive instance-method dispatch (string first) — compile-time sugar,
         // rewritten to a qualified native call rather than a runtime GetProperty/Bind
-        // (primitives are never GrobValueKind.Struct, so NamedTypeRegistry's shape below
+        // (primitives are never GrobValueKind.Struct, so the named-type shape below
         // does not apply). Checked ahead of the Struct-only arms since they never overlap.
         if (PrimitiveMemberRegistry.TryGet(receiverType, out PrimitiveMemberEntry? primitiveEntry)) {
             return ValidatePrimitiveMemberCall(node, memberAccess, argTypes, primitiveEntry);
         }
 
-        // D-356: instance methods on a registered named type (guid, date, ...) —
-        // mirrors the array higher-order-method arm above, since a named type has no
-        // UserTypeInfo/declared fields for ResolveStructFieldAccess to consult (it is
+        // D-356/D-426: instance methods on a named type the catalogue holds (guid, date,
+        // ...) — mirrors the array higher-order-method arm above, since a named type has
+        // no UserTypeInfo/declared fields for ResolveStructFieldAccess to consult (it is
         // never constructed via '{ }' braces).
         if (receiverType == GrobType.Struct && GetStructTypeName(memberAccess.Target) is string namedTypeName &&
-                NamedTypeRegistry.TryGet(namedTypeName, out NamedTypeEntry namedEntry)) {
-            return ValidateNamedTypeMethodCall(node, memberAccess, argTypes, namedEntry);
+                _catalogue.TryGetNamedType(namedTypeName, out NamedTypeSurface? namedType)) {
+            return ValidateNamedTypeMethodCall(node, memberAccess, argTypes, namedType);
         }
 
         // D-408: an ordinary user 'type' struct or an anonymous struct (#{ }) has no
@@ -1149,59 +1148,56 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Validates a registered-named-type (D-356) instance-method call and returns its
-    /// result type, driven entirely by <paramref name="entry"/>'s method table rather
-    /// than a per-type switch. Delegates arity/per-argument-type checking to
-    /// <see cref="CheckNamedTypeMethodArgs"/>. A method flagged
-    /// <see cref="NamedTypeMethod.ReturnsNominalSelf"/> (e.g. <c>date.addDays</c>
-    /// returning <c>date</c>) threads the nominal name through
-    /// <c>_callResultStructNames</c> (mirrors <see cref="ResolveNamespaceMemberCall"/>'s
-    /// native-call threading) so a <c>:=</c>-bound result resolves further member
-    /// access. An unrecognised member is <see cref="ErrorCatalog.E1002"/>, matching a
-    /// user struct's unknown-member handling.
+    /// Validates a named-type (D-356, D-426) instance-method call and returns its result
+    /// type, driven entirely by the catalogue's method table for
+    /// <paramref name="namedType"/> rather than a per-type switch. Delegates
+    /// arity/per-argument-type checking to <see cref="CheckNamedTypeMethodArgs"/>. A
+    /// method whose return is a nominal struct (e.g. <c>date.addDays</c> returning
+    /// <c>date</c>) threads the nominal name through <c>_callResultStructNames</c>
+    /// (mirrors <see cref="ResolveNamespaceMemberCall"/>'s native-call threading) so a
+    /// <c>:=</c>-bound result resolves further member access. An unrecognised member is
+    /// <see cref="ErrorCatalog.E1002"/>, matching a user struct's unknown-member handling.
     /// </summary>
     private GrobType ValidateNamedTypeMethodCall(
-            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, NamedTypeEntry entry) {
-        if (!entry.Methods.TryGetValue(memberAccess.Member, out NamedTypeMethod? method) || method is null) {
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, NamedTypeSurface namedType) {
+        if (!namedType.Methods.TryGetValue(memberAccess.Member, out NamedTypeMethodBinding? method)) {
             return EmitErrorAndReturn(ErrorCatalog.E1002,
-                $"Type '{entry.CanonicalName}' has no member '{memberAccess.Member}'.",
+                $"Type '{namedType.Definition.Name}' has no member '{memberAccess.Member}'.",
                 memberAccess.Range);
         }
-        CheckNamedTypeMethodArgs(node, memberAccess, argTypes, method.Parameters, entry.CanonicalName);
-        if (method.ReturnsNominalSelf) {
-            _callResultStructNames[node] = entry.CanonicalName;
-            node.ResolvedReturnType = GrobType.Struct;
-            return GrobType.Struct;
+        RequireNonGeneric(method.Signature);
+        CheckNamedTypeMethodArgs(node, memberAccess, argTypes, method.Signature);
+        var returnType = (SignatureType.Concrete)method.Signature.ReturnType;
+        if (returnType.NamedTypeName is not null) {
+            _callResultStructNames[node] = returnType.NamedTypeName;
         }
-        node.ResolvedReturnType = method.ReturnType;
-        return method.ReturnType;
+        node.ResolvedReturnType = returnType.Type;
+        return returnType.Type;
     }
 
     /// <summary>
-    /// Checks a registered-named-type instance-method call's argument list against
-    /// <paramref name="expected"/> — arity (<see cref="ErrorCatalog.E0003"/>) then
-    /// per-argument type (<see cref="ErrorCatalog.E0004"/>). A parameter of kind
-    /// <see cref="NamedTypeParameterKind.NominalSelf"/> means "must be exactly
-    /// <paramref name="canonicalName"/>" (nominal, not the flat <see cref="GrobType.Struct"/>
-    /// tag every struct shares — e.g. <c>date.isBefore</c>'s <c>other: date</c>
-    /// parameter). Cascade suppression for an already-errored argument.
+    /// Checks a named-type instance-method call's argument list against
+    /// <paramref name="signature"/> — arity (<see cref="ErrorCatalog.E0003"/>) then
+    /// per-argument type (<see cref="ErrorCatalog.E0004"/>). A parameter whose concrete
+    /// type names a nominal struct (<c>date.isBefore</c>'s <c>other: date</c>) means "must
+    /// be exactly that type" (nominal, not the flat <see cref="GrobType.Struct"/> tag every
+    /// struct shares), and the diagnostic names the nominal type. The wording differs from
+    /// <see cref="CheckNativeArgumentType"/>'s (no argument index) and the probe corpus
+    /// pins it. Cascade suppression for an already-errored argument.
     /// </summary>
     private void CheckNamedTypeMethodArgs(
-            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes,
-            IReadOnlyList<NamedTypeParameter> expected, string canonicalName) {
-        if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, expected.Count)) return;
-        for (int i = 0; i < expected.Count; i++) {
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, FunctionSignature signature) {
+        if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, signature.Parameters.Count)) return;
+        for (int i = 0; i < argTypes.Length; i++) {
             if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
             Expression argExpr = node.Arguments[i].Value;
-            bool compatible = expected[i].Kind == NamedTypeParameterKind.NominalSelf
-                ? argTypes[i] == GrobType.Struct && GetStructTypeName(argExpr) == canonicalName
-                : TypesAreAssignable(argTypes[i], expected[i].Type);
+            SignatureType.Concrete expected = ParameterTypeAt(signature, i);
+            bool compatible = expected.NamedTypeName is string nominalName
+                ? argTypes[i] == GrobType.Struct && GetStructTypeName(argExpr) == nominalName
+                : TypesAreAssignable(argTypes[i], expected.Type);
             if (!compatible) {
-                string expectedName = expected[i].Kind == NamedTypeParameterKind.NominalSelf
-                    ? canonicalName
-                    : TypeName(expected[i].Type);
                 EmitError(ErrorCatalog.E0004,
-                    $"Argument to '{memberAccess.Member}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{expectedName}'.",
+                    $"Argument to '{memberAccess.Member}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{expected.NamedTypeName ?? TypeName(expected.Type)}'.",
                     argExpr.Range);
             }
         }
@@ -1795,17 +1791,17 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Resolves a bare property access on a registered named type's (D-356) struct
-    /// receiver by name, or <see langword="null"/> when <paramref name="targetType"/> is
-    /// not <see cref="GrobType.Struct"/> or the receiver names no registered type — the
-    /// shared dispatch <see cref="VisitMemberAccess"/> consults, extracted to keep its
+    /// Resolves a bare property access on a named type's (D-356, D-426) struct receiver
+    /// by name, or <see langword="null"/> when <paramref name="targetType"/> is not
+    /// <see cref="GrobType.Struct"/> or the receiver names no type the catalogue holds —
+    /// the shared dispatch <see cref="VisitMemberAccess"/> consults, extracted to keep its
     /// own cognitive complexity under the analyser bar.
     /// </summary>
     private GrobType? TryResolveKnownStructPropertyAccess(MemberAccessExpr node, GrobType targetType) {
         if (targetType != GrobType.Struct) return null;
         string? structTypeName = GetStructTypeName(node.Target);
-        return structTypeName is not null && NamedTypeRegistry.TryGet(structTypeName, out NamedTypeEntry entry)
-            ? ResolveNamedTypePropertyAccess(node, entry)
+        return structTypeName is not null && _catalogue.TryGetNamedType(structTypeName, out NamedTypeSurface? namedType)
+            ? ResolveNamedTypePropertyAccess(node, namedType)
             : null;
     }
 
@@ -2531,16 +2527,17 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Resolves a bare instance-property access on a registered named type (D-356) —
+    /// Resolves a bare instance-property access on a named type (D-356, D-426) —
     /// e.g. <c>id.version</c>, <c>d.year</c>. Method-family members are resolved only
     /// via a call (<see cref="ValidateNamedTypeMethodCall"/>) — mirrors how a bare array
     /// higher-order-method reference (<c>arr.filter</c>, no call) is not specially
     /// resolved here either.
     /// </summary>
-    private GrobType ResolveNamedTypePropertyAccess(MemberAccessExpr node, NamedTypeEntry entry) {
-        if (entry.Properties.TryGetValue(node.Member, out NamedTypeProperty? property) && property is not null) {
-            node.ResolvedFieldType = property.Type;
-            return property.Type;
+    private GrobType ResolveNamedTypePropertyAccess(MemberAccessExpr node, NamedTypeSurface namedType) {
+        if (namedType.Properties.TryGetValue(node.Member, out NamedTypePropertyBinding? property)) {
+            GrobType propertyType = property.Signature.Type.Type;
+            node.ResolvedFieldType = propertyType;
+            return propertyType;
         }
 
         // A bare unrecognised member must not survive as Unknown — it would otherwise
@@ -2549,7 +2546,7 @@ public sealed partial class TypeChecker {
         // unrecognised method call is already rejected (ValidateNamedTypeMethodCall) and
         // how a user struct's unknown field is rejected (ResolveStructFieldAccess).
         return EmitErrorAndReturn(ErrorCatalog.E1002,
-            $"Type '{entry.CanonicalName}' has no member '{node.Member}'.",
+            $"Type '{namedType.Definition.Name}' has no member '{node.Member}'.",
             node.Range);
     }
 
@@ -2595,8 +2592,8 @@ public sealed partial class TypeChecker {
         // D-403: mirrors ArrayDescriptorOf's/MapDescriptorOf's identical NilCoalesce arm
         // exactly — a '??'-unwrapped nullable named-type value (g1 ?? g2) must keep its
         // struct-type identity, so a method call on the grouped result
-        // ((g1 ?? g2).toString()) still dispatches via NamedTypeRegistry instead of
-        // falling back to Unknown.
+        // ((g1 ?? g2).toString()) still dispatches through the catalogue's named type
+        // instead of falling back to Unknown.
         BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
             GetStructTypeName(binary.Left) ?? GetStructTypeName(binary.Right),
         // D-404: the ternary/switch-expression twin of the NilCoalesce arm above — see

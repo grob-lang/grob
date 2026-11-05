@@ -8,6 +8,7 @@ using Grob.Compiler.Ast.Declarations;
 using Grob.Compiler.Ast.Expressions;
 using Grob.Compiler.Ast.Statements;
 using Grob.Core;
+using Grob.Runtime;
 using Grob.Vm;
 
 using GrobCompiler = Grob.Compiler.Compiler;
@@ -67,13 +68,18 @@ public sealed class ReplCommand {
     // Virtual source-file name used in all diagnostics emitted for REPL entries.
     private const string ReplSource = "<repl>";
 
-    // Snapshot of every global name PluginRegistration.RegisterAll wrote before any REPL
-    // entry ran — both namespaced natives/constants ("math.pi") and bare no-namespace
-    // natives ("input", Sprint 8 Increment C). BuildPreamble must never re-declare any of
-    // these as if they were a user binding: a dot-in-name check alone (the pre-Increment-C
-    // guard) caught the namespaced case but not "input", which collided with the
-    // type checker's own BuiltinDecl registration for the same name (E1102) the first
-    // time a REPL entry ran after "input" became a real registered native.
+    // The session's catalogue (D-426 Decision 2): built once in the constructor over the
+    // session's streams and shared by the VM and every per-entry type checker, so the
+    // checker resolves exactly the natives the VM binds.
+    private readonly NativeCatalogue _catalogue;
+
+    // Every global name the catalogue declares — both namespaced natives/constants
+    // ("math.pi") and bare no-namespace natives ("input", Sprint 8 Increment C).
+    // BuildPreamble must never re-declare any of these as if they were a user binding: a
+    // dot-in-name check alone (the pre-Increment-C guard) caught the namespaced case but
+    // not "input", which collided with the type checker's own BuiltinDecl registration
+    // for the same name (E1102) the first time a REPL entry ran after "input" became a
+    // real registered native.
     private readonly HashSet<string> _stdlibGlobalNames;
 
     /// <summary>
@@ -99,9 +105,9 @@ public sealed class ReplCommand {
         _stdout = stdout;
         _stderr = stderr;
         var streams = new TwoWriterStreams(stdout, stderr, input);
-        _vm = new VirtualMachine(streams);
-        PluginRegistration.RegisterAll(_vm, new SystemRandomSource(), new SystemEnvironment(), streams, verbose);
-        _stdlibGlobalNames = [.. _vm.Globals.Keys];
+        _catalogue = PluginRegistration.BuildCatalogue(streams, verbose);
+        _vm = new VirtualMachine(streams, _catalogue);
+        _stdlibGlobalNames = [.. _catalogue.Globals.Keys];
     }
 
     /// <summary>
@@ -225,7 +231,7 @@ public sealed class ReplCommand {
         var bag = new DiagnosticBag();
         IReadOnlyList<Token> tokens = Lexer.Scan(fullSrc, bag, ReplSource);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag, PluginRegistration.CheckerCatalogue).Check(unit);
+        new TypeChecker(bag, _catalogue).Check(unit);
 
         if (bag.HasErrors) {
             DiagnosticFormatter.Write(bag, _stderr);
@@ -325,8 +331,8 @@ public sealed class ReplCommand {
             // check above misses it. Re-declaring it here would collide with the type
             // checker's own BuiltinDecl registration for the same name (E1102 "already
             // declared") on every REPL entry after the first. _stdlibGlobalNames is the
-            // general fix: anything RegisterAll wrote before the session started is never
-            // a user binding, regardless of whether its name happens to contain a dot.
+            // general fix: anything the catalogue declares is never a user binding,
+            // regardless of whether its name happens to contain a dot.
             if (_stdlibGlobalNames.Contains(name)) continue;
 
             if (value.IsNil) {

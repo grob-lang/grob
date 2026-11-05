@@ -8,9 +8,11 @@ namespace Grob.Vm.Tests;
 /// representation (a hidden-field <see cref="GrobStruct"/>, D-303's "boxed
 /// <see cref="DateTimeOffset"/>" reconciled against the unconditional <c>Struct</c>-only
 /// payload), value equality (delegates to the unmodified <see cref="GrobStruct.Equals"/>),
-/// the new <see cref="OpCode.GetProperty"/> arm for the property/method surface, and the
-/// new <see cref="OpCode.LessDate"/>/<see cref="OpCode.GreaterDate"/> opcodes (D-354). All
-/// chunks are hand-constructed; no compiler dependency.
+/// the renderer path through <c>print()</c>, and the
+/// <see cref="OpCode.LessDate"/>/<see cref="OpCode.GreaterDate"/> opcodes (D-354). The
+/// property/method surface is <c>DatePlugin</c>'s named type since D-426 change group 7
+/// and is covered in <c>Grob.Stdlib.Tests</c>. All chunks are hand-constructed; no
+/// compiler dependency.
 /// </summary>
 public sealed class VirtualMachineDateTests {
     private static readonly DateTimeOffset SampleInstant =
@@ -279,112 +281,10 @@ public sealed class VirtualMachineDateTests {
     }
 
     // -----------------------------------------------------------------------
-    // GetProperty — direct-value properties.
-    // -----------------------------------------------------------------------
-
-    [Theory]
-    [InlineData("year", 2026)]
-    [InlineData("month", 4)]
-    [InlineData("day", 5)]
-    [InlineData("hour", 14)]
-    [InlineData("minute", 30)]
-    [InlineData("second", 0)]
-    public void GetProperty_IntComponent_ReadsFromStoredInstant(string property, long expected) {
-        var chunk = new Chunk();
-        byte d = (byte)chunk.AddConstant(Date(SampleInstant));
-        byte nameIdx = (byte)chunk.AddConstant(GrobValue.FromString(property));
-
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(d, 1);
-        chunk.WriteOpCode(OpCode.GetProperty, 1); chunk.WriteByte(nameIdx, 1);
-        chunk.WriteOpCode(OpCode.Return, 1);
-
-        var (vm, _) = NewVm();
-        vm.Run(chunk);
-
-        Assert.Equal(expected, vm.Stack.Peek().AsInt());
-    }
-
-    [Fact]
-    public void GetProperty_UtcOffset_ReadsMinutes() {
-        var chunk = new Chunk();
-        byte d = (byte)chunk.AddConstant(Date(SampleInstant));
-        byte nameIdx = (byte)chunk.AddConstant(GrobValue.FromString("utcOffset"));
-
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(d, 1);
-        chunk.WriteOpCode(OpCode.GetProperty, 1); chunk.WriteByte(nameIdx, 1);
-        chunk.WriteOpCode(OpCode.Return, 1);
-
-        var (vm, _) = NewVm();
-        vm.Run(chunk);
-
-        Assert.Equal(60, vm.Stack.Peek().AsInt());
-    }
-
-    [Fact]
-    public void GetProperty_DayOfWeek_ReadsName() {
-        var chunk = new Chunk();
-        byte d = (byte)chunk.AddConstant(Date(SampleInstant)); // 2026-04-05 is a Sunday
-        byte nameIdx = (byte)chunk.AddConstant(GrobValue.FromString("dayOfWeek"));
-
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(d, 1);
-        chunk.WriteOpCode(OpCode.GetProperty, 1); chunk.WriteByte(nameIdx, 1);
-        chunk.WriteOpCode(OpCode.Return, 1);
-
-        var (vm, _) = NewVm();
-        vm.Run(chunk);
-
-        Assert.Equal("Sunday", vm.Stack.Peek().AsString());
-    }
-
-    // -----------------------------------------------------------------------
-    // GetProperty — bound-method call (mirrors the guid precedent), with real arguments.
-    // -----------------------------------------------------------------------
-
-    [Fact]
-    public void GetProperty_AddDays_BoundMethodCall_AdvancesDate() {
-        var chunk = new Chunk();
-        byte d = (byte)chunk.AddConstant(Date(SampleInstant));
-        byte nameIdx = (byte)chunk.AddConstant(GrobValue.FromString("addDays"));
-        byte argIdx = (byte)chunk.AddConstant(GrobValue.FromInt(1));
-
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(d, 1);
-        chunk.WriteOpCode(OpCode.GetProperty, 1); chunk.WriteByte(nameIdx, 1);
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(argIdx, 1);
-        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
-        byte dayIdx = (byte)chunk.AddConstant(GrobValue.FromString("day"));
-        chunk.WriteOpCode(OpCode.GetProperty, 1); chunk.WriteByte(dayIdx, 1);
-        chunk.WriteOpCode(OpCode.Return, 1);
-
-        var (vm, _) = NewVm();
-        vm.Run(chunk);
-
-        Assert.Equal(6, vm.Stack.Peek().AsInt());
-    }
-
-    [Fact]
-    public void GetProperty_AddDays_NegativeArgument_MovesBackward() {
-        var chunk = new Chunk();
-        byte d = (byte)chunk.AddConstant(Date(SampleInstant));
-        byte nameIdx = (byte)chunk.AddConstant(GrobValue.FromString("addDays"));
-        byte argIdx = (byte)chunk.AddConstant(GrobValue.FromInt(-1));
-
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(d, 1);
-        chunk.WriteOpCode(OpCode.GetProperty, 1); chunk.WriteByte(nameIdx, 1);
-        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(argIdx, 1);
-        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(1, 1);
-        byte dayIdx = (byte)chunk.AddConstant(GrobValue.FromString("day"));
-        chunk.WriteOpCode(OpCode.GetProperty, 1); chunk.WriteByte(dayIdx, 1);
-        chunk.WriteOpCode(OpCode.Return, 1);
-
-        var (vm, _) = NewVm();
-        vm.Run(chunk);
-
-        Assert.Equal(4, vm.Stack.Peek().AsInt());
-    }
-
-    // -----------------------------------------------------------------------
-    // ValueDisplay integration (D-336) — a registered toString() renders the canonical
-    // ISO-8601 string through print(), never the hidden-field structural form.
+    // ValueDisplay integration (D-336) — a renderer registered for the type renders the
+    // canonical ISO-8601 string through print(), never the hidden-field structural form.
+    // The date instance surface itself (year, addDays, ...) is DatePlugin's named type
+    // (D-426 group 7), so its dispatch is exercised in Grob.Stdlib.Tests.
     // -----------------------------------------------------------------------
 
     [Fact]
@@ -395,8 +295,9 @@ public sealed class VirtualMachineDateTests {
         chunk.WriteOpCode(OpCode.Print, 1);
         chunk.WriteOpCode(OpCode.Return, 1);
 
-        var (vm, output) = NewVm();
-        vm.RegisterToString(DateNatives.TypeName, v => DateNatives.IsoDateTimeString(v.AsStruct()));
+        var output = new StringWriter();
+        var vm = new VirtualMachine(output,
+            TestCatalogues.RendererFor(DateNatives.TypeName, v => DateNatives.IsoDateTimeString(v.AsStruct())));
         vm.Run(chunk);
 
         string printed = output.ToString();

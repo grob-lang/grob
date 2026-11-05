@@ -8,7 +8,7 @@ namespace Grob.Core.PrimitiveMembers;
 /// consulted by <c>Grob.Compiler</c>'s <c>ResolveMemberAccessCall</c>/
 /// <c>VisitMemberAccess</c> to rewrite a primitive-receiver method call or property
 /// access to a qualified native call, receiver injected as arg[0]. Parallel to
-/// <see cref="NamedTypes.NamedTypeRegistry"/> (D-356), not an extension of it — a
+/// <c>NamedTypeRegistry</c> (D-356), not an extension of it — a
 /// primitive is never <see cref="GrobValueKind.Struct"/>, so there is no
 /// <c>GetProperty</c>/<c>Bind</c> runtime dispatch here, only a compile-time rewrite.
 /// <c>string</c>, <c>int</c>, <c>float</c> and <c>bool</c> (D-369) are the registered

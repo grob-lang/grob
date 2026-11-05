@@ -6,6 +6,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -21,8 +22,7 @@ namespace Grob.Stdlib.Tests;
 /// </summary>
 public sealed class StringMethodsPluginTests {
     private static VirtualMachine NewRegisteredVm() {
-        var vm = new VirtualMachine(new StringWriter());
-        new StringMethodsPlugin().Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new StringMethodsPlugin()));
         return vm;
     }
 
@@ -33,8 +33,7 @@ public sealed class StringMethodsPluginTests {
 
     [Fact]
     public void Register_AddsExactlyTheTwentyFourQualifiedNatives() {
-        var vm = new VirtualMachine(new StringWriter());
-        new StringMethodsPlugin().Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new StringMethodsPlugin()));
 
         // Scoped to String's own entries rather than AllQualifiedNativeNames (Sprint 9
         // Increment A1a/D-369 added Int/Float/Bool entries to that aggregate, which this

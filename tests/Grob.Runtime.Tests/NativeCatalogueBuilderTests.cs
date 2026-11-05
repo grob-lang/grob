@@ -318,48 +318,34 @@ public sealed class NativeCatalogueBuilderTests {
     }
 
     [Fact]
-    public void RegisterNamedType_AfterRegisterToStringForTheSameName_Throws() {
-        var ex = Assert.Throws<InvalidOperationException>(() => Build(new Plugin("date", r => {
-            r.RegisterToString("date", v => "old");
-            r.RegisterNamedType(NamedType("date"));
-        })));
+    public void RegisterNamedType_Twice_LeavesTheFirstRenderer() {
+        var ex = Assert.Throws<InvalidOperationException>(() => Build(
+            new Plugin("first", r => r.RegisterNamedType(NamedType("date", renderPrefix: "first"))),
+            new Plugin("second", r => r.RegisterNamedType(NamedType("date", renderPrefix: "second")))));
 
         Assert.Contains("'date'", ex.Message);
-        Assert.Contains("render", ex.Message);
     }
 
-    // ----- Renderers (RegisterToString survives until group 7) -----
-
     [Fact]
-    public void RegisterToString_RendersThroughRenderValue() {
-        NativeCatalogue catalogue = Build(new Plugin("guid", r => r.RegisterToString("guid", v => "g!")));
+    public void RegisterNamedType_RendererOnly_RendersThroughRenderValue() {
+        NativeCatalogue catalogue = Build(new Plugin("guid", r =>
+            r.RegisterNamedType(new NamedTypeDefinition("guid", [], [], v => "g!"))));
 
         Assert.Equal("g!", catalogue.RenderValue(StructOf("guid", 1)));
     }
 
-    [Fact]
-    public void RegisterToString_Twice_Throws() {
-        var ex = Assert.Throws<InvalidOperationException>(() => Build(
-            new Plugin("first", r => r.RegisterToString("guid", v => "a")),
-            new Plugin("second", r => r.RegisterToString("guid", v => "b"))));
-
-        Assert.Contains("'guid'", ex.Message);
-        Assert.Contains("'first'", ex.Message);
-        Assert.Contains("'second'", ex.Message);
-    }
+    // ----- Renderers arrive only with a named type (RegisterToString is retired, group 7) -----
 
     [Fact]
-    public void RegisterToString_NullArguments_Throw() {
-        Assert.Throws<ArgumentNullException>(() => Build(new Plugin("p", r => r.RegisterToString(null!, v => ""))));
-        Assert.Throws<ArgumentNullException>(() => Build(new Plugin("p", r => r.RegisterToString("t", null!))));
-    }
+    public void PublicRegistrar_HasNoRegisterToString() =>
+        Assert.DoesNotContain(typeof(IPluginRegistrar).GetMethods(), m => m.Name == "RegisterToString");
 
     [Fact]
-    public void RenderValue_CapturedBeforeALaterPluginRegistersARenderer_StillUsesIt() {
+    public void RenderValue_CapturedBeforeALaterPluginRegistersANamedType_StillUsesItsRenderer() {
         Func<GrobValue, string>? captured = null;
         NativeCatalogue catalogue = Build(
             new Plugin("formatAs", r => captured = r.RenderValue),
-            new Plugin("guid", r => r.RegisterToString("guid", v => "g!")));
+            new Plugin("guid", r => r.RegisterNamedType(new NamedTypeDefinition("guid", [], [], v => "g!"))));
 
         Assert.Equal("g!", captured!(StructOf("guid", 1)));
         Assert.Equal("g!", catalogue.RenderValue(StructOf("guid", 1)));
@@ -408,7 +394,6 @@ public sealed class NativeCatalogueBuilderTests {
     [InlineData("typedNative")]
     [InlineData("untypedNative")]
     [InlineData("constant")]
-    [InlineData("toString")]
     [InlineData("namedType")]
     public void Register_AfterBuildThroughARetainedRegistrar_ThrowsAndLeavesTheCatalogueUntouched(string call) {
         IPluginRegistrar? retained = null;
@@ -418,7 +403,6 @@ public sealed class NativeCatalogueBuilderTests {
             "typedNative" => () => retained!.RegisterNative(Signature("late.fn"), Native("late.fn")),
             "untypedNative" => () => retained!.RegisterNative("late.fn", Native("late.fn")),
             "constant" => () => retained!.RegisterConstant("late.c", GrobValue.FromInt(1)),
-            "toString" => () => retained!.RegisterToString("late", v => "x"),
             _ => () => retained!.RegisterNamedType(NamedType("late")),
         };
 
@@ -437,7 +421,7 @@ public sealed class NativeCatalogueBuilderTests {
         new NativeCatalogueBuilder()
             .Add(new Plugin("keeper", r => {
                 retained = r;
-                r.RegisterToString("thing", v => "rendered");
+                r.RegisterNamedType(new NamedTypeDefinition("thing", [], [], v => "rendered"));
             }))
             .Build();
 

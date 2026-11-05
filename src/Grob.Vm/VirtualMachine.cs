@@ -1,6 +1,5 @@
 using System.Threading;
 using Grob.Core;
-using Grob.Core.NamedTypes;
 using Grob.Runtime;
 
 namespace Grob.Vm;
@@ -27,7 +26,7 @@ namespace Grob.Vm;
 /// Authority: grob-vm-architecture.md (dispatch loop, value stack, developer
 /// diagnostics) and grob-v1-requirements.md §3.3 (the OpCode set).
 /// </summary>
-public sealed class VirtualMachine : IPluginRegistrar, IVmCallHost {
+public sealed class VirtualMachine : IVmCallHost {
     /// <summary>
     /// Maximum call depth (D-180). The frames array holds call frames only — the
     /// top-level script is not a frame — so a 257th nested call has no slot and
@@ -60,7 +59,7 @@ public sealed class VirtualMachine : IPluginRegistrar, IVmCallHost {
 
     private readonly ValueStack _stack = new();
     private readonly IStandardStreams _streams;
-    private readonly Dictionary<string, GrobValue> _globals = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, GrobValue> _globals;
 
     // -----------------------------------------------------------------------
     // Top-level initialisation state machine (§19.1, D-294).
@@ -145,22 +144,24 @@ public sealed class VirtualMachine : IPluginRegistrar, IVmCallHost {
     private readonly TextWriter _trace;
 
     /// <summary>
-    /// Backs <see cref="RegisterToString"/> — the real (non-<c>NullRegistry</c>)
-    /// <see cref="IValueToStringRegistry"/> implementation, populated by plugin
-    /// registration (<c>guid</c>, Sprint 8 Increment D).
+    /// The host's <see cref="NativeCatalogue"/> (D-426 Decision 2): the one registration
+    /// pass the type checker also read. Construction loads its globals; the
+    /// <see cref="OpCode.GetProperty"/> arm reads its named-type bindings per dispatch.
     /// </summary>
-    private readonly PluginToStringRegistry _toStringRegistry = new();
+    private readonly NativeCatalogue _catalogue;
 
     /// <summary>
     /// Renders values for <see cref="OpCode.Print"/> and <see cref="OpCode.BuildString"/>
-    /// (D-336), consulting <see cref="_toStringRegistry"/> for any plugin-registered
-    /// <c>toString()</c> ahead of scalar/structural rendering.
+    /// (D-336), consulting the catalogue's renderer table for any plugin-registered
+    /// <c>toString()</c> ahead of scalar/structural rendering — the same table
+    /// <see cref="IPluginRegistrar.RenderValue"/> rendered through at registration, so
+    /// <c>formatAs</c> and <c>print()</c> agree.
     /// </summary>
     private readonly ValueDisplay _valueDisplay;
 
     /// <summary>
-    /// Construct a VM whose <see cref="OpCode.Print"/> output goes to
-    /// <paramref name="output"/>. <paramref name="trace"/> receives the
+    /// Construct a VM over the empty catalogue whose <see cref="OpCode.Print"/> output
+    /// goes to <paramref name="output"/>. <paramref name="trace"/> receives the
     /// <c>#if DEBUG</c> per-instruction trace (defaults to
     /// <see cref="TextWriter.Null"/>, which is also the only meaningful value
     /// in Release where the trace call is compiled out entirely).
@@ -169,25 +170,50 @@ public sealed class VirtualMachine : IPluginRegistrar, IVmCallHost {
     /// Wraps <paramref name="output"/> in a minimal internal
     /// <see cref="IStandardStreams"/> (D-343) — kept alongside the
     /// <see cref="VirtualMachine(IStandardStreams, TextWriter?)"/> overload so the
-    /// existing single-<see cref="TextWriter"/> call sites across the test suite and
-    /// <c>Grob.Cli</c> need no change.
+    /// existing single-<see cref="TextWriter"/> call sites across the test suite
+    /// need no change.
     /// </remarks>
     public VirtualMachine(TextWriter output, TextWriter? trace = null)
-        : this(new SingleWriterStreams(output ?? throw new ArgumentNullException(nameof(output))), trace) { }
+        : this(output, NativeCatalogue.Empty, trace) { }
 
     /// <summary>
-    /// Construct a VM whose <see cref="OpCode.Print"/> output and future
-    /// stderr-routed diagnostics go through <paramref name="streams"/> (D-343, the
-    /// capability-injection seam) — the overload <c>Grob.Cli</c>'s composition root
-    /// uses, passing an OS-backed implementation wrapping <see cref="Console.Out"/>/
-    /// <see cref="Console.Error"/>. <paramref name="trace"/> is as in the
+    /// Construct a VM over <paramref name="catalogue"/> whose <see cref="OpCode.Print"/>
+    /// output goes to <paramref name="output"/> — the single-writer form of
+    /// <see cref="VirtualMachine(IStandardStreams, NativeCatalogue, TextWriter?)"/> for
+    /// tests that build a catalogue from one plugin.
+    /// </summary>
+    public VirtualMachine(TextWriter output, NativeCatalogue catalogue, TextWriter? trace = null)
+        : this(new SingleWriterStreams(output ?? throw new ArgumentNullException(nameof(output))), catalogue, trace) { }
+
+    /// <summary>
+    /// Construct a VM over the empty catalogue whose <see cref="OpCode.Print"/> output
+    /// and stderr-routed diagnostics go through <paramref name="streams"/> (D-343, the
+    /// capability-injection seam). Hand-built chunks that call no native run here; a
+    /// host that loads the stdlib uses
+    /// <see cref="VirtualMachine(IStandardStreams, NativeCatalogue, TextWriter?)"/>.
+    /// </summary>
+    public VirtualMachine(IStandardStreams streams, TextWriter? trace = null)
+        : this(streams, NativeCatalogue.Empty, trace) { }
+
+    /// <summary>
+    /// Construct a VM over <paramref name="catalogue"/> (D-426 Decision 2): its globals
+    /// become the VM's globals and its renderers drive <c>print()</c>, so the VM binds
+    /// exactly the natives the type checker that shares the catalogue resolved. The
+    /// overload <c>Grob.Cli</c>'s composition root uses, passing an OS-backed
+    /// <paramref name="streams"/> wrapping <see cref="Console.Out"/>/<see cref="Console.Error"/>
+    /// and the run's catalogue. <paramref name="trace"/> is as in the
     /// <see cref="VirtualMachine(TextWriter, TextWriter?)"/> overload.
     /// </summary>
-    public VirtualMachine(IStandardStreams streams, TextWriter? trace = null) {
+    public VirtualMachine(IStandardStreams streams, NativeCatalogue catalogue, TextWriter? trace = null) {
         ArgumentNullException.ThrowIfNull(streams);
+        ArgumentNullException.ThrowIfNull(catalogue);
         _streams = streams;
+        _catalogue = catalogue;
         _trace = trace ?? TextWriter.Null;
-        _valueDisplay = new ValueDisplay(_toStringRegistry);
+        // A copy, not the catalogue's own table: top-level bindings write into _globals
+        // during a run and the catalogue is shared across every checker and VM of the host.
+        _globals = new Dictionary<string, GrobValue>(catalogue.Globals, StringComparer.Ordinal);
+        _valueDisplay = new ValueDisplay(catalogue);
     }
 
     /// <summary>The operand stack, exposed for tests to inspect post-run state.</summary>
@@ -206,68 +232,29 @@ public sealed class VirtualMachine : IPluginRegistrar, IVmCallHost {
     internal int FrameCount => _frameCount;
 
     /// <summary>
-    /// Register a native C# function under <paramref name="name"/> in the global
-    /// variables table so that Grob scripts can call it by that name.
-    /// Overwrites any previous binding with the same name (last write wins).
+    /// Binds a native C# function under <paramref name="name"/> in the global variables
+    /// table, the same write construction performs for every catalogue global. A test
+    /// seam for hand-built chunks that call one native without building a catalogue
+    /// (<c>Grob.Vm.Tests</c>); plugins register through <see cref="IPluginRegistrar"/>
+    /// into the catalogue, never here (D-426 Decision 2). Overwrites any previous binding
+    /// with the same name (last write wins).
     /// </summary>
-    public void RegisterNative(string name, NativeFunction fn) {
+    internal void RegisterNative(string name, NativeFunction fn) {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(fn);
         _globals[name] = GrobValue.FromFunction(fn);
     }
 
     /// <summary>
-    /// Registers <paramref name="implementation"/> under the qualified name of
-    /// <paramref name="signature"/> (D-426). Transitional: until change group 7 moves the
-    /// VM onto a <see cref="NativeCatalogue"/>, the signature is not consulted here and
-    /// the write is the same one <see cref="RegisterNative(string, NativeFunction)"/>
-    /// performs. A bare name is rejected, as the typed surface's contract requires on
-    /// every registrar.
+    /// Binds a constant value under <paramref name="name"/> in the global variables
+    /// table — the test seam for a namespace constant such as <c>math.pi</c>, as
+    /// <see cref="RegisterNative(string, NativeFunction)"/> is for a native. Overwrites
+    /// any previous binding with the same name (last write wins).
     /// </summary>
-    public void RegisterNative(FunctionSignature signature, NativeFunction implementation) {
-        ArgumentNullException.ThrowIfNull(signature);
-        ArgumentNullException.ThrowIfNull(implementation);
-        Identifiers.RequireNamespaceQualified(signature.Name, nameof(signature));
-        _globals[signature.Name] = GrobValue.FromFunction(implementation);
-    }
-
-    /// <summary>
-    /// Registers the renderer of <paramref name="definition"/> (D-426 Decision 3).
-    /// Transitional: until change group 7 moves <c>GetProperty</c> dispatch onto the
-    /// catalogue, the VM keeps reading property and method bindings from
-    /// <c>NamedTypeRegistry</c>, so only the renderer takes effect here.
-    /// </summary>
-    public void RegisterNamedType(NamedTypeDefinition definition) {
-        ArgumentNullException.ThrowIfNull(definition);
-        _toStringRegistry.Register(definition.Name, definition.Render);
-    }
-
-    /// <summary>
-    /// Register a constant value under <paramref name="name"/> in the global variables
-    /// table (D-343) — the runtime counterpart of a namespace constant such as
-    /// <c>math.pi</c>, which has no callable behaviour to dispatch through
-    /// <see cref="RegisterNative(string, NativeFunction)"/>. Overwrites any previous binding with the same name
-    /// (last write wins).
-    /// </summary>
-    public void RegisterConstant(string name, GrobValue value) {
+    internal void RegisterConstant(string name, GrobValue value) {
         ArgumentNullException.ThrowIfNull(name);
         _globals[name] = value;
     }
-
-    /// <summary>
-    /// Registers <paramref name="toString"/> as the <c>ValueDisplay</c> renderer for
-    /// every <c>Struct</c>-kind value named <paramref name="typeName"/> (D-336). Backed
-    /// by <see cref="_toStringRegistry"/>, consulted by <see cref="_valueDisplay"/>
-    /// ahead of scalar/structural rendering.
-    /// </summary>
-    public void RegisterToString(string typeName, Func<GrobValue, string> toString) {
-        ArgumentNullException.ThrowIfNull(typeName);
-        ArgumentNullException.ThrowIfNull(toString);
-        _toStringRegistry.Register(typeName, toString);
-    }
-
-    /// <inheritdoc/>
-    public string RenderValue(GrobValue value) => _valueDisplay.Display(value);
 
     /// <summary>
     /// Execute <paramref name="chunk"/> until <see cref="OpCode.Return"/>.
@@ -969,23 +956,23 @@ public sealed class VirtualMachine : IPluginRegistrar, IVmCallHost {
                                 }
                             }
                             if (receiver.TryAsStruct(out GrobStruct? grobStruct)) {
-                                // D-356: instance properties/methods on a registered named type
-                                // (guid, date, ...) — checked before the ordinary TryGetField
-                                // fall-through below, since a registered named type has no
-                                // user-visible fields at all (its one field is a hidden payload).
-                                if (NamedTypeRegistry.TryGet(grobStruct!.TypeName, out NamedTypeEntry namedEntry)) {
-                                    if (namedEntry.Properties.TryGetValue(propertyName, out NamedTypeProperty? property) &&
-                                            property is not null) {
+                                // D-356/D-426: instance properties/methods on a named type the
+                                // catalogue holds (guid, date, ...) — checked before the ordinary
+                                // TryGetField fall-through below, since a registered named type
+                                // has no user-visible fields at all (its one field is a hidden
+                                // payload). The bindings are the plugin's own; the VM reads them
+                                // from the same catalogue the type checker resolved against.
+                                if (_catalogue.TryGetNamedType(grobStruct!.TypeName, out NamedTypeSurface? namedType)) {
+                                    if (namedType.Properties.TryGetValue(propertyName, out NamedTypePropertyBinding? property)) {
                                         _stack.Push(property.Get(grobStruct), line);
                                         break;
                                     }
-                                    if (namedEntry.Methods.TryGetValue(propertyName, out NamedTypeMethod? method) &&
-                                            method is not null) {
+                                    if (namedType.Methods.TryGetValue(propertyName, out NamedTypeMethodBinding? method)) {
                                         _stack.Push(GrobValue.FromFunction(method.Bind(grobStruct)), line);
                                         break;
                                     }
                                     throw new GrobInternalException(
-                                        $"GetProperty: {namedEntry.CanonicalName} has no member '{propertyName}'. " +
+                                        $"GetProperty: {namedType.Definition.Name} has no member '{propertyName}'. " +
                                         RejectedByTypeCheckerSuffix);
                                 }
                                 if (grobStruct.TryGetField(propertyName, out GrobValue fieldValue)) {
