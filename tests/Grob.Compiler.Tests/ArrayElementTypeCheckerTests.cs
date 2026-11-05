@@ -13,7 +13,7 @@ public sealed class ArrayElementTypeCheckerTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        TypeChecker checker = new(bag);
+        TypeChecker checker = new(bag, SharedCatalogue.Stdlib);
         checker.Check(unit);
         return (unit, bag);
     }

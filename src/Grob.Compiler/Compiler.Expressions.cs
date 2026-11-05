@@ -780,16 +780,15 @@ public sealed partial class Compiler {
         // NativeDefaultArgumentFill, the same "inject a synthesised constant argument"
         // shape D-345's formatAs column injection also uses. The runtime native keeps a
         // fixed arity regardless of how many trailing defaults the source call omitted.
-        if (node.Callee is MemberAccessExpr { Target: IdentifierExpr { Declaration: NamespaceDecl } nsId } ma &&
-                NamespaceRegistry.TryGetMember(nsId.Name, ma.Member) is NamespaceRegistry.NativeMember { ParameterDefaults: not null } native &&
-                node.Arguments.Count < native.ParameterTypes.Count) {
+        if (node.Callee is MemberAccessExpr { Target: IdentifierExpr { Declaration: NamespaceDecl } } &&
+                node.ResolvedNativeParameterDefaults is { } defaults &&
+                node.Arguments.Count < defaults.Count) {
             foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
-            foreach (GrobValue value in NativeDefaultArgumentFill.Resolve(
-                    node.Arguments.Count, native.ParameterTypes.Count, native.ParameterDefaults)) {
+            foreach (GrobValue value in NativeDefaultArgumentFill.Resolve(node.Arguments.Count, defaults.Count, defaults)) {
                 EmitConstant(value, line);
             }
             _chunk.WriteOpCode(OpCode.Call, line);
-            _chunk.WriteByte(ToByteOperand(native.ParameterTypes.Count, CallArgumentCountOperand), line);
+            _chunk.WriteByte(ToByteOperand(defaults.Count, CallArgumentCountOperand), line);
             return null;
         }
 
@@ -1042,10 +1041,10 @@ public sealed partial class Compiler {
         // access on a namespace constant's value (guid.empty.isEmpty — "empty.isEmpty" is
         // not a registered key, so it correctly falls through to the ordinary
         // Visit(node.Target)+GetProperty path below instead of a meaningless GetGlobal).
-        if (node.Target is MemberAccessExpr { Target: IdentifierExpr { Declaration: NamespaceDecl } innerId } inner &&
-                NamespaceRegistry.TryGetMember(innerId.Name, $"{inner.Member}.{node.Member}") is not null) {
-            string qualifiedName = $"{innerId.Name}.{inner.Member}.{node.Member}";
-            int qualifiedIdx = _chunk.AddConstant(GrobValue.FromString(qualifiedName));
+        // The checker makes that call and records it as ResolvedQualifiedNativeName
+        // (gate report F1), so the compiler consults no registry.
+        if (node.ResolvedQualifiedNativeName is string nestedQualifiedName) {
+            int qualifiedIdx = _chunk.AddConstant(GrobValue.FromString(nestedQualifiedName));
             _chunk.WriteOpCode(OpCode.GetGlobal, line);
             _chunk.WriteByte(ToByteOperand(qualifiedIdx, "namespace member name"), line);
             return null;

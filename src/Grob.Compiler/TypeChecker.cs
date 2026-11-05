@@ -1,6 +1,7 @@
 using Grob.Compiler.Ast;
 using Grob.Core;
 using Grob.Core.NamedTypes;
+using Grob.Runtime;
 
 namespace Grob.Compiler;
 
@@ -31,6 +32,7 @@ namespace Grob.Compiler;
 /// </remarks>
 public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly DiagnosticBag _diagnostics;
+    private readonly NamespaceSymbols _namespaces;
     private readonly Stack<Dictionary<string, Symbol>> _scopes = new();
 
     // -----------------------------------------------------------------------
@@ -227,10 +229,16 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private UserTypeInfo? TryGetTypeInfo(string typeName) =>
         _userTypeRegistry.TryGet(typeName) ?? _structuralTypes.GetValueOrDefault(typeName);
 
-    /// <summary>Initialises a new <see cref="TypeChecker"/> that writes into <paramref name="diagnostics"/>.</summary>
-    public TypeChecker(DiagnosticBag diagnostics) {
+    /// <summary>
+    /// Initialises a new <see cref="TypeChecker"/> that writes into <paramref name="diagnostics"/>
+    /// and resolves natives against <paramref name="catalogue"/> (D-426 Decision 2). The
+    /// host builds the catalogue once and shares it; the checker never rebuilds it (D-338).
+    /// </summary>
+    public TypeChecker(DiagnosticBag diagnostics, NativeCatalogue catalogue) {
         ArgumentNullException.ThrowIfNull(diagnostics);
+        ArgumentNullException.ThrowIfNull(catalogue);
         _diagnostics = diagnostics;
+        _namespaces = NamespaceSymbols.For(catalogue);
     }
 
     /// <summary>
@@ -249,7 +257,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // dictionary pays for repeated resize-and-copy growth on every single
         // compile regardless of source size (D-338).
         _scopes.Push(new Dictionary<string, Symbol>(
-            3 + ExceptionHierarchy.AllNames.Count + NamespaceRegistry.Count));
+            3 + ExceptionHierarchy.AllNames.Count + _namespaces.Names.Length));
 
         // Seed the global scope with built-in functions (D-270). Must run
         // before Pass 1 so that user-defined names cannot shadow built-ins
@@ -387,16 +395,16 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
     /// <summary>
     /// Seeds the global scope with a <see cref="NamespaceDecl"/> sentinel symbol per
-    /// registered <see cref="NamespaceRegistry"/> namespace (D-342) — a name category
+    /// namespace the catalogue or the hand table knows (D-342) — a name category
     /// that is neither a value nor a type binding. Mirrors
     /// <see cref="RegisterExceptionHierarchy"/>'s registration shape (including its D-338
-    /// object-caching fix, via <see cref="NamespaceRegistry.SymbolFor"/>); unlike that
+    /// object-caching fix, via <see cref="NamespaceSymbols.SymbolFor"/>); unlike that
     /// registration, a namespace has no <see cref="UserTypeRegistry"/> entry, since it is
     /// never constructed as a struct value.
     /// </summary>
     private void RegisterNamespaces() {
-        foreach (string name in NamespaceRegistry.NamespaceNames) {
-            _scopes.Peek()[name] = NamespaceRegistry.SymbolFor(name);
+        foreach (string name in _namespaces.Names) {
+            _scopes.Peek()[name] = _namespaces.SymbolFor(name);
         }
     }
 

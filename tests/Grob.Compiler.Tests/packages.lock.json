@@ -114,6 +114,13 @@
         "dependencies": {
           "Grob.Core": "[1.0.0, )"
         }
+      },
+      "grob.stdlib": {
+        "type": "Project",
+        "dependencies": {
+          "Grob.Core": "[1.0.0, )",
+          "Grob.Runtime": "[1.0.0, )"
+        }
       }
     }
   }

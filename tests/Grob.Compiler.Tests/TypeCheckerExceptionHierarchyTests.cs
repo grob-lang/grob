@@ -15,7 +15,7 @@ public sealed class TypeCheckerExceptionHierarchyTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         return bag;
     }
 
@@ -117,7 +117,7 @@ public sealed class TypeCheckerExceptionHierarchyTests {
             readonly e := IoError { message: msg }
             """, bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         IdentifierCollector collector = new();
         collector.Visit(unit);

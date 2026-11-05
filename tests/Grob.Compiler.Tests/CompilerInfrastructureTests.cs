@@ -41,7 +41,7 @@ public sealed class CompilerInfrastructureTests {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan(source, bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Assert.False(bag.HasErrors);
         Chunk chunk = GrobCompiler.Compile(unit, bag);
 

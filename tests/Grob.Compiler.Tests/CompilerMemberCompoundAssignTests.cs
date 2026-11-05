@@ -21,7 +21,7 @@ public sealed class CompilerMemberCompoundAssignTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Assert.False(bag.HasErrors,
             $"TypeChecker errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
         Chunk chunk = GrobCompiler.Compile(unit, bag);
@@ -34,7 +34,7 @@ public sealed class CompilerMemberCompoundAssignTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         return bag;
     }
 
@@ -463,7 +463,7 @@ public sealed class CompilerMemberCompoundAssignTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(ConfigType + "c := Config { count: 10 }\nc?.count += 5\n", bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0206", diag.Code);
         Chunk chunk = GrobCompiler.Compile(unit, bag);
@@ -475,7 +475,7 @@ public sealed class CompilerMemberCompoundAssignTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(ConfigType + "c := Config { count: 10 }\nc?.count++\n", bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0206", diag.Code);
         Chunk chunk = GrobCompiler.Compile(unit, bag);

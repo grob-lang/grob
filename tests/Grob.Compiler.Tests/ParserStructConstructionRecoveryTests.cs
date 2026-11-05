@@ -88,7 +88,7 @@ public sealed class ParserStructConstructionRecoveryTests {
         Diagnostic parseDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", parseDiagnostic.Code);
 
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         // A construction of an undeclared type 'Point' is itself a genuine,
         // independent type-checker diagnostic — unrelated to this fix — so this

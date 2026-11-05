@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Grob.Compiler\Grob.Compiler.csproj" />
+    <ProjectReference Include="..\..\src\Grob.Stdlib\Grob.Stdlib.csproj" />
   </ItemGroup>
 
   <!-- Sprint 1 acceptance fixtures: copy alongside the test binary so tests

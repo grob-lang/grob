@@ -79,7 +79,7 @@ public sealed class ParserParamDeclRecoveryTests {
         Assert.Equal(1, parseDiagnostic.Range.Start.Line);
         Assert.Equal(10, parseDiagnostic.Range.Start.Column);
 
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         Diagnostic onlyDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Same(parseDiagnostic, onlyDiagnostic);

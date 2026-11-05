@@ -38,6 +38,14 @@ namespace Grob.Cli;
 /// likewise pure.
 /// </summary>
 internal static class PluginRegistration {
+    /// <summary>
+    /// The catalogue every CLI type check reads (D-426 change group 4), built once per
+    /// process over inert capabilities: the checker reads signatures only, never an
+    /// implementation. Change group 7 replaces it with the run's own catalogue, which the
+    /// VM then shares.
+    /// </summary>
+    internal static NativeCatalogue CheckerCatalogue { get; } = StdlibCatalogue.ForCompileOnly();
+
     /// <summary>Registers every stdlib plugin against <paramref name="registrar"/>, in a fixed order.</summary>
     internal static void RegisterAll(
             IPluginRegistrar registrar,

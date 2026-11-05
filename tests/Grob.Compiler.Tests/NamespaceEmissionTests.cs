@@ -200,8 +200,12 @@ public sealed class NamespaceEmissionTests {
         // compiles to a single GetGlobal against the fully qualified flat key
         // "guid.namespaces.dns" (CodeRabbit review, PR #133 — this branch previously
         // had only downstream runtime evidence, no dedicated compiler emission test).
+        // The type checker resolves the chain and records the qualified name; the
+        // compiler reads that annotation, not a registry (gate report F1).
         var inner = new MemberAccessExpr(SourceRange.Unknown, NamespaceIdent("guid"), "namespaces");
-        var target = new MemberAccessExpr(SourceRange.Unknown, inner, "dns");
+        var target = new MemberAccessExpr(SourceRange.Unknown, inner, "dns") {
+            ResolvedQualifiedNativeName = "guid.namespaces.dns",
+        };
         var unit = new CompilationUnit(SourceRange.Unknown,
             [new ExpressionStmt(SourceRange.Unknown, target)]);
 
@@ -213,6 +217,27 @@ public sealed class NamespaceEmissionTests {
         Instr getGlobal = Assert.Single(instrs, i => i.Op == OpCode.GetGlobal);
         Assert.Equal("guid.namespaces.dns", chunk.ReadConstant(getGlobal.Arg).AsString());
         Assert.DoesNotContain(instrs, i => i.Op == OpCode.GetProperty);
+    }
+
+    [Fact]
+    public void NestedNamespaceChain_WithoutQualifiedNameAnnotation_EmitsGetProperty() {
+        // Gate report F1: with no ResolvedQualifiedNativeName (the checker's verdict for
+        // guid.empty.isEmpty, an instance access on a constant's value) the outer step
+        // takes the ordinary GetProperty path; the compiler no longer re-derives the
+        // chain from a registry.
+        var inner = new MemberAccessExpr(SourceRange.Unknown, NamespaceIdent("guid"), "namespaces");
+        var target = new MemberAccessExpr(SourceRange.Unknown, inner, "dns");
+        var unit = new CompilationUnit(SourceRange.Unknown,
+            [new ExpressionStmt(SourceRange.Unknown, target)]);
+
+        var bag = new DiagnosticBag();
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+        Assert.False(bag.HasErrors);
+
+        List<Instr> instrs = Decode(chunk);
+        Assert.Contains(instrs, i => i.Op == OpCode.GetProperty);
+        Assert.DoesNotContain(instrs, i =>
+            i.Op == OpCode.GetGlobal && chunk.ReadConstant(i.Arg).AsString() == "guid.namespaces.dns");
     }
 
     [Fact]
@@ -245,9 +270,13 @@ public sealed class NamespaceEmissionTests {
         // branch (Compiler.Expressions.cs VisitCall) must synthesise the declared ""
         // default as a second Constant, after the supplied argument and before Call,
         // so the runtime native (Grob.Stdlib.DatePlugin, arity 2) always receives both.
+        // The type checker records the native's per-parameter defaults; the compiler
+        // fills from that annotation, not a registry (gate report F1).
         var callee = new MemberAccessExpr(SourceRange.Unknown, NamespaceIdent("date"), "parse");
         var call = new CallExpr(SourceRange.Unknown, callee,
-            [new CallArgument(SourceRange.Unknown, null, new StringLiteralExpr(SourceRange.Unknown, "2026-04-05"))]);
+            [new CallArgument(SourceRange.Unknown, null, new StringLiteralExpr(SourceRange.Unknown, "2026-04-05"))]) {
+            ResolvedNativeParameterDefaults = [null, GrobValue.FromString("")],
+        };
         var unit = new CompilationUnit(SourceRange.Unknown,
             [new ExpressionStmt(SourceRange.Unknown, call)]);
 

@@ -92,7 +92,7 @@ public sealed class RunCommand {
         var bag = new DiagnosticBag();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag, filePath);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, PluginRegistration.CheckerCatalogue).Check(unit);
 
         if (bag.HasErrors) {
             DiagnosticFormatter.Write(bag, _stderr);

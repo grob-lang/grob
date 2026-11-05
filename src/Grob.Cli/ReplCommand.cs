@@ -225,7 +225,7 @@ public sealed class ReplCommand {
         var bag = new DiagnosticBag();
         IReadOnlyList<Token> tokens = Lexer.Scan(fullSrc, bag, ReplSource);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, PluginRegistration.CheckerCatalogue).Check(unit);
 
         if (bag.HasErrors) {
             DiagnosticFormatter.Write(bag, _stderr);

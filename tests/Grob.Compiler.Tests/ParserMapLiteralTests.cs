@@ -387,7 +387,7 @@ public sealed class ParserMapLiteralTests {
         Assert.Equal(1, parseDiagnostic.Range.Start.Line);
         Assert.Equal(23, parseDiagnostic.Range.Start.Column); // 'a'
 
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         Diagnostic onlyDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Same(parseDiagnostic, onlyDiagnostic);

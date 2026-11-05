@@ -88,6 +88,17 @@ public sealed record CallExpr(
     /// </summary>
     public IReadOnlyList<GrobValue?>? ResolvedPrimitiveParameterDefaults { get; set; }
 
+    /// <summary>
+    /// Set by the type checker when this call resolves to a namespace native declaring
+    /// trailing defaults (D-358): one entry per declared parameter, so its count is the
+    /// native's full arity, holding the compile-time constant a call omitting that
+    /// argument is filled with, or <see langword="null"/> for a required parameter. The
+    /// compiler fills the omitted tail from it instead of consulting a registry itself
+    /// (gate report F1). <see langword="null"/> whenever the native declares no defaults
+    /// or this call is not a namespace-native call.
+    /// </summary>
+    public IReadOnlyList<GrobValue?>? ResolvedNativeParameterDefaults { get; set; }
+
     /// <inheritdoc/>
     public override T Accept<T>(AstVisitor<T> visitor) => visitor.VisitCall(this);
 }

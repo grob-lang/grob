@@ -328,7 +328,7 @@ public sealed class ParserCallTypeArgumentsTests {
         Assert.Equal(2, parseDiagnostic.Range.Start.Line);
         Assert.Equal(14, parseDiagnostic.Range.Start.Column); // the '>' immediately after '<'
 
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         Diagnostic onlyDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Same(parseDiagnostic, onlyDiagnostic);

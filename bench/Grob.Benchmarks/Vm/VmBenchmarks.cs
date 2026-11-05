@@ -1,6 +1,8 @@
 using BenchmarkDotNet.Attributes;
 using Grob.Compiler;
 using Grob.Core;
+using Grob.Runtime;
+using Grob.Stdlib;
 using Grob.Vm;
 
 namespace Grob.Benchmarks.Vm;
@@ -37,6 +39,10 @@ public class VmBenchmarks {
     private Chunk _arrayForIn = null!;
     private Chunk _mapForIn = null!;
     private VirtualMachine _vm = null!;
+
+    // Built once per process, outside every measured body, and shared by every
+    // checker the benchmarks construct (D-338, D-426 gate report §1.5).
+    private static readonly NativeCatalogue Catalogue = StdlibCatalogue.ForCompileOnly();
 
     /// <summary>Compiles every fixture to a <c>Chunk</c> once, before any benchmark run.
     /// Compilation is not part of the measured region (D-385/D-386 Q1').</summary>
@@ -100,7 +106,7 @@ public class VmBenchmarks {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan(File.ReadAllText(path), bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, Catalogue).Check(unit);
         return Grob.Compiler.Compiler.Compile(unit, bag);
     }
 }

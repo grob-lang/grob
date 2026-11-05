@@ -173,7 +173,7 @@ public sealed class ValidationScriptCorpusTests {
         Assert.True(bag.Count == 0,
             $"{fileName}: parser diagnostics:\n{string.Join('\n', bag.Diagnostics)}");
 
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         string[] owned = ["E2201", "E2202", "E4001", "E4002", "E4101", "E4102"];
         Diagnostic[] offenders = bag.Diagnostics.Where(d => owned.Contains(d.Code)).ToArray();
