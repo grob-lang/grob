@@ -46,8 +46,10 @@ a return type — so an untyped registration does not compile. `Grob.Stdlib/Sign
 holds the shared types and the `Signature`/`Param`/`Optional`/`Variadic` shorthand the
 plugins import with `using static`. Parameter names are part of the public API even
 though a native cannot be called with them yet: named-argument binding to natives is
-unsupported (D-426 Decision 4), so a named argument on a native call reports E0011
-and every native call is positional today. The names are recorded for
+unsupported (D-426 Decision 4), so a named argument on a namespace-native or
+primitive-member call reports E0011. A named-type method call does not check argument
+names yet: a named argument there is accepted and bound by position (R-20). Every
+native call is positional today. The names are recorded for
 the binding that comes later, where optional and boolean parameters are idiomatically
 called by name (`recursive: true`, `overwrite: true`), so choose them for that. Take them from `grob-stdlib-reference.md`; if it names none, choose deliberately
 and list the name for the reference to adopt.
