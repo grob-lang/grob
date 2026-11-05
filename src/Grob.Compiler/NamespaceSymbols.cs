@@ -12,12 +12,6 @@ namespace Grob.Compiler;
 /// <see cref="Symbol"/> per name, and member lookup. Built once per catalogue and cached
 /// by catalogue identity, so a compile allocates none of it (D-338).
 /// </summary>
-/// <remarks>
-/// Until change group 5 migrates the namespace natives, the catalogue holds only typed
-/// registrations and constants, so lookup falls back to <see cref="NamespaceRegistry"/>'s
-/// hand table for anything the catalogue does not hold, and the names are the union of
-/// both. The catalogue wins where both declare a member.
-/// </remarks>
 internal sealed class NamespaceSymbols {
     private static readonly ConditionalWeakTable<NativeCatalogue, NamespaceSymbols> _cache = new();
 
@@ -26,7 +20,7 @@ internal sealed class NamespaceSymbols {
 
     private NamespaceSymbols(NativeCatalogue catalogue) {
         _catalogue = catalogue;
-        Names = [.. catalogue.NamespaceNames.Union(NamespaceRegistry.NamespaceNames, StringComparer.Ordinal)];
+        Names = [.. catalogue.NamespaceNames];
         _symbols = new Dictionary<string, Symbol>(Names.Length, StringComparer.Ordinal);
         foreach (string name in Names) {
             _symbols[name] = new Symbol {
@@ -53,20 +47,16 @@ internal sealed class NamespaceSymbols {
 
     /// <summary>Looks up the native <paramref name="memberName"/> of <paramref name="namespaceName"/>.</summary>
     internal bool TryGetNative(string namespaceName, string memberName, [NotNullWhen(true)] out FunctionSignature? signature) {
-        if (_catalogue.TryGetNative(namespaceName, memberName, out NativeEntry? entry)) {
-            signature = entry.Signature;
-            return true;
-        }
-        return NamespaceRegistry.TryGetNativeSignature(namespaceName, memberName, out signature);
+        bool found = _catalogue.TryGetNative(namespaceName, memberName, out NativeEntry? entry);
+        signature = entry?.Signature;
+        return found;
     }
 
     /// <summary>Looks up the type of the constant <paramref name="memberName"/> of <paramref name="namespaceName"/>.</summary>
     internal bool TryGetConstant(string namespaceName, string memberName, [NotNullWhen(true)] out SignatureType.Concrete? type) {
-        if (_catalogue.TryGetConstant(namespaceName, memberName, out ConstantEntry? entry)) {
-            type = entry.Type;
-            return true;
-        }
-        return NamespaceRegistry.TryGetConstantType(namespaceName, memberName, out type);
+        bool found = _catalogue.TryGetConstant(namespaceName, memberName, out ConstantEntry? entry);
+        type = entry?.Type;
+        return found;
     }
 
     /// <summary><see langword="true"/> when <paramref name="namespaceName"/> declares <paramref name="memberName"/>.</summary>

@@ -7,7 +7,7 @@ namespace Grob.Compiler.Tests;
 
 /// <summary>
 /// Type-checker tests for Sprint 8 Increment C's <c>env</c> namespace registration in
-/// <c>NamespaceRegistry</c> — arity/type validation against the compile-time twin, mirroring
+/// the catalogue — arity/type validation against <c>EnvPlugin</c>'s signatures, mirroring
 /// how <c>math</c>/<c>path</c> namespace calls are already checked
 /// (<see cref="TypeCheckerNamespaceAccessTests"/>).
 /// </summary>

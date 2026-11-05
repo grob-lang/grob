@@ -9,8 +9,8 @@ namespace Grob.Compiler.Tests;
 /// Type-checker tests for primitive instance-method/property dispatch (D-066's
 /// compile-time-sugar model, proven on <c>string</c>) — the <c>ResolveMemberAccessCall</c>
 /// call-position arm and the <c>VisitMemberAccess</c> bare-property arm, both driven by
-/// <c>PrimitiveMemberRegistry</c>. Mirrors <c>TypeCheckerDateTests</c>' shape for the
-/// equivalent <c>NamedTypeRegistry</c> dispatch.
+/// the catalogue's primitive surface (D-426). Mirrors <c>TypeCheckerDateTests</c>' shape
+/// for the equivalent named-type dispatch.
 /// </summary>
 public sealed class TypeCheckerPrimitiveMemberTests {
     private static (CompilationUnit Unit, DiagnosticBag Diagnostics) TypeCheckSource(string source) {
@@ -408,7 +408,7 @@ public sealed class TypeCheckerPrimitiveMemberTests {
 
     // -----------------------------------------------------------------------
     // int/float/bool instance members (Sprint 9 Increment A1a, D-369) — same
-    // ResolveMemberAccessCall/PrimitiveMemberRegistry dispatch proven above for
+    // ResolveMemberAccessCall/primitive-surface dispatch proven above for
     // string, confirmed receiver-agnostic (no branch change needed).
     // -----------------------------------------------------------------------
 
@@ -577,7 +577,7 @@ public sealed class TypeCheckerPrimitiveMemberTests {
 
     // -----------------------------------------------------------------------
     // D-402: the nullable-receiver method-call guard and '?.' nullable-widened typing.
-    // ResolveMemberAccessCall's PrimitiveMemberRegistry lookup matched only the exact
+    // ResolveMemberAccessCall's primitive-member lookup matched only the exact
     // non-nullable String/Int/Float/Bool tag, so a nullable primitive receiver fell
     // through to the permissive Unknown fallback for '.', and crashed unconditionally
     // at runtime (a separate, pre-existing VM GetProperty-dispatch gap D-400 found and

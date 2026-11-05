@@ -753,7 +753,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // distinct from string, never constructed via '{ }' braces, so it does not get
         // an ExceptionHierarchy-style TypeDecl/UserTypeInfo/Symbol registration — there
         // is no construction site for that machinery to serve. Its symbol IS a
-        // NamespaceDecl (registered via NamespaceRegistry, D-342) so its static
+        // NamespaceDecl (registered from the catalogue, D-342/D-426) so its static
         // constructors (guid.newV4(), date.now(), ...) resolve through the ordinary
         // namespace-call path unchanged; this branch gives the name used in signature
         // position (parameters, fields) the correct Struct + NamedTypeName identity,

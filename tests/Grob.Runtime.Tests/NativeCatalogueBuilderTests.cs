@@ -74,33 +74,20 @@ public sealed class NativeCatalogueBuilderTests {
         Assert.False(catalogue.IsNamespace("guid.namespaces"));
     }
 
-    // ----- Untyped natives (transitional) -----
+    // ----- No untyped registration (D-426 change groups 6 and 7) -----
 
     [Fact]
-    public void RegisterNative_Untyped_AppearsInGlobalsOnly() {
-        NativeFunction input = Native("input", 1);
-        NativeCatalogue catalogue = Build(new Plugin("io", r => r.RegisterNative("input", input)));
+    public void PublicRegistrar_RegisterNativeTakesOnlyASignature() {
+        // Registration without a signature no longer compiles: the transitional
+        // RegisterNative(string, NativeFunction) overload is gone.
+        var overloads = typeof(IPluginRegistrar).GetMethods()
+            .Where(m => m.Name == nameof(IPluginRegistrar.RegisterNative))
+            .Select(m => m.GetParameters().Select(p => p.ParameterType).ToArray())
+            .ToList();
 
-        Assert.Same(input, catalogue.Globals["input"].AsFunction());
-        Assert.Empty(catalogue.NamespaceNames);
-        Assert.False(catalogue.TryGetBuiltin("input", out _));
+        Type[] only = Assert.Single(overloads);
+        Assert.Equal([typeof(FunctionSignature), typeof(NativeFunction)], only);
     }
-
-    [Fact]
-    public void RegisterNative_Untyped_DoesNotClaimANamespace() {
-        NativeCatalogue catalogue = Build(new Plugin("statics", r => r.RegisterNative("int.min", Native("int.min", 2))));
-
-        Assert.False(catalogue.IsNamespace("int"));
-        Assert.True(catalogue.Globals.ContainsKey("int.min"));
-    }
-
-    [Fact]
-    public void RegisterNative_Untyped_NullName_Throws() =>
-        Assert.Throws<ArgumentNullException>(() => Build(new Plugin("p", r => r.RegisterNative((string)null!, Native("x")))));
-
-    [Fact]
-    public void RegisterNative_Untyped_NullImplementation_Throws() =>
-        Assert.Throws<ArgumentNullException>(() => Build(new Plugin("p", r => r.RegisterNative("x", null!))));
 
     // ----- Constants -----
 
@@ -185,16 +172,6 @@ public sealed class NativeCatalogueBuilderTests {
     }
 
     [Fact]
-    public void RegisterNative_TypedThenUntypedSameName_Throws() {
-        var ex = Assert.Throws<InvalidOperationException>(() => Build(new Plugin("math", r => {
-            r.RegisterNative(Signature("math.sqrt"), Native("math.sqrt"));
-            r.RegisterNative("math.sqrt", Native("math.sqrt"));
-        })));
-
-        Assert.Contains("'math.sqrt'", ex.Message);
-    }
-
-    [Fact]
     public void RegisterConstant_OverAnExistingNative_Throws() {
         var ex = Assert.Throws<InvalidOperationException>(() => Build(new Plugin("math", r => {
             r.RegisterNative(Signature("math.pi"), Native("math.pi"));
@@ -205,10 +182,10 @@ public sealed class NativeCatalogueBuilderTests {
     }
 
     [Fact]
-    public void RegisterNative_Untyped_SameNameFromTwoPlugins_NamesBothOwners() {
+    public void RegisterBuiltin_SameNameFromTwoPlugins_NamesBothOwners() {
         var ex = Assert.Throws<InvalidOperationException>(() => Build(
-            new Plugin("first", r => r.RegisterNative("shared", Native("shared"))),
-            new Plugin("second", r => r.RegisterNative("shared", Native("shared")))));
+            new PrimitivePlugin("first", r => r.RegisterBuiltin(Signature("shared"), Native("shared"))),
+            new PrimitivePlugin("second", r => r.RegisterBuiltin(Signature("shared"), Native("shared")))));
 
         Assert.Contains("'shared'", ex.Message);
         Assert.Contains("'first'", ex.Message);
@@ -392,7 +369,6 @@ public sealed class NativeCatalogueBuilderTests {
 
     [Theory]
     [InlineData("typedNative")]
-    [InlineData("untypedNative")]
     [InlineData("constant")]
     [InlineData("namedType")]
     public void Register_AfterBuildThroughARetainedRegistrar_ThrowsAndLeavesTheCatalogueUntouched(string call) {
@@ -401,7 +377,6 @@ public sealed class NativeCatalogueBuilderTests {
         NativeCatalogue catalogue = builder.Build();
         Action late = call switch {
             "typedNative" => () => retained!.RegisterNative(Signature("late.fn"), Native("late.fn")),
-            "untypedNative" => () => retained!.RegisterNative("late.fn", Native("late.fn")),
             "constant" => () => retained!.RegisterConstant("late.c", GrobValue.FromInt(1)),
             _ => () => retained!.RegisterNamedType(NamedType("late")),
         };
@@ -441,16 +416,6 @@ public sealed class NativeCatalogueBuilderTests {
         Assert.Contains("qualified", ex.Message);
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("math.")]
-    [InlineData("a b")]
-    public void RegisterNative_Untyped_MalformedName_Throws(string name) {
-        var ex = Assert.Throws<ArgumentException>(() => Build(new Plugin("p", r => r.RegisterNative(name, Native("x")))));
-
-        Assert.Equal("name", ex.ParamName);
-    }
-
     [Fact]
     public void Build_Twice_Throws() {
         var builder = new NativeCatalogueBuilder();
@@ -466,7 +431,7 @@ public sealed class NativeCatalogueBuilderTests {
                 r.RegisterNative(Signature("math.sqrt"), Native("math.sqrt"));
                 r.RegisterConstant("math.pi", GrobValue.FromFloat(3.14));
             }),
-            new Plugin("io", r => r.RegisterNative("input", Native("input"))));
+            new PrimitivePlugin("io", r => r.RegisterBuiltin(Signature("input"), Native("input"))));
 
         Assert.Equal(3, catalogue.Globals.Count);
         Assert.Equal(["math.sqrt", "math.pi", "input"], catalogue.Globals.Keys);

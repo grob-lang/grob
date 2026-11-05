@@ -4,6 +4,8 @@ using System.Text;
 using Grob.Core;
 using Grob.Runtime;
 
+using static Grob.Stdlib.Signatures;
+
 namespace Grob.Stdlib;
 
 /// <summary>
@@ -34,9 +36,8 @@ public sealed class GuidPlugin : IGrobPlugin {
     private static readonly Guid UrlNamespace = Guid.Parse("6ba7b811-9dad-11d1-80b4-00c04fd430c8");
     private static readonly Guid OidNamespace = Guid.Parse("6ba7b812-9dad-11d1-80b4-00c04fd430c8");
 
-    private static readonly SignatureType.Concrete IntType = SignatureType.Of(GrobType.Int);
-    private static readonly SignatureType.Concrete BoolType = SignatureType.Of(GrobType.Bool);
-    private static readonly SignatureType.Concrete StringType = SignatureType.Of(GrobType.String);
+    private static readonly SignatureType.Concrete GuidType = SignatureType.Named(GrobType.Struct, TypeName);
+    private static readonly SignatureType.Concrete NullableGuidType = SignatureType.Named(GrobType.NullableStruct, TypeName);
 
     private readonly IRandomSource _randomSource;
     private readonly IClock _clock;
@@ -59,29 +60,32 @@ public sealed class GuidPlugin : IGrobPlugin {
     public void Register(IPluginRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterNative("guid.newV4", new NativeFunction("guid.newV4", 0, (_, _) =>
+        registrar.RegisterNative(Signature("guid.newV4", GuidType), new NativeFunction("guid.newV4", 0, (_, _) =>
             FromGuid(CreateVersion4())));
 
-        registrar.RegisterNative("guid.newV7", new NativeFunction("guid.newV7", 0, (_, _) =>
+        registrar.RegisterNative(Signature("guid.newV7", GuidType), new NativeFunction("guid.newV7", 0, (_, _) =>
             FromGuid(CreateVersion7())));
 
-        registrar.RegisterNative("guid.newV5", new NativeFunction("guid.newV5", 1, (args, _) => {
-            Guid ns = ToGuid(args[0].AsStruct());
-            string name = string.Concat(args.Skip(1).Select(a => a.AsString()));
-            return FromGuid(CreateVersion5(ns, name));
-        }));
+        registrar.RegisterNative(Signature("guid.newV5", GuidType, Param("namespace", GuidType), Variadic("name", StringType)),
+            new NativeFunction("guid.newV5", 1, (args, _) => {
+                Guid ns = ToGuid(args[0].AsStruct());
+                string name = string.Concat(args.Skip(1).Select(a => a.AsString()));
+                return FromGuid(CreateVersion5(ns, name));
+            }));
 
-        registrar.RegisterNative("guid.parse", new NativeFunction("guid.parse", 1, (args, _) => {
-            string s = args[0].AsString();
-            if (!Guid.TryParse(s, out Guid parsed)) {
-                throw new NativeFaultException(
-                    "ParseError", ErrorCatalog.E5701.Code, $"guid.parse: '{s}' is not a valid guid.");
-            }
-            return FromGuid(parsed);
-        }));
+        registrar.RegisterNative(Signature("guid.parse", GuidType, Param("value", StringType)),
+            new NativeFunction("guid.parse", 1, (args, _) => {
+                string s = args[0].AsString();
+                if (!Guid.TryParse(s, out Guid parsed)) {
+                    throw new NativeFaultException(
+                        "ParseError", ErrorCatalog.E5701.Code, $"guid.parse: '{s}' is not a valid guid.");
+                }
+                return FromGuid(parsed);
+            }));
 
-        registrar.RegisterNative("guid.tryParse", new NativeFunction("guid.tryParse", 1, (args, _) =>
-            Guid.TryParse(args[0].AsString(), out Guid parsed) ? FromGuid(parsed) : GrobValue.Nil));
+        registrar.RegisterNative(Signature("guid.tryParse", NullableGuidType, Param("value", StringType)),
+            new NativeFunction("guid.tryParse", 1, (args, _) =>
+                Guid.TryParse(args[0].AsString(), out Guid parsed) ? FromGuid(parsed) : GrobValue.Nil));
 
         registrar.RegisterConstant("guid.empty", FromGuid(Guid.Empty));
         registrar.RegisterConstant("guid.namespaces.dns", FromGuid(DnsNamespace));

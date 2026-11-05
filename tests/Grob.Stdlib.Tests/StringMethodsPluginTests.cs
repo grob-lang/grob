@@ -1,7 +1,6 @@
 using System.Threading.Tasks;
 
 using Grob.Core;
-using Grob.Core.PrimitiveMembers;
 using Grob.Vm;
 using Xunit;
 
@@ -12,8 +11,8 @@ namespace Grob.Stdlib.Tests;
 
 /// <summary>
 /// Sprint 9 — <see cref="StringMethodsPlugin"/> registers the <c>string</c> instance
-/// surface's runtime natives (D-066's compile-time-sugar model; <c>PrimitiveMemberRegistry</c>
-/// is the compile-time twin). Every native takes the receiver as its first argument (the
+/// surface's runtime natives (D-066's compile-time-sugar model; the signatures the checker
+/// reads arrive with the same registration, D-426). Every native takes the receiver as its first argument (the
 /// compiler injects it — <see cref="Compiler.Compiler"/> is not referenced here, this
 /// project has no dependency on <c>Grob.Compiler</c>), so a hand-built
 /// <see cref="ChunkBuilders.BuildCallChunk"/> call with the receiver as <c>args[0]</c>
@@ -35,11 +34,14 @@ public sealed class StringMethodsPluginTests {
     public void Register_AddsExactlyTheTwentyFourQualifiedNatives() {
         var vm = new VirtualMachine(new StringWriter(), Catalogue(new StringMethodsPlugin()));
 
-        // Scoped to String's own entries rather than AllQualifiedNativeNames (Sprint 9
-        // Increment A1a/D-369 added Int/Float/Bool entries to that aggregate, which this
-        // string-only plugin correctly does not register).
-        IEnumerable<string> stringNames = PrimitiveMemberRegistry.String.Properties.Values.Select(p => p.QualifiedNativeName)
-            .Concat(PrimitiveMemberRegistry.String.Methods.Values.Select(m => m.QualifiedNativeName));
+        string[] stringNames = [
+            "string.length", "string.isEmpty",
+            "string.toInt", "string.toFloat", "string.trim", "string.trimStart", "string.trimEnd",
+            "string.upper", "string.lower", "string.split", "string.contains", "string.startsWith",
+            "string.endsWith", "string.replace", "string.indexOf", "string.lastIndexOf",
+            "string.substring", "string.repeat", "string.left", "string.right", "string.toString",
+            "string.padLeft", "string.padRight", "string.truncate",
+        ];
         foreach (string name in stringNames) {
             Assert.True(vm.Globals.ContainsKey(name), $"missing native registration: {name}");
         }

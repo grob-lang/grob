@@ -23,16 +23,6 @@ public interface IPluginRegistrar {
     void RegisterNative(FunctionSignature signature, NativeFunction implementation);
 
     /// <summary>
-    /// Registers <paramref name="fn"/> as a global callable under <paramref name="name"/>
-    /// (a qualified name such as <c>"math.sqrt"</c> for a namespace member, or a bare name
-    /// for a top-level built-in) with no signature. Transitional: it survives only until
-    /// every first-party registration carries a signature
-    /// (<see cref="RegisterNative(FunctionSignature, NativeFunction)"/>), when it is
-    /// deleted (D-426, change group 7).
-    /// </summary>
-    void RegisterNative(string name, NativeFunction fn);
-
-    /// <summary>
     /// Registers a named type this plugin owns: its properties, its methods and the
     /// renderer <c>print()</c> uses for it (D-426 Decision 3). The checker resolves the
     /// type's members from the definition and the VM dispatches through its bindings.

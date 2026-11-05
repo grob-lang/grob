@@ -10,8 +10,8 @@ namespace Grob.Stdlib.Tests;
 /// <summary>
 /// Sprint 9 Increment A1b (D-370) — <see cref="NumericStaticsPlugin"/> registers the
 /// <c>int</c>/<c>float</c> type-static namespace natives (<c>min</c>/<c>max</c>/<c>clamp</c>),
-/// the compile-time twin of <c>NamespaceRegistry</c>'s <c>int</c>/<c>float</c> entries
-/// (<c>Grob.Compiler</c>) rather than <c>PrimitiveMemberRegistry</c> — a separate registry
+/// through the internal primitive surface's <c>RegisterPrimitiveStatic</c> (D-426 change
+/// group 5) rather than as instance members — a separate registry
 /// lineage from D-369's <see cref="NumericMethodsPlugin"/> (instance methods), even though
 /// both plugins register natives under the same <c>"int."</c>/<c>"float."</c> qualified-name
 /// prefix. Each native takes its arguments positionally, no receiver injection (this is a

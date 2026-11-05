@@ -33,7 +33,7 @@ public sealed record MemberAccessExpr(
 
     /// <summary>
     /// Set by the type checker when this bare (non-call) access resolves to a
-    /// primitive-receiver instance property (D-066, <c>PrimitiveMemberRegistry</c>) —
+    /// primitive-receiver instance property (D-066; the catalogue's primitive surface, D-426) —
     /// the qualified native name (e.g. <c>"string.length"</c>) the compiler rewrites the
     /// access to, called with the receiver as its sole argument. <see langword="null"/>
     /// for every other access.
