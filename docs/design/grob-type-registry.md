@@ -15,10 +15,13 @@ time — no boxing, no vtable, no heap allocation.
 **Registration note (D-426, D-427).** The compile-time tables the build-status notes
 below name — `NamespaceRegistry`, `PrimitiveMemberRegistry` and `NamedTypeRegistry` —
 no longer exist. Every member this document lists for a namespace, a primitive
-receiver or a named type (`date`, `guid`) is registered with a `FunctionSignature` by
-the `Grob.Stdlib` plugin that implements it, into the one `NativeCatalogue` the type
-checker reads and the VM is constructed over. Namespace natives and named types
-register through the public `IPluginRegistrar`; primitive members and the `int`/`float`
+receiver or a named type (`date`, `guid`) is registered by the `Grob.Stdlib` plugin that
+implements it, into the one `NativeCatalogue` the type checker reads and the VM is
+constructed over, in the form that fits the member: a method or namespace function with
+a `FunctionSignature` (`guid.parse`, `s.trim()`), a property with a `PropertySignature`
+(`guid.version`, `s.length`) and a namespace constant with `RegisterConstant`
+(`guid.empty`, `math.pi`). Namespace natives, constants and named types register
+through the public `IPluginRegistrar`; primitive members and the `int`/`float`
 type-statics through an internal surface third-party plugins cannot reach. Array and
 map members stay structural, as below. The notes keep the registry names they were
 written with, as a record of what each increment built.

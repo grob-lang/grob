@@ -44,10 +44,12 @@ In the module's plugin `Register` method, register the function with
 `FunctionSignature` — a qualified name (`strings.join`), typed `SignatureParameter`s and
 a return type — so an untyped registration does not compile. `Grob.Stdlib/Signatures.cs`
 holds the shared types and the `Signature`/`Param`/`Optional`/`Variadic` shorthand the
-plugins import with `using static`. Use named-argument-friendly parameter names:
-optional and boolean parameters are idiomatically called by name in Grob
-(`recursive: true`, `overwrite: true`), so the parameter names are part of the public
-API. Take them from `grob-stdlib-reference.md`; if it names none, choose deliberately
+plugins import with `using static`. Parameter names are part of the public API even
+though a native cannot be called with them yet: named-argument binding to natives is
+unsupported (D-426 Decision 4), so a named argument on a native call reports E0011
+and every native call is positional today. The names are recorded for
+the binding that comes later, where optional and boolean parameters are idiomatically
+called by name (`recursive: true`, `overwrite: true`), so choose them for that. Take them from `grob-stdlib-reference.md`; if it names none, choose deliberately
 and list the name for the reference to adopt.
 
 Where you register depends on the receiver:

@@ -1072,7 +1072,10 @@ Natives are not registered on the VM. Every plugin registers against an
 constructed over that catalogue (`new VirtualMachine(streams, catalogue)`), copying its
 globals into the globals table and building `ValueDisplay` over its renderers (D-426).
 The type checker is constructed over the same instance. `print`, `input` and `exit` are
-built-ins resolved at type-check time (D-270), not plugin registrations.
+built-ins the type checker resolves at type-check time (D-270). `print` and `exit` have
+no plugin registration; `input`'s runtime implementation is registered by `IoPlugin`
+through the internal built-in surface (`input(prompt: string = ""): string`), while
+its checking stays the built-in path.
 
 ### The Plugin Interface
 

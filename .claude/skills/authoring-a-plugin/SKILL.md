@@ -75,7 +75,10 @@ registrar.RegisterNative(
   isVariadic, defaultValue)`: a variadic tail is the last parameter with
   `isVariadic: true`; an optional parameter carries a compile-time `defaultValue`.
 - **A named type is a `Concrete`** of `GrobType.Struct` (or `NullableStruct`) plus its
-  name. `SignatureType.ArrayOf` describes an array element type.
+  name. `SignatureType.ArrayOf` describes an array element type, but the checker
+  verifies only that the argument is an array, not its element type (R-21): a native
+  declared to take `string[]` can receive an `int[]`. Validate array elements in the
+  implementation and fail with the appropriate `GrobError` leaf.
 - **Type parameters are fenced.** A signature declaring one makes the checker throw
   `GrobInternalException` until the `mapAs<T>` increment teaches it substitution.
 - **A duplicate is a host error.** Registering a name another plugin, or this one,
@@ -87,7 +90,10 @@ If the plugin introduces types (`Response`, `Headers`, `Auth` for `Grob.Http`), 
 each with `RegisterNamedType(new NamedTypeDefinition(name, properties, methods,
 render))`: a `NamedTypePropertyBinding` (a `PropertySignature` plus a getter) per
 property, a `NamedTypeMethodBinding` (a `FunctionSignature` with a bare name plus a
-binder) per method, and the renderer `print()` uses. `DatePlugin` and `GuidPlugin` in
+binder) per method, and the renderer `print()` uses. A named-type method call must
+supply exactly as many arguments as its signature declares: optional parameters and
+variadic tails are honoured on namespace natives but not yet on named-type methods, so
+declare neither there. `DatePlugin` and `GuidPlugin` in
 `Grob.Stdlib` are the worked examples. A plugin adds members only to types it
 registered, and a second registration of one type name is a host error. Keep
 registered names specific.
