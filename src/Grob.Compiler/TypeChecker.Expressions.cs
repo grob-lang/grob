@@ -2348,11 +2348,10 @@ public sealed partial class TypeChecker {
     /// parameters requires — <paramref name="fullArity"/> itself when it declares no
     /// defaults, or the count remaining after walking back over the contiguous trailing
     /// run of non-null <paramref name="defaults"/> entries (D-358's "optional trailing
-    /// parameters" shape; defaults are never declared for a leading parameter). Shared by
-    /// the namespace-native (<see cref="NamespaceRegistry.NativeMember"/>) and
-    /// primitive-member (<c>PrimitiveMemberMethod</c>, D-365) call paths — promoted from a
-    /// namespace-native-only helper so the required/full range rule has one implementation
-    /// rather than a second copy per registry shape.
+    /// parameters" shape; defaults are never declared for a leading parameter). Used by
+    /// the primitive-member (<c>PrimitiveMemberMethod</c>, D-365) call path; the
+    /// namespace-native path reads <see cref="FunctionSignature.RequiredArgumentCount"/>
+    /// instead (D-426), and change group 6 moves this path onto signatures too.
     /// </summary>
     private static int RequiredArgumentCount(int fullArity, IReadOnlyList<GrobValue?>? defaults) {
         int required = fullArity;
@@ -2363,9 +2362,9 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Rejects named arguments on a namespace-native call with
-    /// <see cref="ErrorCatalog.E0011"/>. <see cref="NamespaceRegistry.NativeMember"/> carries
-    /// no parameter-name metadata and emission preserves source order, so a named argument
-    /// cannot bind — it would otherwise let <c>date.parse(pattern: "dd/MM/yyyy")</c> slot the
+    /// <see cref="ErrorCatalog.E0011"/>. Named-argument binding to natives is unsupported
+    /// even though a <see cref="FunctionSignature"/> names its parameters (D-426 Decision 4),
+    /// and emission preserves source order, so a named argument cannot bind — it would otherwise let <c>date.parse(pattern: "dd/MM/yyyy")</c> slot the
     /// pattern into the <c>input</c> parameter and take the empty default (D-358). The
     /// namespace-native counterpart of <see cref="RejectNamedPrimitiveArgs"/>. Returns
     /// <c>true</c> when at least one named argument was found, so the caller suppresses the

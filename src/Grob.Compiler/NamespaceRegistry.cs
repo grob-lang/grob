@@ -10,11 +10,11 @@ namespace Grob.Compiler;
 /// authored, one entry per namespace member, updated in lockstep with the corresponding
 /// runtime <c>IGrobPlugin</c> registration in <c>Grob.Stdlib</c> — the same
 /// two-hand-maintained-mirrors-plus-agreement-test shape D-308 established for
-/// <see cref="ErrorCatalog"/> against <c>grob-error-codes.md</c>. <c>Grob.Compiler</c> has
-/// no reference to <c>Grob.Stdlib</c> (the DAG forbids it), so this table — not a shared
-/// runtime registry — is what the type checker validates a namespace member access
-/// against; a native's actual C# implementation is resolved only at VM startup, by
-/// qualified name, via <c>GetGlobal</c>.
+/// <see cref="ErrorCatalog"/> against <c>grob-error-codes.md</c>. Transitional since
+/// D-426 change group 4: the type checker reads the host's <c>NativeCatalogue</c> first,
+/// through <see cref="NamespaceSymbols"/>, and falls back to this table only for members
+/// the catalogue does not yet hold. Change group 5 moves every entry into its plugin's
+/// signature and deletes the table.
 /// </summary>
 internal static class NamespaceRegistry {
     /// <summary>
