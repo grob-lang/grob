@@ -38,6 +38,10 @@ public sealed class PrimitiveMemberRegistryAgreementTests {
 
         public void RegisterNative(string name, NativeFunction fn) => RegisteredNativeNames.Add(name);
 
+        public void RegisterNative(FunctionSignature signature, NativeFunction fn) => RegisteredNativeNames.Add(signature.Name);
+
+        public void RegisterNamedType(NamedTypeDefinition definition) { }
+
         public void RegisterConstant(string name, GrobValue value) { }
 
         public void RegisterToString(string typeName, Func<GrobValue, string> toString) { }

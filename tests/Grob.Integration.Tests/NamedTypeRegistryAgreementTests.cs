@@ -30,6 +30,11 @@ public sealed class NamedTypeRegistryAgreementTests {
 
         public void RegisterNative(string name, NativeFunction fn) { }
 
+        public void RegisterNative(FunctionSignature signature, NativeFunction fn) { }
+
+        public void RegisterNamedType(NamedTypeDefinition definition) =>
+            RegisteredToStringTypeNames.Add(definition.Name);
+
         public void RegisterConstant(string name, GrobValue value) { }
 
         public void RegisterToString(string typeName, Func<GrobValue, string> toString) =>

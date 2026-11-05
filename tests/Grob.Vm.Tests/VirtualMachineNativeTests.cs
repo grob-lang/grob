@@ -8,7 +8,7 @@ namespace Grob.Vm.Tests;
 /// transparent dispatch, the re-entrant native↔VM call-back bridge
 /// (<see cref="VmInvoker"/>), the four array higher-order methods
 /// (<c>filter</c>, <c>select</c>, <c>sort</c>, <c>each</c>), and the
-/// <see cref="VirtualMachine.RegisterNative"/> surface.
+/// <see cref="VirtualMachine.RegisterNative(string, NativeFunction)"/> surface.
 ///
 /// All chunks are hand-constructed; no compiler dependency.
 /// </summary>
@@ -252,7 +252,7 @@ public sealed class VirtualMachineNativeTests {
     public void RegisterNative_NullName_Throws() {
         var (vm, _) = NewVm();
         var native = new NativeFunction("f", 0, (_, _) => GrobValue.Nil);
-        Assert.Throws<ArgumentNullException>(() => vm.RegisterNative(null!, native));
+        Assert.Throws<ArgumentNullException>(() => vm.RegisterNative((string)null!, native));
     }
 
     [Fact]

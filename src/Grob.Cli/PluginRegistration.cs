@@ -45,24 +45,10 @@ internal static class PluginRegistration {
             IEnvironment environment,
             IStandardStreams streams,
             bool verbose) {
-        ArgumentNullException.ThrowIfNull(randomSource);
-        ArgumentNullException.ThrowIfNull(environment);
-        ArgumentNullException.ThrowIfNull(streams);
-
-        IReadOnlyList<IGrobPlugin> plugins = [
-            new MathPlugin(randomSource),
-            new PathPlugin(),
-            new StringsPlugin(),
-            new EnvPlugin(environment),
-            new LogPlugin(streams, verbose ? LogLevel.Debug : LogLevel.Info),
-            new IoPlugin(streams),
-            new GuidPlugin(randomSource, new SystemClock()),
-            new DatePlugin(new SystemClock()),
-            new FormatAsPlugin(),
-            new StringMethodsPlugin(),
-            new NumericMethodsPlugin(),
-            new NumericStaticsPlugin(),
-        ];
-        foreach (IGrobPlugin plugin in plugins) plugin.Register(registrar);
+        // One SystemClock per run, shared by guid and date (D-343); the list itself is
+        // composed in Grob.Stdlib so every host builds the same twelve plugins (D-426).
+        foreach (IGrobPlugin plugin in StdlibPlugins.Create(randomSource, environment, streams, new SystemClock(), verbose)) {
+            plugin.Register(registrar);
+        }
     }
 }
