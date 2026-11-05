@@ -3,6 +3,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -19,8 +20,7 @@ namespace Grob.Stdlib.Tests;
 /// </summary>
 public sealed class NumericStaticsPluginTests {
     private static VirtualMachine NewRegisteredVm() {
-        var vm = new VirtualMachine(new StringWriter());
-        new NumericStaticsPlugin().Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new NumericStaticsPlugin()));
         return vm;
     }
 
@@ -31,8 +31,7 @@ public sealed class NumericStaticsPluginTests {
 
     [Fact]
     public void Register_AddsExactlyTheSixQualifiedNatives() {
-        var vm = new VirtualMachine(new StringWriter());
-        new NumericStaticsPlugin().Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new NumericStaticsPlugin()));
 
         string[] expected = [
             "int.min", "int.max", "int.clamp",

@@ -4,59 +4,20 @@ using Grob.Stdlib;
 namespace Grob.Cli;
 
 /// <summary>
-/// The composition root's stdlib plugin list (Sprint 8 Increment A). Given the small,
-/// fixed set of plugins at this point in the build, auto-registration is an explicit
-/// list here rather than reflection-based assembly scanning — <c>formatAs</c> (Increment
-/// E) is the one still to come. <see cref="RegisterAll"/> takes an
-/// <see cref="IRandomSource"/> (Increment B) because <see cref="MathPlugin"/>'s
-/// <c>random</c>/<c>randomInt</c>/<c>randomSeed</c> natives need one per VM run — the
-/// composition root constructs a fresh <see cref="SystemRandomSource"/> per run/session
-/// (D-343) rather than this list holding a single shared instance across the process
-/// lifetime. Increment C adds <see cref="IEnvironment"/> (<c>env.*</c>), the injected
-/// <see cref="IStandardStreams"/> (<c>log.*</c>'s stderr sink and <c>input()</c>'s
-/// stdout/stdin — <see cref="IoPlugin"/> now gives <c>input()</c> a real native
-/// registration where it was previously an empty placeholder) and a <c>verbose</c> flag
-/// (<c>--verbose</c>, which selects <see cref="LogPlugin"/>'s initial threshold).
-/// Increment D adds <see cref="GuidPlugin"/>, reusing the same <see cref="IRandomSource"/>
-/// and a fresh <see cref="SystemClock"/> (D-343's first real <see cref="IClock"/>
-/// consumer, per-run like <see cref="SystemRandomSource"/>).
-/// Increment E adds <see cref="FormatAsPlugin"/> — no capability injection needed, it is
-/// pure formatting over already-resolved arguments (D-342's compile-time column
-/// derivation) plus the injected <see cref="IPluginRegistrar.RenderValue"/> it captures
-/// for itself at <c>Register</c> time.
-/// Sprint 9 Increment B adds <see cref="DatePlugin"/>, reusing the same
-/// <see cref="SystemClock"/> shape as <see cref="GuidPlugin"/>'s (D-354/D-355) — a fresh
-/// instance per run, no new capability interface needed.
-/// Sprint 9 adds <see cref="StringMethodsPlugin"/> (D-066/D-363) — the <c>string</c>
-/// instance-method/property surface, no capability injection needed (pure).
-/// Sprint 9 Increment A1a adds <see cref="NumericMethodsPlugin"/> (D-066/D-369) — the
-/// <c>int</c>/<c>float</c>/<c>bool</c> instance-method surfaces, likewise pure.
-/// Sprint 9 Increment A1b adds <see cref="NumericStaticsPlugin"/> (D-370) — the
-/// <c>int</c>/<c>float</c> type-static surface (<c>min</c>/<c>max</c>/<c>clamp</c>),
-/// completing the numeric surface Increment A1a began; a separate registry lineage
-/// (<c>NamespaceRegistry</c>, not <c>PrimitiveMemberRegistry</c>) so a separate plugin,
-/// likewise pure.
+/// The composition root's stdlib wiring (Sprint 8 Increment A; D-426 Decision 2). Builds
+/// the one <see cref="NativeCatalogue"/> a run or a REPL session shares between its
+/// <c>TypeChecker</c> and its <c>VirtualMachine</c>, over the OS-backed capabilities —
+/// a fresh <see cref="SystemRandomSource"/>, <see cref="SystemEnvironment"/> and
+/// <see cref="SystemClock"/> per run (D-343) — and the caller's streams. The plugin list
+/// itself is composed in <c>Grob.Stdlib</c> (<see cref="StdlibPlugins"/>), so every host
+/// builds the same twelve plugins in the same order; this class only supplies what the
+/// operating system provides.
 /// </summary>
 internal static class PluginRegistration {
     /// <summary>
-    /// The catalogue every CLI type check reads (D-426 change group 4), built once per
-    /// process over inert capabilities: the checker reads signatures only, never an
-    /// implementation. Change group 7 replaces it with the run's own catalogue, which the
-    /// VM then shares.
+    /// Builds the catalogue for one run or session. <paramref name="verbose"/> selects
+    /// <see cref="LogPlugin"/>'s initial threshold (<c>--verbose</c>).
     /// </summary>
-    internal static NativeCatalogue CheckerCatalogue { get; } = StdlibCatalogue.ForCompileOnly();
-
-    /// <summary>Registers every stdlib plugin against <paramref name="registrar"/>, in a fixed order.</summary>
-    internal static void RegisterAll(
-            IPluginRegistrar registrar,
-            IRandomSource randomSource,
-            IEnvironment environment,
-            IStandardStreams streams,
-            bool verbose) {
-        // One SystemClock per run, shared by guid and date (D-343); the list itself is
-        // composed in Grob.Stdlib so every host builds the same twelve plugins (D-426).
-        foreach (IGrobPlugin plugin in StdlibPlugins.Create(randomSource, environment, streams, new SystemClock(), verbose)) {
-            plugin.Register(registrar);
-        }
-    }
+    internal static NativeCatalogue BuildCatalogue(IStandardStreams streams, bool verbose) =>
+        StdlibCatalogue.Build(new SystemRandomSource(), new SystemEnvironment(), streams, new SystemClock(), verbose);
 }

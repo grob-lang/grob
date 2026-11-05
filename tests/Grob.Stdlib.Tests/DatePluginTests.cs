@@ -4,6 +4,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -21,8 +22,7 @@ public sealed class DatePluginTests {
     private static readonly DateTime PinnedUtc = new(2026, 4, 5, 13, 30, 0, DateTimeKind.Utc);
 
     private static VirtualMachine NewRegisteredVm(IClock? clock = null) {
-        var vm = new VirtualMachine(new StringWriter());
-        new DatePlugin(clock ?? new TestClock(PinnedUtc)).Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new DatePlugin(clock ?? new TestClock(PinnedUtc))));
         return vm;
     }
 
@@ -622,8 +622,7 @@ public sealed class DatePluginTests {
         chunk.WriteOpCode(OpCode.Return, 1);
 
         var output = new StringWriter();
-        var freshVm = new VirtualMachine(output);
-        new DatePlugin(new TestClock(PinnedUtc)).Register(freshVm);
+        var freshVm = new VirtualMachine(output, Catalogue(new DatePlugin(new TestClock(PinnedUtc))));
         freshVm.Run(chunk);
 
         Assert.Equal($"2026-04-05T14:30:00+01:00{Environment.NewLine}", output.ToString());
@@ -643,11 +642,92 @@ public sealed class DatePluginTests {
         chunk.WriteOpCode(OpCode.Return, 1);
 
         var output = new StringWriter();
-        var freshVm = new VirtualMachine(output);
-        new DatePlugin(new TestClock(PinnedUtc)).Register(freshVm);
+        var freshVm = new VirtualMachine(output, Catalogue(new DatePlugin(new TestClock(PinnedUtc))));
         freshVm.Run(chunk);
 
         Assert.Equal($"2026-04-05T14:30:00Z{Environment.NewLine}", output.ToString());
+    }
+
+    // -----------------------------------------------------------------------
+    // GetProperty on a stored date value (D-426 group 7: the dispatch these pin used to
+    // live in Grob.Vm.Tests against the registry inside the VM; it moved here with the
+    // data). The receiver is a hand-built constant with a fixed +01:00 offset so the
+    // expectations do not depend on the machine's zone.
+    // -----------------------------------------------------------------------
+
+    private static readonly GrobValue SampleDate = GrobValue.FromStruct(new GrobStruct(
+        "date", [new KeyValuePair<string, GrobValue>("__value", GrobValue.FromString("2026-04-05T14:30:00+01:00"))]));
+
+    private static Chunk BuildGetPropertyOnConstantChunk(GrobValue receiver, string propertyName) {
+        var chunk = new Chunk();
+        int receiverIdx = chunk.AddConstant(receiver);
+        chunk.WriteOpCode(OpCode.Constant, 1);
+        chunk.WriteByte((byte)receiverIdx, 1);
+        int propIdx = chunk.AddConstant(GrobValue.FromString(propertyName));
+        chunk.WriteOpCode(OpCode.GetProperty, 1);
+        chunk.WriteByte((byte)propIdx, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+        return chunk;
+    }
+
+    private static Chunk BuildAddDaysThenDayChunk(GrobValue receiver, long days) {
+        var chunk = new Chunk();
+        int receiverIdx = chunk.AddConstant(receiver);
+        chunk.WriteOpCode(OpCode.Constant, 1);
+        chunk.WriteByte((byte)receiverIdx, 1);
+        int methodIdx = chunk.AddConstant(GrobValue.FromString("addDays"));
+        chunk.WriteOpCode(OpCode.GetProperty, 1);
+        chunk.WriteByte((byte)methodIdx, 1);
+        int argIdx = chunk.AddConstant(GrobValue.FromInt(days));
+        chunk.WriteOpCode(OpCode.Constant, 1);
+        chunk.WriteByte((byte)argIdx, 1);
+        chunk.WriteOpCode(OpCode.Call, 1);
+        chunk.WriteByte(1, 1);
+        int dayIdx = chunk.AddConstant(GrobValue.FromString("day"));
+        chunk.WriteOpCode(OpCode.GetProperty, 1);
+        chunk.WriteByte((byte)dayIdx, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+        return chunk;
+    }
+
+    [Theory]
+    [InlineData("year", 2026)]
+    [InlineData("month", 4)]
+    [InlineData("day", 5)]
+    [InlineData("hour", 14)]
+    [InlineData("minute", 30)]
+    [InlineData("second", 0)]
+    public void GetProperty_IntComponent_ReadsFromStoredInstant(string property, long expected) {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildGetPropertyOnConstantChunk(SampleDate, property));
+
+        Assert.Equal(expected, vm.Stack.Peek().AsInt());
+    }
+
+    [Fact]
+    public void GetProperty_UtcOffset_ReadsMinutes() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildGetPropertyOnConstantChunk(SampleDate, "utcOffset"));
+
+        Assert.Equal(60, vm.Stack.Peek().AsInt());
+    }
+
+    [Fact]
+    public void GetProperty_DayOfWeek_ReadsName() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildGetPropertyOnConstantChunk(SampleDate, "dayOfWeek")); // 2026-04-05 is a Sunday
+
+        Assert.Equal("Sunday", vm.Stack.Peek().AsString());
+    }
+
+    [Theory]
+    [InlineData(1, 6)]
+    [InlineData(-1, 4)]
+    public void AddDays_BoundMethodCall_MovesTheDay(long days, long expectedDay) {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildAddDaysThenDayChunk(SampleDate, days));
+
+        Assert.Equal(expectedDay, vm.Stack.Peek().AsInt());
     }
 
     // -----------------------------------------------------------------------

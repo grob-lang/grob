@@ -11,7 +11,7 @@ sit on top of the C# host-code rules in `src/CLAUDE.md`.
 | `Grob.Core.Tests`        | Value representation, chunk construction, opcode encoding      | Unit        |
 | `Grob.Compiler.Tests`    | **Source → assert emitted bytecode.** Highest-priority surface | Unit        |
 | `Grob.Vm.Tests`          | Hand-constructed `Chunk` → assert execution result             | Unit        |
-| `Grob.Stdlib.Tests`      | Register a plugin into a VM instance → assert function output  | Unit        |
+| `Grob.Stdlib.Tests`      | Build a catalogue from a plugin, run a VM over it → assert output | Unit        |
 | `Grob.Integration.Tests` | `.grob` source → assert stdout, stderr and exit code           | Integration |
 
 Put a test in the project that owns the layer under test. A type-checker bug is a

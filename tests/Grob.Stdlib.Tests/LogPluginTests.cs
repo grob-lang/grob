@@ -3,6 +3,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -15,8 +16,7 @@ namespace Grob.Stdlib.Tests;
 /// </summary>
 public sealed class LogPluginTests {
     private static VirtualMachine NewRegisteredVm(FakeStandardStreams streams, LogLevel initialLevel) {
-        var vm = new VirtualMachine(streams);
-        new LogPlugin(streams, initialLevel).Register(vm);
+        var vm = new VirtualMachine(streams, Catalogue(new LogPlugin(streams, initialLevel)));
         return vm;
     }
 

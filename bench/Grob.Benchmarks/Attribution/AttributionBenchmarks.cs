@@ -35,6 +35,10 @@ public class AttributionBenchmarks {
     // checker the benchmarks construct (D-338, D-426 gate report §1.5).
     private static readonly NativeCatalogue Catalogue = StdlibCatalogue.ForCompileOnly();
 
+    // The one plugin the fixtures call into, loaded into every measured VM (see RunSource).
+    private static readonly NativeCatalogue RunCatalogue =
+        new NativeCatalogueBuilder().Add(new StringMethodsPlugin()).Build();
+
     /// <summary>Reads benchmark fixture files from disk once before any benchmark run.</summary>
     [GlobalSetup]
     public void Setup() {
@@ -123,21 +127,19 @@ public class AttributionBenchmarks {
         Chunk chunk = Grob.Compiler.Compiler.Compile(unit, bag);
         // TextWriter.Null discards print() output — we benchmark VM execution,
         // not I/O throughput.
-        var vm = new VirtualMachine(TextWriter.Null);
-        // Registered uniformly, on every fixture, so its one-time registration cost
-        // cancels out of every pairwise subtraction the attribution note derives
-        // (D-385 Q4, ratifying phase 1's stopgap as the permanent approach).
-        // StringMethodsPlugin is pure (no capability injection) and is the only
-        // stdlib plugin any attr-*.grob fixture calls into ("x".upper() in
-        // attr-native.grob). Array/map instance-method dispatch (xs.append/
-        // xs.contains/m.set — ArrayNatives/MapNatives) is a structurally distinct,
-        // more expensive native-call path (a fresh NativeFunction/closure/
-        // display-class triple built on every GetProperty dispatch, phase 1 §4)
-        // reachable without any
-        // plugin registration at all — Grob.Cli.RunCommand is the composition root
-        // that registers the full stdlib set for real script runs; this harness
-        // deliberately stays minimal.
-        new StringMethodsPlugin().Register(vm);
+        // Loaded uniformly, on every fixture, so its one-time load cost cancels out
+        // of every pairwise subtraction the attribution note derives (D-385 Q4,
+        // ratifying phase 1's stopgap as the permanent approach). StringMethodsPlugin
+        // is pure (no capability injection) and is the only stdlib plugin any
+        // attr-*.grob fixture calls into ("x".upper() in attr-native.grob). Array/map
+        // instance-method dispatch (xs.append/xs.contains/m.set —
+        // ArrayNatives/MapNatives) is a structurally distinct, more expensive
+        // native-call path (a fresh NativeFunction/closure/display-class triple built
+        // on every GetProperty dispatch, phase 1 §4) reachable without any plugin at
+        // all — Grob.Cli.RunCommand is the composition root that loads the full
+        // stdlib catalogue for real script runs; this harness deliberately stays
+        // minimal (D-426: the VM reads a catalogue, built once outside the measured body).
+        var vm = new VirtualMachine(TextWriter.Null, RunCatalogue);
         vm.Run(chunk);
     }
 }

@@ -3,6 +3,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -15,8 +16,7 @@ namespace Grob.Stdlib.Tests;
 /// </summary>
 public sealed class StringsPluginTests {
     private static VirtualMachine NewRegisteredVm() {
-        var vm = new VirtualMachine(new StringWriter());
-        new StringsPlugin().Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new StringsPlugin()));
         return vm;
     }
 
@@ -27,8 +27,7 @@ public sealed class StringsPluginTests {
 
     [Fact]
     public void Register_AddsExactlyStringsJoin() {
-        var vm = new VirtualMachine(new StringWriter());
-        new StringsPlugin().Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new StringsPlugin()));
 
         Assert.True(vm.Globals.ContainsKey("strings.join"));
         Assert.Equal(1, vm.Globals.Count);

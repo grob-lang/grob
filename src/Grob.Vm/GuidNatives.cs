@@ -4,10 +4,11 @@ namespace Grob.Vm;
 
 /// <summary>
 /// Construction and canonical-string access for the <c>guid</c> runtime
-/// representation. Instance property/method dispatch itself moved to
-/// <see cref="Grob.Core.NamedTypes.NamedTypeRegistry"/> (D-356) — this class now holds
-/// only the field-layout constants and the accessor <c>Grob.Vm.Tests</c> constructs
-/// fixture values through. A <c>guid</c> value is a <see cref="GrobStruct"/> with
+/// representation. Instance property/method dispatch lives in <c>Grob.Stdlib</c>'s
+/// <c>GuidPlugin</c>, which registers the <c>guid</c> named type into the catalogue the
+/// VM reads (D-356, D-426 Decision 3) — this class holds only the field-layout constants
+/// and the accessor <c>Grob.Vm.Tests</c> constructs fixture values through (the layout is
+/// written here and in the plugin; R-19). A <c>guid</c> value is a <see cref="GrobStruct"/> with
 /// <c>TypeName</c> <c>"guid"</c> and exactly one field, <see cref="ValueFieldName"/>,
 /// holding the canonical lowercase-hyphenated string form (D-303's "boxed
 /// <see cref="Guid"/>" realised as a hidden field, since <see cref="GrobStruct"/> can

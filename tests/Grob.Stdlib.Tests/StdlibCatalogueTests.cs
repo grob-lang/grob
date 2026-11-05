@@ -35,9 +35,8 @@ public sealed class StdlibCatalogueTests {
         IGrobPlugin log = StdlibPlugins.Create(
                 new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(error: error), new TestClock(new DateTime(2026, 1, 1)), verbose)
             .Single(p => p.Name == "log");
-        var vm = new VirtualMachine(new StringWriter());
-        log.Register(vm);
-        var debug = (NativeFunction)vm.Globals["log.debug"].AsFunction();
+        NativeCatalogue catalogue = new NativeCatalogueBuilder().Add(log).Build();
+        var debug = (NativeFunction)catalogue.Globals["log.debug"].AsFunction();
 
         debug.Implementation([GrobValue.FromString("probe")], default);
 
@@ -58,14 +57,14 @@ public sealed class StdlibCatalogueTests {
     }
 
     [Fact]
-    public void Build_RegistersEveryGlobalTheVmRegistrationPathDoes() {
-        var vm = new VirtualMachine(new StringWriter());
-        foreach (IGrobPlugin plugin in CreateWithFakes()) plugin.Register(vm);
-
+    public void Build_LoadsEveryGlobalIntoAVmConstructedOverIt() {
         NativeCatalogue catalogue = StdlibCatalogue.Build(
             new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(), new TestClock(new DateTime(2026, 1, 1)), verbose: false);
 
-        Assert.Equal(vm.Globals.Keys.Order(StringComparer.Ordinal), catalogue.Globals.Keys.Order(StringComparer.Ordinal));
+        var vm = new VirtualMachine(new StringWriter(), catalogue);
+
+        Assert.Equal(catalogue.Globals.Keys.Order(StringComparer.Ordinal), vm.Globals.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(["guid", "date"], catalogue.NamedTypeNames);
     }
 
     [Fact]

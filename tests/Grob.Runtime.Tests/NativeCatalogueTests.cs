@@ -73,7 +73,7 @@ public sealed class NativeCatalogueTests {
     [Fact]
     public void ValueDisplay_OverTheCatalogue_UsesItsRenderers() {
         NativeCatalogue catalogue = new NativeCatalogueBuilder()
-            .Add(new Plugin("guid", r => r.RegisterToString("guid", v => "rendered")))
+            .Add(new Plugin("guid", r => r.RegisterNamedType(new NamedTypeDefinition("guid", [], [], v => "rendered"))))
             .Build();
         var display = new ValueDisplay(catalogue);
 
@@ -84,7 +84,7 @@ public sealed class NativeCatalogueTests {
     [Fact]
     public void TryToString_NonStructValue_Misses() {
         IValueToStringRegistry registry = new NativeCatalogueBuilder()
-            .Add(new Plugin("guid", r => r.RegisterToString("guid", v => "rendered")))
+            .Add(new Plugin("guid", r => r.RegisterNamedType(new NamedTypeDefinition("guid", [], [], v => "rendered"))))
             .Build();
 
         Assert.False(registry.TryToString(GrobValue.FromInt(1), out string? rendered));

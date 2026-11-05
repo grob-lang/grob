@@ -1,6 +1,5 @@
 using Grob.Compiler.Ast;
 using Grob.Core;
-using Grob.Core.NamedTypes;
 
 namespace Grob.Compiler;
 
@@ -500,8 +499,8 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Resolves a plain named (non-built-in) field type reference — a
-    /// <see cref="NamedTypeRegistry"/> entry (D-356) or a user-defined <c>type</c>.
+    /// Resolves a plain named (non-built-in) field type reference — a named type the
+    /// catalogue holds (D-356, D-426) or a user-defined <c>type</c>.
     /// Split from <see cref="ResolveFieldAnnotationType"/> to keep that method's
     /// cognitive complexity under the analyser bar.
     /// </summary>

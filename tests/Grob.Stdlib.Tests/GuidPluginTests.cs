@@ -3,6 +3,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -17,11 +18,10 @@ namespace Grob.Stdlib.Tests;
 public sealed class GuidPluginTests {
     private static VirtualMachine NewRegisteredVm(
             Grob.Runtime.IRandomSource? randomSource = null, Grob.Runtime.IClock? clock = null) {
-        var vm = new VirtualMachine(new StringWriter());
-        new GuidPlugin(
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new GuidPlugin(
             randomSource ?? new TestRandomSource(12345),
             clock ?? new TestClock(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc))
-        ).Register(vm);
+        )));
         return vm;
     }
 
@@ -267,6 +267,26 @@ public sealed class GuidPluginTests {
         Assert.Equal(expected, vm.Stack.Peek().AsString());
     }
 
+    // D-426 group 7: the version/isEmpty dispatch these pin used to live in
+    // Grob.Vm.Tests against the registry inside the VM; it moved here with the data.
+
+    [Fact]
+    public void ParsedGuid_Version_ReadsTheVersionNibble() {
+        var vm = NewRegisteredVm();
+        // 41d4 -> the 4 in the third group is the version nibble: version 4.
+        vm.Run(BuildGetPropertyOnCallChunk("guid.parse", "version", GrobValue.FromString("550e8400-e29b-41d4-a716-446655440000")));
+
+        Assert.Equal(4, vm.Stack.Peek().AsInt());
+    }
+
+    [Fact]
+    public void ParsedGuid_IsEmpty_FalseForNonZero() {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildGetPropertyOnCallChunk("guid.parse", "isEmpty", GrobValue.FromString("550e8400-e29b-41d4-a716-446655440000")));
+
+        Assert.False(vm.Stack.Peek().AsBool());
+    }
+
     [Fact]
     public void Print_RegisteredToString_RendersCanonicalString() {
         var chunk = new Chunk();
@@ -279,8 +299,7 @@ public sealed class GuidPluginTests {
         chunk.WriteOpCode(OpCode.Return, 1);
 
         var output = new StringWriter();
-        var freshVm = new VirtualMachine(output);
-        new GuidPlugin(new TestRandomSource(1), new TestClock(DateTime.UtcNow)).Register(freshVm);
+        var freshVm = new VirtualMachine(output, Catalogue(new GuidPlugin(new TestRandomSource(1), new TestClock(DateTime.UtcNow))));
         freshVm.Run(chunk);
 
         Assert.Equal($"550e8400-e29b-41d4-a716-446655440000{Environment.NewLine}", output.ToString());

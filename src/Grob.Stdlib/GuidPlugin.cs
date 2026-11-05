@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Text;
 
 using Grob.Core;
-using Grob.Core.NamedTypes;
 using Grob.Runtime;
 
 namespace Grob.Stdlib;
@@ -12,16 +11,16 @@ namespace Grob.Stdlib;
 /// (<c>newV4</c>/<c>newV7</c> on <see cref="IRandomSource"/>/<see cref="IClock"/>, the
 /// variadic <c>newV5</c>), parsing (<c>parse</c> throwing <c>ParseError</c> through the
 /// native-throw seam, <c>tryParse</c> returning nil), the well-known RFC 4122 namespaces
-/// and <c>empty</c>, and the registered <c>toString()</c> that makes <c>ValueDisplay</c>
-/// (D-336) render the canonical form. A <c>guid</c> runtime value is a
-/// <see cref="GrobStruct"/> named <c>"guid"</c> with exactly one hidden field
-/// (<see cref="ValueFieldName"/>) holding the canonical lowercase-hyphenated string —
-/// this is the only place outside <c>Grob.Vm</c>'s <c>GuidNatives</c> that convention is
-/// spelled out (the two cannot share code: <c>Grob.Stdlib</c> and <c>Grob.Vm</c> are DAG
-/// siblings, neither referencing the other), so it must stay in lockstep with
-/// <c>GuidNatives.ValueFieldName</c>/<c>TypeName</c>. Registers exactly the qualified
-/// names listed in the compile-time twin, <c>NamespaceRegistry</c>'s <c>guid</c> entry in
-/// <c>Grob.Compiler</c>.
+/// and <c>empty</c>, and, since D-426 Decision 3, the <c>guid</c> named type itself: its
+/// two instance properties, three instance methods and the renderer that makes
+/// <c>ValueDisplay</c> (D-336) print the canonical form. The type checker reads the member
+/// signatures and the VM dispatches the bindings from the catalogue this registration
+/// builds. A <c>guid</c> runtime value is a <see cref="GrobStruct"/> named <c>"guid"</c>
+/// with exactly one hidden field (<see cref="ValueFieldName"/>) holding the canonical
+/// lowercase-hyphenated string. <c>Grob.Vm</c>'s <c>GuidNatives</c> spells the same layout
+/// for its test fixtures and cannot share this code (DAG siblings), so
+/// <see cref="ValueFieldName"/>/<see cref="TypeName"/> stay in lockstep with its constants
+/// by inspection (R-19).
 /// </summary>
 public sealed class GuidPlugin : IGrobPlugin {
     /// <summary>The hidden field name storing a <c>guid</c> value's canonical string form.</summary>
@@ -34,6 +33,10 @@ public sealed class GuidPlugin : IGrobPlugin {
     private static readonly Guid DnsNamespace = Guid.Parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
     private static readonly Guid UrlNamespace = Guid.Parse("6ba7b811-9dad-11d1-80b4-00c04fd430c8");
     private static readonly Guid OidNamespace = Guid.Parse("6ba7b812-9dad-11d1-80b4-00c04fd430c8");
+
+    private static readonly SignatureType.Concrete IntType = SignatureType.Of(GrobType.Int);
+    private static readonly SignatureType.Concrete BoolType = SignatureType.Of(GrobType.Bool);
+    private static readonly SignatureType.Concrete StringType = SignatureType.Of(GrobType.String);
 
     private readonly IRandomSource _randomSource;
     private readonly IClock _clock;
@@ -85,12 +88,32 @@ public sealed class GuidPlugin : IGrobPlugin {
         registrar.RegisterConstant("guid.namespaces.url", FromGuid(UrlNamespace));
         registrar.RegisterConstant("guid.namespaces.oid", FromGuid(OidNamespace));
 
-        // D-356: the renderer itself now lives on the NamedTypeRegistry entry (the
-        // single source of truth also consulted by Grob.Compiler/Grob.Vm) — this call
-        // only wires it into ValueDisplay's runtime registry, preserving the D-336
-        // credential-ordering guarantee unchanged.
-        registrar.RegisterToString(NamedTypeRegistry.Guid.CanonicalName, NamedTypeRegistry.Guid.ToStringRenderer);
+        registrar.RegisterNamedType(BuildNamedType());
     }
+
+    // -----------------------------------------------------------------------
+    // The guid instance surface (D-356, moved here from NamedTypeRegistry by D-426
+    // Decision 3).
+    // -----------------------------------------------------------------------
+
+    private static NamedTypeDefinition BuildNamedType() => new(
+        TypeName,
+        [
+            new NamedTypePropertyBinding(new PropertySignature("version", IntType),
+                r => GrobValue.FromInt(ToGuid(r).Version)),
+            new NamedTypePropertyBinding(new PropertySignature("isEmpty", BoolType),
+                r => GrobValue.FromBool(ToGuid(r) == Guid.Empty)),
+        ],
+        [
+            StringMethod("toString", CanonicalString),
+            StringMethod("toUpperString", r => CanonicalString(r).ToUpperInvariant()),
+            StringMethod("toCompactString", r => ToGuid(r).ToString("N")),
+        ],
+        v => CanonicalString(v.AsStruct()));
+
+    private static NamedTypeMethodBinding StringMethod(string name, Func<GrobStruct, string> body) =>
+        new(new FunctionSignature(name, [], StringType),
+            receiver => new NativeFunction(name, 0, (_, _) => GrobValue.FromString(body(receiver))));
 
     // -----------------------------------------------------------------------
     // Runtime representation — a GrobStruct with one hidden field. Must stay in

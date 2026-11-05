@@ -3,6 +3,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -15,8 +16,7 @@ namespace Grob.Stdlib.Tests;
 /// </summary>
 public sealed class MathPluginTests {
     private static VirtualMachine NewRegisteredVm(Grob.Runtime.IRandomSource? randomSource = null) {
-        var vm = new VirtualMachine(new StringWriter());
-        new MathPlugin(randomSource ?? new TestRandomSource(12345)).Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new MathPlugin(randomSource ?? new TestRandomSource(12345))));
         return vm;
     }
 
@@ -100,8 +100,7 @@ public sealed class MathPluginTests {
 
     [Fact]
     public void Register_AddsExactlyTheDocumentedMathMembers() {
-        var vm = new VirtualMachine(new StringWriter());
-        new MathPlugin(new TestRandomSource(1)).Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new MathPlugin(new TestRandomSource(1))));
 
         string[] expectedMembers = [
             "pi", "e", "tau",

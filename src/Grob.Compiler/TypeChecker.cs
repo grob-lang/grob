@@ -1,6 +1,5 @@
 using Grob.Compiler.Ast;
 using Grob.Core;
-using Grob.Core.NamedTypes;
 using Grob.Runtime;
 
 namespace Grob.Compiler;
@@ -33,6 +32,12 @@ namespace Grob.Compiler;
 public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly DiagnosticBag _diagnostics;
     private readonly NamespaceSymbols _namespaces;
+
+    /// <summary>
+    /// The host's catalogue (D-426 Decision 2), read directly for named types: a lookup is
+    /// one dictionary probe with nothing to cache, unlike the namespace symbols above.
+    /// </summary>
+    private readonly NativeCatalogue _catalogue;
     private readonly Stack<Dictionary<string, Symbol>> _scopes = new();
 
     // -----------------------------------------------------------------------
@@ -238,6 +243,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         ArgumentNullException.ThrowIfNull(diagnostics);
         ArgumentNullException.ThrowIfNull(catalogue);
         _diagnostics = diagnostics;
+        _catalogue = catalogue;
         _namespaces = NamespaceSymbols.For(catalogue);
     }
 
@@ -766,19 +772,18 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     }
 
     /// <summary>
-    /// D-356: resolves a plain type-name reference to a registered nominal type
-    /// (<c>guid</c>, <c>date</c>, ...) if the name is a <see cref="NamedTypeRegistry"/>
-    /// entry, returning its <see cref="GrobType.Struct"/>/<see cref="GrobType.NullableStruct"/>
-    /// kind and name. A registered nominal type is a primitive distinct from
-    /// <c>string</c> whose symbol is a <c>NamespaceDecl</c> (D-342), not a
-    /// <c>TypeDecl</c> — it is never constructed via '{ }' braces, so it carries no
-    /// ExceptionHierarchy-style <c>TypeDecl</c>/<c>UserTypeInfo</c> registration.
-    /// Shared by the signature position (<see cref="ResolveSignatureType"/>) and the
-    /// field-annotation position (<see cref="ResolveNamedFieldType"/>) so the two lookup
-    /// sites cannot drift if the registry contract changes.
+    /// D-356/D-426: resolves a plain type-name reference to a nominal type the catalogue
+    /// holds (<c>guid</c>, <c>date</c>, ...), returning its
+    /// <see cref="GrobType.Struct"/>/<see cref="GrobType.NullableStruct"/> kind and name.
+    /// A registered nominal type is a primitive distinct from <c>string</c> whose symbol
+    /// is a <c>NamespaceDecl</c> (D-342), not a <c>TypeDecl</c> — it is never
+    /// constructed via '{ }' braces, so it carries no ExceptionHierarchy-style
+    /// <c>TypeDecl</c>/<c>UserTypeInfo</c> registration. Shared by the signature position
+    /// (<see cref="ResolveSignatureType"/>) and the field-annotation position
+    /// (<see cref="ResolveNamedFieldType"/>) so the two lookup sites cannot drift.
     /// </summary>
-    private static (GrobType Kind, string NamedTypeName)? TryResolveRegisteredNamedType(TypeRef typeRef) {
-        if (!NamedTypeRegistry.TryGet(typeRef.Name, out _)) return null;
+    private (GrobType Kind, string NamedTypeName)? TryResolveRegisteredNamedType(TypeRef typeRef) {
+        if (!_catalogue.TryGetNamedType(typeRef.Name, out _)) return null;
         GrobType kind = typeRef.IsNullable ? GrobType.NullableStruct : GrobType.Struct;
         return (kind, typeRef.Name);
     }
@@ -1122,9 +1127,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
     /// <summary>
     /// Resolves <paramref name="typeRef"/>'s named-user-type identity when it denotes a
-    /// registered <c>type</c> declaration or a <see cref="NamedTypeRegistry"/> entry
-    /// (D-356) — the name-only counterpart of <see cref="ResolveSignatureType"/>'s
-    /// registry/<c>TypeDecl</c> arms, kept
+    /// registered <c>type</c> declaration or a named type the catalogue holds
+    /// (D-356, D-426) — the name-only counterpart of <see cref="ResolveSignatureType"/>'s
+    /// catalogue/<c>TypeDecl</c> arms, kept
     /// separate rather than threaded through that method's widely-consumed return tuple
     /// (Sprint 8 Increment E, <c>formatAs</c>). Also used by
     /// <see cref="ResolveArrayElementDescriptor"/> (D-351) to resolve a <c>T[]</c>
@@ -1134,7 +1139,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private string? TryGetNamedStructTypeName(TypeRef typeRef) {
         if (typeRef is ArrayTypeRef or FunctionTypeRef) return null;
         if (ResolveTypeRef(typeRef) != GrobType.Unknown) return null;
-        if (NamedTypeRegistry.TryGet(typeRef.Name, out _)) return typeRef.Name;
+        if (_catalogue.TryGetNamedType(typeRef.Name, out _)) return typeRef.Name;
         return LookupSymbol(typeRef.Name)?.DeclarationNode is TypeDecl ? typeRef.Name : null;
     }
 

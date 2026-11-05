@@ -5,6 +5,7 @@ using Grob.Vm;
 using Xunit;
 
 using static Grob.Stdlib.Tests.ChunkBuilders;
+using static Grob.Stdlib.Tests.TestCatalogue;
 
 namespace Grob.Stdlib.Tests;
 
@@ -25,8 +26,7 @@ namespace Grob.Stdlib.Tests;
 /// </remarks>
 public sealed class PathPluginTests {
     private static VirtualMachine NewRegisteredVm() {
-        var vm = new VirtualMachine(new StringWriter());
-        new PathPlugin().Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new PathPlugin()));
         return vm;
     }
 
@@ -37,8 +37,7 @@ public sealed class PathPluginTests {
 
     [Fact]
     public void Register_AddsExactlyTheDocumentedPathMembers() {
-        var vm = new VirtualMachine(new StringWriter());
-        new PathPlugin().Register(vm);
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new PathPlugin()));
 
         string[] expectedMembers = [
             "separator",
