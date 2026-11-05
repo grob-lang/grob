@@ -36,10 +36,17 @@ public sealed class NamedTypeLayoutTests {
     public void NoReaderAssembly_RedeclaresALayoutConstant(string value) {
         string[] copies = [.. Readers
             .SelectMany(assembly => assembly.GetTypes())
+            .Where(type => !IsCoverageInstrumentation(type))
             .SelectMany(type => type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly)
                 .Where(field => field.IsLiteral && field.FieldType == typeof(string) && (string?)field.GetRawConstantValue() == value)
                 .Select(field => $"{type.FullName}.{field.Name}"))];
 
         Assert.Empty(copies);
     }
+
+    // Coverlet injects a tracker type into every instrumented assembly whose literal
+    // fields carry no readable constant (GetRawConstantValue throws). It is not reader
+    // code, so the coverage-gated run skips it rather than failing on it.
+    private static bool IsCoverageInstrumentation(Type type) =>
+        type.Namespace?.StartsWith("Coverlet.", StringComparison.Ordinal) == true;
 }
