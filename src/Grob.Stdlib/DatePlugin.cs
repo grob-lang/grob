@@ -38,6 +38,9 @@ public sealed class DatePlugin : IGrobPlugin {
     private const string IsoUtcFormat = "yyyy-MM-ddTHH:mm:ss'Z'";
     private const string IsoDateOnlyFormat = "yyyy-MM-dd";
 
+    /// <summary>The parameter name the four date-comparison methods share (Sonar S1192: one spelling).</summary>
+    private const string OtherParameter = "other";
+
     private static readonly SignatureType.Concrete DateType = SignatureType.Named(GrobType.Struct, TypeName);
 
     private readonly IClock _clock;
@@ -162,9 +165,9 @@ public sealed class DatePlugin : IGrobPlugin {
                 (d, args) => FromDateTimeOffset(d.AddHours(args[0].AsInt()))),
             Method("addMinutes", [new SignatureParameter("minutes", IntType)], DateType,
                 (d, args) => FromDateTimeOffset(d.AddMinutes(args[0].AsInt()))),
-            Method("isBefore", [new SignatureParameter("other", DateType)], BoolType,
+            Method("isBefore", [new SignatureParameter(OtherParameter, DateType)], BoolType,
                 (d, args) => GrobValue.FromBool(d < ToDateTimeOffset(args[0].AsStruct()))),
-            Method("isAfter", [new SignatureParameter("other", DateType)], BoolType,
+            Method("isAfter", [new SignatureParameter(OtherParameter, DateType)], BoolType,
                 (d, args) => GrobValue.FromBool(d > ToDateTimeOffset(args[0].AsStruct()))),
             Method("toIso", [], StringType,
                 (d, _) => GrobValue.FromString(d.ToString(IsoDateOnlyFormat, CultureInfo.InvariantCulture))),
@@ -182,9 +185,9 @@ public sealed class DatePlugin : IGrobPlugin {
             Method("toTimeOnly", [], DateType, (d, _) => FromDateTimeOffset(new DateTimeOffset(
                 DateTimeOffset.UnixEpoch.Year, DateTimeOffset.UnixEpoch.Month, DateTimeOffset.UnixEpoch.Day,
                 d.Hour, d.Minute, d.Second, d.Offset))),
-            Method("daysUntil", [new SignatureParameter("other", DateType)], IntType,
+            Method("daysUntil", [new SignatureParameter(OtherParameter, DateType)], IntType,
                 (d, args) => GrobValue.FromInt(DaysBetween(d, ToDateTimeOffset(args[0].AsStruct())))),
-            Method("daysSince", [new SignatureParameter("other", DateType)], IntType,
+            Method("daysSince", [new SignatureParameter(OtherParameter, DateType)], IntType,
                 (d, args) => GrobValue.FromInt(DaysBetween(ToDateTimeOffset(args[0].AsStruct()), d))),
         ],
         v => IsoDateTimeString(ToDateTimeOffset(v.AsStruct())));
