@@ -63,7 +63,7 @@ same namespace and architecture.
 4. `Grob.Vm` + `Grob.Compiler` — control flow, conditional/unconditional jump, backpatching
 5. `Grob.Vm` + `Grob.Compiler` — local variables, call frames
 6. `Grob.Vm` + `Grob.Compiler` — functions, `CALL`/`RETURN`, `CallFrame` push/pop
-   7a. `Grob.Runtime` — plugin infrastructure: `IGrobPlugin`, `RegisterNative`, `FunctionSignature`
+   7a. `Grob.Runtime` — plugin infrastructure: `IGrobPlugin`, `IPluginRegistrar`, `FunctionSignature`, `NativeCatalogue` — one registration pass the type checker and the VM both read (D-426)
    7b. `Grob.Stdlib` — all thirteen core modules as `IGrobPlugin` implementations
 7. GC — current decision: lean on C# entirely; this step is a no-op on that path
 8. `Grob.Vm` (`PluginLoader`) — third-party plugin loading: `Assembly.LoadFrom`, `--dev-plugin`

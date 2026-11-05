@@ -18,12 +18,14 @@ install.
 public interface IGrobPlugin
 {
     string Name { get; }
-    void Register(GrobVM vm);
+    void Register(IPluginRegistrar registrar);
 }
 ```
 
-`Register` is called at compile time. It registers native functions with type
-signatures that the type checker verifies before execution begins.
+`Register` is called once, when the host builds the catalogue the type checker and
+the VM both read (D-426). It registers native functions with the `FunctionSignature`
+every registration requires, which the type checker verifies calls against before
+execution begins.
 
 ## Official Plugins
 

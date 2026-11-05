@@ -25,8 +25,8 @@ violating it is the most damaging mistake you can make in this codebase.
 | Assembly        | Owns                                                                 | May reference            |
 |-----------------|----------------------------------------------------------------------|--------------------------|
 | `Grob.Core`     | `Chunk`, `OpCode`, `GrobType`, `GrobValue`, `ConstantPool`, `SourceLocation`, `Diagnostic`, AST node types, `GrobError` hierarchy, ambient-dependency interfaces | Nothing Grob-internal; no NuGet beyond the .NET 10 BCL |
-| `Grob.Runtime`  | `IGrobPlugin`, `GrobVM` registration surface, `FunctionSignature`, `Parameter`, `ExitSignal`, `AuthHeader` | `Grob.Core`              |
-| `Grob.Compiler` | `Lexer`, `Parser`, AST builder, `TypeChecker`, `Compiler`, `TypeRegistry`, `.grobc` writer | `Grob.Core`, `Grob.Runtime` |
+| `Grob.Runtime`  | `IGrobPlugin`, `IPluginRegistrar`, `FunctionSignature`, `SignatureParameter`, `SignatureType`, `NamedTypeDefinition`, `NativeCatalogueBuilder`/`NativeCatalogue` (D-426), `ExitSignal`, `AuthHeader` | `Grob.Core`              |
+| `Grob.Compiler` | `Lexer`, `Parser`, AST builder, `TypeChecker` (reads natives from the `NativeCatalogue` it is constructed with), `Compiler`, `.grobc` writer | `Grob.Core`, `Grob.Runtime` |
 | `Grob.Vm`       | `VirtualMachine`, `ValueStack`, `CallFrame`, `Globals`, `PluginLoader`, `Upvalue`, `.grobc` reader | `Grob.Core`, `Grob.Runtime` |
 | `Grob.Stdlib`   | 13 core modules as `IGrobPlugin` implementations                     | `Grob.Core`, `Grob.Runtime` |
 | `Grob.Cli`      | Composition root, CLI commands, REPL, error formatter, concrete ambient implementations | All `src/` assemblies    |

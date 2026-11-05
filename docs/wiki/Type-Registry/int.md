@@ -15,8 +15,9 @@ member is a compile error.
 ## Static Functions
 
 Namespace-receiver calls (D-370), not instance methods — the same call shape as
-`math.sqrt(x)`, registered on `NamespaceRegistry` rather than the instance-member
-table above.
+`math.sqrt(x)`. `NumericStaticsPlugin` registers them with their signatures as
+type-statics, separately from the instance members above, through the internal surface
+that keeps primitive type names closed to third-party plugins (D-426).
 
 | Member | Signature | Notes |
 |--------|-----------|-------|

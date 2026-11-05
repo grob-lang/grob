@@ -11,6 +11,12 @@ namespace Grob.Core.Tests;
 /// </summary>
 public sealed class DateLayoutTests {
     [Fact]
+    public void TypeName_IsDate() => Assert.Equal("date", DateLayout.TypeName);
+
+    [Fact]
+    public void ValueFieldName_IsTheUnspellableHiddenField() => Assert.Equal("__value", DateLayout.ValueFieldName);
+
+    [Fact]
     public void RoundTripFormat_IsTheOffsetPreservingIsoForm() =>
         Assert.Equal("yyyy-MM-ddTHH:mm:sszzz", DateLayout.RoundTripFormat);
 

@@ -12,7 +12,7 @@
 Grob.sln
 ├── src/
 │   ├── Grob.Core/              ← Shared primitives — Chunk, OpCode, GrobType, value types
-│   ├── Grob.Runtime/           ← Plugin contract — IGrobPlugin, GrobVM surface, FunctionSignature
+│   ├── Grob.Runtime/           ← Plugin contract — IGrobPlugin, IPluginRegistrar, FunctionSignature, NativeCatalogue
 │   ├── Grob.Compiler/          ← Lexer, Parser, AST, TypeChecker, Compiler
 │   ├── Grob.Vm/                ← VM execution engine — fetch/decode/execute, value stack, call frames
 │   ├── Grob.Stdlib/            ← Core stdlib as IGrobPlugin implementations
@@ -72,10 +72,22 @@ Plugin authors reference `Grob.Runtime` — nothing else.
 
 **Contents:**
 
-- `IGrobPlugin` — the plugin interface (`string Name`, `void Register(GrobVM vm)`)
-- `GrobVM` — the registration surface exposed to plugins (not the full VM implementation)
-- `FunctionSignature` — type signature for native function registration
-- `Parameter` — parameter name + `GrobType` pairing
+- `IGrobPlugin` — the plugin interface (`string Name`, `void Register(IPluginRegistrar registrar)`)
+- `IPluginRegistrar` — the registration surface exposed to plugins: `RegisterNative`
+  (signature required), `RegisterNamedType`, `RegisterConstant`, `RenderValue`. Never
+  the VM (D-426)
+- `FunctionSignature` — inert type signature for a native: qualified name, parameters,
+  return type, type parameters (D-419, D-426)
+- `SignatureParameter` — name, `SignatureType`, variadic flag and optional compile-time
+  default; `SignatureType.Concrete` is a `GrobType` plus, for a struct, its named-type
+  name and, for an array, its element type
+- `NamedTypeDefinition` — a plugin-owned named type's property and method bindings and
+  its renderer
+- `NativeCatalogueBuilder` / `NativeCatalogue` — the one registration pass and the
+  data catalogue it builds. The host composes it; the type checker reads signatures
+  from it and the VM is constructed over it (D-426 Decision 2). Primitive receivers
+  register through an internal surface third-party plugins cannot reach (D-426
+  Decision 3)
 - `GrobError` hierarchy — `GrobError`, `IoError`, `NetworkError`, `JsonError`,
   `ProcessError`, `NilError`, `RuntimeError`
 - `ExitSignal` — uncatchable internal signal for `exit()` unwinding (internal use)
@@ -116,8 +128,11 @@ Everything from source text to `Chunk`. Three passes in sequence.
 - `Compiler` — visitor over the type-annotated AST; emits bytecode into a `Chunk`.
   A program containing any `Error`-typed node fails the type-check pass and
   never reaches the bytecode emitter
-- `TypeRegistry` — compile-time knowledge of all built-in type methods and properties;
-  populated at startup from `Grob.Stdlib` registrations
+- The type checker's knowledge of every registered native, named type and primitive
+  member comes from the `NativeCatalogue` it is constructed with, built by the host
+  from `Grob.Stdlib` registrations before the check (D-426). There is no compile-time
+  table of natives in `Grob.Compiler`; array and map instance methods, `formatAs` and
+  the built-ins stay bespoke checker arms (D-426 Decision 1)
 - `Optimiser` — optional pass between type checker and compiler; deferred to post-MVP
 
 **Visitor pattern:** All three passes use the visitor pattern. Grob has multiple passes
@@ -153,7 +168,8 @@ The execution engine. Receives a `Chunk`; runs it.
 - `ValueStack` — the operand stack; structs for value types, no heap allocation
 - `CallFrame` — one per active function call; stored in a fixed `CallFrame[256]` array
 - `Globals` — built-in and plugin-registered native functions
-- `PluginLoader` — loads `IGrobPlugin` assemblies; invokes `Register(GrobVM)`
+- `PluginLoader` — loads third-party `IGrobPlugin` assemblies for the host to add to
+  its `NativeCatalogueBuilder` (Sprint 11; not built yet)
 - `GcStrategy` — C# GC is the primary strategy; this is a placeholder for any
   explicit GC cooperation if required (tentative: lean on C# entirely)
 - `Upvalue` — closed-over variable support for lambdas and closures
@@ -223,7 +239,7 @@ Consumes `Grob.Compiler` to provide editor intelligence — never executes scrip
 
 - `Program` — entry point; wires stdin/stdout to `OmniSharp.Extensions.LanguageServer`
 - `DiagnosticsHandler` — runs the type checker on file change; pushes errors to the editor
-- `CompletionHandler` — resolves type at cursor position; queries `TypeRegistry` for members
+- `CompletionHandler` — resolves type at cursor position; queries the `NativeCatalogue` for members
 - `HoverHandler` — returns resolved type of identifier at cursor
 - `DefinitionHandler` — returns `Declaration.Location` for identifier at cursor
 
@@ -339,11 +355,11 @@ Steps 3 onwards name both assemblies where both are touched.
 4. `Grob.Vm` + `Grob.Compiler` — control flow — conditional/unconditional jump, backpatching
 5. `Grob.Vm` + `Grob.Compiler` — local variables, call frames
 6. `Grob.Vm` + `Grob.Compiler` — functions — `CALL`/`RETURN`, `CallFrame` push/pop
-   7a. `Grob.Runtime` — plugin infrastructure — `IGrobPlugin`, `RegisterNative`,
-   `FunctionSignature`, `Parameter`. This is the registration mechanism the stdlib
-   depends on. It is not the user-facing plugin loader — that is step 9.
+   7a. `Grob.Runtime` — plugin infrastructure — `IGrobPlugin`, `IPluginRegistrar`,
+   `FunctionSignature`, `SignatureParameter`, `NativeCatalogue`. This is the
+   registration mechanism the stdlib depends on (as built: D-426). It is not the user-facing plugin loader — that is step 9.
    7b. `Grob.Stdlib` — all thirteen core modules as `IGrobPlugin` implementations,
-   auto-registered at VM startup: `fs`, `strings`, `json`, `csv`, `env`, `process`,
+   registered into the host's catalogue at startup: `fs`, `strings`, `json`, `csv`, `env`, `process`,
    `date`, `math`, `log`, `regex`, `path`, `formatAs`, `guid`
 7. GC — tentative: lean on C# entirely; if a custom GC is required, implement here.
    In the lean-on-C# path (current decision) this step is a no-op.

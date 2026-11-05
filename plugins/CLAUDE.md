@@ -13,20 +13,22 @@ well-authored plugin. When in doubt, follow its shape.
 
 ## The contract
 
-The current `IGrobPlugin` interface is defined in `src/Grob.Runtime/IGrobPlugin.cs` —
-read it there rather than from a snapshot here, since the registration surface has
-moved since this file was last updated (it now takes an `IPluginRegistrar`, not a
-`GrobVM`).
+The `IGrobPlugin` and `IPluginRegistrar` interfaces are defined in `src/Grob.Runtime/` —
+read them there rather than from a snapshot here. `Register` takes an
+`IPluginRegistrar`, never the VM.
 
-- Reference the `Grob.Runtime` NuGet package for `IGrobPlugin`, `GrobVM`,
-  `FunctionSignature`, `Parameter` and the `GrobError` hierarchy. Reference nothing
+- Reference the `Grob.Runtime` NuGet package for `IGrobPlugin`, `IPluginRegistrar`,
+  `FunctionSignature`, `SignatureParameter`, `SignatureType`, `NamedTypeDefinition` and
+  the `GrobError` hierarchy. Reference nothing
   else from the Grob solution. A plugin that needs `Grob.Vm` or `Grob.Compiler` is
   reaching across a boundary it must not cross.
-- `Register` is called at compile time for third-party plugins, and at VM startup
-  (alphabetically by module name) for core stdlib plugins.
-- Always supply a `FunctionSignature` for every registered native — name, parameter
-  types and return type. This is what the type checker validates calls against; an
-  untyped registration defeats Grob's static checking.
+- `Register` runs once per catalogue build: the host adds every plugin to one
+  `NativeCatalogueBuilder`, and the type checker and the VM both read the
+  `NativeCatalogue` it builds (D-426). It must not perform a capability call.
+- Every native is registered with a `FunctionSignature` — qualified name, named and
+  typed parameters and a return type. `RegisterNative(FunctionSignature,
+  NativeFunction)` is the only overload, so an untyped registration does not compile.
+  The signature is what the type checker validates calls against.
 
 ## Knowledge enters at the type-checker layer, not the grammar
 

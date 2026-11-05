@@ -25,13 +25,17 @@ A plugin is a NuGet package tagged `grob-plugin` that implements `IGrobPlugin`:
 public interface IGrobPlugin
 {
     string Name { get; }
-    void Register(GrobVM vm);
+    void Register(IPluginRegistrar registrar);
 }
 ```
 
-The `Register` method is called at compile time. It registers native functions —
-C# implementations with type signatures that Grob’s type checker can verify before
-execution begins. A script calling a plugin function with the wrong argument types
+`Register` receives an `IPluginRegistrar`, never the VM. The host adds every plugin
+to one `NativeCatalogueBuilder` before the type check and builds one
+`NativeCatalogue`: the type checker reads each native's `FunctionSignature` from it and
+the VM is constructed over it, so there is no second registration path (D-426). A
+plugin registers native functions — C# implementations with type signatures that
+Grob’s type checker can verify before execution begins. `RegisterNative` takes the
+signature as a required argument, so an untyped registration does not compile. A script calling a plugin function with the wrong argument types
 gets a compile-time error, not a runtime crash.
 
 ### Type registration
@@ -40,9 +44,10 @@ Plugins can register named types in addition to functions. A registered type bec
 known to the type checker at compile time — scripts that use a plugin's types get
 full static checking at call sites, just as they do for plugin functions.
 
-**When registration happens.** Core stdlib plugins register their types at VM startup,
-in alphabetical order by module name. Third-party plugins register at compile time,
-when the `import` statement is resolved. The registration order for third-party plugins
+**When registration happens.** Core stdlib plugins register their types, through
+`IPluginRegistrar.RegisterNamedType`, when the host builds the catalogue — once per
+run or REPL session, before the type check (D-426). Third-party plugins will register
+at compile time, when the `import` statement is resolved (Sprint 11). The registration order for third-party plugins
 is the order of `import` statements in the script.
 
 **Namespacing.** A plugin's registered types are namespaced by the plugin's default
@@ -192,25 +197,24 @@ The `^` prefix means compatible versions — `^1.0.0` accepts `1.x.x` but not `2
 ### Minimal example
 
 ```csharp
+using Grob.Core;
 using Grob.Runtime;
 
-public class HelloPlugin : IGrobPlugin
+public sealed class HelloPlugin : IGrobPlugin
 {
     public string Name => "AcmeCorp.Hello";
 
-    public void Register(GrobVM vm)
+    public void Register(IPluginRegistrar registrar)
     {
-        vm.RegisterNative(
-            name: "hello.greet",
-            signature: new FunctionSignature(
-                parameters: [new Parameter("name", GrobType.String)],
-                returnType: GrobType.String
-            ),
-            implementation: args => {
-                var name = args[0].AsString();
-                return new StringValue($"Hello, {name}!");
-            }
-        );
+        SignatureType.Concrete stringType = SignatureType.Of(GrobType.String);
+
+        registrar.RegisterNative(
+            new FunctionSignature(
+                "hello.greet",
+                [new SignatureParameter("name", stringType)],
+                stringType),
+            new NativeFunction("hello.greet", 1, (args, _) =>
+                GrobValue.FromString($"Hello, {args[0].AsString()}!")));
     }
 }
 ```
@@ -236,8 +240,9 @@ to run — if they do, the plugin has not been published yet.
 
 - **Namespace your functions** — prefix all function names with your plugin’s
   alias: `xml.parse()`, `pnp.getSite()`. Not just `parse()` or `getSite()`
-- **Register type signatures** — always provide a `FunctionSignature`. This is
-  what gives scripts compile-time type safety at your plugin boundary
+- **Name your parameters deliberately** — the `FunctionSignature` every
+  registration requires records them, and they are public API once published. The
+  signature is what gives scripts compile-time type safety at your plugin boundary
 - **Fail with `GrobRuntimeException`** — throw this rather than letting raw C#
   exceptions surface to the script author
 - **Document your functions** — README with each function’s signature,
