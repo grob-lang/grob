@@ -24,31 +24,31 @@ public sealed class PathPlugin : IGrobPlugin {
 
         registrar.RegisterConstant("path.separator", GrobValue.FromString(Path.DirectorySeparatorChar.ToString()));
 
-        registrar.RegisterNative(Native("path.join", StringType, Variadic("parts", StringType)),
+        registrar.RegisterNative(Signature("path.join", StringType, Variadic("parts", StringType)),
             new NativeFunction("path.join", 1, (args, _) =>
                 GrobValue.FromString(Path.Combine([.. args.Select(a => a.AsString())]))));
 
-        registrar.RegisterNative(Native("path.joinAll", StringType, Param("parts", StringArrayType)),
+        registrar.RegisterNative(Signature("path.joinAll", StringType, Param("parts", StringArrayType)),
             new NativeFunction("path.joinAll", 1, (args, _) =>
                 GrobValue.FromString(Path.Combine([.. args[0].AsArray().Elements.Select(e => e.AsString())]))));
 
-        registrar.RegisterNative(Native("path.extension", StringType, Param("p", StringType)),
+        registrar.RegisterNative(Signature("path.extension", StringType, Param("p", StringType)),
             new NativeFunction("path.extension", 1, (args, _) =>
                 GrobValue.FromString(Path.GetExtension(args[0].AsString()).ToLowerInvariant())));
 
-        registrar.RegisterNative(Native("path.filename", StringType, Param("p", StringType)),
+        registrar.RegisterNative(Signature("path.filename", StringType, Param("p", StringType)),
             new NativeFunction("path.filename", 1, (args, _) =>
                 GrobValue.FromString(Path.GetFileName(args[0].AsString()))));
 
-        registrar.RegisterNative(Native("path.stem", StringType, Param("p", StringType)),
+        registrar.RegisterNative(Signature("path.stem", StringType, Param("p", StringType)),
             new NativeFunction("path.stem", 1, (args, _) =>
                 GrobValue.FromString(Path.GetFileNameWithoutExtension(args[0].AsString()))));
 
-        registrar.RegisterNative(Native("path.directory", StringType, Param("p", StringType)),
+        registrar.RegisterNative(Signature("path.directory", StringType, Param("p", StringType)),
             new NativeFunction("path.directory", 1, (args, _) =>
                 GrobValue.FromString(Path.GetDirectoryName(args[0].AsString()) ?? string.Empty)));
 
-        registrar.RegisterNative(Native("path.resolve", StringType, Param("p", StringType)),
+        registrar.RegisterNative(Signature("path.resolve", StringType, Param("p", StringType)),
             new NativeFunction("path.resolve", 1, (args, _) => {
                 // Path.GetFullPath("") throws ArgumentException — treat an empty input as
                 // "." (the current directory) rather than letting a raw .NET exception
@@ -57,19 +57,19 @@ public sealed class PathPlugin : IGrobPlugin {
                 return GrobValue.FromString(Path.GetFullPath(p.Length == 0 ? "." : p));
             }));
 
-        registrar.RegisterNative(Native("path.normalise", StringType, Param("p", StringType)),
+        registrar.RegisterNative(Signature("path.normalise", StringType, Param("p", StringType)),
             new NativeFunction("path.normalise", 1, (args, _) =>
                 GrobValue.FromString(Normalise(args[0].AsString()))));
 
-        registrar.RegisterNative(Native("path.isAbsolute", BoolType, Param("p", StringType)),
+        registrar.RegisterNative(Signature("path.isAbsolute", BoolType, Param("p", StringType)),
             new NativeFunction("path.isAbsolute", 1, (args, _) =>
                 GrobValue.FromBool(Path.IsPathRooted(args[0].AsString()))));
 
-        registrar.RegisterNative(Native("path.isRelative", BoolType, Param("p", StringType)),
+        registrar.RegisterNative(Signature("path.isRelative", BoolType, Param("p", StringType)),
             new NativeFunction("path.isRelative", 1, (args, _) =>
                 GrobValue.FromBool(!Path.IsPathRooted(args[0].AsString()))));
 
-        registrar.RegisterNative(Native("path.changeExtension", StringType, Param("p", StringType), Param("ext", StringType)),
+        registrar.RegisterNative(Signature("path.changeExtension", StringType, Param("p", StringType), Param("ext", StringType)),
             new NativeFunction("path.changeExtension", 2, (args, _) =>
                 GrobValue.FromString(Path.ChangeExtension(args[0].AsString(), args[1].AsString()))));
     }

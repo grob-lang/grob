@@ -30,13 +30,13 @@ public sealed class EnvPlugin : IGrobPlugin {
     public void Register(IPluginRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterNative(Native("env.get", NullableStringType, Param("key", StringType)),
+        registrar.RegisterNative(Signature("env.get", NullableStringType, Param("key", StringType)),
             new NativeFunction("env.get", 1, (args, _) => {
                 string? value = _env.Get(args[0].AsString());
                 return value is null ? GrobValue.Nil : GrobValue.FromString(value);
             }));
 
-        registrar.RegisterNative(Native("env.require", StringType, Param("key", StringType)),
+        registrar.RegisterNative(Signature("env.require", StringType, Param("key", StringType)),
             new NativeFunction("env.require", 1, (args, _) => {
                 string key = args[0].AsString();
                 string? value = _env.Get(key);
@@ -47,17 +47,17 @@ public sealed class EnvPlugin : IGrobPlugin {
                 return GrobValue.FromString(value);
             }));
 
-        registrar.RegisterNative(Native("env.has", BoolType, Param("key", StringType)),
+        registrar.RegisterNative(Signature("env.has", BoolType, Param("key", StringType)),
             new NativeFunction("env.has", 1, (args, _) =>
                 GrobValue.FromBool(!string.IsNullOrEmpty(_env.Get(args[0].AsString())))));
 
-        registrar.RegisterNative(Native("env.set", NilType, Param("key", StringType), Param("value", StringType)),
+        registrar.RegisterNative(Signature("env.set", NilType, Param("key", StringType), Param("value", StringType)),
             new NativeFunction("env.set", 2, (args, _) => {
                 _env.Set(args[0].AsString(), args[1].AsString());
                 return GrobValue.Nil;
             }));
 
-        registrar.RegisterNative(Native("env.all", MapType), new NativeFunction("env.all", 0, (_, _) => {
+        registrar.RegisterNative(Signature("env.all", MapType), new NativeFunction("env.all", 0, (_, _) => {
             var map = new GrobMap();
             foreach (KeyValuePair<string, string> entry in _env.All())
                 map.Set(entry.Key, GrobValue.FromString(entry.Value));

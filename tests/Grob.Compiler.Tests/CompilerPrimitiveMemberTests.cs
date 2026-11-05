@@ -1,6 +1,6 @@
 using Grob.Compiler.Ast;
 using Grob.Core;
-using Grob.Core.PrimitiveMembers;
+using Grob.Runtime;
 using Xunit;
 
 using GrobCompiler = Grob.Compiler.Compiler;
@@ -200,24 +200,31 @@ public sealed class CompilerPrimitiveMemberTests {
     }
 
     // -----------------------------------------------------------------------
-    // Every registered string member — each registry entry proves its qualified-native
-    // rewrite, receiver-first argument order and Call arity (data-driven off the registry
-    // so a new member is covered the moment it is registered).
+    // Every registered string member — each catalogue entry proves its qualified-native
+    // rewrite, receiver-first argument order and Call arity (data-driven off the
+    // catalogue's primitive surface, D-426, so a new member is covered the moment it is
+    // registered).
     // -----------------------------------------------------------------------
 
     public static IEnumerable<object[]> AllStringMembers() {
-        PrimitiveMemberEntry entry = PrimitiveMemberRegistry.String;
-        foreach (PrimitiveMemberProperty p in entry.Properties.Values) {
-            yield return [$"v := s.{p.Name}", p.QualifiedNativeName, 1];
+        PrimitiveMemberSurface surface = SurfaceOf(GrobType.String);
+        foreach (PrimitivePropertyEntry p in surface.Properties.Values) {
+            yield return [$"v := s.{p.Signature.Name}", p.QualifiedNativeName, 1];
         }
-        foreach (PrimitiveMemberMethod m in entry.Methods.Values) {
-            string args = string.Join(", ", m.ParameterTypes.Select(ArgLiteral));
-            yield return [$"s.{m.Name}({args})", m.QualifiedNativeName, m.ParameterTypes.Count + 1];
+        foreach (PrimitiveMethodEntry m in surface.Methods.Values) {
+            IReadOnlyList<SignatureParameter> parameters = m.Signature.Parameters;
+            string args = string.Join(", ", parameters.Select(ArgLiteral));
+            yield return [$"s.{m.Signature.Name}({args})", m.QualifiedNativeName, parameters.Count + 1];
         }
     }
 
-    private static string ArgLiteral(GrobType parameterType) =>
-        parameterType == GrobType.Int ? "1" : "\"x\"";
+    private static PrimitiveMemberSurface SurfaceOf(GrobType receiver) {
+        Assert.True(SharedCatalogue.Stdlib.TryGetPrimitiveMembers(receiver, out PrimitiveMemberSurface? surface));
+        return surface;
+    }
+
+    private static string ArgLiteral(SignatureParameter parameter) =>
+        ((SignatureType.Concrete)parameter.Type).Type == GrobType.Int ? "1" : "\"x\"";
 
     [Theory]
     [MemberData(nameof(AllStringMembers))]
@@ -356,17 +363,18 @@ public sealed class CompilerPrimitiveMemberTests {
     // -----------------------------------------------------------------------
     // int/float/bool instance members (Sprint 9 Increment A1a, D-369) — same
     // qualified-native rewrite proven above for string, data-driven off the
-    // registry exactly as AllStringMembers does.
+    // catalogue exactly as AllStringMembers does.
     // -----------------------------------------------------------------------
 
-    public static IEnumerable<object[]> AllIntMembers() => AllMethodMembers(PrimitiveMemberRegistry.Int, "n", "5");
-    public static IEnumerable<object[]> AllFloatMembers() => AllMethodMembers(PrimitiveMemberRegistry.Float, "f", "3.5");
-    public static IEnumerable<object[]> AllBoolMembers() => AllMethodMembers(PrimitiveMemberRegistry.Bool, "b", "true");
+    public static IEnumerable<object[]> AllIntMembers() => AllMethodMembers(GrobType.Int, "n", "5");
+    public static IEnumerable<object[]> AllFloatMembers() => AllMethodMembers(GrobType.Float, "f", "3.5");
+    public static IEnumerable<object[]> AllBoolMembers() => AllMethodMembers(GrobType.Bool, "b", "true");
 
-    private static IEnumerable<object[]> AllMethodMembers(PrimitiveMemberEntry entry, string receiverName, string receiverLiteral) {
-        foreach (PrimitiveMemberMethod m in entry.Methods.Values) {
-            string args = string.Join(", ", m.ParameterTypes.Select(ArgLiteral));
-            yield return [receiverName, receiverLiteral, $"{receiverName}.{m.Name}({args})", m.QualifiedNativeName, m.ParameterTypes.Count + 1];
+    private static IEnumerable<object[]> AllMethodMembers(GrobType receiver, string receiverName, string receiverLiteral) {
+        foreach (PrimitiveMethodEntry m in SurfaceOf(receiver).Methods.Values) {
+            IReadOnlyList<SignatureParameter> parameters = m.Signature.Parameters;
+            string args = string.Join(", ", parameters.Select(ArgLiteral));
+            yield return [receiverName, receiverLiteral, $"{receiverName}.{m.Signature.Name}({args})", m.QualifiedNativeName, parameters.Count + 1];
         }
     }
 

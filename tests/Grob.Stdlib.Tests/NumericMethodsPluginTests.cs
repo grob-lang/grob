@@ -1,5 +1,4 @@
 using Grob.Core;
-using Grob.Core.PrimitiveMembers;
 using Grob.Vm;
 using Xunit;
 
@@ -11,8 +10,8 @@ namespace Grob.Stdlib.Tests;
 /// <summary>
 /// Sprint 9 Increment A1a (D-369) — <see cref="NumericMethodsPlugin"/> registers the
 /// <c>int</c>/<c>float</c>/<c>bool</c> instance surfaces' runtime natives (D-066's
-/// compile-time-sugar model, proven on <c>string</c> by D-363; <c>PrimitiveMemberRegistry</c>
-/// is the compile-time twin). Every native takes the receiver as its first argument (the
+/// compile-time-sugar model, proven on <c>string</c> by D-363; the signatures the checker
+/// reads arrive with the same registration, D-426). Every native takes the receiver as its first argument (the
 /// compiler injects it), so a hand-built <see cref="ChunkBuilders.BuildCallChunk"/> call with
 /// the receiver as <c>args[0]</c> exercises the exact shape the compiler emits. End to end
 /// through a real <see cref="VirtualMachine"/>, mirroring <c>StringMethodsPluginTests</c>.
@@ -32,9 +31,12 @@ public sealed class NumericMethodsPluginTests {
     public void Register_AddsExactlyTheThirteenQualifiedNatives() {
         var vm = new VirtualMachine(new StringWriter(), Catalogue(new NumericMethodsPlugin()));
 
-        IEnumerable<string> expected = PrimitiveMemberRegistry.Int.Methods.Values.Select(m => m.QualifiedNativeName)
-            .Concat(PrimitiveMemberRegistry.Float.Methods.Values.Select(m => m.QualifiedNativeName))
-            .Concat(PrimitiveMemberRegistry.Bool.Methods.Values.Select(m => m.QualifiedNativeName));
+        string[] expected = [
+            "int.toString", "int.toFloat", "int.abs", "int.format",
+            "float.toString", "float.toInt", "float.round", "float.roundTo",
+            "float.floor", "float.ceil", "float.abs", "float.format",
+            "bool.toString",
+        ];
         foreach (string name in expected) {
             Assert.True(vm.Globals.ContainsKey(name), $"missing native registration: {name}");
         }

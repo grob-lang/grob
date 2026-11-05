@@ -1,7 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Grob.Compiler.Ast;
 using Grob.Core;
-using Grob.Core.PrimitiveMembers;
 using Grob.Runtime;
 
 namespace Grob.Compiler;
@@ -701,8 +700,8 @@ public sealed partial class TypeChecker {
         // rewritten to a qualified native call rather than a runtime GetProperty/Bind
         // (primitives are never GrobValueKind.Struct, so the named-type shape below
         // does not apply). Checked ahead of the Struct-only arms since they never overlap.
-        if (PrimitiveMemberRegistry.TryGet(receiverType, out PrimitiveMemberEntry? primitiveEntry)) {
-            return ValidatePrimitiveMemberCall(node, memberAccess, argTypes, primitiveEntry);
+        if (_catalogue.TryGetPrimitiveMembers(receiverType, out PrimitiveMemberSurface? primitiveSurface)) {
+            return ValidatePrimitiveMemberCall(node, memberAccess, argTypes, primitiveSurface);
         }
 
         // D-356/D-426: instance methods on a named type the catalogue holds (guid, date,
@@ -1205,57 +1204,62 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Validates a primitive-receiver (D-066, <c>string</c> first) instance-method call
-    /// and returns its result type, driven entirely by <paramref name="entry"/>'s method
-    /// table — the primitive analogue of <see cref="ValidateNamedTypeMethodCall"/>, minus
-    /// the nominal-self-return threading no primitive method needs. Sets
-    /// <see cref="CallExpr.ResolvedPrimitiveNativeName"/> so the compiler rewrites the
-    /// call to the qualified native, receiver injected as arg[0]. <c>split</c> is the one
-    /// array-returning member in the current surface; its element is always <c>string</c>,
-    /// threaded through <c>_callResultArrayDescriptors</c> (D-351) the same way a
-    /// declared-return-type array threads it, so a chained index/for-in over the result
-    /// resolves a real element type rather than falling back to the generic
-    /// untracked-array <see cref="GrobType.Unknown"/> permissiveness.
+    /// and returns its result type, driven entirely by the signatures in
+    /// <paramref name="surface"/> (D-426) — the primitive analogue of
+    /// <see cref="ValidateNamedTypeMethodCall"/>, minus the nominal-return threading no
+    /// primitive method needs. Sets <see cref="CallExpr.ResolvedPrimitiveNativeName"/> so
+    /// the compiler rewrites the call to the qualified native, receiver injected as
+    /// arg[0]. An array return that declares its element type (<c>split</c>'s
+    /// <c>string[]</c>, gate report F4) threads it through
+    /// <c>_callResultArrayDescriptors</c> (D-351) the same way a declared-return-type array
+    /// does, so a chained index/for-in over the result resolves a real element type rather
+    /// than falling back to the generic untracked-array <see cref="GrobType.Unknown"/>
+    /// permissiveness.
     /// </summary>
     private GrobType ValidatePrimitiveMemberCall(
-            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, PrimitiveMemberEntry entry) {
-        if (!entry.Methods.TryGetValue(memberAccess.Member, out PrimitiveMemberMethod? method) || method is null) {
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, PrimitiveMemberSurface surface) {
+        if (!surface.Methods.TryGetValue(memberAccess.Member, out PrimitiveMethodEntry? method)) {
             return EmitErrorAndReturn(ErrorCatalog.E1002,
-                $"Type '{TypeName(entry.ReceiverType)}' has no member '{memberAccess.Member}'.",
+                $"Type '{TypeName(surface.Receiver)}' has no member '{memberAccess.Member}'.",
                 memberAccess.Range);
         }
-        CheckPrimitiveMemberArgs(node, memberAccess, argTypes, method.ParameterTypes, method.ParameterDefaults);
-        node.ResolvedReturnType = method.ReturnType;
+        FunctionSignature signature = method.Signature;
+        RequireNonGeneric(signature);
+        CheckPrimitiveMemberArgs(node, memberAccess, argTypes, signature);
+        var returnType = (SignatureType.Concrete)signature.ReturnType;
+        node.ResolvedReturnType = returnType.Type;
         node.ResolvedPrimitiveNativeName = method.QualifiedNativeName;
-        node.ResolvedPrimitiveParameterDefaults = method.ParameterDefaults;
-        if (method.ReturnType == GrobType.Array) {
-            _callResultArrayDescriptors[node] = new ArrayTypeDescriptor(GrobType.String, null, null);
+        if (signature.RequiredArgumentCount < signature.Parameters.Count) {
+            node.ResolvedPrimitiveParameterDefaults = [.. signature.Parameters.Select(p => p.Default)];
         }
-        return method.ReturnType;
+        if (returnType.ElementType is { } elementType) {
+            _callResultArrayDescriptors[node] = new ArrayTypeDescriptor(elementType.Type, null, null);
+        }
+        return returnType.Type;
     }
 
     /// <summary>
     /// Checks a primitive-member method call's argument list against
-    /// <paramref name="expected"/> — a required-to-full arity range (<see
+    /// <paramref name="signature"/> — a required-to-full arity range (<see
     /// cref="ErrorCatalog.E0003"/>, D-365 generalising the previous exact-match check the
     /// same way <see cref="CheckNativeCall"/> already does for namespace natives) then
     /// per-argument type (<see cref="ErrorCatalog.E0004"/>) over only the arguments
     /// actually supplied. The primitive analogue of <see cref="CheckNamedTypeMethodArgs"/>,
-    /// minus the <c>NominalSelf</c> parameter kind — no primitive parameter in the current
-    /// surface needs "must be this exact nominal type" (every parameter is a flat
-    /// <see cref="GrobType"/>).
+    /// minus nominal parameters — no primitive parameter in the current surface needs
+    /// "must be this exact nominal type" (every parameter is a flat <see cref="GrobType"/>).
     /// </summary>
     private void CheckPrimitiveMemberArgs(
-            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes,
-            IReadOnlyList<GrobType> expected, IReadOnlyList<GrobValue?>? parameterDefaults) {
+            CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, FunctionSignature signature) {
         if (RejectNamedPrimitiveArgs(node, memberAccess)) return;
-        int requiredCount = RequiredArgumentCount(expected.Count, parameterDefaults);
-        if (!MemberArgCountInRange(node, memberAccess, argTypes.Length, requiredCount, expected.Count)) return;
+        int fullArity = signature.Parameters.Count;
+        if (!MemberArgCountInRange(node, memberAccess, argTypes.Length, signature.RequiredArgumentCount, fullArity)) return;
         for (int i = 0; i < argTypes.Length; i++) {
             if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
             Expression argExpr = node.Arguments[i].Value;
-            if (!TypesAreAssignable(argTypes[i], expected[i])) {
+            GrobType expected = ParameterTypeAt(signature, i).Type;
+            if (!TypesAreAssignable(argTypes[i], expected)) {
                 EmitError(ErrorCatalog.E0004,
-                    $"Argument to '{memberAccess.Member}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{TypeName(expected[i])}'.",
+                    $"Argument to '{memberAccess.Member}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{TypeName(expected)}'.",
                     argExpr.Range);
             }
         }
@@ -1296,8 +1300,9 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Rejects named arguments on a primitive-member call with
-    /// <see cref="ErrorCatalog.E0011"/>. <see cref="PrimitiveMemberMethod"/> carries no
-    /// parameter names, so a named argument cannot bind — and emission preserves source
+    /// <see cref="ErrorCatalog.E0011"/>. Named-argument binding to natives is unsupported
+    /// even though a signature names its parameters (D-426 Decision 4), so a named
+    /// argument cannot bind — and emission preserves source
     /// order, which would otherwise let a swapped pair (e.g. <c>s.replace(to: "b",
     /// from: "a")</c>) pass the type checks yet call the native with mis-ordered
     /// arguments. Primitive members are positional-only until D-358 adds parameter-name
@@ -1683,8 +1688,8 @@ public sealed partial class TypeChecker {
         }
 
         // D-066: primitive instance-property dispatch (string first).
-        if (PrimitiveMemberRegistry.TryGet(targetType, out PrimitiveMemberEntry? primitiveEntry)) {
-            return ResolvePrimitiveMemberPropertyAccess(node, primitiveEntry);
+        if (_catalogue.TryGetPrimitiveMembers(targetType, out PrimitiveMemberSurface? primitiveSurface)) {
+            return ResolvePrimitiveMemberPropertyAccess(node, primitiveSurface);
         }
 
         // Resolve struct field access: look up the field in the user type registry and
@@ -2342,23 +2347,6 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// The minimum argument count a member with <paramref name="fullArity"/> declared
-    /// parameters requires — <paramref name="fullArity"/> itself when it declares no
-    /// defaults, or the count remaining after walking back over the contiguous trailing
-    /// run of non-null <paramref name="defaults"/> entries (D-358's "optional trailing
-    /// parameters" shape; defaults are never declared for a leading parameter). Used by
-    /// the primitive-member (<c>PrimitiveMemberMethod</c>, D-365) call path; the
-    /// namespace-native path reads <see cref="FunctionSignature.RequiredArgumentCount"/>
-    /// instead (D-426), and change group 6 moves this path onto signatures too.
-    /// </summary>
-    private static int RequiredArgumentCount(int fullArity, IReadOnlyList<GrobValue?>? defaults) {
-        int required = fullArity;
-        if (defaults is null) return required;
-        while (required > 0 && defaults[required - 1] is not null) required--;
-        return required;
-    }
-
-    /// <summary>
     /// Rejects named arguments on a namespace-native call with
     /// <see cref="ErrorCatalog.E0011"/>. Named-argument binding to natives is unsupported
     /// even though a <see cref="FunctionSignature"/> names its parameters (D-426 Decision 4),
@@ -2555,22 +2543,23 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Resolves a bare (non-call) property access on a primitive receiver (D-066,
     /// <c>string</c> first), the primitive analogue of
-    /// <see cref="ResolveNamedTypePropertyAccess"/>. Consults <c>entry.Properties</c>
+    /// <see cref="ResolveNamedTypePropertyAccess"/>. Consults <c>surface.Properties</c>
     /// only — a method name accessed without a call (<c>s.trim</c>, no parens) is not a
     /// property and stays <see cref="ErrorCatalog.E1002"/>, matching the named-type
     /// precedent exactly. Sets <see cref="MemberAccessExpr.ResolvedPrimitiveNativeName"/>
     /// so the compiler rewrites the access to the qualified native, receiver as its sole
     /// argument.
     /// </summary>
-    private GrobType ResolvePrimitiveMemberPropertyAccess(MemberAccessExpr node, PrimitiveMemberEntry entry) {
-        if (entry.Properties.TryGetValue(node.Member, out PrimitiveMemberProperty? property) && property is not null) {
-            node.ResolvedFieldType = property.Type;
+    private GrobType ResolvePrimitiveMemberPropertyAccess(MemberAccessExpr node, PrimitiveMemberSurface surface) {
+        if (surface.Properties.TryGetValue(node.Member, out PrimitivePropertyEntry? property)) {
+            GrobType type = property.Signature.Type.Type;
+            node.ResolvedFieldType = type;
             node.ResolvedPrimitiveNativeName = property.QualifiedNativeName;
-            return property.Type;
+            return type;
         }
 
         return EmitErrorAndReturn(ErrorCatalog.E1002,
-            $"Type '{TypeName(entry.ReceiverType)}' has no member '{node.Member}'.",
+            $"Type '{TypeName(surface.Receiver)}' has no member '{node.Member}'.",
             node.Range);
     }
 

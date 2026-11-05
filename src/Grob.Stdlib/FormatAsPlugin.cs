@@ -31,15 +31,15 @@ public sealed class FormatAsPlugin : IGrobPlugin {
         ArgumentNullException.ThrowIfNull(registrar);
         Func<GrobValue, string> render = registrar.RenderValue;
 
-        registrar.RegisterNative(Native("formatAs.table", StringType, Param("items", ArrayType), Param("columns", ArrayType)),
+        registrar.RegisterNative(Signature("formatAs.table", StringType, Param("items", ArrayType), Param("columns", ArrayType)),
             new NativeFunction("formatAs.table", 2, (args, _) =>
                 GrobValue.FromString(Table(args[0].AsArray(), ColumnNames(args[1]), render))));
 
-        registrar.RegisterNative(Native("formatAs.list", StringType, Param("item", StructType), Param("fields", ArrayType)),
+        registrar.RegisterNative(Signature("formatAs.list", StringType, Param("item", StructType), Param("fields", ArrayType)),
             new NativeFunction("formatAs.list", 2, (args, _) =>
                 GrobValue.FromString(ListOf(args[0].AsStruct(), ColumnNames(args[1]), render))));
 
-        registrar.RegisterNative(Native("formatAs.csv", StringType, Param("items", ArrayType), Param("columns", ArrayType)),
+        registrar.RegisterNative(Signature("formatAs.csv", StringType, Param("items", ArrayType), Param("columns", ArrayType)),
             new NativeFunction("formatAs.csv", 2, (args, _) =>
                 GrobValue.FromString(Csv(args[0].AsArray(), ColumnNames(args[1]), render))));
     }

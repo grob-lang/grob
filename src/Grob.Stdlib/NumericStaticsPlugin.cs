@@ -58,24 +58,24 @@ public sealed class NumericStaticsPlugin : IPrimitiveMemberPlugin {
     void IPrimitiveMemberPlugin.RegisterPrimitiveMembers(IPrimitiveMemberRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterPrimitiveStatic(Native("int.min", IntType, Param("a", IntType), Param("b", IntType)),
+        registrar.RegisterPrimitiveStatic(Signature("int.min", IntType, Param("a", IntType), Param("b", IntType)),
             new NativeFunction("int.min", 2,
                 (args, _) => GrobValue.FromInt(Math.Min(args[0].AsInt(), args[1].AsInt()))));
-        registrar.RegisterPrimitiveStatic(Native("int.max", IntType, Param("a", IntType), Param("b", IntType)),
+        registrar.RegisterPrimitiveStatic(Signature("int.max", IntType, Param("a", IntType), Param("b", IntType)),
             new NativeFunction("int.max", 2,
                 (args, _) => GrobValue.FromInt(Math.Max(args[0].AsInt(), args[1].AsInt()))));
-        registrar.RegisterPrimitiveStatic(Native("int.clamp", IntType,
+        registrar.RegisterPrimitiveStatic(Signature("int.clamp", IntType,
                 Param("v", IntType), Param("lo", IntType), Param("hi", IntType)),
             new NativeFunction("int.clamp", 3,
                 (args, _) => GrobValue.FromInt(IntClamp(args[0].AsInt(), args[1].AsInt(), args[2].AsInt()))));
 
-        registrar.RegisterPrimitiveStatic(Native("float.min", FloatType, Param("a", FloatType), Param("b", FloatType)),
+        registrar.RegisterPrimitiveStatic(Signature("float.min", FloatType, Param("a", FloatType), Param("b", FloatType)),
             new NativeFunction("float.min", 2,
                 (args, _) => GrobValue.FromFloat(Math.Min(args[0].AsFloat(), args[1].AsFloat()))));
-        registrar.RegisterPrimitiveStatic(Native("float.max", FloatType, Param("a", FloatType), Param("b", FloatType)),
+        registrar.RegisterPrimitiveStatic(Signature("float.max", FloatType, Param("a", FloatType), Param("b", FloatType)),
             new NativeFunction("float.max", 2,
                 (args, _) => GrobValue.FromFloat(Math.Max(args[0].AsFloat(), args[1].AsFloat()))));
-        registrar.RegisterPrimitiveStatic(Native("float.clamp", FloatType,
+        registrar.RegisterPrimitiveStatic(Signature("float.clamp", FloatType,
                 Param("v", FloatType), Param("lo", FloatType), Param("hi", FloatType)),
             new NativeFunction("float.clamp", 3,
                 (args, _) => GrobValue.FromFloat(FloatClamp(args[0].AsFloat(), args[1].AsFloat(), args[2].AsFloat()))));

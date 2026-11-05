@@ -71,7 +71,7 @@ public sealed record CallExpr(
 
     /// <summary>
     /// Set by the type checker when this call resolves to a primitive-receiver
-    /// instance-method call (D-066's compile-time-sugar model, <c>PrimitiveMemberRegistry</c>) —
+    /// instance-method call (D-066's compile-time-sugar model; the catalogue's primitive surface, D-426) —
     /// the qualified native name (e.g. <c>"string.split"</c>) the compiler rewrites the
     /// call to, receiver injected as arg[0]. <see langword="null"/> for every other call.
     /// </summary>
@@ -79,10 +79,10 @@ public sealed record CallExpr(
 
     /// <summary>
     /// Set by the type checker (D-365) alongside <see cref="ResolvedPrimitiveNativeName"/>
-    /// to the resolved <c>PrimitiveMemberMethod</c>'s <c>ParameterDefaults</c> — the
-    /// compile-time constants a call that omits trailing optional arguments is filled
-    /// with, mirroring D-364's namespace-native <c>NativeMember.ParameterDefaults</c>
-    /// side channel. <see langword="null"/> whenever the resolved method declares no
+    /// to the resolved method signature's parameter defaults, one entry per parameter —
+    /// the compile-time constants a call that omits trailing optional arguments is filled
+    /// with, mirroring <see cref="ResolvedNativeParameterDefaults"/> for namespace
+    /// natives. <see langword="null"/> whenever the resolved method declares no
     /// defaults (every primitive member but <c>padLeft</c>/<c>padRight</c>/<c>truncate</c>
     /// today) or this call is not a primitive-member call at all.
     /// </summary>

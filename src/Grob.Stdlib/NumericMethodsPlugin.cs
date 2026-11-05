@@ -3,14 +3,16 @@ using System.Globalization;
 using Grob.Core;
 using Grob.Runtime;
 
+using static Grob.Stdlib.Signatures;
+
 namespace Grob.Stdlib;
 
 /// <summary>
 /// The <c>int</c>/<c>float</c>/<c>bool</c> instance-method surfaces' runtime natives
 /// (D-066: primitive method-call syntax is compile-time sugar, rewritten by the compiler
-/// to a call against one of these, receiver injected as arg[0]). Registers exactly the
-/// qualified names listed in the compile-time twins, <c>PrimitiveMemberRegistry.Int</c>/
-/// <c>.Float</c>/<c>.Bool</c> in <c>Grob.Core</c> (D-369). Pure — no capability injection,
+/// to a call against one of these, receiver injected as arg[0]; D-369). Each member
+/// registers with its signature through the internal primitive surface (D-426
+/// Decision 3), which the type checker reads from the catalogue. Pure — no capability injection,
 /// mirroring <see cref="StringMethodsPlugin"/>.
 /// <para>
 /// <c>int.abs()</c> and <c>float.toInt()</c> fault via a plain <c>checked(...)</c> C# cast
@@ -28,7 +30,7 @@ namespace Grob.Stdlib;
 /// users expect.
 /// </para>
 /// </summary>
-public sealed class NumericMethodsPlugin : IGrobPlugin {
+public sealed class NumericMethodsPlugin : IPrimitiveMemberPlugin {
     /// <summary>The <c>GrobError</c> leaf every fault this plugin raises through the
     /// native-throw seam reuses (Sonar S1192: one spelling, not several literal
     /// repetitions) — reused rather than a new leaf, matching D-369's "no new error
@@ -50,29 +52,35 @@ public sealed class NumericMethodsPlugin : IGrobPlugin {
     public string Name => "numeric";
 
     /// <inheritdoc/>
-    public void Register(IPluginRegistrar registrar) {
+    public void Register(IPluginRegistrar registrar) => ArgumentNullException.ThrowIfNull(registrar);
+
+    void IPrimitiveMemberPlugin.RegisterPrimitiveMembers(IPrimitiveMemberRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
         RegisterIntNatives(registrar);
         RegisterFloatNatives(registrar);
 
-        registrar.RegisterNative("bool.toString", new NativeFunction("bool.toString", 1,
-            (args, _) => GrobValue.FromString(args[0].AsBool() ? "true" : "false")));
+        registrar.RegisterPrimitiveMethod(GrobType.Bool, Signature("toString", StringType),
+            new NativeFunction("bool.toString", 1,
+                (args, _) => GrobValue.FromString(args[0].AsBool() ? "true" : "false")));
     }
 
     // -----------------------------------------------------------------------
     // int — toString/toFloat/abs/format(pattern).
     // -----------------------------------------------------------------------
 
-    private static void RegisterIntNatives(IPluginRegistrar registrar) {
-        registrar.RegisterNative("int.toString", new NativeFunction("int.toString", 1,
-            (args, _) => GrobValue.FromString(args[0].AsInt().ToString(CultureInfo.InvariantCulture))));
-        registrar.RegisterNative("int.toFloat", new NativeFunction("int.toFloat", 1,
-            (args, _) => GrobValue.FromFloat(args[0].AsInt())));
-        registrar.RegisterNative("int.abs", new NativeFunction("int.abs", 1,
+    private static void RegisterIntNatives(IPrimitiveMemberRegistrar registrar) {
+        registrar.RegisterPrimitiveMethod(GrobType.Int, Signature("toString", StringType),
+            new NativeFunction("int.toString", 1,
+                (args, _) => GrobValue.FromString(args[0].AsInt().ToString(CultureInfo.InvariantCulture))));
+        registrar.RegisterPrimitiveMethod(GrobType.Int, Signature("toFloat", FloatType),
+            new NativeFunction("int.toFloat", 1,
+                (args, _) => GrobValue.FromFloat(args[0].AsInt())));
+        registrar.RegisterPrimitiveMethod(GrobType.Int, Signature("abs", IntType), new NativeFunction("int.abs", 1,
             (args, _) => GrobValue.FromInt(IntAbs(args[0].AsInt()))));
-        registrar.RegisterNative("int.format", new NativeFunction("int.format", 2,
-            (args, _) => GrobValue.FromString(Format(args[0].AsInt(), args[1].AsString()))));
+        registrar.RegisterPrimitiveMethod(GrobType.Int, Signature("format", StringType, Param("pattern", StringType)),
+            new NativeFunction("int.format", 2,
+                (args, _) => GrobValue.FromString(Format(args[0].AsInt(), args[1].AsString()))));
     }
 
     /// <summary>Pattern A: <c>checked(...)</c> — <c>-long.MinValue</c> is not representable,
@@ -83,24 +91,32 @@ public sealed class NumericMethodsPlugin : IGrobPlugin {
     // float — toString/toInt/round/roundTo(decimals)/floor/ceil/abs/format(pattern).
     // -----------------------------------------------------------------------
 
-    private static void RegisterFloatNatives(IPluginRegistrar registrar) {
-        registrar.RegisterNative("float.toString", new NativeFunction("float.toString", 1,
-            (args, _) => GrobValue.FromString(ValueDisplay.FormatFloat(args[0].AsFloat()))));
-        registrar.RegisterNative("float.toInt", new NativeFunction("float.toInt", 1,
-            (args, _) => GrobValue.FromInt(checked((long)args[0].AsFloat()))));
-        registrar.RegisterNative("float.round", new NativeFunction("float.round", 1,
-            (args, _) => GrobValue.FromInt(
-                checked((long)Math.Round(args[0].AsFloat(), MidpointRounding.AwayFromZero)))));
-        registrar.RegisterNative("float.roundTo", new NativeFunction("float.roundTo", 2,
-            (args, _) => GrobValue.FromFloat(RoundTo(args[0].AsFloat(), args[1].AsInt()))));
-        registrar.RegisterNative("float.floor", new NativeFunction("float.floor", 1,
-            (args, _) => GrobValue.FromInt(checked((long)Math.Floor(args[0].AsFloat())))));
-        registrar.RegisterNative("float.ceil", new NativeFunction("float.ceil", 1,
-            (args, _) => GrobValue.FromInt(checked((long)Math.Ceiling(args[0].AsFloat())))));
-        registrar.RegisterNative("float.abs", new NativeFunction("float.abs", 1,
-            (args, _) => GrobValue.FromFloat(Math.Abs(args[0].AsFloat()))));
-        registrar.RegisterNative("float.format", new NativeFunction("float.format", 2,
-            (args, _) => GrobValue.FromString(Format(args[0].AsFloat(), args[1].AsString()))));
+    private static void RegisterFloatNatives(IPrimitiveMemberRegistrar registrar) {
+        registrar.RegisterPrimitiveMethod(GrobType.Float, Signature("toString", StringType),
+            new NativeFunction("float.toString", 1,
+                (args, _) => GrobValue.FromString(ValueDisplay.FormatFloat(args[0].AsFloat()))));
+        registrar.RegisterPrimitiveMethod(GrobType.Float, Signature("toInt", IntType),
+            new NativeFunction("float.toInt", 1,
+                (args, _) => GrobValue.FromInt(checked((long)args[0].AsFloat()))));
+        registrar.RegisterPrimitiveMethod(GrobType.Float, Signature("round", IntType),
+            new NativeFunction("float.round", 1,
+                (args, _) => GrobValue.FromInt(
+                    checked((long)Math.Round(args[0].AsFloat(), MidpointRounding.AwayFromZero)))));
+        registrar.RegisterPrimitiveMethod(GrobType.Float, Signature("roundTo", FloatType, Param("decimals", IntType)),
+            new NativeFunction("float.roundTo", 2,
+                (args, _) => GrobValue.FromFloat(RoundTo(args[0].AsFloat(), args[1].AsInt()))));
+        registrar.RegisterPrimitiveMethod(GrobType.Float, Signature("floor", IntType),
+            new NativeFunction("float.floor", 1,
+                (args, _) => GrobValue.FromInt(checked((long)Math.Floor(args[0].AsFloat())))));
+        registrar.RegisterPrimitiveMethod(GrobType.Float, Signature("ceil", IntType),
+            new NativeFunction("float.ceil", 1,
+                (args, _) => GrobValue.FromInt(checked((long)Math.Ceiling(args[0].AsFloat())))));
+        registrar.RegisterPrimitiveMethod(GrobType.Float, Signature("abs", FloatType),
+            new NativeFunction("float.abs", 1,
+                (args, _) => GrobValue.FromFloat(Math.Abs(args[0].AsFloat()))));
+        registrar.RegisterPrimitiveMethod(GrobType.Float, Signature("format", StringType, Param("pattern", StringType)),
+            new NativeFunction("float.format", 2,
+                (args, _) => GrobValue.FromString(Format(args[0].AsFloat(), args[1].AsString()))));
     }
 
     /// <summary>

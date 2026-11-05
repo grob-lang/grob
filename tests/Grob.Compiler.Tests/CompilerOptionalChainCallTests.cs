@@ -237,7 +237,7 @@ public sealed class CompilerOptionalChainCallTests {
     //
     // D-400 rests on the invariant that CallExpr.ResolvedPrimitiveNativeName is
     // only ever populated for a statically NON-nullable primitive receiver:
-    // PrimitiveMemberRegistry is keyed by GrobType.String/Int/Float/Bool, never
+    // the catalogue's primitive surface is keyed by GrobType.String/Int/Float/Bool, never
     // their Nullable* variants. A nullable primitive receiver therefore takes the
     // generic guarded tail, not EmitPrimitiveMemberCall — which is why the D-400
     // guard covers s?.upper() without a primitive-specific arm. Pin it here so a

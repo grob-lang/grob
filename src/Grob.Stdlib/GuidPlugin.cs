@@ -60,20 +60,20 @@ public sealed class GuidPlugin : IGrobPlugin {
     public void Register(IPluginRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterNative(Native("guid.newV4", GuidType), new NativeFunction("guid.newV4", 0, (_, _) =>
+        registrar.RegisterNative(Signature("guid.newV4", GuidType), new NativeFunction("guid.newV4", 0, (_, _) =>
             FromGuid(CreateVersion4())));
 
-        registrar.RegisterNative(Native("guid.newV7", GuidType), new NativeFunction("guid.newV7", 0, (_, _) =>
+        registrar.RegisterNative(Signature("guid.newV7", GuidType), new NativeFunction("guid.newV7", 0, (_, _) =>
             FromGuid(CreateVersion7())));
 
-        registrar.RegisterNative(Native("guid.newV5", GuidType, Param("namespace", GuidType), Variadic("name", StringType)),
+        registrar.RegisterNative(Signature("guid.newV5", GuidType, Param("namespace", GuidType), Variadic("name", StringType)),
             new NativeFunction("guid.newV5", 1, (args, _) => {
                 Guid ns = ToGuid(args[0].AsStruct());
                 string name = string.Concat(args.Skip(1).Select(a => a.AsString()));
                 return FromGuid(CreateVersion5(ns, name));
             }));
 
-        registrar.RegisterNative(Native("guid.parse", GuidType, Param("value", StringType)),
+        registrar.RegisterNative(Signature("guid.parse", GuidType, Param("value", StringType)),
             new NativeFunction("guid.parse", 1, (args, _) => {
                 string s = args[0].AsString();
                 if (!Guid.TryParse(s, out Guid parsed)) {
@@ -83,7 +83,7 @@ public sealed class GuidPlugin : IGrobPlugin {
                 return FromGuid(parsed);
             }));
 
-        registrar.RegisterNative(Native("guid.tryParse", NullableGuidType, Param("value", StringType)),
+        registrar.RegisterNative(Signature("guid.tryParse", NullableGuidType, Param("value", StringType)),
             new NativeFunction("guid.tryParse", 1, (args, _) =>
                 Guid.TryParse(args[0].AsString(), out Guid parsed) ? FromGuid(parsed) : GrobValue.Nil));
 

@@ -59,23 +59,23 @@ public sealed class LogPlugin : IGrobPlugin {
     public void Register(IPluginRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterNative(Native("log.debug", NilType, Param("message", StringType)),
+        registrar.RegisterNative(Signature("log.debug", NilType, Param("message", StringType)),
             new NativeFunction("log.debug", 1, (args, _) =>
                 WriteAtLevel(LogLevel.Debug, args[0].AsString())));
 
-        registrar.RegisterNative(Native("log.info", NilType, Param("message", StringType)),
+        registrar.RegisterNative(Signature("log.info", NilType, Param("message", StringType)),
             new NativeFunction("log.info", 1, (args, _) =>
                 WriteAtLevel(LogLevel.Info, args[0].AsString())));
 
-        registrar.RegisterNative(Native("log.warning", NilType, Param("message", StringType)),
+        registrar.RegisterNative(Signature("log.warning", NilType, Param("message", StringType)),
             new NativeFunction("log.warning", 1, (args, _) =>
                 WriteAtLevel(LogLevel.Warning, args[0].AsString())));
 
-        registrar.RegisterNative(Native("log.error", NilType, Param("message", StringType)),
+        registrar.RegisterNative(Signature("log.error", NilType, Param("message", StringType)),
             new NativeFunction("log.error", 1, (args, _) =>
                 WriteAtLevel(LogLevel.Error, args[0].AsString())));
 
-        registrar.RegisterNative(Native("log.setLevel", NilType, Param("level", StringType)),
+        registrar.RegisterNative(Signature("log.setLevel", NilType, Param("level", StringType)),
             new NativeFunction("log.setLevel", 1, (args, _) => {
                 if (TryParseLevel(args[0].AsString(), out LogLevel level)) _threshold = level;
                 return GrobValue.Nil;

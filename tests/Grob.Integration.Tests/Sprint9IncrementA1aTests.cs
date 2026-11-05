@@ -18,8 +18,9 @@ namespace Grob.Integration.Tests;
 /// advertised-vs-built corpus audit found: the validation scripts in
 /// <c>grob-sample-scripts.md</c> call <c>.roundTo(2)</c>/<c>.roundTo(1)</c>/<c>.toString()</c>
 /// on <c>int</c>/<c>float</c> receivers, which had no dispatch anywhere before this
-/// increment registered <see cref="Grob.Core.PrimitiveMembers.PrimitiveMemberRegistry.Int"/>/
-/// <c>.Float</c>/<c>.Bool</c> and <see cref="Grob.Stdlib.NumericMethodsPlugin"/>.
+/// increment registered the <c>int</c>/<c>float</c>/<c>bool</c> surfaces in
+/// <see cref="Grob.Stdlib.NumericMethodsPlugin"/> (since D-426, with signatures the checker
+/// reads from the catalogue).
 /// </summary>
 public sealed class Sprint9IncrementA1aTests {
     private static string NL => Environment.NewLine;

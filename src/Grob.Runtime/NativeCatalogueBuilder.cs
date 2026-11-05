@@ -100,13 +100,6 @@ public sealed class NativeCatalogueBuilder {
         AddNamespaceNative(owner, namespaceName, memberName, signature, implementation);
     }
 
-    private void RegisterUntypedNative(string owner, string name, NativeFunction implementation) {
-        RequireNotBuilt();
-        Identifiers.RequireQualifiedName(name, nameof(name), "A native name");
-        ArgumentNullException.ThrowIfNull(implementation);
-        ClaimGlobal(owner, name, GrobValue.FromFunction(implementation));
-    }
-
     private void RegisterConstant(string owner, string name, GrobValue value) {
         RequireNotBuilt();
         (string namespaceName, string memberName) = SplitQualified(name, nameof(name));
@@ -281,9 +274,6 @@ public sealed class NativeCatalogueBuilder {
     private sealed class PluginRegistrar(NativeCatalogueBuilder builder, string owner) : IPluginRegistrar, IPrimitiveMemberRegistrar {
         public void RegisterNative(FunctionSignature signature, NativeFunction implementation) =>
             builder.RegisterNative(owner, signature, implementation);
-
-        public void RegisterNative(string name, NativeFunction fn) =>
-            builder.RegisterUntypedNative(owner, name, fn);
 
         public void RegisterConstant(string name, GrobValue value) =>
             builder.RegisterConstant(owner, name, value);

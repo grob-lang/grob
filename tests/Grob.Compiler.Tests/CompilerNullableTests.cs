@@ -102,7 +102,7 @@ public sealed class CompilerNullableTests {
         // onto 'int[]? := nil' with the real array property '.length' (Sprint 9
         // Increment C0a-1, D-371). D-403's type-checker fix makes '?.' property access
         // genuinely dispatch against the receiver's underlying type instead of staying
-        // permissively Unknown — and 'int' (via PrimitiveMemberRegistry) has zero bare
+        // permissively Unknown — and 'int' (in the catalogue's primitive surface) has zero bare
         // properties, so ANY property name on a nullable int now correctly raises E1002,
         // which CompileSource's own bag.HasErrors assertion turns into a test failure
         // before the bytecode-shape assertions below ever run. This file only ever

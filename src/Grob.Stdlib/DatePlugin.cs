@@ -55,10 +55,10 @@ public sealed class DatePlugin : IGrobPlugin {
     public void Register(IPluginRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterNative(Native("date.now", DateType),
+        registrar.RegisterNative(Signature("date.now", DateType),
             new NativeFunction("date.now", 0, (_, _) => FromDateTimeOffset(Now())));
 
-        registrar.RegisterNative(Native("date.today", DateType), new NativeFunction("date.today", 0, (_, _) => {
+        registrar.RegisterNative(Signature("date.today", DateType), new NativeFunction("date.today", 0, (_, _) => {
             // CodeRabbit review, PR #143: midnight's own UTC offset, not `now`'s — on a
             // day the local zone's offset changes (a DST transition), the two can differ.
             DateTimeOffset now = Now();
@@ -66,7 +66,7 @@ public sealed class DatePlugin : IGrobPlugin {
             return FromDateTimeOffset(new DateTimeOffset(midnight, TimeZoneInfo.Local.GetUtcOffset(midnight)));
         }));
 
-        registrar.RegisterNative(Native("date.of", DateType, Param("year", IntType), Param("month", IntType), Param("day", IntType)),
+        registrar.RegisterNative(Signature("date.of", DateType, Param("year", IntType), Param("month", IntType), Param("day", IntType)),
             new NativeFunction("date.of", 3, (args, _) => {
                 // checked: CodeRabbit review, PR #143 — an unchecked long-to-int narrowing
                 // could silently wrap an out-of-range component into an unrelated, wrong but
@@ -80,7 +80,7 @@ public sealed class DatePlugin : IGrobPlugin {
                 return FromDateTimeOffset(new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)));
             }));
 
-        registrar.RegisterNative(Native("date.ofTime", DateType,
+        registrar.RegisterNative(Signature("date.ofTime", DateType,
                 Param("year", IntType), Param("month", IntType), Param("day", IntType),
                 Param("hour", IntType), Param("minute", IntType), Param("second", IntType)),
             new NativeFunction("date.ofTime", 6, (args, _) => {
@@ -94,7 +94,7 @@ public sealed class DatePlugin : IGrobPlugin {
         // D-358: pattern is the compiler-synthesised second argument — "" (the
         // pre-existing one-argument behaviour) selects ISO-8601 via TryParse; a
         // non-empty pattern selects DateTimeOffset.ParseExact.
-        registrar.RegisterNative(Native("date.parse", DateType,
+        registrar.RegisterNative(Signature("date.parse", DateType,
                 Param("value", StringType), Optional("pattern", StringType, GrobValue.FromString(""))),
             new NativeFunction("date.parse", 2, (args, _) => {
                 string s = args[0].AsString();
@@ -118,11 +118,11 @@ public sealed class DatePlugin : IGrobPlugin {
                 return FromDateTimeOffset(parsed);
             }));
 
-        registrar.RegisterNative(Native("date.fromUnixSeconds", DateType, Param("seconds", IntType)),
+        registrar.RegisterNative(Signature("date.fromUnixSeconds", DateType, Param("seconds", IntType)),
             new NativeFunction("date.fromUnixSeconds", 1,
                 (args, _) => FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(args[0].AsInt()))));
 
-        registrar.RegisterNative(Native("date.fromUnixMillis", DateType, Param("millis", IntType)),
+        registrar.RegisterNative(Signature("date.fromUnixMillis", DateType, Param("millis", IntType)),
             new NativeFunction("date.fromUnixMillis", 1,
                 (args, _) => FromDateTimeOffset(DateTimeOffset.FromUnixTimeMilliseconds(args[0].AsInt()))));
 

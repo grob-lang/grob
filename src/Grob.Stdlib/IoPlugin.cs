@@ -1,6 +1,8 @@
 using Grob.Core;
 using Grob.Runtime;
 
+using static Grob.Stdlib.Signatures;
+
 namespace Grob.Stdlib;
 
 /// <summary>
@@ -9,8 +11,10 @@ namespace Grob.Stdlib;
 /// opcodes, never converted into <c>NativeFunction</c>s dispatched through <c>Call</c>.
 /// Sprint 8 Increment C gives this plugin its first real callable: the bare (no-namespace)
 /// <c>input</c> native, registered under the plain name <c>"input"</c> (no
-/// <c>"module."</c> prefix — <see cref="IPluginRegistrar.RegisterNative(string, NativeFunction)"/>'s own doc comment
-/// anticipates this "a qualified name … or a bare name for a top-level built-in" case).
+/// <c>"module."</c> prefix). The public registrar refuses a bare name, so it registers
+/// through the internal <see cref="IPrimitiveMemberRegistrar.RegisterBuiltin"/> with the
+/// signature <c>input(prompt: string = ""): string</c> (D-426, gate report F2); the
+/// checker's <c>input</c> built-in sentinel still resolves the call.
 /// Writes its prompt argument to <see cref="IStandardStreams.Out"/> with <c>Write</c> (never
 /// <c>WriteLine</c> — a prompt has no trailing newline of its own), flushes, then reads one
 /// line from <see cref="IStandardStreams.In"/>. A <see langword="null"/> line (stdin closed
@@ -21,7 +25,7 @@ namespace Grob.Stdlib;
 /// with <c>""</c> at the call site, <c>Compiler.Expressions.cs VisitCall</c>), so this
 /// native's own arity is 1, never 0.
 /// </summary>
-public sealed class IoPlugin : IGrobPlugin {
+public sealed class IoPlugin : IPrimitiveMemberPlugin {
     private readonly IStandardStreams _streams;
 
     /// <summary>Initialises the plugin with the <see cref="IStandardStreams"/> <c>input</c> reads/writes through.</summary>
@@ -34,19 +38,22 @@ public sealed class IoPlugin : IGrobPlugin {
     public string Name => "io";
 
     /// <inheritdoc/>
-    public void Register(IPluginRegistrar registrar) {
+    public void Register(IPluginRegistrar registrar) => ArgumentNullException.ThrowIfNull(registrar);
+
+    void IPrimitiveMemberPlugin.RegisterPrimitiveMembers(IPrimitiveMemberRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterNative("input", new NativeFunction("input", 1, (args, _) => {
-            _streams.Out.Write(args[0].AsString());
-            _streams.Out.Flush();
+        registrar.RegisterBuiltin(Signature("input", StringType, Optional("prompt", StringType, GrobValue.FromString(""))),
+            new NativeFunction("input", 1, (args, _) => {
+                _streams.Out.Write(args[0].AsString());
+                _streams.Out.Flush();
 
-            string? line = _streams.In.ReadLine();
-            if (line is null) {
-                throw new NativeFaultException("IoError", ErrorCatalog.E5305.Code,
-                    "input(): stdin is closed");
-            }
-            return GrobValue.FromString(line);
-        }));
+                string? line = _streams.In.ReadLine();
+                if (line is null) {
+                    throw new NativeFaultException("IoError", ErrorCatalog.E5305.Code,
+                        "input(): stdin is closed");
+                }
+                return GrobValue.FromString(line);
+            }));
     }
 }

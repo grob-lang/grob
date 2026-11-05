@@ -22,7 +22,7 @@ public sealed class StringsPlugin : IGrobPlugin {
     public void Register(IPluginRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterNative(Native("strings.join", StringType, Param("parts", StringArrayType), Param("separator", StringType)),
+        registrar.RegisterNative(Signature("strings.join", StringType, Param("parts", StringArrayType), Param("separator", StringType)),
             new NativeFunction("strings.join", 2, (args, _) => {
                 string separator = args[1].AsString();
                 string joined = string.Join(separator, args[0].AsArray().Elements.Select(e => e.AsString()));
