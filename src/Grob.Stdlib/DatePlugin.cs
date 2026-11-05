@@ -3,6 +3,8 @@ using System.Globalization;
 using Grob.Core;
 using Grob.Runtime;
 
+using static Grob.Stdlib.Signatures;
+
 namespace Grob.Stdlib;
 
 /// <summary>
@@ -36,9 +38,6 @@ public sealed class DatePlugin : IGrobPlugin {
     private const string IsoUtcFormat = "yyyy-MM-ddTHH:mm:ss'Z'";
     private const string IsoDateOnlyFormat = "yyyy-MM-dd";
 
-    private static readonly SignatureType.Concrete IntType = SignatureType.Of(GrobType.Int);
-    private static readonly SignatureType.Concrete StringType = SignatureType.Of(GrobType.String);
-    private static readonly SignatureType.Concrete BoolType = SignatureType.Of(GrobType.Bool);
     private static readonly SignatureType.Concrete DateType = SignatureType.Named(GrobType.Struct, TypeName);
 
     private readonly IClock _clock;
@@ -56,9 +55,10 @@ public sealed class DatePlugin : IGrobPlugin {
     public void Register(IPluginRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterNative("date.now", new NativeFunction("date.now", 0, (_, _) => FromDateTimeOffset(Now())));
+        registrar.RegisterNative(Native("date.now", DateType),
+            new NativeFunction("date.now", 0, (_, _) => FromDateTimeOffset(Now())));
 
-        registrar.RegisterNative("date.today", new NativeFunction("date.today", 0, (_, _) => {
+        registrar.RegisterNative(Native("date.today", DateType), new NativeFunction("date.today", 0, (_, _) => {
             // CodeRabbit review, PR #143: midnight's own UTC offset, not `now`'s — on a
             // day the local zone's offset changes (a DST transition), the two can differ.
             DateTimeOffset now = Now();
@@ -66,57 +66,65 @@ public sealed class DatePlugin : IGrobPlugin {
             return FromDateTimeOffset(new DateTimeOffset(midnight, TimeZoneInfo.Local.GetUtcOffset(midnight)));
         }));
 
-        registrar.RegisterNative("date.of", new NativeFunction("date.of", 3, (args, _) => {
-            // checked: CodeRabbit review, PR #143 — an unchecked long-to-int narrowing
-            // could silently wrap an out-of-range component into an unrelated, wrong but
-            // valid-looking date instead of failing. checked turns that into a
-            // deterministic OverflowException rather than silently wrong data; a full
-            // translation into a catchable Grob diagnostic is deferred to the Sprint
-            // 9/10 adversarial hardening pass (D-353), which covers this systematically
-            // across every Sprint 9 stdlib module, not date alone.
-            var local = checked(new DateTime((int)args[0].AsInt(), (int)args[1].AsInt(), (int)args[2].AsInt(),
-                0, 0, 0, DateTimeKind.Unspecified));
-            return FromDateTimeOffset(new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)));
-        }));
+        registrar.RegisterNative(Native("date.of", DateType, Param("year", IntType), Param("month", IntType), Param("day", IntType)),
+            new NativeFunction("date.of", 3, (args, _) => {
+                // checked: CodeRabbit review, PR #143 — an unchecked long-to-int narrowing
+                // could silently wrap an out-of-range component into an unrelated, wrong but
+                // valid-looking date instead of failing. checked turns that into a
+                // deterministic OverflowException rather than silently wrong data; a full
+                // translation into a catchable Grob diagnostic is deferred to the Sprint
+                // 9/10 adversarial hardening pass (D-353), which covers this systematically
+                // across every Sprint 9 stdlib module, not date alone.
+                var local = checked(new DateTime((int)args[0].AsInt(), (int)args[1].AsInt(), (int)args[2].AsInt(),
+                    0, 0, 0, DateTimeKind.Unspecified));
+                return FromDateTimeOffset(new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)));
+            }));
 
-        registrar.RegisterNative("date.ofTime", new NativeFunction("date.ofTime", 6, (args, _) => {
-            // checked — see date.of above.
-            var local = checked(new DateTime(
-                (int)args[0].AsInt(), (int)args[1].AsInt(), (int)args[2].AsInt(),
-                (int)args[3].AsInt(), (int)args[4].AsInt(), (int)args[5].AsInt(), DateTimeKind.Unspecified));
-            return FromDateTimeOffset(new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)));
-        }));
+        registrar.RegisterNative(Native("date.ofTime", DateType,
+                Param("year", IntType), Param("month", IntType), Param("day", IntType),
+                Param("hour", IntType), Param("minute", IntType), Param("second", IntType)),
+            new NativeFunction("date.ofTime", 6, (args, _) => {
+                // checked — see date.of above.
+                var local = checked(new DateTime(
+                    (int)args[0].AsInt(), (int)args[1].AsInt(), (int)args[2].AsInt(),
+                    (int)args[3].AsInt(), (int)args[4].AsInt(), (int)args[5].AsInt(), DateTimeKind.Unspecified));
+                return FromDateTimeOffset(new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)));
+            }));
 
         // D-358: pattern is the compiler-synthesised second argument — "" (the
         // pre-existing one-argument behaviour) selects ISO-8601 via TryParse; a
         // non-empty pattern selects DateTimeOffset.ParseExact.
-        registrar.RegisterNative("date.parse", new NativeFunction("date.parse", 2, (args, _) => {
-            string s = args[0].AsString();
-            string pattern = args[1].AsString();
-            DateTimeOffset parsed;
-            if (pattern.Length == 0) {
-                // D-176: a string with an explicit offset preserves it; one without is
-                // interpreted as local time — DateTimeStyles.AssumeLocal gives exactly that.
-                if (!DateTimeOffset.TryParse(
-                        s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out parsed)) {
-                    throw new NativeFaultException(
-                        "ParseError", ErrorCatalog.E5702.Code, $"date.parse: '{s}' is not a valid date.");
+        registrar.RegisterNative(Native("date.parse", DateType,
+                Param("value", StringType), Optional("pattern", StringType, GrobValue.FromString(""))),
+            new NativeFunction("date.parse", 2, (args, _) => {
+                string s = args[0].AsString();
+                string pattern = args[1].AsString();
+                DateTimeOffset parsed;
+                if (pattern.Length == 0) {
+                    // D-176: a string with an explicit offset preserves it; one without is
+                    // interpreted as local time — DateTimeStyles.AssumeLocal gives exactly that.
+                    if (!DateTimeOffset.TryParse(
+                            s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out parsed)) {
+                        throw new NativeFaultException(
+                            "ParseError", ErrorCatalog.E5702.Code, $"date.parse: '{s}' is not a valid date.");
+                    }
+                } else {
+                    if (!DateTimeOffset.TryParseExact(
+                            s, pattern, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out parsed)) {
+                        throw new NativeFaultException("ParseError", ErrorCatalog.E5702.Code,
+                            $"date.parse: '{s}' does not match pattern '{pattern}'.");
+                    }
                 }
-            } else {
-                if (!DateTimeOffset.TryParseExact(
-                        s, pattern, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out parsed)) {
-                    throw new NativeFaultException("ParseError", ErrorCatalog.E5702.Code,
-                        $"date.parse: '{s}' does not match pattern '{pattern}'.");
-                }
-            }
-            return FromDateTimeOffset(parsed);
-        }));
+                return FromDateTimeOffset(parsed);
+            }));
 
-        registrar.RegisterNative("date.fromUnixSeconds", new NativeFunction("date.fromUnixSeconds", 1,
-            (args, _) => FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(args[0].AsInt()))));
+        registrar.RegisterNative(Native("date.fromUnixSeconds", DateType, Param("seconds", IntType)),
+            new NativeFunction("date.fromUnixSeconds", 1,
+                (args, _) => FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(args[0].AsInt()))));
 
-        registrar.RegisterNative("date.fromUnixMillis", new NativeFunction("date.fromUnixMillis", 1,
-            (args, _) => FromDateTimeOffset(DateTimeOffset.FromUnixTimeMilliseconds(args[0].AsInt()))));
+        registrar.RegisterNative(Native("date.fromUnixMillis", DateType, Param("millis", IntType)),
+            new NativeFunction("date.fromUnixMillis", 1,
+                (args, _) => FromDateTimeOffset(DateTimeOffset.FromUnixTimeMilliseconds(args[0].AsInt()))));
 
         registrar.RegisterNamedType(BuildNamedType());
     }

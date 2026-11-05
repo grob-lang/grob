@@ -1,6 +1,8 @@
 using Grob.Core;
 using Grob.Runtime;
 
+using static Grob.Stdlib.Signatures;
+
 namespace Grob.Stdlib;
 
 /// <summary>
@@ -9,9 +11,8 @@ namespace Grob.Stdlib;
 /// it lives on the module rather than as an instance method (D-071). Every other string
 /// operation is an instance method on the <c>string</c> type, registered by
 /// <see cref="StringMethodsPlugin"/> (D-066/D-363), not here. Pure — no capability
-/// injection, no throw sites. Registers exactly the qualified name listed in the
-/// compile-time twin, <c>NamespaceRegistry</c>'s <c>strings</c> entry in
-/// <c>Grob.Compiler</c>.
+/// injection, no throw sites. The native registers with its signature, which the type
+/// checker reads from the catalogue (D-426).
 /// </summary>
 public sealed class StringsPlugin : IGrobPlugin {
     /// <inheritdoc/>
@@ -21,10 +22,11 @@ public sealed class StringsPlugin : IGrobPlugin {
     public void Register(IPluginRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterNative("strings.join", new NativeFunction("strings.join", 2, (args, _) => {
-            string separator = args[1].AsString();
-            string joined = string.Join(separator, args[0].AsArray().Elements.Select(e => e.AsString()));
-            return GrobValue.FromString(joined);
-        }));
+        registrar.RegisterNative(Native("strings.join", StringType, Param("parts", StringArrayType), Param("separator", StringType)),
+            new NativeFunction("strings.join", 2, (args, _) => {
+                string separator = args[1].AsString();
+                string joined = string.Join(separator, args[0].AsArray().Elements.Select(e => e.AsString()));
+                return GrobValue.FromString(joined);
+            }));
     }
 }

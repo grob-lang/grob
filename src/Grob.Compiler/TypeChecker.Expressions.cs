@@ -1585,7 +1585,7 @@ public sealed partial class TypeChecker {
         // an IdentifierExpr) falls through the check above. Rather than generalise
         // namespace-receiver resolution to arbitrary dotted depth, this flattens the
         // specific two-level shape into one lookup key ("namespaces.dns") registered as a
-        // flat member of the "guid" namespace (D-149) — see NamespaceRegistry.
+        // flat member of the "guid" namespace (D-149) — see GuidPlugin's constants.
         if (TryFlattenNestedNamespaceMember(node, out string flatNamespaceName, out string flatMemberName)) {
             return ResolveNamespaceMemberAccess(node, flatNamespaceName, flatMemberName);
         }
@@ -1820,7 +1820,7 @@ public sealed partial class TypeChecker {
     /// </summary>
     /// <remarks>
     /// Resolves through <see cref="LookupSymbol"/> — not a bare
-    /// <see cref="NamespaceRegistry.IsNamespace"/> name check — so a local variable or
+    /// <see cref="NativeCatalogue.IsNamespace"/> name check — so a local variable or
     /// parameter that happens to share a namespace's name (e.g. a <c>Config</c>-typed
     /// parameter called <c>math</c>) correctly shadows the global namespace and falls
     /// through to ordinary member-access resolution instead of always winning (PR #127
@@ -1849,11 +1849,11 @@ public sealed partial class TypeChecker {
     /// what distinguishes a genuine nested-namespace chain from an ordinary instance-member
     /// access on a namespace CONSTANT's value (<c>guid.empty.isEmpty</c> — <c>guid.empty</c>
     /// is one namespace-qualified segment, and <c>.isEmpty</c> is a plain instance property
-    /// on the resulting guid value, not a second namespace segment); without the registry
+    /// on the resulting guid value, not a second namespace segment); without the catalogue
     /// gate the flattening would misfire on that shape, looking up the nonsensical key
     /// <c>"empty.isEmpty"</c>. Flattens rather than generalising namespace-receiver
-    /// resolution to arbitrary dotted depth (D-149; see <see cref="NamespaceRegistry"/>'s
-    /// flat-keyed registration). Annotates the innermost identifier for §3.1.1, exactly as
+    /// resolution to arbitrary dotted depth (D-149; <c>guid.namespaces.dns</c> is registered
+    /// as one flat constant key). Annotates the innermost identifier for §3.1.1, exactly as
     /// <see cref="TryAnnotateNamespaceReceiver"/> does for the one-level case.
     /// </summary>
     private bool TryFlattenNestedNamespaceMember(MemberAccessExpr node, out string namespaceName, out string memberName) {
@@ -1889,7 +1889,9 @@ public sealed partial class TypeChecker {
             node.ResolvedStructTypeName = constantType.NamedTypeName;
             return constantType.Type;
         }
-        if (_namespaces.TryGetNative(namespaceName, memberName, out FunctionSignature? signature)) {
+        // A formatAs member exists only as a call ResolveFormatAsCall rewrites; its
+        // runtime-shape signature (gate report F2) does not make it a callable value.
+        if (namespaceName != "formatAs" && _namespaces.TryGetNative(namespaceName, memberName, out FunctionSignature? signature)) {
             RequireNonGeneric(signature);
             node.ResolvedFieldType = GrobType.Function;
             return GrobType.Function;
@@ -1948,10 +1950,10 @@ public sealed partial class TypeChecker {
 
     // -----------------------------------------------------------------------
     // formatAs (Sprint 8 Increment E) — the collection-to-string terminators.
-    // Not modelled as ordinary NamespaceRegistry ConstantMember/NativeMember entries
-    // (see NamespaceRegistry's "formatAs" entry): compile-time column derivation from
-    // the Sprint 6 field registry, and the chained-form receiver rewrite, need bespoke
-    // resolution the generic positional NativeMember model does not fit. Both call
+    // Not resolved through the catalogue's signatures, which describe only the runtime
+    // shape (gate report F2): compile-time column derivation from the Sprint 6 field
+    // registry, and the chained-form receiver rewrite, need bespoke resolution the
+    // generic positional native-call path does not fit. Both call
     // shapes route into the one resolution core below, ResolveFormatAsCall:
     //   function form  formatAs.table(items)   — via ResolveNamespaceMemberCall
     //   chained form   items.formatAs.table()  — via ResolveMemberAccessCall

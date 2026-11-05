@@ -8,8 +8,8 @@ namespace Grob.Compiler.Tests;
 
 /// <summary>
 /// Type-checker tests for Sprint 9 Increment A1b (D-370)'s <c>int</c>/<c>float</c>
-/// type-static namespace registration in <c>NamespaceRegistry</c> — arity/type
-/// validation against the compile-time twin, mirroring how <c>math</c>/<c>env</c>
+/// type-static namespace registration in the catalogue — arity/type validation against
+/// <c>NumericStaticsPlugin</c>'s signatures, mirroring how <c>math</c>/<c>env</c>
 /// namespace calls are already checked (<see cref="TypeCheckerNamespaceAccessTests"/>,
 /// <see cref="TypeCheckerEnvAccessTests"/>). Completes the numeric surface D-369 began
 /// (the instance-method surface, <c>int.abs()</c>/<c>float.roundTo()</c>) — these six

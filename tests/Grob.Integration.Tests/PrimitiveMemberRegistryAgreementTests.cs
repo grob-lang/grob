@@ -20,17 +20,12 @@ namespace Grob.Integration.Tests;
 /// three) so it does not flag every unrelated native (<c>math.sqrt</c>, <c>date.now</c>,
 /// ...) registered by the same composition-root plugin list.
 /// <para>
-/// Sprint 9 Increment A1b (D-370) registered six <c>int.*</c>/<c>float.*</c> natives
-/// (<c>min</c>/<c>max</c>/<c>clamp</c>) through the sibling <c>NamespaceRegistry</c>
-/// (<c>Grob.Compiler</c>) instead — a genuinely different compile-time registry for a
-/// namespace-receiver call, not an instance method, even though the qualified native
-/// name shares the same <c>"int."</c>/<c>"float."</c> prefix D-369 already claimed. Left
-/// unreconciled, the orphan check below would misreport them as drift (a live native
-/// with no <see cref="PrimitiveMemberRegistry"/> entry) even though they are correctly
-/// homed elsewhere — the orphan computation excludes anything
-/// <see cref="NamespaceRegistry.AllQualifiedNativeNames"/> already accounts for, so a
-/// genuine orphan (owned by neither registry) still fails the check, while a legitimately
-/// dual-prefix, single-registry-owned name like <c>int.min</c> does not.
+/// Sprint 9 Increment A1b (D-370)'s six <c>int.*</c>/<c>float.*</c> type-statics
+/// (<c>min</c>/<c>max</c>/<c>clamp</c>) share the <c>"int."</c>/<c>"float."</c> prefix but
+/// are not instance members. Since D-426 change group 5 they register with signatures
+/// through the internal primitive surface (<c>RegisterPrimitiveStatic</c>), which this
+/// public-surface recording registrar never sees, so the orphan check needs no exclusion
+/// for them.
 /// </para>
 /// </summary>
 public sealed class PrimitiveMemberRegistryAgreementTests {
@@ -78,7 +73,6 @@ public sealed class PrimitiveMemberRegistryAgreementTests {
 
         var orphaned = registered.Where(n => n.StartsWith(prefix, StringComparison.Ordinal))
             .Except(PrimitiveMemberRegistry.AllQualifiedNativeNames)
-            .Except(NamespaceRegistry.AllQualifiedNativeNames)
             .OrderBy(n => n, StringComparer.Ordinal).ToList();
         Assert.True(orphaned.Count == 0,
             $"Live '{prefix}*' RegisterNative calls with no PrimitiveMemberRegistry entry: {string.Join(", ", orphaned)}");

@@ -7,7 +7,7 @@ namespace Grob.Compiler.Tests;
 
 /// <summary>
 /// Type-checker tests for the minimal variadic native support added in Sprint 8
-/// Increment B (<c>NamespaceRegistry.NativeMember.VariadicElementType</c>), whose only
+/// Increment B (now a variadic <c>SignatureParameter</c>, D-426), whose only
 /// consumer is <c>path.join(parts: string...)</c>. Every other native keeps the
 /// pre-existing fixed-arity path (<see cref="TypeCheckerNamespaceAccessTests"/>) — this
 /// file covers only the additive variadic branch in <c>CheckNativeCall</c>.

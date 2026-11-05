@@ -257,7 +257,7 @@ public sealed class TypeCheckerNamespaceAccessTests {
     // Regression: lexical shadowing of a namespace name (PR #127 review —
     // CodeRabbit). TryAnnotateNamespaceReceiver/VisitMemberAccess's fast path
     // must resolve the receiver identifier through LookupSymbol (respecting
-    // scope) rather than the bare NamespaceRegistry.IsNamespace(id.Name) string
+    // scope) rather than a bare catalogue IsNamespace(id.Name) string
     // check, so a local parameter named 'math' correctly shadows the global
     // namespace instead of always winning.
     // -----------------------------------------------------------------------

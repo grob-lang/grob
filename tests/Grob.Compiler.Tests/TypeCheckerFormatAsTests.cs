@@ -80,6 +80,20 @@ public sealed class TypeCheckerFormatAsTests {
         Assert.Same(UnresolvedDecl.Instance, id.Declaration);
     }
 
+    [Fact]
+    public void FormatAsMember_ReferencedWithoutACall_ReportsSingleE1003() {
+        // The formatAs natives carry runtime-shape signatures in the catalogue (gate
+        // report F2), but a bare reference must not resolve as a callable value through
+        // them: formatAs members exist only as the calls ResolveFormatAsCall rewrites.
+        DiagnosticBag bag = Check("readonly f := formatAs.table");
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E1003.Code, diag.Code);
+        Assert.Equal("Namespace 'formatAs' has no member 'table'.", diag.Message);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
+    }
+
     // -----------------------------------------------------------------------
     // Bare '<expr>.formatAs' (no following method call) — the formatAs-specific
     // exact-wording error, folded into D-342's E1004.

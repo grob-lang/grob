@@ -1,24 +1,26 @@
 using Grob.Core;
 using Grob.Runtime;
 
+using static Grob.Stdlib.Signatures;
+
 namespace Grob.Stdlib;
 
 /// <summary>
 /// The <c>int</c>/<c>float</c> type-static function surface's runtime natives
 /// (<c>int.min</c>/<c>.max</c>/<c>.clamp</c>, <c>float.min</c>/<c>.max</c>/<c>.clamp</c>,
-/// Sprint 9 Increment A1b/D-370). Registers exactly the qualified names listed in the
-/// compile-time twin, <c>NamespaceRegistry</c>'s <c>int</c>/<c>float</c> entries in
-/// <c>Grob.Compiler</c> — the namespace-receiver counterpart of D-369's instance-method
-/// surface (<see cref="NumericMethodsPlugin"/>, registered against
-/// <c>PrimitiveMemberRegistry</c> instead). Kept as a separate plugin rather than folded
-/// into <see cref="NumericMethodsPlugin"/>: that class's own doc comment states it
-/// registers exactly <c>PrimitiveMemberRegistry</c>'s names, and mixing in namespace
-/// statics would falsify that and blur the one-plugin-per-registry-lineage pattern
-/// <see cref="MathPlugin"/>/<see cref="NumericMethodsPlugin"/> already establish — even
-/// though both plugins register natives under the same <c>"int."</c>/<c>"float."</c>
-/// qualified-name prefix (<c>min</c>/<c>max</c>/<c>clamp</c> are distinct names from
-/// D-369's <c>toString</c>/<c>toFloat</c>/<c>abs</c>/etc., so there is no collision in
-/// the shared global native table).
+/// Sprint 9 Increment A1b/D-370), each with its signature (D-426 change group 5). The
+/// namespace-receiver counterpart of D-369's instance-method surface
+/// (<see cref="NumericMethodsPlugin"/>). <c>int</c> and <c>float</c> are primitive type
+/// names, which the public registrar refuses as namespaces (gate report F8), so this
+/// plugin registers through the internal primitive surface
+/// (<see cref="IPrimitiveMemberRegistrar.RegisterPrimitiveStatic"/>) and its public
+/// <see cref="Register"/> registers nothing. Kept as a separate plugin rather than folded
+/// into <see cref="NumericMethodsPlugin"/>: a type-static call (<c>int.min(a, b)</c>) and
+/// an instance member (<c>a.abs()</c>) are different call shapes the checker resolves
+/// through different catalogue tables, even though both register under the same
+/// <c>"int."</c>/<c>"float."</c> global prefix (<c>min</c>/<c>max</c>/<c>clamp</c> are
+/// distinct names from D-369's <c>toString</c>/<c>toFloat</c>/<c>abs</c>/etc., so there is
+/// no collision).
 /// Pure — no capability injection, mirroring <see cref="NumericMethodsPlugin"/> and
 /// <see cref="StringMethodsPlugin"/>.
 /// <para>
@@ -40,7 +42,7 @@ namespace Grob.Stdlib;
 /// special-cased — both are pinned and tested exactly as .NET already behaves.
 /// </para>
 /// </summary>
-public sealed class NumericStaticsPlugin : IGrobPlugin {
+public sealed class NumericStaticsPlugin : IPrimitiveMemberPlugin {
     /// <summary>The <c>GrobError</c> leaf every fault this plugin raises through the
     /// native-throw seam reuses (Sonar S1192: one spelling, not several literal
     /// repetitions) — the same leaf D-369's <see cref="NumericMethodsPlugin"/> reuses,
@@ -51,22 +53,32 @@ public sealed class NumericStaticsPlugin : IGrobPlugin {
     public string Name => "numericStatics";
 
     /// <inheritdoc/>
-    public void Register(IPluginRegistrar registrar) {
+    public void Register(IPluginRegistrar registrar) => ArgumentNullException.ThrowIfNull(registrar);
+
+    void IPrimitiveMemberPlugin.RegisterPrimitiveMembers(IPrimitiveMemberRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterNative("int.min", new NativeFunction("int.min", 2,
-            (args, _) => GrobValue.FromInt(Math.Min(args[0].AsInt(), args[1].AsInt()))));
-        registrar.RegisterNative("int.max", new NativeFunction("int.max", 2,
-            (args, _) => GrobValue.FromInt(Math.Max(args[0].AsInt(), args[1].AsInt()))));
-        registrar.RegisterNative("int.clamp", new NativeFunction("int.clamp", 3,
-            (args, _) => GrobValue.FromInt(IntClamp(args[0].AsInt(), args[1].AsInt(), args[2].AsInt()))));
+        registrar.RegisterPrimitiveStatic(Native("int.min", IntType, Param("a", IntType), Param("b", IntType)),
+            new NativeFunction("int.min", 2,
+                (args, _) => GrobValue.FromInt(Math.Min(args[0].AsInt(), args[1].AsInt()))));
+        registrar.RegisterPrimitiveStatic(Native("int.max", IntType, Param("a", IntType), Param("b", IntType)),
+            new NativeFunction("int.max", 2,
+                (args, _) => GrobValue.FromInt(Math.Max(args[0].AsInt(), args[1].AsInt()))));
+        registrar.RegisterPrimitiveStatic(Native("int.clamp", IntType,
+                Param("v", IntType), Param("lo", IntType), Param("hi", IntType)),
+            new NativeFunction("int.clamp", 3,
+                (args, _) => GrobValue.FromInt(IntClamp(args[0].AsInt(), args[1].AsInt(), args[2].AsInt()))));
 
-        registrar.RegisterNative("float.min", new NativeFunction("float.min", 2,
-            (args, _) => GrobValue.FromFloat(Math.Min(args[0].AsFloat(), args[1].AsFloat()))));
-        registrar.RegisterNative("float.max", new NativeFunction("float.max", 2,
-            (args, _) => GrobValue.FromFloat(Math.Max(args[0].AsFloat(), args[1].AsFloat()))));
-        registrar.RegisterNative("float.clamp", new NativeFunction("float.clamp", 3,
-            (args, _) => GrobValue.FromFloat(FloatClamp(args[0].AsFloat(), args[1].AsFloat(), args[2].AsFloat()))));
+        registrar.RegisterPrimitiveStatic(Native("float.min", FloatType, Param("a", FloatType), Param("b", FloatType)),
+            new NativeFunction("float.min", 2,
+                (args, _) => GrobValue.FromFloat(Math.Min(args[0].AsFloat(), args[1].AsFloat()))));
+        registrar.RegisterPrimitiveStatic(Native("float.max", FloatType, Param("a", FloatType), Param("b", FloatType)),
+            new NativeFunction("float.max", 2,
+                (args, _) => GrobValue.FromFloat(Math.Max(args[0].AsFloat(), args[1].AsFloat()))));
+        registrar.RegisterPrimitiveStatic(Native("float.clamp", FloatType,
+                Param("v", FloatType), Param("lo", FloatType), Param("hi", FloatType)),
+            new NativeFunction("float.clamp", 3,
+                (args, _) => GrobValue.FromFloat(FloatClamp(args[0].AsFloat(), args[1].AsFloat(), args[2].AsFloat()))));
     }
 
     private static long IntClamp(long value, long lo, long hi) {

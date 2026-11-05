@@ -1,6 +1,7 @@
 using Grob.Compiler.Ast;
 using Grob.Compiler.Ast.Declarations;
 using Grob.Core;
+using Grob.Runtime;
 
 using Xunit;
 
@@ -174,12 +175,13 @@ public sealed class TypeCheckerDateTests {
     }
 
     [Fact]
-    public void Parse_RegistryEntry_DoesNotDeclareVariadicElementType() {
+    public void Parse_CatalogueSignature_DoesNotDeclareAVariadicTail() {
         // Defaults and a variadic tail are different, mutually exclusive shapes
-        // (NamespaceRegistry.NativeMember's doc comment) — a registry-authoring
-        // invariant for the one entry that carries defaults this increment.
-        var member = (NamespaceRegistry.NativeMember)NamespaceRegistry.TryGetMember("date", "parse")!;
-        Assert.Null(member.VariadicElementType);
+        // (FunctionSignature rejects both on one signature) — a registration invariant
+        // for the one namespace native that carries a default.
+        Assert.True(SharedCatalogue.Stdlib.TryGetNative("date", "parse", out NativeEntry? entry));
+        Assert.False(entry.Signature.IsVariadic);
+        Assert.True(entry.Signature.Parameters[^1].HasDefault);
     }
 
     [Fact]

@@ -1,6 +1,8 @@
 using Grob.Core;
 using Grob.Runtime;
 
+using static Grob.Stdlib.Signatures;
+
 namespace Grob.Stdlib;
 
 /// <summary>
@@ -16,7 +18,9 @@ namespace Grob.Stdlib;
 /// cref="IPluginRegistrar.RenderValue"/> — the VM's real, registry-backed <c>ValueDisplay</c>
 /// (D-336) — captured at <see cref="Register"/> time, so a plugin type's registered
 /// <c>toString()</c> (<c>guid</c>, Sprint 8 Increment D) renders correctly here too, and
-/// float cells stay culture-pinned end to end.
+/// float cells stay culture-pinned end to end. The signatures describe that runtime
+/// shape (gate report F2): the checker never resolves a <c>formatAs</c> call through them,
+/// since its bespoke resolution comes first (D-426 Decision 1).
 /// </summary>
 public sealed class FormatAsPlugin : IGrobPlugin {
     /// <inheritdoc/>
@@ -27,14 +31,17 @@ public sealed class FormatAsPlugin : IGrobPlugin {
         ArgumentNullException.ThrowIfNull(registrar);
         Func<GrobValue, string> render = registrar.RenderValue;
 
-        registrar.RegisterNative("formatAs.table", new NativeFunction("formatAs.table", 2, (args, _) =>
-            GrobValue.FromString(Table(args[0].AsArray(), ColumnNames(args[1]), render))));
+        registrar.RegisterNative(Native("formatAs.table", StringType, Param("items", ArrayType), Param("columns", ArrayType)),
+            new NativeFunction("formatAs.table", 2, (args, _) =>
+                GrobValue.FromString(Table(args[0].AsArray(), ColumnNames(args[1]), render))));
 
-        registrar.RegisterNative("formatAs.list", new NativeFunction("formatAs.list", 2, (args, _) =>
-            GrobValue.FromString(ListOf(args[0].AsStruct(), ColumnNames(args[1]), render))));
+        registrar.RegisterNative(Native("formatAs.list", StringType, Param("item", StructType), Param("fields", ArrayType)),
+            new NativeFunction("formatAs.list", 2, (args, _) =>
+                GrobValue.FromString(ListOf(args[0].AsStruct(), ColumnNames(args[1]), render))));
 
-        registrar.RegisterNative("formatAs.csv", new NativeFunction("formatAs.csv", 2, (args, _) =>
-            GrobValue.FromString(Csv(args[0].AsArray(), ColumnNames(args[1]), render))));
+        registrar.RegisterNative(Native("formatAs.csv", StringType, Param("items", ArrayType), Param("columns", ArrayType)),
+            new NativeFunction("formatAs.csv", 2, (args, _) =>
+                GrobValue.FromString(Csv(args[0].AsArray(), ColumnNames(args[1]), render))));
     }
 
     private static List<string> ColumnNames(GrobValue columns) =>

@@ -1016,7 +1016,7 @@ public sealed partial class Compiler {
         //
         // Reads the type checker's own resolution (node.Target.Declaration is
         // NamespaceDecl) rather than re-deriving "is this a namespace" from the bare
-        // identifier name via NamespaceRegistry.IsNamespace — the checker's
+        // identifier name via the catalogue's IsNamespace — the checker's
         // TryAnnotateNamespaceReceiver already resolves the receiver through
         // LookupSymbol, so a local variable or parameter that shadows a namespace
         // name (e.g. a Config-typed parameter called 'math') carries its own real
