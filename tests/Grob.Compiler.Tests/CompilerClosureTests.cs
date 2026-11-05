@@ -20,7 +20,7 @@ public sealed class CompilerClosureTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Assert.False(bag.HasErrors,
             $"TypeChecker errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
         Chunk chunk = GrobCompiler.Compile(unit, bag);
@@ -318,7 +318,7 @@ public sealed class CompilerClosureTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(CounterSource, bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Assert.False(bag.HasErrors,
             $"TypeChecker errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
 

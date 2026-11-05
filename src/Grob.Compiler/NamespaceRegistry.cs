@@ -1,5 +1,7 @@
-using Grob.Compiler.Ast.Declarations;
+using System.Diagnostics.CodeAnalysis;
+
 using Grob.Core;
+using Grob.Runtime;
 
 namespace Grob.Compiler;
 
@@ -221,35 +223,69 @@ internal static class NamespaceRegistry {
             .Select(member => $"{ns.Key}.{member.Key}")),
     ];
 
-    /// <summary>The number of registered namespaces, for global-scope dictionary pre-sizing.</summary>
-    internal static int Count => _namespaces.Count;
-
-    // Per-name TypeChecker.RegisterNamespaces registration objects, built once and shared
-    // across every compile — mirrors ExceptionHierarchy's _typeDecls/_symbols caching
-    // (D-338). TypeChecker.Check runs RegisterNamespaces unconditionally on every compile
-    // regardless of whether the source references any namespace; NamespaceDecl is an
-    // immutable record and Symbol carries identical content (Type is always
-    // GrobType.Unknown, DeclaredAt is always SourceLocation.Unknown, DeclarationNode is the
-    // shared NamespaceDecl below) on every run, so re-synthesising 7 NamespaceDecl + 7
-    // Symbol objects per compile was a fixed allocation the smallest compile benchmarks pay
-    // disproportionately for (GitHub Actions run 29392344084 — Compile_TwoExpressions
-    // breached the per-sprint gate on both time and allocation).
-    private static readonly IReadOnlyDictionary<string, NamespaceDecl> _namespaceDecls =
-        _namespaces.Keys.ToDictionary(name => name, name => new NamespaceDecl(name), StringComparer.Ordinal);
-
-    private static readonly IReadOnlyDictionary<string, Symbol> _symbols =
-        _namespaces.Keys.ToDictionary(
-            name => name,
-            name => new Symbol {
-                Name = name,
-                Type = GrobType.Unknown,
-                DeclaredAt = SourceLocation.Unknown,
-                DeclarationNode = _namespaceDecls[name],
-            },
+    // The hand table restated as signatures, built once (D-338), so the checker's
+    // namespace call path reads one shape whether a member comes from the catalogue or
+    // from here (D-426 change group 4). Parameter names are positional placeholders:
+    // nothing reads them, since named arguments to a native are rejected (E0011), and
+    // change group 5 replaces every entry with the plugin's own signature.
+    private static readonly Dictionary<string, Dictionary<string, FunctionSignature>> _signatures =
+        _namespaces.ToDictionary(
+            ns => ns.Key,
+            ns => ns.Value
+                .Where(member => member.Value is NativeMember)
+                .ToDictionary(
+                    member => member.Key,
+                    member => ToSignature($"{ns.Key}.{member.Key}", (NativeMember)member.Value),
+                    StringComparer.Ordinal),
             StringComparer.Ordinal);
 
-    /// <summary>The shared <see cref="Symbol"/> for <paramref name="name"/>.</summary>
-    internal static Symbol SymbolFor(string name) => _symbols[name];
+    private static readonly Dictionary<string, Dictionary<string, SignatureType.Concrete>> _constantTypes =
+        _namespaces.ToDictionary(
+            ns => ns.Key,
+            ns => ns.Value
+                .Where(member => member.Value is ConstantMember)
+                .ToDictionary(
+                    member => member.Key,
+                    member => ToConcrete((ConstantMember)member.Value),
+                    StringComparer.Ordinal),
+            StringComparer.Ordinal);
+
+    private static FunctionSignature ToSignature(string qualifiedName, NativeMember native) {
+        var parameters = new List<SignatureParameter>(native.ParameterTypes.Count + 1);
+        for (int i = 0; i < native.ParameterTypes.Count; i++) {
+            string? namedTypeName = native.ParameterNamedTypeNames is { } names && i < names.Count ? names[i] : null;
+            parameters.Add(new SignatureParameter(
+                $"p{i + 1}", ConcreteOf(native.ParameterTypes[i], namedTypeName), defaultValue: native.ParameterDefaults?[i]));
+        }
+        if (native.VariadicElementType is GrobType variadicType) {
+            parameters.Add(new SignatureParameter("rest", SignatureType.Of(variadicType), isVariadic: true));
+        }
+        return new FunctionSignature(qualifiedName, parameters, ConcreteOf(native.ReturnType, native.NamedTypeName));
+    }
+
+    private static SignatureType.Concrete ToConcrete(ConstantMember constant) =>
+        ConcreteOf(constant.Type, constant.NamedTypeName);
+
+    private static SignatureType.Concrete ConcreteOf(GrobType type, string? namedTypeName) =>
+        namedTypeName is null ? SignatureType.Of(type) : SignatureType.Named(type, namedTypeName);
+
+    /// <summary>Looks up the native <paramref name="memberName"/> of <paramref name="namespaceName"/> as a signature.</summary>
+    internal static bool TryGetNativeSignature(
+            string namespaceName, string memberName, [NotNullWhen(true)] out FunctionSignature? signature) =>
+        TryGet(_signatures, namespaceName, memberName, out signature);
+
+    /// <summary>Looks up the type of the constant <paramref name="memberName"/> of <paramref name="namespaceName"/>.</summary>
+    internal static bool TryGetConstantType(
+            string namespaceName, string memberName, [NotNullWhen(true)] out SignatureType.Concrete? type) =>
+        TryGet(_constantTypes, namespaceName, memberName, out type);
+
+    private static bool TryGet<T>(
+            Dictionary<string, Dictionary<string, T>> table, string namespaceName, string memberName,
+            [NotNullWhen(true)] out T? value) where T : class {
+        value = null;
+        return table.TryGetValue(namespaceName, out Dictionary<string, T>? members)
+            && members.TryGetValue(memberName, out value);
+    }
 
     /// <summary><see langword="true"/> when <paramref name="name"/> is a registered namespace.</summary>
     internal static bool IsNamespace(string name) => _namespaces.ContainsKey(name);

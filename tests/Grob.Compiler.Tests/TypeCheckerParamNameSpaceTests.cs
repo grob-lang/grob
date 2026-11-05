@@ -27,7 +27,7 @@ public sealed class TypeCheckerParamNameSpaceTests {
         Assert.Empty(bag.Diagnostics);
         unit = Parser.Parse(tokens, bag);
         Assert.Empty(bag.Diagnostics);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         return bag;
     }
 

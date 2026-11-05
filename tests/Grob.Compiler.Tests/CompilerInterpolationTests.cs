@@ -20,7 +20,7 @@ public sealed class CompilerInterpolationTests {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan(source, bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Assert.False(bag.HasErrors, $"TypeChecker produced errors: {string.Join("; ", bag.Errors)}");
         return GrobCompiler.Compile(unit, bag);
     }
@@ -29,7 +29,7 @@ public sealed class CompilerInterpolationTests {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan(source, bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         return bag;
     }
 
@@ -231,7 +231,7 @@ public sealed class CompilerInterpolationTests {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan("x: int? := nil\n\"${x}\"", bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         Diagnostic e0102 = Assert.Single(bag.Errors);
         Assert.Equal("E0102", e0102.Code);
@@ -320,7 +320,7 @@ public sealed class CompilerInterpolationTests {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan("\"\\q\"", bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Chunk chunk = GrobCompiler.Compile(unit, bag);
         // The '\' and 'q' are passed through unchanged.
         Assert.Equal("\\q", chunk.ReadConstant(0).AsString());

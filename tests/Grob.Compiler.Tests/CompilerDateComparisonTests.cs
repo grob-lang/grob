@@ -22,7 +22,7 @@ public sealed class CompilerDateComparisonTests {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan(source, bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Assert.False(bag.HasErrors,
             $"TypeChecker produced errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
         return GrobCompiler.Compile(unit, bag);

@@ -77,7 +77,7 @@ public sealed class ParserTypeDeclRecoveryTests {
         Diagnostic parseDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Equal("E2001", parseDiagnostic.Code);
 
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         Diagnostic onlyDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Same(parseDiagnostic, onlyDiagnostic);
@@ -197,7 +197,7 @@ public sealed class ParserTypeDeclRecoveryTests {
         CompilationUnit unit = Parser.Parse(tokens, bag);
         Assert.Equal(2, bag.Diagnostics.Count);
 
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         // No further diagnostics beyond the two parser-level root causes — the
         // recovered 'fn good' declaration type-checks cleanly.

@@ -1,6 +1,7 @@
 using BenchmarkDotNet.Attributes;
 using Grob.Compiler;
 using Grob.Core;
+using Grob.Runtime;
 using Grob.Stdlib;
 using Grob.Vm;
 
@@ -29,6 +30,10 @@ public class AttributionBenchmarks {
     private string _attrBuild = null!;
     private string _attrMapBuild = null!;
     private string _attrSnapshotEmpty = null!;
+
+    // Built once per process, outside every measured body, and shared by every
+    // checker the benchmarks construct (D-338, D-426 gate report §1.5).
+    private static readonly NativeCatalogue Catalogue = StdlibCatalogue.ForCompileOnly();
 
     /// <summary>Reads benchmark fixture files from disk once before any benchmark run.</summary>
     [GlobalSetup]
@@ -114,7 +119,7 @@ public class AttributionBenchmarks {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan(source, bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, Catalogue).Check(unit);
         Chunk chunk = Grob.Compiler.Compiler.Compile(unit, bag);
         // TextWriter.Null discards print() output — we benchmark VM execution,
         // not I/O throughput.

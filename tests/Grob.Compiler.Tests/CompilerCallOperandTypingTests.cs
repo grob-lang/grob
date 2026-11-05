@@ -24,7 +24,7 @@ public sealed class CompilerCallOperandTypingTests {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan(source, bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Assert.False(bag.HasErrors, $"TypeChecker produced errors: {string.Join("; ", bag.Errors)}");
         Chunk chunk = GrobCompiler.Compile(unit, bag);
         Assert.False(bag.HasErrors, $"Compiler produced errors: {string.Join("; ", bag.Errors)}");
@@ -149,7 +149,7 @@ public sealed class CompilerCallOperandTypingTests {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan("arr := [1, 2, 3]\nx := arr.each((v) => v) + 1\n", bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         Diagnostic error = Assert.Single(bag.Errors);
         Assert.Equal("E0002", error.Code);

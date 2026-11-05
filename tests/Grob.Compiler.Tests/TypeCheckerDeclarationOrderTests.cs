@@ -31,7 +31,7 @@ public sealed class TypeCheckerDeclarationOrderTests {
         Assert.Empty(bag.Diagnostics);
         unit = Parser.Parse(tokens, bag);
         Assert.Empty(bag.Diagnostics);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         return bag;
     }
 
@@ -194,7 +194,7 @@ public sealed class TypeCheckerDeclarationOrderTests {
         Assert.Equal("E4201", parseDiagnostic.Code);
         Assert.IsType<ErrorDecl>(unit.TopLevel[0]);
 
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         Assert.Same(parseDiagnostic, Assert.Single(bag.Diagnostics));
     }

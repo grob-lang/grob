@@ -347,7 +347,7 @@ public sealed class Sprint9IncrementA1aTests {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan("f := 3.5\nreadonly v := f.roundTo()\n", bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         Diagnostic diagnostic = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diagnostic.Code);

@@ -1,6 +1,8 @@
 using BenchmarkDotNet.Attributes;
 using Grob.Compiler;
 using Grob.Core;
+using Grob.Runtime;
+using Grob.Stdlib;
 
 namespace Grob.Benchmarks.Compile;
 
@@ -15,6 +17,10 @@ namespace Grob.Benchmarks.Compile;
 public class CompileBenchmarks {
     private string _twoExpressions = null!;
     private string _tenPrints = null!;
+
+    // Built once per process, outside every measured body, and shared by every
+    // checker the benchmarks construct (D-338, D-426 gate report §1.5).
+    private static readonly NativeCatalogue Catalogue = StdlibCatalogue.ForCompileOnly();
 
     /// <summary>Reads benchmark fixture files from disk once before any benchmark run.</summary>
     [GlobalSetup]
@@ -39,7 +45,7 @@ public class CompileBenchmarks {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan(source, bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, Catalogue).Check(unit);
         return Grob.Compiler.Compiler.Compile(unit, bag);
     }
 }

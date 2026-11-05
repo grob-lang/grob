@@ -148,7 +148,7 @@ public sealed class ParserAnonStructLiteralTests {
         Assert.Equal(1, parseDiagnostic.Range.Start.Line);
         Assert.Equal(9, parseDiagnostic.Range.Start.Column); // the '1' where a name belongs
 
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         Diagnostic onlyDiagnostic = Assert.Single(bag.Diagnostics);
         Assert.Same(parseDiagnostic, onlyDiagnostic);

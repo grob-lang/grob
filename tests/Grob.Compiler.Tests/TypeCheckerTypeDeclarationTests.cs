@@ -19,7 +19,7 @@ public sealed class TypeCheckerTypeDeclarationTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         return (unit, bag);
     }
 
@@ -451,7 +451,7 @@ public sealed class TypeCheckerTypeDeclarationTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        Exception? ex = Record.Exception(() => new TypeChecker(bag).Check(unit));
+        Exception? ex = Record.Exception(() => new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit));
         Assert.Null(ex);
     }
 }

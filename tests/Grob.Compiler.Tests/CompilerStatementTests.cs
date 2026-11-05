@@ -18,7 +18,7 @@ public sealed class CompilerStatementTests {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan(source, bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Assert.False(bag.HasErrors,
             $"TypeChecker produced errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
         return GrobCompiler.Compile(unit, bag);
@@ -749,7 +749,7 @@ public sealed class CompilerStatementTests {
         var bag = new DiagnosticBag();
         var tokens = Lexer.Scan("x := 1.0\nx++", bag);
         var unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0002", diag.Code);

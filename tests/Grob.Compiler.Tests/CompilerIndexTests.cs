@@ -20,7 +20,7 @@ public sealed class CompilerIndexTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Assert.False(bag.HasErrors,
             $"TypeChecker errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
         return unit;
@@ -30,7 +30,7 @@ public sealed class CompilerIndexTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
         Assert.False(bag.HasErrors,
             $"TypeChecker errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
         Chunk chunk = GrobCompiler.Compile(unit, bag);
@@ -224,7 +224,7 @@ public sealed class CompilerIndexTests {
         DiagnosticBag bag = new();
         IReadOnlyList<Token> tokens = Lexer.Scan("readonly arr := [1, 2, 3]\narr[0] = 99\n", bag);
         CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag).Check(unit);
+        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0204", diag.Code);

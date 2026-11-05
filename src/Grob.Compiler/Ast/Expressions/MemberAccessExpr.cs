@@ -40,6 +40,16 @@ public sealed record MemberAccessExpr(
     /// </summary>
     public string? ResolvedPrimitiveNativeName { get; set; }
 
+    /// <summary>
+    /// Set by the type checker on the outer access of a flattened two-level namespace
+    /// chain (<c>guid.namespaces.dns</c>, D-149) to the member's fully qualified runtime
+    /// name (<c>"guid.namespaces.dns"</c>), which the compiler loads with one
+    /// <c>GetGlobal</c> (gate report F1). <see langword="null"/> for every other access,
+    /// including an instance access on a namespace constant's value
+    /// (<c>guid.empty.isEmpty</c>).
+    /// </summary>
+    public string? ResolvedQualifiedNativeName { get; set; }
+
     /// <inheritdoc/>
     public override T Accept<T>(AstVisitor<T> visitor) => visitor.VisitMemberAccess(this);
 }

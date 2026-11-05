@@ -3,6 +3,7 @@ using Grob.Compiler.Ast;
 using Grob.Core;
 using Grob.Core.NamedTypes;
 using Grob.Core.PrimitiveMembers;
+using Grob.Runtime;
 
 namespace Grob.Compiler;
 
@@ -1866,10 +1867,13 @@ public sealed partial class TypeChecker {
         if (!TryAnnotateNamespaceReceiver(inner.Target, out string innerNamespaceName)) return false;
 
         string candidateMemberName = $"{inner.Member}.{node.Member}";
-        if (NamespaceRegistry.TryGetMember(innerNamespaceName, candidateMemberName) is null) return false;
+        if (!_namespaces.HasMember(innerNamespaceName, candidateMemberName)) return false;
 
         namespaceName = innerNamespaceName;
         memberName = candidateMemberName;
+        // Gate report F1: the compiler emits the whole chain as one GetGlobal from this
+        // annotation instead of consulting a registry itself.
+        node.ResolvedQualifiedNativeName = $"{innerNamespaceName}.{candidateMemberName}";
         return true;
     }
 
@@ -1884,21 +1888,20 @@ public sealed partial class TypeChecker {
     private GrobType ResolveNamespaceMemberAccess(
             MemberAccessExpr node, string namespaceName, string? memberNameOverride = null) {
         string memberName = memberNameOverride ?? node.Member;
-        object? member = NamespaceRegistry.TryGetMember(namespaceName, memberName);
-        switch (member) {
-            case NamespaceRegistry.ConstantMember constant:
-                node.ResolvedFieldType = constant.Type;
-                node.ResolvedStructTypeName = constant.NamedTypeName;
-                return constant.Type;
-            case NamespaceRegistry.NativeMember:
-                node.ResolvedFieldType = GrobType.Function;
-                return GrobType.Function;
-            default:
-                node.ResolvedFieldType = GrobType.Error;
-                return EmitErrorAndReturn(ErrorCatalog.E1003,
-                    $"Namespace '{namespaceName}' has no member '{memberName}'.",
-                    node.Range);
+        if (_namespaces.TryGetConstant(namespaceName, memberName, out SignatureType.Concrete? constantType)) {
+            node.ResolvedFieldType = constantType.Type;
+            node.ResolvedStructTypeName = constantType.NamedTypeName;
+            return constantType.Type;
         }
+        if (_namespaces.TryGetNative(namespaceName, memberName, out FunctionSignature? signature)) {
+            RequireNonGeneric(signature);
+            node.ResolvedFieldType = GrobType.Function;
+            return GrobType.Function;
+        }
+        node.ResolvedFieldType = GrobType.Error;
+        return EmitErrorAndReturn(ErrorCatalog.E1003,
+            $"Namespace '{namespaceName}' has no member '{memberName}'.",
+            node.Range);
     }
 
     /// <summary>
@@ -1923,18 +1926,19 @@ public sealed partial class TypeChecker {
         for (int i = 0; i < node.Arguments.Count; i++)
             argTypes[i] = Visit(node.Arguments[i].Value);
 
-        object? member = NamespaceRegistry.TryGetMember(namespaceName, memberAccess.Member);
-        if (member is NamespaceRegistry.NativeMember native) {
-            memberAccess.ResolvedFieldType = native.ReturnType;
-            node.ResolvedReturnType = native.ReturnType;
-            CheckNativeCall(node, namespaceName, memberAccess.Member, native, argTypes);
+        if (_namespaces.TryGetNative(namespaceName, memberAccess.Member, out FunctionSignature? signature)) {
+            RequireNonGeneric(signature);
+            var returnType = (SignatureType.Concrete)signature.ReturnType;
+            memberAccess.ResolvedFieldType = returnType.Type;
+            node.ResolvedReturnType = returnType.Type;
+            CheckNativeCall(node, namespaceName, memberAccess.Member, signature, argTypes);
             // Sprint 8 Increment D: mirrors the user-fn struct-return threading a few
             // lines up in VisitCall — a `:=`-inferred binding from a struct-returning
             // native call (id := guid.newV4()) resolves field/instance-member access the
             // same way a direct struct-construction initialiser already does.
-            if (native.NamedTypeName is not null) _callResultStructNames[node] = native.NamedTypeName;
+            if (returnType.NamedTypeName is not null) _callResultStructNames[node] = returnType.NamedTypeName;
             CheckGuidParseLiteral(node, namespaceName, memberAccess.Member);
-            return native.ReturnType;
+            return returnType.Type;
         }
 
         // A constant member cannot be called, and an unknown member does not exist — both
@@ -2301,24 +2305,28 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Validates a native member call positionally: arity (E0003) then per-argument
     /// assignability (E0004, at the argument's location). Most natives have no defaulted
-    /// parameters, so <paramref name="member"/>'s required count equals its full arity and
-    /// the check is an exact-count match; a native declaring <see
-    /// cref="NamespaceRegistry.NativeMember.ParameterDefaults"/> (D-358) accepts any count
-    /// in the required-to-full range — only the arguments actually supplied are
-    /// type-checked, since the compiler synthesises the rest from the declared constants.
-    /// An already-errored argument is suppressed to keep one diagnostic per root cause.
+    /// parameters, so <paramref name="signature"/>'s required count equals its full arity
+    /// and the check is an exact-count match; a native declaring trailing defaults (D-358)
+    /// accepts any count in the required-to-full range — only the arguments actually
+    /// supplied are type-checked, since the compiler synthesises the rest from the
+    /// declared constants, which this method hands it through
+    /// <see cref="CallExpr.ResolvedNativeParameterDefaults"/> (gate report F1). An
+    /// already-errored argument is suppressed to keep one diagnostic per root cause.
     /// </summary>
     private void CheckNativeCall(CallExpr node, string namespaceName, string memberName,
-            NamespaceRegistry.NativeMember member, GrobType[] argTypes) {
+            FunctionSignature signature, GrobType[] argTypes) {
         if (RejectNamedNativeArgs(node, namespaceName, memberName)) return;
 
-        if (member.VariadicElementType is GrobType variadicType) {
-            CheckVariadicNativeCall(node, namespaceName, memberName, member, variadicType, argTypes);
+        if (signature.IsVariadic) {
+            CheckVariadicNativeCall(node, namespaceName, memberName, signature, argTypes);
             return;
         }
 
-        int fullArity = member.ParameterTypes.Count;
-        int requiredCount = RequiredArgumentCount(fullArity, member.ParameterDefaults);
+        int fullArity = signature.Parameters.Count;
+        int requiredCount = signature.RequiredArgumentCount;
+        if (requiredCount < fullArity) {
+            node.ResolvedNativeParameterDefaults = [.. signature.Parameters.Select(p => p.Default)];
+        }
         if (argTypes.Length < requiredCount || argTypes.Length > fullArity) {
             string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
             string expectedPhrase = requiredCount == fullArity
@@ -2331,8 +2339,7 @@ public sealed partial class TypeChecker {
         }
 
         for (int i = 0; i < argTypes.Length; i++) {
-            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, member.ParameterTypes[i],
-                ParameterNamedTypeNameAt(member, i));
+            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, ParameterTypeAt(signature, i));
         }
     }
 
@@ -2377,20 +2384,36 @@ public sealed partial class TypeChecker {
         return rejected;
     }
 
-    /// <summary>Returns the declared nominal struct name for fixed parameter <paramref name="index"/>, if any.</summary>
-    private static string? ParameterNamedTypeNameAt(NamespaceRegistry.NativeMember member, int index) =>
-        member.ParameterNamedTypeNames is { } names && index < names.Count ? names[index] : null;
+    /// <summary>
+    /// The concrete type of parameter <paramref name="index"/>. Safe after
+    /// <see cref="RequireNonGeneric"/>: a non-generic signature references no type
+    /// parameter, so every parameter type is a <see cref="SignatureType.Concrete"/>.
+    /// </summary>
+    private static SignatureType.Concrete ParameterTypeAt(FunctionSignature signature, int index) =>
+        (SignatureType.Concrete)signature.Parameters[index].Type;
 
     /// <summary>
-    /// Validates a native member call whose tail is variadic (<c>path.join</c>, the one
-    /// consumer of <see cref="NamespaceRegistry.NativeMember.VariadicElementType"/>): the
-    /// fixed prefix is checked exactly as <see cref="CheckNativeCall"/> does, then at least
-    /// one further argument is required and every one of them is checked against
-    /// <paramref name="variadicType"/> instead of a fixed per-slot type.
+    /// The type-parameter fence (D-426 Decision 4): the checker cannot yet substitute a
+    /// type parameter or check its constraint, so a signature declaring one is a host
+    /// misconfiguration, not a user error, until the <c>mapAs&lt;T&gt;</c> increment.
+    /// </summary>
+    private static void RequireNonGeneric(FunctionSignature signature) {
+        if (signature.IsGeneric) {
+            throw new GrobInternalException(
+                $"FunctionSignature '{signature.Name}' declares type parameters; substitution and constraint checking arrive with the mapAs<T> increment.");
+        }
+    }
+
+    /// <summary>
+    /// Validates a native member call whose tail is variadic (<c>path.join</c>,
+    /// <c>guid.newV5</c>): the fixed prefix is checked exactly as
+    /// <see cref="CheckNativeCall"/> does, then at least one further argument is required
+    /// (gate report F9) and every one of them is checked against the variadic
+    /// parameter's element type instead of a fixed per-slot type.
     /// </summary>
     private void CheckVariadicNativeCall(CallExpr node, string namespaceName, string memberName,
-            NamespaceRegistry.NativeMember member, GrobType variadicType, GrobType[] argTypes) {
-        int fixedCount = member.ParameterTypes.Count;
+            FunctionSignature signature, GrobType[] argTypes) {
+        int fixedCount = signature.Parameters.Count - 1;
         int minimum = fixedCount + 1;
         if (argTypes.Length < minimum) {
             string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
@@ -2401,24 +2424,26 @@ public sealed partial class TypeChecker {
         }
 
         for (int i = 0; i < fixedCount; i++) {
-            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, member.ParameterTypes[i],
-                ParameterNamedTypeNameAt(member, i));
+            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, ParameterTypeAt(signature, i));
         }
 
+        SignatureType.Concrete variadicType = ParameterTypeAt(signature, fixedCount);
         for (int i = fixedCount; i < argTypes.Length; i++)
             CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, variadicType);
     }
 
     /// <summary>
-    /// Checks one native-call argument against <paramref name="targetType"/> (E0004, at
+    /// Checks one native-call argument against <paramref name="target"/> (E0004, at
     /// the argument's own location), with cascade suppression for an already-errored
     /// argument. Shared by <see cref="CheckNativeCall"/>'s fixed-arity loop and
     /// <see cref="CheckVariadicNativeCall"/>'s fixed-prefix and variadic-tail loops, so
     /// the assignability check, cascade suppression and error format stay in one place.
     /// </summary>
     private void CheckNativeArgumentType(CallExpr node, string namespaceName, string memberName,
-            GrobType[] argTypes, int index, GrobType targetType, string? targetNamedTypeName = null) {
+            GrobType[] argTypes, int index, SignatureType.Concrete target) {
         if (argTypes[index] == GrobType.Error) return; // cascade suppression
+        GrobType targetType = target.Type;
+        string? targetNamedTypeName = target.NamedTypeName;
         Expression argExpr = node.Arguments[index].Value;
         bool compatible = TypesAreAssignable(argTypes[index], targetType);
         // Struct nominal identity — see IsStructNominalMismatch's doc comment. guid.newV5's
