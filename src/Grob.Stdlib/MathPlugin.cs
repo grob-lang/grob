@@ -15,6 +15,9 @@ namespace Grob.Stdlib;
 /// signature, which the type checker reads from the catalogue (D-426).
 /// </summary>
 public sealed class MathPlugin : IGrobPlugin {
+    /// <summary>The parameter name the trig natives and <c>toDegrees</c> share (Sonar S1192: one spelling).</summary>
+    private const string RadiansParameter = "radians";
+
     private readonly IRandomSource _randomSource;
 
     /// <summary>Initialises the plugin with the <see cref="IRandomSource"/> its random natives draw from.</summary>
@@ -59,15 +62,15 @@ public sealed class MathPlugin : IGrobPlugin {
                 return GrobValue.FromFloat(Math.Log10(x));
             }));
 
-        registrar.RegisterNative(Signature("math.sin", FloatType, Param("radians", FloatType)),
+        registrar.RegisterNative(Signature("math.sin", FloatType, Param(RadiansParameter, FloatType)),
             new NativeFunction("math.sin", 1, (args, _) =>
                 GrobValue.FromFloat(Math.Sin(args[0].AsFloat()))));
 
-        registrar.RegisterNative(Signature("math.cos", FloatType, Param("radians", FloatType)),
+        registrar.RegisterNative(Signature("math.cos", FloatType, Param(RadiansParameter, FloatType)),
             new NativeFunction("math.cos", 1, (args, _) =>
                 GrobValue.FromFloat(Math.Cos(args[0].AsFloat()))));
 
-        registrar.RegisterNative(Signature("math.tan", FloatType, Param("radians", FloatType)),
+        registrar.RegisterNative(Signature("math.tan", FloatType, Param(RadiansParameter, FloatType)),
             new NativeFunction("math.tan", 1, (args, _) =>
                 GrobValue.FromFloat(Math.Tan(args[0].AsFloat()))));
 
@@ -97,7 +100,7 @@ public sealed class MathPlugin : IGrobPlugin {
             new NativeFunction("math.toRadians", 1, (args, _) =>
                 GrobValue.FromFloat(args[0].AsFloat() * Math.PI / 180.0)));
 
-        registrar.RegisterNative(Signature("math.toDegrees", FloatType, Param("radians", FloatType)),
+        registrar.RegisterNative(Signature("math.toDegrees", FloatType, Param(RadiansParameter, FloatType)),
             new NativeFunction("math.toDegrees", 1, (args, _) =>
                 GrobValue.FromFloat(args[0].AsFloat() * 180.0 / Math.PI)));
 

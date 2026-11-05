@@ -42,6 +42,9 @@ public enum LogLevel {
 /// catalogue (D-426).
 /// </summary>
 public sealed class LogPlugin : IGrobPlugin {
+    /// <summary>The parameter name the four level natives share (Sonar S1192: one spelling).</summary>
+    private const string MessageParameter = "message";
+
     private readonly IStandardStreams _streams;
     private LogLevel _threshold;
 
@@ -59,19 +62,19 @@ public sealed class LogPlugin : IGrobPlugin {
     public void Register(IPluginRegistrar registrar) {
         ArgumentNullException.ThrowIfNull(registrar);
 
-        registrar.RegisterNative(Signature("log.debug", NilType, Param("message", StringType)),
+        registrar.RegisterNative(Signature("log.debug", NilType, Param(MessageParameter, StringType)),
             new NativeFunction("log.debug", 1, (args, _) =>
                 WriteAtLevel(LogLevel.Debug, args[0].AsString())));
 
-        registrar.RegisterNative(Signature("log.info", NilType, Param("message", StringType)),
+        registrar.RegisterNative(Signature("log.info", NilType, Param(MessageParameter, StringType)),
             new NativeFunction("log.info", 1, (args, _) =>
                 WriteAtLevel(LogLevel.Info, args[0].AsString())));
 
-        registrar.RegisterNative(Signature("log.warning", NilType, Param("message", StringType)),
+        registrar.RegisterNative(Signature("log.warning", NilType, Param(MessageParameter, StringType)),
             new NativeFunction("log.warning", 1, (args, _) =>
                 WriteAtLevel(LogLevel.Warning, args[0].AsString())));
 
-        registrar.RegisterNative(Signature("log.error", NilType, Param("message", StringType)),
+        registrar.RegisterNative(Signature("log.error", NilType, Param(MessageParameter, StringType)),
             new NativeFunction("log.error", 1, (args, _) =>
                 WriteAtLevel(LogLevel.Error, args[0].AsString())));
 
