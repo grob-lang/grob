@@ -12,6 +12,17 @@
 All method calls on primitives are rewritten to native function calls at compile
 time — no boxing, no vtable, no heap allocation.
 
+**Registration note (D-426, D-427).** The compile-time tables the build-status notes
+below name — `NamespaceRegistry`, `PrimitiveMemberRegistry` and `NamedTypeRegistry` —
+no longer exist. Every member this document lists for a namespace, a primitive
+receiver or a named type (`date`, `guid`) is registered with a `FunctionSignature` by
+the `Grob.Stdlib` plugin that implements it, into the one `NativeCatalogue` the type
+checker reads and the VM is constructed over. Namespace natives and named types
+register through the public `IPluginRegistrar`; primitive members and the `int`/`float`
+type-statics through an internal surface third-party plugins cannot reach. Array and
+map members stay structural, as below. The notes keep the registry names they were
+written with, as a record of what each increment built.
+
 ---
 
 **Build-status note (D-369, updating D-365's build-status note).**
@@ -289,10 +300,12 @@ and timezone members are specified in the confirmed decisions table (Apr 2026,
 Like `guid` (see `## guid` above), `date`'s full instance-member set (properties —
 `year`/`month`/`day`/`hour`/`minute`/`second`/`dayOfYear`/`dayOfWeek`/`utcOffset` —
 and methods — the arithmetic, comparison, ISO/Unix-epoch, timezone and interval
-members) is `NamedTypeRegistry`'s (D-356) `date` entry; the two `daysUntil`/
-`daysSince` members below are that entry's data, not a separate mechanism. `date`'s
-static constructors (`date.now()`, `date.of()`, `date.parse()`, ...) remain
-`NamespaceRegistry` entries, untouched by D-356.
+members) is registered by `DatePlugin` as the `date` named type's
+`NamedTypeDefinition` (D-356's single declarative table, moved into the plugin by
+D-426); the two `daysUntil`/`daysSince` members below are that definition's data, not a
+separate mechanism. `date`'s static constructors (`date.now()`, `date.of()`,
+`date.parse()`, ...) are namespace natives `DatePlugin` registers with their
+signatures.
 
 | Member                   | Kind   | Signature | Notes                                                            |
 | ------------------------ | ------ | --------- | ---------------------------------------------------------------- |
@@ -305,7 +318,7 @@ static constructors (`date.now()`, `date.of()`, `date.parse()`, ...) remain
 
 | Member                                                  | Signature  | Notes                                                                                        |
 | ------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------- |
-| `strings.join(parts: string[], separator: string = "")` | `→ string` | Joins array with separator. Receiver is an array — cannot be an instance method on `string`. |
+| `strings.join(parts: string[], separator: string = "")` | `→ string` | Joins array with separator. Receiver is an array — cannot be an instance method on `string`. The `= ""` default is documented but not built: the registered signature requires both arguments (R-22). |
 
 ---
 
@@ -365,15 +378,16 @@ by `GuidPlugin` in `Grob.Stdlib` at startup. Distinct from `string` — `guid ==
 is a compile error.
 
 **Registry mechanism (D-356).** The **instance members** table below (properties and
-methods on a `guid` *value*) is `Grob.Core.NamedTypes.NamedTypeRegistry`'s `guid` entry
-— a single declarative table consulted by the type checker's annotation resolvers and
-method/property validators, the VM's instance dispatch and `ValueDisplay`'s registered
-`toString()` lookup, replacing what were six separate hand-rolled, string-matched
-dispatch arms per type. The **static members** table (the constructors below) is
-unaffected — those stay `NamespaceRegistry` entries (D-342), a receiver-qualified call
-(`guid.newV4()`), not an instance surface; the two registries compose. `date`'s
-instance-member table further down is the registry's second entry, migrated
-behaviour-preserving alongside `guid`'s.
+methods on a `guid` *value*) is the `guid` `NamedTypeDefinition` `GuidPlugin` registers
+— a single declarative definition consulted by the type checker's annotation resolvers
+and method/property validators, the VM's instance dispatch and `ValueDisplay`'s
+renderer lookup, all through the one `NativeCatalogue`, replacing what were six
+separate hand-rolled, string-matched dispatch arms per type (D-356; moved from
+`Grob.Core`'s former `NamedTypeRegistry` into the plugin by D-426). The **static
+members** table (the constructors below) is namespace natives (D-342), a
+receiver-qualified call (`guid.newV4()`), not an instance surface; the plugin registers
+both. `date`'s instance-member table further down is the second named type on the same
+mechanism.
 
 **Generation:**
 

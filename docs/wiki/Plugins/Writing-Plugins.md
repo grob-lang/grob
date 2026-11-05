@@ -3,28 +3,33 @@
 ## Minimal Example
 
 ```csharp
+using Grob.Core;
 using Grob.Runtime;
 
-public class HelloPlugin : IGrobPlugin
+public sealed class HelloPlugin : IGrobPlugin
 {
     public string Name => "AcmeCorp.Hello";
 
-    public void Register(GrobVM vm)
+    public void Register(IPluginRegistrar registrar)
     {
-        vm.RegisterNative(
-            name: "hello.greet",
-            signature: new FunctionSignature(
-                parameters: [new Parameter("name", GrobType.String)],
-                returnType: GrobType.String
-            ),
-            implementation: args => {
-                var name = args[0].AsString();
-                return new StringValue($"Hello, {name}!");
-            }
-        );
+        SignatureType.Concrete stringType = SignatureType.Of(GrobType.String);
+
+        registrar.RegisterNative(
+            new FunctionSignature(
+                "hello.greet",
+                [new SignatureParameter("name", stringType)],
+                stringType),
+            new NativeFunction("hello.greet", 1, (args, _) =>
+                GrobValue.FromString($"Hello, {args[0].AsString()}!")));
     }
 }
 ```
+
+`Register` receives an `IPluginRegistrar`, never the VM. Every native is registered
+with a `FunctionSignature` — a qualified name, named and typed parameters and a return
+type — and `RegisterNative` has no overload without one. The host builds one catalogue
+from every plugin, which the type checker and the VM both read (D-426). Named types
+register through `RegisterNamedType` with a `NamedTypeDefinition`.
 
 Build as a class library targeting the same .NET version as the Grob runtime.
 Reference the `Grob.Runtime` NuGet package for interfaces and types.
@@ -43,7 +48,8 @@ grob run script.grob --dev-plugin C:\dev\bin\Debug\MyPlugin.dll
 **Namespace your functions** — prefix all names with your plugin's alias:
 `xml.parse()`, `pnp.getSite()`.
 
-**Register type signatures** — always provide a `FunctionSignature`. This gives
+**Name your parameters deliberately** — the `FunctionSignature` every registration
+requires records them, and they are public API once published. The signature gives
 scripts compile-time type safety.
 
 **Fail with `GrobRuntimeException`** — do not let raw C# exceptions surface.
@@ -60,9 +66,11 @@ scripts compile-time type safety.
 
 ## Generic Functions
 
-Plugins that expose generic functions (like `mapAs<T>()`) must express type
-parameters via `FunctionSignature` in `Grob.Runtime`. This is designed into the
-SDK from the start.
+Plugins that expose generic functions (like `mapAs<T>()`) express type parameters
+through `FunctionSignature`'s `TypeParameter` list in `Grob.Runtime`. The shape is in
+the SDK now, but the type checker does not yet substitute type parameters: a signature
+that declares one fails loudly with an internal error until the `mapAs<T>` increment
+lands (D-426 Decision 4).
 
 ## Recommended Repository Structure
 

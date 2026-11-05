@@ -422,6 +422,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-424 | September 2026 | Language spec — param decorators; Compiler — parser, type checker; Error taxonomy | **Authorises the *finish the param concern* increment at full scope.** Verified at `ea204d1`: **E2201, E2202, E4001, E4002, E4101 and E4102 all have zero throw sites.** §19's declaration-order rules have been normative since April 2026 and nothing enforces them — an `import` after a `param`, or a `param` after a `fn`, compiles clean. The entire decorator surface is likewise unenforced, and for a reason worse than oversight: **decorators are not in the AST at all.** `ParseParamDecl` calls `SkipParameterDecorators`, there is no `Decorator` node, and nothing downstream can see one, so `@bogus`, `@minLength("x")` and `@secure` on an `int` all compile clean today. R-08 already records that six of seven decorators ship unexercised; this is the stronger fact that they ship unvalidated. **Decision 1 — decorators become first-class AST.** A `Decorator` record carrying name, arguments and range; `ParamDecl` gains a decorator list and its `Range` extends to cover the stack, which it currently does not. **Arguments are parsed as ordinary expressions, not restricted to literals at the parse layer**, so a non-literal argument yields a semantic diagnostic at its own position (E4101/E4102) rather than a parse error, and §29 recovery treats a malformed decorator like any other malformed construct. The type checker visits them, so §3.1.1's `ResolvedType`/`Declaration` invariant holds on identifiers appearing there, with D-311's sentinels on the error path. **Decision 2 — decorators are a `param`-only construct.** Not permitted on function parameters, `type` fields or anywhere else; E4002. This is a **behaviour change with a named breaking test**: `DecoratorInlineInFunctionParameterList_StillParses` asserts that `fn f(@secure a: int)` parses clean, and its own doc comment justifies this by claiming "a function parameter list (§12) shares the same decorator syntax and keeps it inline". **§12 says nothing about decorators**, D-411's table is `param`-only, and E4002's registry description has always read "a validation decorator not attached to a `param` declaration". The test pins an unsourced belief that entered via a shared scanner rather than a decision — and its own fixture, `@secure` on an `int`, is invalid under D-411 twice over. It is updated to assert E4002, which is what D-415's `requireNewline` flag was quietly working around: with decorators `param`-only the flag and the shared-scanner branch both disappear. **Decision 3 — static validation now, binding-time enforcement at Sprint 10.** Checked here with no parameter value in hand: decorator name in the seven (E4001), target is a `param` (E4002), duplicate application (E4002), arity, argument literal kind, and applicability to the param's declared type (E4101 for `@allowed`, E4102 for the four length and value constraints). Rejecting a *supplied* value against a constraint needs a bound parameter and is Sprint 10; **R-15 is created to track the deferred half**, because a split without a tracker for the far side is how a half-built feature reads as finished. **Decision 4 — `@pattern` is a recognised decorator, not E4001**, but its pattern is not compiled or validated until the `regex` increment supplies the machinery (D-411). Name, arity, string-literal kind and target type are checked now. **Decision 5 — ordering enforcement is a linear walk over `CompilationUnit.Items`**, which is already a flat ordered list, giving E2201 and E2202 their first throw sites. Diagnostics are emitted in source order and must not suppress pass-1 registration — D-039's two-mode rule means a misordered file still reports every other error it contains. **Decision 6 — `param` joins the top-level name space in pass 1.** Pass 1 registers `fn`, `type` and value bindings; `ParamDecl` is absent from that walk, and `VisitParamDecl` registers no symbol, citing Sprint 10. **Registration is not binding**: entering the name makes E1102 and D-412's coincident-ordering-and-collision cascade work, while `VisitParamDecl` still contributes no type of its own and parameter *binding* stays Sprint 10 exactly as its comment says. **Decision 7 — R-03 resolved by widening E4102, not by minting a sibling.** New title names all four of `@minLength`, `@maxLength`, `@minValue` and `@maxValue`. A code per decorator pair scales badly against a seven-decorator set and would leave `@pattern` wanting an eighth; the four share one validation shape and differ only in argument type. **Error-code count 121 → 120** (E4202 removed, R-01; number permanently burned per D-410's ADR-0017 clarification). **Every catalogue and registry edit belongs to the increment's commit, not to this entry** — E4202's removal and the E2202 and E4102 retitles are D-316 co-commits, so this entry makes no change to `grob-error-codes.md`'s table and only `grob-language-fundamentals.md` §19 gains normative text. Closes R-01, R-02 and R-03 when the increment lands. Cites D-410 and D-414 (which scheduled the three registry items here), D-411 (the seven-decorator set and `@pattern`'s dependency), D-412 (the collision and cascade rules this enforces), D-415 (whose `requireNewline` flag Decision 2 retires), D-072 and D-186 (the decorator codes' original allocation), D-039 (two-mode errors), D-311 and §3.1.1 (the invariant decorator arguments must satisfy), D-420 (whose queue this is increment 2 of). |
 | D-425 | September 2026 | Compiler — parser, AST, type checker; Error taxonomy; Deferred Work Register | **Implements D-424: the *finish the param concern* increment as landed.** All six unenforced codes get their first throw sites and the three registry items land as D-316 co-commits; error-code count **121 → 120**. Six change groups: the `Decorator` AST node with its visitor hook and `ParamDecl.Range` extended over the stack; decorators made `param`-only with E4002 and D-415's `requireNewline` flag retired; §19 ordering enforcement giving E2201 and E2202 their throw sites; `param` joining the pass-1 top-level name space with D-412's cascade; static decorator validation for all seven of D-411's set; and R-01, R-02 and R-03's registry edits. **Four divergences from D-424's prompt, each a finding rather than a silent resolution.** (1) The **ordering walk lives in pass 2**, not in a pre-pass or pass 1 as the prompt's two candidates proposed: `DiagnosticBag` is insertion-ordered with no sort anywhere, so a pre-pass emits every ordering diagnostic ahead of type errors that sit earlier in the file, and Decision 5's source-order constraint fails in the general case. Pass 2 is the only walk that visits `TopLevel` in source order while emitting the rest of the semantic diagnostics. (2) **`@secure`'s and `@pattern`'s arity and argument-kind checks report E4002**, because §19's Decorators table assigns E4101 to `@allowed` and E4102 to the four length and value constraints and gives those two decorators no code of their own — a genuine spec gap, resolved without minting a code since D-424's stop conditions forbid one. (3) **A decorator on a `type` field stays E2001**, not E4002: `ParseTypeField` has no decorator production, so making it E4002 would mean adding a production purely to reject it. The position is rejected either way. (4) The prompt's *"all eleven validation scripts still parse and type-check with zero diagnostics"* is a **false premise** — `ValidationScriptCorpusTests` has only ever parsed the corpus, and type-checked today all eleven produce diagnostics, 93 in total, dominated by E1001 for stdlib namespaces that do not exist yet. The achievable criterion replaced it and is now asserted: all eleven parse clean and carry **none** of the six codes this increment owns. Decision 6's side effect measured: 93 → 52. **Pass 1 registers a `param` name with `GrobType.Unknown`** — §1.5's separability gate asks whether *registration* requires resolving the declared type, and it does not — **and pass 2 finalises the binding with that declared type**, resolved through the same `ResolveTypeRef` the decorator checks call. Registering the name alone is not the smaller step it looks: `Unknown` is assignable to nothing, so `param limit: int` returned from a `fn(): int` was rejected with a false E0005, D-323's phase-1.5 failure reached by another route; found in PR review and fixed before merge. Checking a *supplied* value against the annotation and the decorators constraining it is still Sprint 10 (R-15). Opens **R-16** (`type`/`fn` after top-level code steps backwards against §19's prose with no code allocated, so the walk stays silent there), **R-17** (`@secure` and `@pattern` have no code for their arity and argument-kind checks) and **R-18** (three stale decorator gold masters). Closes R-01, R-02 and R-03. Cites D-424 (which this implements), D-410, D-411, D-412, D-414, D-415, D-039, D-072, D-186, D-311, D-316, D-320, D-324, D-328, D-342, D-420. |
 | D-426 | October 2026 | Solution architecture — plugin SDK; Compiler — type checker; Runtime — native registration; Deferred Work Register | **Authorises the *`FunctionSignature`* increment and fixes what R-12's criterion left open.** Verified at `b202509`, a native's type is described by four models: `NamespaceRegistry.NativeMember` (56 natives, 8 constants), `PrimitiveMemberRegistry` (37 members), `NamedTypeRegistry` (32 members) and bespoke checker arms. **Scope:** namespace, primitive-instance and named-type-instance natives migrate, because `mapAs<T>` — `FunctionSignature`'s first consumer — is a named-type method; array and map instance methods, `formatAs` and the three built-ins stay bespoke, since their signatures need function-typed parameters or receiver-derived returns that D-419's union deliberately lacks. **Single source:** one registration pass produces one data catalogue that the checker reads and the VM binds from; the hand-maintained tables and their three agreement tests are deleted, taking the second of D-419 Decision 5's two readings. `TypeChecker` takes the catalogue as a required argument; built once and shared (D-338); duplicate registration is a host error. **Instance surfaces move into their plugins**, forced by the layering (`Grob.Core` cannot see `Grob.Runtime`); named types become public registrar surface, primitive receivers do not — no extension methods by the back door. Parameter names recorded from the stdlib reference; named-argument binding to natives stays unsupported; type parameters present but fenced by `GrobInternalException` until `mapAs<T>`. "No behaviour change" defined as suite green, a committed native-call probe corpus byte-identical and the benchmark gate green without a baseline update. Sprint 9's second named structural slot; may span sessions on one branch. R-12 refined, R-05 split, **R-19** opens. Count unchanged at 120. |
+| D-427 | November 2026 | Solution architecture — plugin SDK; Compiler — type checker; Runtime — native registration; VM — named-type dispatch; Deferred Work Register | **Implements D-426: the *`FunctionSignature`* increment as landed.** Every native registered through `IPluginRegistrar` carries a `FunctionSignature` and the untyped overload is gone; one `NativeCatalogueBuilder` pass builds the `NativeCatalogue` the type checker reads and the VM is constructed over; `NamespaceRegistry`, `PrimitiveMemberRegistry` and `NamedTypeRegistry` are deleted with their agreement tests; `date` and `guid` register from their plugins; primitive members register through an internal surface. Divergences recorded: groups ran 1–4, 7, 5–6, 8 at Chris's choice; `RegisterToString` retired; `formatAs`/`input` carry runtime-shape signatures (F2); `Concrete.ElementType` (F4); primitive type names reserved as namespaces (F8); tests whose subject ceased to exist deleted with their facts re-homed. **R-19 taken** at Chris's direction: `DateLayout`/`GuidLayout` in `Grob.Core` are the only layout declarations, guarded by reflection. Decision 5: suite green (4,612), probe corpus byte-identical, **benchmark condition not met as worded** — two compile benchmarks breach the allocation threshold on every increment run, no baseline updated, origin not established. Invented parameter names listed. R-12 and R-19 closed; R-05 updated; R-20 to R-23 open. Count unchanged at 120. |
 
 ---
 
@@ -15236,6 +15237,214 @@ injection, which first-party plugin construction must still satisfy), D-356
 
 ---
 
+### D-427 — `FunctionSignature` landed: one catalogue, every registrar native typed, the named-type layout defined once (November 2026)
+
+Area: Solution architecture — plugin SDK; Compiler — type checker; Runtime — native registration; VM — named-type dispatch; Deferred Work Register
+Supersedes: none (implements D-426; closes R-12 and R-19)
+Superseded by: none
+
+**D-426 authorised this increment; this entry records it as landed and where the
+landing diverged from D-426, its prompt and its gate report.** The divergences
+are the point of the entry — the code, the tests and the commit messages carry
+the rest. Error-code count unchanged at **120**; no opcode, `GrobValueKind` or
+`GrobType` variant added.
+
+---
+
+**What landed, in eight change groups.**
+
+1. **The probe corpus** (`NativeCallProbeCorpusTests`, PR #228): every in-scope
+   native called correctly, with the wrong arity, with a wrong argument type and
+   with a nullable argument, captured against the untouched tree. It passed
+   byte-identically after every later group.
+2. **The signature types** in `Grob.Runtime` (PR #229): `FunctionSignature`,
+   `SignatureParameter`, the `SignatureType` union (`Concrete`,
+   `TypeParameterReference`, `TypeParameterArray`), `TypeParameter` with
+   constraints, and `PropertySignature`. Inert data, validated at construction,
+   one test per rejected shape.
+3. **The catalogue and the registrar surfaces** (PR #229):
+   `NativeCatalogueBuilder` builds one `NativeCatalogue`; the public
+   `IPluginRegistrar` takes namespace natives, constants and named types; the
+   internal `IPrimitiveMemberRegistrar`, reached through `IPrimitiveMemberPlugin`,
+   takes primitive members, primitive type-statics and bare built-ins. A
+   duplicate, a member on a namespace another plugin owns and a primitive type
+   name claimed as a namespace from the public surface are each
+   `InvalidOperationException` at registration, naming the owners; a bare name
+   where a qualified one is required is `ArgumentException`.
+4. **`TypeChecker` takes the catalogue as a required constructor argument**
+   (PR #230), and every construction site passes one built once and shared
+   (D-338). Gate report F1 was taken: the checker annotates `CallExpr` and
+   `MemberAccessExpr` with the resolved native's defaults and qualified name, so
+   the compile phase consults no registry.
+5. **Namespace natives** (59) register with their signatures and
+   `NamespaceRegistry` is deleted (PR #232).
+6. **Primitive members** (`string` 24, `int` 4, `float` 8, `bool` 1) and `input`
+   register through the internal surface and `PrimitiveMemberRegistry` is deleted
+   (PR #232). The untyped `RegisterNative(string, NativeFunction)` overload is
+   deleted here, so a registration without a signature does not compile; a
+   reflection test pins the public surface to the one overload.
+7. **Named types move into their plugins** (PR #231): `DatePlugin` and
+   `GuidPlugin` register `NamedTypeDefinition`s, the VM is constructed over the
+   catalogue and dispatches `GetProperty` through it, and `NamedTypeRegistry`
+   leaves `Grob.Core`. The VM is no longer a registrar, as gate report §1.4.4
+   proposed; `RegisterNative(string, NativeFunction)` and `RegisterConstant`
+   survive on it only as the internal seam `Grob.Vm.Tests`' hand-built chunks
+   use.
+8. **Corrections and record** (this entry's branch): the R-19 fold, R-05's eight
+   `FunctionSignature` sites, the design and wiki documents, this entry and the
+   register.
+
+The three agreement tests are deleted, each with its table (D-426 Decision 2).
+`OneCatalogueTests` and the registration-invariant tests replace them.
+
+---
+
+**Divergences.**
+
+- **Groups ran out of order: 1–4, 7, 5–6, 8.** Session D stopped before group 5
+  because the VM received natives only through `plugin.Register(vm)`, so
+  `Grob.Cli` could not reach the internal primitive surface groups 5 and 6
+  needed. Constructing the VM over the catalogue (group 7) removed that gap, and
+  Chris chose the reorder on 5 November. As a consequence the untyped
+  overload's deletion moved from group 7 to group 6, the last group that still
+  used it.
+- **`RegisterToString` is retired** from `IPluginRegistrar` (gate report
+  §1.4.5). A struct-typed value a plugin returns is by construction a named type,
+  so a renderer arrives with `RegisterNamedType` and the named-type duplicate
+  guard is the renderer guard.
+- **`formatAs` and `input` carry runtime-shape signatures** (gate report F2,
+  confirmed by Chris on 5 November): `formatAs.table(items: array, columns:
+  array): string`, `formatAs.list(item: struct, fields: array): string`,
+  `formatAs.csv(items: array, columns: array): string` and `input(prompt: string
+  = ""): string`. D-426 Decision 1's bespoke *checker* treatment is unchanged. A
+  guard in `ResolveNamespaceMemberAccess` keeps a bare `formatAs.table` reference
+  at E1003, since the catalogue now holds the natives the old table omitted.
+- **`SignatureType.Concrete` gained `ElementType`** (gate report F4, confirmed by
+  Chris), refining D-426 Decision 4's "a `GrobType` plus, for `Struct`, its
+  named-type name". `string.split` threads its `string[]` return through it.
+  Parameter element types are declared and not enforced (R-21).
+- **Primitive type names are reserved namespaces** (gate report F8, confirmed):
+  the public surface refuses `int`, `float`, `string` and `bool` as namespaces, so
+  `int.min` and its five siblings register through `RegisterPrimitiveStatic` and
+  `NumericStaticsPlugin` became an `IPrimitiveMemberPlugin`.
+- **The CLI's composition root is `PluginRegistration.BuildCatalogue`**, building
+  one catalogue per run and per REPL session over the OS-backed capabilities and
+  handing that instance to the checker and the VM. `StdlibCatalogue.ForCompileOnly`
+  serves compile-only hosts over inert capabilities.
+- **`Grob.Core.DateLayout` holds what the VM and the plugins share.** Group 7
+  moved `RoundTripFormat` there when `NamedTypeRegistry` was deleted. Group 8 then
+  **took R-19** at Chris's direction: `DateLayout` gained `TypeName` and
+  `ValueFieldName`, a new `GuidLayout` holds `guid`'s two, the eight copies in
+  `DateNatives`, `GuidNatives`, `DatePlugin` and `GuidPlugin` are deleted, and the
+  checker's `date` comparison rule reads `DateLayout.TypeName`.
+  `NamedTypeLayoutTests` fails if `Grob.Compiler`, `Grob.Vm` or `Grob.Stdlib`
+  declares a string constant equal to a layout name. D-426 had scoped R-19 out
+  unless the move needed it; the move did not, and the fold is recorded as a
+  choice, not a necessity.
+- **Tests beyond the three agreement tests were deleted because their subject
+  ceased to exist** (Decision 5 condition 1, the reading Chris confirmed on 5
+  November). In each case the facts were re-homed against the catalogue:
+  `NamedTypeRegistryTests` (22) as `DateNamedTypeTests` and `GuidNamedTypeTests`,
+  `PrimitiveMemberRegistryTests` (51) as `StdlibPrimitiveSignatureTests`, and nine
+  hand-built-chunk VM tests that dispatched `date`/`guid` through the registry as
+  cases in `DatePluginTests` and `GuidPluginTests`. Nine `NativeCatalogueBuilder`
+  cases for the untyped overload went with it, their typed counterparts already
+  present. The gate report's "VM tests untouched" did not hold for those nine.
+- **Setup plumbing was wider than gate report F7 counted:** every
+  `plugin.Register(vm)` in `Grob.Stdlib.Tests` (12 files) became a VM over a
+  catalogue through one helper. No assertion was edited.
+- **`Grob.Compiler`'s `InternalsVisibleTo` for `Grob.Integration.Tests` is
+  removed**; it existed only for `NamespaceRegistry`.
+- **R-05 counted eight `FunctionSignature` sites, the prompt seven.** The tree
+  held eight and all eight are corrected.
+
+---
+
+**D-426 Decision 5, reported condition by condition.**
+
+1. **Suite green**: 4,612 passed, 0 failed at this entry's branch (Compiler
+   2,344; Stdlib 560; Vm 473; Integration 453; Runtime 348; Core 320; BenchCheck
+   76; Consistency 38), with no assertion edited beyond the construction plumbing
+   and the deletions above.
+2. **Probe corpus byte-identical**: yes, after every group.
+3. **Benchmark gate green with no baseline updated**: **not met as worded.** No
+   baseline was touched, but all three runs on the increment's branches (groups
+   4, 7 and 5–6) failed the per-sprint allocation threshold on the same two
+   benchmarks: `Compile_TenPrints` +12.4% (17,872 B) and `Compile_TwoExpressions`
+   +11.0% (10,232 B) against the 10% limit. Time stayed within its gates.
+   The breach was already present, to within 8 bytes, on the first run (group 4).
+   The last benchmark run on `main` before the increment was `1e44b54` (5 August),
+   forty commits earlier, so **whether group 4's catalogue path introduced the
+   drift or `main` carried it in is not established.** A benchmark run on the
+   pre-increment base `b202509` would settle it. It is recorded, not chased, under
+   the standing position that allocation drift is accepted through Sprint 9 and
+   swept in one pass before Sprint 10.
+
+Coverage by each assembly's own test project: `Grob.Compiler` 97.23%,
+`Grob.Runtime` 99.73%, `Grob.Stdlib` 100.00%, all above the D-328 bar.
+
+---
+
+**Parameter names invented by this increment.** No document named these; the
+increment proposed them, and they freeze with the signatures unless
+`grob-stdlib-reference.md` adopts or corrects them first:
+
+| Native | Parameters | Note |
+|---|---|---|
+| `date.of` | `year`, `month`, `day` | reference shows a positional example only |
+| `date.ofTime` | `year`, `month`, `day`, `hour`, `minute`, `second` | |
+| `date.parse` | `value` (with `pattern`) | `pattern` from D-358; checker comments called the first `input`, which collides with the built-in |
+| `date.fromUnixSeconds` | `seconds` | reference's example uses a variable `epoch` |
+| `date.fromUnixMillis` | `millis` | |
+| `date.addDays` / `addMonths` / `addHours` / `addMinutes` | `days` / `months` / `hours` / `minutes` | |
+| `date.format` | `pattern` | reference shows a positional example only |
+| `date.toZone` | `zone` | reference shows `"Europe/London"` positionally |
+| `formatAs.table`, `formatAs.csv` | `items`, `columns` | runtime shape (F2) |
+| `formatAs.list` | `item`, `fields` | runtime shape (F2) |
+
+Every other parameter name comes from the stdlib reference, the type registry or
+the decisions log, by the gate report's §8 precedence.
+
+---
+
+**Recorded without action.** A variadic tail still requires at least one
+argument (`path.join()` is E0003 "at least 1"); the parameter shape expresses
+variadic-ness and the minimum is a convention documented on it (gate report F9).
+The benchmark gate is CI-only by design (F12). `Grob.Lsp` has no compile path
+yet and will use `StdlibCatalogue.ForCompileOnly()` when it gains one (F13).
+Older names outside the registration API survive in documents this increment
+did not own: `TypeRegistry.MembersFor` in `grob-tooling-strategy.md`'s LSP
+sketch, `GrobVM` meaning the VM in `grob-benchmarking-strategy.md` and
+`grob-playground-architecture.md`, and the registry names in
+`grob-advertised-vs-built-audit.md` and `grob-principal-review-sprint9b.md`, both
+dated records.
+
+---
+
+**Documents reconciled to the API as built**, each citing D-426: `grob-plugins.md`,
+`grob-vm-architecture.md`, `grob-solution-architecture.md` (including gate report
+F11's `TypeRegistry` line), `grob-v1-requirements.md`, `wiki/Plugins/Writing-Plugins.md`
+and `wiki/VM-Architecture/Overview.md` — D-426's six — plus `wiki/Plugins/Overview.md`,
+`grob-type-registry.md` (a registration note over its build-status notes, and the
+two named-type mechanism paragraphs), and `wiki/Type-Registry/int.md` and
+`float.md`. `wiki/ADR/0004-constrained-generics.md` is a record and is not edited.
+
+**Register.** **R-12 closed** and **R-19 closed**, both by this entry. **R-05**
+records its eight sites as done; the four naming sites and the full sweep
+remain. **R-20** (named arguments on named-type methods pass silently, F3),
+**R-21** (array parameter element types not enforced, F4), **R-22**
+(`strings.join`'s documented default not built, F5) and **R-23** (`struct?` in
+nullable named-type diagnostics, F10) open, all `unowned` and each with its
+criterion.
+
+Cites D-071 (`strings.join`'s documented default), D-270 (built-ins), D-328
+(coverage bar), D-338 (shared, once-built registration objects), D-343
+(capability injection), D-356 (named-type dispatch, now plugin-owned), D-357 and
+D-367 (the `date` layout and comparison intrinsics), D-419 (the contract) and
+D-426 (the authority this implements).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -15458,7 +15667,20 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_October 2026 — D-426 added; no source change. Authorises the *`FunctionSignature`*_
+_November 2026 — D-427 added. **The *`FunctionSignature`* increment as landed**,_
+_implementing D-426 over eight change groups. Recorded for its divergences: the_
+_group order (7 before 5 and 6, so the untyped overload's deletion moved to group 6),_
+_`RegisterToString`'s retirement, runtime-shape signatures for `formatAs` and_
+_`input`, `Concrete.ElementType`, reserved primitive namespaces and the tests_
+_deleted because their subject ceased to exist, each re-homed. **R-19 taken** in_
+_group 8 at Chris's direction rather than by necessity. **Decision 5's benchmark_
+_condition is reported as not met as worded**: no baseline moved, but_
+_`Compile_TenPrints` and `Compile_TwoExpressions` breach the allocation threshold on_
+_every increment run, and with no `main` run since August whether the increment_
+_caused it is not established. The invented parameter names are listed for the_
+_reference to adopt before they freeze. R-12 and R-19 closed, R-05 updated, R-20 to_
+_R-23 opened. Count unchanged at 120._
+_Previous: October 2026 — D-426 added; no source change. Authorises the *`FunctionSignature`*_
 _increment, third of D-420's six pre-9C increments, and fixes the three jobs R-12's_
 _one-line criterion was covering. Verified at `b202509`, a native's type is described_
 _by four models — `NamespaceRegistry.NativeMember`, `PrimitiveMemberRegistry`,_

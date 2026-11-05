@@ -7,8 +7,9 @@ description: 'How to add a function or method to one of the thirteen core module
 
 The thirteen core modules (`fs`, `strings`, `json`, `csv`, `env`, `process`, `date`,
 `math`, `log`, `regex`, `path`, `formatAs`, `guid`) are implemented in `Grob.Stdlib` as
-`IGrobPlugin` implementations — one plugin class per module — and auto-registered at VM
-startup by `Grob.Cli`. They are not hardwired into the VM. This skill covers adding a
+`IGrobPlugin` implementations — one plugin class per module. `Grob.Cli` adds them all
+to one `NativeCatalogueBuilder`, and the type checker and the VM both read the single
+`NativeCatalogue` it builds (D-426). They are not hardwired into the VM. This skill covers adding a
 function to a module or a method to a built-in type.
 
 ## Step 1 — Decide module function vs instance method
@@ -38,14 +39,28 @@ overlaps an existing one, the question is which one wins, and that is a design d
 
 ## Step 3 — Register with a typed signature
 
-In the module's plugin `Register` method, register the function with a full
-`FunctionSignature` — typed parameters and return type. Use named-argument-friendly
-parameter names: optional and boolean parameters are idiomatically called by name in
-Grob (`recursive: true`, `overwrite: true`), so the parameter names are part of the
-public API. Choose them deliberately.
+In the module's plugin `Register` method, register the function with
+`registrar.RegisterNative(signature, implementation)`. The only overload takes a
+`FunctionSignature` — a qualified name (`strings.join`), typed `SignatureParameter`s and
+a return type — so an untyped registration does not compile. `Grob.Stdlib/Signatures.cs`
+holds the shared types and the `Signature`/`Param`/`Optional`/`Variadic` shorthand the
+plugins import with `using static`. Use named-argument-friendly parameter names:
+optional and boolean parameters are idiomatically called by name in Grob
+(`recursive: true`, `overwrite: true`), so the parameter names are part of the public
+API. Take them from `grob-stdlib-reference.md`; if it names none, choose deliberately
+and list the name for the reference to adopt.
 
-For an instance method, register it against the type in the `TypeRegistry` so the type
-checker knows the receiver type exposes it.
+Where you register depends on the receiver:
+
+- **A named type the module owns** (`date`, `guid`, every Sprint 9C type) — add a
+  `NamedTypePropertyBinding` or `NamedTypeMethodBinding` to the `NamedTypeDefinition`
+  the plugin passes to `RegisterNamedType`. `DatePlugin` is the worked example.
+- **A primitive receiver** (`int`, `float`, `string`, `bool`) — the plugin implements
+  the internal `IPrimitiveMemberPlugin` and registers through
+  `RegisterPrimitiveProperty`/`RegisterPrimitiveMethod` (bare name) or
+  `RegisterPrimitiveStatic` (`int.min`). That surface is internal by design: a third-party
+  plugin cannot add a method to `string` (D-426 Decision 3). `StringMethodsPlugin` and
+  `NumericMethodsPlugin` are the worked examples.
 
 ## Step 4 — Update the registry docs
 
@@ -63,8 +78,12 @@ emoji; prose follows `house-style/SKILL.md`. Windows path conventions throughout
 
 ## Step 6 — Test
 
-In `Grob.Stdlib.Tests`, register the module's plugin into a VM instance and assert the
-function's output, including error paths. If the function appears in any of the thirteen
+In `Grob.Stdlib.Tests`, build a catalogue over the module's plugin
+(`TestCatalogue`), construct a VM over it and assert the function's output, including
+error paths. Pin the new signature in the module's signature test
+(`StdlibNamespaceSignatureTests` or `StdlibPrimitiveSignatureTests`), and add the
+native's four probes to the native-call probe corpus (correct call, wrong arity, wrong
+argument type, nullable argument) so its diagnostics are guarded. If the function appears in any of the thirteen
 release-gate sample scripts, make sure that script still compiles and runs.
 
 ## Checklist
@@ -72,9 +91,9 @@ release-gate sample scripts, make sure that script still compiles and runs.
 - [ ] Correct placement decided: module function vs instance method
 - [ ] `formatAs` used only for collection terminators; scalar formatting is a method
 - [ ] One-way principle checked — no synonym for an existing operation
-- [ ] Registered with a full `FunctionSignature`; parameter names chosen as public API
-- [ ] Instance methods registered against their type in the `TypeRegistry`
+- [ ] Registered with a `FunctionSignature`; parameter names chosen as public API
+- [ ] Instance members registered through their type's `NamedTypeDefinition` or the internal primitive surface
 - [ ] Reference doc updated; member count kept accurate; `D-###` cited
 - [ ] Failures wrapped as the correct `GrobError` leaf
-- [ ] Tested via plugin registration, success and error paths
+- [ ] Tested through a catalogue and a VM over it, success and error paths; signature pinned; probes added
 - [ ] Any affected release-gate script still compiles and runs

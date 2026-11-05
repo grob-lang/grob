@@ -134,7 +134,7 @@ Grob Script (.grob)
 Grob.sln
 ├── src/
 │   ├── Grob.Core/              ← Shared primitives — Chunk, OpCode, GrobType, GrobValue, SourceLocation
-│   ├── Grob.Runtime/           ← Plugin contract — IGrobPlugin, GrobVM registration surface, FunctionSignature, GrobError hierarchy
+│   ├── Grob.Runtime/           ← Plugin contract — IGrobPlugin, IPluginRegistrar, FunctionSignature, NativeCatalogue, GrobError hierarchy
 │   ├── Grob.Compiler/          ← Lexer, Parser, AST, TypeChecker, Compiler (partial classes by concern)
 │   ├── Grob.Vm/                ← VM execution engine — fetch/decode/execute, ValueStack, CallFrame, PluginLoader, Upvalue
 │   ├── Grob.Stdlib/            ← Core stdlib — one IGrobPlugin per module (FsPlugin, JsonPlugin, DatePlugin etc.)
@@ -174,7 +174,7 @@ knows about the other.
 |Assembly       |Responsibility                                                                          |Key Constraint                                                                |
 |---------------|----------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
 |`Grob.Core`    |`Chunk`, `OpCode`, `GrobType`, `GrobValue`, `SourceLocation`, `ConstantPool`            |No dependencies on any other Grob assembly                                    |
-|`Grob.Runtime` |`IGrobPlugin`, `FunctionSignature`, `GrobVM` registration surface, `GrobError` hierarchy|Published as NuGet package — plugin authors reference this only               |
+|`Grob.Runtime` |`IGrobPlugin`, `IPluginRegistrar`, `FunctionSignature`, `NativeCatalogue` (D-426), `GrobError` hierarchy|Published as NuGet package — plugin authors reference this only               |
 |`Grob.Compiler`|Lexer → Parser → AST → TypeChecker → Compiler                                           |References Core + Runtime. Does NOT reference Vm. Job ends at Chunk production|
 |`Grob.Vm`      |Fetch/decode/execute loop, ValueStack, CallFrame[256], Globals, PluginLoader            |References Core + Runtime. Does NOT reference Compiler                        |
 |`Grob.Stdlib`  |13 core modules as `IGrobPlugin` implementations                                        |References Core + Runtime only. Auto-registered by Cli at startup             |
@@ -742,7 +742,8 @@ closures.
   initialisation diagnostic per §19.1.
 - `BytecodeFunction` and `NativeFunction` as function representations.
   VM dispatches transparently.
-- Native function registration mechanism: `RegisterNative(name, signature, implementation)`.
+- Native function registration mechanism: `RegisterNative(signature, implementation)`, the
+  signature carrying the qualified name (as built: D-426).
 - Flow-sensitive type narrowing for optionals: inside `if (x != nil) { }`
   the type checker narrows `x` from `T?` to `T`.
 
@@ -984,9 +985,10 @@ output.
 - `import Grob.Http` — type checker loads plugin signatures at compile
   time. Default alias: last segment lowercased (`http.*`).
 - `import Grob.Http as client` — explicit alias.
-- `IGrobPlugin` interface: `Name`, `Register(GrobVM vm)`.
-- `Grob.Runtime` NuGet package: `IGrobPlugin`, `FunctionSignature`,
-  `Parameter`, `GrobType` — the public SDK contract.
+- `IGrobPlugin` interface: `Name`, `Register(IPluginRegistrar registrar)` (D-426).
+- `Grob.Runtime` NuGet package: `IGrobPlugin`, `IPluginRegistrar`,
+  `FunctionSignature`, `SignatureParameter`, `SignatureType`,
+  `NamedTypeDefinition`, `GrobType` — the public SDK contract.
 - Plugin loading: `Assembly.LoadFrom()`, find `IGrobPlugin`, instantiate,
   register.
 - `grob install <package>` — install from NuGet (tagged `grob-plugin`).

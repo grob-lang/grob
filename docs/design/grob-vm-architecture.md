@@ -1040,9 +1040,12 @@ class BytecodeFunction : GrobFunction
 class NativeFunction : GrobFunction
 {
     public Func<Value[], Value> Implementation { get; init; }
-    public FunctionSignature Signature { get; init; }  // for type checker
 }
 ```
+
+A `NativeFunction` carries no signature. Its `FunctionSignature` is inert data held
+beside it in the `NativeCatalogue`, which the type checker reads; the VM binds the
+implementation from the same entry (D-419 Decision 1, D-426 Decision 2).
 
 ### VM Dispatch
 
@@ -1064,18 +1067,12 @@ case OpCode.Call:
 
 ### Registering Native Functions
 
-```csharp
-vm.RegisterNative("print",
-    signature: new FunctionSignature(
-        parameters: [new Parameter("value", GrobType.Any)],
-        returnType: GrobType.Nil
-    ),
-    implementation: args => {
-        Console.WriteLine(args[0].ToString());
-        return Value.Nil;
-    }
-);
-```
+Natives are not registered on the VM. Every plugin registers against an
+`IPluginRegistrar` while the host builds one `NativeCatalogue`; the VM is then
+constructed over that catalogue (`new VirtualMachine(streams, catalogue)`), copying its
+globals into the globals table and building `ValueDisplay` over its renderers (D-426).
+The type checker is constructed over the same instance. `print`, `input` and `exit` are
+built-ins resolved at type-check time (D-270), not plugin registrations.
 
 ### The Plugin Interface
 
@@ -1083,32 +1080,33 @@ vm.RegisterNative("print",
 public interface IGrobPlugin
 {
     string Name { get; }
-    void Register(GrobVM vm);
+    void Register(IPluginRegistrar registrar);
 }
 ```
 
-A plugin is a C# class library implementing `IGrobPlugin`. It registers
-native functions when loaded:
+A plugin is a C# class library implementing `IGrobPlugin`. It registers native
+functions, each with its `FunctionSignature`, when the host builds the catalogue:
 
 ```csharp
 // Grob.Http.dll
-public class HttpPlugin : IGrobPlugin
+public sealed class HttpPlugin : IGrobPlugin
 {
     public string Name => "Grob.Http";
 
-    public void Register(GrobVM vm)
+    public void Register(IPluginRegistrar registrar)
     {
-        vm.RegisterNative("http.get",
-            signature: new FunctionSignature(
-                parameters: [new Parameter("url", GrobType.String)],
-                returnType: GrobType.String
-            ),
-            implementation: args => {
+        SignatureType.Concrete stringType = SignatureType.Of(GrobType.String);
+
+        registrar.RegisterNative(
+            new FunctionSignature(
+                "http.get",
+                [new SignatureParameter("url", stringType)],
+                stringType),
+            new NativeFunction("http.get", 1, (args, _) => {
                 var url = args[0].AsString();
                 var response = new HttpClient().GetStringAsync(url).Result;
-                return new StringValue(response);
-            }
-        );
+                return GrobValue.FromString(response);
+            }));
     }
 }
 ```
