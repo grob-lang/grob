@@ -423,6 +423,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-425 | September 2026 | Compiler — parser, AST, type checker; Error taxonomy; Deferred Work Register | **Implements D-424: the *finish the param concern* increment as landed.** All six unenforced codes get their first throw sites and the three registry items land as D-316 co-commits; error-code count **121 → 120**. Six change groups: the `Decorator` AST node with its visitor hook and `ParamDecl.Range` extended over the stack; decorators made `param`-only with E4002 and D-415's `requireNewline` flag retired; §19 ordering enforcement giving E2201 and E2202 their throw sites; `param` joining the pass-1 top-level name space with D-412's cascade; static decorator validation for all seven of D-411's set; and R-01, R-02 and R-03's registry edits. **Four divergences from D-424's prompt, each a finding rather than a silent resolution.** (1) The **ordering walk lives in pass 2**, not in a pre-pass or pass 1 as the prompt's two candidates proposed: `DiagnosticBag` is insertion-ordered with no sort anywhere, so a pre-pass emits every ordering diagnostic ahead of type errors that sit earlier in the file, and Decision 5's source-order constraint fails in the general case. Pass 2 is the only walk that visits `TopLevel` in source order while emitting the rest of the semantic diagnostics. (2) **`@secure`'s and `@pattern`'s arity and argument-kind checks report E4002**, because §19's Decorators table assigns E4101 to `@allowed` and E4102 to the four length and value constraints and gives those two decorators no code of their own — a genuine spec gap, resolved without minting a code since D-424's stop conditions forbid one. (3) **A decorator on a `type` field stays E2001**, not E4002: `ParseTypeField` has no decorator production, so making it E4002 would mean adding a production purely to reject it. The position is rejected either way. (4) The prompt's *"all eleven validation scripts still parse and type-check with zero diagnostics"* is a **false premise** — `ValidationScriptCorpusTests` has only ever parsed the corpus, and type-checked today all eleven produce diagnostics, 93 in total, dominated by E1001 for stdlib namespaces that do not exist yet. The achievable criterion replaced it and is now asserted: all eleven parse clean and carry **none** of the six codes this increment owns. Decision 6's side effect measured: 93 → 52. **Pass 1 registers a `param` name with `GrobType.Unknown`** — §1.5's separability gate asks whether *registration* requires resolving the declared type, and it does not — **and pass 2 finalises the binding with that declared type**, resolved through the same `ResolveTypeRef` the decorator checks call. Registering the name alone is not the smaller step it looks: `Unknown` is assignable to nothing, so `param limit: int` returned from a `fn(): int` was rejected with a false E0005, D-323's phase-1.5 failure reached by another route; found in PR review and fixed before merge. Checking a *supplied* value against the annotation and the decorators constraining it is still Sprint 10 (R-15). Opens **R-16** (`type`/`fn` after top-level code steps backwards against §19's prose with no code allocated, so the walk stays silent there), **R-17** (`@secure` and `@pattern` have no code for their arity and argument-kind checks) and **R-18** (three stale decorator gold masters). Closes R-01, R-02 and R-03. Cites D-424 (which this implements), D-410, D-411, D-412, D-414, D-415, D-039, D-072, D-186, D-311, D-316, D-320, D-324, D-328, D-342, D-420. |
 | D-426 | October 2026 | Solution architecture — plugin SDK; Compiler — type checker; Runtime — native registration; Deferred Work Register | **Authorises the *`FunctionSignature`* increment and fixes what R-12's criterion left open.** Verified at `b202509`, a native's type is described by four models: `NamespaceRegistry.NativeMember` (56 natives, 8 constants), `PrimitiveMemberRegistry` (37 members), `NamedTypeRegistry` (32 members) and bespoke checker arms. **Scope:** namespace, primitive-instance and named-type-instance natives migrate, because `mapAs<T>` — `FunctionSignature`'s first consumer — is a named-type method; array and map instance methods, `formatAs` and the three built-ins stay bespoke, since their signatures need function-typed parameters or receiver-derived returns that D-419's union deliberately lacks. **Single source:** one registration pass produces one data catalogue that the checker reads and the VM binds from; the hand-maintained tables and their three agreement tests are deleted, taking the second of D-419 Decision 5's two readings. `TypeChecker` takes the catalogue as a required argument; built once and shared (D-338); duplicate registration is a host error. **Instance surfaces move into their plugins**, forced by the layering (`Grob.Core` cannot see `Grob.Runtime`); named types become public registrar surface, primitive receivers do not — no extension methods by the back door. Parameter names recorded from the stdlib reference; named-argument binding to natives stays unsupported; type parameters present but fenced by `GrobInternalException` until `mapAs<T>`. "No behaviour change" defined as suite green, a committed native-call probe corpus byte-identical and the benchmark gate green without a baseline update. Sprint 9's second named structural slot; may span sessions on one branch. R-12 refined, R-05 split, **R-19** opens. Count unchanged at 120. |
 | D-427 | November 2026 | Solution architecture — plugin SDK; Compiler — type checker; Runtime — native registration; VM — named-type dispatch; Deferred Work Register | **Implements D-426: the *`FunctionSignature`* increment as landed.** Every native registered through `IPluginRegistrar` carries a `FunctionSignature` and the untyped overload is gone; one `NativeCatalogueBuilder` pass builds the `NativeCatalogue` the type checker reads and the VM is constructed over; `NamespaceRegistry`, `PrimitiveMemberRegistry` and `NamedTypeRegistry` are deleted with their agreement tests; `date` and `guid` register from their plugins; primitive members register through an internal surface. Divergences recorded: groups ran 1–4, 7, 5–6, 8 at Chris's choice; `RegisterToString` retired; `formatAs`/`input` carry runtime-shape signatures (F2); `Concrete.ElementType` (F4); primitive type names reserved as namespaces (F8); tests whose subject ceased to exist deleted with their facts re-homed. **R-19 taken** at Chris's direction: `DateLayout`/`GuidLayout` in `Grob.Core` are the only layout declarations, guarded by reflection. Decision 5: suite green (4,612), probe corpus byte-identical, **benchmark condition not met as worded** — two compile benchmarks breach the allocation threshold on every increment run, no baseline updated, origin not established. Invented parameter names listed. R-12 and R-19 closed; R-05 updated; R-20 to R-24 open. Count unchanged at 120. |
+| D-428 | November 2026 | Testing — negative-test release gate; Diagnostics; Deferred Work Register; Sprint sequencing | **Authorises the *error-examples harness*, fourth of D-420's six pre-9C increments**; prompt committed at `docs/prompts/error-examples-harness.md`. Measured at `f747517` (CLI built in a throwaway copy on SDK 10.0.114 with `GROB-SEC-001` disabled; the gate re-measures): 56 pairs, not 57; 23 match their master on every diagnostic's code, line and column; eleven masters contradict their own source or the catalogue. **Comparison** is the full ordered list of `(severity, code, file, line, column)` tuples, plus a never-quarantinable static layer checking titles against `ErrorCatalog`, snippets against source and carets against `-->`; building the §10 renderer here is rejected as not a harness, and the subset alone as D-081's pattern, since no sprint schedules the renderer — **R-25, owner Sprint 12**. **Location**: bare file name, span start, a column in every master; the CLI keeps printing the path as given. **One harness** runs every pair through `RunCommand` itself, sandboxed by an internal capability seam. **Quarantine** is a strict manifest: a passing quarantined pair fails, an `R-##` must be open and a named namespace absent; masters are hand-written specifications changing only on three grounds; the threshold is by kind — 27 pass, 29 quarantined; R-18 joins. Lives in `Grob.Integration.Tests`, in CI's required job; no new code. **R-24**: benchmark `b202509` before 9C; a catalogue-path origin blocks 9C. **R-20** owned by the 9C increment registering `File`, with binding recommended over E0011. R-11, R-18, R-20, R-24 refined; **R-25 to R-31 open**, including `x := /abc/` crashing the VM (R-30) and undefined type names in annotations accepted silently (R-31). Count unchanged at 120. |
 
 ---
 
@@ -15447,6 +15448,242 @@ D-426 (the authority this implements).
 
 ---
 
+### D-428 — Error-examples harness scoped: code and location compared now, the rest verified statically, quarantine strict and owned; the renderer given to Sprint 12 (November 2026)
+
+Area: Testing — negative-test release gate; Diagnostics; Deferred Work Register; Sprint sequencing
+Supersedes: none (refines R-11's criterion; rules on R-20 and R-24)
+Superseded by: none
+
+**Decision-only. No source change.** Error-code count unchanged at 120. This entry
+authorises the *error-examples harness*, the fourth of D-420's six pre-9C increments;
+its prompt is committed with it at `docs/prompts/error-examples-harness.md`. Measured at
+`f747517`, with a caveat that bears on the numbers: no 10.0.300 SDK was reachable from
+the session, so the CLI was built in a throwaway copy on SDK 10.0.114 with the
+`GROB-SEC-001` floor disabled. Nothing built that way was kept, and the increment's gate
+re-measures on the supported SDK.
+
+**What the measurement found.** The library holds **56** pairs, not R-11's 57 — D-425
+removed `param-after-param-block-ends`. Run through `grob run`, **23** match their master
+on every diagnostic's code, line and column. Of the other 33: eleven use surface that is
+not built yet (`fs`, `json`, `process`, plugin import); ten are stale against decisions
+taken since they were written (an array bound to `const` against D-289, a `[]string`
+parameter that D-327's `T[]` never allowed, a local named `path`, `strings.repeat`,
+`log.warn`, a function with no return type, R-18's three and a nil dereference the
+checker now rejects statically); four lack only a runtime column; four raise a different
+code; three disagree on location; and one cascades into five diagnostics. Separately,
+**eleven masters contradict their own source text or the catalogue** — a `-->` column
+disagreeing with the caret beneath it, a caret starting on whitespace, a snippet numbering
+a line the source does not hold, a title that is not `ErrorCatalog`'s, a location with no
+column. Most are hand-counted columns, off by one.
+
+Two facts behind those numbers matter beyond the harness. **Five allocated codes are
+never raised**: E0006, E0007, E1101, E1201 and E1202 have no throw site, and for their
+pairs' scenarios the compiler reports E1002, E0001, nothing, E1001 and E1001 — the shape
+D-424 found for the decorator and ordering codes. And **no runtime diagnostic carries a
+column**: `Chunk` holds a column table and the VM passes it to `GrobRuntimeException`, but
+every compiler emission site uses the overload that writes 0.
+
+---
+
+**Decision 1 — compare the code and location of every diagnostic now; verify the rest of
+each master statically; the renderer is R-25, owned by Sprint 12.** This is the hand-back's
+option (c), strengthened in two ways.
+
+- **The behavioural layer compares the full ordered list** of `(severity, code, file,
+  line, column)` tuples a master states against the list the CLI writes. Not the first
+  diagnostic alone: an extra one is exactly what D-300's one diagnostic per root cause
+  forbids, and two pairs show it.
+- **A static layer checks every master against its own source and the catalogue**: the
+  title is `ErrorCatalog`'s for the code; the `-->` line names the pair's own file and
+  carries a column; numbered snippet lines equal the source lines they number; the first
+  caret starts at the `-->` column and not on whitespace; the source's header comment
+  names the same code; the README index and the directories are a bijection. This is what
+  keeps the parts the CLI cannot render yet honest, and it found eleven defects, most of
+  them invisible to a behavioural run while their pairs are quarantined. It is never
+  quarantinable.
+
+**Option (b), building the §10 renderer in this increment, is rejected** because it is not
+a harness. `Diagnostic` carries one message string; the masters' `note` and `help` lines
+are structured facts the checker does not produce. Rendering them means changing the
+`Grob.Core` record and rewriting the wording at every throw site — a diagnostics-surface
+increment the run does not contain. **Option (a) alone is rejected** because nothing owns
+the renderer: `grob-solution-architecture.md` assigns an error formatter to `Grob.Cli`, but
+no sprint in `grob-v1-requirements.md` schedules it, and Sprint 12's scope names
+`grob check`, exit codes and polish without it. A comparison subset with no owner for the
+rest is D-081's pattern. **R-25 opens with Sprint 12 as owner.** One consequence is
+recorded rather than decided: every Sprint 9C module will add throw sites written as
+single-string messages, each to be split later. Settling the structured shape of `note`
+and `help` before 9C's first module is a cheap input to the 9C rebuild D-411 requires, and
+is recommended as one; it does not join the run.
+
+---
+
+**Decision 2 — the canonical location is the bare file name, the start of the primary
+span and a 1-based column, and every master carries one.** `-->` is followed by
+`<file>:<line>:<column>`. The CLI keeps printing the path as the user gave it, which is
+what a user needs and what rustc and tsc do; the gold-master form is a property of the
+harness, not of the product. The harness passes each pair's path, asserts the rendered
+path is that path, then compares by file name and reduces a `line:col-line:col` range to
+its start. **A location without a column does not acquire one**, so it fails against a
+master that states one — that is R-26, and `circular-initialisation`'s column-less master
+gains its column and joins R-26's quarantine rather than encoding the gap as correct. The
+renderer prints the start point with a caret, not the range form (R-25).
+
+---
+
+**Decision 3 — one harness for compile-time and runtime pairs, sandboxed by injection.**
+Every pair runs through `RunCommand.Run` itself. A test-side pipeline would be a second
+mirror of the CLI, the problem D-426 removed for natives. The code's thousands digit does
+not choose the path: the pipeline stops at compile errors and runs otherwise. **The sandbox
+is an internal seam on `RunCommand`** through which the harness supplies the catalogue's
+capabilities — an empty environment, a fixed clock, a fixed random source, in-memory
+streams and closed stdin — so no pair reads the host. Filesystem and process are not
+capabilities yet because `fs` and `process` are not built; their pairs are quarantined.
+When 9C builds them as capability-injected plugins (D-343), the seam gains fakes in the
+same increment. Per-pair fixtures — environment values, in-memory files, a `grob.json` —
+are added by the increment that first needs one.
+
+---
+
+**Decision 4 — quarantine is a strict, owned manifest; masters are hand-written
+specifications; the threshold is by kind, not by count.**
+
+- **Mechanics.** `docs/errors/examples/quarantine.md` holds one table row per quarantined
+  pair: pair, category (`unbuilt`, `gap`, `divergent`, `stale`), *Blocked by* and a
+  measured reason. *Blocked by* is checkable. An `R-##` must be an open register row, so
+  closing an item while a pair still cites it fails the harness. A namespace must be absent
+  from the catalogue, so registering `fs` fails the harness until its pairs are
+  re-classified. `Sprint 11` is checked by strictness alone. **Strict**: a quarantined pair
+  is still run and must still fail; one that passes fails the harness until its row goes.
+  A skip attribute is not quarantine, because a skip cannot report a pair that starts
+  passing.
+- **The release gate.** At v1 the manifest is empty. `grob-v1-requirements.md` states no
+  negative-test gate today — only R-11, a skill and the README do — and §14 gains the
+  sentence in the increment that makes it true.
+- **Authorship.** Until R-25 lands, masters are **hand-written specifications** against the
+  registry and §10; nothing can emit their format, so there is nothing to regenerate from.
+  A master's code or location may change on three grounds only: **a decision changed the
+  language under it** (cite the decision); **it contradicts its own source by character
+  count**; or **a decision resolving a register divergence finds the master's side wrong**.
+  Otherwise the implementation is what is wrong and the pair is quarantined. After R-25, a
+  master may be regenerated from the implementation only in the commit that deliberately
+  changes the diagnostic it pins, with the diff reviewed; bulk regeneration never, which is
+  D-313's ratchet in another form. `writing-an-error-test`'s "do not hand-write it" and the
+  README's "write it by hand" contradict each other today; this rule replaces both.
+- **The threshold.** A number would be arbitrary. The increment reconciles exactly the pairs
+  whose fix is mechanical under the first two grounds — listed in its prompt, a closed list
+  — and quarantines the rest. That moves 23 passing pairs to **27**, with **29**
+  quarantined: eleven `unbuilt`, seven blocked by R-26, seven by R-27, three by R-28 and one
+  by R-29. Everything outside the list is quarantined by rule, not judged in session.
+- **R-18 joins the increment.** Its three pairs are the harness's subject matter, its
+  criterion is reconciliation, D-424 and D-425 have fixed the semantics and each rewritten
+  scenario is verified to raise exactly one diagnostic: E4001 for an unknown decorator in
+  braceless form, E4101 for `@allowed` given an identifier and E4002 for `@secure` on a
+  function parameter (D-424 Decision 2). The original E4002 scenario — a decorator before a
+  local binding — now raises E2001, and that difference goes to R-27.
+
+---
+
+**Decision 5 — the harness lives in `Grob.Integration.Tests` and is in the required gate
+from its first commit.** That project references `Grob.Cli`, and §12's table gives it
+"`.grob` source → stdout, stderr and exit code". Correction to the hand-back's framing:
+`ValidationScriptCorpusTests` lives in `Grob.Compiler.Tests`, not there. The static and
+behavioural layers share one pair loader and one manifest parser in the same project;
+moving the static layer to `Grob.Consistency.Tests` would put a second manifest parser in a
+second project. Pairs are read from the source tree, as `ValidationScriptCorpusTests`
+does, and discovered by directory, so a new pair is in the gate without a registration
+step. CI's *Build & Test* job runs `dotnet test` on Windows and Ubuntu for every pull
+request to `main`; the harness needs no workflow, trait or opt-out of its own.
+
+---
+
+**Decision 6 — R-05's four naming sites are confirmed, with three more in the same
+files.** `writing-an-error-test/SKILL.md`, `writing-grob-source/SKILL.md:152-154`,
+`allocating-an-error-code/SKILL.md:92` and `tests/CLAUDE.md:60-64` say
+`*_grob.txt`/`*_expected.txt`; every pair on disk is `<slug>/<slug>.grob` and
+`<slug>.expected.txt`. Also stale: that skill's frontmatter description, its step 5's
+`errors-examples-README.md` (a project-knowledge name), and the README's own section on
+the project-knowledge flat layout. All are corrected by the increment. Archived prompts
+under `prompts/archive/` carry the old naming and are records, not edited.
+
+**Decision 7 — the increment allocates no code**, edits no `ErrorCatalog` title or
+description and changes no compiler, VM, stdlib, runtime or core code. Each is a stop
+condition. Its one production change is the `RunCommand` seam.
+
+---
+
+**Decision 8 — R-24: run the benchmark on `b202509` now, before Sprint 9C.** It is a
+measurement, not an increment, so the stopping rule does not apply to it; its result
+decides whether the rule is engaged. The benchmark workflow is manual, so it needs a branch
+at `b202509` and a second run on current `main` in the same session on the same runner, so
+the two are comparable. **If the breach predates the increment**, R-24 stays with the
+hardening interlude as planned. **If the catalogue path introduced it**, the increment has
+broken D-426 Decision 2's "built once and shared across compiles", and every 9C module
+registers into that catalogue — that blocks 9C under D-420's own test, and the fix precedes
+9C. A breach that scales with catalogue size would grow with each 9C module and bury its
+own origin under five modules' worth of change; one dispatch now costs minutes.
+
+**Decision 9 — R-20 is owned now, by the 9C increment that first registers `File`.**
+`File.moveTo(destDir, overwrite = false)` and `File.copyTo(destDir, overwrite = false)` in
+`grob-type-registry.md` are two-parameter named-type methods, so R-20 blocks that
+increment and lands as its first change group, not as a seventh pre-9C increment.
+`Regex.replace` and `Regex.replaceAll` are the second instance. **A recommendation for the
+9C rebuild, not decided here:** R-20's criterion asks for E0011 parity, which makes
+`file.copyTo(dest, true)` the only legal call. The signatures now carry parameter names
+(D-426 Decision 4 recorded them so that binding would be additive), and D-113 exists so a
+script never has to write a bare `true`. Binding named arguments to natives is the better
+language, and the `fs` increment is where it pays.
+
+---
+
+**Register.**
+
+- **R-11 refined**: the count is 56, and the criterion names the strict manifest and the
+  static layer.
+- **R-18's owner** becomes the harness increment.
+- **R-20's owner** becomes the 9C increment that first registers `File`.
+- **R-24 refined**: the `b202509` measurement precedes Sprint 9C; the green-gate half keeps
+  its owner.
+- **R-25 opens** — the §10 renderer and a structured `note`/`help` shape on `Diagnostic`;
+  owner Sprint 12.
+- **R-26 opens** — the compiler records no column, so no runtime diagnostic has one; owner
+  the Sprint 9/10 hardening interlude (D-353). The `.grobc` source map already carries a
+  column field (`grob-grobc-format.md`), so no format change follows.
+- **R-27 opens** — code divergences: the five codes with no throw site, `bool + int`
+  raising E0002 where its master states E0001, the unreachable E5201 scenario and a
+  decorator before a local binding raising E2001. `unowned`; must land before R-10, since
+  documenting a code the compiler never raises documents a fiction.
+- **R-28 opens** — location divergences in three pairs. `unowned`.
+- **R-29 opens** — cascades against D-300: a missing `{` yields five diagnostics, a local
+  named after a core module yields E1102 citing "line 1" plus E1004, and `@allowed` given an
+  undefined name yields E1001 plus E4101. `unowned`.
+- **R-30 opens**, found while measuring the public samples for increment 5:
+  **`x := /abc/` passes the front end and crashes the VM** with "internal error: value stack
+  underflow". `VisitRegexLiteral` returns `GrobType.Unknown` with no diagnostic and the
+  compiler emits nothing for the node. Owner the `regex` increment, with the principal
+  review's F9 grammar work; the 9C rebuild should put a loud failure in first, as D-426
+  Decision 4 did for type parameters.
+- **R-31 opens**, from the same measurement: **an undefined type name in a parameter, local,
+  return, array-element or lambda-parameter annotation is accepted silently** —
+  `x: Foo := 1` and `fn f(r: Foo): int` compile and run. Field annotations report E1001
+  through `ResolveNamedFieldType`; the other positions resolve through a path that returns
+  `GrobType.Unknown` without a diagnostic. In a statically typed language this is the most
+  serious finding of the session. It blocks neither the harness nor Sprint 9C — no
+  validation script annotates a 9C named type — so it is owned by the hardening interlude
+  and recommended first in it.
+
+Increments 5 and 6 are outlined separately for Chris to fix; nothing here decides their
+scope.
+
+Cites D-420 (the run, its stopping rule and the register), D-308 (the catalogue whose
+titles the static layer checks), D-300 (one diagnostic per root cause), D-313 (no
+ratchet), D-081 (an owned contract with no schedule), D-289, D-327, D-342 and ADR-0010
+(the stale masters' authorities), D-410, D-411, D-412, D-424 and D-425 (R-18's rewrites;
+D-411 also requires the 9C rebuild), D-343 (capability injection), D-353 (the hardening
+interlude), D-113 and D-426 (named arguments and recorded parameter names).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -15669,7 +15906,19 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-427 added. **The *`FunctionSignature`* increment as landed**,_
+_November 2026 — D-428 added; no source change. **Scopes the error-examples harness**,_
+_fourth of D-420's pre-9C increments, and commits its prompt. Measured first: 56 pairs,_
+_23 matching their master on code and location, eleven masters contradicting their own_
+_source, five codes never raised and no runtime column anywhere. The harness compares_
+_every diagnostic's code and location now and checks titles, snippets and carets_
+_statically; the §10 renderer is not a harness and no sprint owned it, so R-25 gives it_
+_to Sprint 12. Quarantine is a strict manifest whose rows must stay true; masters are_
+_specifications that change on three grounds only; the reconciliation set is closed, so_
+_27 pass and 29 wait on named owners. R-24's origin is measured before 9C, and R-20 goes_
+_to the `fs` increment. **Two findings outrank the harness**: `x := /abc/` crashes the_
+_VM, and an undefined type name in most annotation positions is accepted silently._
+_R-25 to R-31 open. Count unchanged at 120._
+_Previous: November 2026 — D-427 added. **The *`FunctionSignature`* increment as landed**,_
 _implementing D-426 over eight change groups. Recorded for its divergences: the_
 _group order (7 before 5 and 6, so the untyped overload's deletion moved to group 6),_
 _`RegisterToString`'s retirement, runtime-shape signatures for `formatAs` and_
