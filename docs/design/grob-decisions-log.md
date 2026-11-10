@@ -15914,7 +15914,7 @@ _every diagnostic's code and location now and checks titles, snippets and carets
 _statically; the §10 renderer is not a harness and no sprint owned it, so R-25 gives it_
 _to Sprint 12. Quarantine is a strict manifest whose rows must stay true; masters are_
 _specifications that change on three grounds only; the reconciliation set is closed, so_
-_27 pass and 29 wait on named owners. R-24's origin is measured before 9C, and R-20 goes_
+_27 pass and 29 wait on tracked blockers. R-24's origin is measured before 9C, and R-20 goes_
 _to the `fs` increment. **Two findings outrank the harness**: `x := /abc/` crashes the_
 _VM, and an undefined type name in most annotation positions is accepted silently._
 _R-25 to R-31 open. Count unchanged at 120._

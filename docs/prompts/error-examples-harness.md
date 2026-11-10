@@ -67,11 +67,14 @@ before running:**
 - 23 match their master on the full ordered list of diagnostics today.
 - After the closed reconciliation set in §2.3 and §2.4, 27 match and 29 do not.
 
-Then confirm the per-pair verdicts in §2.3, §2.4 and the quarantine table in §2.3
-against what you measured. **A pair §2 expects to pass that does not is a STOP.** A pair
-§2 expects to quarantine that passes is good news and a finding; report it and leave it
-out of the manifest. Any other difference is a finding to report, with its effect on the
-manifest row.
+Then compare what you measured with the **gate-time** verdicts, not §2's final ones. The
+gate runs before any reconciliation, so the 23 pairs expected to pass now are §2's 27
+minus the five that pass only after their rewrite (S5, S6 and R-18's three in §2.4), plus
+`circular-initialisation`, which passes until M9 gives it a column. **A pair in those 23
+that fails is a STOP.** A pair outside them that passes is good news and a finding; report
+it and say whether it stays out of the manifest. A difference from §2's post-reconciliation
+verdicts is a finding to report with its effect on the manifest row, never a STOP, since
+the gate cannot observe those verdicts.
 
 ### 1.2 Confirm the static defects
 
