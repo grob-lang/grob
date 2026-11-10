@@ -101,9 +101,11 @@ test supplies the catalogue's capabilities, and show that:
 ### 1.4 Propose the manifest grammar
 
 Propose the exact table grammar of `docs/errors/examples/quarantine.md` (D-428
-Decision 4) and the parser's rejection messages for: an unknown pair, a duplicate pair, an
-unknown category, an unparseable *Blocked by* cell, an `R-##` that is not an open
-register row, and a namespace that is registered in the catalogue.
+Decision 4), including the *Observed* cell's encoding of an ordered tuple list (a pair with
+no column records none), and the parser's rejection messages for: an unknown pair, a
+duplicate pair, an unknown category, an unparseable *Blocked by* cell, an unparseable or
+empty *Observed* cell, an `R-##` that is not an open register row, and a namespace that is
+registered in the catalogue.
 
 ### 1.5 Confirm the register
 
@@ -172,8 +174,9 @@ a code. Change nothing else in these masters.
 CLI's output per D-428 Decision 2, and compares the **full ordered list** of
 `(severity, code, file, line, column)` tuples the master states against the list the CLI
 writes. The manifest parser reads `docs/errors/examples/quarantine.md`. Quarantined pairs
-are run and **must still fail**; one that passes fails the harness with a message to remove
-its row.
+are run and **must fail exactly as their *Observed* cell records**. One that passes fails
+the harness with a message to remove its row; one whose output differs from *Observed*
+fails it with the recorded list against the actual one.
 
 **Write the corpus theory first and confirm it red**, with no manifest, before any
 reconciliation. Record which pairs fail; it should be 34 — the 33 §1.1 measured, plus
@@ -231,7 +234,10 @@ Then the manifest, exactly these 29 rows plus the three R-18 rows below:
 | `decorator-not-permitted-here` | stale | R-18 |
 
 Each row's *Reason* cell says in one sentence what the pair is waiting for, measured, not
-paraphrased from this prompt. The unbuilt `fs` and `process` pairs that are runtime errors
+paraphrased from this prompt. Each row's *Observed* cell is the tuple list the CLI writes
+for the pair **after** this group's source reconciliations, measured through the seam, not
+copied from §1.1; S1–S4, S7 and S8 change their pairs' output. The unbuilt `fs` and
+`process` pairs that are runtime errors
 will meet R-26 once their module lands; say so in their reason.
 
 The *Blocked by* guards: an `R-##` must be an open row of the register; a namespace must
@@ -329,7 +335,9 @@ directories. A new pair is in the gate the moment it exists; the index bijection
 unindexed one.
 
 **No skips.** A quarantined pair is a manifest row, never `Skip =` on an attribute. A skip
-hides a pair that starts passing; strictness reports it.
+hides a pair that starts passing; strictness reports it. Strictness is against *Observed*,
+not against "any failure": a pair that fails differently is a regression behind a blocker
+that does not describe it.
 
 **One case per pair.** Theory data carries the slug as its display name, so a failure
 names the pair and the mismatch, expected against actual.
@@ -351,7 +359,9 @@ Required:
   one master.
 - **Static layer**: each check has a failing inline example.
 - **Manifest**: each rejection §1.4 lists; strictness — a quarantined pair that passes
-  fails; an `R-##` that is closed fails; a namespace present in the catalogue fails.
+  fails; a quarantined pair whose output differs from its *Observed* list in code, line,
+  column, severity or count fails; an `R-##` that is closed fails; a namespace present in
+  the catalogue fails.
 - **Corpus**: every pair through both layers.
 - **Seam**: the injected environment is the one read; the public constructor is unchanged.
 
@@ -363,12 +373,15 @@ name before running**, confirm, restore.
 2. Drop the column from the comparison. Predicted: the column comparer test, and strictness
    on the nine quarantined pairs whose only mismatch is the column — R-26's seven plus
    `nullable-interpolation` and `unterminated-string-literal`.
-3. Make quarantine a skip. Predicted: the strictness test.
+3. Make quarantine a skip. Predicted: both strictness tests, the passing pair and the
+   observed drift.
 4. Remove the open-row guard. Predicted: the closed-`R-##` manifest test.
 5. Remove the namespace guard. Predicted: the registered-namespace manifest test.
 6. Remove the caret-against-location check, then separately revert M3 in a scratch copy.
    Predicted: the inline caret test; then `process-exit-nonzero`'s static case alone.
 7. Remove the rendered-path assertion. Predicted: the path normalisation test.
+8. Accept any failure for a quarantined pair, skipping the *Observed* comparison.
+   Predicted: the observed-drift manifest test; no corpus case.
 
 ---
 
@@ -380,7 +393,7 @@ name before running**, confirm, restore.
 - Error-code count **unchanged at 120**; no `ErrorCatalog` edit; D-316 gate green.
 - The full suite green, with the test count; coverage of `Grob.Cli` reported against the
   D-328 bar.
-- The seven mutation verifications, each with its prediction and the observed failures.
+- The eight mutation verifications, each with its prediction and the observed failures.
 - A decisions-log entry in three-location lockstep, and the register updated per §2.5.
 
 ---
