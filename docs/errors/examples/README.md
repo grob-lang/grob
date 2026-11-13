@@ -273,8 +273,11 @@ than a fatal `error[Exxxx]:`.
 | E0201 | `const-reassignment` | Type |
 | E0202 | `readonly-reassignment` | Type |
 | E0301 | `type-cycle-no-terminating-field` | Type |
+| E0601 | `invalid-guid-literal` | Type |
 | E1001 | `undefined-identifier-typo` | Name resolution |
 | E1002 | `undefined-member-access` | Name resolution |
+| E1003 | `unknown-namespace-member` | Name resolution |
+| E1004 | `namespace-used-as-value` | Name resolution |
 | E1101 | `shadowed-declaration-loop-var` | Name resolution |
 | E1201 | `forward-reference-in-function` | Name resolution |
 | E1202 | `use-before-declaration-in-block` | Name resolution |
@@ -297,6 +300,7 @@ than a fatal `error[Exxxx]:`.
 | E4002 | `decorator-not-permitted-here` | Param / decorator |
 | E4101 | `invalid-allowed-argument` | Param / decorator |
 | E5002 | `integer-division-by-zero` | Runtime |
+| E5006 | `math-domain-violation` | Runtime |
 | E5101 | `array-index-out-of-range` | Runtime |
 | E5101 | `array-index-out-of-range-in-function` | Runtime |
 | E5201 | `nil-dereference-at-runtime` | Runtime |

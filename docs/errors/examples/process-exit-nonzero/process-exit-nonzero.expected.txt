@@ -1,5 +1,5 @@
-error[E5602]: process exit non-zero
-  --> process-exit-nonzero.grob:3:10
+error[E5602]: process exit non-zero (under `OrFail`)
+  --> process-exit-nonzero.grob:3:11
    |
  3 | result := process.runOrFail("git", ["push", "origin", "main"])
    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

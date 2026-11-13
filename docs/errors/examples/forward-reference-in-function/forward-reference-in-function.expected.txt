@@ -1,5 +1,5 @@
 error[E1201]: forward reference inside function body
-  --> forward-reference-in-function.grob:4:14
+  --> forward-reference-in-function.grob:4:15
    |
  4 |     prefix := tag.toUpper()
    |               ^^^

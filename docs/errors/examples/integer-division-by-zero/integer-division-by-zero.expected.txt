@@ -1,5 +1,5 @@
 error[E5002]: integer division by zero
-  --> integer-division-by-zero.grob:5:14
+  --> integer-division-by-zero.grob:5:10
    |
  5 | share := total / buckets
    |          ^^^^^^^^^^^^^^^

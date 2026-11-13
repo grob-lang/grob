@@ -1,5 +1,5 @@
 error[E5501]: JSON parse error
-  --> json-parse-error.grob:4:7
+  --> json-parse-error.grob:4:8
    |
  4 | cfg := json.parse(raw)
    |        ^^^^^^^^^^^^^^^

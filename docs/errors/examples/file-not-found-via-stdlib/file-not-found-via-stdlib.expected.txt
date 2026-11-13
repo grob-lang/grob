@@ -1,5 +1,5 @@
 error[E5301]: file not found
-  --> file-not-found-via-stdlib.grob:3:9
+  --> file-not-found-via-stdlib.grob:3:10
    |
  3 | lines := fs.readLines(`C:\reports\summary.txt`)
    |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -7,5 +7,5 @@ error[E5301]: file not found
    = note: path: C:\reports\summary.txt
    = help: guard with `fs.exists(path)` before reading
    |
-   from fs.readLines (file-not-found-via-stdlib.grob:3:9)
-   at <top-level> (file-not-found-via-stdlib.grob:3:9)
+   from fs.readLines (file-not-found-via-stdlib.grob:3:10)
+   at <top-level> (file-not-found-via-stdlib.grob:3:10)
