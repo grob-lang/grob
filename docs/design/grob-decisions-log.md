@@ -426,6 +426,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-428 | November 2026 | Testing — negative-test release gate; Diagnostics; Deferred Work Register; Sprint sequencing | **Authorises the *error-examples harness*, fourth of D-420's six pre-9C increments**; prompt committed at `docs/prompts/error-examples-harness.md`. Measured at `f747517` (CLI built in a throwaway copy on SDK 10.0.114 with `GROB-SEC-001` disabled; the gate re-measures): 56 pairs, not 57; 23 match their master on every diagnostic's code, line and column; eleven masters contradict their own source or the catalogue. **Comparison** is the full ordered list of `(severity, code, file, line, column)` tuples, plus a never-quarantinable static layer checking titles against `ErrorCatalog`, snippets against source and carets against `-->`; building the §10 renderer here is rejected as not a harness, and the subset alone as D-081's pattern, since no sprint schedules the renderer — **R-25, owner Sprint 12**. **Location**: bare file name, span start, a column in every master; the CLI keeps printing the path as given. **One harness** runs every pair through `RunCommand` itself, sandboxed by an internal capability seam. **Quarantine** is a strict manifest: a quarantined pair must fail exactly as its row's *Observed* list records, so one that passes or fails differently fails the harness, an `R-##` must be open and a named namespace absent; masters are hand-written specifications changing only on three grounds; the threshold is by kind — 27 pass, 29 quarantined; R-18 joins. Lives in `Grob.Integration.Tests`, in CI's required job; no new code. **R-24**: benchmark `b202509` before 9C; a catalogue-path origin blocks 9C. **R-20** owned by the 9C increment registering `File`, with binding recommended over E0011. R-11, R-18, R-20, R-24 refined; **R-25 to R-31 open**, including `x := /abc/` crashing the VM (R-30) and undefined type names in annotations accepted silently (R-31). Count unchanged at 120. |
 | D-429 | November 2026 | Testing — negative-test release gate; Diagnostics; CLI — run pipeline; Deferred Work Register | **Implements D-428: the *error-examples harness* as landed**, over five change groups. An internal `RunCommand` seam supplies the catalogue's capabilities; `ErrorExampleMasterTests` checks every master statically and `ErrorExampleCorpusTests` compares every pair's ordered `(severity, code, file, line, column)` list through the CLI's own pipeline; `quarantine.md` is the strict manifest. Eleven masters and eight sources corrected, R-18's three examples rewritten. **56 pairs: 27 pass, 29 quarantined**, as D-428 predicted. Recorded for its divergences: §3's greedy location regex, the *Observed* decoder's `3:12` ambiguity, manifest rejections and checks the prompt did not list, two mutation predictions narrower than observed and `writing-an-error-test`'s step 4 rewritten beside the steps listed. Suite 4,849 green; `Grob.Cli` 91.75%. R-11 and R-18 closed; R-05 updated; R-25, R-29 and R-31 amended; R-32 opened for the two stdlib ambient reads. Count unchanged at 120. |
 | D-430 | November 2026 | Testing — public samples gate; Documentation — wiki; Runtime — capability injection; Deferred Work Register | **Authorises *public samples compile*, fifth of D-420's six pre-9C increments**; prompt committed at `docs/prompts/public-samples-compile.md`. Starts from the 6 November outline and lists its departures. Measured at `ce0b1ec` (CLI built in a throwaway copy on SDK 10.0.115; the gate re-measures): 123 `grob` blocks in `README.md` and the wiki, ADR pages excluded — 38 clean, 24 failing only on unbuilt namespaces, 51 on type-checking, 5 on parsing, 2 at run time, 3 crashing the VM (R-30). The wiki teaches decorators after the parameter, `param env`, `catch IoError e`, `guid.v4()`, `minusDays` and a leading-`+` continuation that §14 also carries. **A bare block is a program and is run** through `RunCommand` over D-429's seam — a type-check-only gate would pass the three crashing blocks; a `fragment` is compiled and may raise only E1001; output is not compared; the outline's `error Exxxx` class is dropped. **Unbuilt namespaces are excused by rule** from a closed list guarded against the catalogue. **The quarantine model, not its file**: register blockers ride on the block as `blocked-by=R-##`, since a wiki block has no identity a manifest row could keep. Extracted at test time in `Grob.Integration.Tests`. Thirteen corrections, a closed list. **R-32 authorised in `Grob.Stdlib`**: `IClock.LocalZone`, `IFileSystem.CurrentDirectory`, every explicit and implicit read moved, a source guard. **R-24**: the breach predates the `FunctionSignature` increment (+96 B and +32 B of it); 9C not blocked; bisection waits for the hardening sprint. R-31 does not join the run. R-24 and R-29 to R-32 amended; **R-33 opens** for `grob-lang.dev`'s sample. Count unchanged at 120. |
+| D-431 | November 2026 | Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Deferred Work Register | **Authorises the *corpus sweep*, sixth and last of D-420's pre-9C increments**; prompt committed at `docs/prompts/corpus-sweep.md`. **Depends on increment 5 having landed**: its public samples gate verifies the wiki edits, and its landing entry's *Findings for the corpus sweep* join the list. "Corpus sweep" appears on 13 lines case-insensitively and 12 case-sensitively, in ten entries; none added since 6 November. **Thirty-one rows enumerated and dispositioned** — swept, closed, registered or outside the repository. D-407's ADR-0017 question was answered by D-410, not D-425; its residue is ADR-0017's own page. "Thirteen" scripts swept to eleven per D-346, and §14's rows 12 and 13, which never existed, removed. F10's reconciliation of D-353's "script 13" is recorded in the entry. **Scope**: living documents and `.claude/` — R-05's full sweep is taken; dated records, footers, entry bodies and ADR decision text are not edited; archived and issued prompts are records. **The `// Eventual path:` line goes from 42 sources**, the pairs renumbered under both harness layers; a renumbering applied to source and master together needs none of D-428 Decision 4's grounds. Root `CLAUDE.md`'s model policy stops naming versions. No regex release-gate script is decided; one is recommended on R-08's footing. The run ends here. Count unchanged at 120. |
 
 ---
 
@@ -15816,7 +15817,7 @@ session, so the CLI was built in a throwaway copy on Ubuntu's SDK 10.0.115, with
 that way was kept, and the increment's gate re-measures on the supported SDK.
 
 **Where this starts.** D-428 said increments 5 and 6 were "outlined separately for Chris to
-fix". That outline was written on 6 November, measured at `f747517`, and delivered as
+fix". That outline was written on 6 November, measured at `f747517` and delivered as
 project knowledge rather than committed. This entry starts from it and lists where it
 departs, at the end.
 
@@ -16084,6 +16085,180 @@ R-04 (`Grob.Runtime` unpublished until Sprint 11) and D-411 (the 9C rebuild).
 ---
 
 
+### D-431 — Corpus sweep scoped: every deferral enumerated and dispositioned, `.claude/` taken in, the `// Eventual path:` lines removed under both harness layers (November 2026)
+
+Area: Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Deferred Work Register
+Supersedes: none (fixes the scope of D-420's sixth increment; rules on R-05)
+Superseded by: none
+
+**Decision-only. No source change.** Error-code count unchanged at 120. This entry
+authorises the *corpus sweep*, the sixth and last of D-420's pre-9C increments; its prompt is
+committed with it at `docs/prompts/corpus-sweep.md`. **It depends on increment 5 having
+landed**: the public samples gate verifies every wiki block the sweep edits, and increment
+5's landing entry carries a *Findings for the corpus sweep* section that is part of this
+sweep's list. The prompt names both as inputs and stops if they do not exist. Measured at
+`ce0b1ec`, starting from the 6 November outline; departures at the end.
+
+**How many deferrals there are.** The log says "corpus sweep" on 13 lines when searched
+without regard to case and on 12 when searched with it; the thirteenth is D-420's list item
+"6. Corpus sweep". **No deferral has been added since 6 November**; the difference between
+the two counts is the search, not the log. The 13 lines fall in ten entries.
+
+---
+
+**Decision 1 — the sweep is defined by this list, and does not grow.** Every deferral to the
+corpus sweep in the log, every principal-review item whose vehicle is a corpus session, and
+every finding recorded for it since, each marked: **sweep** it, **closed** by a later
+decision, **register** it or out of the repository.
+
+| # | Source | Item | Disposition |
+|---|---|---|---|
+| 1 | D-380 (entry, index) | "a full corpus sweep of `tests/`…" | Not a deferral: it describes a sweep D-380 performed |
+| 2 | D-407 (entry, index, footer) | ADR-0017 is silent on removing a `pre-release` code that never shipped | **Closed by D-410**, which answered it — removed outright, number permanently burned — and which D-425 exercised on E4202. The hand-back credits D-425; D-410 is the answer. Residual **sweep**: ADR-0017's page still says nothing; it gains a status amendment and a *What Changed Since This ADR* section on ADR-0016's precedent, and `grob-error-codes.md`'s stability text states the rule if only its footer does today |
+| 3 | D-409; review F6; D-346 | "thirteen" validation scripts where there are eleven | **Sweep**, group 1, citing D-346. Rows 12 and 13 of `grob-v1-requirements.md` §14 describe scripts that never existed (D-346 found no revision with a twelfth); they go, and a sentence names what will add release-gate scripts: R-08's decorator script. Thirteen core modules and the thirteen-level precedence table are correct and stay |
+| 4 | D-409 | `grob-benchmarking-strategy.md` §4.1/§4.3 mis-citation | **Closed by nature**: the mis-citation is the archived F8 prompt's, a record; the document's own §4.3 citations are correct. The gate confirms |
+| 5 | D-409 | §7.4's synthetic large-script generator is unbuilt | Code, not documentation: **register**, if the gate confirms no row tracks it |
+| 6 | D-410 | "recorded here rather than deferred to the corpus sweep" | Not a deferral |
+| 7 | D-414 | Both queries for every retired form | The sweep's method |
+| 8 | D-415, D-416 | Gap A and Gap B | **Closed** by D-416 and D-417; D-416 already recorded the sweep as the wrong owner of a parser change |
+| 9 | D-417 | Seven multi-line samples missing the trailing comma §3.5 requires (`Repo` three times, `Config` twice, `Person`/`Address`, `FileEntry`) in the fundamentals and the wiki's *Types*, *Expressions* and *formatAs* pages | **Sweep**, group 2. The public samples gate cannot catch them, since a missing optional comma parses |
+| 10 | D-417 | "every public code sample must exist as a corpus file compiled by the release gate" | **Closed** by increment 5 (D-430 Decision 5) |
+| 11 | D-420 | The run's list, "6. Corpus sweep" | Not a deferral; this increment |
+| 12 | D-428's prompt | §14's "thirteen", left for increment 6 | Row 3 |
+| 13 | D-428's prompt | The `// Eventual path:` line in 42 error-example sources | **This increment**, group 4 (Decision 4) |
+| 14 | Review F5-1 | `grob-type-registry.md` overclaims `map<K, V>` static typing | **Sweep** if it still stands: D-374 and later built the map descriptor, so part of the claim may now be true. The gate measures which part |
+| 15 | Review F7 | `grob-vm-architecture.md`'s sketch opcode enum contradicts the shipped set | **Sweep**: the non-normative banner F7 recommends; none exists at `ce0b1ec` |
+| 16 | Review F10 | D-353 cites "scripts 4/7/10/11/13" | **Closed by this entry**: see the reconciliation below |
+| 17 | Review F11 | The log's own *Project Status* table is five sprints stale | **Sweep**, group 5: it is not an entry body. Its implementation row stops naming a sprint and points at the latest entry, so it cannot go stale again |
+| 18 | Review F12 | The log's *Related Documents* table | **Sweep**, group 5 |
+| 19 | Review F13 | `toIsoDateTime()`'s sample renders `Z` for a local value | **Sweep**; the wiki's two `date` pages and the stdlib reference carry it. The gate confirms what each surrounding sample constructs |
+| 20 | 6 November | `grob-v1-requirements.md` §12 puts the validation scripts in `Grob.Integration.Tests`; they are in `Grob.Compiler.Tests` | **Sweep**, group 1 |
+| 21 | 6 November | `tests/CLAUDE.md` says "the five projects"; seven exist | **Sweep**, group 3 |
+| 22 | 6 November | `src/CLAUDE.md` lists `Grob.Cli.Tests` and `Grob.Lsp.Tests`; neither exists | **Sweep**, group 3 |
+| 23 | 6 November | Root `CLAUDE.md`'s model policy names Sonnet 4.6 and Opus 4.8 | **Sweep**, group 3 (Decision 5) |
+| 24 | 6 November | `README.md` says immutability is opt-in via `const`, omitting `readonly` | **Sweep**, group 2 (D-291) |
+| 25 | 6 November; D-427 | `TypeRegistry.MembersFor` in `grob-tooling-strategy.md`; `GrobVM` in `grob-benchmarking-strategy.md` (two) and `grob-playground-architecture.md` (one) | **Sweep**, group 2, against the API as built |
+| 26 | 13 November | Windows paths written `"C:\\..."` against D-285: 37 lines in `README.md` and the wiki, more in the design documents | **Sweep**, group 2; those inside blocks are re-checked by the public samples gate |
+| 27 | 13 November | The retired term "`param` block" (D-414) in a wiki heading | **Sweep**, group 2 |
+| 28 | 13 November | `.claude/` holds 27 files; R-05's row says 39 at `f7acb83` | The gate accounts for the difference; group 3 sizes from the live tree |
+| 29 | 13 November | `grob-open-questions.md`'s footer has no line for D-429 | **Closed** by D-430's footer line |
+| 30 | Increment 5 | Its *Findings for the corpus sweep* | **Sweep** or **register**, by the same rule as every other row |
+| 31 | Outside the repository | The claude.ai Project's instructions say 86 codes, 40 pairs and `_grob.txt`; `grob-lang.dev`'s sample (R-33) | Chris's, and R-33's |
+
+**F10's reconciliation, recorded here as F10 recommends.** D-353 cites "scripts
+4/7/10/11/13" as the scripts touching `http` and `crypto`. Script 13 does not exist (D-346).
+The scripts that touch them are 4, 7, 10 and 11. D-353 is append-only and stands as written;
+this line is its correction.
+
+**Row 3's sentence leaves one question open, and it is Chris's.** §14's row 12 advertised a
+regex script. D-186 required one only if regex literals were cut, and they were not, so no
+decided obligation stands behind the row and there is nothing to register. **Recommended,
+not decided**: D-411's argument for R-08 — surface that would ship unexercised by the
+release gate — applies to `regex` as fully as to decorators. The `regex` increment is the
+natural place to add a release-gate script, on R-08's footing.
+
+---
+
+**Decision 2 — the scope is the living documents and `.claude/`.** R-05's full `.claude/`
+sweep is taken. It is the same activity — what is advertised against what is built — over
+27 more files, and `.claude/` instructs every future increment, 9C's included: a stale
+instruction there produced a registration example that would not compile for four months
+(D-081, D-420). D-421, D-427 and D-428 each found stale interfaces in it in passing. Leaving
+it `unowned` through 9C has a direct cost; taking it adds no increment to the run.
+
+- **Living, in scope**: every document under `docs/design/` except the records below;
+  `docs/wiki/`; `docs/errors/examples/`; `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, every
+  `CLAUDE.md` and `.claude/**`; and the decisions log's non-entry sections — *Project
+  Status* and *Related Documents*.
+- **Records, out of scope**: decisions-log entry bodies and index rows, which are
+  append-only; `grob-principal-review-sprint9b.md`, `grob-advertised-vs-built-audit.md`,
+  `grob-grammar-audit.md`, `harness-audit-report.md`, `bench-allocation-attribution.md`,
+  `bench-snapshot-residual.md`, `grob-early-design-conversation.md` and
+  `grob-language-brainstorm.md`, each dated and describing a moment; every footer and
+  changelog in a living document; and the decision text of every ADR, which may gain a
+  status amendment and a *What Changed Since This ADR* section on ADR-0016's precedent but
+  is not rewritten.
+
+**Decision 3 — archived prompts stay records, and issued prompts join them.** D-428 Decision
+6 ruled that `prompts/archive/` files are records and are not edited. That holds for the
+sweep. `docs/prompts/` holds the issued increment prompts, each committed with the entry
+that authorised it and marked never to be retrofitted; the same rule applies to them, for
+the same reason. A stale instruction in an issued prompt is corrected by the entry that
+records its increment's divergence, as D-429 did for its own prompt.
+
+---
+
+**Decision 4 — the `// Eventual path:` lines go, and the error examples renumber with
+them.** 42 of the 56 sources carry `// Eventual path: docs/errors/examples/<slug>/<slug>.grob`
+on line 2. Every one of those paths is where the file already is, so "Eventual" is stale
+and the line is redundant; the README's rule that a source holds nothing that does not
+contribute to producing the error makes it a defect; and the other fourteen sources start
+their code on line 2. D-428's prompt left the line alone
+because removing it renumbers every line of the pair.
+
+**The harness is what makes that cheap now.** Before increment 4, renumbering 42 masters by
+hand was a way to introduce 42 off-by-one errors with nothing to catch them. Now the static
+layer proves every snippet line still equals the source line it numbers and every first
+caret still sits under the line its location names, and the behavioural layer proves every
+passing pair's location and every quarantined pair's *Observed* list against the CLI. The
+transform is scripted and proven on a scratch copy before it touches the tree.
+
+**A blank line in its place was considered and rejected**: it keeps the numbering but is
+still a line that contributes nothing, and it would leave 42 pairs shaped differently from
+the other fourteen.
+
+**A ruling on D-428 Decision 4, which lets a master's code or location change on three
+grounds only.** A renumbering applied to a source and its master together, in one commit,
+moving every diagnostic by the same lines and leaving every caret on the same token, does
+not change what the master specifies, and needs no ground. It is not regeneration from the
+implementation, which is what the rule exists to forbid. The ruling is limited to that
+transform; any other change to a master's location still needs one of the three grounds.
+The quarantine manifest's *Observed* cells move in the same commit, which is D-428's rule
+that *Observed* changes only in the commit that changes the pair's output.
+
+---
+
+**Decision 5 — root `CLAUDE.md`'s model policy stops naming versions.** It names Sonnet 4.6
+as the workhorse and Opus 4.8 for structural sub-problems; every increment prompt since
+D-426 has set its own model and effort per session, in a table its session-start check
+enforces. Two sources for one choice is the divergence the corpus keeps finding. The policy
+keeps its principles — a workhorse for settled transcription, a stronger model for named
+structural sub-problems only, the lightest model for mechanical arms — and says that the
+increment prompt's session table names the models. **This is a process ruling, not a
+documentation correction**, and Chris may overrule it; it is recorded here so the sweep does
+not take it in session.
+
+---
+
+**Decision 6 — the stopping rule, and the end of the run.** Documentation only. A finding
+that needs code or a decision this entry does not take goes to the register with an owner
+and a completion criterion. The sweep is bounded by Decision 1's rows and increment 5's
+findings, and its method is D-414's two queries per retired form: it does not hunt for new
+kinds of staleness beyond them. **The run ends with this increment.** Its findings do not
+become a seventh; Sprint 9C follows, rebuilt from scratch under D-411.
+
+---
+
+**Register.** No row opens or closes in this entry. R-05's owner becomes this increment, and
+it closes with the landing entry's D-number. Row 5's register item opens in the landing entry
+if the gate confirms it is untracked.
+
+**Departures from the 6 November outline.** The list gains rows 12 to 31: the outline's
+twelve rows predate D-428 and D-429 and its principal-review row is split by finding; the
+findings since are added. The outline left the `// Eventual path:` line unruled; Decision 4
+takes it. The outline did not rule on root `CLAUDE.md`'s model policy; Decision 5 does. The
+outline's scope excluded `docs/prompts/` without a reason; Decision 3 gives one.
+
+Cites D-420 (the run and its stopping rule), D-414 (the two queries), D-428 (archived prompts
+as records; the authorship rule Decision 4 rules on), D-429 (the harness that makes the
+renumbering safe), D-430 (increment 5, whose gate and findings this depends on), D-410
+(ADR-0017's answer), D-346 (the eleven scripts), D-353 and F10 (the reconciliation), D-291,
+D-285 and D-417 (sweep authorities), D-411 (R-08's footing and the 9C rebuild), D-081 and
+R-05 (`.claude/`'s cost when stale).
+
+---
+
+
 ## Post-MVP Decisions
 
 ---
@@ -16305,9 +16480,17 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-430 added; no source change. **Scopes *public samples compile***, fifth of_
+_November 2026 — D-431 added; no source change. **Scopes the *corpus sweep***, the last of_
+_D-420's pre-9C increments, and commits its prompt, which depends on increment 5 having_
+_landed. Every deferral to the sweep is enumerated — thirty-one rows, each swept, closed,_
+_registered or outside the repository — so the run is fixed and cannot grow. D-407's_
+_question was D-410's to answer, not D-425's. The scope is the living documents and_
+_`.claude/`, taking R-05's full sweep; records, footers, entry bodies and prompts are not_
+_edited. The 42 `// Eventual path:` lines go, with the pairs renumbered under both harness_
+_layers. F10's reconciliation of D-353 is recorded. Count unchanged at 120._
+_Previous: November 2026 — D-430 added; no source change. **Scopes *public samples compile***, fifth of_
 _D-420's pre-9C increments, and commits its prompt, starting from the 6 November outline._
-_Measured first: 123 `grob` blocks in the README and the wiki, 38 clean, and a wiki that_
+_Measured first: 123 `grob` blocks in the README and the wiki, 38 clean and a wiki that_
 _teaches decorators after the parameter, `param env`, `catch IoError e`, `guid.v4()` and_
 _`minusDays`. Bare blocks are programs and are run through the CLI's own pipeline, because_
 _a type-check-only gate passes the three blocks that crash the VM; fragments may raise only_
