@@ -425,6 +425,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-427 | November 2026 | Solution architecture — plugin SDK; Compiler — type checker; Runtime — native registration; VM — named-type dispatch; Deferred Work Register | **Implements D-426: the *`FunctionSignature`* increment as landed.** Every native registered through `IPluginRegistrar` carries a `FunctionSignature` and the untyped overload is gone; one `NativeCatalogueBuilder` pass builds the `NativeCatalogue` the type checker reads and the VM is constructed over; `NamespaceRegistry`, `PrimitiveMemberRegistry` and `NamedTypeRegistry` are deleted with their agreement tests; `date` and `guid` register from their plugins; primitive members register through an internal surface. Divergences recorded: groups ran 1–4, 7, 5–6, 8 at Chris's choice; `RegisterToString` retired; `formatAs`/`input` carry runtime-shape signatures (F2); `Concrete.ElementType` (F4); primitive type names reserved as namespaces (F8); tests whose subject ceased to exist deleted with their facts re-homed. **R-19 taken** at Chris's direction: `DateLayout`/`GuidLayout` in `Grob.Core` are the only layout declarations, guarded by reflection. Decision 5: suite green (4,612), probe corpus byte-identical, **benchmark condition not met as worded** — two compile benchmarks breach the allocation threshold on every increment run, no baseline updated, origin not established. Invented parameter names listed. R-12 and R-19 closed; R-05 updated; R-20 to R-24 open. Count unchanged at 120. |
 | D-428 | November 2026 | Testing — negative-test release gate; Diagnostics; Deferred Work Register; Sprint sequencing | **Authorises the *error-examples harness*, fourth of D-420's six pre-9C increments**; prompt committed at `docs/prompts/error-examples-harness.md`. Measured at `f747517` (CLI built in a throwaway copy on SDK 10.0.114 with `GROB-SEC-001` disabled; the gate re-measures): 56 pairs, not 57; 23 match their master on every diagnostic's code, line and column; eleven masters contradict their own source or the catalogue. **Comparison** is the full ordered list of `(severity, code, file, line, column)` tuples, plus a never-quarantinable static layer checking titles against `ErrorCatalog`, snippets against source and carets against `-->`; building the §10 renderer here is rejected as not a harness, and the subset alone as D-081's pattern, since no sprint schedules the renderer — **R-25, owner Sprint 12**. **Location**: bare file name, span start, a column in every master; the CLI keeps printing the path as given. **One harness** runs every pair through `RunCommand` itself, sandboxed by an internal capability seam. **Quarantine** is a strict manifest: a quarantined pair must fail exactly as its row's *Observed* list records, so one that passes or fails differently fails the harness, an `R-##` must be open and a named namespace absent; masters are hand-written specifications changing only on three grounds; the threshold is by kind — 27 pass, 29 quarantined; R-18 joins. Lives in `Grob.Integration.Tests`, in CI's required job; no new code. **R-24**: benchmark `b202509` before 9C; a catalogue-path origin blocks 9C. **R-20** owned by the 9C increment registering `File`, with binding recommended over E0011. R-11, R-18, R-20, R-24 refined; **R-25 to R-31 open**, including `x := /abc/` crashing the VM (R-30) and undefined type names in annotations accepted silently (R-31). Count unchanged at 120. |
 | D-429 | November 2026 | Testing — negative-test release gate; Diagnostics; CLI — run pipeline; Deferred Work Register | **Implements D-428: the *error-examples harness* as landed**, over five change groups. An internal `RunCommand` seam supplies the catalogue's capabilities; `ErrorExampleMasterTests` checks every master statically and `ErrorExampleCorpusTests` compares every pair's ordered `(severity, code, file, line, column)` list through the CLI's own pipeline; `quarantine.md` is the strict manifest. Eleven masters and eight sources corrected, R-18's three examples rewritten. **56 pairs: 27 pass, 29 quarantined**, as D-428 predicted. Recorded for its divergences: §3's greedy location regex, the *Observed* decoder's `3:12` ambiguity, manifest rejections and checks the prompt did not list, two mutation predictions narrower than observed and `writing-an-error-test`'s step 4 rewritten beside the steps listed. Suite 4,849 green; `Grob.Cli` 91.75%. R-11 and R-18 closed; R-05 updated; R-25, R-29 and R-31 amended; R-32 opened for the two stdlib ambient reads. Count unchanged at 120. |
+| D-430 | November 2026 | Testing — public samples gate; Documentation — wiki; Runtime — capability injection; Deferred Work Register | **Authorises *public samples compile*, fifth of D-420's six pre-9C increments**; prompt committed at `docs/prompts/public-samples-compile.md`. Starts from the 6 November outline and lists its departures. Measured at `ce0b1ec` (CLI built in a throwaway copy on SDK 10.0.115; the gate re-measures): 123 `grob` blocks in `README.md` and the wiki, ADR pages excluded — 38 clean, 24 failing only on unbuilt namespaces, 51 on type-checking, 5 on parsing, 2 at run time, 3 crashing the VM (R-30). The wiki teaches decorators after the parameter, `param env`, `catch IoError e`, `guid.v4()`, `minusDays` and a leading-`+` continuation that §14 also carries. **A bare block is a program and is run** through `RunCommand` over D-429's seam — a type-check-only gate would pass the three crashing blocks; a `fragment` is compiled and may raise only E1001; output is not compared; the outline's `error Exxxx` class is dropped. **Unbuilt namespaces are excused by rule** from a closed list guarded against the catalogue. **The quarantine model, not its file**: register blockers ride on the block as `blocked-by=R-##`, since a wiki block has no identity a manifest row could keep. Extracted at test time in `Grob.Integration.Tests`. Thirteen corrections, a closed list. **R-32 authorised in `Grob.Stdlib`**: `IClock.LocalZone`, `IFileSystem.CurrentDirectory`, every explicit and implicit read moved, a source guard. **R-24**: the breach predates the `FunctionSignature` increment (+96 B and +32 B of it); 9C not blocked; bisection waits for the hardening sprint. R-31 does not join the run. R-24 and R-29 to R-32 amended; **R-33 opens** for `grob-lang.dev`'s sample. Count unchanged at 120. |
 
 ---
 
@@ -15800,6 +15801,289 @@ reconciliations' authorities) and D-410, D-411, D-424 and D-425 (R-18's rewrites
 ---
 
 
+### D-430 — Public samples compile scoped: README and wiki blocks run through the CLI's own pipeline, unbuilt namespaces excused by rule, blockers carried on the block; R-32 authorised in `Grob.Stdlib` (November 2026)
+
+Area: Testing — public samples gate; Documentation — wiki; Runtime — capability injection; Deferred Work Register
+Supersedes: none (refines D-417's sample principle; rules on R-24 and R-29 to R-32)
+Superseded by: none
+
+**Decision-only. No source change.** Error-code count unchanged at 120. This entry
+authorises *public samples compile*, the fifth of D-420's six pre-9C increments; its prompt
+is committed with it at `docs/prompts/public-samples-compile.md`. Measured at `ce0b1ec`, with
+the same caveat D-428 carried: neither SDK 10.0.300 nor NuGet was reachable from the
+session, so the CLI was built in a throwaway copy on Ubuntu's SDK 10.0.115, with the
+`GROB-SEC-001` floor, MinVer and the Sonar analyser removed and no apphost. Nothing built
+that way was kept, and the increment's gate re-measures on the supported SDK.
+
+**Where this starts.** D-428 said increments 5 and 6 were "outlined separately for Chris to
+fix". That outline was written on 6 November, measured at `f747517`, and delivered as
+project knowledge rather than committed. This entry starts from it and lists where it
+departs, at the end.
+
+**What the measurement found.** `README.md` and `docs/wiki/`, ADR pages excluded, hold
+**123** fenced `grob` blocks across 38 files — the count the outline measured, with the same
+split: **38** run clean, **24** fail only on a namespace that is not built, **51** fail
+type-checking, **5** fail to parse, **2** fail at run time on an unset `ADO_PAT` and **3**
+crash the VM on a regex literal (R-30). Of the 51, 36 are fragments using names they never
+declare. The other fifteen and the five parse failures are what the increment is for.
+**The wiki teaches a language Grob is not**: decorators written after the parameter they
+modify, which D-410 reversed; `param env`, which D-412 makes an E1102, since `env` is a core
+module; `catch IoError e {` where D-274's form is `catch (e: IoError)`; `guid.v4()`,
+`guid.v5()`, `guid.v7()` and a postfix `!`, none of which exist; `date.minusDays`, which the
+type registry does not have; a "trailing operator" example whose `+` leads each line, which
+§14 says does not continue a statement and which `grob-language-fundamentals.md` §14 carries
+too; and a `print(name)` of a nullable labelled "compile error", which §13 says is not one.
+Three more measured facts matter beyond the wiki. Six blocks fail on a cascade from an
+`unknown` value (R-29's shape, two forms R-29 does not list). R-32's row lists the `date`
+natives that read the local zone; two of them do it implicitly through `ToLocalTime()`, and
+both forms of `date.parse` do it through `DateTimeStyles.AssumeLocal`, which the row does not
+list. And `grob-lang.dev`
+carries a hand-maintained sample that does not compile today and is shown printing a line
+its script never prints.
+
+---
+
+**Decision 1 — the corpus is every `grob` block in `README.md` and `docs/wiki/`, ADR pages
+excluded, found at test time.** The wiki is the public projection of the specification, and
+the README is the first Grob anyone reads. Out, each for a reason: `docs/wiki/ADR/` (records,
+whose examples show the language as it was decided); `docs/design/` (implementer documents
+holding deliberate counter-examples, grammar fragments and sketches, verified by the
+increments that implement them and swept by increment 6); `grob-sample-scripts.md` (its
+eleven scripts keep D-417's fixtures and sync guard, which this does not replace); the error
+examples' README, `.github/` templates, `.claude/` and `docs/prompts/` (not public samples,
+or covered by their own gate). **`grob-lang.dev` is out because its source is another
+repository, and that is now a register item, not a hypothetical**: its one sample calls
+`fs.list`, `fs.ensureDir`, `file.moveTo` and `path.join` on a `File` whose `modified` it
+formats, and is shown printing "47 files organised" from a script with no `print`. **R-33
+opens.**
+
+---
+
+**Decision 2 — a bare `grob` block is a complete program and is run; a `fragment` is
+compiled; output is not compared.**
+
+- **Bare `grob`** runs through `RunCommand.Run` over D-429's seam and passes when it writes
+  no diagnostic, exits 0 and reports no internal error.
+- **`grob fragment`** goes through the same pipeline, which stops at its compile errors. It
+  passes when it writes at least one diagnostic and every diagnostic is E1001. A fragment
+  that compiles clean fails, because it is a program and its marker is wrong.
+
+**Running is the departure from the outline, and the measurement forces it.** The outline
+proposed type-checking without execution. Under that rule the three blocks that crash the VM
+on a regex literal pass, because the front end accepts `x := /abc/` without a diagnostic
+(R-30). A docs gate that is green on samples that crash the runtime is worse than none.
+Running is safe because the seam injects every capability the pipeline reads and `fs` and
+`process` are not built, and it is why R-32 belongs to this increment: two blocks that run
+read `date.today` and `date.now`, so the host's local zone would reach the gate.
+
+**Output is not compared.** No block states its output in a form a harness could read —
+results appear as prose or as trailing comments of varied shape — and adding a convention
+would be new authoring with its own drift. The validation scripts carry the output gate.
+**The outline's third class, `grob error Exxxx`, is dropped**: the measurement found no
+deliberate counter-example in the corpus, and the one block claiming an error was wrong,
+which no class can check. A class with no member is surface without a test; the first
+increment that needs one adds it.
+
+**R-31 weakens "compiles clean", and the gate is not over-trusted on that account**: an
+annotation naming an undefined type passes. A text scan of all 123 blocks found no
+parameter, local, return, array-element or lambda-parameter annotation naming a type the
+block does not declare [a scan, not the checker]. Eight blocks write `mapAs<Repo[]>` and
+similar with the type undeclared — a type-argument position R-31 does not list, unreachable
+until `mapAs<T>` lands, since D-426 fences type parameters. **R-31 is amended** to name it.
+**The maintainer's question on R-31's priority is answered by that measurement: the samples
+do not hit it, so it stays first in the hardening interlude and does not join the run.** It
+blocks neither this increment, whose blocks would pass with or without it, nor Sprint 9C.
+
+---
+
+**Decision 3 — unbuilt namespaces are excused by rule, not marked.** The harness holds a
+closed list: `fs`, `json`, `csv`, `process` and `regex`, each required to be absent from
+`StdlibCatalogue.ForCompileOnly()` by the guard the error-examples harness already applies;
+and `http`, `auth`, `crypto` and `zip`, the Sprint 11 plugin namespaces, checked by
+strictness alone as D-428 checks `Sprint 11`. An E1001 on a listed namespace is set aside
+before either class's test. A program left with no diagnostic but something set aside passes
+as **excused** and is not run.
+
+This is stronger than the outline's rule, which checked such blocks at parse level only: an
+excused block is still type-checked in full, so a `param env` or a `catch IoError e` in a
+block that also calls `fs` still fails. And it forces the right moment: registering `fs`
+fails the guard until `fs` leaves the list, whereupon every `fs` block is checked and run in
+the increment that built `fs`, which meets its own documentation.
+
+**Decision 4 — the quarantine model, not the quarantine file.** The hand-back asked whether
+this increment reuses D-428's manifest. It reuses the model's guarantees: a blocker is cited
+and checkable, a cleared blocker forces re-classification and a blocked block that passes
+fails the harness. **It does not reuse the file**, because a manifest row needs an identity
+for its block, and a wiki block has none that survives editing — a heading changes, a block
+is inserted above, and every ordinal below it now names a different block. A pair directory
+has an identity; a fenced block's only stable home is its own fence. So:
+
+- **Namespace blockers are computed** (Decision 3). The diagnostics they excuse are exactly
+  determinable from the catalogue, so nothing need be recorded.
+- **Register blockers ride on the block**, as `blocked-by=R-##` tokens in the info string.
+  GitHub renders a fence by its first word, so the token is invisible to a reader and visible
+  to a reviewer. The row must be open; the block must fail its class.
+
+**This is weaker than D-428's strictness, and deliberately so**: a blocked block must fail,
+not fail *exactly as recorded*. Carrying an *Observed* list in an info string would make the
+fence unreadable. The cost is bounded — eleven blocks, each re-examined when its row closes,
+because closing it fails the guard — and recorded here so nobody mistakes the two harnesses
+for the same guarantee.
+
+**R-30 against the samples: quarantined, and the row does not join the run.** Five blocks use
+a regex literal; three crash and two fail first on the `unknown` the literal is typed as.
+Each carries `blocked-by=R-30`. R-30 blocks neither this increment nor Sprint 9C, whose
+`regex` increment owns it and is recommended to put a loud failure in first (D-428).
+**R-29 likewise**: six blocks fail only on a cascade from an `unknown` value, in two shapes
+R-29 does not list — `formatAs`'s bespoke arms report E0004 on an `unknown` receiver, chained
+or function form; and a member read off an untyped lambda parameter over an `unknown`
+receiver passes `unknown` into a typed native parameter, E0004 again. Each carries
+`blocked-by=R-29`, and **R-29 is amended**.
+
+---
+
+**Decision 5 — extracted at test time, in `Grob.Integration.Tests`, on the error-examples
+harness's machinery.** D-417 copied the eleven validation scripts into fixtures because each
+is a runnable file with an identity and a release-gate role. A wiki block is neither, and a
+second copy of 123 snippets would be 123 places to drift. Blocks are found by glob and
+scanned at test time; each case is named by path, fence line and nearest heading. The
+harness lives beside the error-examples harness because it runs the CLI's pipeline: it reuses
+`HarnessCapabilities`, the `RunCommand` seam, `CliDiagnosticReader` and `DeferredWorkRegister`,
+and not the manifest parser. **This answers the hand-back's question 8, and departs from the
+outline**, which placed a front-end-only guard in `Grob.Compiler.Tests`.
+
+**D-417's principle is refined, not changed.** "Every public code sample must exist as a
+corpus file compiled by the release gate" is met by a block being its own corpus file, read
+in place. The principle's intent — that a sample cannot drift from the language without the
+gate breaking first — is what is enforced.
+
+---
+
+**Decision 6 — the corrections are a closed list; everything outside it is classified by
+rule.** Thirteen corrections, W1 to W13, are listed in the prompt with the authority for each,
+and change nothing else in their blocks. Each is documentation contradicting the language or
+its own reference. A block whose fix needs a compiler or language change carries a blocker
+against an open row. A documentation defect found outside the list is recorded in the landing
+entry's *Findings for the corpus sweep* section and is increment 6's. **One exception to
+"wiki only"**: where a wiki block copies a design-document example carrying the same defect,
+the source is corrected in the same commit and nothing else in it is — W5's leading `+` in
+`grob-language-fundamentals.md` §14, which is the only such case measured. Correcting the
+projection and leaving the authority wrong would be the drift this increment exists to stop.
+
+**Style that compiles is out**: Windows paths written `"C:\\..."` against D-285, missing
+trailing commas §3.5 requires in multi-line literals and the retired term "`param` block" in
+a heading all parse and type-check. They are increment 6's, which sweeps by pattern.
+
+With the corrections and the info strings, the prompt's expected end state is **123 blocks:
+45 run, 29 excused, 38 fragments and 11 blocked**.
+
+---
+
+**Decision 7 — R-32 is authorised in `Grob.Stdlib`, and its shape is fixed here.** D-429's
+increment was forbidden to touch `Grob.Stdlib`. This increment's first change group may
+change `Grob.Runtime`, `Grob.Stdlib` and `Grob.Cli`, and no other source project.
+
+- **The local zone goes on `IClock`, as `TimeZoneInfo LocalZone { get; }`.** "What time is
+  it here" is one question; .NET's own `TimeProvider` answers it with `GetUtcNow()` and
+  `LocalTimeZone` together, and `grob-playground-architecture.md` §4 sketches `IClock` the same
+  way. A separate zone capability would let a host supply a clock and a zone that disagree.
+- **The current directory goes on a new `IFileSystem`, as its one member, `string
+  CurrentDirectory { get; }`.** D-319 named `IFileSystem` among the six capabilities, and the
+  playground sketches it. A narrower `IWorkingDirectory` was rejected because the `fs`
+  increment would then build a second home for the same fact. That increment grows
+  `IFileSystem`; nothing about it but this member is designed here.
+- **Every read moves, explicit or implicit.** R-32's row names `TimeZoneInfo.Local` in
+  `date.now`, `date.today`, `date.of`, `date.ofTime` and `toLocal`. Measured, the reads are:
+  `TimeZoneInfo.Local.GetUtcOffset` three times; `DateTimeOffset.ToLocalTime()` behind
+  `toLocal` and `date.now`; `DateTimeStyles.AssumeLocal` in both forms of `date.parse`, which
+  the row did not list; and `Path.GetFullPath(string)` in `path.resolve`, which becomes the
+  two-argument overload over the capability. `TimeZoneInfo.FindSystemTimeZoneById` stays: it
+  takes an explicit identifier, which is a lookup, not an ambient read.
+- **A source guard** in `Grob.Consistency.Tests` keeps each pattern out of
+  `src/Grob.Stdlib/`. The criterion "no read remains" is otherwise checkable once and
+  forgotten.
+
+**`IClock` is public SDK surface**, so adding a member breaks an implementer. `Grob.Runtime`
+is not published until Sprint 11 (R-04), so this is the cheapest moment there will be, and
+every implementer is in this repository. The stop conditions: no change outside the three
+projects and their tests; `grob run`'s observable behaviour unchanged; no new error code,
+opcode or variant.
+
+**Decision 8 — fixtures.** One environment for the whole corpus, holding fake values for
+exactly the variables runnable blocks read — `ADO_PAT` and `BASE_URL`, measured — with a
+guard that fails on a fixture no block reads. This is the first fixture D-428 Decision 3 said
+the first increment needing one would add. The harness's zone is a fixed custom one with a
+non-zero offset, so a native that ignores the capability and computes in UTC cannot pass by
+coincidence. **Recorded, not decided**: a block that reads a required `param` fails at run
+time today with `E1001 Undefined global` and no column, because binding is Sprint 10's. No
+runnable block reads one. The Sprint 10 increment that binds parameters owns giving such
+blocks arguments.
+
+**Decision 9 — the release gate.** At v1 the excused list is empty and no block carries
+`blocked-by`. `grob-v1-requirements.md` §14 gains that sentence in the increment that makes it
+true, beside D-428's.
+
+---
+
+**Decision 10 — R-24: the origin is established, and bisecting it waits for the hardening
+sprint.** D-428 Decision 8 required a Benchmarks run on `b202509` before Sprint 9C. It ran on
+13 November on `windows-latest`, beside one on `main` at `ce0b1ec` (runs 43520418431 and
+43520422511):
+
+| Benchmark | `b202509` | `main` | Added by the *`FunctionSignature`* increment |
+|---|---|---|---|
+| `Compile_TenPrints` | 17,776 B (+11.8%) | 17,872 B (+12.4%) | +96 B |
+| `Compile_TwoExpressions` | 10,200 B (+10.7%) | 10,232 B (+11.0%) | +32 B |
+
+**The breach predates the increment**, so the catalogue path did not introduce it, D-426
+Decision 2's "built once and shared" is not broken and Sprint 9C is not blocked. The breach
+came in between `1e44b54` (August) and `b202509`. The two runs landed on different CPUs, so
+their timings cannot be compared; allocation does not depend on the CPU.
+
+**Bisecting `1e44b54..b202509` waits.** The range is history: no 9C commit can bury it, so
+it is as cheap to bisect in the hardening sprint as now, and that sprint owns the green gate
+it serves. **Recommended for the 9C rebuild, not decided here**: until the gate is green, an
+increment's benchmark condition reads its allocation against the `ce0b1ec` figures above
+rather than against a gate that is red for a known older reason, so a new regression stays
+visible.
+
+---
+
+**Register.**
+
+- **R-24 amended**: the origin half is met by this entry; the green-gate half keeps the
+  hardening sprint as owner, with bisection as its first step.
+- **R-29 amended**: two shapes measured by this increment, six public samples blocked on it.
+- **R-30 amended**: five public samples use a regex literal, three of them reaching the
+  crash; each is blocked on it.
+- **R-31 amended**: the type-argument position, measurable once `mapAs<T>` lands.
+- **R-32 amended**: the implicit reads, and the shape Decision 7 fixes. Its owner is this
+  increment.
+- **R-33 opens** — `grob-lang.dev`'s samples are outside every gate. `unowned`: the site is
+  another repository.
+
+**Departures from the 6 November outline**, each argued above or measured: blocks are run,
+not only type-checked (Decision 2); the harness is in `Grob.Integration.Tests` on the
+error-examples machinery, not in `Grob.Compiler.Tests` (Decision 5); excused blocks are
+type-checked in full, not parsed only (Decision 3); register blockers ride on the block,
+where the outline had none (Decision 4); the `error Exxxx` class is dropped (Decision 2).
+Two of the outline's readings were wrong and are corrected: `Syntax.md`'s leading `+` is a
+documentation defect in the wiki and in §14, not a possible parser gap, because §14's own
+table settles it; and the README sample's `new_name` breaks no rule, since the formatter
+specification makes `snake_case` idiomatic and enforces nothing. Its `"C:\\Reports"` is
+style against D-285 and goes to increment 6. `guid.md`'s defect is wider than the postfix
+`!` the outline named: every generator call uses a name the reference does not have.
+
+Cites D-420 (the run, its stopping rule and the register), D-417 (the sample principle this
+refines), D-428 and D-429 (the harness, seam and guards reused, and the manifest model whose
+guarantees this keeps), D-343 and D-319 (capability injection and `IFileSystem`), D-176 (local
+time), D-412, D-410, D-274, D-285, D-342, D-406 and D-279 (the corrections' authorities),
+D-426 (type parameters fenced; the catalogue built once), D-313 (no silent baseline move),
+R-04 (`Grob.Runtime` unpublished until Sprint 11) and D-411 (the 9C rebuild).
+
+---
+
+
 ## Post-MVP Decisions
 
 ---
@@ -16021,7 +16305,18 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-429 added. **The *error-examples harness* as landed**, implementing_
+_November 2026 — D-430 added; no source change. **Scopes *public samples compile***, fifth of_
+_D-420's pre-9C increments, and commits its prompt, starting from the 6 November outline._
+_Measured first: 123 `grob` blocks in the README and the wiki, 38 clean, and a wiki that_
+_teaches decorators after the parameter, `param env`, `catch IoError e`, `guid.v4()` and_
+_`minusDays`. Bare blocks are programs and are run through the CLI's own pipeline, because_
+_a type-check-only gate passes the three blocks that crash the VM; fragments may raise only_
+_E1001; unbuilt namespaces are excused by a guarded rule; register blockers ride on the_
+_block, since a wiki block has no identity a manifest could key. Thirteen corrections, a_
+_closed list. R-32 is authorised in `Grob.Stdlib` with its shape fixed. R-24's breach_
+_predates the `FunctionSignature` increment, so 9C is not blocked. R-24 and R-29 to R-32_
+_amended, R-33 opened. Count unchanged at 120._
+_Previous: November 2026 — D-429 added. **The *error-examples harness* as landed**, implementing_
 _D-428 over five change groups: an internal `RunCommand` capabilities seam, a static_
 _layer over every master, a behavioural layer comparing every pair's diagnostics through_
 _the CLI's own pipeline and a strict quarantine manifest. 56 pairs: 27 pass, 29_
