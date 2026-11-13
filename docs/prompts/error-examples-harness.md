@@ -138,8 +138,8 @@ The static checks, all of them never quarantinable:
 - every numbered snippet line equals the source line it numbers;
 - the first caret under the `-->` line starts at the `-->` column and not on whitespace;
 - exactly one trailing newline, no ANSI escape, no emoji and no hedge word from
-  `house-style` — emoji meaning pictographs, not typography: the CLI itself prints `—`,
-  and `invalid-implicit-conversion-float-to-int`'s master uses `→`, so
+  `house-style` — emoji meaning pictographs, not typography:
+  `invalid-implicit-conversion-float-to-int`'s master uses `→`, so
   `prose-check.ps1`'s arrow-inclusive range is the wrong test;
 - the README's code-to-slug index and the pair directories are a bijection.
 
@@ -148,7 +148,7 @@ cannot go green without them:
 
 | # | Pair | Correction | Why |
 |---|---|---|---|
-| M1 | `file-not-found-via-stdlib` | `-->` 3:9 → 3:10 | caret is at 10, on `fs`; 9 is a space |
+| M1 | `file-not-found-via-stdlib` | `-->` 3:9 → 3:10; the two chain lines `from fs.readLines (…:3:9)` and `at <top-level> (…:3:9)` → 3:10 | caret is at 10, on `fs`; 9 is a space; the chain repeats the same location |
 | M2 | `json-parse-error` | `-->` 4:7 → 4:8 | caret is at 8, on `json`; 7 is a space |
 | M3 | `process-exit-nonzero` | `-->` 3:10 → 3:11; title → ``process exit non-zero (under `OrFail`)`` | caret is at 11; title is the catalogue's (D-308) |
 | M4 | `integer-division-by-zero` | `-->` 5:14 → 5:10 | caret spans the expression from 10; 14 is inside `total` |
@@ -191,7 +191,7 @@ Decision 4's first ground):
 | S2 | `array-index-out-of-range-in-function` | `[]string` → `string[]` | D-327 | quarantined, R-26 |
 | S3 | `shadowed-declaration-loop-var` | `[]string` → `string[]` | D-327 | quarantined, R-27 |
 | S4 | `use-before-declaration-in-block` | `[]string` → `string[]` | D-327 | quarantined, R-27 |
-| S5 | `invalid-escape-sequence` | line 3 → `dest := "C:\users"`, line 4 → `print(dest)`; master's snippet line follows; its second note lists `` `\n`, `\r`, `\t`, `\\`, `\"`, `\$` `` | `path` is a core module (ADR-0010, D-342); one root cause per example; `grob-language-fundamentals.md` §8's escape set | **passes** at 3:12 |
+| S5 | `invalid-escape-sequence` | line 3 → `dest := "C:\users"`, line 4 → `print(dest)`; master's snippet line follows; its second note lists `` `\n`, `\r`, `\t`, `\\`, `\"`, `\$` ``; its help's raw string → `` `C:\users` `` | `path` is a core module (ADR-0010, D-342); one root cause per example; `grob-language-fundamentals.md` §8's escape set | **passes** at 3:12 |
 | S6 | `argument-type-mismatch-string-for-int` | line 4 → `return "*".repeat(count)`; master `-->` 7:15 → 7:14, caret one left | `repeat` is a `string` method, not a `strings` member (`grob-type-registry.md`'s `string` table); the argument starts at 14 | **passes** |
 | S7 | `catch-after-catch-all` | `log.warn(` → `log.warning(` | the `log` surface as registered and documented | quarantined, `fs` |
 | S8 | `permission-denied-in-nested-call` | `fn archiveLogs(dest: string) {` → `fn archiveLogs(dest: string): void {` | `grob-language-fundamentals.md` §12: explicit return types, `void` for no value | quarantined, `fs` |
@@ -236,7 +236,9 @@ Then the manifest, exactly these 29 rows plus the three R-18 rows below:
 Each row's *Reason* cell says in one sentence what the pair is waiting for, measured, not
 paraphrased from this prompt. Each row's *Observed* cell is the tuple list the CLI writes
 for the pair **after** this group's source reconciliations, measured through the seam, not
-copied from §1.1; S1–S4, S7 and S8 change their pairs' output. The unbuilt `fs` and
+copied from §1.1; S1–S4, S7 and S8 change their pairs' output. A pair that produces no
+diagnostics records `none`, never an empty cell: after S3, `shadowed-declaration-loop-var`
+compiles cleanly and exits 0. The unbuilt `fs` and
 `process` pairs that are runtime errors
 will meet R-26 once their module lands; say so in their reason.
 
@@ -286,7 +288,9 @@ recorded in R-27; do not change the parser.
   §14's "thirteen" alone; that is increment 6's.
 - **The decisions-log entry** in three-location lockstep. **Take the D-number from the
   live tail of the merged log**, never from memory or this prompt.
-- **The register**: R-11 and R-18 to Closed with that D-number; R-05 records its naming
+- **The register**: R-11 and R-18 to Closed with that D-number, R-18's closing text not
+  repeating its "now E2202" claim (§1 measured E4201 plus E0205 for
+  `invalid-allowed-argument`); R-05 records its naming
   sites as done, the full sweep still open; R-25 to R-29 amended where §1 measured
   differently.
 
@@ -300,7 +304,8 @@ recorded in R-27; do not change the parser.
   undefined type names (R-31).
 - The `// Eventual path:` line in the sources not rewritten here. Removing it renumbers
   every line of the pair.
-- The notes, help and chain lines of masters not rewritten here.
+- The notes, help and chain lines of masters not rewritten here, beyond M1's chain columns
+  and S5's second note and help.
 - `grob check` and the compile-error exit code 2 — Sprint 12.
 
 **D-420's stopping rule applies.** Findings go to the register, not into the run, unless
@@ -325,7 +330,8 @@ one. Nothing else is normalised. Message text is not compared: the CLI prints th
 site's message where the master has the code's title, and that is R-25's to close.
 
 **The master grammar.** Header `^(error|warning)\[(E\d{4})\]: (.+)$`; location
-`^  --> (\S+):(\d+)(?::(\d+))?$`; snippet `^ *(\d+) \|(?: (.*))?$` — `unterminated-string-literal` numbers an empty line; caret line `^ *\| *\^`.
+`^  --> ([^\s:]+):(\d+)(?::(\d+))?$` — a bare file name has no colon, and a greedy `\S+`
+would capture `file:line` as the file and the column as the line; snippet `^ *(\d+) \|(?: (.*))?$` — `unterminated-string-literal` numbers an empty line; caret line `^ *\| *\^`.
 Files are LF on disk (`.gitattributes`); read tolerating `\r\n`, since the CLI writes
 `Environment.NewLine` and CI runs on Windows.
 
