@@ -57,6 +57,3 @@ quarantined. A row covers only the behavioural comparison.
 | `type-cycle-no-terminating-field` | divergent | R-28 | The checker reports the cycle at its first field (4:5), the master at the field that closes it (8:5). | error[E0301] 4:5 |
 | `unterminated-string-literal` | divergent | R-28 | The lexer reports the column after the opening quote (3:13), the master the quote itself (3:12). | error[E2002] 3:13 |
 | `unexpected-token-missing-brace` | divergent | R-29 | A missing `{` after the signature yields five diagnostics where the master states one E2001 at 4:5. | error[E2014] 5:1; error[E2001] 3:31; error[E2001] 5:1; error[E2203] 4:5; error[E1001] 4:22 |
-| `unknown-decorator` | stale | R-18 | The source uses the retired `param { }` block, which raises E4201 at 2:7 and a cascading E1001 at 7:17 in place of E4001. | error[E4201] 2:7; error[E1001] 7:17 |
-| `invalid-allowed-argument` | stale | R-18 | The source uses the retired `param { }` block and a `const` array, which raise E4201 at 5:7 and E0205 at 3:15 in place of E4101. | error[E4201] 5:7; error[E0205] 3:15 |
-| `decorator-not-permitted-here` | stale | R-18 | A decorator before a local binding raises E2001 at 4:5 in place of the master's E4002. | error[E2001] 4:5 |

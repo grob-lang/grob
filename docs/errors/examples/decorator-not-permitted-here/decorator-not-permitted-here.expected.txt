@@ -1,8 +1,8 @@
 error[E4002]: decorator not permitted here
-  --> decorator-not-permitted-here.grob:4:5
+  --> decorator-not-permitted-here.grob:2:12
    |
- 4 |     @secure
-   |     ^^^^^^^
+ 2 | fn connect(@secure token: string): int {
+   |            ^^^^^^^
    |
-   = note: `@secure` is only permitted on `param` declarations
-   = help: move the binding into a `param` block at the top of the script if it is a script parameter
+   = note: decorators apply only to `param` declarations, not to function parameters
+   = help: remove `@secure` from 'token'; to mark a script input as sensitive, declare it as `@secure` on a `param`

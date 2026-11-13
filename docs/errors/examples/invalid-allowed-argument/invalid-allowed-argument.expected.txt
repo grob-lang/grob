@@ -1,8 +1,8 @@
 error[E4101]: invalid `@allowed` argument
-  --> invalid-allowed-argument.grob:6:13
+  --> invalid-allowed-argument.grob:2:10
    |
- 6 |     @allowed(ENVS)
-   |             ^^^^^^
+ 2 | @allowed(ENVS)
+   |          ^^^^
    |
-   = note: `@allowed` requires a literal list of values, not an identifier
-   = help: write the allowed values inline: `@allowed("dev", "staging", "prod")`
+   = note: `@allowed` takes literal values only; 'ENVS' is a binding, which has no value at compile time
+   = help: write the values inline: `@allowed("dev", "staging", "prod")`

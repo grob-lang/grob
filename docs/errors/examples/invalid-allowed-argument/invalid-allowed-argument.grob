@@ -1,8 +1,6 @@
-// E4101 — @allowed list contains a non-literal value, which cannot be validated at compile time
-// Eventual path: docs/errors/examples/invalid-allowed-argument/invalid-allowed-argument.grob
-const ENVS := ["dev", "staging", "prod"]
+// E4101 — @allowed given a named binding, which has no value at compile time
+@allowed(ENVS)
+param environment: string = "dev"
 
-param {
-    @allowed(ENVS)
-    environment: string := "dev"
-}
+readonly ENVS := ["dev", "staging", "prod"]
+print(environment)
