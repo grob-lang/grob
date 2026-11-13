@@ -54,6 +54,10 @@ internal sealed partial class ErrorExampleMaster {
     [GeneratedRegex(@"^ *(\d+) \|(?: (.*))?$")]
     private static partial Regex SnippetPattern();
 
+    // A line number then a bar: the line claims the snippet form whether or not it matches it.
+    [GeneratedRegex(@"^ *\d+ *\|")]
+    private static partial Regex SnippetClaimPattern();
+
     [GeneratedRegex(@"^ *\| *\^")]
     private static partial Regex CaretPattern();
 
@@ -85,6 +89,8 @@ internal sealed partial class ErrorExampleMaster {
                 int number = ParseInt(snippet.Groups[1].Value);
                 current?.Snippets.Add(new MasterSnippetLine(number, snippet.Groups[2].Value));
                 lastSnippet = (number, line.IndexOf('|') + 2);
+            } else if (SnippetClaimPattern().IsMatch(line)) {
+                problems.Add($"line {lineNumber}: malformed snippet line '{line}'");
             } else if (CaretPattern().IsMatch(line) && current is { FirstCaret: null }) {
                 ReadCaret(line, lineNumber, current, lastSnippet, problems);
             }

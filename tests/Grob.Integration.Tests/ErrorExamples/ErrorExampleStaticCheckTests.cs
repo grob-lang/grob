@@ -44,6 +44,14 @@ public sealed class ErrorExampleStaticCheckTests {
     }
 
     [Fact]
+    public void CheckPair_MalformedContextSnippetLine_Fails() {
+        string master = Master.Replace("   |\n 2 |", "   |\n 1 |// E0001 adding a bool to an int\n 2 |", StringComparison.Ordinal);
+
+        string problem = Assert.Single(Check(master: master));
+        Assert.Equal("master line 4: malformed snippet line ' 1 |// E0001 adding a bool to an int'", problem);
+    }
+
+    [Fact]
     public void CheckPair_NoHeader_Fails() {
         string problem = Assert.Single(Check(master: "   = note: nothing\n"));
         Assert.Equal("master: no header", problem);

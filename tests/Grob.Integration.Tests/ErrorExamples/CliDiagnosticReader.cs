@@ -50,6 +50,20 @@ internal static partial class CliDiagnosticReader {
         return new CliDiagnostics(diagnostics, problems);
     }
 
+    /// <summary>
+    /// The exit code agrees with what the CLI reported: non-zero exactly when an error-severity
+    /// diagnostic was written. Non-zero rather than 1, since the compile-error exit code is
+    /// Sprint 12's to fix.
+    /// </summary>
+    public static string? CheckExitCode(int exitCode, IReadOnlyList<ExampleDiagnostic> diagnostics) {
+        bool reportedError = diagnostics.Any(d => d.Severity == "error");
+        return (reportedError, exitCode != 0) switch {
+            (true, false) => $"exit code {exitCode}, but the CLI reported an error",
+            (false, true) => $"exit code {exitCode}, but the CLI reported no error",
+            _ => null,
+        };
+    }
+
     private static void ReportUnlocated((string Severity, string Code)? pending, List<string> problems) {
         if (pending is { } open) problems.Add($"diagnostic {open.Severity}[{open.Code}] has no location line");
     }

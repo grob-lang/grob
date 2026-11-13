@@ -65,6 +65,16 @@ public sealed class ErrorExampleMasterParserTests {
     }
 
     [Fact]
+    public void Parse_MalformedSnippetLine_RecordsFormatProblem() {
+        ErrorExampleMaster master = ErrorExampleMaster.Parse(
+            "error[E0001]: type mismatch\n  --> x.grob:2:1\n   |\n 2 |wrong\n");
+
+        Assert.Empty(Assert.Single(master.Diagnostics).Snippets);
+        string problem = Assert.Single(master.FormatProblems);
+        Assert.Equal("line 4: malformed snippet line ' 2 |wrong'", problem);
+    }
+
+    [Fact]
     public void Parse_SecondLocationUnderOneHeader_KeepsFirst() {
         ErrorExampleMaster master = ErrorExampleMaster.Parse(
             "error[E0001]: type mismatch\n  --> x.grob:5:14\n  --> x.grob:9:2\n");

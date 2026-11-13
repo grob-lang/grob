@@ -71,7 +71,10 @@ public sealed class ErrorExampleCorpusTests {
         var command = new RunCommand(stdout, stderr, TextReader.Null, verbose: false,
             () => new HostCapabilities(new FixedRandomSource(), new MapEnvironment(), new FixedClock(FixedInstant)));
 
-        command.Run(path);
-        return CliDiagnosticReader.Read(stderr.ToString(), path);
+        int exitCode = command.Run(path);
+        CliDiagnostics read = CliDiagnosticReader.Read(stderr.ToString(), path);
+        return CliDiagnosticReader.CheckExitCode(exitCode, read.Diagnostics) is { } exitProblem
+            ? read with { Problems = [.. read.Problems, exitProblem] }
+            : read;
     }
 }

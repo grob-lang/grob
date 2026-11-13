@@ -126,7 +126,47 @@ public sealed class ErrorExampleComparerTests {
 /// with no column keeps none. Nothing else is normalised.
 /// </summary>
 public sealed class CliDiagnosticReaderTests {
-    private const string Passed = @"D:\corpus\p\p.grob";
+    // Host-native, so Path.GetFileName finds 'p.grob' on every runner.
+    private static readonly string Passed = Path.GetFullPath(Path.Join("corpus", "p", "p.grob"));
+
+    [Fact]
+    public void Read_PathHoldingAColon_ReadsTheLocationAfterIt() {
+        // A drive letter on Windows; a colon is legal in a directory name elsewhere. Either way the
+        // lazy path must stop at the colon that starts the location, not an earlier one.
+        string passed = Path.Join(Path.GetFullPath("corpus"), "a:b", "p.grob");
+
+        CliDiagnostics read = CliDiagnosticReader.Read($"error[E0001]: bad\n  --> {passed}:2:6\n", passed);
+
+        Assert.Empty(read.Problems);
+        Assert.Equal([new ExampleDiagnostic("error", "E0001", "p.grob", 2, 6)], read.Diagnostics);
+    }
+
+    [Fact]
+    public void CheckExitCode_ErrorReportedAndNonZero_Passes() {
+        Assert.Null(CliDiagnosticReader.CheckExitCode(1, [new ExampleDiagnostic("error", "E0001", "p.grob", 2, 6)]));
+    }
+
+    [Fact]
+    public void CheckExitCode_NothingReportedAndZero_Passes() {
+        Assert.Null(CliDiagnosticReader.CheckExitCode(0, []));
+    }
+
+    [Fact]
+    public void CheckExitCode_WarningOnlyAndZero_Passes() {
+        Assert.Null(CliDiagnosticReader.CheckExitCode(0, [new ExampleDiagnostic("warning", "E1101", "p.grob", 3, 9)]));
+    }
+
+    [Fact]
+    public void CheckExitCode_ErrorReportedButZero_Fails() {
+        Assert.Equal("exit code 0, but the CLI reported an error",
+            CliDiagnosticReader.CheckExitCode(0, [new ExampleDiagnostic("error", "E0001", "p.grob", 2, 6)]));
+    }
+
+    [Fact]
+    public void CheckExitCode_NoErrorButNonZero_Fails() {
+        Assert.Equal("exit code 1, but the CLI reported no error",
+            CliDiagnosticReader.CheckExitCode(1, [new ExampleDiagnostic("warning", "E1101", "p.grob", 3, 9)]));
+    }
 
     [Fact]
     public void Read_PointLocation_KeepsLineAndColumn() {
