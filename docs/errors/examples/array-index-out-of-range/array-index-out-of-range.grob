@@ -1,4 +1,4 @@
 // E5101 — reading an array index past the end of the array
-const names := ["ada", "grace", "katherine"]
+names := ["ada", "grace", "katherine"]
 
 print(names[5])

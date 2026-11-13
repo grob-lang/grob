@@ -1,5 +1,5 @@
 error[E5801]: required environment variable not set
-  --> required-env-var-not-set.grob:3:9
+  --> required-env-var-not-set.grob:3:10
    |
  3 | token := env.require("DEPLOY_TOKEN")
    |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^

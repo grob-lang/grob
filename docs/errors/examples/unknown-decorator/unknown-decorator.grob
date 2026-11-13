@@ -1,7 +1,5 @@
-// E4001 — applying a decorator that is not one of the four recognised in v1
-param {
-    @admin
-    user: string
-}
+// E4001 — applying a decorator that is not one of the seven recognised in v1
+@admin
+param user: string
 
 print("Hello, ${user}")

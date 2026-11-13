@@ -1,9 +1,9 @@
 error[E2005]: invalid escape sequence
   --> invalid-escape-sequence.grob:3:12
    |
- 3 | path := "C:\users\admin\report.csv"
+ 3 | dest := "C:\users"
    |            ^^
    |
    = note: `\u` is not a recognised escape sequence
-   = note: recognised sequences: `\n`, `\t`, `\r`, `\\`, `\"`, `\0`, `\xNN`
-   = help: for Windows paths, use a raw string: `C:\users\admin\report.csv`
+   = note: recognised sequences: `\n`, `\r`, `\t`, `\\`, `\"`, `\$`
+   = help: for Windows paths, use a raw string: `C:\users`

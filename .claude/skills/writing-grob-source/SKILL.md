@@ -149,6 +149,7 @@ explicit method call (`.toFloat()`, `.toInt()`, `.toString()`).
 - A fixture should exercise exactly the feature its test targets — minimal, not a
   kitchen sink — unless it is one of the thirteen release-gate scripts, which are
   deliberately realistic.
-- Error-example fixtures (`*_grob.txt` paired with `*_expected.txt`) must produce the
-  exact gold-master diagnostic. Do not edit a `_grob.txt` without regenerating and
-  reviewing its `_expected.txt`.
+- Error-example fixtures (`<slug>/<slug>.grob` paired with `<slug>.expected.txt`) must
+  produce the diagnostic their gold master states. Do not edit a `.grob` without
+  reviewing its `.expected.txt` against it; the `writing-an-error-test` skill says when a
+  master may change.

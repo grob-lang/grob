@@ -37,38 +37,6 @@ slug disambiguates by scenario.
 
 -----
 
-## File layout in project knowledge vs on disk
-
-Until the Grob source repository is live, this project lives entirely in
-Claude project knowledge — a flat namespace with no directory support.
-The canonical on-disk layout (the `<slug>/<slug>.grob` directory pairs
-shown above) is reconstructed at the point a real repo is created.
-
-While the project is online-only, the example files in project knowledge
-use the flat naming convention:
-
-```
-example-<slug>.grob
-example-<slug>.expected.txt
-errors-examples-README.md
-```
-
-The mapping to the canonical layout is mechanical:
-
-| In project knowledge          | On disk                                            |
-|-------------------------------|----------------------------------------------------|
-| `example-<slug>.grob`         | `docs/errors/examples/<slug>/<slug>.grob`          |
-| `example-<slug>.expected.txt` | `docs/errors/examples/<slug>/<slug>.expected.txt`  |
-| `errors-examples-README.md`   | `docs/errors/examples/README.md`                   |
-
-Later batches uploaded into project knowledge follow the same
-convention. When development starts and the repo is created, a one-shot
-script splits the `example-` prefix off the filename and reassembles
-the directory layout. The on-disk layout above is the canonical
-reference for the test harness and `grob --explain Exxxx`.
-
------
-
 ## File pairs
 
 Every example is exactly two files:
@@ -87,30 +55,51 @@ correct v1 Grob implementation when given the `.grob` file. Plain text,
 no ANSI colour codes, single trailing newline (POSIX). The path in the
 `-->` line is the bare script filename — no directory prefix.
 
-The `.expected.txt` is the gold master. If a test fixture's actual output
-drifts from this file by a single byte, the test fails.
+The `.expected.txt` is the gold master. The harness compares the severity,
+code and location of every diagnostic it states against what the CLI
+writes, in order; the rest of the master is checked statically against its
+own source and the catalogue (see *Running the examples*).
 
 -----
 
 ## Running the examples
 
+The harness in `Grob.Integration.Tests` is how the gate runs (D-428). It
+discovers every pair by directory, so a new pair is in the gate the moment
+it exists, and checks each one in two layers:
+
+- **Static** (`ErrorExampleMasterTests`) — the master's titles equal
+  `ErrorCatalog`'s, its `-->` lines carry a line and a column, its snippet
+  lines equal the source lines they number, its first caret starts at the
+  `-->` column and the index below names every pair. These checks are
+  never quarantined.
+- **Behavioural** (`ErrorExampleCorpusTests`) — the pair runs through
+  `grob run`'s own pipeline with its environment, clock and randomness
+  injected, and the ordered list of `(severity, code, file, line, column)`
+  the CLI writes must equal the list the master states. Message text,
+  notes, help and stack-frame chains are not compared until the §10
+  renderer lands (R-25).
+
+To reproduce one pair by hand, run it from its own directory:
+
 ```
-grob check <slug>.grob   # compile-time examples (E0xxx through E4xxx)
-grob run   <slug>.grob   # runtime examples (E5xxx)
+grob run <slug>.grob
 ```
 
-`grob check` runs the parser and type checker without executing. `grob run`
-runs the script. Either command writes the diagnostic to stderr and exits
-with a non-zero status.
+The CLI writes each diagnostic's code, message and location to stderr and
+exits with a non-zero status. There is no `grob check` until Sprint 12.
 
-To regenerate an `.expected.txt` from a known-good build:
+-----
 
-```
-grob check <slug>.grob 2> <slug>.expected.txt
-```
+## Quarantine
 
-Always inspect the diff before committing — unintended changes in the
-diagnostic surface are exactly what these fixtures are designed to catch.
+A pair that does not yet match its master has a row in
+[`quarantine.md`](quarantine.md), naming its category, what it is blocked
+by and the diagnostics it produces today. The harness still runs a
+quarantined pair and requires it to fail exactly as its row records: a
+pair that starts matching fails the harness until its row is removed, and
+one that fails differently fails it with both lists. The negative-test
+release gate is the manifest empty.
 
 -----
 
@@ -245,10 +234,22 @@ than a fatal `error[Exxxx]:`.
    an example, the slug should disambiguate by scenario, not by ordinal.
 4. Write the minimal `.grob` script. Strip everything that does not
    contribute to producing the error.
-5. Write the `.expected.txt` by hand, byte-exact, single trailing
-   newline. Do not use placeholders for line numbers or paths.
+5. Write the `.expected.txt` by hand as a specification against the
+   registry and §10, byte-exact, single trailing newline. Do not use
+   placeholders for line numbers or paths. Until the §10 renderer lands
+   (R-25) nothing emits this format, so there is nothing to regenerate
+   from. Once a master exists, its code or location changes on three
+   grounds only (D-428): a decision changed the language under it (cite
+   the decision); it contradicts its own source by character count; or a
+   decision resolving a register divergence finds the master's side
+   wrong. Otherwise the implementation is wrong and the pair is
+   quarantined. After R-25 a master may be regenerated only in the commit
+   that deliberately changes the diagnostic it pins, with the diff
+   reviewed; bulk regeneration never.
 6. Re-read the voice constraints above before finalising the wording of
    any title, note or help line.
+7. Add the code and slug to the index below. If the pair does not yet
+   match its master, add its row to `quarantine.md`.
 
 -----
 
@@ -273,8 +274,11 @@ than a fatal `error[Exxxx]:`.
 | E0201 | `const-reassignment` | Type |
 | E0202 | `readonly-reassignment` | Type |
 | E0301 | `type-cycle-no-terminating-field` | Type |
+| E0601 | `invalid-guid-literal` | Type |
 | E1001 | `undefined-identifier-typo` | Name resolution |
 | E1002 | `undefined-member-access` | Name resolution |
+| E1003 | `unknown-namespace-member` | Name resolution |
+| E1004 | `namespace-used-as-value` | Name resolution |
 | E1101 | `shadowed-declaration-loop-var` | Name resolution |
 | E1201 | `forward-reference-in-function` | Name resolution |
 | E1202 | `use-before-declaration-in-block` | Name resolution |
@@ -297,6 +301,7 @@ than a fatal `error[Exxxx]:`.
 | E4002 | `decorator-not-permitted-here` | Param / decorator |
 | E4101 | `invalid-allowed-argument` | Param / decorator |
 | E5002 | `integer-division-by-zero` | Runtime |
+| E5006 | `math-domain-violation` | Runtime |
 | E5101 | `array-index-out-of-range` | Runtime |
 | E5101 | `array-index-out-of-range-in-function` | Runtime |
 | E5201 | `nil-dereference-at-runtime` | Runtime |
@@ -327,3 +332,8 @@ than a fatal `error[Exxxx]:`.
 
 *Map-literal construction: 1 example (E0016, duplicate key in a map literal),*
 *July 2026. Source decision D-376.*
+
+*Error-examples harness: every pair checked statically and behaviourally on*
+*every build, with a strict quarantine manifest; eleven masters and eight*
+*sources corrected and R-18's three examples rewritten, November 2026. Source*
+*decision D-428. From here the directory is the count.*

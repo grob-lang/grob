@@ -424,6 +424,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-426 | October 2026 | Solution architecture — plugin SDK; Compiler — type checker; Runtime — native registration; Deferred Work Register | **Authorises the *`FunctionSignature`* increment and fixes what R-12's criterion left open.** Verified at `b202509`, a native's type is described by four models: `NamespaceRegistry.NativeMember` (56 natives, 8 constants), `PrimitiveMemberRegistry` (37 members), `NamedTypeRegistry` (32 members) and bespoke checker arms. **Scope:** namespace, primitive-instance and named-type-instance natives migrate, because `mapAs<T>` — `FunctionSignature`'s first consumer — is a named-type method; array and map instance methods, `formatAs` and the three built-ins stay bespoke, since their signatures need function-typed parameters or receiver-derived returns that D-419's union deliberately lacks. **Single source:** one registration pass produces one data catalogue that the checker reads and the VM binds from; the hand-maintained tables and their three agreement tests are deleted, taking the second of D-419 Decision 5's two readings. `TypeChecker` takes the catalogue as a required argument; built once and shared (D-338); duplicate registration is a host error. **Instance surfaces move into their plugins**, forced by the layering (`Grob.Core` cannot see `Grob.Runtime`); named types become public registrar surface, primitive receivers do not — no extension methods by the back door. Parameter names recorded from the stdlib reference; named-argument binding to natives stays unsupported; type parameters present but fenced by `GrobInternalException` until `mapAs<T>`. "No behaviour change" defined as suite green, a committed native-call probe corpus byte-identical and the benchmark gate green without a baseline update. Sprint 9's second named structural slot; may span sessions on one branch. R-12 refined, R-05 split, **R-19** opens. Count unchanged at 120. |
 | D-427 | November 2026 | Solution architecture — plugin SDK; Compiler — type checker; Runtime — native registration; VM — named-type dispatch; Deferred Work Register | **Implements D-426: the *`FunctionSignature`* increment as landed.** Every native registered through `IPluginRegistrar` carries a `FunctionSignature` and the untyped overload is gone; one `NativeCatalogueBuilder` pass builds the `NativeCatalogue` the type checker reads and the VM is constructed over; `NamespaceRegistry`, `PrimitiveMemberRegistry` and `NamedTypeRegistry` are deleted with their agreement tests; `date` and `guid` register from their plugins; primitive members register through an internal surface. Divergences recorded: groups ran 1–4, 7, 5–6, 8 at Chris's choice; `RegisterToString` retired; `formatAs`/`input` carry runtime-shape signatures (F2); `Concrete.ElementType` (F4); primitive type names reserved as namespaces (F8); tests whose subject ceased to exist deleted with their facts re-homed. **R-19 taken** at Chris's direction: `DateLayout`/`GuidLayout` in `Grob.Core` are the only layout declarations, guarded by reflection. Decision 5: suite green (4,612), probe corpus byte-identical, **benchmark condition not met as worded** — two compile benchmarks breach the allocation threshold on every increment run, no baseline updated, origin not established. Invented parameter names listed. R-12 and R-19 closed; R-05 updated; R-20 to R-24 open. Count unchanged at 120. |
 | D-428 | November 2026 | Testing — negative-test release gate; Diagnostics; Deferred Work Register; Sprint sequencing | **Authorises the *error-examples harness*, fourth of D-420's six pre-9C increments**; prompt committed at `docs/prompts/error-examples-harness.md`. Measured at `f747517` (CLI built in a throwaway copy on SDK 10.0.114 with `GROB-SEC-001` disabled; the gate re-measures): 56 pairs, not 57; 23 match their master on every diagnostic's code, line and column; eleven masters contradict their own source or the catalogue. **Comparison** is the full ordered list of `(severity, code, file, line, column)` tuples, plus a never-quarantinable static layer checking titles against `ErrorCatalog`, snippets against source and carets against `-->`; building the §10 renderer here is rejected as not a harness, and the subset alone as D-081's pattern, since no sprint schedules the renderer — **R-25, owner Sprint 12**. **Location**: bare file name, span start, a column in every master; the CLI keeps printing the path as given. **One harness** runs every pair through `RunCommand` itself, sandboxed by an internal capability seam. **Quarantine** is a strict manifest: a quarantined pair must fail exactly as its row's *Observed* list records, so one that passes or fails differently fails the harness, an `R-##` must be open and a named namespace absent; masters are hand-written specifications changing only on three grounds; the threshold is by kind — 27 pass, 29 quarantined; R-18 joins. Lives in `Grob.Integration.Tests`, in CI's required job; no new code. **R-24**: benchmark `b202509` before 9C; a catalogue-path origin blocks 9C. **R-20** owned by the 9C increment registering `File`, with binding recommended over E0011. R-11, R-18, R-20, R-24 refined; **R-25 to R-31 open**, including `x := /abc/` crashing the VM (R-30) and undefined type names in annotations accepted silently (R-31). Count unchanged at 120. |
+| D-429 | November 2026 | Testing — negative-test release gate; Diagnostics; CLI — run pipeline; Deferred Work Register | **Implements D-428: the *error-examples harness* as landed**, over five change groups. An internal `RunCommand` seam supplies the catalogue's capabilities; `ErrorExampleMasterTests` checks every master statically and `ErrorExampleCorpusTests` compares every pair's ordered `(severity, code, file, line, column)` list through the CLI's own pipeline; `quarantine.md` is the strict manifest. Eleven masters and eight sources corrected, R-18's three examples rewritten. **56 pairs: 27 pass, 29 quarantined**, as D-428 predicted. Recorded for its divergences: §3's greedy location regex, the *Observed* decoder's `3:12` ambiguity, manifest rejections and checks the prompt did not list, two mutation predictions narrower than observed and `writing-an-error-test`'s step 4 rewritten beside the steps listed. Suite 4,849 green; `Grob.Cli` 91.75%. R-11 and R-18 closed; R-05 updated; R-25, R-29 and R-31 amended; R-32 opened for the two stdlib ambient reads. Count unchanged at 120. |
 
 ---
 
@@ -15692,6 +15693,113 @@ interlude), D-113 and D-426 (named arguments and recorded parameter names).
 ---
 
 
+### D-429 — Error-examples harness landed: every pair checked on every build, 27 passing and 29 quarantined against tracked blockers (November 2026)
+
+Area: Testing — negative-test release gate; Diagnostics; CLI — run pipeline; Deferred Work Register
+Supersedes: none (implements D-428; closes R-11 and R-18)
+Superseded by: none
+
+**D-428 authorised this increment; this entry records it as landed and where the
+landing diverged from D-428, its prompt and its gate report.** The divergences are
+the point of the entry; the code, the tests and the commit messages carry the rest.
+Error-code count unchanged at **120**; no `ErrorCatalog` edit, opcode, grammar change
+or `GrobType`, `GrobValueKind` or `TokenKind` variant. No change to `Grob.Compiler`,
+`Grob.Vm`, `Grob.Stdlib`, `Grob.Runtime` or `Grob.Core`.
+
+---
+
+**The gate.** Re-measured on SDK 10.0.303 with the `GROB-SEC-001` floor active, the
+classification D-428 took on 10.0.114 held: 56 pairs, 23 matching, 33 not, no internal
+error and no hang. No STOP fired. Two ambient reads stay on the pipeline under the seam —
+`TimeZoneInfo.Local` in the `date` natives and the current directory in `path.resolve` —
+because they sit in `Grob.Stdlib`, which the increment may not change. No pair reaches
+either, and Chris ruled on 13 November that the STOP had not fired; R-32 owns them.
+
+**What landed, in five change groups.**
+
+1. **The seam** (`refactor(cli)`, not `feat`: no behaviour changes). An internal
+   `RunCommand` constructor takes a factory for `HostCapabilities` — the catalogue's
+   random source, environment and clock, built fresh per run; the public constructor
+   passes the OS-backed set. No new project reference.
+2. **The master parser and the static layer** (`ErrorExampleMasterTests`) with the eleven
+   master corrections M1 to M11 and the four missing README index rows.
+3. **The behavioural layer and the manifest** (`ErrorExampleCorpusTests`,
+   `docs/errors/examples/quarantine.md`) with the source reconciliations S1 to S8. Red
+   first with no manifest: 34 failing pairs, as predicted.
+4. **R-18's three rewrites.** Each new source raises exactly one diagnostic at the
+   location D-428 named: E4001 at 2:1, E4101 at 2:10 and E4002 at 2:12. The masters'
+   notes and help are new authorship under Decision 4's first ground.
+5. **Corrections and record** — this entry, the README, R-05's naming sites, §14's
+   release-gate sentence and the register.
+
+**56 pairs through both layers: 27 pass, 29 quarantined**, the split D-428 predicted,
+with no pair differing from it. Suite green at **4,849** tests (Integration 690, up
+from 453). `Grob.Cli` line coverage **91.75%** (289 of 315 coverable lines, the union
+across every test project's report), above D-328's bar.
+
+---
+
+**Divergences from the prompt and the gate report.**
+
+- **§3's location regex was wrong** (gate F1). `^  --> (\S+):(\d+)(?::(\d+))?$` is
+  greedy: on `x.grob:5:14` it captures `x.grob:5` as the file. The harness uses
+  `([^\s:]+)`, since a bare file name has no colon.
+- **The *Observed* decoder needs a file name to hold a non-digit.** §1.4's entry pattern
+  `(?:([^\s:]+):)?(\d+)(?::(\d+))?` reads `3:12` as file `3`, line 12, which showed as
+  drift on 24 rows at the first manifest run. Fixed and pinned by
+  `Decode_LineAndColumn_IsNotReadAsFileAndLine`.
+- **The manifest grammar gained rejections §1.4 does not list**: an empty *Reason* cell,
+  and a *Pair* cell that is not a backticked slug, each with its own message. An empty
+  *Observed* list is written `none` (gate F2): after S3, `shadowed-declaration-loop-var`
+  compiles cleanly and exits 0.
+- **The register guard is two checks**: an `R-##` absent from the register and one
+  present but closed each have their own message. Mutation 4 as the prompt words it
+  disables the closed-row branch alone; a second mutation, 4b, verified the absent branch.
+- **The static layer adds two checks §2.2 does not list**: the README index row's code
+  equals the master's first code, and no snippet numbers a line past the source's end.
+  The optional category-against-*Blocked by* check was not built.
+- **Hedge words** are checked against `simply`, `obviously`, `merely` and `of course`
+  only. The CR check in the gate's throwaway script was dropped; §3 says to read
+  tolerating `\r\n`.
+- **The CLI reader matches a lazy path then asserts it** against the path passed, rather
+  than stripping the known prefix. The two agree on the corpus; the separate assertion is
+  what lets mutation 7 remove it alone.
+- **Two mutation predictions were narrower than observed.** Mutation 2 (column dropped)
+  failed fourteen tests, not the one comparer test and nine corpus cases predicted: a
+  second comparer test (`Compare_ActualWithNoColumnAgainstMasterWithOne_Fails`) and three
+  verdict tests whose fixtures differ only by column also failed. Mutation 6a also failed
+  `CheckPair_SecondDiagnosticChecked_FailsOnIt`. Each extra failure is a test doing its
+  job; no guard was found untested. The other six matched their predictions exactly.
+- **`writing-an-error-test`'s step 4 was rewritten too.** §2.5 lists the skill's
+  frontmatter, intro, steps 2, 3 and 5 and the checklist; step 4 told authors to
+  regenerate masters from the implementation and named `_expected.txt`, which contradicts
+  Decision 4's authorship rule as directly as step 3 did. The README's *File pairs*
+  section likewise said a single-byte drift fails the test, which the harness does not do
+  until R-25; it now says what is compared.
+- **Gate findings F7 and F8 amend R-25 rather than opening rows**: the CLI never sets
+  `Console.OutputEncoding`, so a `→` in a message reaches a redirected stderr on Windows
+  as 0x1A, and E1004 suggests the malformed member `'path..'`. Both are message output the
+  harness does not compare. **F3** amends R-29 (`nil-dereference-at-runtime`'s E0101 plus a
+  cascading E0005) and R-31 (`ambiguous-type-reference` raises only E0005, because
+  `r: Response` resolves silently).
+- **R-18's text was wrong about E2202.** `invalid-allowed-argument` raised E4201 plus
+  E0205, never E2202; R-18's closing text says so.
+
+---
+
+**Register.** R-11 and R-18 closed. R-05's four naming sites done; its full `.claude/`
+sweep stays open and `unowned`. R-25, R-29 and R-31 amended as above. **R-32 opens** —
+the local time zone and the current directory behind capabilities on D-343's pattern,
+owned by the *public samples compile* increment.
+
+Cites D-428 (the increment's authority), D-420 (the run and its stopping rule), D-308
+(the catalogue the static layer checks), D-300 (one diagnostic per root cause), D-328
+(the coverage bar), D-343 (capability injection), D-289, D-327, D-342 and ADR-0010 (the
+reconciliations' authorities) and D-410, D-411, D-424 and D-425 (R-18's rewrites).
+
+---
+
+
 ## Post-MVP Decisions
 
 ---
@@ -15913,7 +16021,14 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-428 added; no source change. **Scopes the error-examples harness**,_
+_November 2026 — D-429 added. **The *error-examples harness* as landed**, implementing_
+_D-428 over five change groups: an internal `RunCommand` capabilities seam, a static_
+_layer over every master, a behavioural layer comparing every pair's diagnostics through_
+_the CLI's own pipeline and a strict quarantine manifest. 56 pairs: 27 pass, 29_
+_quarantined. Recorded for its divergences from the prompt and the gate report, each_
+_with its test or mutation. R-11 and R-18 closed, R-05 updated, R-25, R-29 and R-31_
+_amended, R-32 opened. Count unchanged at 120._
+_Previous: November 2026 — D-428 added; no source change. **Scopes the error-examples harness**,_
 _fourth of D-420's pre-9C increments, and commits its prompt. Measured first: 56 pairs,_
 _23 matching their master on code and location, eleven masters contradicting their own_
 _source, five codes never raised and no runtime column anywhere. The harness compares_

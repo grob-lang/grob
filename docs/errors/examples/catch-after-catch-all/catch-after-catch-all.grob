@@ -3,7 +3,7 @@
 try {
     fs.delete(`C:\tmp\scratch.txt`)
 } catch e {
-    log.warn("delete failed")
+    log.warning("delete failed")
 } catch (e: IoError) {
     log.error("io failure")
 }

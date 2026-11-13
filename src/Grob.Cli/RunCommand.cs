@@ -34,6 +34,7 @@ public sealed class RunCommand {
     private readonly TextWriter _stderr;
     private readonly TextReader _stdin;
     private readonly bool _verbose;
+    private readonly Func<HostCapabilities> _capabilities;
 
     /// <summary>
     /// Initialises a <see cref="RunCommand"/> that writes program output to
@@ -53,13 +54,29 @@ public sealed class RunCommand {
     /// Selects <c>log.*</c>'s initial threshold (<c>--verbose</c> on the CLI): <c>true</c>
     /// starts at <c>LogLevel.Debug</c>, <c>false</c> (the default) at <c>LogLevel.Info</c>.
     /// </param>
-    public RunCommand(TextWriter stdout, TextWriter stderr, TextReader? stdin = null, bool verbose = false) {
+    public RunCommand(TextWriter stdout, TextWriter stderr, TextReader? stdin = null, bool verbose = false)
+        : this(stdout, stderr, stdin, verbose, HostCapabilities.System) { }
+
+    /// <summary>
+    /// The capabilities seam (D-428 Decision 3): as the public constructor, but the
+    /// catalogue each <see cref="Run"/> builds is over the capabilities
+    /// <paramref name="capabilities"/> returns, called once per run.
+    /// </summary>
+    /// <param name="stdout">Writer for programme output (<c>print()</c>).</param>
+    /// <param name="stderr">Writer for diagnostics and error messages.</param>
+    /// <param name="stdin">Source for <c>input()</c>; <see langword="null"/> means a closed stream.</param>
+    /// <param name="verbose">Selects <c>log.*</c>'s initial threshold.</param>
+    /// <param name="capabilities">Builds the random source, environment and clock for one run.</param>
+    internal RunCommand(TextWriter stdout, TextWriter stderr, TextReader? stdin, bool verbose,
+            Func<HostCapabilities> capabilities) {
         ArgumentNullException.ThrowIfNull(stdout);
         ArgumentNullException.ThrowIfNull(stderr);
+        ArgumentNullException.ThrowIfNull(capabilities);
         _stdout = stdout;
         _stderr = stderr;
         _stdin = stdin ?? TextReader.Null;
         _verbose = verbose;
+        _capabilities = capabilities;
     }
 
     /// <summary>
@@ -95,7 +112,7 @@ public sealed class RunCommand {
         // registration (gate report §1.3), so a script that fails to type-check costs no
         // clock read, environment read or random draw.
         var streams = new TwoWriterStreams(_stdout, _stderr, _stdin);
-        NativeCatalogue catalogue = PluginRegistration.BuildCatalogue(streams, _verbose);
+        NativeCatalogue catalogue = PluginRegistration.BuildCatalogue(streams, _verbose, _capabilities());
 
         var bag = new DiagnosticBag();
         IReadOnlyList<Token> tokens = Lexer.Scan(source, bag, filePath);

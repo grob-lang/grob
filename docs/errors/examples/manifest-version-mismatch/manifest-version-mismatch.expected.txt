@@ -1,7 +1,7 @@
 error[E3201]: manifest version mismatch
-  --> manifest-version-mismatch.grob:1:1
+  --> manifest-version-mismatch.grob:3:1
    |
- 1 | import Grob.Http
+ 3 | import Grob.Http
    | ^^^^^^
    |
    = note: grob.json requires runtime >= 1.2.0

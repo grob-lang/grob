@@ -1,7 +1,4 @@
-// E4002 — applying @secure to a local variable, where it is not permitted
-// Eventual path: docs/errors/examples/decorator-not-permitted-here/decorator-not-permitted-here.grob
-fn fetchToken(): string {
-    @secure
-    token := env.require("API_TOKEN")
-    return token
+// E4002 — applying @secure to a function parameter, where it is not permitted
+fn connect(@secure token: string): int {
+    return token.length
 }

@@ -1,6 +1,6 @@
 // E5101 — array index out of range thrown inside a user function, propagating to top level
 // Eventual path: docs/errors/examples/array-index-out-of-range-in-function/array-index-out-of-range-in-function.grob
-fn lastItem(items: []string): string {
+fn lastItem(items: string[]): string {
     return items[items.length]
 }
 

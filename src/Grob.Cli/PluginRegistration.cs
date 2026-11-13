@@ -19,5 +19,13 @@ internal static class PluginRegistration {
     /// <see cref="LogPlugin"/>'s initial threshold (<c>--verbose</c>).
     /// </summary>
     internal static NativeCatalogue BuildCatalogue(IStandardStreams streams, bool verbose) =>
-        StdlibCatalogue.Build(new SystemRandomSource(), new SystemEnvironment(), streams, new SystemClock(), verbose);
+        BuildCatalogue(streams, verbose, HostCapabilities.System());
+
+    /// <summary>
+    /// Builds the catalogue for one run over the supplied <paramref name="capabilities"/>.
+    /// Only the capabilities vary; the plugin list is still <see cref="StdlibPlugins"/>'s,
+    /// so a caller cannot assemble a second native surface (D-426 Decision 2).
+    /// </summary>
+    internal static NativeCatalogue BuildCatalogue(IStandardStreams streams, bool verbose, HostCapabilities capabilities) =>
+        StdlibCatalogue.Build(capabilities.RandomSource, capabilities.Environment, streams, capabilities.Clock, verbose);
 }

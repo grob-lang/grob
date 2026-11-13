@@ -89,7 +89,7 @@ match the prompt.
 ## Step 6 — The gold-master pair
 
 A new code needs its negative-test coverage. Hand off to `writing-an-error-test` for the
-`*_grob.txt` / `*_expected.txt` pair — that skill owns the gold master and defers to this
+`<slug>.grob` / `<slug>.expected.txt` pair — that skill owns the gold master and defers to this
 one for the code itself.
 
 ## Checklist
