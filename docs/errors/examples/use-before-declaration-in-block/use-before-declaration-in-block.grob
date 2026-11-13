@@ -1,6 +1,6 @@
 // E1202 — reading a variable in a nested block before it is declared in that block
 // Eventual path: docs/errors/examples/use-before-declaration-in-block/use-before-declaration-in-block.grob
-fn process(items: []string): string {
+fn process(items: string[]): string {
     result := ""
     for item in items {
         result = result + sep + item

@@ -1,4 +1,4 @@
 // E2005 — an unrecognised backslash escape sequence in a double-quoted string
 // Eventual path: docs/errors/examples/invalid-escape-sequence/invalid-escape-sequence.grob
-path := "C:\users\admin\report.csv"
-print(path)
+dest := "C:\users"
+print(dest)

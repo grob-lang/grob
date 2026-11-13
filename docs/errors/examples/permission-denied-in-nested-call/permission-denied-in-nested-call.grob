@@ -1,6 +1,6 @@
 // E5302 — permission denied thrown by stdlib inside a user function called from top level
 // Eventual path: docs/errors/examples/permission-denied-in-nested-call/permission-denied-in-nested-call.grob
-fn archiveLogs(dest: string) {
+fn archiveLogs(dest: string): void {
     fs.copy(`C:\Windows\System32\winevt\Logs`, dest)
 }
 

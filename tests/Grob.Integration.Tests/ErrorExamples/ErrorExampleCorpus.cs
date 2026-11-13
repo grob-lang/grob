@@ -12,6 +12,10 @@ internal static class ErrorExampleCorpus {
 
     public static string ReadmePath => Path.Join(Directory, "README.md");
 
+    /// <summary><c>docs/design/grob-open-questions.md</c>, which holds the Deferred Work Register.</summary>
+    public static string OpenQuestionsPath =>
+        Path.GetFullPath(Path.Join(Directory, "..", "..", "design", "grob-open-questions.md"));
+
     public static IReadOnlyList<string> Slugs() =>
         System.IO.Directory.EnumerateDirectories(Directory)
             .Select(Path.GetFileName)

@@ -1,7 +1,7 @@
 // E0004 — passing a string literal where a function expects an int
 // Eventual path: docs/errors/examples/argument-type-mismatch-string-for-int/argument-type-mismatch-string-for-int.grob
 fn repeat(count: int): string {
-    return strings.repeat("*", count)
+    return "*".repeat(count)
 }
 
 print(repeat("ten"))
