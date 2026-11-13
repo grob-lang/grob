@@ -292,7 +292,11 @@ recorded in R-27; do not change the parser.
   repeating its "now E2202" claim (§1 measured E4201 plus E0205 for
   `invalid-allowed-argument`); R-05 records its naming
   sites as done, the full sweep still open; R-25 to R-29 amended where §1 measured
-  differently.
+  differently; and one new open row, owned by the increment after this one, for the two
+  ambient reads the seam cannot reach — `TimeZoneInfo.Local` in the `date` natives and
+  the current directory in `path.resolve` — to go behind injected capabilities on the
+  D-343 pattern. §1 measured that no pair reaches either, and Chris ruled the STOP not
+  fired on that ground.
 
 ### Out of scope — report, do not fix
 
