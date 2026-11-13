@@ -57,11 +57,13 @@ regressions in source-location tracking.
 
 ## Error-example gold masters
 
-The error-examples library pairs each case: one `*_grob.txt` source and one
-`*_expected.txt` gold-master diagnostic. The expected file is the exact stderr output,
-byte for byte — file, line, column, message, suggestion. When a diagnostic's wording
-changes, regenerate and review every affected `_expected.txt` deliberately; never
-hand-edit one to make a test pass. The `writing-an-error-test` skill walks the
+The error-examples library under `docs/errors/examples/` pairs each case in its own
+directory: one `<slug>.grob` source and one `<slug>.expected.txt` gold-master
+diagnostic, hand-written to `grob-v1-requirements.md` §10. The harness in
+`Grob.Integration.Tests` checks every master statically and compares the code and
+location of every diagnostic against the CLI's; a pair that does not yet match is a row
+in `quarantine.md`, never a skip (D-428). A master changes only on D-428's three grounds;
+never edit one to make a test pass. The `writing-an-error-test` skill walks the
 procedure.
 
 ## Conventions

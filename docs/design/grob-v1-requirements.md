@@ -1476,6 +1476,10 @@ release gate. All must compile and run correctly before v1 ships.
 |12|Log file filter by severity/time  |`fs.readText`, regex literal, `Regex.matchAll`, `select`, `filter`, `formatAs.table`   |
 |13|Release promotion validated inputs|`@allowed`, `@minLength`, `@maxLength`, `@secure`, `Grob.Http`, `json.encode`          |
 
+The negative-test release gate stands beside them: every error-example pair in
+`docs/errors/examples/` passes the error-examples harness and the quarantine manifest,
+`docs/errors/examples/quarantine.md`, is empty (D-428).
+
 -----
 
 ## 15. Definition of Done
