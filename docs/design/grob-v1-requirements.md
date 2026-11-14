@@ -911,11 +911,17 @@ itself implemented and producing a first passing run. Authority: D-302,
   `csv.Table` type: `headers`, `rowCount`, `rows`. `CsvRow`: `get(name)`,
   `get(index)`, indexer syntax. `mapAs<T>()`. RFC 4180 compliance.
   `hasHeaders`, `delimiter` named parameters.
-- **`regex`** — regex literal `/pattern/flags` (flags: `i`, `m`). `Regex`
+- **`regex`** — regex literal `/pattern/flags` (flags: `i`, `m`), with
+  the grammar in `grob-language-fundamentals.md` §8 (D-432). `Regex`
   type: `match()`, `matchAll()`, `isMatch()`, `replace()`,
-  `replaceAll()`, `split()`, `pattern`, `flags`. `Match` type: `value`,
-  `index`, `length`, `groups`, `group(name)`. Module convenience
-  functions for one-shot use. .NET regex engine underneath.
+  `replaceAll()` (string or function replacement), `split()`, `pattern`,
+  `flags`, `timeout`. `Match` type: `value`, `index`, `length`, `groups`,
+  `group(name)`. `regex.compile(pattern, flags, timeout)` for run-time
+  patterns, and module convenience functions for one-shot use. .NET
+  engine underneath, culture-invariant. Patterns validated at compile
+  time (E0602); every match bounded by a timeout, five seconds unless
+  `regex.compile` sets another, expiry raising `RuntimeError` (D-432).
+  **The first increment of the rebuilt Sprint 9C** (D-432).
 - **`process`** — `run(cmd, args[], timeout: int = 0)`,
   `runShell(cmd, timeout: int = 0)`, `runOrFail()`,
   `runShellOrFail()`. `ProcessResult`: `stdout`, `stderr`, `exitCode`.
@@ -962,7 +968,8 @@ parameter passing.
   `@minValue(n)`, `@maxValue(n)`. Each is validated at the parameter
   boundary before the script body runs. `@pattern(...)` is the seventh
   and lands with the `regex` increment, not here — it needs a compiled
-  pattern value to validate against.
+  pattern value to validate against. It matches the whole value, not a
+  substring (D-432).
 - **Release-gate coverage is an obligation, not an assumption.** D-186
   observed that the validation decorators had zero coverage across the
   validation suite; that remains true — `@secure` is the only decorator
@@ -1506,6 +1513,10 @@ Grob v1 is ready for public release when:
 
 ## 16. v1 Scope-Cut List
 
+**The list is empty as of D-432** (November 2026); both candidates below
+are recorded as removed. The section stays as the place a future
+candidate would go.
+
 The scope-cut list exists as risk insurance. If implementation reveals
 unexpected complexity in a sprint and the scope needs to shrink to
 ship, the candidates below are the first features to move to v1.1.
@@ -1533,46 +1544,26 @@ The obligation this creates is recorded in the Sprint 10 scope above:
 the decorators have no release-gate coverage today beyond `@secure`, so
 a script exercising the full surface is required before v1.
 
-**2. Regex literal grammar** — `/pattern/flags` with context-sensitive
-`/` disambiguation.
+**2. Regex literal grammar — REMOVED from this list (D-432, November 2026).**
 
-- v1 fallback: `regex.compile(pattern, flags)` function form. The
-  `regex` module exists; only the grammar form is cut.
-- Savings on activation: context-sensitive lexing is the single most
-  architecturally novel piece of lexer work in Sprint 1. Cutting it
-  simplifies the lexer materially.
-- v1.1 re-add is pure grammar addition. No scripts break.
-- Scripts affected on activation: Script 12 (Log file filter by
-  severity and time) uses regex literals at `readonly LINE := /.../m`
-  and `readonly LEVELS := /.../`. Activating this cut requires
-  rewriting Script 12 against the `regex.compile(pattern, flags)`
-  function form before v1 ships. The script body — `matchAll`,
-  `isMatch`, capture-group access — is unchanged on activation.
-  Scripts 1–11 and Script 13 are unaffected.
-
-> **Finding, August 2026 (D-411) — this candidate's stated saving no
-> longer exists.** The "savings on activation" above assume the
-> context-sensitive lexing is still ahead of us. It is not: the literal's
-> front end is built and tested — `TokenKind.RegexLiteral`,
-> `Lexer.CanStartRegex()` with the after-a-value-is-division rule,
-> `ScanRegexLiteral()`, `ConsumeRegexFlags` restricted to `i`/`m`,
-> `RegexLiteralExpr`, and E2007/E2008 with real throw sites. Activating
-> this cut today would mean *deleting* working code, not deferring work.
-> What is genuinely absent is everything behind the front end: no
-> `GrobType.Regex`, no compiler emission (`VisitRegexLiteral` appears in
-> three files, none of them the compiler or the VM), no runtime
-> representation, no `regex` module. Recorded, not decided — whether the
-> candidate is struck outright is the project owner's call, and D-411
-> does not make it. Note also that no decision ever activated this cut;
-> `sprint-9-g.md` asserts it was resolved at the Sprint 9 kickoff and
-> the log contains no such entry.
+Regex literals ship in v1. The saving this candidate offered —
+context-sensitive lexing ahead of Sprint 1 — was already spent: D-411
+found the literal's front end built and tested, so activating the cut
+would have meant deleting working code. D-432 strikes the candidate by
+owner decision and specifies what was missing behind the front end: the
+complete rule that tells a regex literal from division, the literal's
+body and flags, compile-time validation (E0602), the runtime contract
+and a bounded match timeout. `regex.compile(pattern, flags, timeout)`
+remains in v1, as the way to build a `Regex` from a run-time string,
+not as a fallback.
 
 ### Defer-gracefully constraints
 
-The remaining candidate meets the "defer gracefully" constraint: v1 scripts
-using the fallback forms continue to work in v1.1 unchanged; v1.1 adds
-are purely additive; and no v1 feature becomes useless because a
-candidate is cut.
+**No candidate remains** (D-432): both were removed by owner decision.
+A candidate added later must meet the "defer gracefully" constraint: v1
+scripts using its fallback form continue to work in v1.1 unchanged, the
+v1.1 addition is purely additive and no v1 feature becomes useless
+because the candidate is cut.
 
 ### What is explicitly **not** on the list
 

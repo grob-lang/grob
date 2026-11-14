@@ -801,6 +801,87 @@ not interrupt arithmetic mid-chain.
 
 -----
 
+### `regex` Module — Shape
+
+```grob
+// A literal is a Regex value — validated at compile time (E0602), compiled once per site
+datePattern := /^\d{4}-\d{2}-\d{2}$/
+levels      := /\b(?<level>ERROR|WARN)\b/i
+
+// Regex methods
+ok    := levels.isMatch(line)                        // bool — no Match allocated
+first := levels.match(line)                          // Match? — first match or nil
+all   := levels.matchAll(text)                       // Match[] — every non-overlapping match
+one   := levels.replace(line, `[$1]`)                // first match; .NET replacement syntax
+every := levels.replaceAll(text, `[${level}]`)       // backtick raw — "${level}" would interpolate
+lower := levels.replaceAll(text, m => m.value.lower())   // function form — computed replacement
+parts := /\s*,\s*/.split(csvLine)                    // string[]
+
+// Regex properties
+levels.pattern    // string — "\b(?<level>ERROR|WARN)\b"
+levels.flags      // string — "i"
+levels.timeout    // int — seconds; 5 unless set by regex.compile
+
+// Match
+if first != nil {
+    print(first.value)                       // the matched text
+    print(first.index)                       // zero-based position in the input
+    print(first.groups[1])                   // groups[0] is the whole match
+    print(first.group("level") ?? "none")    // named group; nil if absent or unmatched
+}
+
+// A Regex from a run-time string
+prefixed := regex.compile("^" + regex.escape(prefix) + `-\d+$`)
+slow     := regex.compile(pattern, "i", timeout: 30)    // seconds; 0 means no limit
+
+// One-shot functions — string patterns, compiled on each call, default timeout
+regex.isMatch(`^\d+$`, input)                     // bool
+regex.match(pattern, input)                       // Match?
+regex.matchAll(pattern, input)                    // Match[]
+regex.replace(pattern, input, replacement)        // string
+regex.replaceAll(pattern, input, replacement)     // string
+regex.split(pattern, input)                       // string[]
+regex.escape(text)                                // string — every metacharacter escaped
+```
+
+`regex` is a core module — auto-available, no import required. `Regex` and `Match` are
+named types (D-356); their members are in `grob-type-registry.md`. The literal's grammar —
+its body, flags and the rule that tells a regex literal from division — is
+`grob-language-fundamentals.md` §8, *Regex literals*.
+
+**Dialect.** .NET regular-expression syntax, passed verbatim: named groups, lookarounds
+and backreferences included (D-095). Matching is always culture-invariant. The flags are
+`i` (case-insensitive) and `m` (`^` and `$` at line boundaries); other options go inline,
+as `(?s)` or `(?x)`. `RegexOptions.NonBacktracking` is not used: it would remove
+lookarounds and backreferences (D-432).
+
+**`regex.compile(pattern: string, flags: string = "", timeout: int = 5): Regex`** builds
+a `Regex` from a run-time string — the only way to do so, since a literal's pattern is
+fixed in the source. A string-literal `pattern` is validated at compile time (E0602); a
+pattern or flag that is invalid at run time throws `ParseError`. `timeout` is in seconds,
+as `process.run`'s is, and `0` means no limit.
+
+**Every matching operation is bounded** (D-432). The limit is five seconds unless the
+value was built by `regex.compile` with another `timeout`; literals and the one-shot
+functions always use five. Expiry throws `RuntimeError`, naming the operation, the
+pattern and the limit. The bound turns catastrophic backtracking into an error instead
+of a hang.
+
+**Replacements** use .NET's syntax: `$1`, `${name}`, `$$` for a literal `$`. Since `${`
+inside a double-quoted string is interpolation, write replacements as single-backtick
+raw strings (D-285). The function form takes the `Match` and returns the replacement.
+
+**`split`** includes the text of any capture groups in its result, as .NET, JavaScript
+and Python do. Use a non-capturing group, `(?:…)`, to split without keeping it.
+
+**Patterns as strings.** Where a parameter takes a pattern as a `string` — the one-shot
+functions, `regex.compile`, `@pattern` — a single-backtick raw string is canonical.
+String literals are never implicitly patterns (D-095).
+
+See D-089, D-095 and D-432.
+
+-----
+
 ## `exit()` — Built-in Function
 
 ```grob

@@ -347,17 +347,23 @@ signatures.
 
 ---
 
-## `Regex` (Regex Literal `/pattern/flags`)
+## `Regex` (Regex Literal `/pattern/flags`, or `regex.compile`)
+
+Built by a regex literal or by `regex.compile(pattern, flags, timeout)` (D-432). Every
+matching method runs under the value's timeout and throws `RuntimeError` on expiry.
 
 | Member                                           | Kind     | Signature    | Notes                                        |
 | ------------------------------------------------ | -------- | ------------ | -------------------------------------------- |
 | `pattern`                                        | property | `→ string`   | The source pattern string                    |
 | `flags`                                          | property | `→ string`   | Active flags, e.g. `"i"` or `"im"`           |
+| `timeout`                                        | property | `→ int`      | Seconds per matching operation; `5` unless set by `regex.compile`, `0` for no limit (D-432) |
 | `isMatch(input: string)`                         | method   | `→ bool`     | Fast existence check — no `Match` allocation |
 | `match(input: string)`                           | method   | `→ Match?`   | First match or nil                           |
 | `matchAll(input: string)`                        | method   | `→ Match[]`  | All non-overlapping matches                  |
-| `replace(input: string, replacement: string)`    | method   | `→ string`   | Replace first match                          |
-| `replaceAll(input: string, replacement: string)` | method   | `→ string`   | Replace all matches                          |
+| `replace(input: string, replacement: string)`    | method   | `→ string`   | Replace first match; .NET `$1` / `${name}` syntax, written as a backtick raw string |
+| `replace(input: string, fn: Match → string)`     | method   | `→ string`   | Replace first match with `fn`'s result (D-432) |
+| `replaceAll(input: string, replacement: string)` | method   | `→ string`   | Replace all matches; as `replace`            |
+| `replaceAll(input: string, fn: Match → string)`  | method   | `→ string`   | Replace each match with `fn`'s result (D-432) |
 | `split(input: string)`                           | method   | `→ string[]` | Split on pattern                             |
 
 ---
@@ -370,7 +376,7 @@ signatures.
 | `index`               | property | `→ int`      | Zero-based position in input                                               |
 | `length`              | property | `→ int`      | Length of match                                                            |
 | `groups`              | property | `→ string[]` | Capture groups. `groups[0]` is full match; `groups[1]`+ are capture groups |
-| `group(name: string)` | method   | `→ string?`  | Named capture group. Nil if not present                                    |
+| `group(name: string)` | method   | `→ string?`  | Named capture group. Nil if the group is absent or did not take part in the match |
 
 ---
 

@@ -426,7 +426,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-428 | November 2026 | Testing — negative-test release gate; Diagnostics; Deferred Work Register; Sprint sequencing | **Authorises the *error-examples harness*, fourth of D-420's six pre-9C increments**; prompt committed at `docs/prompts/error-examples-harness.md`. Measured at `f747517` (CLI built in a throwaway copy on SDK 10.0.114 with `GROB-SEC-001` disabled; the gate re-measures): 56 pairs, not 57; 23 match their master on every diagnostic's code, line and column; eleven masters contradict their own source or the catalogue. **Comparison** is the full ordered list of `(severity, code, file, line, column)` tuples, plus a never-quarantinable static layer checking titles against `ErrorCatalog`, snippets against source and carets against `-->`; building the §10 renderer here is rejected as not a harness, and the subset alone as D-081's pattern, since no sprint schedules the renderer — **R-25, owner Sprint 12**. **Location**: bare file name, span start, a column in every master; the CLI keeps printing the path as given. **One harness** runs every pair through `RunCommand` itself, sandboxed by an internal capability seam. **Quarantine** is a strict manifest: a quarantined pair must fail exactly as its row's *Observed* list records, so one that passes or fails differently fails the harness, an `R-##` must be open and a named namespace absent; masters are hand-written specifications changing only on three grounds; the threshold is by kind — 27 pass, 29 quarantined; R-18 joins. Lives in `Grob.Integration.Tests`, in CI's required job; no new code. **R-24**: benchmark `b202509` before 9C; a catalogue-path origin blocks 9C. **R-20** owned by the 9C increment registering `File`, with binding recommended over E0011. R-11, R-18, R-20, R-24 refined; **R-25 to R-31 open**, including `x := /abc/` crashing the VM (R-30) and undefined type names in annotations accepted silently (R-31). Count unchanged at 120. |
 | D-429 | November 2026 | Testing — negative-test release gate; Diagnostics; CLI — run pipeline; Deferred Work Register | **Implements D-428: the *error-examples harness* as landed**, over five change groups. An internal `RunCommand` seam supplies the catalogue's capabilities; `ErrorExampleMasterTests` checks every master statically and `ErrorExampleCorpusTests` compares every pair's ordered `(severity, code, file, line, column)` list through the CLI's own pipeline; `quarantine.md` is the strict manifest. Eleven masters and eight sources corrected, R-18's three examples rewritten. **56 pairs: 27 pass, 29 quarantined**, as D-428 predicted. Recorded for its divergences: §3's greedy location regex, the *Observed* decoder's `3:12` ambiguity, manifest rejections and checks the prompt did not list, two mutation predictions narrower than observed and `writing-an-error-test`'s step 4 rewritten beside the steps listed. Suite 4,849 green; `Grob.Cli` 91.75%. R-11 and R-18 closed; R-05 updated; R-25, R-29 and R-31 amended; R-32 opened for the two stdlib ambient reads. Count unchanged at 120. |
 | D-430 | November 2026 | Testing — public samples gate; Documentation — wiki; Runtime — capability injection; Deferred Work Register | **Authorises *public samples compile*, fifth of D-420's six pre-9C increments**; prompt committed at `docs/prompts/public-samples-compile.md`. Starts from the 6 November outline and lists its departures. Measured at `ce0b1ec` (CLI built in a throwaway copy on SDK 10.0.115; the gate re-measures): 123 `grob` blocks in `README.md` and the wiki, ADR pages excluded — 38 clean, 24 failing only on unbuilt namespaces, 51 on type-checking, 5 on parsing, 2 at run time, 3 crashing the VM (R-30). The wiki teaches decorators after the parameter, `param env`, `catch IoError e`, `guid.v4()`, `minusDays` and a leading-`+` continuation that §14 also carries. **A bare block is a program and is run** through `RunCommand` over D-429's seam — a type-check-only gate would pass the three crashing blocks; a `fragment` is compiled and may raise only E1001; output is not compared; the outline's `error Exxxx` class is dropped. **Unbuilt namespaces are excused by rule** from a closed list guarded against the catalogue. **The quarantine model, not its file**: register blockers ride on the block as `blocked-by=R-##`, since a wiki block has no identity a manifest row could keep. Extracted at test time in `Grob.Integration.Tests`. Thirteen corrections, a closed list. **R-32 authorised in `Grob.Stdlib`**: `IClock.LocalZone`, `IFileSystem.CurrentDirectory`, every explicit and implicit read moved, a source guard. **R-24**: the breach predates the `FunctionSignature` increment (+96 B and +32 B of it); 9C not blocked; bisection waits for the hardening sprint. R-31 does not join the run. R-24 and R-29 to R-32 amended; **R-33 opens** for `grob-lang.dev`'s sample. Count unchanged at 120. |
-| D-431 | November 2026 | Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Deferred Work Register | **Authorises the *corpus sweep*, sixth and last of D-420's pre-9C increments**; prompt committed at `docs/prompts/corpus-sweep.md`. **Depends on increment 5 having landed**: its public samples gate verifies the wiki edits, and its landing entry's *Findings for the corpus sweep* join the list. "Corpus sweep" appears on 13 lines case-insensitively and 12 case-sensitively, in ten entries; none added since 6 November. **Thirty-one rows enumerated and dispositioned** — swept, closed, registered or outside the repository. D-407's ADR-0017 question was answered by D-410, not D-425; its residue is ADR-0017's own page. "Thirteen" scripts swept to eleven per D-346, and §14's rows 12 and 13, which never existed, removed. F10's reconciliation of D-353's "script 13" is recorded in the entry. **Scope**: living documents and `.claude/` — R-05's full sweep is taken; dated records, footers, entry bodies and ADR decision text are not edited; archived and issued prompts are records. **The `// Eventual path:` line goes from 42 sources**, the pairs renumbered under both harness layers; a renumbering applied to source and master together needs none of D-428 Decision 4's grounds. Root `CLAUDE.md`'s model policy stops naming versions. No regex release-gate script is decided; one is recommended on R-08's footing. The run ends here. Count unchanged at 120. |
+| D-431 | November 2026 | Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Deferred Work Register | **Authorises the *corpus sweep*, sixth and last of D-420's pre-9C increments**; prompt committed at `docs/prompts/corpus-sweep.md`. **Depends on increment 5 having landed**: its public samples gate verifies the wiki edits, and its landing entry's *Findings for the corpus sweep* join the list. "Corpus sweep" appears on 13 lines case-insensitively and 12 case-sensitively, in ten entries; none added since 6 November. **Thirty-one rows enumerated and dispositioned** — swept, closed, registered or outside the repository. D-407's ADR-0017 question was answered by D-410, not D-425; its residue is ADR-0017's own page. "Thirteen" scripts swept to eleven per D-346, and §14's rows 12 and 13, which never existed, removed. F10's reconciliation of D-353's "script 13" is recorded in the entry. **Scope**: living documents and `.claude/` — R-05's full sweep is taken; dated records, footers, entry bodies and ADR decision text are not edited; archived and issued prompts are records. **The `// Eventual path:` line goes from 42 sources**, the pairs renumbered under both harness layers; a renumbering applied to source and master together needs none of D-428 Decision 4's grounds. Root `CLAUDE.md`'s model policy stops naming versions. The regex release-gate script is D-432's (R-34). The run ends here. Count unchanged at 120. |
+| D-432 | November 2026 | Language spec — regex literals; Standard library — `regex`; Error taxonomy; v1 scope; Sprint sequencing; Deferred Work Register | **Regex designed ahead of Sprint 9C, by owner decision; decision-only with spec edits, not a seventh increment.** Literals stay and D-186's candidate 2 is removed, so the scope-cut list is empty. **The `/` rule completed** in fundamentals §8: division after a token that can end an expression, a regex literal otherwise, newlines looked through only where §14 suppresses them — today's lexer misreads a `/` that begins a line. An unescaped `/` inside `[...]` no longer ends a literal. .NET dialect, always culture-invariant; `NonBacktracking` rejected. **Patterns validated at compile time**: E0602, specified here and minted by the `regex` increment. D-095 amended: `regex.compile(pattern, flags, timeout)`, `Regex.timeout`, function overloads for `replace` and `replaceAll`, backtick raw replacements. **Every match bounded**: five seconds by default, overridable per `Regex` through `regex.compile` (`0` for no limit), expiry raising `RuntimeError`. **`@pattern` matches the whole value.** A regex release-gate script is required (**R-34 opens**). **The `regex` increment opens the rebuilt 9C**; D-428's interim loud failure withdrawn; R-30 amended. Count unchanged at 120. |
 
 ---
 
@@ -16115,7 +16116,7 @@ decision, **register** it or out of the repository.
 |---|---|---|---|
 | 1 | D-380 (entry, index) | "a full corpus sweep of `tests/`…" | Not a deferral: it describes a sweep D-380 performed |
 | 2 | D-407 (entry, index, footer) | ADR-0017 is silent on removing a `pre-release` code that never shipped | **Closed by D-410**, which answered it — removed outright, number permanently burned — and which D-425 exercised on E4202. The hand-back credits D-425; D-410 is the answer. Residual **sweep**: ADR-0017's page still says nothing; it gains a status amendment and a *What Changed Since This ADR* section on ADR-0016's precedent, and `grob-error-codes.md`'s stability text states the rule if only its footer does today |
-| 3 | D-409; review F6; D-346 | "thirteen" validation scripts where there are eleven | **Sweep**, group 1, citing D-346. Rows 12 and 13 of `grob-v1-requirements.md` §14 describe scripts that never existed (D-346 found no revision with a twelfth); they go, and a sentence names what will add release-gate scripts: R-08's decorator script. Thirteen core modules and the thirteen-level precedence table are correct and stay |
+| 3 | D-409; review F6; D-346 | "thirteen" validation scripts where there are eleven | **Sweep**, group 1, citing D-346. Rows 12 and 13 of `grob-v1-requirements.md` §14 describe scripts that never existed (D-346 found no revision with a twelfth); they go, and a sentence names what will add release-gate scripts: R-08's decorator script and R-34's regex script (D-432). Thirteen core modules and the thirteen-level precedence table are correct and stay |
 | 4 | D-409 | `grob-benchmarking-strategy.md` §4.1/§4.3 mis-citation | **Closed by nature**: the mis-citation is the archived F8 prompt's, a record; the document's own §4.3 citations are correct. The gate confirms |
 | 5 | D-409 | §7.4's synthetic large-script generator is unbuilt | Code, not documentation: **register**, if the gate confirms no row tracks it |
 | 6 | D-410 | "recorded here rather than deferred to the corpus sweep" | Not a deferral |
@@ -16150,12 +16151,9 @@ decision, **register** it or out of the repository.
 The scripts that touch them are 4, 7, 10 and 11. D-353 is append-only and stands as written;
 this line is its correction.
 
-**Row 3's sentence leaves one question open, and it is Chris's.** §14's row 12 advertised a
-regex script. D-186 required one only if regex literals were cut, and they were not, so no
-decided obligation stands behind the row and there is nothing to register. **Recommended,
-not decided**: D-411's argument for R-08 — surface that would ship unexercised by the
-release gate — applies to `regex` as fully as to decorators. The `regex` increment is the
-natural place to add a release-gate script, on R-08's footing.
+**Row 3's regex question is settled by D-432**, which keeps regex literals and requires a
+regex release-gate script on R-08's footing (R-34). D-186 required one only if literals were
+cut; D-432 makes it an obligation by decision rather than by a reading of D-186.
 
 ---
 
@@ -16255,6 +16253,174 @@ renumbering safe), D-430 (increment 5, whose gate and findings this depends on),
 (ADR-0017's answer), D-346 (the eleven scripts), D-353 and F10 (the reconciliation), D-291,
 D-285 and D-417 (sweep authorities), D-411 (R-08's footing and the 9C rebuild), D-081 and
 R-05 (`.claude/`'s cost when stale).
+
+---
+
+
+### D-432 — Regex designed ahead of Sprint 9C: literals kept, the `/` rule completed, patterns validated at compile time, matching bounded by an overridable timeout, `@pattern` anchored; the `regex` increment opens 9C (November 2026)
+
+Area: Language spec — regex literals; Standard library — `regex`; Error taxonomy; v1 scope; Sprint sequencing; Deferred Work Register
+Supersedes: none (amends D-095's API; removes D-186's candidate 2; settles the principal review's F9; withdraws D-428's interim recommendation on R-30)
+Superseded by: none
+
+**Decision-only, with spec edits. No source change.** Error-code count unchanged at 120:
+E0602 is specified here and minted by the `regex` increment, since D-316's gate requires
+the registry and `ErrorCatalog` to change together. **Owner decision**: Chris agreed all
+six rulings proposed on 14 November, amending the timeout to allow an override. This is
+not a seventh increment of D-420's run; it adds no code, and it lands before increments 5
+and 6 run so that increment 6's sweep reads it.
+
+**Why now.** Measured at `ce0b1ec`, the `regex` increment would have met seven design
+questions in the middle of building — the shape that took Sprint 9 from ten increments to
+forty-seven. The literal's front end is built and nothing behind it is (D-411), so it lexes,
+parses, types as `Unknown` and crashes the VM (R-30). The `/` rule is D-095's one-liner, and
+the lexer implementing it looks through every newline, so `x := 1` followed on the next line
+by `/abc/.isMatch(s)` lexes as division, which §14 rules out. D-186's candidate 2 was
+unruled. `regex.compile()` — named by D-186, D-411 and the requirements as the fallback and
+the run-time path — is not in D-095's API, so no `Regex` could be built from a run-time
+string. `grob-stdlib-reference.md` had no `regex` section. No backtracking limit was decided,
+though the adversarial strategy §6.3 asked for one. `@pattern`'s matching semantics were
+unstated. And D-411, D-186 and D-431 read the regex release-gate script three ways.
+
+---
+
+**Decision 1 — regex literals stay; D-186's candidate 2 is removed.** Cutting them would
+delete tested code to save nothing (D-411's finding). A typed `Regex` value checked before
+the script runs is the better language for the log parsing and validation Grob is built
+for. `grob-v1-requirements.md` §16 records the removal; with candidate 1 removed by D-411,
+**the scope-cut list is now empty**, and the section stays as the place a future candidate
+would go.
+
+**Decision 2 — the `/` rule, complete.** `grob-language-fundamentals.md` §8 gains *Regex
+literals*. At a `/` that does not open a comment, find the previous token, looking through a
+newline only when §14 suppresses it. **Division** when that token can end an expression —
+an identifier; an `int`, `float`, string or raw-string literal; a regex literal; `true`,
+`false`, `nil`; `)`, `]`, `}`; postfix `++` or `--`. **A regex literal** otherwise, including
+after a statement-terminating newline: a leading operator never continues a statement
+(§14), so a `/` beginning a line cannot be division. Thirteen worked cases are in the spec,
+and each becomes a test. **Code consequence**: `CanStartRegex` stops looking through
+significant newlines; the lexer's existing bracket-depth stamp gives it what it needs.
+
+**Decision 3 — the literal's body.** It ends at the first unescaped `/` **outside a
+character class**: `/[^/]+$/`, the last segment of a URL or an Azure DevOps path, is common
+in Grob's use cases and is how JavaScript writes it, and today it fails to lex. `\/` escapes
+a `/` anywhere; a newline before the closing `/` is E2008, as now; the body goes to .NET
+verbatim. Flags stay `i` and `m` (D-095). E2007's message gains hints: `g` points at
+`matchAll` and `replaceAll`, and `s` and `x` at the inline `(?s)` and `(?x)`.
+
+**Decision 4 — dialect.** .NET syntax, with named groups, lookarounds and backreferences, as
+D-095 promised. Always `RegexOptions.CultureInvariant`, so `i` means the same on a
+Turkish-locale machine. No `ECMAScript` option. **`RegexOptions.NonBacktracking` is
+rejected**: it removes catastrophic backtracking outright but drops lookarounds and
+backreferences. Decision 8 bounds the risk instead.
+
+**Decision 5 — patterns are validated at compile time: E0602, invalid regex pattern.** It
+sits beside E0601 (invalid `guid` string literal), the same shape. It fires on a regex
+literal's body, on a string-literal pattern argument to a `regex` module function or to
+`regex.compile`, and on `@pattern`'s argument. The type checker builds the pattern with .NET
+and reports `RegexParseException`'s message with the caret at its `Offset`. A pattern built
+at run time fails as `ParseError` (Decision 6).
+
+**Decision 6 — D-095's API is amended.**
+
+- **`regex.compile(pattern: string, flags: string = "", timeout: int = 5): Regex`** joins the
+  module, the only way to build a `Regex` from a run-time string. An invalid pattern or flag
+  throws `ParseError`, the leaf D-284 created for this.
+- **`Regex.timeout: int`** joins `pattern` and `flags` as a property.
+- **Replacement strings use .NET syntax** (`$1`, `${name}`, `$$`). Since `${` in a
+  double-quoted string is interpolation, **the backtick raw string is canonical for
+  replacements**, as D-285 made it for patterns.
+- **`replace` and `replaceAll` gain a function overload**, `(m: Match) => string`, as
+  Python's `re.sub` and JavaScript's `replace` have. It avoids the `$` collision and handles
+  computed replacements.
+- **`Match.group(name)` returns nil** when the group is absent or did not take part in the
+  match.
+
+The full module is now specified in `grob-stdlib-reference.md`, and `Regex` and `Match` in
+`grob-type-registry.md`.
+
+**Decision 7 — runtime contract.** A literal is compiled **once per literal site per run**
+(D-095's "compiled once at declaration"); a literal in a loop body is not rebuilt per
+iteration. `Regex` and `Match` are named types on D-356's registry. The increment is expected
+to need no opcode and no `GrobValueKind` variant; its gate confirms, and needing either is a
+STOP and a decision, since both are closed surfaces.
+
+**Decision 8 — every matching operation is bounded: five seconds by default, overridable.**
+Each operation runs with a .NET `matchTimeout`; expiry throws **`RuntimeError`**, D-284's
+residual leaf for resource failures, naming the operation, the pattern and the limit.
+
+- **The default is five seconds.** A legitimate single operation over a large log finishes
+  well inside it; a backtracking blow-up passes it almost at once. Too low a value would
+  fail real scripts on large input, which is worse than a slow ReDoS. The number is a
+  judgement, not a measurement.
+- **The override is per `Regex`, through `regex.compile`'s `timeout:`**, in seconds, as
+  `process.run`'s `timeout:` is, with `0` meaning no limit, as there. .NET supports this
+  directly through the `Regex(pattern, options, matchTimeout)` constructor and
+  `Regex.InfiniteMatchTimeout`.
+- **A literal and the one-shot module functions always use the default.** A literal's syntax
+  has nowhere to state a timeout, and the one-shot functions are conveniences; a script that
+  needs another limit builds the value with `regex.compile`. Putting the parameter in one
+  place keeps the surface small.
+
+**Recorded, not decided**: how a negative or out-of-range `timeout` is rejected. `process.run`
+leaves the same case unspecified, and the two should be settled together; the `regex`
+increment's gate proposes the handling for both. Also recorded: the core `process` module
+names its parameter `timeout` and the `Grob.Http` plugin names its `timeoutSeconds`. Regex
+follows the core module. Whether the two should converge is a question for the plugin's own
+design, not this entry. A new `RegexError` leaf was rejected: D-284 fixed the hierarchy at
+ten.
+
+**Decision 9 — `@pattern` matches the whole value.** Its argument stays one string literal, as
+D-424 implemented, with the backtick raw form canonical, validated by E0602; flags go inline,
+as `` @pattern(`(?i)^[a-z]+$`) ``. **The whole value must match**, as if the pattern were
+wrapped in `^(?:…)$`, as HTML's `pattern` attribute does. An unanchored match would accept
+`prod; rm -rf` against `` `[a-z]+` ``, because a substring matches — the classic validation
+bug, and a parameter guard is where it does most damage. Enforcement at binding time stays
+Sprint 10's (R-15).
+
+**Decision 10 — a regex release-gate script is required. R-34 opens.** This settles D-411,
+D-186 and D-431 by decision instead of by reading. D-411's argument for R-08 — surface that
+would ship unexercised by the release gate — applies to `regex` as fully as to decorators. The
+script is the log filter that `grob-v1-requirements.md` §14's row 12 described without a
+script behind it, and it uses a literal, `regex.compile`, `matchAll`, a named group and
+`replace`. It reads its log through `fs`, so **it lands with whichever of the `regex` and `fs`
+increments comes second**. D-431's row 3 and `corpus-sweep.md` §2.1 name it beside R-08's.
+
+**Decision 11 — the `regex` increment opens Sprint 9C.** It depends on none of `fs`, `json`,
+`csv` or `process`. It closes a known VM crash (R-30), unblocks the five wiki samples D-430
+marks `blocked-by=R-30`, and gives Sprint 10's `@pattern` the compiled pattern it needs.
+**D-428's interim "loud failure first" is withdrawn**: it only made sense while regex might
+land late. R-30's owner becomes the `regex` increment, first in the rebuilt 9C. The wiki's
+regex pages are brought to this entry by that increment, not by the corpus sweep, so their
+samples stay blocked until they can run.
+
+**Decision 12 — not decided, so it is not mistaken for an omission.** Checking
+`m.group("name")` against a literal's named groups at compile time. The pattern is known
+statically, so it is achievable, but it needs regex-typed flow through bindings; a v1.1
+candidate.
+
+---
+
+**Spec edits in this commit.** `grob-language-fundamentals.md`: §8's *Regex literals*; §6's
+division rules point at it; §8's string example `` `/^\d+$/` `` corrected to `` `^\d+$` ``,
+since a raw string containing slashes is not a pattern for `^\d+$`; §19's `@pattern` row.
+`grob-stdlib-reference.md`: a `regex` section. `grob-type-registry.md`: `Regex` gains
+`timeout`, the function overloads and its construction note; `Match.group`'s nil case.
+`grob-v1-requirements.md`: the Sprint 9 `regex` bullet; Sprint 10's `@pattern` sentence; §16's
+candidate 2 removed and the list recorded as empty. `grob-adversarial-testing-strategy.md`
+§6.3 cites the timeout. D-431's row 3 and recommendation, its index row and
+`corpus-sweep.md` §2.1 name R-34, all three unmerged with this entry.
+
+**Register.** **R-30** amended: its owner is the `regex` increment, first in 9C, and the
+interim loud failure is withdrawn. **R-34 opens**: no release-gate script exercises `regex`.
+
+Cites D-089 and D-095 (the module and its API, amended here), D-186 (the scope-cut list),
+D-411 (the front end built and nothing behind it; R-08's footing; `@pattern` sequenced to the
+`regex` increment), D-424 (`@pattern`'s argument check), D-284 (`ParseError` and
+`RuntimeError`), D-285 (backtick raw strings for patterns), D-356 (named types), D-316 (the
+code minted with its source), D-420 and D-431 (the run this entry does not extend), D-428
+(R-30's interim recommendation, withdrawn), D-430 (the samples blocked on R-30), the
+principal review's F9 and the adversarial strategy §6.3.
 
 ---
 
@@ -16480,7 +16646,15 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-431 added; no source change. **Scopes the *corpus sweep***, the last of_
+_November 2026 — D-432 added, with spec edits; no source change. **Regex designed ahead of_
+_Sprint 9C** by owner decision. Literals stay and the scope-cut list is now empty. The `/`_
+_rule is completed in fundamentals §8, fixing a lexer reading of a line-leading `/`. Patterns_
+_are validated at compile time (E0602, minted by the increment). `regex.compile` joins the_
+_API with a per-value `timeout`; every match is bounded, five seconds by default, raising_
+_`RuntimeError`. `@pattern` matches the whole value. A regex release-gate script is required_
+_(R-34). The `regex` increment opens the rebuilt 9C. D-431 and its prompt name R-34._
+_Count unchanged at 120._
+_Previous: November 2026 — D-431 added; no source change. **Scopes the *corpus sweep***, the last of_
 _D-420's pre-9C increments, and commits its prompt, which depends on increment 5 having_
 _landed. Every deferral to the sweep is enumerated — thirty-one rows, each swept, closed,_
 _registered or outside the repository — so the run is fixed and cannot grow. D-407's_

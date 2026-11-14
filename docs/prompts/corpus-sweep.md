@@ -118,9 +118,8 @@ Five change groups, each a green commit. Land them in this order.
 
 *Session B.* The script-count sites §1.2 listed, each edit citing D-346. Fix
 `grob-sample-scripts.md`'s scope header first. In `grob-v1-requirements.md` §14, rows 12 and
-13 go and a sentence after the table names what will add a release-gate script: R-08's,
-exercising the full decorator surface. It names no regex script: D-431 Decision 1 records
-that none is decided. §12's table row and its "integration tests in `Grob.Integration.Tests`" sentence
+13 go and a sentence after the table names what will add release-gate scripts: R-08's,
+exercising the full decorator surface, and R-34's regex script (D-432). §12's table row and its "integration tests in `Grob.Integration.Tests`" sentence
 say where each gate runs: the validation scripts in `Grob.Compiler.Tests`, the
 error-examples harness and the public samples gate in `Grob.Integration.Tests`.
 

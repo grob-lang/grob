@@ -272,8 +272,10 @@ behaviour — documented and tested, not discovered by an alpha user. The `run` 
 
 Catastrophic backtracking. A ReDoS pattern such as `(a+)+$` against a long
 non-matching input must not hang. .NET `Regex` supports a `matchTimeout`; Grob must
-set one and surface expiry as a `GrobError`, not a hang. If it does not today, this
-pillar forces the decision and the timeout value gets a D-###.
+set one and surface expiry as a `GrobError`, not a hang. D-432 sets it: five seconds per
+matching operation, overridable per `Regex` through `regex.compile`'s `timeout:`, with
+expiry raising `RuntimeError`. This pillar verifies that the default fires, that an
+override is honoured and that `timeout: 0` is the only way to remove the bound.
 
 ### 6.4 `json` and `csv`
 
