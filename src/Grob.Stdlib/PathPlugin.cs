@@ -9,12 +9,22 @@ namespace Grob.Stdlib;
 
 /// <summary>
 /// The <c>path</c> module (D-342): Windows-native path-string decompose/join/normalise
-/// operations, built on <see cref="Path"/>. Pure — no capability injection, no throw
-/// sites beyond what the type checker already rules out. Extensions are always
+/// operations, built on <see cref="Path"/>. Its one capability is the
+/// <see cref="IFileSystem"/> whose current directory <c>path.resolve</c> anchors to (R-32);
+/// every other member is a pure string operation, with no throw sites beyond what the type
+/// checker already rules out. Extensions are always
 /// normalised to the leading-dot lowercase form (<c>".jpg"</c>). Each native registers
 /// with its signature, which the type checker reads from the catalogue (D-426).
 /// </summary>
 public sealed class PathPlugin : IGrobPlugin {
+    private readonly IFileSystem _fileSystem;
+
+    /// <summary>Initialises the plugin with the <see cref="IFileSystem"/> <c>path.resolve</c> anchors to.</summary>
+    public PathPlugin(IFileSystem fileSystem) {
+        ArgumentNullException.ThrowIfNull(fileSystem);
+        _fileSystem = fileSystem;
+    }
+
     /// <inheritdoc/>
     public string Name => "path";
 
@@ -50,11 +60,14 @@ public sealed class PathPlugin : IGrobPlugin {
 
         registrar.RegisterNative(Signature("path.resolve", StringType, Param("p", StringType)),
             new NativeFunction("path.resolve", 1, (args, _) => {
-                // Path.GetFullPath("") throws ArgumentException — treat an empty input as
-                // "." (the current directory) rather than letting a raw .NET exception
-                // escape the native-call boundary (CodeRabbit review, PR #130).
+                // GetFullPath throws ArgumentException on an empty path — treat an empty input
+                // as "." (the current directory) rather than letting a raw .NET exception
+                // escape the native-call boundary (CodeRabbit review, PR #130). The base is
+                // the capability's directory, never the process's (R-32), so Windows'
+                // per-drive directories are not consulted either: "D:x" under a C: base
+                // resolves to D:'s root.
                 string p = args[0].AsString();
-                return GrobValue.FromString(Path.GetFullPath(p.Length == 0 ? "." : p));
+                return GrobValue.FromString(Path.GetFullPath(p.Length == 0 ? "." : p, _fileSystem.CurrentDirectory));
             }));
 
         registrar.RegisterNative(Signature("path.normalise", StringType, Param("p", StringType)),
@@ -77,7 +90,7 @@ public sealed class PathPlugin : IGrobPlugin {
     /// <summary>
     /// Collapses <c>.</c> and <c>..</c> segments and fixes separators without anchoring a
     /// relative input to the current working directory — the one thing
-    /// <see cref="Path.GetFullPath(string)"/> cannot do, since it always absolutises.
+    /// <see cref="Path.GetFullPath(string, string)"/> cannot do, since it always absolutises.
     /// The drive/root prefix (if any) is preserved and never popped by a <c>..</c>.
     /// </summary>
     private static string Normalise(string path) {

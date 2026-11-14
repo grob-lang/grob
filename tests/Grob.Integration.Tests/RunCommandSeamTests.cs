@@ -9,7 +9,7 @@ namespace Grob.Integration.Tests;
 
 /// <summary>
 /// The internal capabilities seam on <see cref="RunCommand"/> (D-428 Decision 3): a test
-/// supplies the catalogue's environment, clock and random source, and the run reads those
+/// supplies the catalogue's environment, clock, file system and random source, and the run reads those
 /// rather than the operating system's. The public constructor keeps building the OS-backed
 /// set (D-343), fresh per run.
 /// </summary>
@@ -17,7 +17,8 @@ public sealed class RunCommandSeamTests {
     private static readonly DateTime FixedInstant = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     private static HostCapabilities Capabilities(IEnvironment environment) =>
-        new(new FixedRandomSource(), environment, new FixedClock(FixedInstant));
+        new(new FixedRandomSource(), environment, new FixedClock(FixedInstant),
+            new FixedFileSystem(FixedFileSystem.HarnessDirectory));
 
     private static string WriteScript(string source) {
         string path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.grob");
@@ -123,8 +124,40 @@ public sealed class RunCommandSeamTests {
         Assert.IsType<SystemRandomSource>(first.RandomSource);
         Assert.IsType<SystemEnvironment>(first.Environment);
         Assert.IsType<SystemClock>(first.Clock);
+        Assert.IsType<SystemFileSystem>(first.FileSystem);
         Assert.NotSame(first.RandomSource, second.RandomSource);
         Assert.NotSame(first.Environment, second.Environment);
         Assert.NotSame(first.Clock, second.Clock);
+        Assert.NotSame(first.FileSystem, second.FileSystem);
+    }
+
+    [Fact]
+    public void Run_InjectedClockZoneAndDirectory_DateAndPathReadThem() {
+        // R-32: date.now converts into the injected zone (+03:00) and path.resolve anchors to
+        // the injected directory; neither reads the host.
+        var stdout = new StringWriter(new StringBuilder());
+        var stderr = new StringWriter(new StringBuilder());
+        var command = new RunCommand(stdout, stderr, TextReader.Null, verbose: false,
+            () => Capabilities(new MapEnvironment()));
+
+        (string output, string errors, int exitCode) = Run(command, stdout, stderr,
+            "print(date.now().toIsoDateTime())\nprint(path.resolve(\"reports\"))\n");
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(
+            "2026-01-01T03:00:00+03:00" + Environment.NewLine
+                + Path.Join(FixedFileSystem.HarnessDirectory, "reports") + Environment.NewLine,
+            output);
+        Assert.Equal(string.Empty, errors);
+    }
+
+    [Fact]
+    public void SystemClock_LocalZone_IsTheHostZone() {
+        Assert.Equal(TimeZoneInfo.Local, new SystemClock().LocalZone);
+    }
+
+    [Fact]
+    public void SystemFileSystem_CurrentDirectory_IsTheProcessDirectory() {
+        Assert.Equal(Environment.CurrentDirectory, new SystemFileSystem().CurrentDirectory);
     }
 }

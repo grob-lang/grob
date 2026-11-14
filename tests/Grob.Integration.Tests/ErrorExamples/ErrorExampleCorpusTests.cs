@@ -61,7 +61,8 @@ public sealed class ErrorExampleCorpusTests {
 
     /// <summary>
     /// Runs one pair through the CLI's pipeline over synthetic capabilities: an empty environment,
-    /// a fixed clock and a constant random source, with closed stdin. The path passed is absolute,
+    /// a fixed clock in a fixed zone, a fixed current directory and a constant random source, with
+    /// closed stdin. The path passed is absolute,
     /// so no test changes the process's working directory.
     /// </summary>
     internal static CliDiagnostics RunPair(string slug) {
@@ -69,7 +70,8 @@ public sealed class ErrorExampleCorpusTests {
         var stdout = new StringWriter(new StringBuilder());
         var stderr = new StringWriter(new StringBuilder());
         var command = new RunCommand(stdout, stderr, TextReader.Null, verbose: false,
-            () => new HostCapabilities(new FixedRandomSource(), new MapEnvironment(), new FixedClock(FixedInstant)));
+            () => new HostCapabilities(new FixedRandomSource(), new MapEnvironment(), new FixedClock(FixedInstant),
+                new FixedFileSystem(FixedFileSystem.HarnessDirectory)));
 
         int exitCode = command.Run(path);
         CliDiagnostics read = CliDiagnosticReader.Read(stderr.ToString(), path);

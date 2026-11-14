@@ -16,17 +16,19 @@ public static class StdlibCatalogue {
             IEnvironment environment,
             IStandardStreams streams,
             IClock clock,
+            IFileSystem fileSystem,
             bool verbose) {
         var builder = new NativeCatalogueBuilder();
-        foreach (IGrobPlugin plugin in StdlibPlugins.Create(randomSource, environment, streams, clock, verbose)) {
+        foreach (IGrobPlugin plugin in StdlibPlugins.Create(randomSource, environment, streams, clock, fileSystem, verbose)) {
             builder.Add(plugin);
         }
         return builder.Build();
     }
 
     /// <summary>
-    /// Builds a catalogue whose natives cannot reach the clock, the environment, the
-    /// random source or the standard streams: calling one throws
+    /// Builds a catalogue whose natives cannot reach the clock, the local zone, the
+    /// current directory, the environment, the random source or the standard streams:
+    /// calling one throws
     /// <see cref="InvalidOperationException"/>. For hosts that only type-check.
     /// </summary>
     public static NativeCatalogue ForCompileOnly() => Build(
@@ -34,5 +36,6 @@ public static class StdlibCatalogue {
         InertCapabilities.Environment,
         InertCapabilities.Streams,
         InertCapabilities.Clock,
+        InertCapabilities.FileSystem,
         verbose: false);
 }

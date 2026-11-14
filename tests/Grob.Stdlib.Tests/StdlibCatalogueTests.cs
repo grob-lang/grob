@@ -12,16 +12,18 @@ namespace Grob.Stdlib.Tests;
 /// twelve first-party plugins, and a compile-only host builds it over inert
 /// capabilities, which works because no plugin touches a capability at registration.
 /// A native that does touch one at call time fails loudly rather than reading the
-/// clock, the environment or a stream.
+/// clock, the local zone, the current directory, the environment or a stream.
 /// </summary>
 public sealed class StdlibCatalogueTests {
     private static readonly string[] ExpectedOrder = [
         "math", "path", "strings", "env", "log", "io", "guid", "date", "formatAs", "string", "numeric", "numericStatics",
     ];
 
+    private static readonly string BaseDirectory = Path.Join(Path.GetTempPath(), "grob-r32-base");
+
     private static IReadOnlyList<IGrobPlugin> CreateWithFakes(bool verbose = false) =>
         StdlibPlugins.Create(
-            new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(), new TestClock(new DateTime(2026, 1, 1)), verbose);
+            new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(), new TestClock(new DateTime(2026, 1, 1)), new TestFileSystem(BaseDirectory), verbose);
 
     [Fact]
     public void Create_ReturnsTheTwelvePluginsInRegistrationOrder() =>
@@ -33,7 +35,7 @@ public sealed class StdlibCatalogueTests {
     public void Create_VerboseSelectsTheDebugThreshold(bool verbose, bool debugWritten) {
         var error = new StringWriter();
         IGrobPlugin log = StdlibPlugins.Create(
-                new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(error: error), new TestClock(new DateTime(2026, 1, 1)), verbose)
+                new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(error: error), new TestClock(new DateTime(2026, 1, 1)), new TestFileSystem(BaseDirectory), verbose)
             .Single(p => p.Name == "log");
         NativeCatalogue catalogue = new NativeCatalogueBuilder().Add(log).Build();
         var debug = (NativeFunction)catalogue.Globals["log.debug"].AsFunction();
@@ -49,17 +51,19 @@ public sealed class StdlibCatalogueTests {
         var env = new FakeEnvironment();
         var streams = new FakeStandardStreams();
         var clock = new TestClock(new DateTime(2026, 1, 1));
+        var fileSystem = new TestFileSystem(BaseDirectory);
 
-        Assert.Throws<ArgumentNullException>(() => StdlibPlugins.Create(null!, env, streams, clock, false));
-        Assert.Throws<ArgumentNullException>(() => StdlibPlugins.Create(random, null!, streams, clock, false));
-        Assert.Throws<ArgumentNullException>(() => StdlibPlugins.Create(random, env, null!, clock, false));
-        Assert.Throws<ArgumentNullException>(() => StdlibPlugins.Create(random, env, streams, null!, false));
+        Assert.Throws<ArgumentNullException>(() => StdlibPlugins.Create(null!, env, streams, clock, fileSystem, false));
+        Assert.Throws<ArgumentNullException>(() => StdlibPlugins.Create(random, null!, streams, clock, fileSystem, false));
+        Assert.Throws<ArgumentNullException>(() => StdlibPlugins.Create(random, env, null!, clock, fileSystem, false));
+        Assert.Throws<ArgumentNullException>(() => StdlibPlugins.Create(random, env, streams, null!, fileSystem, false));
+        Assert.Throws<ArgumentNullException>(() => StdlibPlugins.Create(random, env, streams, clock, null!, false));
     }
 
     [Fact]
     public void Build_LoadsEveryGlobalIntoAVmConstructedOverIt() {
         NativeCatalogue catalogue = StdlibCatalogue.Build(
-            new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(), new TestClock(new DateTime(2026, 1, 1)), verbose: false);
+            new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(), new TestClock(new DateTime(2026, 1, 1)), new TestFileSystem(BaseDirectory), verbose: false);
 
         var vm = new VirtualMachine(new StringWriter(), catalogue);
 
@@ -70,7 +74,7 @@ public sealed class StdlibCatalogueTests {
     [Fact]
     public void Build_RendersThroughThePluginRenderers() {
         NativeCatalogue catalogue = StdlibCatalogue.Build(
-            new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(), new TestClock(new DateTime(2026, 1, 1)), verbose: false);
+            new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(), new TestClock(new DateTime(2026, 1, 1)), new TestFileSystem(BaseDirectory), verbose: false);
 
         Assert.Equal("00000000-0000-0000-0000-000000000000", catalogue.RenderValue(catalogue.Globals["guid.empty"]));
     }
@@ -78,7 +82,7 @@ public sealed class StdlibCatalogueTests {
     [Fact]
     public void ForCompileOnly_BuildsTheSameGlobalSetAsARealBuild() {
         NativeCatalogue real = StdlibCatalogue.Build(
-            new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(), new TestClock(new DateTime(2026, 1, 1)), verbose: false);
+            new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(), new TestClock(new DateTime(2026, 1, 1)), new TestFileSystem(BaseDirectory), verbose: false);
 
         NativeCatalogue compileOnly = StdlibCatalogue.ForCompileOnly();
 
@@ -111,6 +115,9 @@ public sealed class StdlibCatalogueTests {
     [InlineData("env.get", "HOME")]
     [InlineData("env.has", "HOME")]
     [InlineData("env.set", "HOME", "/tmp")]
+    [InlineData("path.resolve", "reports")]
+    [InlineData("date.of", 2026L, 1L, 1L)]
+    [InlineData("date.parse", "14:30", "")]
     public void ForCompileOnly_NativeThatTakesArgumentsAndReadsACapability_Throws(string name, params object[] args) {
         NativeCatalogue catalogue = StdlibCatalogue.ForCompileOnly();
         var native = (NativeFunction)catalogue.Globals[name].AsFunction();

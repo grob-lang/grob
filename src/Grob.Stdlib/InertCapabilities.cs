@@ -8,8 +8,8 @@ namespace Grob.Stdlib;
 /// Capability implementations for a compile-only catalogue
 /// (<see cref="StdlibCatalogue.ForCompileOnly"/>): every member throws
 /// <see cref="InvalidOperationException"/>, so a native that reaches a capability while
-/// only type checking runs fails loudly instead of reading the host's clock, environment
-/// or streams. Plugin constructors only null-check and store these (gate report §1.3).
+/// only type checking runs fails loudly instead of reading the host's clock, local zone,
+/// current directory, environment or streams. Plugin constructors only null-check and store these (gate report §1.3).
 /// </summary>
 internal static class InertCapabilities {
     /// <summary>A random source that throws on every draw.</summary>
@@ -24,8 +24,12 @@ internal static class InertCapabilities {
     /// <summary>A clock that throws when read.</summary>
     internal static IClock Clock { get; } = new InertClock();
 
+    /// <summary>A file system that throws when read.</summary>
+    internal static IFileSystem FileSystem { get; } = new InertFileSystem();
+
     private const string RandomSourceName = "random source";
     private const string EnvironmentName = "environment";
+    private const string ClockName = "clock";
 
     private static InvalidOperationException Refuse(string capability) =>
         new($"The compile-only catalogue has no {capability}; a native cannot use one while only type checking runs.");
@@ -64,6 +68,12 @@ internal static class InertCapabilities {
     }
 
     private sealed class InertClock : IClock {
-        public DateTime UtcNow => throw Refuse("clock");
+        public DateTime UtcNow => throw Refuse(ClockName);
+
+        public TimeZoneInfo LocalZone => throw Refuse(ClockName);
+    }
+
+    private sealed class InertFileSystem : IFileSystem {
+        public string CurrentDirectory => throw Refuse("file system");
     }
 }
