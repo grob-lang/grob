@@ -911,11 +911,17 @@ itself implemented and producing a first passing run. Authority: D-302,
   `csv.Table` type: `headers`, `rowCount`, `rows`. `CsvRow`: `get(name)`,
   `get(index)`, indexer syntax. `mapAs<T>()`. RFC 4180 compliance.
   `hasHeaders`, `delimiter` named parameters.
-- **`regex`** — regex literal `/pattern/flags` (flags: `i`, `m`). `Regex`
+- **`regex`** — regex literal `/pattern/flags` (flags: `i`, `m`), with
+  the grammar in `grob-language-fundamentals.md` §8 (D-432). `Regex`
   type: `match()`, `matchAll()`, `isMatch()`, `replace()`,
-  `replaceAll()`, `split()`, `pattern`, `flags`. `Match` type: `value`,
-  `index`, `length`, `groups`, `group(name)`. Module convenience
-  functions for one-shot use. .NET regex engine underneath.
+  `replaceAll()` (string or function replacement), `split()`, `pattern`,
+  `flags`, `timeout`. `Match` type: `value`, `index`, `length`, `groups`,
+  `group(name)`. `regex.compile(pattern, flags, timeout)` for run-time
+  patterns, and module convenience functions for one-shot use. .NET
+  engine underneath, culture-invariant. Patterns validated at compile
+  time (E0602); every match bounded by a timeout, five seconds unless
+  `regex.compile` sets another, expiry raising `RuntimeError` (D-432).
+  **The first increment of the rebuilt Sprint 9C** (D-432).
 - **`process`** — `run(cmd, args[], timeout: int = 0)`,
   `runShell(cmd, timeout: int = 0)`, `runOrFail()`,
   `runShellOrFail()`. `ProcessResult`: `stdout`, `stderr`, `exitCode`.
@@ -956,13 +962,14 @@ parameter passing.
 - Param file: `grob run script.grob --params file.grobparams`.
 - `.grobparams` format: `key = value`, `//` comments.
 - Command line overrides param file values.
-- Decorators (the full v1 set, D-411 — none is a scope-cut candidate):
+- Decorators (the full v1 set, D-411):
   `@secure` (not echoed, not logged, not in error messages),
   `@allowed("dev", "staging", "prod")`, `@minLength(n)`, `@maxLength(n)`,
   `@minValue(n)`, `@maxValue(n)`. Each is validated at the parameter
   boundary before the script body runs. `@pattern(...)` is the seventh
   and lands with the `regex` increment, not here — it needs a compiled
-  pattern value to validate against.
+  pattern value to validate against. It matches the whole value, not a
+  substring (D-432).
 - **Release-gate coverage is an obligation, not an assumption.** D-186
   observed that the validation decorators had zero coverage across the
   validation suite; that remains true — `@secure` is the only decorator
@@ -1504,95 +1511,15 @@ Grob v1 is ready for public release when:
 
 -----
 
-## 16. v1 Scope-Cut List
-
-The scope-cut list exists as risk insurance. If implementation reveals
-unexpected complexity in a sprint and the scope needs to shrink to
-ship, the candidates below are the first features to move to v1.1.
-
-Activation is at the project owner's discretion. There is no automatic
-gate, no calendar trigger, and no sprint-slip threshold. The list is
-consulted only when needed and shelved when not.
-
-### Candidates (in activation order)
-
-**1. Validation decorators — REMOVED from this list (D-411, August 2026).**
-
-The whole param decorator set ships in v1 and none of it is a cut
-candidate. D-411 fixes the set at seven — `@secure`, `@allowed`,
-`@minLength`, `@maxLength`, `@minValue`, `@maxValue`, `@pattern` — and
-takes the three this candidate named — `@allowed`, `@minLength` and
-`@maxLength` — off the list by owner decision.
-The v1 fallback this entry described (three to five lines of manual
-in-body validation per validated param) is exactly the PowerShell
-ceremony Grob exists to remove, and cutting the set would have left a
-`param` declaration that can declare a constraint's shape but not
-enforce it.
-
-The obligation this creates is recorded in the Sprint 10 scope above:
-the decorators have no release-gate coverage today beyond `@secure`, so
-a script exercising the full surface is required before v1.
-
-**2. Regex literal grammar** — `/pattern/flags` with context-sensitive
-`/` disambiguation.
-
-- v1 fallback: `regex.compile(pattern, flags)` function form. The
-  `regex` module exists; only the grammar form is cut.
-- Savings on activation: context-sensitive lexing is the single most
-  architecturally novel piece of lexer work in Sprint 1. Cutting it
-  simplifies the lexer materially.
-- v1.1 re-add is pure grammar addition. No scripts break.
-- Scripts affected on activation: Script 12 (Log file filter by
-  severity and time) uses regex literals at `readonly LINE := /.../m`
-  and `readonly LEVELS := /.../`. Activating this cut requires
-  rewriting Script 12 against the `regex.compile(pattern, flags)`
-  function form before v1 ships. The script body — `matchAll`,
-  `isMatch`, capture-group access — is unchanged on activation.
-  Scripts 1–11 and Script 13 are unaffected.
-
-> **Finding, August 2026 (D-411) — this candidate's stated saving no
-> longer exists.** The "savings on activation" above assume the
-> context-sensitive lexing is still ahead of us. It is not: the literal's
-> front end is built and tested — `TokenKind.RegexLiteral`,
-> `Lexer.CanStartRegex()` with the after-a-value-is-division rule,
-> `ScanRegexLiteral()`, `ConsumeRegexFlags` restricted to `i`/`m`,
-> `RegexLiteralExpr`, and E2007/E2008 with real throw sites. Activating
-> this cut today would mean *deleting* working code, not deferring work.
-> What is genuinely absent is everything behind the front end: no
-> `GrobType.Regex`, no compiler emission (`VisitRegexLiteral` appears in
-> three files, none of them the compiler or the VM), no runtime
-> representation, no `regex` module. Recorded, not decided — whether the
-> candidate is struck outright is the project owner's call, and D-411
-> does not make it. Note also that no decision ever activated this cut;
-> `sprint-9-g.md` asserts it was resolved at the Sprint 9 kickoff and
-> the log contains no such entry.
-
-### Defer-gracefully constraints
-
-The remaining candidate meets the "defer gracefully" constraint: v1 scripts
-using the fallback forms continue to work in v1.1 unchanged; v1.1 adds
-are purely additive; and no v1 feature becomes useless because a
-candidate is cut.
-
-### What is explicitly **not** on the list
-
-Candidates considered and rejected during Session C Part 2:
-
-- **`formatAs.table()` compiler rewrite** — considered and retired during
-  Session C Part 1. The rewrite was simplified via the `formatAs`
-  reserved-identifier mechanism (D-282) and stays in v1.
-- **Switch expression exhaustiveness enforcement** — rejected.
-  Non-exhaustive switch expressions are an identity compromise; if
-  switch expressions need deferral, the whole feature defers, not the
-  checking.
-- **Closures with upvalue capture** — rejected. Closures without
-  capture are second-class; most functional-style pipelines in the
-  sample scripts rely on capture. If Sprint 5 slips, the answer is to
-  slip the sprint, not to cut the feature.
-
 -----
 
-*This document was updated August 2026 — D-410 and D-411 wired in. The Sprint 10*
+*This document was updated November 2026 — D-433: §16, the v1 scope-cut list, is*
+*removed with its defer-gracefully constraint and its record of rejected candidates. Grob*
+*has no published delivery date, so v1 is defined by its scope and its Definition of Done*
+*(§15), not by a date the list protected. D-432 had already struck the last candidate;*
+*the Sprint 9 `regex` bullet and Sprint 10's `@pattern` sentence carry D-432's design.*
+
+*Previous: August 2026 — D-410 and D-411 wired in. The Sprint 10*
 *scope now describes `param` declarations rather than a `param` block, pointing at*
 *the normative grammar D-410 added to `grob-language-fundamentals.md` §19. The*
 *decorator list grows to the seven of D-411 (`@minValue`/`@maxValue` added,*

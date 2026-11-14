@@ -380,6 +380,9 @@ throws `ArithmeticError`, not infinity.
 **Mixed division:** `int / float` and `float / int` promote the `int` to
 `float`. The result is `float`.
 
+**Division or a regex literal:** whether a `/` divides or opens a regex literal is
+decided by the token before it — §8, *Regex literals* (D-432).
+
 **Integer modulo:** `int % int → int`. The result has the sign of the dividend
 (the left operand), following C#'s `long % long` and C's `%` semantics.
 `-7 % 3` is `-1`, not `2`. `x % 0` throws `ArithmeticError`.
@@ -508,7 +511,7 @@ Three string forms. Each maps to a distinct developer intent.
 "hello"                     // double-quoted — standard form
 "Hello ${name}"             // interpolation — confirmed load-bearing
 `C:\Users\chris\docs`       // single backtick — inline raw, no escape processing
-`/^\d+$/`                   // single backtick — regex patterns
+`^\d+$`                     // single backtick — regex pattern strings (D-432)
 ```
 
 ````grob
@@ -689,6 +692,82 @@ braces are insignificant — matching every other literal form in the language (
 Each key must be a plain double-quoted string literal — not raw (backtick), not
 interpolated. Duplicate keys are a compile error. `V` (the map's value type) is checked
 against each entry's value; `K` (fixed `string` in v1) is not separately validated.
+
+### Regex literals
+
+```grob
+datePattern := /^\d{4}-\d{2}-\d{2}$/
+levels := /\b(?<level>ERROR|WARN)\b/i
+lastSegment := /[^/]+$/                  // a '/' inside [...] does not end the literal
+if /^\s*$/.isMatch(line) { continue }
+```
+
+A regex literal `/pattern/flags` is a value of type `Regex` (D-089, D-095, D-432).
+Its members are in `grob-type-registry.md`; the `regex` module is in
+`grob-stdlib-reference.md`.
+
+**Body.** Everything between the opening `/` and the first unescaped `/` that is not
+inside a character class. `\/` writes a literal `/` anywhere; an unescaped `/` inside
+`[...]` does not end the literal, as in ECMAScript. A literal cannot span lines: a
+newline before the closing `/` is E2008. The body goes to the .NET regular-expression
+engine verbatim — .NET syntax, with named groups, lookarounds and backreferences
+(D-095).
+
+**Flags.** `i` (case-insensitive) and `m` (`^` and `$` match at line boundaries). Any
+other letter is E2007. Options other engines spell as flags are written inline at the
+start of the pattern — `(?s)`, `(?x)`. There is no `g` flag: `matchAll` and
+`replaceAll` are the global forms. Matching is always culture-invariant, so `i` means
+the same on every machine.
+
+**Validated at compile time.** An invalid pattern is **E0602**, with the caret at the
+character the engine rejected (D-432; the code is minted by the `regex` increment). The
+same check applies to a string-literal pattern passed to a `regex` module function or to
+`regex.compile`, and to `@pattern`'s argument.
+
+**Compiled once per site.** A literal is compiled once per literal site per run; a
+literal in a loop body is not rebuilt on each iteration (D-095).
+
+**Bounded matching.** Every matching operation runs with a five-second timeout, and
+expiry throws `RuntimeError`. A literal always uses the default; to set another limit,
+build the value with `regex.compile(pattern, flags, timeout: n)` (D-432).
+
+**Division or a regex literal.** At a `/` that does not open a comment (`//`, `/*`),
+find the previous token, **looking through a newline only when §14 suppresses it** —
+inside an open bracket, inside a literal's braces or after a trailing operator. A
+newline §14 treats as a statement terminator is itself the previous token.
+
+- **Division** when the previous token can end an expression: an identifier; an `int`,
+  `float`, string or raw-string literal; a regex literal; `true`, `false`, `nil`; `)`,
+  `]`, `}`; postfix `++` or `--`.
+- **A regex literal** otherwise: after any other operator or punctuation, after a
+  keyword (`return`, `if`, `in`, `else` and the rest), after a statement-terminating
+  newline, after `${` and at the start of the file.
+
+Because a leading operator never continues a statement (§14), a `/` that begins a line
+after a statement-terminating newline cannot be division, so it is always a regex
+literal. An empty regex cannot be written: `//` always opens a comment, as in
+JavaScript.
+
+| Source | Reading | Why |
+|---|---|---|
+| `a / b` | division | identifier before |
+| `(a + b) / 2` | division | `)` before |
+| `xs[0] / 2` | division | `]` before |
+| `x := /\d+/` | regex | `:=` before |
+| `f(/a/, /b/)` | two regexes | `(` and `,` before |
+| `return /^\s*$/` | regex | keyword before |
+| `if /^\d+$/.isMatch(s) {` | regex | keyword before |
+| `total := (a` ⏎ `/ b)` | division | the newline is suppressed inside `(`, so `a` is before |
+| `x := 1` ⏎ `/abc/.isMatch(s)` | regex | a statement-terminating newline is before |
+| `"${/x/.isMatch(s)}"` | regex | `${` before |
+| `x /= 2` | compound division | identifier before, so `/=` lexes as itself |
+| `split(/=+/)` | regex | `(` before; the pattern begins with `=` |
+| `x := //` | comment | `//` always opens a comment |
+
+**A literal or a string pattern.** Use a regex literal when you want a `Regex` value.
+Where a parameter takes a pattern as a `string` — the `regex` module's one-shot
+functions, `regex.compile` and `@pattern` — write a single-backtick raw string, the
+canonical form for patterns (D-285).
 
 ---
 
@@ -1753,7 +1832,7 @@ user-defined decorator mechanism in v1.
 | `@maxLength(n)` | one integer literal | `string`, arrays | name, arity, non-negative integer literal, target type (E4102) |
 | `@minValue(n)` | one numeric literal | `int`, `float` | name, arity, numeric literal, target type (E4102) |
 | `@maxValue(n)` | one numeric literal | `int`, `float` | name, arity, numeric literal, target type (E4102) |
-| `@pattern(s)` | one string literal | `string` | name, arity, string literal, target type — **the pattern itself is not validated until the `regex` increment lands** (D-411) |
+| `@pattern(s)` | one string literal | `string` | name, arity, string literal, target type; once the `regex` increment lands, the pattern itself (E0602, D-432). **The whole value must match**, as if the pattern were wrapped in `\A(?:…)\z`, so a trailing newline is not accepted (D-432) |
 
 **Arguments are literals.** A decorator argument that is not a literal of the
 required kind is a compile error at the argument's own position — E4101 for

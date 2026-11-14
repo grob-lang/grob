@@ -266,7 +266,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-183 | Apr 2026                                                          | No tuples                                                             | Not in v1; use structs; post-MVP if friction observed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | D-184 | Apr 2026                                                          | No out parameters                                                     | Not in v1 and not planned; nullable returns cover the use case                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | D-185 | Apr 2026                                                          | Try-parse pattern                                                     | Nullable return types; `toInt() → int?`; `??` for defaults                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| D-186 | Apr 2026                                                          | v1 scope                                                              | v1 scope-cut list: validation decorators and regex literals; activation at Chris's discretion                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| D-186 | Apr 2026                                                          | v1 scope                                                              | v1 scope-cut list: validation decorators and regex literals; activation at Chris's discretion _(superseded by D-433 — list retired)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | D-270 | Apr 2026                                                          | Tokenisation — built-ins                                              | `print`, `exit`, `input` are built-in functions, not keywords                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | D-271 | Apr 2026                                                          | Operator precedence                                                   | `??` binds tighter than ternary; corrects §7 ordering                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | D-272 | Apr 2026                                                          | Operator precedence                                                   | Assignment operators not in precedence table; new §28 Statement Forms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -425,6 +425,10 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-427 | November 2026 | Solution architecture — plugin SDK; Compiler — type checker; Runtime — native registration; VM — named-type dispatch; Deferred Work Register | **Implements D-426: the *`FunctionSignature`* increment as landed.** Every native registered through `IPluginRegistrar` carries a `FunctionSignature` and the untyped overload is gone; one `NativeCatalogueBuilder` pass builds the `NativeCatalogue` the type checker reads and the VM is constructed over; `NamespaceRegistry`, `PrimitiveMemberRegistry` and `NamedTypeRegistry` are deleted with their agreement tests; `date` and `guid` register from their plugins; primitive members register through an internal surface. Divergences recorded: groups ran 1–4, 7, 5–6, 8 at Chris's choice; `RegisterToString` retired; `formatAs`/`input` carry runtime-shape signatures (F2); `Concrete.ElementType` (F4); primitive type names reserved as namespaces (F8); tests whose subject ceased to exist deleted with their facts re-homed. **R-19 taken** at Chris's direction: `DateLayout`/`GuidLayout` in `Grob.Core` are the only layout declarations, guarded by reflection. Decision 5: suite green (4,612), probe corpus byte-identical, **benchmark condition not met as worded** — two compile benchmarks breach the allocation threshold on every increment run, no baseline updated, origin not established. Invented parameter names listed. R-12 and R-19 closed; R-05 updated; R-20 to R-24 open. Count unchanged at 120. |
 | D-428 | November 2026 | Testing — negative-test release gate; Diagnostics; Deferred Work Register; Sprint sequencing | **Authorises the *error-examples harness*, fourth of D-420's six pre-9C increments**; prompt committed at `docs/prompts/error-examples-harness.md`. Measured at `f747517` (CLI built in a throwaway copy on SDK 10.0.114 with `GROB-SEC-001` disabled; the gate re-measures): 56 pairs, not 57; 23 match their master on every diagnostic's code, line and column; eleven masters contradict their own source or the catalogue. **Comparison** is the full ordered list of `(severity, code, file, line, column)` tuples, plus a never-quarantinable static layer checking titles against `ErrorCatalog`, snippets against source and carets against `-->`; building the §10 renderer here is rejected as not a harness, and the subset alone as D-081's pattern, since no sprint schedules the renderer — **R-25, owner Sprint 12**. **Location**: bare file name, span start, a column in every master; the CLI keeps printing the path as given. **One harness** runs every pair through `RunCommand` itself, sandboxed by an internal capability seam. **Quarantine** is a strict manifest: a quarantined pair must fail exactly as its row's *Observed* list records, so one that passes or fails differently fails the harness, an `R-##` must be open and a named namespace absent; masters are hand-written specifications changing only on three grounds; the threshold is by kind — 27 pass, 29 quarantined; R-18 joins. Lives in `Grob.Integration.Tests`, in CI's required job; no new code. **R-24**: benchmark `b202509` before 9C; a catalogue-path origin blocks 9C. **R-20** owned by the 9C increment registering `File`, with binding recommended over E0011. R-11, R-18, R-20, R-24 refined; **R-25 to R-31 open**, including `x := /abc/` crashing the VM (R-30) and undefined type names in annotations accepted silently (R-31). Count unchanged at 120. |
 | D-429 | November 2026 | Testing — negative-test release gate; Diagnostics; CLI — run pipeline; Deferred Work Register | **Implements D-428: the *error-examples harness* as landed**, over five change groups. An internal `RunCommand` seam supplies the catalogue's capabilities; `ErrorExampleMasterTests` checks every master statically and `ErrorExampleCorpusTests` compares every pair's ordered `(severity, code, file, line, column)` list through the CLI's own pipeline; `quarantine.md` is the strict manifest. Eleven masters and eight sources corrected, R-18's three examples rewritten. **56 pairs: 27 pass, 29 quarantined**, as D-428 predicted. Recorded for its divergences: §3's greedy location regex, the *Observed* decoder's `3:12` ambiguity, manifest rejections and checks the prompt did not list, two mutation predictions narrower than observed and `writing-an-error-test`'s step 4 rewritten beside the steps listed. Suite 4,849 green; `Grob.Cli` 91.75%. R-11 and R-18 closed; R-05 updated; R-25, R-29 and R-31 amended; R-32 opened for the two stdlib ambient reads. Count unchanged at 120. |
+| D-430 | November 2026 | Testing — public samples gate; Documentation — wiki; Runtime — capability injection; Deferred Work Register | **Authorises *public samples compile*, fifth of D-420's six pre-9C increments**; prompt committed at `docs/prompts/public-samples-compile.md`. Starts from the 6 November outline and lists its departures. Measured at `ce0b1ec` (CLI built in a throwaway copy on SDK 10.0.115; the gate re-measures): 123 `grob` blocks in `README.md` and the wiki, ADR pages excluded — 38 clean, 24 failing only on unbuilt namespaces, 51 on type-checking, 5 on parsing, 2 at run time, 3 crashing the VM (R-30). The wiki teaches decorators after the parameter, `param env`, `catch IoError e`, `guid.v4()`, `minusDays` and a leading-`+` continuation that §14 also carries. **A bare block is a program and is run** through `RunCommand` over D-429's seam — a type-check-only gate would pass the three crashing blocks; a `fragment` is compiled and may raise only E1001; output is not compared; the outline's `error Exxxx` class is dropped. **Unbuilt namespaces are excused by rule** from a closed list guarded against the catalogue. **The quarantine model, not its file**: register blockers ride on the block as `blocked-by=R-##`, since a wiki block has no identity a manifest row could keep. Extracted at test time in `Grob.Integration.Tests`. Thirteen corrections, a closed list. **R-32 authorised in `Grob.Stdlib`**: `IClock.LocalZone`, `IFileSystem.CurrentDirectory`, every explicit and implicit read moved, a source guard. **R-24**: the breach predates the `FunctionSignature` increment (+96 B and +32 B of it); 9C not blocked; bisection waits for the hardening sprint. R-31 does not join the run. R-24 and R-29 to R-32 amended; **R-33 opens** for `grob-lang.dev`'s sample. Count unchanged at 120. |
+| D-431 | November 2026 | Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Deferred Work Register | **Authorises the *corpus sweep*, sixth and last of D-420's pre-9C increments**; prompt committed at `docs/prompts/corpus-sweep.md`. **Depends on increment 5 having landed**: its public samples gate verifies the wiki edits, and its landing entry's *Findings for the corpus sweep* join the list. "Corpus sweep" appears on 13 lines case-insensitively and 12 case-sensitively, in ten entries; none added since 6 November. **Thirty-one rows enumerated and dispositioned** — swept, closed, registered or outside the repository. D-407's ADR-0017 question was answered by D-410, not D-425; its residue is ADR-0017's own page. "Thirteen" scripts swept to eleven per D-346, and §14's rows 12 and 13, which never existed, removed. F10's reconciliation of D-353's "script 13" is recorded in the entry. **Scope**: living documents and `.claude/` — R-05's full sweep is taken; dated records, footers, entry bodies and ADR decision text are not edited; archived and issued prompts are records. **The `// Eventual path:` line goes from 42 sources**, the pairs renumbered under both harness layers; a renumbering applied to source and master together needs none of D-428 Decision 4's grounds. Root `CLAUDE.md`'s model policy stops naming versions. The regex release-gate script is D-432's (R-34). The run ends here. Count unchanged at 120. |
+| D-432 | November 2026 | Language spec — regex literals; Standard library — `regex`; Error taxonomy; v1 scope; Sprint sequencing; Deferred Work Register | **Regex designed ahead of Sprint 9C, by owner decision; decision-only with spec edits, not a seventh increment.** Literals stay and D-186's candidate 2 is removed, so the scope-cut list is empty. **The `/` rule completed** in fundamentals §8: division after a token that can end an expression, a regex literal otherwise, newlines looked through only where §14 suppresses them — today's lexer misreads a `/` that begins a line. An unescaped `/` inside `[...]` no longer ends a literal. .NET dialect, always culture-invariant; `NonBacktracking` rejected. **Patterns validated at compile time**: E0602, specified here and minted by the `regex` increment. D-095 amended: `regex.compile(pattern, flags, timeout)`, `Regex.timeout`, function overloads for `replace` and `replaceAll`, backtick raw replacements. **Every match bounded**: five seconds by default, overridable per `Regex` through `regex.compile` (`0` for no limit), expiry raising `RuntimeError`. **`@pattern` matches the whole value.** A regex release-gate script is required (**R-34 opens**). **The `regex` increment opens the rebuilt 9C**; D-428's interim loud failure withdrawn; R-30 amended. Count unchanged at 120. |
+| D-433 | November 2026 | v1 scope — contingency cuts; Process — delivery | **The v1 scope-cut list is retired, by owner decision; supersedes D-186.** Grob has no published delivery date, so the list's insurance protected nothing, and both candidates were already gone (D-411, D-432). `grob-v1-requirements.md` §16 removed. The rule that replaces it: if a sprint slips, slip the sprint; do not cut the feature. The opposite risk — never shipping as scope grows — is guarded by the v1 surface and §13's exclusions, moving a feature between them only by logged decision, and by D-420's register and stopping rule. Count unchanged at 120. |
 
 ---
 
@@ -2563,7 +2567,7 @@ Language Fundamentals §8 gains a "Windows paths and literal backslash content" 
 
 Area: v1 scope — contingency cuts
 Supersedes: none
-Superseded by: none
+Superseded by: D-433
 
 A formal v1 scope-cut list is adopted with two candidates, in activation order:
 
@@ -15800,6 +15804,682 @@ reconciliations' authorities) and D-410, D-411, D-424 and D-425 (R-18's rewrites
 ---
 
 
+### D-430 — Public samples compile scoped: README and wiki blocks run through the CLI's own pipeline, unbuilt namespaces excused by rule, blockers carried on the block; R-32 authorised in `Grob.Stdlib` (November 2026)
+
+Area: Testing — public samples gate; Documentation — wiki; Runtime — capability injection; Deferred Work Register
+Supersedes: none (refines D-417's sample principle; rules on R-24 and R-29 to R-32)
+Superseded by: none
+
+**Decision-only. No source change.** Error-code count unchanged at 120. This entry
+authorises *public samples compile*, the fifth of D-420's six pre-9C increments; its prompt
+is committed with it at `docs/prompts/public-samples-compile.md`. Measured at `ce0b1ec`, with
+the same caveat D-428 carried: neither SDK 10.0.300 nor NuGet was reachable from the
+session, so the CLI was built in a throwaway copy on Ubuntu's SDK 10.0.115, with the
+`GROB-SEC-001` floor, MinVer and the Sonar analyser removed and no apphost. Nothing built
+that way was kept, and the increment's gate re-measures on the supported SDK.
+
+**Where this starts.** D-428 said increments 5 and 6 were "outlined separately for Chris to
+fix". That outline was written on 6 November, measured at `f747517` and delivered as
+project knowledge rather than committed. This entry starts from it and lists where it
+departs, at the end.
+
+**What the measurement found.** `README.md` and `docs/wiki/`, ADR pages excluded, hold
+**123** fenced `grob` blocks across 38 files — the count the outline measured, with the same
+split: **38** run clean, **24** fail only on a namespace that is not built, **51** fail
+type-checking, **5** fail to parse, **2** fail at run time on an unset `ADO_PAT` and **3**
+crash the VM on a regex literal (R-30). Of the 51, 36 are fragments using names they never
+declare. The other fifteen and the five parse failures are what the increment is for.
+**The wiki teaches a language Grob is not**: decorators written after the parameter they
+modify, which D-410 reversed; `param env`, which D-412 makes an E1102, since `env` is a core
+module; `catch IoError e {` where D-274's form is `catch (e: IoError)`; `guid.v4()`,
+`guid.v5()`, `guid.v7()` and a postfix `!`, none of which exist; `date.minusDays`, which the
+type registry does not have; a "trailing operator" example whose `+` leads each line, which
+§14 says does not continue a statement and which `grob-language-fundamentals.md` §14 carries
+too; and a `print(name)` of a nullable labelled "compile error", which §13 says is not one.
+Three more measured facts matter beyond the wiki. Six blocks fail on a cascade from an
+`unknown` value (R-29's shape, two forms R-29 does not list). R-32's row lists the `date`
+natives that read the local zone; two of them do it implicitly through `ToLocalTime()`, and
+both forms of `date.parse` do it through `DateTimeStyles.AssumeLocal`, which the row does not
+list. And `grob-lang.dev`
+carries a hand-maintained sample that does not compile today and is shown printing a line
+its script never prints.
+
+---
+
+**Decision 1 — the corpus is every `grob` block in `README.md` and `docs/wiki/`, ADR pages
+excluded, found at test time.** The wiki is the public projection of the specification, and
+the README is the first Grob anyone reads. Out, each for a reason: `docs/wiki/ADR/` (records,
+whose examples show the language as it was decided); `docs/design/` (implementer documents
+holding deliberate counter-examples, grammar fragments and sketches, verified by the
+increments that implement them and swept by increment 6); `grob-sample-scripts.md` (its
+eleven scripts keep D-417's fixtures and sync guard, which this does not replace); the error
+examples' README, `.github/` templates, `.claude/` and `docs/prompts/` (not public samples,
+or covered by their own gate). **`grob-lang.dev` is out because its source is another
+repository, and that is now a register item, not a hypothetical**: its one sample calls
+`fs.list`, `fs.ensureDir`, `file.moveTo` and `path.join` on a `File` whose `modified` it
+formats, and is shown printing "47 files organised" from a script with no `print`. **R-33
+opens.**
+
+---
+
+**Decision 2 — a bare `grob` block is a complete program and is run; a `fragment` is
+compiled; output is not compared.**
+
+- **Bare `grob`** runs through `RunCommand.Run` over D-429's seam and passes when it writes
+  no diagnostic, exits 0 and reports no internal error.
+- **`grob fragment`** goes through the same pipeline, which stops at its compile errors. It
+  passes when it writes at least one diagnostic and every diagnostic is E1001. A fragment
+  that compiles clean fails, because it is a program and its marker is wrong.
+
+**Running is the departure from the outline, and the measurement forces it.** The outline
+proposed type-checking without execution. Under that rule the three blocks that crash the VM
+on a regex literal pass, because the front end accepts `x := /abc/` without a diagnostic
+(R-30). A docs gate that is green on samples that crash the runtime is worse than none.
+Running is safe because the seam injects every capability the pipeline reads and `fs` and
+`process` are not built, and it is why R-32 belongs to this increment: two blocks that run
+read `date.today` and `date.now`, so the host's local zone would reach the gate.
+
+**Output is not compared.** No block states its output in a form a harness could read —
+results appear as prose or as trailing comments of varied shape — and adding a convention
+would be new authoring with its own drift. The validation scripts carry the output gate.
+**The outline's third class, `grob error Exxxx`, is dropped**: the measurement found no
+deliberate counter-example in the corpus, and the one block claiming an error was wrong,
+which no class can check. A class with no member is surface without a test; the first
+increment that needs one adds it.
+
+**R-31 weakens "compiles clean", and the gate is not over-trusted on that account**: an
+annotation naming an undefined type passes. A text scan of all 123 blocks found no
+parameter, local, return, array-element or lambda-parameter annotation naming a type the
+block does not declare [a scan, not the checker]. Eight blocks write `mapAs<Repo[]>` and
+similar with the type undeclared — a type-argument position R-31 does not list, unreachable
+until `mapAs<T>` lands, since D-426 fences type parameters. **R-31 is amended** to name it.
+**The maintainer's question on R-31's priority is answered by that measurement: the samples
+do not hit it, so it stays first in the hardening interlude and does not join the run.** It
+blocks neither this increment, whose blocks would pass with or without it, nor Sprint 9C.
+
+---
+
+**Decision 3 — unbuilt namespaces are excused by rule, not marked.** The harness holds a
+closed list: `fs`, `json`, `csv`, `process` and `regex`, each required to be absent from
+`StdlibCatalogue.ForCompileOnly()` by the guard the error-examples harness already applies;
+and `http`, `auth`, `crypto` and `zip`, the Sprint 11 plugin namespaces, checked by
+strictness alone as D-428 checks `Sprint 11`. An E1001 on a listed namespace is set aside
+before either class's test. A program left with no diagnostic but something set aside passes
+as **excused** and is not run.
+
+This is stronger than the outline's rule, which checked such blocks at parse level only: an
+excused block is still type-checked in full, so a `param env` or a `catch IoError e` in a
+block that also calls `fs` still fails. And it forces the right moment: registering `fs`
+fails the guard until `fs` leaves the list, whereupon every `fs` block is checked and run in
+the increment that built `fs`, which meets its own documentation.
+
+**Decision 4 — the quarantine model, not the quarantine file.** The hand-back asked whether
+this increment reuses D-428's manifest. It reuses the model's guarantees: a blocker is cited
+and checkable, a cleared blocker forces re-classification and a blocked block that passes
+fails the harness. **It does not reuse the file**, because a manifest row needs an identity
+for its block, and a wiki block has none that survives editing — a heading changes, a block
+is inserted above, and every ordinal below it now names a different block. A pair directory
+has an identity; a fenced block's only stable home is its own fence. So:
+
+- **Namespace blockers are computed** (Decision 3). The diagnostics they excuse are exactly
+  determinable from the catalogue, so nothing need be recorded.
+- **Register blockers ride on the block**, as `blocked-by=R-##` tokens in the info string.
+  GitHub renders a fence by its first word, so the token is invisible to a reader and visible
+  to a reviewer. The row must be open; the block must fail its class.
+
+**This is weaker than D-428's strictness, and deliberately so**: a blocked block must fail,
+not fail *exactly as recorded*. Carrying an *Observed* list in an info string would make the
+fence unreadable. The cost is bounded — eleven blocks, each re-examined when its row closes,
+because closing it fails the guard — and recorded here so nobody mistakes the two harnesses
+for the same guarantee.
+
+**R-30 against the samples: quarantined, and the row does not join the run.** Five blocks use
+a regex literal; three crash and two fail first on the `unknown` the literal is typed as.
+Each carries `blocked-by=R-30`. R-30 blocks neither this increment nor Sprint 9C, whose
+`regex` increment owns it and is recommended to put a loud failure in first (D-428).
+**R-29 likewise**: six blocks fail only on a cascade from an `unknown` value, in two shapes
+R-29 does not list — `formatAs`'s bespoke arms report E0004 on an `unknown` receiver, chained
+or function form; and a member read off an untyped lambda parameter over an `unknown`
+receiver passes `unknown` into a typed native parameter, E0004 again. Each carries
+`blocked-by=R-29`, and **R-29 is amended**.
+
+---
+
+**Decision 5 — extracted at test time, in `Grob.Integration.Tests`, on the error-examples
+harness's machinery.** D-417 copied the eleven validation scripts into fixtures because each
+is a runnable file with an identity and a release-gate role. A wiki block is neither, and a
+second copy of 123 snippets would be 123 places to drift. Blocks are found by glob and
+scanned at test time; each case is named by path, fence line and nearest heading. The
+harness lives beside the error-examples harness because it runs the CLI's pipeline: it reuses
+`HarnessCapabilities`, the `RunCommand` seam, `CliDiagnosticReader` and `DeferredWorkRegister`,
+and not the manifest parser. **This answers the hand-back's question 8, and departs from the
+outline**, which placed a front-end-only guard in `Grob.Compiler.Tests`.
+
+**D-417's principle is refined, not changed.** "Every public code sample must exist as a
+corpus file compiled by the release gate" is met by a block being its own corpus file, read
+in place. The principle's intent — that a sample cannot drift from the language without the
+gate breaking first — is what is enforced.
+
+---
+
+**Decision 6 — the corrections are a closed list; everything outside it is classified by
+rule.** Thirteen corrections, W1 to W13, are listed in the prompt with the authority for each,
+and change nothing else in their blocks. Each is documentation contradicting the language or
+its own reference. A block whose fix needs a compiler or language change carries a blocker
+against an open row. A documentation defect found outside the list is recorded in the landing
+entry's *Findings for the corpus sweep* section and is increment 6's. **One exception to
+"wiki only"**: where a wiki block copies a design-document example carrying the same defect,
+the source is corrected in the same commit and nothing else in it is — W5's leading `+` in
+`grob-language-fundamentals.md` §14, which is the only such case measured. Correcting the
+projection and leaving the authority wrong would be the drift this increment exists to stop.
+
+**Style that compiles is out**: Windows paths written `"C:\\..."` against D-285, missing
+trailing commas §3.5 requires in multi-line literals and the retired term "`param` block" in
+a heading all parse and type-check. They are increment 6's, which sweeps by pattern.
+
+With the corrections and the info strings, the prompt's expected end state is **123 blocks:
+45 run, 29 excused, 38 fragments and 11 blocked**.
+
+---
+
+**Decision 7 — R-32 is authorised in `Grob.Stdlib`, and its shape is fixed here.** D-429's
+increment was forbidden to touch `Grob.Stdlib`. This increment's first change group may
+change `Grob.Runtime`, `Grob.Stdlib` and `Grob.Cli`, and no other source project.
+
+- **The local zone goes on `IClock`, as `TimeZoneInfo LocalZone { get; }`.** "What time is
+  it here" is one question; .NET's own `TimeProvider` answers it with `GetUtcNow()` and
+  `LocalTimeZone` together, and `grob-playground-architecture.md` §4 sketches `IClock` the same
+  way. A separate zone capability would let a host supply a clock and a zone that disagree.
+- **The current directory goes on a new `IFileSystem`, as its one member, `string
+  CurrentDirectory { get; }`.** D-319 named `IFileSystem` among the six capabilities, and the
+  playground sketches it. A narrower `IWorkingDirectory` was rejected because the `fs`
+  increment would then build a second home for the same fact. That increment grows
+  `IFileSystem`; nothing about it but this member is designed here.
+- **Every read moves, explicit or implicit.** R-32's row names `TimeZoneInfo.Local` in
+  `date.now`, `date.today`, `date.of`, `date.ofTime` and `toLocal`. Measured, the reads are:
+  `TimeZoneInfo.Local.GetUtcOffset` three times; `DateTimeOffset.ToLocalTime()` behind
+  `toLocal` and `date.now`; `DateTimeStyles.AssumeLocal` in both forms of `date.parse`, which
+  the row did not list; and `Path.GetFullPath(string)` in `path.resolve`, which becomes the
+  two-argument overload over the capability. `TimeZoneInfo.FindSystemTimeZoneById` stays: it
+  takes an explicit identifier, which is a lookup, not an ambient read.
+- **Two consequences, both deliberate.** A `date.parse` input with a time and no date is
+  given the current date on the local system by .NET's parsers, a read of the host clock
+  the trace above does not count; it takes its date from the injected `IClock` in the
+  injected zone instead. And `path.resolve` no longer consults Windows' per-drive current
+  directories: a drive-relative path such as `D:sources` resolves from the capability's
+  directory alone. That per-drive state is an ambient read of the kind this decision
+  removes, so the change in `grob run`'s behaviour for that one input is accepted.
+- **A source guard** in `Grob.Consistency.Tests` keeps each pattern out of
+  `src/Grob.Stdlib/`. The criterion "no read remains" is otherwise checkable once and
+  forgotten.
+
+**`IClock` is public SDK surface**, so adding a member breaks an implementer. `Grob.Runtime`
+is not published until Sprint 11 (R-04), so this is the cheapest moment there will be, and
+every implementer is in this repository. The stop conditions: no change outside the three
+projects and their tests; `grob run`'s observable behaviour unchanged; no new error code,
+opcode or variant.
+
+**Decision 8 — fixtures.** One environment for the whole corpus, holding fake values for
+exactly the variables runnable blocks read — `ADO_PAT` and `BASE_URL`, measured — with a
+guard that fails on a fixture no block reads. This is the first fixture D-428 Decision 3 said
+the first increment needing one would add. The harness's zone is a fixed custom one with a
+non-zero offset, so a native that ignores the capability and computes in UTC cannot pass by
+coincidence. **Recorded, not decided**: a block that reads a required `param` fails at run
+time today with `E1001 Undefined global` and no column, because binding is Sprint 10's. No
+runnable block reads one. The Sprint 10 increment that binds parameters owns giving such
+blocks arguments.
+
+**Decision 9 — the release gate.** At v1 the excused list is empty and no block carries
+`blocked-by`. `grob-v1-requirements.md` §14 gains that sentence in the increment that makes it
+true, beside D-428's.
+
+---
+
+**Decision 10 — R-24: the origin is established, and bisecting it waits for the hardening
+sprint.** D-428 Decision 8 required a Benchmarks run on `b202509` before Sprint 9C. It ran on
+13 November on `windows-latest`, beside one on `main` at `ce0b1ec` (runs 43520418431 and
+43520422511):
+
+| Benchmark | `b202509` | `main` | Added by the *`FunctionSignature`* increment |
+|---|---|---|---|
+| `Compile_TenPrints` | 17,776 B (+11.8%) | 17,872 B (+12.4%) | +96 B |
+| `Compile_TwoExpressions` | 10,200 B (+10.7%) | 10,232 B (+11.0%) | +32 B |
+
+**The breach predates the increment**, so the catalogue path did not introduce it, D-426
+Decision 2's "built once and shared" is not broken and Sprint 9C is not blocked. The breach
+came in between `1e44b54` (August) and `b202509`. The two runs landed on different CPUs, so
+their timings cannot be compared; allocation does not depend on the CPU.
+
+**Bisecting `1e44b54..b202509` waits.** The range is history: no 9C commit can bury it, so
+it is as cheap to bisect in the hardening sprint as now, and that sprint owns the green gate
+it serves. **Recommended for the 9C rebuild, not decided here**: until the gate is green, an
+increment's benchmark condition reads its allocation against the `ce0b1ec` figures above
+rather than against a gate that is red for a known older reason, so a new regression stays
+visible.
+
+---
+
+**Register.**
+
+- **R-24 amended**: the origin half is met by this entry; the green-gate half keeps the
+  hardening sprint as owner, with bisection as its first step.
+- **R-29 amended**: two shapes measured by this increment, six public samples blocked on it.
+- **R-30 amended**: five public samples use a regex literal, three of them reaching the
+  crash; each is blocked on it.
+- **R-31 amended**: the type-argument position, measurable once `mapAs<T>` lands.
+- **R-32 amended**: the implicit reads, and the shape Decision 7 fixes. Its owner is this
+  increment.
+- **R-33 opens** — `grob-lang.dev`'s samples are outside every gate. `unowned`: the site is
+  another repository.
+
+**Departures from the 6 November outline**, each argued above or measured: blocks are run,
+not only type-checked (Decision 2); the harness is in `Grob.Integration.Tests` on the
+error-examples machinery, not in `Grob.Compiler.Tests` (Decision 5); excused blocks are
+type-checked in full, not parsed only (Decision 3); register blockers ride on the block,
+where the outline had none (Decision 4); the `error Exxxx` class is dropped (Decision 2).
+Two of the outline's readings were wrong and are corrected: `Syntax.md`'s leading `+` is a
+documentation defect in the wiki and in §14, not a possible parser gap, because §14's own
+table settles it; and the README sample's `new_name` breaks no rule, since the formatter
+specification makes `snake_case` idiomatic and enforces nothing. Its `"C:\\Reports"` is
+style against D-285 and goes to increment 6. `guid.md`'s defect is wider than the postfix
+`!` the outline named: every generator call uses a name the reference does not have.
+
+Cites D-420 (the run, its stopping rule and the register), D-417 (the sample principle this
+refines), D-428 and D-429 (the harness, seam and guards reused, and the manifest model whose
+guarantees this keeps), D-343 and D-319 (capability injection and `IFileSystem`), D-176 (local
+time), D-412, D-410, D-274, D-285, D-342, D-406 and D-279 (the corrections' authorities),
+D-426 (type parameters fenced; the catalogue built once), D-313 (no silent baseline move),
+R-04 (`Grob.Runtime` unpublished until Sprint 11) and D-411 (the 9C rebuild).
+
+---
+
+
+### D-431 — Corpus sweep scoped: every deferral enumerated and dispositioned, `.claude/` taken in, the `// Eventual path:` lines removed under both harness layers (November 2026)
+
+Area: Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Deferred Work Register
+Supersedes: none (fixes the scope of D-420's sixth increment; rules on R-05)
+Superseded by: none
+
+**Decision-only. No source change.** Error-code count unchanged at 120. This entry
+authorises the *corpus sweep*, the sixth and last of D-420's pre-9C increments; its prompt is
+committed with it at `docs/prompts/corpus-sweep.md`. **It depends on increment 5 having
+landed**: the public samples gate verifies every wiki block the sweep edits, and increment
+5's landing entry carries a *Findings for the corpus sweep* section that is part of this
+sweep's list. The prompt names both as inputs and stops if they do not exist. Measured at
+`ce0b1ec`, starting from the 6 November outline; departures at the end.
+
+**How many deferrals there are.** The log says "corpus sweep" on 13 lines when searched
+without regard to case and on 12 when searched with it; the thirteenth is D-420's list item
+"6. Corpus sweep". **No deferral has been added since 6 November**; the difference between
+the two counts is the search, not the log. The 13 lines fall in ten entries.
+
+---
+
+**Decision 1 — the sweep is defined by this list, and does not grow.** Every deferral to the
+corpus sweep in the log, every principal-review item whose vehicle is a corpus session, and
+every finding recorded for it since, each marked: **sweep** it, **closed** by a later
+decision, **register** it or out of the repository.
+
+| # | Source | Item | Disposition |
+|---|---|---|---|
+| 1 | D-380 (entry, index) | "a full corpus sweep of `tests/`…" | Not a deferral: it describes a sweep D-380 performed |
+| 2 | D-407 (entry, index, footer) | ADR-0017 is silent on removing a `pre-release` code that never shipped | **Closed by D-410**, which answered it — removed outright, number permanently burned — and which D-425 exercised on E4202. The hand-back credits D-425; D-410 is the answer. Residual **sweep**: ADR-0017's page still says nothing; it gains a status amendment and a *What Changed Since This ADR* section on ADR-0016's precedent, and `grob-error-codes.md`'s stability text states the rule if only its footer does today |
+| 3 | D-409; review F6; D-346 | "thirteen" validation scripts where there are eleven | **Sweep**, group 1, citing D-346. Rows 12 and 13 of `grob-v1-requirements.md` §14 describe scripts that never existed (D-346 found no revision with a twelfth); they go, and a sentence names what will add release-gate scripts: R-08's decorator script and R-34's regex script (D-432). Thirteen core modules and the thirteen-level precedence table are correct and stay |
+| 4 | D-409 | `grob-benchmarking-strategy.md` §4.1/§4.3 mis-citation | **Closed by nature**: the mis-citation is the archived F8 prompt's, a record; the document's own §4.3 citations are correct. The gate confirms |
+| 5 | D-409 | §7.4's synthetic large-script generator is unbuilt | Code, not documentation: **register**, if the gate confirms no row tracks it |
+| 6 | D-410 | "recorded here rather than deferred to the corpus sweep" | Not a deferral |
+| 7 | D-414 | Both queries for every retired form | The sweep's method |
+| 8 | D-415, D-416 | Gap A and Gap B | **Closed** by D-416 and D-417; D-416 already recorded the sweep as the wrong owner of a parser change |
+| 9 | D-417 | Seven multi-line samples missing the trailing comma §3.5 requires (`Repo` three times, `Config` twice, `Person`/`Address`, `FileEntry`) in the fundamentals and the wiki's *Types*, *Expressions* and *formatAs* pages | **Sweep**, group 2. The public samples gate cannot catch them, since a missing optional comma parses |
+| 10 | D-417 | "every public code sample must exist as a corpus file compiled by the release gate" | **Closed** by increment 5 (D-430 Decision 5) |
+| 11 | D-420 | The run's list, "6. Corpus sweep" | Not a deferral; this increment |
+| 12 | D-428's prompt | §14's "thirteen", left for increment 6 | Row 3 |
+| 13 | D-428's prompt | The `// Eventual path:` line in 42 error-example sources | **This increment**, group 4 (Decision 4) |
+| 14 | Review F5-1 | `grob-type-registry.md` overclaims `map<K, V>` static typing | **Sweep** if it still stands: D-374 and later built the map descriptor, so part of the claim may now be true. The gate measures which part |
+| 15 | Review F7 | `grob-vm-architecture.md`'s sketch opcode enum contradicts the shipped set | **Sweep**: the non-normative banner F7 recommends; none exists at `ce0b1ec` |
+| 16 | Review F10 | D-353 cites "scripts 4/7/10/11/13" | **Closed by this entry**: see the reconciliation below |
+| 17 | Review F11 | The log's own *Project Status* table is five sprints stale | **Sweep**, group 5: it is not an entry body. Its implementation row stops naming a sprint and points at the latest entry, so it cannot go stale again |
+| 18 | Review F12 | The log's *Related Documents* table | **Sweep**, group 5 |
+| 19 | Review F13 | `toIsoDateTime()`'s sample renders `Z` for a local value | **Sweep**; the wiki's two `date` pages and the stdlib reference carry it. The gate confirms what each surrounding sample constructs |
+| 20 | 6 November | `grob-v1-requirements.md` §12 puts the validation scripts in `Grob.Integration.Tests`; they are in `Grob.Compiler.Tests` | **Sweep**, group 1 |
+| 21 | 6 November | `tests/CLAUDE.md` says "the five projects"; seven exist | **Sweep**, group 3 |
+| 22 | 6 November | `src/CLAUDE.md` lists `Grob.Cli.Tests` and `Grob.Lsp.Tests`; neither exists | **Sweep**, group 3 |
+| 23 | 6 November | Root `CLAUDE.md`'s model policy names Sonnet 4.6 and Opus 4.8 | **Sweep**, group 3 (Decision 5) |
+| 24 | 6 November | `README.md` says immutability is opt-in via `const`, omitting `readonly` | **Sweep**, group 2 (D-291) |
+| 25 | 6 November; D-427 | `TypeRegistry.MembersFor` in `grob-tooling-strategy.md`; `GrobVM` in `grob-benchmarking-strategy.md` (two) and `grob-playground-architecture.md` (one) | **Sweep**, group 2, against the API as built |
+| 26 | 13 November | Windows paths written `"C:\\..."` against D-285: 37 lines in `README.md` and the wiki, more in the design documents | **Sweep**, group 2; those inside blocks are re-checked by the public samples gate |
+| 27 | 13 November | The retired term "`param` block" (D-414) in a wiki heading | **Sweep**, group 2 |
+| 28 | 13 November | `.claude/` holds 27 files; R-05's row says 39 at `f7acb83` | The gate accounts for the difference; group 3 sizes from the live tree |
+| 29 | 13 November | `grob-open-questions.md`'s footer has no line for D-429 | **Closed** by D-430's footer line |
+| 30 | Increment 5 | Its *Findings for the corpus sweep* | **Sweep** or **register**, by the same rule as every other row |
+| 31 | Outside the repository | The claude.ai Project's instructions say 86 codes, 40 pairs and `_grob.txt`; `grob-lang.dev`'s sample (R-33) | Chris's, and R-33's |
+
+**F10's reconciliation, recorded here as F10 recommends.** D-353 cites "scripts
+4/7/10/11/13" as the scripts touching `http` and `crypto`. Script 13 does not exist (D-346).
+The scripts that touch them are 4, 7, 10 and 11. D-353 is append-only and stands as written;
+this line is its correction.
+
+**Row 3's regex question is settled by D-432**, which keeps regex literals and requires a
+regex release-gate script on R-08's footing (R-34). D-186 required one only if literals were
+cut; D-432 makes it an obligation by decision rather than by a reading of D-186.
+
+---
+
+**Decision 2 — the scope is the living documents and `.claude/`.** R-05's full `.claude/`
+sweep is taken. It is the same activity — what is advertised against what is built — over
+27 more files, and `.claude/` instructs every future increment, 9C's included: a stale
+instruction there produced a registration example that would not compile for four months
+(D-081, D-420). D-421, D-427 and D-428 each found stale interfaces in it in passing. Leaving
+it `unowned` through 9C has a direct cost; taking it adds no increment to the run.
+
+- **Living, in scope**: every document under `docs/design/` except the records below;
+  `docs/wiki/`; `docs/errors/examples/`; `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, every
+  `CLAUDE.md` and `.claude/**`; and the decisions log's non-entry sections — *Project
+  Status* and *Related Documents*.
+- **Records, out of scope**: decisions-log entry bodies and index rows, which are
+  append-only; `grob-principal-review-sprint9b.md`, `grob-advertised-vs-built-audit.md`,
+  `grob-grammar-audit.md`, `harness-audit-report.md`, `bench-allocation-attribution.md`,
+  `bench-snapshot-residual.md`, `grob-early-design-conversation.md` and
+  `grob-language-brainstorm.md`, each dated and describing a moment; every footer and
+  changelog in a living document; and the decision text of every ADR, which may gain a
+  status amendment and a *What Changed Since This ADR* section on ADR-0016's precedent but
+  is not rewritten.
+
+**Decision 3 — archived prompts stay records, and issued prompts join them.** D-428 Decision
+6 ruled that `prompts/archive/` files are records and are not edited. That holds for the
+sweep. `docs/prompts/` holds the issued increment prompts, each committed with the entry
+that authorised it and marked never to be retrofitted; the same rule applies to them, for
+the same reason. A stale instruction in an issued prompt is corrected by the entry that
+records its increment's divergence, as D-429 did for its own prompt.
+
+---
+
+**Decision 4 — the `// Eventual path:` lines go, and the error examples renumber with
+them.** 42 of the 56 sources carry `// Eventual path: docs/errors/examples/<slug>/<slug>.grob`
+on line 2. Every one of those paths is where the file already is, so "Eventual" is stale
+and the line is redundant; the README's rule that a source holds nothing that does not
+contribute to producing the error makes it a defect; and the other fourteen sources start
+their code on line 2. D-428's prompt left the line alone
+because removing it renumbers every line of the pair.
+
+**The harness is what makes that cheap now.** Before increment 4, renumbering 42 masters by
+hand was a way to introduce 42 off-by-one errors with nothing to catch them. Now the static
+layer proves every snippet line still equals the source line it numbers and every first
+caret still sits under the line its location names, and the behavioural layer proves every
+passing pair's location and every quarantined pair's *Observed* list against the CLI. The
+transform is scripted and proven on a scratch copy before it touches the tree.
+
+**A blank line in its place was considered and rejected**: it keeps the numbering but is
+still a line that contributes nothing, and it would leave 42 pairs shaped differently from
+the other fourteen.
+
+**A ruling on D-428 Decision 4, which lets a master's code or location change on three
+grounds only.** A renumbering applied to a source and its master together, in one commit,
+moving every diagnostic by the same lines and leaving every caret on the same token, does
+not change what the master specifies, and needs no ground. It is not regeneration from the
+implementation, which is what the rule exists to forbid. The ruling is limited to that
+transform; any other change to a master's location still needs one of the three grounds.
+The quarantine manifest's *Observed* cells move in the same commit, which is D-428's rule
+that *Observed* changes only in the commit that changes the pair's output.
+
+---
+
+**Decision 5 — root `CLAUDE.md`'s model policy stops naming versions.** It names Sonnet 4.6
+as the workhorse and Opus 4.8 for structural sub-problems; every increment prompt since
+D-426 has set its own model and effort per session, in a table its session-start check
+enforces. Two sources for one choice is the divergence the corpus keeps finding. The policy
+keeps its principles — a workhorse for settled transcription, a stronger model for named
+structural sub-problems only, the lightest model for mechanical arms — and says that the
+increment prompt's session table names the models. **This is a process ruling, not a
+documentation correction**, and Chris may overrule it; it is recorded here so the sweep does
+not take it in session.
+
+---
+
+**Decision 6 — the stopping rule, and the end of the run.** Documentation only. A finding
+that needs code or a decision this entry does not take goes to the register with an owner
+and a completion criterion. The sweep is bounded by Decision 1's rows and increment 5's
+findings, and its method is D-414's two queries per retired form: it does not hunt for new
+kinds of staleness beyond them. **The run ends with this increment.** Its findings do not
+become a seventh; Sprint 9C follows, rebuilt from scratch under D-411.
+
+---
+
+**Register.** No row opens or closes in this entry. R-05's owner becomes this increment, and
+it closes with the landing entry's D-number. Row 5's register item opens in the landing entry
+if the gate confirms it is untracked.
+
+**Departures from the 6 November outline.** The list gains rows 12 to 31: the outline's
+twelve rows predate D-428 and D-429 and its principal-review row is split by finding; the
+findings since are added. The outline left the `// Eventual path:` line unruled; Decision 4
+takes it. The outline did not rule on root `CLAUDE.md`'s model policy; Decision 5 does. The
+outline's scope excluded `docs/prompts/` without a reason; Decision 3 gives one.
+
+Cites D-420 (the run and its stopping rule), D-414 (the two queries), D-428 (archived prompts
+as records; the authorship rule Decision 4 rules on), D-429 (the harness that makes the
+renumbering safe), D-430 (increment 5, whose gate and findings this depends on), D-410
+(ADR-0017's answer), D-346 (the eleven scripts), D-353 and F10 (the reconciliation), D-291,
+D-285 and D-417 (sweep authorities), D-411 (R-08's footing and the 9C rebuild), D-081 and
+R-05 (`.claude/`'s cost when stale).
+
+---
+
+
+### D-432 — Regex designed ahead of Sprint 9C: literals kept, the `/` rule completed, patterns validated at compile time, matching bounded by an overridable timeout, `@pattern` anchored; the `regex` increment opens 9C (November 2026)
+
+Area: Language spec — regex literals; Standard library — `regex`; Error taxonomy; v1 scope; Sprint sequencing; Deferred Work Register
+Supersedes: none (amends D-095's API; removes D-186's candidate 2; settles the principal review's F9; withdraws D-428's interim recommendation on R-30)
+Superseded by: none
+
+**Decision-only, with spec edits. No source change.** Error-code count unchanged at 120:
+E0602 is specified here and minted by the `regex` increment, since D-316's gate requires
+the registry and `ErrorCatalog` to change together. **Owner decision**: Chris agreed all
+six rulings proposed on 14 November, amending the timeout to allow an override. This is
+not a seventh increment of D-420's run; it adds no code, and it lands before increments 5
+and 6 run so that increment 6's sweep reads it.
+
+**Why now.** Measured at `ce0b1ec`, the `regex` increment would have met seven design
+questions in the middle of building — the shape that took Sprint 9 from ten increments to
+forty-seven. The literal's front end is built and nothing behind it is (D-411), so it lexes,
+parses, types as `Unknown` and crashes the VM (R-30). The `/` rule is D-095's one-liner, and
+the lexer implementing it looks through every newline, so `x := 1` followed on the next line
+by `/abc/.isMatch(s)` lexes as division, which §14 rules out. D-186's candidate 2 was
+unruled. `regex.compile()` — named by D-186, D-411 and the requirements as the fallback and
+the run-time path — is not in D-095's API, so no `Regex` could be built from a run-time
+string. `grob-stdlib-reference.md` had no `regex` section. No backtracking limit was decided,
+though the adversarial strategy §6.3 asked for one. `@pattern`'s matching semantics were
+unstated. And D-411, D-186 and D-431 read the regex release-gate script three ways.
+
+---
+
+**Decision 1 — regex literals stay; D-186's candidate 2 is removed.** Cutting them would
+delete tested code to save nothing (D-411's finding). A typed `Regex` value checked before
+the script runs is the better language for the log parsing and validation Grob is built
+for. With candidate 1 removed by D-411, the scope-cut list is empty, and D-433 retires it.
+
+**Decision 2 — the `/` rule, complete.** `grob-language-fundamentals.md` §8 gains *Regex
+literals*. At a `/` that does not open a comment, find the previous token, looking through a
+newline only when §14 suppresses it. **Division** when that token can end an expression —
+an identifier; an `int`, `float`, string or raw-string literal; a regex literal; `true`,
+`false`, `nil`; `)`, `]`, `}`; postfix `++` or `--`. **A regex literal** otherwise, including
+after a statement-terminating newline: a leading operator never continues a statement
+(§14), so a `/` beginning a line cannot be division. Thirteen worked cases are in the spec,
+and each becomes a test. **Code consequence**: `CanStartRegex` stops looking through
+significant newlines; the lexer's existing bracket-depth stamp gives it what it needs.
+
+**Decision 3 — the literal's body.** It ends at the first unescaped `/` **outside a
+character class**: `/[^/]+$/`, the last segment of a URL or an Azure DevOps path, is common
+in Grob's use cases and is how JavaScript writes it, and today it fails to lex. `\/` escapes
+a `/` anywhere; a newline before the closing `/` is E2008, as now; the body goes to .NET
+verbatim. Flags stay `i` and `m` (D-095). E2007's message gains hints: `g` points at
+`matchAll` and `replaceAll`, and `s` and `x` at the inline `(?s)` and `(?x)`.
+
+**Decision 4 — dialect.** .NET syntax, with named groups, lookarounds and backreferences, as
+D-095 promised. Always `RegexOptions.CultureInvariant`, so `i` means the same on a
+Turkish-locale machine. No `ECMAScript` option. **`RegexOptions.NonBacktracking` is
+rejected**: it removes catastrophic backtracking outright but drops lookarounds and
+backreferences. Decision 8 bounds the risk instead.
+
+**Decision 5 — patterns are validated at compile time: E0602, invalid regex pattern.** It
+sits beside E0601 (invalid `guid` string literal), the same shape. It fires on a regex
+literal's body, on a string-literal pattern argument to a `regex` module function or to
+`regex.compile`, and on `@pattern`'s argument. The type checker builds the pattern with .NET
+and reports `RegexParseException`'s message with the caret at its `Offset`. A pattern built
+at run time fails as `ParseError` (Decision 6).
+
+**Decision 6 — D-095's API is amended.**
+
+- **`regex.compile(pattern: string, flags: string = "", timeout: int = 5): Regex`** joins the
+  module, the only way to build a `Regex` from a run-time string. An invalid pattern or flag
+  throws `ParseError`, the leaf D-284 created for this.
+- **`Regex.timeout: int`** joins `pattern` and `flags` as a property.
+- **Replacement strings use .NET syntax** (`$1`, `${name}`, `$$`). Since `${` in a
+  double-quoted string is interpolation, **the backtick raw string is canonical for
+  replacements**, as D-285 made it for patterns.
+- **`replace` and `replaceAll` gain a function overload**, `(m: Match) => string`, as
+  Python's `re.sub` and JavaScript's `replace` have. It avoids the `$` collision and handles
+  computed replacements.
+- **`Match.group(name)` returns nil** when the group is absent or did not take part in the
+  match.
+
+The full module is now specified in `grob-stdlib-reference.md`, and `Regex` and `Match` in
+`grob-type-registry.md`.
+
+**Decision 7 — runtime contract.** A literal is compiled **once per literal site per run**
+(D-095's "compiled once at declaration"); a literal in a loop body is not rebuilt per
+iteration. `Regex` and `Match` are named types on D-356's registry. The increment is expected
+to need no opcode and no `GrobValueKind` variant; its gate confirms, and needing either is a
+STOP and a decision, since both are closed surfaces.
+
+**Decision 8 — every matching operation is bounded: five seconds by default, overridable.**
+Each operation runs with a .NET `matchTimeout`; expiry throws **`RuntimeError`**, D-284's
+residual leaf for resource failures, naming the operation and the limit. The message does
+not show the pattern: one built at run time is a value, and D-077 keeps values out of
+messages.
+
+- **The default is five seconds.** A legitimate single operation over a large log finishes
+  well inside it; a backtracking blow-up passes it almost at once. Too low a value would
+  fail real scripts on large input, which is worse than a slow ReDoS. The number is a
+  judgement, not a measurement.
+- **The override is per `Regex`, through `regex.compile`'s `timeout:`**, in seconds, as
+  `process.run`'s `timeout:` is, with `0` meaning no limit, as there. .NET supports this
+  directly through the `Regex(pattern, options, matchTimeout)` constructor and
+  `Regex.InfiniteMatchTimeout`.
+- **A literal and the one-shot module functions always use the default.** A literal's syntax
+  has nowhere to state a timeout, and the one-shot functions are conveniences; a script that
+  needs another limit builds the value with `regex.compile`. Putting the parameter in one
+  place keeps the surface small.
+
+**Recorded, not decided**: how a negative or out-of-range `timeout` is rejected. `process.run`
+leaves the same case unspecified, and the two should be settled together; the `regex`
+increment's gate proposes the handling for both. Also recorded: the core `process` module
+names its parameter `timeout` and the `Grob.Http` plugin names its `timeoutSeconds`. Regex
+follows the core module. Whether the two should converge is a question for the plugin's own
+design, not this entry. A new `RegexError` leaf was rejected: D-284 fixed the hierarchy at
+ten.
+
+**Decision 9 — `@pattern` matches the whole value.** Its argument stays one string literal, as
+D-424 implemented, with the backtick raw form canonical, validated by E0602; flags go inline,
+as `` @pattern(`(?i)^[a-z]+$`) ``. **The whole value must match**, as if the pattern were
+wrapped in `\A(?:…)\z`, as HTML's `pattern` attribute does. The anchors are the strict ones:
+.NET's `$` also matches before a final newline, so `^(?:…)$` would accept a value ending in
+one. An unanchored match would accept
+`prod; rm -rf` against `` `[a-z]+` ``, because a substring matches — the classic validation
+bug, and a parameter guard is where it does most damage. Enforcement at binding time stays
+Sprint 10's (R-15).
+
+**Decision 10 — a regex release-gate script is required. R-34 opens.** This settles D-411,
+D-186 and D-431 by decision instead of by reading. D-411's argument for R-08 — surface that
+would ship unexercised by the release gate — applies to `regex` as fully as to decorators. The
+script is the log filter that `grob-v1-requirements.md` §14's row 12 described without a
+script behind it, and it uses a literal, `regex.compile`, `matchAll`, a named group and
+`replace`. It reads its log through `fs`, so **it lands with whichever of the `regex` and `fs`
+increments comes second**. D-431's row 3 and `corpus-sweep.md` §2.1 name it beside R-08's.
+
+**Decision 11 — the `regex` increment opens Sprint 9C.** It depends on none of `fs`, `json`,
+`csv` or `process`. It closes a known VM crash (R-30), unblocks the five wiki samples D-430
+marks `blocked-by=R-30`, and gives Sprint 10's `@pattern` the compiled pattern it needs.
+**D-428's interim "loud failure first" is withdrawn**: it only made sense while regex might
+land late. R-30's owner becomes the `regex` increment, first in the rebuilt 9C. The wiki's
+regex pages are brought to this entry by that increment, not by the corpus sweep, so their
+samples stay blocked until they can run.
+
+**Decision 12 — not decided, so it is not mistaken for an omission.** Checking
+`m.group("name")` against a literal's named groups at compile time. The pattern is known
+statically, so it is achievable, but it needs regex-typed flow through bindings; a v1.1
+candidate.
+
+---
+
+**Spec edits in this commit.** `grob-language-fundamentals.md`: §8's *Regex literals*; §6's
+division rules point at it; §8's string example `` `/^\d+$/` `` corrected to `` `^\d+$` ``,
+since a raw string containing slashes is not a pattern for `^\d+$`; §19's `@pattern` row.
+`grob-stdlib-reference.md`: a `regex` section. `grob-type-registry.md`: `Regex` gains
+`timeout`, the function overloads and its construction note; `Match.group`'s nil case.
+`grob-v1-requirements.md`: the Sprint 9 `regex` bullet; Sprint 10's `@pattern` sentence; §16's
+candidate 2 removed and the list recorded as empty (D-433 then removes §16). `grob-adversarial-testing-strategy.md`
+§6.3 cites the timeout. D-431's row 3 and recommendation, its index row and
+`corpus-sweep.md` §2.1 name R-34, all three unmerged with this entry.
+
+**Register.** **R-30** amended: its owner is the `regex` increment, first in 9C, and the
+interim loud failure is withdrawn. **R-34 opens**: no release-gate script exercises `regex`.
+
+Cites D-089 and D-095 (the module and its API, amended here), D-186 (the scope-cut list),
+D-411 (the front end built and nothing behind it; R-08's footing; `@pattern` sequenced to the
+`regex` increment), D-424 (`@pattern`'s argument check), D-284 (`ParseError` and
+`RuntimeError`), D-285 (backtick raw strings for patterns), D-356 (named types), D-316 (the
+code minted with its source), D-420 and D-431 (the run this entry does not extend), D-428
+(R-30's interim recommendation, withdrawn), D-430 (the samples blocked on R-30), the
+principal review's F9 and the adversarial strategy §6.3.
+
+---
+
+
+### D-433 — The v1 scope-cut list is retired: Grob has no published delivery date, so a feature slips with its sprint instead of being cut (November 2026)
+
+Area: v1 scope — contingency cuts; Process — delivery
+Supersedes: D-186
+Superseded by: none
+
+**Decision-only, with spec edits. No source change.** Error-code count unchanged at 120.
+**Owner decision**: Chris, 14 November — "This is a passion project being built in public
+with no published delivery date. The scope cut was a cop out on my part."
+
+**What is retired.** D-186 adopted the list as insurance: if a sprint overran, a named
+feature could be cut to protect the delivery. That insurance protects a date, and Grob has
+none. Both of its candidates were already gone — validation decorators removed by D-411,
+regex literals by D-432 — so the list was empty and kept only as a place a future candidate
+might go. **It is retired, not emptied**: `grob-v1-requirements.md` §16 is removed with its
+defer-gracefully constraint and its record of rejected candidates. §16 was the document's
+last section, so nothing renumbers.
+
+**What replaces it is the rule §16 already applied to its own rejections**: *if a sprint
+slips, slip the sprint; do not cut the feature.* v1 is defined by its scope — §4's sprint
+plan, §5's complete v1 surface and §13's explicit exclusions — and finished by §15's
+Definition of Done.
+
+**The risk this does not remove is the opposite one.** Without a date, the failure mode is
+not shipping late but not shipping, as scope grows. The guards are the ones the project
+already has, now carrying the whole load: a feature is either in the v1 surface or in §13,
+and moving one between them is a logged decision; work deferred inside v1 goes to the
+register with an owner and a completion criterion (D-420); and D-420's stopping rule keeps
+a run of increments bounded. Removing something from v1 is still possible — as a decision
+that moves it to §13, argued on its merits, not by activating a list agreed in advance.
+
+**Spec edits in this commit.** `grob-v1-requirements.md`: §16 removed; the Sprint 10
+decorator bullet's "none is a scope-cut candidate" dropped, since there is no list to be a
+candidate for. `grob-error-codes.md`: E4101's source note. D-432's Decision 1, unmerged with
+this entry, now says the list is retired rather than kept empty. Records are not edited:
+the requirements' footers, the decisions-log entries that discuss the list and the issued
+Sprint 9 kickoff prompt keep their wording.
+
+Cites D-186 (the list, superseded), D-411 and D-432 (the two candidates removed), D-420 (the
+register and the stopping rule), D-277, D-301 and D-296 (switch exhaustiveness and closures
+with capture, the features §16 refused to cut).
+
+---
+
+
 ## Post-MVP Decisions
 
 ---
@@ -16021,7 +16701,38 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-429 added. **The *error-examples harness* as landed**, implementing_
+_November 2026 — D-433 added; no source change. **The v1 scope-cut list is retired** by owner_
+_decision, superseding D-186: Grob has no published delivery date, and both candidates were_
+_already gone. `grob-v1-requirements.md` §16 removed. If a sprint slips, the sprint slips;_
+_the feature is not cut. D-432's Decision 1 now points here. Count unchanged at 120._
+_Previous: November 2026 — D-432 added, with spec edits; no source change. **Regex designed ahead of_
+_Sprint 9C** by owner decision. Literals stay and the scope-cut list is now empty. The `/`_
+_rule is completed in fundamentals §8, fixing a lexer reading of a line-leading `/`. Patterns_
+_are validated at compile time (E0602, minted by the increment). `regex.compile` joins the_
+_API with a per-value `timeout`; every match is bounded, five seconds by default, raising_
+_`RuntimeError`. `@pattern` matches the whole value. A regex release-gate script is required_
+_(R-34). The `regex` increment opens the rebuilt 9C. D-431 and its prompt name R-34._
+_Count unchanged at 120._
+_Previous: November 2026 — D-431 added; no source change. **Scopes the *corpus sweep***, the last of_
+_D-420's pre-9C increments, and commits its prompt, which depends on increment 5 having_
+_landed. Every deferral to the sweep is enumerated — thirty-one rows, each swept, closed,_
+_registered or outside the repository — so the run is fixed and cannot grow. D-407's_
+_question was D-410's to answer, not D-425's. The scope is the living documents and_
+_`.claude/`, taking R-05's full sweep; records, footers, entry bodies and prompts are not_
+_edited. The 42 `// Eventual path:` lines go, with the pairs renumbered under both harness_
+_layers. F10's reconciliation of D-353 is recorded. Count unchanged at 120._
+_Previous: November 2026 — D-430 added; no source change. **Scopes *public samples compile***, fifth of_
+_D-420's pre-9C increments, and commits its prompt, starting from the 6 November outline._
+_Measured first: 123 `grob` blocks in the README and the wiki, 38 clean and a wiki that_
+_teaches decorators after the parameter, `param env`, `catch IoError e`, `guid.v4()` and_
+_`minusDays`. Bare blocks are programs and are run through the CLI's own pipeline, because_
+_a type-check-only gate passes the three blocks that crash the VM; fragments may raise only_
+_E1001; unbuilt namespaces are excused by a guarded rule; register blockers ride on the_
+_block, since a wiki block has no identity a manifest could key. Thirteen corrections, a_
+_closed list. R-32 is authorised in `Grob.Stdlib` with its shape fixed. R-24's breach_
+_predates the `FunctionSignature` increment, so 9C is not blocked. R-24 and R-29 to R-32_
+_amended, R-33 opened. Count unchanged at 120._
+_Previous: November 2026 — D-429 added. **The *error-examples harness* as landed**, implementing_
 _D-428 over five change groups: an internal `RunCommand` capabilities seam, a static_
 _layer over every master, a behavioural layer comparing every pair's diagnostics through_
 _the CLI's own pipeline and a strict quarantine manifest. 56 pairs: 27 pass, 29_
