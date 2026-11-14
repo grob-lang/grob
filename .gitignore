@@ -66,5 +66,8 @@ coverage/
 # Only the workflow-produced JSON in bench/Grob.Benchmarks/baseline/ is tracked.
 BenchmarkDotNet.Artifacts/
 
-# Session scratch — hand-offs, investigation reports
-.grob-session/
+# Session scratch — hand-offs, investigation reports.
+# Only the hand-off is tracked: /handoff commits it on the feature branch so the
+# next session can read it from a clone, and it is removed before the PR.
+.grob-session/*
+!.grob-session/handoff.md
