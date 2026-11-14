@@ -16372,7 +16372,9 @@ ten.
 **Decision 9 — `@pattern` matches the whole value.** Its argument stays one string literal, as
 D-424 implemented, with the backtick raw form canonical, validated by E0602; flags go inline,
 as `` @pattern(`(?i)^[a-z]+$`) ``. **The whole value must match**, as if the pattern were
-wrapped in `^(?:…)$`, as HTML's `pattern` attribute does. An unanchored match would accept
+wrapped in `\A(?:…)\z`, as HTML's `pattern` attribute does. The anchors are the strict ones:
+.NET's `$` also matches before a final newline, so `^(?:…)$` would accept a value ending in
+one. An unanchored match would accept
 `prod; rm -rf` against `` `[a-z]+` ``, because a substring matches — the classic validation
 bug, and a parameter guard is where it does most damage. Enforcement at binding time stays
 Sprint 10's (R-15).
@@ -16457,7 +16459,7 @@ that moves it to §13, argued on its merits, not by activating a list agreed in 
 
 **Spec edits in this commit.** `grob-v1-requirements.md`: §16 removed; the Sprint 10
 decorator bullet's "none is a scope-cut candidate" dropped, since there is no list to be a
-candidate for. `grob-error-codes.md`: E4201's source note. D-432's Decision 1, unmerged with
+candidate for. `grob-error-codes.md`: E4101's source note. D-432's Decision 1, unmerged with
 this entry, now says the list is retired rather than kept empty. Records are not edited:
 the requirements' footers, the decisions-log entries that discuss the list and the issued
 Sprint 9 kickoff prompt keep their wording.

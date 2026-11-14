@@ -161,9 +161,12 @@ D-430 Decision 7 authorises this group alone to do so.
   `Grob.Cli` gains the OS-backed `SystemFileSystem`; `InertCapabilities` gains an inert one.
 - **Every read §1.3 listed moves onto the capability.** `TimeZoneInfo.Local` becomes
   `clock.LocalZone`. `ToLocalTime()` becomes `TimeZoneInfo.ConvertTime(value, zone)`.
-  `DateTimeStyles.AssumeLocal` becomes a parse with no zone assumption followed by the
-  zone's offset for that local time, so a time in a daylight-saving gap or overlap resolves
-  exactly as `TimeZoneInfo.Local.GetUtcOffset` resolves it today. `path.resolve`'s
+  `DateTimeStyles.AssumeLocal` goes, and the parse splits on whether the input carries an
+  offset, because a `DateTimeOffset` parse without that flag still takes the host zone's
+  offset for offset-free input. **Offset-free input** is parsed as a local date and time
+  and given `clock.LocalZone`'s offset for that local time, so a time in a daylight-saving
+  gap or overlap resolves exactly as `TimeZoneInfo.Local.GetUtcOffset` resolves it today.
+  **Input with an explicit offset keeps that offset.** `path.resolve`'s
   `Path.GetFullPath(p)` becomes `Path.GetFullPath(p, fileSystem.CurrentDirectory)`, keeping
   the empty-input case.
 - **`HostCapabilities` gains `FileSystem`**; `System()` supplies the OS-backed set, and
@@ -178,8 +181,9 @@ D-430 Decision 7 authorises this group alone to do so.
 
 `grob run`'s observable behaviour does not change: the OS-backed capabilities read what the
 natives read before. Tests: `date.today`, `date.now`, `date.of`, `date.ofTime`, `toLocal`
-and both `date.parse` forms under an injected zone; `path.resolve` under an injected
-directory; one test per form that the OS-backed set still reads the host. **R-32 closes
+and both `date.parse` forms under an injected zone, each with an offset-free input whose
+result does not change with the host zone and an input with `+02:00` that keeps `+02:00`;
+`path.resolve` under an injected directory; one test per form that the OS-backed set still reads the host. **R-32 closes
 with this group's D-number in group 5.**
 
 ### 2.2 Change group 2 — the harness, without the corpus

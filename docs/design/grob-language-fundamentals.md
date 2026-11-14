@@ -1832,7 +1832,7 @@ user-defined decorator mechanism in v1.
 | `@maxLength(n)` | one integer literal | `string`, arrays | name, arity, non-negative integer literal, target type (E4102) |
 | `@minValue(n)` | one numeric literal | `int`, `float` | name, arity, numeric literal, target type (E4102) |
 | `@maxValue(n)` | one numeric literal | `int`, `float` | name, arity, numeric literal, target type (E4102) |
-| `@pattern(s)` | one string literal | `string` | name, arity, string literal, target type; once the `regex` increment lands, the pattern itself (E0602, D-432). **The whole value must match**, as if the pattern were wrapped in `^(?:…)$` (D-432) |
+| `@pattern(s)` | one string literal | `string` | name, arity, string literal, target type; once the `regex` increment lands, the pattern itself (E0602, D-432). **The whole value must match**, as if the pattern were wrapped in `\A(?:…)\z`, so a trailing newline is not accepted (D-432) |
 
 **Arguments are literals.** A decorator argument that is not a literal of the
 required kind is a compile error at the argument's own position — E4101 for

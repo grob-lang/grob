@@ -125,7 +125,8 @@ error-examples harness and the public samples gate in `Grob.Integration.Tests`.
 
 ### 2.2 Change group 2 — the design corpus, the wiki and the root documents
 
-*Session B.* Every other *sweep* row in D-431 Decision 1, and every site in increment 5's
+*Session B.* Every *sweep* row in D-431 Decision 1 that it does not assign to group 1, 3
+or 5, and every site in increment 5's
 *Findings for the corpus sweep* that is documentation. Each edit cites the decision that
 makes it true. For a site inside a `grob` block in the wiki or the README, the public samples
 gate re-checks it: a block that changes class fails the gate, and that is a STOP, not a
@@ -219,7 +220,7 @@ branch, **predict the exact failing tests by name before running**, confirm, rev
    case, on observed drift.
 4. Revert one D-285 path rewrite in a runnable wiki block to `"C:\Reports"`, single
    backslash. Predicted: that block's public samples case, on E2005.
-5. Re-run every second query of §1.2 after group 3. Predicted: no site in scope.
+5. Re-run every second query of §1.2 after group 5. Predicted: no site in scope.
 
 ---
 

@@ -1398,7 +1398,7 @@ it is the live total in the summary index above and is asserted equal to
 D-316). The dated lines below are the historical record of how the count
 changed; this line is the single source for the present total.
 
-_Updated November 2026 — D-433. E4201's source note no longer calls validation decorators a_
+_Updated November 2026 — D-433. E4101's source note no longer calls validation decorators a_
 _scope-cut candidate, and its description drops the clause conditioning runtime validation on_
 _the cut: D-411 removed decorators from the list and D-433 retired it. No code changes._
 
