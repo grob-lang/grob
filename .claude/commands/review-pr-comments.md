@@ -1,5 +1,5 @@
 ---
-description: Triage and respond to PR review comments (CodeRabbit, SonarCloud, human reviewers) — fix or push back with reasons, commit locally, reply on the PR. Works on the first pass or as a follow-up.
+description: Triage and respond to PR review comments (CodeRabbit, SonarCloud, human reviewers) — fix or push back with reasons, commit, push and reply on the PR. Works on the first pass or as a follow-up.
 argument-hint: [PR number — defaults to the current branch's PR]
 ---
 
@@ -8,11 +8,12 @@ argument-hint: [PR number — defaults to the current branch's PR]
 Work through the review feedback on PR **$ARGUMENTS** (if no number is given,
 resolve the PR for the current branch with `gh pr view --json number`). The job is
 to triage every comment, **fix what is right and push back on what is wrong**,
-commit the fixes locally, and reply on the PR so each thread is closed out.
+commit and push the fixes and reply on the PR so each thread is closed out.
 
 This is a judgement task — use Opus. The standing rules still hold: TDD is
-non-negotiable, the `ErrorCatalog`/§3.1.1/DAG invariants gate acceptance, and
-**push is the maintainer's** — this command stops after the local commit.
+non-negotiable, the `ErrorCatalog`/§3.1.1/DAG invariants gate acceptance and the
+pre-push gate is never bypassed. **This command pushes its own fix commit**, so
+every reply cites a commit that is already on GitHub. Merging stays Chris's.
 
 ## 1. Gather every feedback source
 
@@ -112,35 +113,39 @@ confirm it fails, then make it pass. Never skip the red step. Then:
 - `dotnet format whitespace Grob.slnx` before staging (the pre-commit hooks mutate
   but do not restage — running it first avoids an aborted cycle).
 - If a fix touches coverage, keep affected projects at or above the bar and note
-  any change. Re-run `sonar-pr-review` only after the next push has re-scanned —
-  the API reflects the **last completed analysis**, so locally-committed fixes show
-  up on the maintainer's push, not before.
+  any change. Re-run `sonar-pr-review` only after the push has re-scanned — the
+  API reflects the **last completed analysis**, so the fixes show up once the
+  pushed commit's scan completes, not before.
 
-## 4. Commit locally — do not push
+## 4. Commit and push
 
 Stage only the review-fix files and commit via the `commit-message` skill
 (conventional commits, `Co-Authored-By` trailer, body explaining *why*). Reference
 the PR in the body (for example `Addresses PR #<N> review (CodeRabbit + SonarCloud).`).
 
-**Stop after the local commit.** Per the `trunk-flow` skill, pushing is the
-maintainer's action. Capture the commit SHA for the report.
+Then push with a plain `git push`. The pre-push gate runs; **never bypass it**.
+If it blocks the push, stop: post no "fixed" reply and report the failure. Capture
+the pushed commit's SHA for the replies and the report.
 
 ## 5. Respond on the PR
 
-Replies will post **before** the maintainer pushes, so phrase "fixed" replies as
-*committed locally, lands on push* — never dangle a SHA that is not on GitHub yet.
+Replies post **after** the push, so a "fixed" reply cites a SHA that is on GitHub
+and the bot can check it. A reply that names an unpushed commit gets a "cannot
+verify" answer and leaves the thread open.
 
 - **Inline threads** — reply into each with
   `gh api repos/$REPO/pulls/<N>/comments -f body="..." -F in_reply_to=ID`:
-  - fixed: "Fixed — committed locally as `SHA` (lands on the next push)", plus one line on the change.
+  - fixed: "Fixed in `SHA`", plus one line on the change.
   - pushed back: "Pushing back:" with the reason and its authority.
   - stale: "Already handled / no longer applies:" with the reason.
 - **Summary** — one top-level `gh pr comment <N> --body "..."` listing every item
   and its disposition, plus the final build/test result. Include the Sonar line
   from `sonar-pr-review`: gate verdict and **New issues** count (the target is
   zero), so the comment records the Sonar state at the time of the pass.
-- **gh quirks:** `gh pr edit --body` fails on this repo (projectCards) — if you
-  must change the PR body, use a REST `PATCH`. The token can expire mid-session; if
+- **Description** — update the PR description so it covers the fix commit, as
+  root `CLAUDE.md` requires.
+- **gh quirks:** `gh pr edit --body` fails on this repo (projectCards) — to
+  change the PR body, use a REST `PATCH`. The token can expire mid-session; if
   a `gh` call 401s, that is why. A `401` from a **SonarCloud** call instead is the
   `SONAR_TOKEN` (a different token from the `gh` one) — re-export it, do not confuse
   the two.
@@ -148,9 +153,9 @@ Replies will post **before** the maintainer pushes, so phrase "fixed" replies as
 ## 6. Report back to Chris
 
 Give a short triage table — **fixed / pushed back / skipped-stale**, one line each —
-the local commit SHA (unpushed), the Sonar state from `sonar-pr-review` (gate +
-New issues count), and confirmation that the thread replies and the summary comment
-are posted. Remind him: the push is his, and the bots re-run on push, so a fresh
-CodeRabbit/Sonar pass will follow.
+the pushed commit SHA, the Sonar state from `sonar-pr-review` (gate + New issues
+count) and confirmation that the thread replies and the summary comment are
+posted. The bots re-run on the push, so a fresh CodeRabbit/Sonar pass will follow;
+a follow-up run of this command picks it up.
 
 **Model:** Opus — this is triage and judgement, not transcription.
