@@ -16002,6 +16002,13 @@ change `Grob.Runtime`, `Grob.Stdlib` and `Grob.Cli`, and no other source project
   the row did not list; and `Path.GetFullPath(string)` in `path.resolve`, which becomes the
   two-argument overload over the capability. `TimeZoneInfo.FindSystemTimeZoneById` stays: it
   takes an explicit identifier, which is a lookup, not an ambient read.
+- **Two consequences, both deliberate.** A `date.parse` input with a time and no date is
+  given the current date on the local system by .NET's parsers, a read of the host clock
+  the trace above does not count; it takes its date from the injected `IClock` in the
+  injected zone instead. And `path.resolve` no longer consults Windows' per-drive current
+  directories: a drive-relative path such as `D:sources` resolves from the capability's
+  directory alone. That per-drive state is an ambient read of the kind this decision
+  removes, so the change in `grob run`'s behaviour for that one input is accepted.
 - **A source guard** in `Grob.Consistency.Tests` keeps each pattern out of
   `src/Grob.Stdlib/`. The criterion "no read remains" is otherwise checkable once and
   forgotten.
@@ -16346,7 +16353,9 @@ STOP and a decision, since both are closed surfaces.
 
 **Decision 8 — every matching operation is bounded: five seconds by default, overridable.**
 Each operation runs with a .NET `matchTimeout`; expiry throws **`RuntimeError`**, D-284's
-residual leaf for resource failures, naming the operation, the pattern and the limit.
+residual leaf for resource failures, naming the operation and the limit. The message does
+not show the pattern: one built at run time is a value, and D-077 keeps values out of
+messages.
 
 - **The default is five seconds.** A legitimate single operation over a large log finishes
   well inside it; a backtracking blow-up passes it almost at once. Too low a value would

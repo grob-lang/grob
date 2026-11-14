@@ -863,8 +863,8 @@ as `process.run`'s is, and `0` means no limit.
 
 **Every matching operation is bounded** (D-432). The limit is five seconds unless the
 value was built by `regex.compile` with another `timeout`; literals and the one-shot
-functions always use five. Expiry throws `RuntimeError`, naming the operation, the
-pattern and the limit. The bound turns catastrophic backtracking into an error instead
+functions always use five. Expiry throws `RuntimeError`, naming the operation and the
+limit, never the pattern (D-077). The bound turns catastrophic backtracking into an error instead
 of a hang.
 
 **Replacements** use .NET's syntax: `$1`, `${name}`, `$$` for a literal `$`. Since `${`

@@ -113,6 +113,13 @@ expects eight in `Grob.Stdlib` and none elsewhere:
 `TimeZoneInfo.FindSystemTimeZoneById` beside them takes an explicit zone identifier; it is
 a lookup, not an ambient read, and stays (D-430 Decision 7).
 
+Two more measurements, both from D-430 Decision 7's consequences. **Time-only input**: give
+each `date.parse` form an input with a time and no date and record where the date comes
+from; .NET documents it as the current date on the local system, a host-clock read beside
+the eight. **Drive-relative input**, on Windows: record what `path.resolve` returns today
+for a path such as `D:sources` and what the two-argument overload returns for it under a
+base directory on another drive.
+
 Then confirm D-430 Decision 7's shape compiles against every current implementer of
 `IClock` — list them — and that `HostCapabilities`, `InertCapabilities` and the
 error-examples harness's `HarnessCapabilities` are the only places that assemble
@@ -166,9 +173,14 @@ D-430 Decision 7 authorises this group alone to do so.
   offset for offset-free input. **Offset-free input** is parsed as a local date and time
   and given `clock.LocalZone`'s offset for that local time, so a time in a daylight-saving
   gap or overlap resolves exactly as `TimeZoneInfo.Local.GetUtcOffset` resolves it today.
-  **Input with an explicit offset keeps that offset.** `path.resolve`'s
+  **Input with an explicit offset keeps that offset.** **Input with a time and no date**
+  takes its date from `clock.UtcNow` in `clock.LocalZone`, never from the host clock.
+  `DateTimeStyles.NoCurrentDateDefault` exists on the `DateTime` parsers and not on
+  `DateTimeOffset`'s; a form the plan cannot cover without a host read is a STOP. `path.resolve`'s
   `Path.GetFullPath(p)` becomes `Path.GetFullPath(p, fileSystem.CurrentDirectory)`, keeping
-  the empty-input case.
+  the empty-input case. Windows' per-drive current directories are no longer consulted, so
+  a drive-relative path on another drive resolves from the capability's directory alone
+  (D-430 Decision 7).
 - **`HostCapabilities` gains `FileSystem`**; `System()` supplies the OS-backed set, and
   `ReplCommand` composes it too. `HarnessCapabilities` gains a fixed zone and a fixed
   directory: the zone a custom one with a non-zero offset, so a native that ignores the
@@ -179,11 +191,15 @@ D-430 Decision 7 authorises this group alone to do so.
   the shape `NamedTypeLayoutTests` uses for layout names, and says which file and pattern
   failed.
 
-`grob run`'s observable behaviour does not change: the OS-backed capabilities read what the
-natives read before. Tests: `date.today`, `date.now`, `date.of`, `date.ofTime`, `toLocal`
-and both `date.parse` forms under an injected zone, each with an offset-free input whose
-result does not change with the host zone and an input with `+02:00` that keeps `+02:00`;
-`path.resolve` under an injected directory; one test per form that the OS-backed set still reads the host. **R-32 closes
+`grob run`'s observable behaviour does not change, with one recorded exception: the
+OS-backed capabilities read what the natives read before, but a drive-relative path on
+another drive no longer resolves against that drive's own current directory. Tests:
+`date.today`, `date.now`, `date.of`, `date.ofTime`, `toLocal` and both `date.parse` forms
+under an injected zone, each with an offset-free input whose result does not change with
+the host zone, an input with `+02:00` that keeps `+02:00` and a time-only input whose date
+is the fixed clock's; `path.resolve` under an injected directory, with a Windows-only case
+pinning the drive-relative result §1.3 measured; one test per form that the OS-backed set
+still reads the host. **R-32 closes
 with this group's D-number in group 5.**
 
 ### 2.2 Change group 2 — the harness, without the corpus
