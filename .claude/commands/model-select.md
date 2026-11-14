@@ -1,18 +1,21 @@
 ---
-description: Decide which Claude model (Haiku, Sonnet or Opus) fits the work in front of you, and explain the reasoning.
+description: Decide which Claude model (Haiku, Sonnet, Opus or Fable) fits the work in front of you, and explain the reasoning.
 argument-hint: [task in a phrase]
 ---
 
 # Model selection
 
-In Claude Code there is one subscription and three models, switched with `/model`.
+In Claude Code there is one subscription and four model tiers, switched with `/model`.
 There are no separate billing tiers, no BYOK, no local model — the old three-provider
 ladder is gone. Pick the cheapest model that will do the job *well*. "Well" is the
 operative word — cheap-and-bad is not cheap, it is wasted time.
 
+Tiers are named without versions. The `haiku`, `sonnet`, `opus` and `fable` aliases
+track the current release.
+
 The task to assess is **$ARGUMENTS**.
 
-## The three models
+## The four models
 
 ### Haiku — mechanical work
 
@@ -38,11 +41,10 @@ reference block already fixes the shape.
 to code, not deciding what the intent should be. This is the default; start here unless
 a trigger below applies.
 
-### Opus — load-bearing design
+### Opus — planning, review and judgement
 
-The strongest model, for the named structural triggers only. Reserve it for work where
-"approximately right" is not good enough and the cost of being wrong exceeds the cost of
-the inference:
+For work where "approximately right" is not good enough and the cost of being wrong
+exceeds the cost of the inference:
 
 - **Multi-file architectural reasoning** — a change whose correctness depends on how
   three or more files fit together.
@@ -50,13 +52,23 @@ the inference:
   pair of eyes before committing to a direction.
 - **Debugging cascading failures** — a bug that resists the first three explanations you
   can think of.
-- **The specific structural sub-problems an increment prompt flags for Opus** — e.g. a
-  mechanism explicitly shaped so later sprints extend rather than duplicate it. The
-  trigger is "later sprints build on this shape", not "this part is hard".
 - **Adversarial review** — `grob-reviewer` and `grob-design-reviewer` default to Opus,
   because a missed finding is the expensive failure mode.
 
 **Reach for it when:** the work is genuinely "decide what to do", not "do the thing".
+
+### Fable — the named deep sub-problem
+
+The strongest model, and the most expensive against the usage window. Reserved for the
+specific structural sub-problem an increment prompt names — e.g. a mechanism explicitly
+shaped so later sprints extend rather than duplicate it. The trigger is "later sprints
+build on this shape", not "this part is hard".
+
+It is reached through a Fable-pinned subagent under `.claude/agents/`, invoked for the
+named sub-task only, so the rest of the session stays on its own model.
+
+**Reach for it when:** the increment prompt names the sub-problem, or the maintainer
+does. Never on your own judgement that something is difficult — that is an Opus call.
 
 ## Decision questions
 
@@ -69,13 +81,16 @@ Answer in order. Stop at the first "yes":
    proposal to code, writing tests for a clear spec, refactoring a single file, fixing a
    localised bug.)
    → **Sonnet.**
-3. **Does the work require choosing between non-obvious alternatives, reasoning across
-   multiple files, or debugging something that resists explanation — or did the
-   increment prompt name this part as an Opus trigger?**
+3. **Did the increment prompt, or the maintainer, name this part as the deep structural
+   sub-problem?**
+   → **Fable**, through its pinned subagent.
+4. **Does the work require choosing between non-obvious alternatives, reasoning across
+   multiple files, or debugging something that resists explanation?**
    → **Opus.**
-4. **If you cannot decide,** start one model lower than your first instinct and escalate
+5. **If you cannot decide,** start one model lower than your first instinct and escalate
    if it struggles. Most people default too high.
-5. **If genuinely stuck, ask the maintainer.** Do not escalate silently.
+6. **If genuinely stuck, ask the maintainer.** Do not escalate silently, and never
+   escalate to Fable unasked.
 
 ## Cost-conscious patterns
 
@@ -88,7 +103,9 @@ Answer in order. Stop at the first "yes":
 - **Do not use Opus for refactor steps.** A behaviour-preserving refactor is mechanical
   by definition — Haiku or Sonnet.
 - **Do not use Haiku for the type checker.** Sustained type-checking reasoning is Sonnet
-  work at least, Opus where the increment prompt says so.
+  work at least, Opus or Fable where the increment prompt says so.
+- **Do not leave a session on Fable.** It runs in its subagent for the named sub-task
+  and the session carries on at its own tier.
 - **Switch in place with `/model`.** No re-tooling, no provider change — escalate or
   drop back mid-session as the work shifts.
 
@@ -99,7 +116,7 @@ When invoked with a specific task, produce:
 ```
 # Model selection: <task in one phrase>
 
-**Recommendation:** <Haiku | Sonnet | Opus>.
+**Recommendation:** <Haiku | Sonnet | Opus | Fable>.
 
 **Reasoning:** <one or two sentences naming which decision question triggered it, and
 what that means for the work.>

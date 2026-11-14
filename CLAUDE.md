@@ -110,13 +110,20 @@ Chris.**
 
 ## Model policy
 
-- **Sonnet 4.6 (High)** is the default session workhorse for code generation —
+Tiers are named without versions: the `sonnet`, `opus`, `fable` and `haiku`
+aliases track the current release, so this section does not go stale.
+
+- **Sonnet (high effort)** is the default session workhorse for code generation —
   the settled, rules-inlined transcription work.
-- **Opus 4.8** is reserved for named structural sub-problems, gated behind
-  "only if _this specific thing_ gets fiddly", never "this part is hard". It is
-  reached via an Opus-pinned subagent under `.claude/agents/`, invoked for the
-  named sub-task only.
+- **Opus (high effort)** is for planning, review and judgement — plan mode on a
+  design that is not obvious, the reviewer agents, PR-comment triage.
+- **Fable (high effort)** is reserved for the named deep structural sub-problem,
+  gated behind "only if _this specific thing_ gets fiddly", never "this part is
+  hard". It is reached via a Fable-pinned subagent under `.claude/agents/`,
+  invoked for the named sub-task only.
 - **Haiku** for genuinely mechanical, self-contained arms.
+
+`/model-select` is the procedure for choosing between them.
 
 ## Output and prose conventions
 
