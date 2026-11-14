@@ -34,6 +34,10 @@ Chris.**
   SHAs, the test and coverage results and anything not run. A PR stays under 100
   changed files, CodeRabbit's limit: if a branch would exceed it, stop and
   propose a split before opening. `/close-session` is the procedure.
+- **Scripts go in files.** A multi-line script, fixture or patch is written with
+  the Write tool to `.grob-session/`, which is gitignored scratch, and run from
+  there — never a heredoc, never inline `sed` with regex escapes. Files are
+  edited with the Edit tool. Never run a bare `cat` with no file argument.
 - **Verify before relying on a citation.** When a prompt cites a `D-###` or a
   `§`, grep the corpus and confirm it says what the prompt assumes. If it has
   been superseded, renumbered or drifted, surface it — do not invent a
