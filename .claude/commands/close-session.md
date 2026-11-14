@@ -24,7 +24,7 @@ and mark each item **done** or **not done**, with evidence:
 | Tests | the `dotnet test Grob.slnx` result observed this session: passed, failed, skipped |
 | Coverage, where listed | the figure and the projects it covers |
 | Mutation verifications, where listed | each prediction and what was observed |
-| Commits | the SHAs, from `git log --oneline main..HEAD` |
+| Commits | the SHAs, from `git log --oneline origin/main..HEAD` |
 | Documents and register rows | the paths changed |
 
 **Never invent green state.** A figure not observed this session is "not run
@@ -36,7 +36,11 @@ condition applies; what stays not done is listed as skipped, with the reason.
 Read the prompt's STOP conditions and "out of scope" list, and the gate report
 if the session has one. Confirm none was crossed:
 
-- `git diff --stat main..HEAD` shows no path the prompt puts out of scope.
+- `git fetch origin main`, then `git diff --stat origin/main...HEAD` shows no
+  committed path the prompt puts out of scope.
+- `git status --short` shows no staged, unstaged or untracked path out of scope
+  either. Step 3 commits the working tree, so an uncommitted edit is checked
+  here, before it is staged.
 - No gold master, quarantine row or baseline changed unless the prompt or the
   gate report authorises that change by name.
 - No error code, opcode, token or AST node was added outside the increment's
@@ -52,18 +56,20 @@ change group where the prompt asks for that.
 
 ## 4. Push
 
-`git push`, or `git push -u origin <branch>` on the first push. Never to `main`.
-The pre-push gate runs; **never bypass it**. If it blocks the push, the session
-is not closed: report the failure and stop.
-
 If this command was invoked from a command or agent that stops before the push,
-stop here and say so.
+stop here, before pushing, and say so.
+
+Otherwise `git push`, or `git push -u origin <branch>` on the first push. Never
+to `main`. The pre-push gate runs; **never bypass it**. If it blocks the push,
+the session is not closed: report the failure and stop.
 
 ## 5. Open the PR, or update it
 
-Count the changed files first: `git diff --name-only main...HEAD`. **Over 100,
-stop** and propose a split into stacked PRs before opening anything —
-CodeRabbit will not review a larger PR.
+Count the changed files first, against the PR's base as it is now: `git fetch
+origin main`, then `git diff --name-only origin/main...HEAD`. A stale local
+`main` would count changes the base already has. **At 100 or more, stop** and
+propose a split into stacked PRs before opening anything — a PR stays under
+100 changed files, CodeRabbit's limit.
 
 Run the pre-PR CodeRabbit pass that `CLAUDE.md`'s quality gates call for if the
 PR is not open yet.
