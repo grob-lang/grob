@@ -226,12 +226,16 @@ When the branch is ready:
 3. **Confirm the branch is up to date with `main`.** `git fetch && git
 log origin/main..HEAD` — if there are commits on `main` you don't
    have, rebase or merge them in first.
-4. **Push.** `git push` (or `git push -u origin <branch>` on the first
+4. **Remove the session hand-off.** If `git ls-files .grob-session`
+   lists `handoff.md`, `git rm` it in its own commit —
+   `chore(handoff): remove session hand-off`. A hand-off is a holding
+   place for the next session and never reaches `main`.
+5. **Push.** `git push` (or `git push -u origin <branch>` on the first
    push).
-5. **Hand off in chat.** "Branch `<name>` ready. `<N>` commits. All
+6. **Hand off in chat.** "Branch `<name>` ready. `<N>` commits. All
    tests green. Coverage at or above 90% on every affected project.
    Ready for your review and merge."
-6. **Wait.** Don't proceed with new work on the same branch — start a
+7. **Wait.** Don't proceed with new work on the same branch — start a
    new branch for the next piece of work.
 
 If Chris asks for changes, fix them on the same branch and push again.

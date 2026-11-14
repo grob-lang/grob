@@ -1,6 +1,6 @@
 ---
 description: Write a session hand-off to .grob-session/handoff.md so the next session resumes without re-deriving state. Use when an increment will not finish in this session, when context is running short or when the session shows degradation signs.
-allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git branch:*), Bash(git diff:*), Read, Grep, Glob, Write
+allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git branch:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(git rev-parse:*), Read, Grep, Glob, Write
 ---
 
 # Write a session hand-off
@@ -33,9 +33,18 @@ contents into the hand-off; cite the path.
    (the D-316 gate). An allocated-but-unregistered code is the most expensive thing
    to lose across a session boundary.
 5. Write the file. Create `.grob-session/` if absent.
-6. In chat, report **the path and the next action only**. Not the contents — the
-   file exists so the document is read in the editor, matching the convention that
-   investigation reports go to a scratch file with a pointer in chat.
+6. Commit the hand-off and nothing else. `git add .grob-session/handoff.md`, then
+   `git commit .grob-session/handoff.md -m "chore(handoff): session hand-off"`.
+   Naming the path on the commit takes that one file whatever else is staged or
+   modified. Refuse on `main`.
+7. Push the branch with a plain `git push` (`-u origin <branch>` on the first push).
+   The pre-push gate runs against the working tree, so a push from a red tree is
+   blocked. **Never bypass it** — no `--no-verify`. If the push is blocked, leave
+   the commit local and say so in chat.
+8. In chat, report **the path, the hand-off commit SHA, whether it was pushed and
+   the next action only**. Not the contents — the file exists so the document is
+   read in the editor, matching the convention that investigation reports go to a
+   scratch file with a pointer in chat.
 
 ## The document
 
@@ -87,7 +96,12 @@ exhaustion, degradation or the increment not finishing.>
 - **Never fold an unlogged decision into prose and call it recorded.** The
   hand-off is a holding place, not the decisions log. The next session still owes
   `logging-a-decision` its three-location lockstep entry.
-- **Do not commit `.grob-session/`.** It is session scratch and gitignored.
+- **Commit the hand-off and only the hand-off.** `.grob-session/handoff.md` is the
+  one tracked file in that folder; everything else there is scratch and stays
+  gitignored. A later hand-off on the same branch overwrites the file in a new
+  commit.
+- **The hand-off never reaches `main`.** It is removed in its own commit before
+  the branch is handed over for a PR — `trunk-flow`'s merge protocol has the step.
 - **Do not summarise the increment prompt.** Path only. A paraphrase written by a
   degraded session is a corrupted copy of a file that is sitting right there.
 - Prose follows `house-style`.
