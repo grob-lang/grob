@@ -38,7 +38,8 @@ if the session has one. Confirm none was crossed:
 
 - `git fetch origin main`, then `git diff --stat origin/main...HEAD` shows no
   committed path the prompt puts out of scope.
-- `git status --short` shows no staged, unstaged or untracked path out of scope
+- `git status --short --untracked-files=all`, which lists every untracked file
+  and not just its directory, shows no staged, unstaged or untracked path out of scope
   either. Step 4 commits the working tree, so an uncommitted edit is checked
   here, before it is staged.
 - No gold master, quarantine row or baseline changed unless the prompt or the
