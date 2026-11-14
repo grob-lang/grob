@@ -23,10 +23,17 @@ Chris.**
 - **One concern per branch.** `main` is protected — never commit to it. Use
   `/start-branch` to propose and create the feature branch, `/commit-message`
   to draft the conventional-commits message (it refuses on `main`). After the
-  local commit, push the feature branch and report its name and head SHA — never
-  push to `main`. Opening the PR is Chris's action. A command or agent that says
-  to stop before the push still stops there. If you find yourself on `main` with
-  edits, stop immediately and surface it.
+  local commit, push the feature branch — never push to `main` — then open the
+  PR, or update its description if one exists, and report the branch, head SHA
+  and PR URL. A session never ends with pushed commits and no PR. Merging is
+  Chris's action. A command or agent that says to stop before the push still
+  stops there. If you find yourself on `main` with edits, stop immediately and
+  surface it.
+- **PRs are written and sized for review.** The title is in conventional-commits
+  form. The description carries a summary, the change groups with their commit
+  SHAs, the test and coverage results and anything not run. A PR stays under 100
+  changed files, CodeRabbit's limit: if a branch would exceed it, stop and
+  propose a split before opening. `/close-session` is the procedure.
 - **Verify before relying on a citation.** When a prompt cites a `D-###` or a
   `§`, grep the corpus and confirm it says what the prompt assumes. If it has
   been superseded, renumbered or drifted, surface it — do not invent a
