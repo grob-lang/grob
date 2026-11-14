@@ -22,9 +22,11 @@ Chris.**
   the implementation that makes them pass. Never skip the red step.
 - **One concern per branch.** `main` is protected — never commit to it. Use
   `/start-branch` to propose and create the feature branch, `/commit-message`
-  to draft the conventional-commits message (it refuses on `main`). Stop after
-  the local commit; pushing and opening the PR are Chris's actions. If you find
-  yourself on `main` with edits, stop immediately and surface it.
+  to draft the conventional-commits message (it refuses on `main`). After the
+  local commit, push the feature branch and report its name and head SHA — never
+  push to `main`. Opening the PR is Chris's action. A command or agent that says
+  to stop before the push still stops there. If you find yourself on `main` with
+  edits, stop immediately and surface it.
 - **Verify before relying on a citation.** When a prompt cites a `D-###` or a
   `§`, grep the corpus and confirm it says what the prompt assumes. If it has
   been superseded, renumbered or drifted, surface it — do not invent a
