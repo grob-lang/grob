@@ -232,10 +232,14 @@ log origin/main..HEAD` — if there are commits on `main` you don't
    place for the next session and never reaches `main`.
 5. **Push.** `git push` (or `git push -u origin <branch>` on the first
    push).
-6. **Hand off in chat.** "Branch `<name>` ready. `<N>` commits. All
-   tests green. Coverage at or above 90% on every affected project.
-   Ready for your review and merge."
-7. **Wait.** Don't proceed with new work on the same branch — start a
+6. **Open the PR, or update it.** A title in conventional-commits form
+   and a description with a summary, the change groups, the test and
+   coverage results and anything not run. `/close-session` has the
+   procedure. Under 100 changed files, or stop and propose a split.
+7. **Hand off in chat.** "Branch `<name>` ready, PR `<url>`. `<N>`
+   commits. All tests green. Coverage at or above 90% on every affected
+   project. Ready for your review and merge."
+8. **Wait.** Don't proceed with new work on the same branch — start a
    new branch for the next piece of work.
 
 If Chris asks for changes, fix them on the same branch and push again.
