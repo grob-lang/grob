@@ -962,7 +962,7 @@ parameter passing.
 - Param file: `grob run script.grob --params file.grobparams`.
 - `.grobparams` format: `key = value`, `//` comments.
 - Command line overrides param file values.
-- Decorators (the full v1 set, D-411 — none is a scope-cut candidate):
+- Decorators (the full v1 set, D-411):
   `@secure` (not echoed, not logged, not in error messages),
   `@allowed("dev", "staging", "prod")`, `@minLength(n)`, `@maxLength(n)`,
   `@minValue(n)`, `@maxValue(n)`. Each is validated at the parameter
@@ -1511,79 +1511,15 @@ Grob v1 is ready for public release when:
 
 -----
 
-## 16. v1 Scope-Cut List
-
-**The list is empty as of D-432** (November 2026); both candidates below
-are recorded as removed. The section stays as the place a future
-candidate would go.
-
-The scope-cut list exists as risk insurance. If implementation reveals
-unexpected complexity in a sprint and the scope needs to shrink to
-ship, the candidates below are the first features to move to v1.1.
-
-Activation is at the project owner's discretion. There is no automatic
-gate, no calendar trigger, and no sprint-slip threshold. The list is
-consulted only when needed and shelved when not.
-
-### Candidates (in activation order)
-
-**1. Validation decorators — REMOVED from this list (D-411, August 2026).**
-
-The whole param decorator set ships in v1 and none of it is a cut
-candidate. D-411 fixes the set at seven — `@secure`, `@allowed`,
-`@minLength`, `@maxLength`, `@minValue`, `@maxValue`, `@pattern` — and
-takes the three this candidate named — `@allowed`, `@minLength` and
-`@maxLength` — off the list by owner decision.
-The v1 fallback this entry described (three to five lines of manual
-in-body validation per validated param) is exactly the PowerShell
-ceremony Grob exists to remove, and cutting the set would have left a
-`param` declaration that can declare a constraint's shape but not
-enforce it.
-
-The obligation this creates is recorded in the Sprint 10 scope above:
-the decorators have no release-gate coverage today beyond `@secure`, so
-a script exercising the full surface is required before v1.
-
-**2. Regex literal grammar — REMOVED from this list (D-432, November 2026).**
-
-Regex literals ship in v1. The saving this candidate offered —
-context-sensitive lexing ahead of Sprint 1 — was already spent: D-411
-found the literal's front end built and tested, so activating the cut
-would have meant deleting working code. D-432 strikes the candidate by
-owner decision and specifies what was missing behind the front end: the
-complete rule that tells a regex literal from division, the literal's
-body and flags, compile-time validation (E0602), the runtime contract
-and a bounded match timeout. `regex.compile(pattern, flags, timeout)`
-remains in v1, as the way to build a `Regex` from a run-time string,
-not as a fallback.
-
-### Defer-gracefully constraints
-
-**No candidate remains** (D-432): both were removed by owner decision.
-A candidate added later must meet the "defer gracefully" constraint: v1
-scripts using its fallback form continue to work in v1.1 unchanged, the
-v1.1 addition is purely additive and no v1 feature becomes useless
-because the candidate is cut.
-
-### What is explicitly **not** on the list
-
-Candidates considered and rejected during Session C Part 2:
-
-- **`formatAs.table()` compiler rewrite** — considered and retired during
-  Session C Part 1. The rewrite was simplified via the `formatAs`
-  reserved-identifier mechanism (D-282) and stays in v1.
-- **Switch expression exhaustiveness enforcement** — rejected.
-  Non-exhaustive switch expressions are an identity compromise; if
-  switch expressions need deferral, the whole feature defers, not the
-  checking.
-- **Closures with upvalue capture** — rejected. Closures without
-  capture are second-class; most functional-style pipelines in the
-  sample scripts rely on capture. If Sprint 5 slips, the answer is to
-  slip the sprint, not to cut the feature.
-
 -----
 
-*This document was updated August 2026 — D-410 and D-411 wired in. The Sprint 10*
+*This document was updated November 2026 — D-433: §16, the v1 scope-cut list, is*
+*removed with its defer-gracefully constraint and its record of rejected candidates. Grob*
+*has no published delivery date, so v1 is defined by its scope and its Definition of Done*
+*(§15), not by a date the list protected. D-432 had already struck the last candidate;*
+*the Sprint 9 `regex` bullet and Sprint 10's `@pattern` sentence carry D-432's design.*
+
+*Previous: August 2026 — D-410 and D-411 wired in. The Sprint 10*
 *scope now describes `param` declarations rather than a `param` block, pointing at*
 *the normative grammar D-410 added to `grob-language-fundamentals.md` §19. The*
 *decorator list grows to the seven of D-411 (`@minValue`/`@maxValue` added,*

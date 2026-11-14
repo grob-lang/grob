@@ -1002,8 +1002,8 @@ read by `grob --explain Exxxx`.
 - **Category:** Param / decorator
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** `@allowed(...)` received an argument list that is not a homogeneous set of literals matching the param's type. This is a grammar-level rejection at compile time, distinct from runtime validation failures (which fall under the runtime category if v1 scope-cut is not activated).
-- **Source decision:** D-186 (validation decorators are a v1 scope-cut candidate; the grammar code is allocated regardless); D-424 (first throw site). Arity, non-literal arguments, heterogeneous values and a value not assignable to the param's declared type all report here, each at the offending argument's own position.
+- **Description:** `@allowed(...)` received an argument list that is not a homogeneous set of literals matching the param's type. This is a grammar-level rejection at compile time, distinct from runtime validation failures, which fall under the runtime category.
+- **Source decision:** D-186 (validation decorators were a scope-cut candidate, removed by D-411; D-433 retired the list); D-424 (first throw site). Arity, non-literal arguments, heterogeneous values and a value not assignable to the param's declared type all report here, each at the offending argument's own position.
 
 ---
 
@@ -1397,6 +1397,10 @@ it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
 changed; this line is the single source for the present total.
+
+_Updated November 2026 — D-433. E4201's source note no longer calls validation decorators a_
+_scope-cut candidate, and its description drops the clause conditioning runtime validation on_
+_the cut: D-411 removed decorators from the list and D-433 retired it. No code changes._
 
 _Updated September 2026 — D-424, R-01. **E4202 removed; 121 -> 120.** Its condition_
 _-- a `param` declaration after the parameter group has closed -- is a strict subset_
