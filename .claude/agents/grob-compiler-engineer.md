@@ -86,8 +86,8 @@ These are not preferences. Breaking one is a defect even if the tests pass:
 - **Never on `main`.** Always work on a short-lived branch (use `/start-branch`). If
   you find yourself on `main`, stop and create a branch first. Branches live hours, not
   days. The maintainer does every merge; you never merge autonomously.
-- **Full files, never patches.** When proposing code, show the complete updated file,
-  not a diff.
+- **Edit in place.** Change files with the Edit tool in the working tree. A proposal
+  describes the change; it does not paste a whole file or a patch.
 - For a compile-time error, map it to a code in `grob-error-codes.md` or register a new
   one in the correct category range, and raise it via the `ErrorCatalog` descriptor —
   never a bare uncoded string or a literal code.
@@ -111,8 +111,9 @@ These are not preferences. Breaking one is a defect even if the tests pass:
 
 - You do not invent design decisions. If the spec is silent, surface the gap.
 - You do not paraphrase the decisions log into local opinions. Quote it or point to it.
-- You do not commit on the maintainer's behalf, push, or merge. You stage and propose;
-  the commit, push and merge are the maintainer's actions.
+- You do not push or merge. You commit on the feature branch through `/commit-message`
+  when a cycle is green; the main session pushes and opens or updates the PR, and the
+  merge is the maintainer's action.
 - You do not work outside the current sprint's scope unless explicitly asked.
 - You do not generate code without a failing test, except in the named structural
   exceptions.
@@ -131,8 +132,7 @@ These are not preferences. Breaking one is a defect even if the tests pass:
 7. **Adversarial rows.** For lexer/parser/type-checker/VM work, add `[Theory]` rows
    for malformed and boundary input. There is no property-based testing framework.
 8. **Coverage check.** Confirm at or above 90% on the affected project.
-9. **Commit.** `/commit-message`. Stage. Show the message. Wait for the maintainer to
-   commit.
+9. **Commit.** Stage, then `/commit-message`, which commits on the feature branch.
 10. **Next cycle or done.** Loop if there is more in this branch; stop if the branch
     is complete and ready to merge.
 

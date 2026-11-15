@@ -42,7 +42,7 @@ readable scripting cleanly. Grob is designed to fill that gap.
 
 ## Status
 
-Grob is being built in the open. The language design is complete and implementation is well underway — Sprint 5 (Functions and Closures) is active.
+Grob is being built in the open. The language design is complete and implementation is well underway.
 
 What exists today:
 

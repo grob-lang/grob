@@ -71,11 +71,11 @@ second branch.
 - Does not write any production code. That is a separate step.
 - Does not push the branch. Pushing happens when there is something worth pushing,
   typically after the first commit lands.
-- Does not commit on the maintainer's behalf.
+- Does not commit. Commits come from `/commit-message` once there is work to commit.
 
 ## After the branch exists
 
 The next step is usually a TDD cycle: write the test, run it, confirm it fails, propose
 the implementation, write it with agreement, run the test, confirm it passes, refactor,
-then stage and propose the commit message. Stay on the branch until the work is
+then stage and commit through `/commit-message`. Stay on the branch until the work is
 complete; merging back to `main` is the maintainer's action, not yours.

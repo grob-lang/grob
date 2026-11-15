@@ -93,8 +93,13 @@ Chris.**
   line.
 - **Test routing (§3.5).** Each test goes to the project matching its kind —
   `Grob.Compiler.Tests`, `Grob.Vm.Tests`, `Grob.Integration.Tests` and so on.
-- **Coverage.** 90% line coverage is a hard bar. `[ExcludeFromCodeCoverage]`
-  requires a substantive `Justification`.
+- **Coverage.** 90% line coverage is a hard floor, on the whole (D-328) and on
+  every PR's new code (Chris's ruling, recorded with the corpus sweep), and more is
+  always wanted: 90% is the least acceptable
+  figure, not a target to stop at. SonarCloud's free-plan PR gate fails only
+  below 80% on new code and cannot be raised, so a green Sonar gate does not mean
+  the bar is met — new code below 90% is a finding to fix before the PR is
+  handed over. `[ExcludeFromCodeCoverage]` requires a substantive `Justification`.
 
 ## Quality gates
 
@@ -150,8 +155,9 @@ is the procedure for work no prompt covers.
 
 - Diagnostics and errors to **stderr**; results to **stdout**. Quiet on success,
   clear on failure. **Never emoji** in compiler or CLI output.
-- Design-doc deliverables are **complete files**, never diffs. Code is edited in
-  place in the working tree.
+- Every file — design document or code — is **edited in place with the Edit
+  tool**, in the working tree. Nothing is delivered as a whole replacement file or
+  a diff.
 - **British English** in documentation; **Oxford comma never**; never the word
   "simply".
 - Decisions-log entries follow ADR style (`D-###`, `Area`, `Supersedes`,

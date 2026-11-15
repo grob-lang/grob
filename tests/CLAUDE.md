@@ -98,7 +98,10 @@ procedure.
 
 ## Coverage
 
-D-328 sets a 90% line and branch floor on in-scope code. The pre-push hook's `tooling/coverage-gate.ps1`
-enforces an interim 80% overall, and SonarCloud gates new code at 80%;
-`docs/dev/coverage-policy.md` holds the detail. `[ExcludeFromCodeCoverage]` needs a
+D-328 sets a 90% line and branch floor on in-scope code, and the maintainer's ruling
+recorded with the corpus sweep applies it to every PR's new code as well. It is a floor: more is always wanted. Two automated checks sit lower
+and do not change the bar: the pre-push hook's `tooling/coverage-gate.ps1` enforces an
+interim 80% overall, and SonarCloud's free-plan PR gate fails below 80% on new code, a
+threshold the plan does not let us raise. New code between 80% and 90% passes both and
+is still a finding to fix. `docs/dev/coverage-policy.md` holds the detail. `[ExcludeFromCodeCoverage]` needs a
 substantive `Justification`: the rules are in `src/CLAUDE.md`.

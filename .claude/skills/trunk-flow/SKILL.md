@@ -26,8 +26,9 @@ work that happens _inside_ a branch, see:
 3. **One purpose per branch.** A branch delivers one cohesive change. If
    you find yourself making two unrelated changes on the same branch, stop
    and split.
-4. **Chris always merges.** You stage commits and propose messages. The
-   merge is Chris's action.
+4. **Chris always merges.** You commit on the feature branch through
+   `/commit-message`, push it and open or update the PR. The merge is
+   Chris's action.
 5. **The trunk is always green.** Every commit on `main` must pass tests
    _and_ keep every project at or above 90% line coverage. You don't merge
    red. You don't merge below the coverage bar. Chris doesn't either.

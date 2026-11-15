@@ -75,10 +75,12 @@ Both ends. A one-way link is a defect that misleads the next reader. If an ADR i
 `docs/wiki/ADR/` is affected (as ADR-0016 was superseded by D-288 and D-291), note it
 there too and in `Home.md`.
 
-## Deliver complete files
+## Edit in place
 
-Per the project's working pattern, deliver the full updated `grob-decisions-log.md`, not
-a diff or a patch. Every session output is a complete, ready-to-use file.
+Make the three edits with the Edit tool in the working tree, in the same commit. The log
+is too large to rewrite whole, and a rewrite risks reverting entries merged since the
+file was read. Read the tail of the merged log first, not a copy from earlier in the
+session.
 
 ## Checklist
 
@@ -93,4 +95,4 @@ a diff or a patch. Every session output is a complete, ready-to-use file.
 - [ ] Supersession links set on both ends if applicable
 - [ ] `grob-open-questions.md` updated if an `OQ-###` is closed or an `R-##` row changes
 - [ ] Affected wiki ADR and `Home.md` updated if applicable
-- [ ] Delivered as a complete file, not a patch
+- [ ] Edited in place with the Edit tool; nothing merged since was reverted

@@ -1,6 +1,6 @@
 ---
 description: Generate a conventional-commits message for the currently staged changes. Inspect the staged diff, choose the right type and scope and produce a complete message body.
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*)
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Bash(git add:*), Bash(git commit:*), Write
 ---
 
 # Generate commit message
@@ -165,6 +165,12 @@ judgement you make and state, not one you skip.
 
 ## Output
 
-Present the proposed message in a fenced block, ready to paste into `git commit -F -`,
-then ask: "Commit this, or revise?" Wait for the maintainer's response. Do not run
-`git commit`, stage, push or merge autonomously.
+Write the message to `.grob-session/commit-msg.txt` with the Write tool and commit with
+`git commit -F .grob-session/commit-msg.txt`, on the feature branch only — the step 3
+check refuses `main`. The pre-commit hooks run; **never bypass them** (no `--no-verify`).
+If a hook fails, fix the cause, restage and commit again. Show the message and the new
+SHA in chat.
+
+Pushing and the PR follow root `CLAUDE.md` (*How we work*) and `/close-session`; a
+command or agent that says to stop before the push still stops there. Merging is
+Chris's action, always.

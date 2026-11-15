@@ -193,8 +193,8 @@ at or above 90%:
 3. If coverage moved materially — `[ExcludeFromCodeCoverage]` added,
    tested code removed, percentage dropped — note it in the commit body
    with the justification.
-4. Use the `/commit-message` prompt to draft the message.
-5. Stage and show the message to Chris. Don't auto-commit.
+4. Stage, then run `/commit-message`, which drafts the message and commits on the
+   feature branch.
 
 ## Design for testability
 

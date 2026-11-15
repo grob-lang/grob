@@ -79,6 +79,9 @@ curl -fsS -H "Authorization: Bearer $SONAR_TOKEN" \
 ```
 New-code metric values come back under the measure's period — read `.period.value` and
 fall back to `.value`. This is where the 90% line+branch floor (D-328) shows up per-PR.
+The quality gate's own coverage condition is SonarCloud's free-plan 80%, which cannot
+be raised: judge coverage against 90%, never against the gate. A PR at 85% passes the
+gate and is BELOW the floor.
 
 ## Step 5 — format the findings block
 

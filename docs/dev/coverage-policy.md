@@ -30,11 +30,15 @@ the compiler and VM together. Contains no business logic of its own — every
 meaningful operation delegates to a class in `Grob.Compiler`, `Grob.Vm`, or
 `Grob.Runtime`.
 
-**How it is tested:** End-to-end integration tests drive `grob run`, `grob fmt`,
-`grob check`, `grob install`, and `grob restore` against the eleven validation
-suite scripts (D-346) (`grob-sample-scripts.md`) plus the error-examples library. These
-tests exercise the entry point in its real configuration, which is the only
-configuration that matters.
+**How it is tested:** End-to-end integration tests in `Grob.Integration.Tests` drive
+`grob run` and the REPL through the CLI's own pipeline: the error-examples harness, the
+public samples gate and the smoke tests. These tests exercise the entry point in its real
+configuration, which is the only configuration that matters.
+
+The other subcommands do not exist yet, and their end-to-end tests come with them:
+`grob install` and `grob restore` in Sprint 11, `grob fmt` and `grob check` in Sprint 12
+(`grob-v1-requirements.md`). The validation scripts (D-346) run in
+`Grob.Compiler.Tests`, not through the CLI.
 
 **Size constraint:** `Program.cs` must remain thin. If it grows past ~30 lines,
 extract argv parsing and subcommand dispatch into a `CommandLineRunner` (or
