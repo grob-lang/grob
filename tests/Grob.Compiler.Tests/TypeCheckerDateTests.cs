@@ -201,7 +201,7 @@ public sealed class TypeCheckerDateTests {
         // NativeMember carries no parameter names and emission preserves source order, so a
         // named argument cannot bind — it would otherwise slot "dd/MM/yyyy" into the input
         // parameter and let the pattern take its "" default (CodeRabbit review, PR #154).
-        // Reject with E0011 (positional-only), matching RejectNamedPrimitiveArgs.
+        // Reject with E0011 (positional-only), matching RejectNamedMemberArgs.
         DiagnosticBag bag = Check("""readonly x := date.parse(pattern: "dd/MM/yyyy")""");
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
@@ -210,6 +210,22 @@ public sealed class TypeCheckerDateTests {
             diag.Message);
         Assert.Equal(1, diag.Range.Start.Line);
         Assert.Equal(26, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void AddDays_NamedArgument_ReportsSingleE0011() {
+        // R-20: a named-type method call took a named argument silently, where namespace and
+        // primitive calls report E0011. Emission keeps source order, so it would miscompile
+        // once a named-type method takes two parameters.
+        DiagnosticBag bag = Check("""
+            d := date.now()
+            readonly x := d.addDays(days: 1)
+            """);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
+        Assert.Equal("'addDays' does not accept named arguments; pass them positionally.", diag.Message);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(25, diag.Range.Start.Column);
     }
 
     [Fact]

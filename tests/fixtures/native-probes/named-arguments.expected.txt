@@ -34,3 +34,11 @@ error[E0011]: 'format' does not accept named arguments; pass them positionally.
   --> named-arguments.grob:28:10-28:20
 error[E0011]: 'roundTo' does not accept named arguments; pass them positionally.
   --> named-arguments.grob:29:11-29:22
+error[E0011]: 'addDays' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:32:11-32:18
+error[E0011]: 'format' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:33:10-33:20
+error[E0011]: 'isBefore' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:34:12-34:20
+error[E0011]: 'toZone' does not accept named arguments; pass them positionally.
+  --> named-arguments.grob:35:10-35:19

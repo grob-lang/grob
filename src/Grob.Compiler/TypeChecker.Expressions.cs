@@ -1165,7 +1165,9 @@ public sealed partial class TypeChecker {
                 memberAccess.Range);
         }
         RequireNonGeneric(method.Signature);
-        CheckNamedTypeMethodArgs(node, memberAccess, argTypes, method.Signature);
+        if (!RejectNamedMemberArgs(node, memberAccess)) {
+            CheckNamedTypeMethodArgs(node, memberAccess, argTypes, method.Signature);
+        }
         var returnType = (SignatureType.Concrete)method.Signature.ReturnType;
         if (returnType.NamedTypeName is not null) {
             _callResultStructNames[node] = returnType.NamedTypeName;
@@ -1250,7 +1252,7 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckPrimitiveMemberArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, FunctionSignature signature) {
-        if (RejectNamedPrimitiveArgs(node, memberAccess)) return;
+        if (RejectNamedMemberArgs(node, memberAccess)) return;
         int fullArity = signature.Parameters.Count;
         if (!MemberArgCountInRange(node, memberAccess, argTypes.Length, signature.RequiredArgumentCount, fullArity)) return;
         for (int i = 0; i < argTypes.Length; i++) {
@@ -1299,25 +1301,24 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Rejects named arguments on a primitive-member call with
+    /// Rejects named arguments on a primitive-member or named-type-method call with
     /// <see cref="ErrorCatalog.E0011"/>. Named-argument binding to natives is unsupported
     /// even though a signature names its parameters (D-426 Decision 4), so a named
     /// argument cannot bind — and emission preserves source
     /// order, which would otherwise let a swapped pair (e.g. <c>s.replace(to: "b",
     /// from: "a")</c>) pass the type checks yet call the native with mis-ordered
-    /// arguments. Primitive members are positional-only until D-358 adds parameter-name
-    /// binding. Returns <c>true</c> when at least one named argument was found, so the
-    /// caller suppresses the downstream arity/type checks (one diagnostic per root cause).
+    /// arguments. Instance members are positional-only until D-358 adds parameter-name
+    /// binding; named-type methods joined the rule under R-20. Returns <c>true</c> when at
+    /// least one named argument was found, so the caller suppresses the downstream
+    /// arity/type checks (one diagnostic per root cause).
     /// </summary>
-    private bool RejectNamedPrimitiveArgs(CallExpr node, MemberAccessExpr memberAccess) {
+    private bool RejectNamedMemberArgs(CallExpr node, MemberAccessExpr memberAccess) {
         bool rejected = false;
-        foreach (CallArgument arg in node.Arguments) {
-            if (arg.Name is not null) {
-                EmitError(ErrorCatalog.E0011,
-                    $"'{memberAccess.Member}' does not accept named arguments; pass them positionally.",
-                    arg.Range);
-                rejected = true;
-            }
+        foreach (CallArgument arg in node.Arguments.Where(a => a.Name is not null)) {
+            EmitError(ErrorCatalog.E0011,
+                $"'{memberAccess.Member}' does not accept named arguments; pass them positionally.",
+                arg.Range);
+            rejected = true;
         }
         return rejected;
     }
@@ -2352,7 +2353,7 @@ public sealed partial class TypeChecker {
     /// even though a <see cref="FunctionSignature"/> names its parameters (D-426 Decision 4),
     /// and emission preserves source order, so a named argument cannot bind — it would otherwise let <c>date.parse(pattern: "dd/MM/yyyy")</c> slot the
     /// pattern into the <c>input</c> parameter and take the empty default (D-358). The
-    /// namespace-native counterpart of <see cref="RejectNamedPrimitiveArgs"/>. Returns
+    /// namespace-native counterpart of <see cref="RejectNamedMemberArgs"/>. Returns
     /// <c>true</c> when at least one named argument was found, so the caller suppresses the
     /// downstream arity/type checks (one diagnostic per root cause).
     /// </summary>
