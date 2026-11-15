@@ -22,7 +22,7 @@ Created from regex literals (`/pattern/flags`). Compiled once at declaration.
 
 ## Examples
 
-```grob
+```grob fragment blocked-by=R-30
 email_pattern := /^[\w.]+@[\w.]+$/i
 
 if (email_pattern.isMatch(user_input)) {

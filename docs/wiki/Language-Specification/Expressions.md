@@ -17,7 +17,7 @@ Assignment is not an expression. `if (x := foo())` is a compile error.
 
 ## Literals
 
-```grob
+```grob fragment
 42                  // int
 0xFF                // int (hex)
 0b1010              // int (binary)
@@ -37,7 +37,7 @@ nil                 // nil
 
 Two-way inline value selection.
 
-```grob
+```grob fragment
 label  := isActive ? "on" : "off"
 prefix := count == 1 ? "item" : "items"
 ```
@@ -46,7 +46,7 @@ prefix := count == 1 ? "item" : "items"
 
 Multi-branch value selection. C# 8 style.
 
-```grob
+```grob fragment
 status := used_pct switch {
     >= crit_percent => "CRITICAL",
     >= warn_percent => "WARNING",
@@ -67,7 +67,7 @@ All arms must return the same type — mismatch is a type error.
 
 Switch expression results can be assigned or passed directly:
 
-```grob
+```grob fragment
 log.info(http_code switch {
     200 => "Request succeeded",
     _   => "Request failed with code ${http_code}"
@@ -76,7 +76,7 @@ log.info(http_code switch {
 
 ## Anonymous Struct Literals
 
-```grob
+```grob fragment
 item := #{ name: "report.xlsx", size: 2048 }
 
 // Common use — projection in data pipelines
@@ -90,7 +90,7 @@ Field access is type-safe. Accessing undefined fields is a compile error.
 
 ## Named Type Construction
 
-```grob
+```grob fragment
 r := Repo {
     name:    "grob",
     ssh_url: "git@github.com/grob-lang/grob"
@@ -102,7 +102,7 @@ appear anywhere that type is expected.
 
 ## Array Indexing
 
-```grob
+```grob fragment
 first := items[0]
 matrix_cell := matrix[r][c]
 ```
@@ -113,7 +113,7 @@ function or calling an array is a compile error.
 
 ## Method Calls and Member Access
 
-```grob
+```grob fragment
 name.length          // property — no ()
 name.upper()         // method call
 "42".toInt()         // method on literal

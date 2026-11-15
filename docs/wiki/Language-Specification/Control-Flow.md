@@ -2,7 +2,7 @@
 
 ## `if / else`
 
-```grob
+```grob fragment
 if (condition) {
     // then block
 }
@@ -31,7 +31,7 @@ use the ternary `? :` or the switch expression. See [Expressions](Expressions.md
 
 ## `while`
 
-```grob
+```grob fragment
 while (condition) {
     // body
 }
@@ -44,7 +44,7 @@ For collection iteration prefer `for...in` or functional methods.
 
 Multi-branch statement. First matching case executes. No fall-through.
 
-```grob
+```grob fragment
 select (value) {
     case 0 {
         print("Zero")
@@ -76,7 +76,7 @@ always an expression. The two forms are syntactically unambiguous. See
 
 ## `for...in` — Collection Iteration
 
-```grob
+```grob fragment
 // Value only
 for file in files {
     print(file.name)
@@ -115,7 +115,7 @@ opcodes.
 
 ## `break` and `continue`
 
-```grob
+```grob fragment
 for file in files {
     if (file.name == "skip.log") {
         continue

@@ -41,7 +41,7 @@ scope chain to find the name wherever it lives. This is the Go model — mandato
 
 Opening braces go on the same line as the keyword. Bare `{ }` is always a block.
 
-```grob
+```grob fragment
 if (condition) {
     // block
 }
@@ -68,7 +68,7 @@ operator, comma, open bracket or parenthesis, member access dot, or lambda arrow
 **Leading dot** — the next line begins with `.`. The lexer peeks one token across
 the newline.
 
-```grob
+```grob fragment
 // Leading dot — recommended for method chains
 result := files
     .filter(f => f.extension == ".log")
@@ -106,7 +106,7 @@ semantics will be attached when `grob doc` tooling exists post-MVP.
 
 ## String Literals
 
-```grob
+```grob fragment
 "hello"                 // double-quoted
 "Hello ${name}"         // interpolation
 `raw\nstring`           // raw string — backtick-delimited, no escape processing

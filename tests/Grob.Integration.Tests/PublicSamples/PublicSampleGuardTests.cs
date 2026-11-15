@@ -6,8 +6,8 @@ namespace Grob.Integration.Tests.PublicSamples;
 
 /// <summary>
 /// The public samples gate's guards (D-430 Decisions 1, 3 and 8, ruling 6): each proven on a
-/// planted input, then held against the live tree. The per-block corpus cases join in change
-/// group 4.
+/// planted input, then held against the live tree. The per-block corpus cases are in
+/// <see cref="PublicSampleCorpusTests"/>.
 /// </summary>
 public sealed class PublicSampleGuardTests {
     [Fact]

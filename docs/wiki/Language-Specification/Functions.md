@@ -19,7 +19,7 @@ Return type inference is deferred post-MVP.
 
 ## Calling
 
-```grob
+```grob fragment
 result := add(1, 2)
 greet("Alice")
 ```
@@ -53,7 +53,7 @@ to positional syntax for required arguments.
 
 ## Lambdas
 
-```grob
+```grob fragment
 // Single-expression
 files.filter(f => f.extension == ".jpg")
 
@@ -76,7 +76,7 @@ struct literal. The parser never has to guess.
 
 Lambdas capture variables from the enclosing scope.
 
-```grob
+```grob fragment blocked-by=R-29
 cutoff := date.today().addDays(-30)
 stale  := branches.filter(b => date.parse(b.lastCommit) < cutoff)
 ```

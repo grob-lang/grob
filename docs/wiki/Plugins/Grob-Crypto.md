@@ -22,7 +22,7 @@ file into memory.
 
 ## Examples
 
-```grob
+```grob fragment
 import Grob.Crypto
 
 hash := crypto.sha256File(`C:\releases\tool.zip`)

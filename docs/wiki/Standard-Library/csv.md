@@ -62,7 +62,7 @@ for row in table.rows {
 
 ### Write results
 
-```grob
+```grob fragment
 csv.write("C:\\output\\results.csv", results)
 ```
 

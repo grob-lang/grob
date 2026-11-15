@@ -37,7 +37,7 @@ d2 := date.parse("05/04/2026", "dd/MM/yyyy")
 | `toIsoDateTime()` | `→ string` | `"2026-04-05T14:30:00Z"` |
 | `format(pattern: string)` | `→ string` | Custom format |
 
-```grob
+```grob fragment
 d.format("dd MMM yyyy")        // "05 Apr 2026"
 d.format("dd/MM/yyyy HH:mm")   // "05/04/2026 14:30"
 ```

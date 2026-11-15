@@ -68,7 +68,7 @@ if (response.isSuccess) {
 
 ### Authenticated API call
 
-```grob
+```grob blocked-by=R-29
 import Grob.Http
 
 pat      := env.require("ADO_PAT")
@@ -83,7 +83,7 @@ repos.formatAs.table()
 
 ### POST with JSON body
 
-```grob
+```grob fragment
 import Grob.Http
 
 body     := json.write(#{ title: "New issue", body: "Description" })
@@ -113,7 +113,7 @@ binary or large files.
 
 ### Custom timeout
 
-```grob
+```grob fragment
 import Grob.Http
 
 response := http.get(url, auth.bearer(token), timeoutSeconds: 120)

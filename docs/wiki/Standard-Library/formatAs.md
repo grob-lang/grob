@@ -12,7 +12,7 @@ relevant types (e.g. `myFloat.format("F2")`, `myDate.format("yyyy-MM-dd")`).
 
 The canonical calling convention is chained from a collection:
 
-```grob
+```grob fragment blocked-by=R-29
 results.formatAs.table()
 results.formatAs.list()
 results.formatAs.csv()
@@ -56,13 +56,13 @@ entries.formatAs.table()
 
 ### Column selection
 
-```grob
+```grob fragment
 entries.formatAs.table(columns: ["name", "size_mb"])
 ```
 
 ### List output
 
-```grob
+```grob fragment blocked-by=R-29
 entries.formatAs.list()
 ```
 
@@ -80,7 +80,7 @@ size_mb: 0.87
 
 ### CSV output
 
-```grob
+```grob fragment blocked-by=R-29
 entries.formatAs.csv()
 ```
 
