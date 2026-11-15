@@ -1,20 +1,29 @@
-# Session hand-off — 15 November 2026 (session B complete)
+# Session hand-off — 15 November 2026 (session C, change group 3 complete)
 
 ## Where we are
-- Branch: `feat/tests-public-samples-gate`, HEAD `02af086`
+- Branch: `feat/tests-public-samples-gate`, HEAD `c5b99b9`
 - Working tree: clean apart from this hand-off
 - Commits on this branch (`git log --oneline main..HEAD`): hand-off commits, plus `c9526eb`
-  (change group 1, R-32) and `02af086` (change group 2, the harness)
+  (change group 1, R-32), `02af086` (change group 2, the harness) and `c5b99b9` (change
+  group 3, the wiki corrections)
 - Increment prompt: `docs/prompts/public-samples-compile.md`
-- Phase reached: session B's row is complete. Change groups 1 and 2 are committed. Groups 3, 4
-  and 5 belong to session C.
+- Phase reached: session C (Opus 5.5, medium, confirmed by Chris). Group 3 is committed. Next:
+  group 4 (wire the corpus, red first, then info strings, then mutations 1-8 and 10), then
+  group 5.
+- Group 3 measurement: every corrected block reached its predicted verdict. The live tally
+  after group 3, with no info strings, is 42 run (45 once the harness fixtures supply
+  `BASE_URL` and the other two variables), 29 excused, 39 fragments and 13 others: the 3
+  needing fixtures and the 10 to be blocked (the 3 VM crashes are among them). This is F2's shape: group 4's red count and final
+  tallies follow it, not the prompt's 38/11. Re-measure with
+  `python -I .grob-session/measure_corpus.py . <abs grob.exe> <out>` and compare with
+  `.grob-session/diff_results.py`. The exe path must be absolute.
 - Gate report: `D:\Code\grob-lang\gate-reports\public-samples-compile-gate-report.md` (outside
   the working tree).
 - PR: draft #243.
 
 ## Green state
-- Tests: the full suite passed 4,964, failed 0, on `02af086`'s tree. Release build, SDK
-  10.0.303.
+- Tests: the full suite passed 4,964, failed 0, on `c5b99b9`'s tree (unchanged by group 3,
+  which is documentation only). Release build, SDK 10.0.303.
 - Coverage: group 1's changed files in `Grob.Stdlib` and `Grob.Cli` are at 100% line coverage,
   from the `Grob.Stdlib.Tests` and `Grob.Integration.Tests` cobertura runs. Group 2 is test code
   only. The project-level D-328 figure was not run.
@@ -96,6 +105,15 @@ Taken in session B, group 2 (plan approved by Chris):
 18. **No hang protection.** xUnit 2's `Timeout` needs async tests, and CLAUDE.md forbids
     `Task.Run`. Session A measured no hangs.
 
+Taken in session C, group 3:
+
+19. **Ruling 5's "guid.md API table" is the whole function table**, not only the `v4`/`v5`/`v7`
+    rows at lines 10-12. `parse` (now throws `ParseError`), `tryParse` (new row), `empty` (a
+    constant, not a call) and `namespaces` (new row) are corrected too, because the rewritten
+    example's `tryParse` would otherwise contradict the table above it. The type-methods table
+    (`toStringUpper`/`toStringN` against the reference's `toUpperString`/`toCompactString`, no
+    `version` row) is a separate table and goes in group 5's *Findings for the corpus sweep*.
+
 Measured, not decided, carried into session C: F2's tallies (45 run, 29 excused, 39 fragments,
 10 blocked, five of them fragments), which change mutation 2 to five blocked fragments and
 mutation 4 to 39 unblocked fragments; F4's corrected drive-relative wording (pinned by
@@ -128,8 +146,10 @@ Session B's row is complete (change groups 1 and 2). The prompt forbids a sessio
 from two rows, so groups 3 to 5 need session C.
 
 ## Next session, first action
-Run the prompt's session-start check for session C (Opus 5.5, medium), then start change group 3
-(§2.3, the wiki corrections, widened by rulings 1, 4 and 5).
+If a new session: run the prompt's session-start check for session C (Opus 5.5, medium). Then
+start change group 4 (§2.4): wire the theory to the live corpus with no info strings, predict
+the red count from the live tally (49 failing: 39 fragments and 10 blocked, five R-29 and five
+R-30; the prompt's total of 49 is split 38/6/5), run it red and record which fail.
 
 ## Open for the maintainer
 Nothing.
