@@ -159,6 +159,13 @@ syntax) align with the shape of a well-formed MCP tool. The market signal in
 2026 is consistent — small, focused, governed agents beat autonomous systems —
 and that is exactly the shape of script Grob is designed for.
 
+**November 2026 note (D-434).** Since this was written, harnesses have moved towards
+having the model write a short program that calls tools in place of individual tool
+calls (`grob-agentic-strategy.md` §4). That adds a third design point to the two above:
+typed bindings generated from an MCP server's tool schemas, so a script calls a tool as
+a typed function and the checker catches a wrong argument before the run. It is the
+client-side mirror of `param` reflection and belongs in this plugin's design.
+
 **Defer until:** post-v1, after `Grob.Http` ships (HTTP transport is the
 production-recommended MCP transport; stdio is local-only). No commitment
 until Sprint 12 retrospective. Likely a v1.1 or v1.2 plugin.
@@ -442,6 +449,138 @@ framing error and is corrected here.
 
 ---
 
+### OQ-019 — Machine-Readable Diagnostic Contract
+
+**Question:** What exactly does `grob check --json` emit, what does Grob promise about
+it, and how does `Diagnostic` grow to carry help and fixes?
+
+**Raised by:** D-434. **Must resolve before:** the Sprint 12 kickoff prompt.
+
+**To decide:**
+
+- **The schema.** Grob's own versioned JSON, SARIF or the first with the second as
+  an option. SARIF buys existing consumers and costs a verbose shape built for static
+  analysis results, not compiler repair loops.
+- **The stability promise.** Error codes are immutable once shipped. Whether field
+  names, range conventions (zero- or one-based, UTF-16 units or code points) and
+  severity values carry the same promise, and how the schema version moves.
+- **`Diagnostic`'s growth.** It is a record of code, message, range and severity
+  today. R-25's renderer already needs `note` and `help`. Fixes add a list of text
+  edits and an applicability level — Rust's machine-applicable and maybe-incorrect
+  split is the obvious model.
+- **Foreign idioms.** Which constructs get a dedicated diagnostic (`var`, `let`,
+  `function`, `def`, a trailing semicolon, `null`, `else if` spellings), where they
+  are recognised — the parser is the likely home, under D-300's recovery rules — and
+  whether each is its own code or a `help` line on an existing one.
+- **Run-time errors.** Whether `grob run --json` reports an unhandled error and its
+  stack frames under the same contract.
+- **Exit codes.** Whether they change in JSON mode. The tentative answer is no.
+
+**Tentative direction:** Grob's own schema, one document per run, versioned, with
+fixes as text edits carrying an applicability level. SARIF only if a consumer asks.
+
+---
+
+### OQ-020 — The Agent Context Kit
+
+**Question:** What does `grob skills` print, how is it kept true and what does
+`grob new` scaffold for a harness?
+
+**Raised by:** D-434. **Must resolve before:** the Sprint 12 kickoff prompt.
+
+**To decide:**
+
+- **Content and budget.** Three parts: a language reference cut to a stated token
+  ceiling; the idioms that differ from C#, Go, PowerShell and Python; translation
+  pairs. What the ceiling is, and whether there is a short form and a full form.
+- **Format.** Plain Markdown on stdout, the Agent Skills `SKILL.md` layout or both.
+  Whether `grob new` writes an `AGENTS.md` section, a skill directory or neither
+  unless asked.
+- **Source of truth.** Hand-written, generated from `grob-language-fundamentals.md`,
+  or hand-written and checked against it. `.claude/skills/writing-grob-source` is the
+  seed.
+- **The gate.** Every sample in the kit compiles under the public-samples gate
+  (D-430). How the kit's stdlib coverage is kept in step with `NativeCatalogue`.
+
+**Tentative direction:** hand-written Markdown embedded in the binary, gated like any
+public sample, with the stdlib section generated from the catalogue.
+
+---
+
+### OQ-021 — The Agent Benchmark
+
+**Question:** How is "an agent can write Grob" measured, and how do the results feed
+design?
+
+**Raised by:** D-434. **Defer until:** Sprint 12 closes, since it measures what that
+sprint builds.
+
+**To decide:** the task set and how it covers the four driving use cases without
+needing live Azure or SharePoint tenants; which harnesses and models, and how a run is
+made repeatable when models change underneath it; the scoring — first attempt, and
+within three rounds of `grob check --json`; where it runs and what it costs; and the
+rule that turns a result into a design input. A baseline is never adjusted to absorb a
+known defect (D-313's principle). A result that argues for a syntax change is subject
+to D-434 Decision 4.
+
+---
+
+### OQ-022 — Restricted Run and Plan Mode
+
+**Question:** What is the surface of a restricted run, and what does a script do under
+a recording host?
+
+**Raised by:** D-435. **Defer until:** post-v1. D-436 keeps the route open meanwhile.
+
+**To decide:**
+
+- **Where grants are stated.** CLI flags, `grob.json`, a declaration in the script
+  the checker can read or a combination. A declaration in the script lets `grob check`
+  report what a script needs before anything runs, which is the strongest form.
+- **Granularity.** Per module, per read or write, per path prefix, per executable
+  for `process`, per host for `Grob.Http`.
+- **Plugins.** How a plugin is granted by name, and how the documentation states that
+  a grant removes the gate for that plugin (D-435 Decision 3).
+- **The denial.** A new `GrobError` subtype or an existing one, whether it is
+  catchable, and its error code.
+- **Plan mode.** Reads return real data. What a recorded write returns to the script,
+  how a later read of a path written earlier in the same run behaves, what `process.run`
+  returns when it is not run, and the shape of the report.
+- **Plugins under plan mode.** A granted plugin is arbitrary code outside the
+  capability seam (D-073), so a recording host cannot see or stop what it does. Two
+  answers are open: a plan run refuses every plugin import, granted or not, which keeps
+  the report complete and makes scripts that use a plugin unplannable; or a plan run
+  allows a granted plugin and the report states that the plugin's effects are neither
+  recorded nor prevented. Raised by review of PR #244 and not decided here.
+- **Compile-time reach.** Whether the checker can prove a script never calls an
+  ungranted capability, so a denial is a compile error where that is provable.
+
+**Constraints already fixed:** no sandbox claim (D-435 Decision 2); the mechanism is an
+alternate capability set at the composition root (D-343); interface members are one
+operation each, read or change (D-436 Decision 2).
+
+---
+
+### OQ-023 — Embedding Host Package
+
+**Question:** What does Grob publish so a .NET agent host can run a script in-process
+with its own natives and limits?
+
+**Raised by:** D-435. **Defer until:** post-v1, after R-04 narrows `Grob.Core`'s public
+surface.
+
+**Context.** The playground (D-319) and the error-examples harness (D-428) are
+embedding hosts already, both inside the repository. A public package makes the route
+available to a host that wants agent-written scripts checked before they run and
+confined to functions it supplies. `FunctionSignature` (D-426) already gives
+host-supplied natives full type checking.
+
+**To decide:** the package and its surface; resource limits — an instruction budget,
+wall-clock time, memory — and how each is reported; whether a run can suspend at a
+host call and resume; and which assemblies become supported public API as a result.
+
+---
+
 ## Deferred Work Register
 
 **Authority: D-420.** This is the single tracking home for work that is
@@ -489,12 +628,16 @@ authorised, and every item cites the decision that raised it.
 | R-26 | **The compiler records no source column.** `Chunk` has a column table and the VM passes it to `GrobRuntimeException`, but every emission site in `Grob.Compiler` uses the overload that writes 0, so `--> file:line` is all a runtime diagnostic can show. Seven gold-master pairs wait on it. The `.grobc` source map already carries a column field (`grob-grobc-format.md`), so no format change follows. | D-428 | Sprint 9/10 hardening interlude (D-353) | Every instruction that can raise a runtime error carries the column of its source node's span start; the pairs quarantined against this item pass; a compiler test pins the column for each throwing opcode family |
 | R-27 | **Code divergences between the gold masters and the compiler.** For each, the master states one code and the compiler raises another for the same source: E0006 (method undefined on a type — the compiler raises E1002), E0007 (implicit `float` to `int` — E0001), E1101 (shadowing warning — nothing), E1201 (forward reference in a function body — E1001), E1202 (use before declaration in a block — E1001), E0001 for `bool + int` (the compiler raises E0002, whose registry description fits) and E5201 (the master's nil dereference is now rejected statically as E0101, leaving no shown runtime path). **The first five codes have no throw site at all**, the shape D-424 found for the decorator and ordering codes. Also: a decorator before a local binding raises E2001 where the same mistake on a function parameter raises E4002 (D-424 Decision 2). | D-428 | `unowned` — before R-10, since documenting a code the compiler never raises documents a fiction | For each, a decision says which side is right; either the code gains its throw site and its pair passes, or the code is retired under D-410's clarification of ADR-0017 and its pair is rewritten or removed; the decorator case reports one code in both positions |
 | R-28 | **Location divergences.** `nullable-interpolation` (the compiler points at `${`, the master at the interpolated expression), `unterminated-string-literal` (the lexer reports the column after the opening quote, the master the quote itself) and `type-cycle-no-terminating-field` (the compiler points at the cycle's first field, the master at the field that closes it). | D-428 | `unowned` | A decision fixes each convention, the losing side changes, the three pairs leave the quarantine and a test pins each |
-| R-29 | **Cascades against D-300's one diagnostic per root cause.** A missing `{` after a function signature yields five diagnostics (E2014, E2001 twice, E2203, E1001); a local named after a core module yields E1102 citing a declaration at "line 1" plus E1004 on its use; `@allowed` given an undefined name yields E1001 plus E4101; and, measured by D-429's gate, `nil-dereference-at-runtime` yields E0101 plus an E0005 on the `unknown`-typed value it returns. **Two more shapes, measured by D-430 on the public samples**: `formatAs`'s bespoke `table`, `list` and `csv` arms report E0004 ("cannot determine its columns") on an `unknown` receiver, chained or function form — `print(ys.formatAs.table())` with `ys` undefined yields E1001 plus E0004; and a member read off an untyped lambda parameter over an `unknown` receiver passes `unknown` into a typed native parameter — `ys.filter(b => date.parse(b.when) < date.today())` yields E1001 plus E0004. Five public samples are blocked on it: D-430 counted six, but W9's correction removed `formatAs.md` block 3's cascade (D-434). | D-428, amended by D-429, D-430 and D-434 | `unowned` | Each case yields one diagnostic at its root cause and is pinned by a test; `unexpected-token-missing-brace` leaves the quarantine; `nil-dereference-at-runtime` reports no E0005; the two `unknown` shapes report only the E1001, and the public samples carrying `blocked-by=R-29` lose the token |
+| R-29 | **Cascades against D-300's one diagnostic per root cause.** A missing `{` after a function signature yields five diagnostics (E2014, E2001 twice, E2203, E1001); a local named after a core module yields E1102 citing a declaration at "line 1" plus E1004 on its use; `@allowed` given an undefined name yields E1001 plus E4101; and, measured by D-429's gate, `nil-dereference-at-runtime` yields E0101 plus an E0005 on the `unknown`-typed value it returns. **Two more shapes, measured by D-430 on the public samples**: `formatAs`'s bespoke `table`, `list` and `csv` arms report E0004 ("cannot determine its columns") on an `unknown` receiver, chained or function form — `print(ys.formatAs.table())` with `ys` undefined yields E1001 plus E0004; and a member read off an untyped lambda parameter over an `unknown` receiver passes `unknown` into a typed native parameter — `ys.filter(b => date.parse(b.when) < date.today())` yields E1001 plus E0004. Five public samples are blocked on it: D-430 counted six, but W9's correction removed `formatAs.md` block 3's cascade (D-437). | D-428, amended by D-429, D-430 and D-437 | `unowned` | Each case yields one diagnostic at its root cause and is pinned by a test; `unexpected-token-missing-brace` leaves the quarantine; `nil-dereference-at-runtime` reports no E0005; the two `unknown` shapes report only the E1001, and the public samples carrying `blocked-by=R-29` lose the token |
 | R-30 | **A regex literal compiles to broken bytecode.** `x := /abc/` passes the lexer, parser and type checker with no diagnostic and fails in the VM with "internal error: value stack underflow": `VisitRegexLiteral` returns `GrobType.Unknown` and the compiler emits nothing for the node. **Measured by D-430**: five wiki samples use a regex literal; three reach the crash and two fail first on the `unknown` the literal is typed as. Each carries `blocked-by=R-30` in the public samples gate. | D-428, amended by D-430 and D-432 | The `regex` increment, **first in the rebuilt Sprint 9C** (D-432), which settles F9's grammar and the literal's runtime contract. D-428's interim "loud failure first" is withdrawn: regex no longer lands late | No program reaches an internal error through a regex literal: either the literal compiles to a working `Regex` value or the checker reports it, with a test for each; the five public samples carrying `blocked-by=R-30` pass and lose the token |
 | R-31 | **Undefined type names in annotations are accepted silently.** `x: Foo := 1`, `fn f(r: Foo): int`, `fn f(): Foo`, `xs: Foo[] := [1]` and `(a: Foo) => a` all compile and run with `Foo` undeclared; `map<string, Foo>` surfaces only as an E0004 naming `'unknown'`. Field annotations report E1001 through `ResolveNamedFieldType`; the other positions resolve through a path that returns `GrobType.Unknown` without a diagnostic. Seen in the corpus by D-429's gate: `ambiguous-type-reference` (quarantined for Sprint 11) raises only an E0005, because `r: Response` resolves silently and the return then mismatches `unknown`. **A sixth position, named by D-430**: a type argument, as in `mapAs<Repo[]>()` with `Repo` undeclared, which eight public samples write. It cannot be measured until `mapAs<T>` lands, since D-426 fences type parameters. D-430 also measured that no public sample annotates an undefined type in the five positions above, so R-31 does not join the run. | D-428, amended by D-429 and D-430 | Sprint 9/10 hardening interlude (D-353) — recommended first in it | Every annotation position reports E1001 at the type reference, as the field position does, with §3.1.1's sentinels on the error path and a test per position; the type-argument position is included once `mapAs<T>` makes it reachable |
 | R-33 | **`grob-lang.dev`'s samples are outside every gate.** The site's source is another repository, so the public samples gate (D-430) cannot see it. Measured by D-430 on 13 November: its one sample, `organise.grob`, calls `fs.list`, `fs.ensureDir`, `file.moveTo` and `path.join`, does not compile today because `fs` is not built, and is shown in a terminal printing "47 files organised" from a script that has no `print`. D-417's principle — every public sample compiled by a gate — does not yet reach it. | D-430 | `unowned` — the site's repository | Every Grob sample the site shows is either generated from a block this repository's public samples gate checks, or checked by a gate of the site's own against a released `grob`; any output the site shows is what the script prints |
 | R-34 | **No release-gate script exercises `regex`.** None of the eleven validation scripts uses a regex literal or the `regex` module. D-186 required a `regex.compile()` script only if regex literals were cut; D-432 keeps them and requires a script anyway, on R-08's footing — surface that would ship unexercised by the release gate. The script is the log filter that `grob-v1-requirements.md` §14's row 12 described without a script behind it. It reads a log through `fs`, so it lands with whichever of the two increments comes second. | D-432 | Whichever of the `regex` and `fs` increments lands second | A validation script in `grob-sample-scripts.md` and its corpus fixture, guarded by `ValidationScriptCorpusTests` and D-417's sync guard, uses a regex literal, `regex.compile`, `matchAll`, a named group and `replace`, and runs green with expected output |
-| R-35 | **The README's first sample becomes runnable before parameters bind.** `README.md`'s opening block reads the required parameters `from` and `to` and the defaulted `dir`, and renames files it lists through `fs.list`. It passes the public samples gate only because `fs` is excused (D-430 Decision 3). When the `fs` increment builds `fs`, the excused list's catalogue guard forces `fs` off it and the block is run. It then fails on `from`, since no `param` binds before Sprint 10 (D-430 measured E1001 on a parameter with or without a default), and its file operations reach whatever filesystem the harness supplies. Gate report F6. | D-434 | The 9C `fs` increment, which meets it first, for the filesystem; Sprint 10 for parameter values | No block the gate executes reaches the real filesystem once `fs` leaves the excused list; the gate supplies fixture values for `param` declarations as D-430 Decision 8 does for environment variables; `README.md`'s first block passes with no `blocked-by` token |
+| R-35 | **Every `fs` and `process` native reaches the OS through an injected capability.** D-319 sketched `IFileSystem` and `IProcessRunner`; D-343 landed the mechanism; D-430 gives `IFileSystem` its first member. Sprint 9C builds the two modules through which a script changes the machine, and D-435's restricted run and plan mode are an alternate host only if they are built through the seam. | D-436 | Sprint 9C — the `fs` and `process` increments | `IFileSystem` carries the `fs` surface and `IProcessRunner` the `process` surface, both in `Grob.Runtime`, each member one operation that either reads state or changes it; `json` and `csv` file reads and writes go through `IFileSystem`; no type in `Grob.Stdlib` calls `System.IO.File`, `Directory`, `FileInfo`, `DirectoryInfo`, `FileStream` or `System.Diagnostics.Process` directly, and R-32's source guard is widened to keep it so; the `fs` tests run over an in-memory `IFileSystem` and the `process` tests over a scripted `IProcessRunner` |
+| R-36 | **The agent-facing CLI surface.** `grob check --json`, `note`, `help` and structured fixes on `Diagnostic`, foreign-idiom diagnostics and `grob skills` (`grob-agentic-strategy.md` §5 and §6). | D-434 | Sprint 12, after OQ-019 and OQ-020 resolve and R-25, R-26 and R-29 close | `grob check --json` emits one document conforming to the schema OQ-019's resolution fixes, pinned by a test over the error-examples corpus; every diagnostic in it carries a column; each foreign idiom that resolution lists has a gold master showing the Grob form; `grob skills` prints the kit OQ-020's resolution specifies, and every sample in it compiles under the public-samples gate |
+| R-37 | **The agent benchmark exists and has run.** "First-class for agents" is a claim until it is measured, and D-434 Decision 4 makes the benchmark the only evidence that authorises a syntax change on these grounds. | D-434 | `unowned` — after R-36, once OQ-021 resolves | A committed task set covering the four driving use cases; a recorded run against at least two harnesses given only the kit, reporting first-attempt success and success within three rounds of `grob check --json`; results and the date committed under `docs/design/` |
+| R-38 | **Restricted run and plan mode built.** D-435 sets the posture and the limit of the claim; the surface is OQ-022. | D-435 | `unowned` — post-v1, after OQ-022 resolves | A run mode in which every standard-library call that needs a capability the host did not grant fails before it acts, as does a plugin import the host did not grant; proven by tests over the real CLI pipeline that cover at least an `fs` read, an `fs` write, a `process` run, a `json` and a `csv` file read and write and a plugin import, each denied and each granted; a plan run that reports each state change made through the capability seam without performing it, with plugin imports under a plan run handled as OQ-022's resolution fixes and that handling proven by test; documentation that describes the feature as a capability-gated standard library, states what it does not protect against and does not use the word sandbox |
+| R-39 | **The README's first sample becomes runnable before parameters bind.** `README.md`'s opening block reads the required parameters `from` and `to` and the defaulted `dir`, and renames files it lists through `fs.list`. It passes the public samples gate only because `fs` is excused (D-430 Decision 3). When the `fs` increment builds `fs`, the excused list's catalogue guard forces `fs` off it and the block is run. It then fails on `from`, since no `param` binds before Sprint 10 (D-430 measured E1001 on a parameter with or without a default), so that increment marks it `blocked-by=R-39`. Its file operations must meet the harness's in-memory `IFileSystem`, which R-35 (D-436) provides, never the real filesystem. Gate report F6. | D-437 | The 9C `fs` increment, which meets it first; Sprint 10 for parameter values | The gate supplies fixture values for `param` declarations as D-430 Decision 8 does for environment variables, and `README.md`'s first block passes under the harness's injected capabilities with no `blocked-by` token |
 
 ### Closed items
 
@@ -508,7 +651,7 @@ authorised, and every item cites the decision that raised it.
 | R-19 | **The `date` and `guid` hidden-field layout is written in three assemblies.** | D-426 | **D-427** | `Grob.Core`'s `DateLayout` (`TypeName`, `ValueFieldName`, `RoundTripFormat`) and new `GuidLayout` (`TypeName`, `ValueFieldName`) are the only declarations; `DateNatives`, `GuidNatives`, `DatePlugin`, `GuidPlugin` and the checker's `date` comparison rule read them. `NamedTypeLayoutTests` fails if `Grob.Compiler`, `Grob.Vm` or `Grob.Stdlib` declares a string constant equal to a layout name. The VM and the plugin each keep a parse/format helper over the shared constants, since they are DAG siblings. Taken in group 8 at Chris's direction (5 November), not because the move needed it. |
 | R-11 | **Error-examples library harnessed.** | D-415, D-417, refined by D-428 | **D-429** | `ErrorExampleMasterTests` checks every master's titles against `ErrorCatalog`, its `-->` lines, snippets and first caret against its own source, and the README's index against the directories; `ErrorExampleCorpusTests` runs every pair through `RunCommand`'s own pipeline over injected capabilities and compares the ordered `(severity, code, file, line, column)` list with its master's. Pairs are discovered by directory. The 29 pairs that do not match are rows of the strict manifest `docs/errors/examples/quarantine.md`, each blocked by an open register item, an unregistered namespace or Sprint 11 and each required to fail exactly as recorded. 56 pairs: 27 pass, 29 quarantined. |
 | R-18 | **Three decorator gold masters are stale.** | D-425 | **D-429** | Rewritten against D-410's braceless grammar and D-424's decorator semantics. Before the rewrite `unknown-decorator` raised E4201 plus a cascading E1001 and `invalid-allowed-argument` raised E4201 plus E0205 (its `const` array, D-289), not the codes their masters stated; `decorator-not-permitted-here`'s decorator before a local binding raised E2001, now tracked in R-27. Each new source raises exactly one diagnostic — E4001 at 2:1, E4101 at 2:10 and E4002 at 2:12 on a function parameter (D-424 Decision 2) — and each passes the harness; `unknown-decorator`'s help lists D-411's seven decorators. |
-| R-32 | **Two stdlib ambient reads sit outside `RunCommand`'s capability seam.** | D-429, amended by D-430 | **D-434** | `IClock.LocalZone` and `IFileSystem.CurrentDirectory` are capabilities on D-343's pattern, supplied by `HostCapabilities` at the composition root and injected through `RunCommand`'s seam. `date.now`, `date.today`, `date.of`, `date.ofTime`, `toLocal`, both forms of `date.parse` and `path.resolve` read them, and each is tested under injected values. No explicit or implicit read of the host zone or current directory remains in `Grob.Stdlib`; `StdlibAmbientReadGuardTests` in `Grob.Consistency.Tests` keeps it so. `date.parse` classifies its input lexically, because no `DateTimeStyles` combination avoids a host read. `FindSystemTimeZoneById` stays, as an explicit lookup. One accepted behaviour change: on Windows a drive-relative path on another drive resolves to that drive's root. |
+| R-32 | **Two stdlib ambient reads sit outside `RunCommand`'s capability seam.** | D-429, amended by D-430 | **D-437** | `IClock.LocalZone` and `IFileSystem.CurrentDirectory` are capabilities on D-343's pattern, supplied by `HostCapabilities` at the composition root and injected through `RunCommand`'s seam. `date.now`, `date.today`, `date.of`, `date.ofTime`, `toLocal`, both forms of `date.parse` and `path.resolve` read them, and each is tested under injected values. No explicit or implicit read of the host zone or current directory remains in `Grob.Stdlib`; `StdlibAmbientReadGuardTests` in `Grob.Consistency.Tests` keeps it so. `date.parse` classifies its input lexically, because no `DateTimeStyles` combination avoids a host read. `FindSystemTimeZoneById` stays, as an explicit lookup. One accepted behaviour change: on Windows a drive-relative path on another drive resolves to that drive's root. |
 
 ---
 
@@ -910,11 +1053,16 @@ _table of `grob-decisions-log.md`. The full rationale is preserved here._
 
 ---
 
-_Document updated November 2026 — D-434. **R-32 closed**: the local time zone and the current_
+_Document updated November 2026 — D-437. **R-32 closed**: the local time zone and the current_
 _directory are capabilities, and a source guard keeps `Grob.Stdlib` free of both reads._
-_**R-29** amended: five public samples are blocked on it, not six, after W9. **R-35 added**:_
+_**R-29** amended: five public samples are blocked on it, not six, after W9. **R-39 added**:_
 _the README's first sample becomes runnable when `fs` is built, before Sprint 10 binds_
 _parameters._
+_Previous: November 2026 — D-434, D-435, D-436. **OQ-019 to OQ-023 opened**: the_
+_diagnostic contract, the agent context kit, the agent benchmark, restricted run and plan_
+_mode, and the embedding host package. **R-35 to R-38 added**: the Sprint 9C capability_
+_seam, the agent-facing CLI surface, the benchmark and the restricted run. OQ-014 gains a_
+_note on typed tool bindings._
 _Previous: November 2026 — D-432. **R-30's owner** becomes the `regex` increment as_
 _the first of the rebuilt Sprint 9C, with D-428's interim loud failure withdrawn. **R-34_
 _added**: no release-gate script exercises `regex`; D-432 requires one._
