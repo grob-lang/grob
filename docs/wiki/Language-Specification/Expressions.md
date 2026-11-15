@@ -23,7 +23,6 @@ Assignment is not an expression. `if (x := foo())` is a compile error.
 0b1010              // int (binary)
 1_000_000           // int (underscores for readability)
 3.14                // float (leading zero required — .5 is not valid)
-1.5e10              // float (scientific notation)
 "hello"             // string
 "Hello ${name}"     // string with interpolation
 `raw\nstring`       // raw string (backtick, no escape processing)
@@ -50,14 +49,14 @@ Multi-branch value selection. C# 8 style.
 status := used_pct switch {
     >= crit_percent => "CRITICAL",
     >= warn_percent => "WARNING",
-    _               => "OK"
+    _               => "OK",
 }
 
 message := http_code switch {
     200 => "OK",
     404 => "Not found",
     500 => "Server error",
-    _   => "Unknown"
+    _   => "Unknown",
 }
 ```
 
@@ -70,7 +69,7 @@ Switch expression results can be assigned or passed directly:
 ```grob fragment
 log.info(http_code switch {
     200 => "Request succeeded",
-    _   => "Request failed with code ${http_code}"
+    _   => "Request failed with code ${http_code}",
 })
 ```
 
@@ -93,7 +92,7 @@ Field access is type-safe. Accessing undefined fields is a compile error.
 ```grob fragment
 r := Repo {
     name:    "grob",
-    ssh_url: "git@github.com/grob-lang/grob"
+    ssh_url: "git@github.com/grob-lang/grob",
 }
 ```
 

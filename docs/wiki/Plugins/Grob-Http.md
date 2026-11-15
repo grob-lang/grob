@@ -74,7 +74,7 @@ import Grob.Http
 pat      := env.require("ADO_PAT")
 response := http.get(
     "https://dev.azure.com/org/project/_apis/git/repositories",
-    auth.bearer(pat)
+    auth.bearer(pat),
 )
 
 repos := response.asJson().mapAs<Repo[]>()
@@ -102,7 +102,7 @@ import Grob.Http
 
 http.download(
     "https://releases.example.com/tool-v2.zip",
-    "C:\\Tools\\tool-v2.zip"
+    `C:\Tools\tool-v2.zip`,
 )
 ```
 

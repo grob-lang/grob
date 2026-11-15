@@ -35,7 +35,7 @@ type Employee {
     salary:     int
 }
 
-employees := csv.read("C:\\data\\employees.csv").mapAs<Employee>()
+employees := csv.read(`C:\data\employees.csv`).mapAs<Employee>()
 
 for emp in employees {
     print("${emp.name} — ${emp.department}")
@@ -45,13 +45,13 @@ for emp in employees {
 ### Tab-delimited file
 
 ```grob
-data := csv.read("C:\\data\\export.tsv", delimiter: "\t")
+data := csv.read(`C:\data\export.tsv`, delimiter: "\t")
 ```
 
 ### Raw row access
 
 ```grob
-table := csv.read("C:\\data\\report.csv")
+table := csv.read(`C:\data\report.csv`)
 
 for row in table.rows {
     name   := row["Name"]
@@ -63,7 +63,7 @@ for row in table.rows {
 ### Write results
 
 ```grob fragment
-csv.write("C:\\output\\results.csv", results)
+csv.write(`C:\output\results.csv`, results)
 ```
 
 ## Error Behaviour

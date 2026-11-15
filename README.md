@@ -15,11 +15,12 @@ _A statically typed scripting language that a hobbyist can learn and a developer
 
 Grob is a statically typed scripting language with C-style syntax, type inference
 and first-class file system operations. Nullable types are explicit. Immutability
-is opt-in via `const`. It is designed to be readable by any C# or Go developer
+is opt-in: `readonly` for a value fixed once at run time, `const` for a compile-time
+constant (D-291). It is designed to be readable by any C# or Go developer
 without prior knowledge of Grob.
 
 ```grob
-param dir:  string = "C:\\Reports"
+param dir:  string = `C:\Reports`
 param from: string
 param to:   string
 

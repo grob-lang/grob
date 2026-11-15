@@ -40,7 +40,7 @@ import Grob.Llm
 reply := llm.complete(
     model:     "claude-sonnet-4-5",
     prompt:    "Summarise: ${text}",
-    maxTokens: 500
+    maxTokens: 500,
 )
 
 print(reply.text)
@@ -53,7 +53,7 @@ type Triage {
 
 triage := llm.completeAs<Triage>(
     model:  "claude-sonnet-4-5",
-    prompt: "Triage this stack trace: ${stack}"
+    prompt: "Triage this stack trace: ${stack}",
 )
 
 if (triage.severity == "critical") {
@@ -138,7 +138,7 @@ ticket  := jira.callTool("get_issue", #{ id: "PROJ-123" })
 
 summary := llm.complete(
     model:  "claude-sonnet-4-5",
-    prompt: "Summarise this ticket for the standup: ${ticket.description}"
+    prompt: "Summarise this ticket for the standup: ${ticket.description}",
 )
 
 print(summary.text)
@@ -201,7 +201,7 @@ conn := sql.connect("Server=...;Database=...;Integrated Security=true",
 
 customers := conn.queryAs<Customer>(
     "SELECT id, name, email FROM customers WHERE active = @active",
-    #{ active: true }
+    #{ active: true },
 )
 
 conn.close()

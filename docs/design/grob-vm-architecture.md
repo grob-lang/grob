@@ -82,6 +82,13 @@ Python, the JVM, Lua, clox — all different, all custom, none interoperable.
 An opcode is just a number. Conventionally a single byte — 256 possible instructions.
 Most languages use far fewer. clox uses ~30. Python ~120. The JVM ~200.
 
+> **Non-normative sketch.** The enum below illustrates the shape of an instruction set
+> and is not the shipped one. The authority is `src/Grob.Core/OpCode.cs`, whose numbering
+> is a wire-format contract under ADR-0013 (the `.grobc` format), and an opcode is added
+> only by the `adding-an-opcode` procedure. The shipped set differs from this sketch: for
+> example, it has carried `LessEqualInt`, `LessEqualFloat` and `GreaterEqualInt` since
+> Sprint 2. (Corpus sweep, D-431.)
+
 ```csharp
 public enum OpCode : byte
 {

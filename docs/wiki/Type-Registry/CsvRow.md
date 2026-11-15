@@ -19,7 +19,7 @@ Represents a single row in a `csv.Table`.
 ## Examples
 
 ```grob
-table := csv.read("C:\\data\\report.csv")
+table := csv.read(`C:\data\report.csv`)
 
 for row in table.rows {
     name   := row["Name"]

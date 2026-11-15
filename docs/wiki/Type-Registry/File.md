@@ -37,7 +37,7 @@ pipelines; the module form is for explicit path manipulation.
 ### File properties
 
 ```grob
-files := fs.list("C:\\Reports")
+files := fs.list(`C:\Reports`)
 
 for file in files {
     print("${file.name}")
@@ -51,7 +51,7 @@ for file in files {
 ### Bulk rename
 
 ```grob
-for file in fs.list("C:\\Photos") {
+for file in fs.list(`C:\Photos`) {
     if (file.extension == ".jpeg") {
         new_name := file.name.replace(".jpeg", ".jpg")
         file.rename(new_name)
@@ -64,10 +64,10 @@ for file in fs.list("C:\\Photos") {
 ```grob
 cutoff := date.today().addDays(-90)
 
-fs.list("C:\\Reports")
+fs.list(`C:\Reports`)
     .filter(f => f.modified < cutoff)
     .each(f => {
-        f.moveTo("C:\\Archive")
+        f.moveTo(`C:\Archive`)
         print("Archived: ${f.name}")
     })
 ```

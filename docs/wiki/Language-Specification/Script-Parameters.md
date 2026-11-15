@@ -1,6 +1,6 @@
 # Script Parameters
 
-## The `param` Block
+## The `param` Declaration
 
 Scripts declare parameters at the top of the file using `param`. Parameters are
 typed, optionally defaultable and validated at the parameter boundary before the

@@ -451,7 +451,7 @@ numbers stop meaning anything. The right answer differs by category.
 **VM execution benchmarks:**
 
 - `[GlobalSetup]` builds the hand-constructed `Chunk` (via the static
-  fixture properties from §7.2) and constructs a `GrobVM` instance.
+  fixture properties from §7.2) and constructs a `VirtualMachine` instance.
 - `[IterationSetup]` resets the VM's stack, globals and call frame
   array to a clean state. This is necessary because the measured
   method mutates VM state, and a benchmark that runs 1000 iterations
@@ -463,7 +463,7 @@ numbers stop meaning anything. The right answer differs by category.
 
 - `[GlobalSetup]` reads the script source from disk into a `string`
   field. This runs once.
-- `[IterationSetup]` constructs a fresh `GrobVM`. This runs every
+- `[IterationSetup]` constructs a fresh `VirtualMachine`. This runs every
   iteration because end-to-end benchmarks measure the full lifecycle
   including VM construction. The alternative — reusing a VM — would
   hide construction cost, which is a real part of script startup

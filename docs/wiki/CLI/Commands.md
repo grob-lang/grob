@@ -39,9 +39,9 @@ Run a Grob script. Compiles in memory and executes immediately.
 
 ```
 grob run deploy.grob
-grob run deploy.grob --env staging
+grob run deploy.grob --environment staging
 grob run deploy.grob --params deploy.grobparams
-grob run deploy.grob --params deploy.grobparams --env production
+grob run deploy.grob --params deploy.grobparams --environment production
 grob run report.grob --dev-plugin C:\dev\Grob.Http.dll
 grob run report.grob --verbose
 ```

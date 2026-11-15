@@ -22,7 +22,7 @@ module-level functions see [date module](../Standard-Library/date.md).
 | Member | Signature | Notes |
 |--------|-----------|-------|
 | `toIso()` | `→ string` | `"2026-04-05"` |
-| `toIsoDateTime()` | `→ string` | `"2026-04-05T14:30:00Z"` |
+| `toIsoDateTime()` | `→ string` | `"2026-04-05T14:30:00+01:00"`, with the value's own offset; `Z` only for a UTC value (`.toUtc()`) |
 | `format(pattern: string)` | `→ string` | Custom pattern |
 
 ## Arithmetic Methods

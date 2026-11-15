@@ -64,7 +64,7 @@ See [Match type registry](../Type-Registry/Match.md).
 ```grob blocked-by=R-30
 pattern := /ERROR|WARN/i
 
-for line in fs.readLines("C:\\Logs\\app.log") {
+for line in fs.readLines(`C:\Logs\app.log`) {
     if (pattern.isMatch(line)) {
         print(line)
     }
@@ -87,9 +87,9 @@ if (m != nil) {
 ### Replace in file content
 
 ```grob
-content := fs.readText("C:\\config.txt")
+content := fs.readText(`C:\config.txt`)
 updated := /version=\d+\.\d+/.replaceAll(content, "version=2.0")
-fs.writeText("C:\\config.txt", updated)
+fs.writeText(`C:\config.txt`, updated)
 ```
 
 ## Notes

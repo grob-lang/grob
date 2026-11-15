@@ -45,10 +45,10 @@ type FileEntry {
     size_mb: float
 }
 
-entries := fs.list("C:\\Reports").select(f => #{
+entries := fs.list(`C:\Reports`).select(f => #{
     name:    f.name,
     folder:  f.folder,
-    size_mb: f.size / 1048576.0
+    size_mb: f.size / 1048576.0,
 })
 
 entries.formatAs.table()

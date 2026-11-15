@@ -18,14 +18,14 @@ Exceptions are the runtime error model. Functions throw on failure. Unhandled
 exceptions propagate to the VM top level.
 
 ```grob
-content := fs.readText("C:\\config.json")   // throws IoError if file not found
+content := fs.readText(`C:\config.json`)   // throws IoError if file not found
 ```
 
 ## `try / catch`
 
 ```grob
 try {
-    data := fs.readText("C:\\config.json")
+    data := fs.readText(`C:\config.json`)
     config := json.parse(data)
 } catch (e: IoError) {
     log.error("File not found: ${e.message}")

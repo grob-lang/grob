@@ -31,39 +31,39 @@ strings only.
 ### Build output path
 
 ```grob fragment
-dest := path.join("C:\\Archive", year, month, file.name)
+dest := path.join(`C:\Archive`, year, month, file.name)
 ```
 
 ### Variadic join
 
 ```grob
-output := path.join("C:\\Reports", "2026", "Q1", "summary.xlsx")
-// "C:\\Reports\\2026\\Q1\\summary.xlsx"
+output := path.join(`C:\Reports`, "2026", "Q1", "summary.xlsx")
+// `C:\Reports\2026\Q1\summary.xlsx`
 ```
 
 ### Decompose a path
 
 ```grob
-p := "C:\\Reports\\2026\\summary.xlsx"
+p := `C:\Reports\2026\summary.xlsx`
 
 path.filename(p)     // "summary.xlsx"
 path.stem(p)         // "summary"
 path.extension(p)    // ".xlsx"
-path.directory(p)    // "C:\\Reports\\2026"
+path.directory(p)    // `C:\Reports\2026`
 ```
 
 ### Change extension
 
 ```grob
-csv_path := path.changeExtension("C:\\data\\report.xlsx", ".csv")
-// "C:\\data\\report.csv"
+csv_path := path.changeExtension(`C:\data\report.xlsx`, ".csv")
+// `C:\data\report.csv`
 ```
 
 ### Normalise mixed separators
 
 ```grob
 clean := path.normalise("C:/Users\\chris/./documents/../downloads")
-// "C:\\Users\\chris\\downloads"
+// `C:\Users\chris\downloads`
 ```
 
 ## Relationship to `File` Type

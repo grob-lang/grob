@@ -250,9 +250,15 @@ LSP shares the lexer via `Grob.Compiler`.
 // On textDocument/completion:
 var node    = typedAst.NodeAt(request.Position);
 var type    = node.ResolvedType;
-var members = TypeRegistry.MembersFor(type);
+var members = catalogue.TryGetPrimitiveMembers(type, out var surface)
+    ? surface.Properties.Keys.Concat(surface.Methods.Keys)
+    : [];   // a named type (File, date, ...) goes through catalogue.TryGetNamedType
 return new CompletionList(members.Select(ToCompletionItem));
 ```
+
+The member surface is `NativeCatalogue` in `Grob.Runtime` (D-427):
+`TryGetPrimitiveMembers` for a primitive receiver and `TryGetNamedType` for a named
+type. There is no `TypeRegistry.MembersFor`.
 
 #### 3. Hover
 

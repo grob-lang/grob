@@ -34,7 +34,7 @@ d2 := date.parse("05/04/2026", "dd/MM/yyyy")
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `toIso()` | `→ string` | `"2026-04-05"` |
-| `toIsoDateTime()` | `→ string` | `"2026-04-05T14:30:00Z"` |
+| `toIsoDateTime()` | `→ string` | `"2026-04-05T14:30:00+01:00"`, with the value's own offset; `Z` only for a UTC value (`.toUtc()`) |
 | `format(pattern: string)` | `→ string` | Custom format |
 
 ```grob fragment
@@ -105,7 +105,7 @@ Zone names are preferred: `"Europe/London"`, `"America/New_York"`.
 ```grob
 cutoff := date.today().addDays(-30)
 
-for file in fs.list("C:\\Logs") {
+for file in fs.list(`C:\Logs`) {
     if (file.modified < cutoff) {
         file.delete()
         print("Deleted ${file.name}")

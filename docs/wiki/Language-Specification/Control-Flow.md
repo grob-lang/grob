@@ -52,8 +52,8 @@ select (value) {
     case 1, 2 {
         print("One or two")
     }
-    case "error" {
-        log.error("Error state")
+    case 500 {
+        log.error("Server error")
     }
     default {
         print("Something else: ${value}")

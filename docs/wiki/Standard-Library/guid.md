@@ -20,8 +20,9 @@ required. Registers the `guid` built-in type.
 | Member | Signature | Description |
 |--------|-----------|-------------|
 | `toString()` | `→ string` | Lowercase hyphenated format (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`) |
-| `toStringUpper()` | `→ string` | Uppercase hyphenated format |
-| `toStringN()` | `→ string` | 32 hex digits, no hyphens |
+| `toUpperString()` | `→ string` | Uppercase hyphenated format |
+| `toCompactString()` | `→ string` | 32 hex digits, no hyphens |
+| `version` | `→ int` | The GUID version: 4, 5 or 7 |
 | `isEmpty` | `→ bool` | True if all zeros |
 
 ## Examples

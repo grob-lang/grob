@@ -259,8 +259,8 @@ This keeps `Grob.Compiler` and `Grob.Vm` from referencing each other and keeps
 
 Verified against the live `grob-solution-architecture.md`: `Grob.Vm` already
 references `Grob.Core` and `Grob.Runtime` (it dispatches plugin/native functions),
-so the VM can reach the capabilities; exposing them through the existing `GrobVM`
-registration surface adds no new reference and introduces no cycle. One consequence
+so the VM can reach the capabilities; exposing them through the existing registration
+surface (the `NativeCatalogue` a `VirtualMachine` is constructed with, D-427) adds no new reference and introduces no cycle. One consequence
 to note: because `Grob.Runtime` is the public plugin NuGet contract, the capability
 interfaces become part of that public surface — which is correct, since a
 third-party plugin doing I/O should also route through `IFileSystem` rather than

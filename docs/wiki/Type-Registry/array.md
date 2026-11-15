@@ -100,7 +100,7 @@ type User {
     name: string
     email: string
 }
-users := json.read("C:\\data\\users.json").mapAs<User>()
+users := json.read(`C:\data\users.json`).mapAs<User>()
 ```
 
 *Updated July 2026 — `append(value: T)`, `insert(index: int, value: T)`,

@@ -35,7 +35,7 @@ See [File type registry](../Type-Registry/File.md) for all members.
 ### List and filter files
 
 ```grob
-files := fs.list("C:\\Reports", recursive: true)
+files := fs.list(`C:\Reports`, recursive: true)
     .filter(f => f.extension == ".xlsx")
     .sort(f => f.modified, descending: true)
 
@@ -47,21 +47,21 @@ for file in files {
 ### Read, transform, write
 
 ```grob
-content := fs.readText("C:\\config.json")
+content := fs.readText(`C:\config.json`)
 config  := json.parse(content)
 
 // Process...
 
-fs.writeText("C:\\output.json", json.write(config))
+fs.writeText(`C:\output.json`, json.write(config))
 ```
 
 ### Safe directory creation
 
 ```grob
-dest := path.join("C:\\Archive", "2026", "April")
+dest := path.join(`C:\Archive`, "2026", "April")
 fs.ensureDir(dest)
 
-for file in fs.list("C:\\Reports") {
+for file in fs.list(`C:\Reports`) {
     file.moveTo(dest)
 }
 ```
