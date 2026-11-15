@@ -414,6 +414,8 @@ public sealed class Lexer {
         sb.Append('/');
         Advance();  // opening /
         bool inClass = false;  // inside an unescaped [...]: a "/" there does not end the literal
+        bool inComment = false;
+        int classContentStart = -1;
         while (!IsAtEnd) {
             char c = Peek();
             if (c == '\n') {
@@ -437,12 +439,35 @@ public sealed class Lexer {
                 Emit(TokenKind.RegexLiteral, sb.ToString(), start);
                 return;
             }
-            inClass = c == '[' || (inClass && c != ']');
+            StepRegexBody(c, ref inClass, ref inComment, ref classContentStart);
             sb.Append(c);
             Advance();
         }
         AddError(ErrorCatalog.E2008, "unterminated regex literal", start);
         Emit(TokenKind.Error, sb.ToString(), start);
+    }
+
+    /// <summary>
+    /// Tracks the state that decides whether a <c>/</c> ends a regex literal, reading
+    /// classes and comments as .NET does (D-432, D-439). A <c>]</c> first in a class,
+    /// after an optional <c>^</c>, is content, not the closer. Text inside a
+    /// <c>(?#…)</c> comment opens no class; inside a class, <c>(?#</c> is literal.
+    /// </summary>
+    private void StepRegexBody(char c, ref bool inClass, ref bool inComment, ref int classContentStart) {
+        if (inComment) {
+            inComment = c != ')';
+            return;
+        }
+        if (inClass) {
+            inClass = c != ']' || _pos == classContentStart;
+            return;
+        }
+        if (c == '[') {
+            inClass = true;
+            classContentStart = PeekAt(1) == '^' ? _pos + 2 : _pos + 1;
+        } else if (c == '(' && PeekAt(1) == '?' && PeekAt(2) == '#') {
+            inComment = true;
+        }
     }
 
     private void ConsumeRegexFlags(StringBuilder sb) {

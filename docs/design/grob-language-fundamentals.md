@@ -708,7 +708,9 @@ Its members are in `grob-type-registry.md`; the `regex` module is in
 
 **Body.** Everything between the opening `/` and the first unescaped `/` that is not
 inside a character class. `\/` writes a literal `/` anywhere; an unescaped `/` inside
-`[...]` does not end the literal, as in ECMAScript. A literal cannot span lines: a
+`[...]` does not end the literal, as in ECMAScript. Classes are read as .NET reads them:
+a `]` first in a class, after an optional `^`, is part of it, and a `[` inside a `(?#…)`
+comment opens no class (D-439). A literal cannot span lines: a
 newline before the closing `/` is E2008. The body goes to the .NET regular-expression
 engine verbatim — .NET syntax, with named groups, lookarounds and backreferences
 (D-095).

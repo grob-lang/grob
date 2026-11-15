@@ -17093,9 +17093,13 @@ corrected in this entry's commit. A bare `/=` at the start of a file is now a re
 fails as unterminated, per §8's start-of-file rule, so `LexerOperatorTests` no longer lexes
 `/=` alone; compound division is tested after an operand.
 
-**Known edge, not handled.** .NET reads `[]` followed by `]` as a class holding `]`, as in
-`[]/]`; the scanner closes the class at the first `]`. The literal then ends at the `/`
-and the engine reports the rest. E0602 will name it.
+**Classes and comments read as .NET reads them** (added in review of PR #249). A `]` first
+in a class, after an optional `^`, is content, so `/[]/]/` and `/[^]/]/` are one literal
+each. The text of a `(?#…)` comment opens no class, so `/(?# [)a/` ends at its last `/`;
+inside a class, `(?#` is three literal characters. A `/` inside a comment still ends the
+literal, as §8's body rule says. The pull request's first commit closed a class at its
+first `]` and opened one inside a comment; both were defects, since `/(?# [)a/` lexed
+before it.
 
 **What this does not fix.** A regex literal still types as `Unknown` and a bare regex
 expression statement still crashes the VM with "value stack underflow" (R-30). That is the

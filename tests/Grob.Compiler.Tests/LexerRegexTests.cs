@@ -252,6 +252,58 @@ public class LexerRegexTests {
     }
 
     [Fact]
+    public void CloseBracketFirstInClass_IsClassContent() {
+        // .NET reads a `]` first in a class as content, so the `/` after it is still inside.
+        IReadOnlyList<Token> tokens = Lex(@"x := /[]/]/");
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
+        Assert.Equal(@"/[]/]/", tokens[2].Lexeme);
+    }
+
+    [Fact]
+    public void CloseBracketFirstInNegatedClass_IsClassContent() {
+        IReadOnlyList<Token> tokens = Lex(@"x := /[^]/]/");
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
+        Assert.Equal(@"/[^]/]/", tokens[2].Lexeme);
+    }
+
+    [Fact]
+    public void CloseBracketAfterCaretContent_ClosesClass() {
+        // Only one `^` is the negation; a second is content, so the `]` after it closes the class.
+        IReadOnlyList<Token> tokens = Lex(@"x := /[^^]/");
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
+        Assert.Equal(@"/[^^]/", tokens[2].Lexeme);
+    }
+
+    [Fact]
+    public void OpenBracketInsideInlineComment_DoesNotOpenClass() {
+        // A `(?#...)` comment's text is not pattern, so its `[` opens no class.
+        IReadOnlyList<Token> tokens = Lex(@"x := /(?# [)a/");
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
+        Assert.Equal(@"/(?# [)a/", tokens[2].Lexeme);
+    }
+
+    [Fact]
+    public void ClassAfterInlineComment_StillHoldsSlash() {
+        IReadOnlyList<Token> tokens = Lex(@"x := /(?#[)[/]/");
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
+        Assert.Equal(@"/(?#[)[/]/", tokens[2].Lexeme);
+    }
+
+    [Fact]
+    public void InlineCommentOpenerInsideClass_IsClassContent() {
+        // Inside a class `(?#` is three literal characters, so the `]` still closes it.
+        IReadOnlyList<Token> tokens = Lex(@"x := /[(?#]/");
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
+        Assert.Equal(@"/[(?#]/", tokens[2].Lexeme);
+    }
+
+    [Fact]
     public void UnclosedCharacterClass_RunsToNewlineAndReportsUnterminated() {
         // The `/` after `[abc` sits inside the class, so the literal never closes.
         var (tokens, diagnostics) = LexWithDiagnostics("x := /[abc/\n");
