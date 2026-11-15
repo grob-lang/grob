@@ -435,6 +435,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-436 | November 2026 | Runtime — capability-injection seam; Standard library — `fs`, `process`; Sprint 9C; Deferred Work Register | **The capability seam is a gate on Sprint 9C.** Every `fs` and `process` native, and every `json` and `csv` file read or write, reaches the OS through an injected capability: `IFileSystem` grown from D-430's one member, and a new `IProcessRunner`. Each interface member is one operation that either reads or changes state, never both. R-32's source guard widens to keep `Grob.Stdlib` free of direct file, directory and process calls. Makes D-319's sketch a requirement because D-435's restricted run and plan mode are an alternate host only if it holds. Files R-35. No source change. |
 | D-437 | November 2026 | Testing — public samples gate; Documentation — wiki; Runtime — capability injection; Standard library — `date`, `path`; Deferred Work Register | **Implements D-430: the public samples gate landed**, in five change groups. **123 blocks, each counted once: 45 run, 29 excused, 39 unblocked fragments and 10 blocked (five of them also marked `fragment`), 0 failing**; not D-430's 38 and 11, because W9 removed `formatAs.md` block 3's R-29 cascade. Chris's six rulings recorded: W6 widened to `Grob-Crypto.md`, whose double-quoted path compiled silently; STOPs 2 and 3 set aside; time-only `date.parse` with an offset takes today in that offset; W10's `if (…)`; W8 and W10 widened to their pages' stale tables; a near-miss fence guard. **R-32 closed**: `IClock.LocalZone` and `IFileSystem.CurrentDirectory`, `date.parse` classified lexically, a source guard. D-430 Decision 7's wording corrected: a drive-relative path on another drive resolves to that drive's root. Every mutation matched its prediction; 8b added because 8 cannot reach the unused-fixture guard. Suite 5,108; `Grob.Cli` 91.45%, `Grob.Stdlib` 96.82%. R-29 amended; **R-39 opens** for the README sample that `fs` makes runnable before parameters bind. *Findings for the corpus sweep* listed. Count unchanged at 120. |
 | D-438 | November 2026 | Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Process — coverage, commits; Deferred Work Register | **Implements D-431: the corpus sweep landed**, the last of D-420's pre-9C increments; the run ends here. Documentation only. **Every one of D-431's thirty-one rows dispositioned**: script counts to eleven (D-346); 29 missing trailing commas, row 9 widened by Chris; 77 D-285 path literals; ADR-0017's residue; the opcode sketch's banner; `toIsoDateTime`'s `Z`; increment 5's findings; the log's *Project Status*, *Identity* and *Related Documents*. **R-05 closed**: all 28 `.claude/` files, the four `CLAUDE.md` files and `AGENTS.md` read against the tree. **The 42 `// Eventual path:` lines removed** in PR #246, split out for CodeRabbit's 100-file limit. Chris's rulings recorded: files edited in place; `/commit-message` commits on the branch; **90% coverage is the floor on new code too**, extending D-328. Divergences: 12 *Reason* cells, not 14; public samples tallies 46 run and 38 fragments; mutation 5's prediction failed on the *Identity* statement, since corrected. **R-40 to R-43 open.** Suite 5,109. Count unchanged at 120. |
+| D-439 | November 2026 | Language spec — lexing; Compiler — lexer | **Implements the lexer half of D-432's `/` rule**, the first of the `regex` increment's two pull requests. Lexer and tests only; no error code. **Three defects, not two**: a `/` beginning a line after a statement newline is now a regex; an unescaped `/` inside `[...]` stays in the literal; and `/=` is decided after the regex test, so `split(/=+/)` is a regex, which D-432 did not name. **Two rulings, Chris**: every `{` is statement context, since the lexer cannot tell a literal's brace from a block's, so only `(` and `[` suppress a newline for the `/` decision; and a division's leading newline is dropped, which adds a third case to §14, since §8's `(a` ⏎ `/ b)` row lexed as division and then failed in the parser. D-432's wording about §14 corrected. Count unchanged at 120. |
 
 ---
 
@@ -17045,6 +17046,66 @@ corrections) and D-409 (R-40).
 
 ---
 
+### D-439 — The `/` rule implemented: a newline is looked through only inside `(` and `[`, `/=` is decided like `/`, an unescaped `/` in `[...]` stays in the literal, a division's leading newline is dropped (November 2026)
+
+Area: Language spec — lexing; Compiler — lexer
+Supersedes: none (implements D-432's `/` rule; clarifies its newline wording and §14)
+Superseded by: none
+
+**Implements the lexer half of D-432, the first of the `regex` increment's two pull requests.**
+The pull request changes the lexer and its tests only: no parser, AST, opcode or `TokenKind`
+change, and no error code. Error-code count unchanged at **120**; no `ErrorCatalog` edit. The
+second pull request is the `Regex` type, the module and E0602.
+
+**What the lexer did, and now does.** D-432 named two defects. Measured at `0e05df0`, there
+were three, and one gap in the spec:
+
+1. A `/` that begins a line was read as division, because the previous-token search looked
+   through every newline. After a statement-terminating newline it is now a regex literal.
+2. An unescaped `/` inside `[...]` ended the literal. The scanner now tracks an open class, so
+   `/[^/]+$/` is one literal. A newline inside a class is still E2008.
+3. **`/=` was decided before the regex test.** `split(/=+/)` lexed as `split(`, `/=`, `+`,
+   which §8's own table rules out. The regex test now comes first, so `x /= 2` is compound
+   division and `split(/=+/)` is a regex. D-432 did not name this defect.
+
+**Two rulings, Chris, 15 November.**
+
+- **Every `{` is statement context.** §8 said to look through a newline "inside a literal's
+  braces". The lexer cannot tell a literal's brace from a block's: `if x {`, a map literal and
+  a struct construction open with the same character, and the parser itself treats a newline
+  inside a block as a terminator at any bracket depth. Only `(` and `[` suppress a newline for
+  the `/` decision. The one reading that differs from §8's old wording is a `/` that begins a
+  line inside a map or struct literal's braces, directly after an expression: it is now a
+  regex literal and fails loudly as a type error, not silently as a wrong value. A heuristic
+  on the token before `{` was rejected as fragile. Amending D-432 first was rejected as
+  disproportionate to a case this rare.
+- **A division's leading newline is dropped.** §8's table gives `total := (a` followed by
+  `/ b)` as division, and §14 listed only two suppression cases. §8 and D-432 said §14
+  suppresses newlines inside an open bracket, but §14 never did, and the parser does not skip
+  them: the line lexed as division and then failed with E2001. `ApplyLineContinuation` now
+  drops a newline whose next token is a division `/`. By the scanner's rule that happens only
+  inside `(` or `[`, so it never removes a real statement boundary. General newline
+  suppression inside brackets was rejected: it would change how calls and arrays parse.
+
+**Divergences from D-432.** Its summary says "newlines looked through only where §14
+suppresses them". §14 now has a third case, a leading division `/`, and §8's wording is
+corrected in this entry's commit. A bare `/=` at the start of a file is now a regex that
+fails as unterminated, per §8's start-of-file rule, so `LexerOperatorTests` no longer lexes
+`/=` alone; compound division is tested after an operand.
+
+**Known edge, not handled.** .NET reads `[]` followed by `]` as a class holding `]`, as in
+`[]/]`; the scanner closes the class at the first `]`. The literal then ends at the `/`
+and the engine reports the rest. E0602 will name it.
+
+**What this does not fix.** A regex literal still types as `Unknown` and a bare regex
+expression statement still crashes the VM with "value stack underflow" (R-30). That is the
+`regex` increment's second pull request.
+
+Cites D-432 (the rule and its table), D-095 (the `/` rule's origin) and D-300 (the parser's
+statement boundary).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -17274,7 +17335,12 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-438 added, with corpus-wide documentation corrections; no source change. **The_
+_November 2026 — D-439 added, with spec edits and lexer change. **The `/` rule is implemented**_
+_(D-432, lexer half): a `/` beginning a line after a statement newline is a regex, an unescaped_
+_`/` inside `[...]` stays in the literal, and `/=` is decided after the regex test. Chris ruled_
+_that every `{` is statement context and that a division's leading newline is dropped, which_
+_adds a third suppression case to §14. Count unchanged at 120._
+_Previous: November 2026 — D-438 added, with corpus-wide documentation corrections; no source change. **The_
 _corpus sweep landed** (D-431), ending D-420's pre-9C run: every one of D-431's thirty-one rows_
 _dispositioned, `.claude/` read against the tree and R-05 closed, the 42 `// Eventual path:` lines_
 _removed (PR #246). *Project Status* now points at the latest entry; *Related Documents* is rebuilt_

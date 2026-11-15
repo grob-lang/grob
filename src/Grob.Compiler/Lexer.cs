@@ -31,6 +31,12 @@ public sealed class Lexer {
     // ( and ) share the same depth.
     private int _depth;
 
+    // One entry per open delimiter, innermost on top: true for ( and [, false for
+    // { #{ ${. A newline inside ( or [ is suppressed for the "/" decision (D-432,
+    // fundamentals §8); a newline inside a brace is a statement terminator, because
+    // the lexer cannot tell a block's brace from a literal's.
+    private readonly Stack<bool> _newlineSuppressing = new();
+
     // Pending interpolations: each frame records the bracket depth that was in
     // effect *before* the corresponding "${" was consumed. When the lexer is
     // about to emit a closing "}" at depth = frame.OuterDepth + 1, that brace is
@@ -94,11 +100,11 @@ public sealed class Lexer {
                 EmitFixed(TokenKind.Newline, string.Empty);
                 AdvanceNewline();
                 return;
-            case '(': EmitFixed(TokenKind.LeftParen, "("); _depth++; Advance(); return;
+            case '(': EmitFixed(TokenKind.LeftParen, "("); OpenDelimiter(newlineSuppressing: true); Advance(); return;
             case ')': ScanCloser(TokenKind.RightParen, ")"); return;
-            case '[': EmitFixed(TokenKind.LeftBracket, "["); _depth++; Advance(); return;
+            case '[': EmitFixed(TokenKind.LeftBracket, "["); OpenDelimiter(newlineSuppressing: true); Advance(); return;
             case ']': ScanCloser(TokenKind.RightBracket, "]"); return;
-            case '{': EmitFixed(TokenKind.LeftBrace, "{"); _depth++; Advance(); return;
+            case '{': EmitFixed(TokenKind.LeftBrace, "{"); OpenDelimiter(newlineSuppressing: false); Advance(); return;
             case '}': ScanCloseBrace(); return;
             case ',': EmitFixed(TokenKind.Comma, ","); Advance(); return;
             case '@': EmitFixed(TokenKind.At, "@"); Advance(); return;
@@ -157,7 +163,7 @@ public sealed class Lexer {
     private void ScanHash() {
         if (PeekAt(1) == '{') {
             EmitFixed(TokenKind.HashBrace, "#{");
-            _depth++;
+            OpenDelimiter(newlineSuppressing: false);
             Advance(2);
             return;
         }
@@ -265,7 +271,7 @@ public sealed class Lexer {
         // If we're inside an interpolation and this brace closes it, it's an
         // InterpEnd token and we must resume scanning the surrounding string.
         if (_interpStack.TryPeek(out InterpFrame frame) && _depth == frame.OuterDepth + 1) {
-            _depth--;
+            CloseDelimiter();
             EmitFixed(TokenKind.InterpEnd, "}");
             Advance();
             _interpStack.Pop();
@@ -273,6 +279,16 @@ public sealed class Lexer {
             return;
         }
         ScanCloser(TokenKind.RightBrace, "}");
+    }
+
+    private void OpenDelimiter(bool newlineSuppressing) {
+        _depth++;
+        _newlineSuppressing.Push(newlineSuppressing);
+    }
+
+    private void CloseDelimiter() {
+        _depth--;
+        _newlineSuppressing.Pop();
     }
 
     private void ScanCloser(TokenKind kind, string lexeme) {
@@ -283,7 +299,7 @@ public sealed class Lexer {
             Advance();
             return;
         }
-        _depth--;
+        CloseDelimiter();
         EmitFixed(kind, lexeme);
         Advance();
     }
@@ -308,13 +324,15 @@ public sealed class Lexer {
             ConsumeBlockComment();
             return;
         }
+        // The regex decision comes before "/=": after "(" or "=", "/=+/" is a regex
+        // whose body begins with "=" (fundamentals §8).
+        if (CanStartRegex()) {
+            ScanRegexLiteral();
+            return;
+        }
         if (p1 == '=') {
             EmitFixed(TokenKind.SlashAssign, "/=");
             Advance(2);
-            return;
-        }
-        if (CanStartRegex()) {
-            ScanRegexLiteral();
             return;
         }
         EmitFixed(TokenKind.Slash, "/");
@@ -347,16 +365,27 @@ public sealed class Lexer {
     }
 
     private bool CanStartRegex() {
-        // A regex literal is admissible when the previous emitted, non-newline
-        // token cannot itself end an expression. Newlines do not change the
-        // expression context — we look through them to the last real token.
+        // A regex literal is admissible when the previous token cannot itself end an
+        // expression. We look through a newline only where §14 suppresses it: inside
+        // an open ( or [. Any other newline is a statement terminator and is itself
+        // the previous token, so a "/" that begins a line after one is a regex
+        // literal (D-432, fundamentals §8). A newline after a trailing operator needs
+        // no case of its own, because the operator already admits a regex.
+        bool crossedNewline = false;
         for (int i = _rawTokens.Count - 1; i >= 0; i--) {
             TokenKind kind = _rawTokens[i].Kind;
-            if (kind == TokenKind.Newline) continue;
+            if (kind == TokenKind.Newline) {
+                crossedNewline = true;
+                continue;
+            }
+            if (crossedNewline && !NewlineIsSuppressedHere()) return true;
             return RegexAdmissibleAfter(kind);
         }
         return true;  // start of file
     }
+
+    private bool NewlineIsSuppressedHere() =>
+        _newlineSuppressing.TryPeek(out bool suppressing) && suppressing;
 
     private static bool RegexAdmissibleAfter(TokenKind kind) =>
         kind switch {
@@ -384,6 +413,7 @@ public sealed class Lexer {
         var sb = new StringBuilder();
         sb.Append('/');
         Advance();  // opening /
+        bool inClass = false;  // inside an unescaped [...]: a "/" there does not end the literal
         while (!IsAtEnd) {
             char c = Peek();
             if (c == '\n') {
@@ -400,13 +430,14 @@ public sealed class Lexer {
                 }
                 continue;
             }
-            if (c == '/') {
+            if (c == '/' && !inClass) {
                 sb.Append(c);
                 Advance();
                 ConsumeRegexFlags(sb);
                 Emit(TokenKind.RegexLiteral, sb.ToString(), start);
                 return;
             }
+            inClass = c == '[' || (inClass && c != ']');
             sb.Append(c);
             Advance();
         }
@@ -624,7 +655,7 @@ public sealed class Lexer {
         SourceLocation interpStart = Here();
         Emit(TokenKind.InterpStart, "${", interpStart);
         _interpStack.Push(new InterpFrame(_depth));
-        _depth++;
+        OpenDelimiter(newlineSuppressing: false);
         Advance(2);
     }
 
@@ -783,6 +814,12 @@ public sealed class Lexer {
                 continue;
             }
             if (nextReal is { Kind: TokenKind.Dot }) {
+                continue;
+            }
+            // A division "/" begins the next line only inside ( or [, where the scanner
+            // looked through the newline to read it as division (D-432, §8). Anywhere
+            // else it would be a regex literal, so this never drops a real boundary.
+            if (nextReal is { Kind: TokenKind.Slash }) {
                 continue;
             }
             // Suppress newlines immediately before `)` or `]` — these close
