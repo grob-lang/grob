@@ -67,7 +67,8 @@ coverage/
 BenchmarkDotNet.Artifacts/
 
 # Session scratch — hand-offs, investigation reports.
-# Only the hand-off is tracked: /handoff commits it on the feature branch so the
-# next session can read it from a clone, and it is removed before the PR.
+# Only the hand-off is tracked: /handoff commits it on the feature branch, it
+# stays in the PR and merges to main, so the next session can read it from a
+# clone or from the PR. The next hand-off overwrites it.
 .grob-session/*
 !.grob-session/handoff.md

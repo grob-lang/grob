@@ -100,8 +100,9 @@ exhaustion, degradation or the increment not finishing.>
   one tracked file in that folder; everything else there is scratch and stays
   gitignored. A later hand-off on the same branch overwrites the file in a new
   commit.
-- **The hand-off never reaches `main`.** It is removed in its own commit before
-  the branch is handed over for a PR — `trunk-flow`'s merge protocol has the step.
+- **The hand-off stays in the PR and merges to `main`.** Never remove it before
+  merge. Chris often works in remote control, so the next session reads the
+  hand-off from the PR or from `main`. The next hand-off overwrites the file.
 - **Do not summarise the increment prompt.** Path only. A paraphrase written by a
   degraded session is a corrupted copy of a file that is sitting right there.
 - Prose follows `house-style`.

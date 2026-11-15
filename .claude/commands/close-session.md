@@ -117,8 +117,8 @@ Merging is Chris's action.
 ## 7. Hand off
 
 - **The increment continues in another session:** run `/handoff`.
-- **The branch is ready:** follow `trunk-flow`'s merge protocol, which removes
-  the session hand-off before the branch is handed over.
+- **The branch is ready:** follow `trunk-flow`'s merge protocol. A hand-off
+  already on the branch stays in the PR and merges to `main`; do not remove it.
 
 ## 8. Report
 
