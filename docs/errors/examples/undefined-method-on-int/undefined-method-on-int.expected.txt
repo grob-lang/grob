@@ -1,7 +1,7 @@
 error[E0006]: undefined method on type
-  --> undefined-method-on-int.grob:4:7
+  --> undefined-method-on-int.grob:3:7
    |
- 4 | print(score.toLower())
+ 3 | print(score.toLower())
    |       ^^^^^^^^^^^^^^^^
    |
    = note: type int has no method 'toLower'

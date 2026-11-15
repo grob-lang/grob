@@ -1,7 +1,7 @@
 error[E1002]: undefined member
-  --> undefined-member-access.grob:9:7
+  --> undefined-member-access.grob:8:7
    |
- 9 | print(cfg.timeout)
+ 8 | print(cfg.timeout)
    |       ^^^^^^^^^^^
    |
    = note: type Config has no field or method 'timeout'

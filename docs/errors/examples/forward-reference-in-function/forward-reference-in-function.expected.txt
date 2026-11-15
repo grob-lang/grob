@@ -1,9 +1,9 @@
 error[E1201]: forward reference inside function body
-  --> forward-reference-in-function.grob:4:15
+  --> forward-reference-in-function.grob:3:15
    |
- 4 |     prefix := tag.toUpper()
+ 3 |     prefix := tag.toUpper()
    |               ^^^
    |
-   = note: 'tag' is declared on line 5, after this use
+   = note: 'tag' is declared on line 4, after this use
    = note: forward references are permitted at the top level but not inside function bodies
    = help: move the declaration of 'tag' above its first use

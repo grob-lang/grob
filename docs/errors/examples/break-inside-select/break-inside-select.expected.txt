@@ -1,7 +1,7 @@
 error[E2211]: `break` inside `select`
-  --> break-inside-select.grob:6:9
+  --> break-inside-select.grob:5:9
    |
- 6 |         break
+ 5 |         break
    |         ^^^^^
    |
    = note: a `select` arm has no fall-through, so `break` has nothing to exit

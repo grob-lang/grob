@@ -1,7 +1,7 @@
 error[E1004]: namespace used as a value
-  --> namespace-used-as-value.grob:3:11
+  --> namespace-used-as-value.grob:2:11
    |
- 3 | result := math
+ 2 | result := math
    |           ^^^^
    |
    = note: 'math' is a core-module namespace, not a value

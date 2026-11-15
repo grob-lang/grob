@@ -1,7 +1,7 @@
 error[E0009]: named argument names a required parameter
-  --> named-argument-names-required-parameter.grob:7:13
+  --> named-argument-names-required-parameter.grob:6:13
    |
- 7 | print(power(base: 5))
+ 6 | print(power(base: 5))
    |             ^^^^
    |
    = note: parameter 'base' has no default value and must be passed positionally

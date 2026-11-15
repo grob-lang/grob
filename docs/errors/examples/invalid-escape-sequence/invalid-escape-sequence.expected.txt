@@ -1,7 +1,7 @@
 error[E2005]: invalid escape sequence
-  --> invalid-escape-sequence.grob:3:12
+  --> invalid-escape-sequence.grob:2:12
    |
- 3 | dest := "C:\users"
+ 2 | dest := "C:\users"
    |            ^^
    |
    = note: `\u` is not a recognised escape sequence

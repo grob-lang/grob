@@ -1,5 +1,4 @@
 // E2203 — return statement used at script level, outside any function
-// Eventual path: docs/errors/examples/top-level-return/top-level-return.grob
 result := env.get("STATUS")
 if (result == nil) {
     return

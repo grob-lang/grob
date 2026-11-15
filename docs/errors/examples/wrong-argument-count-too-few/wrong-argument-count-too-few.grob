@@ -1,5 +1,4 @@
 // E0003 — calling a two-parameter function with only one argument
-// Eventual path: docs/errors/examples/wrong-argument-count-too-few/wrong-argument-count-too-few.grob
 fn greet(first: string, last: string): string {
     return "${first} ${last}"
 }

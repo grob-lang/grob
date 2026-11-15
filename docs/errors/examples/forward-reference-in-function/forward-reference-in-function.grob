@@ -1,5 +1,4 @@
 // E1201 — referencing a local variable before its declaration inside a function body
-// Eventual path: docs/errors/examples/forward-reference-in-function/forward-reference-in-function.grob
 fn buildLabel(): string {
     prefix := tag.toUpper()
     tag := "release"

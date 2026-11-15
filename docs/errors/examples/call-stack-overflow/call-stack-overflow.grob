@@ -1,5 +1,4 @@
 // E5901 — infinite recursion exhausts the VM call frame limit
-// Eventual path: docs/errors/examples/call-stack-overflow/call-stack-overflow.grob
 fn countdown(n: int): int {
     return countdown(n - 1)
 }

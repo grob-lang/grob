@@ -1,5 +1,4 @@
 // E2205 — a typed catch clause placed after the bare catch-all, which can never be reached
-// Eventual path: docs/errors/examples/catch-after-catch-all/catch-after-catch-all.grob
 try {
     fs.delete(`C:\tmp\scratch.txt`)
 } catch e {
