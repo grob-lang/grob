@@ -1485,7 +1485,9 @@ release gate. All must compile and run correctly before v1 ships.
 
 The negative-test release gate stands beside them: every error-example pair in
 `docs/errors/examples/` passes the error-examples harness and the quarantine manifest,
-`docs/errors/examples/quarantine.md`, is empty (D-428).
+`docs/errors/examples/quarantine.md`, is empty (D-428). So does the public samples gate:
+every `grob` block in `README.md` and the wiki passes it, its excused list is empty and no
+block carries `blocked-by` (D-430).
 
 -----
 
