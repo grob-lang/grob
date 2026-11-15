@@ -8,10 +8,9 @@ var server = await LanguageServer.From(options =>
 
 await server.WaitForExit;
 
-// Program.cs entry point — argv parsing and pipeline wiring.
-// Exercised by end-to-end CLI tests, not unit tests.
-// Excluded from coverage per project policy (see /docs/dev/coverage.md).
-[ExcludeFromCodeCoverage(Justification = "CLI entry point; covered by integration tests. See docs/dev/coverage-policy.md.")]
+// Program.cs is the language server's host bootstrap: it starts the server over stdio
+// and waits. Excluded from coverage per docs/dev/coverage-policy.md.
+[ExcludeFromCodeCoverage(Justification = "Host bootstrap only: starts the OmniSharp language server over stdio and waits for exit. It has no branch; protocol and analysis logic belongs in Grob.Lsp proper, in scope for coverage.")]
 internal partial class Program {
     protected Program() { }
 }
