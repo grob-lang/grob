@@ -13,7 +13,9 @@
 - Pre-push gate: runs on this push
 
 ## Decisions taken, not yet logged
-None. Six questions wait on Chris (below); their answers become lines in the landing entry.
+- **The host-year residual in `date.parse` is accepted as documented** (Chris, 15 November 2026). Given a free-form partial date with no year, such as `"Jul 1"`, the one-argument `date.parse` still takes the host's year. D-437 states this and `src/Grob.Stdlib/DateParse.cs:27-28` records it. It stays as it is: no code change, no rejection of input without a year and no register row. This closes the question D-437 left open. It becomes a line in this increment's landing entry, group 5, crediting D-437.
+
+Six questions wait on Chris (below); their answers become lines in the landing entry.
 
 ## Error codes and registry state
 None allocated. Count 120.
