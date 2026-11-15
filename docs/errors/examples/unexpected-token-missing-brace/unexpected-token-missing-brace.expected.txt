@@ -1,7 +1,7 @@
 error[E2001]: unexpected token
-  --> unexpected-token-missing-brace.grob:4:5
+  --> unexpected-token-missing-brace.grob:3:5
    |
- 4 |     return "Hello, ${name}"
+ 3 |     return "Hello, ${name}"
    |     ^^^^^^
    |
    = note: expected `{` to open the function body

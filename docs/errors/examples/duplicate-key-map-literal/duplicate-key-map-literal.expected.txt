@@ -1,7 +1,7 @@
 error[E0016]: duplicate key in map literal
-  --> duplicate-key-map-literal.grob:5:5
+  --> duplicate-key-map-literal.grob:4:5
    |
- 5 |     "environment": 2,
+ 4 |     "environment": 2,
    |     ^^^^^^^^^^^^^^^^
    |
    = note: key 'environment' is already present in this map literal

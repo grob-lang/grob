@@ -1,7 +1,7 @@
 error[E1003]: undefined module
-  --> unknown-namespace-member.grob:3:7
+  --> unknown-namespace-member.grob:2:7
    |
- 3 | print(math.nope())
+ 2 | print(math.nope())
    |       ^^^^^^^^^^^
    |
    = note: namespace 'math' has no member 'nope'

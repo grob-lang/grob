@@ -1,5 +1,4 @@
 // E0005 — returning a string from a function declared to return int
-// Eventual path: docs/errors/examples/return-type-mismatch-string-for-int/return-type-mismatch-string-for-int.grob
 fn statusCode(ok: bool): int {
     if (ok) {
         return "OK"

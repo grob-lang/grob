@@ -1,7 +1,7 @@
 error[E5602]: process exit non-zero (under `OrFail`)
-  --> process-exit-nonzero.grob:3:11
+  --> process-exit-nonzero.grob:2:11
    |
- 3 | result := process.runOrFail("git", ["push", "origin", "main"])
+ 2 | result := process.runOrFail("git", ["push", "origin", "main"])
    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: subprocess 'git' exited with code 1

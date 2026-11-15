@@ -1,7 +1,7 @@
 error[E5501]: JSON parse error
-  --> json-parse-error.grob:4:8
+  --> json-parse-error.grob:3:8
    |
- 4 | cfg := json.parse(raw)
+ 3 | cfg := json.parse(raw)
    |        ^^^^^^^^^^^^^^^
    |
    = note: the input read from 'raw' is not well-formed JSON

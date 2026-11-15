@@ -1,5 +1,4 @@
 // E1101 — a loop variable shadows a binding from the enclosing function scope
-// Eventual path: docs/errors/examples/shadowed-declaration-loop-var/shadowed-declaration-loop-var.grob
 fn summarise(names: string[]): string {
     result := ""
     for result in names {

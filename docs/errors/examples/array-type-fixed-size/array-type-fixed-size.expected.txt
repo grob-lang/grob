@@ -1,7 +1,7 @@
 error[E2001]: unexpected token
-  --> array-type-fixed-size.grob:3:14
+  --> array-type-fixed-size.grob:2:14
    |
- 3 | fn f(xs: int[5]): int {
+ 2 | fn f(xs: int[5]): int {
    |              ^
    |
    = note: fixed-size array types are not supported — use 'T[]'

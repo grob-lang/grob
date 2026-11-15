@@ -1,13 +1,13 @@
 error[E5302]: permission denied
-  --> permission-denied-in-nested-call.grob:4:5
+  --> permission-denied-in-nested-call.grob:3:5
    |
- 4 |     fs.copy(`C:\Windows\System32\winevt\Logs`, dest)
+ 3 |     fs.copy(`C:\Windows\System32\winevt\Logs`, dest)
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: path: C:\Windows\System32\winevt\Logs
    = note: the process does not have permission to read this path
    = help: run the script with administrator privileges, or choose a path the current user can access
    |
-   from fs.copy (permission-denied-in-nested-call.grob:4:5)
-   at archiveLogs (permission-denied-in-nested-call.grob:7:1)
-   at <top-level> (permission-denied-in-nested-call.grob:7:1)
+   from fs.copy (permission-denied-in-nested-call.grob:3:5)
+   at archiveLogs (permission-denied-in-nested-call.grob:6:1)
+   at <top-level> (permission-denied-in-nested-call.grob:6:1)

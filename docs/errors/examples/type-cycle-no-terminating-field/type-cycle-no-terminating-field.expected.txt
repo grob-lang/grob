@@ -1,7 +1,7 @@
 error[E0301]: type cycle with no terminating field
-  --> type-cycle-no-terminating-field.grob:8:5
+  --> type-cycle-no-terminating-field.grob:7:5
    |
- 8 |     parent: Parent
+ 7 |     parent: Parent
    |     ^^^^^^^^^^^^^^
    |
    = note: 'Child.parent' has type Parent, which contains 'Parent.child: Child', forming a cycle

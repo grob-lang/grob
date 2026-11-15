@@ -1,5 +1,4 @@
 // E3201 — the grob.json manifest requires a Grob runtime version higher than what is installed
-// Eventual path: docs/errors/examples/manifest-version-mismatch/manifest-version-mismatch.grob
 import Grob.Http
 
 http.get("https://api.example.com/status")
