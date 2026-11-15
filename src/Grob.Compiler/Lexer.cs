@@ -423,7 +423,7 @@ public sealed class Lexer {
                 Emit(TokenKind.Error, sb.ToString(), start);
                 return;
             }
-            if (c == '\\') {
+            if (c == '\\' && StartsRegexEscape(inComment)) {
                 sb.Append(c);
                 Advance();
                 if (!IsAtEnd && Peek() != '\n') {
@@ -453,6 +453,14 @@ public sealed class Lexer {
     /// after an optional <c>^</c>, is content, not the closer. Text inside a
     /// <c>(?#…)</c> comment opens no class; inside a class, <c>(?#</c> is literal.
     /// </summary>
+    /// <summary>
+    /// Whether the backslash under the cursor escapes the next character. Inside a
+    /// <c>(?#…)</c> comment .NET treats a backslash as text, so <c>\)</c> still ends the
+    /// comment; only <c>\/</c> escapes there, because §8 lets <c>\/</c> write a literal
+    /// <c>/</c> anywhere.
+    /// </summary>
+    private bool StartsRegexEscape(bool inComment) => !inComment || PeekAt(1) == '/';
+
     private void StepRegexBody(char c, ref bool inClass, ref bool inComment, ref int classContentStart) {
         if (inComment) {
             inComment = c != ')';

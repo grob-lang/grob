@@ -710,7 +710,9 @@ Its members are in `grob-type-registry.md`; the `regex` module is in
 inside a character class. `\/` writes a literal `/` anywhere; an unescaped `/` inside
 `[...]` does not end the literal, as in ECMAScript. Classes are read as .NET reads them:
 a `]` first in a class, after an optional `^`, is part of it, and a `[` inside a `(?#…)`
-comment opens no class (D-439). A literal cannot span lines: a
+comment opens no class. A `(?#…)` comment ends at its first `)`, even after a backslash.
+The lexer does not track the `(?x)` option, so a `[` inside an `(?x)` `#` comment must be
+written `\[`; unescaped, it opens a class and the literal is E2008 (D-439). A literal cannot span lines: a
 newline before the closing `/` is E2008. The body goes to the .NET regular-expression
 engine verbatim — .NET syntax, with named groups, lookarounds and backreferences
 (D-095).

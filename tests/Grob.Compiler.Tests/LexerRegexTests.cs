@@ -295,6 +295,25 @@ public class LexerRegexTests {
     }
 
     [Fact]
+    public void BackslashInsideInlineComment_DoesNotEscapeTheClosingParen() {
+        // .NET ends `(?#...)` at the first `)`, even after a backslash, so the class that
+        // follows still holds its `/`.
+        IReadOnlyList<Token> tokens = Lex(@"x := /(?#\)[/]/");
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
+        Assert.Equal(@"/(?#\)[/]/", tokens[2].Lexeme);
+    }
+
+    [Fact]
+    public void EscapedSlashInsideInlineComment_DoesNotEndLiteral() {
+        // §8: `\/` writes a literal `/` anywhere, a comment included.
+        IReadOnlyList<Token> tokens = Lex(@"x := /(?#a\/b)c/");
+        AssertKinds(tokens,
+            TokenKind.Identifier, TokenKind.ColonAssign, TokenKind.RegexLiteral, TokenKind.Eof);
+        Assert.Equal(@"/(?#a\/b)c/", tokens[2].Lexeme);
+    }
+
+    [Fact]
     public void InlineCommentOpenerInsideClass_IsClassContent() {
         // Inside a class `(?#` is three literal characters, so the `]` still closes it.
         IReadOnlyList<Token> tokens = Lex(@"x := /[(?#]/");

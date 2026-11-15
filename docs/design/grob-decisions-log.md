@@ -17096,8 +17096,13 @@ fails as unterminated, per §8's start-of-file rule, so `LexerOperatorTests` no 
 **Classes and comments read as .NET reads them** (added in review of PR #249). A `]` first
 in a class, after an optional `^`, is content, so `/[]/]/` and `/[^]/]/` are one literal
 each. The text of a `(?#…)` comment opens no class, so `/(?# [)a/` ends at its last `/`;
-inside a class, `(?#` is three literal characters. A `/` inside a comment still ends the
-literal, as §8's body rule says. The pull request's first commit closed a class at its
+inside a class, `(?#` is three literal characters. A comment ends at its first `)`, even
+after a backslash, as in .NET; inside one, a backslash escapes only `/`. A `/` inside a
+comment still ends the literal, as §8's body rule says. **The `(?x)` option is not
+tracked**, by Chris's ruling: a `[` inside an `(?x)` `#` comment must be written `\[`, and
+unescaped it opens a class and the literal is E2008. Tracking inline, scoped and disabled
+`x` options in the lexer was rejected as a state machine out of proportion to the case,
+and the failure is loud. The pull request's first commit closed a class at its
 first `]` and opened one inside a comment; both were defects, since `/(?# [)a/` lexed
 before it.
 
