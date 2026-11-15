@@ -17,7 +17,7 @@ crucially, the rule for when a master may change.
 - A new compile-time or runtime error needs coverage.
 - A diagnostic's wording, suggestion or format changed and the affected gold masters
   must be reviewed. A master the compiler still matches needs nothing. One that now
-  differs changes only on one of Step 4's grounds, and is quarantined otherwise.
+  differs is handled by Step 4.
 - A new error code is being introduced.
 
 ## Step 1 — The error code
@@ -72,8 +72,15 @@ source by character count**; or **a decision resolving a register divergence fin
 master's side wrong**. Otherwise the implementation is what is wrong, and the pair is
 quarantined rather than the master edited to make the harness pass.
 
+The three grounds govern code and location only. Wording alone (a title, message, note or
+suggestion) changes in the master in the same commit as the deliberate compiler change that
+produces it, with the diff reviewed: D-428's authorship rule. That is the route for Step 3's
+improved diagnostic.
+
 1. Grep the `.expected.txt` files for the affected code or wording to find the full set.
-2. Change each on one of the three grounds, or quarantine it.
+2. A master the compiler still matches needs nothing. For one that now differs: a changed
+   code or location takes one of the three grounds or quarantine; changed wording alone is
+   updated with the compiler change.
 3. Read the diff deliberately. A changed location or an altered suggestion you did not
    expect is a signal the implementation regressed, not that the gold master is wrong.
 4. Commit the masters with the change that caused them, citing the `D-###`.
@@ -96,7 +103,8 @@ is a release-gate fail, the same status as a failing positive script.
 - [ ] `<slug>.grob` triggers exactly one error, minimal, idiomatic, named for the error
 - [ ] `<slug>.expected.txt` hand-written to the registry, §10 and the README's voice
 - [ ] Diagnostic meets the quality bar (location, cause, fix) and the `house-style` checklist
-- [ ] On a change: full set of affected masters found by grep, each changed on one of
-      D-428's three grounds or quarantined
+- [ ] On a change: full set of affected masters found by grep; matching ones untouched;
+      a changed code or location on one of D-428's three grounds or quarantined; changed
+      wording alone updated in the same commit as the compiler change
 - [ ] Diff reviewed deliberately — every change intended
 - [ ] Pair indexed in the README; quarantined in `quarantine.md` if it does not yet match

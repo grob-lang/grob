@@ -12,10 +12,11 @@ bootstrap code, not a place to hide untested logic.
 
 ## Coverage target
 
-Every PR's new production code must also reach **90% line and branch coverage** (D-438), so a
-PR cannot lean on solution-wide headroom.
 Grob targets **≥ 90% line and branch coverage** (D-328) on production code across the solution,
-measured by SonarCloud against Cobertura output from `dotnet test`.
+measured by SonarCloud against Cobertura output from `dotnet test`. Two more floors apply at
+the same 90%: every PR's new production code (D-438), so a PR cannot lean on solution-wide
+headroom, and every project on its own, a working check deliberately stricter than D-328 that
+`trunk-flow` and `tdd-cycle` enforce.
 
 The target applies to in-scope production code only. Excluded files (listed
 below) are removed from both numerator and denominator before the percentage

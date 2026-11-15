@@ -24,11 +24,12 @@ at least one aborted commit cycle every time.
 3. **Stage the change's own files** by path (`git add <path>…`), never `git add -A`:
    that sweeps in unrelated work and scratch. If the caller has already staged a
    selection, as `/review-pr-comments` does, keep it and stage nothing more.
-4. **Confirm the staged files match the working tree:**
-   `git diff --quiet -- $(git diff --cached --name-only)`. If any staged file has
-   unstaged edits, stop and stage or discard them first, so the tests below run against
-   what will be committed: an unstaged fix can otherwise pass the tests while the staged
-   version is broken.
+4. **Confirm the working tree is exactly what will be committed:** `git diff --quiet`
+   (no unstaged change to any tracked file) and `git ls-files --others --exclude-standard`
+   printing nothing (no untracked file outside `.gitignore`; `.grob-session/` is ignored).
+   If either fails, stop: the user commits or sets aside the other work first. Nothing is
+   stashed or moved. Otherwise an unstaged or untracked file the build reads can pass the
+   tests while the commit is broken.
 5. **Build and test:** `dotnet build Grob.slnx` then `dotnet test Grob.slnx --nologo`.
    Zero warnings, zero failures. Hooks are the safety net, not the workflow.
 
