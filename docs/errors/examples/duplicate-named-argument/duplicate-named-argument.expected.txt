@@ -1,7 +1,7 @@
 error[E0010]: duplicate named argument
-  --> duplicate-named-argument.grob:7:25
+  --> duplicate-named-argument.grob:6:25
    |
- 7 | print(box(1, height: 2, height: 3))
+ 6 | print(box(1, height: 2, height: 3))
    |                         ^^^^^^
    |
    = note: parameter 'height' is already supplied

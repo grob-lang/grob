@@ -1,5 +1,4 @@
 // E5002 — dividing an integer by a variable that holds the value zero at runtime
-// Eventual path: docs/errors/examples/integer-division-by-zero/integer-division-by-zero.grob
 total := 240
 buckets := 0
 share := total / buckets

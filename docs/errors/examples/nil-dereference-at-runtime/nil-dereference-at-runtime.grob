@@ -1,5 +1,4 @@
 // E5201 — dereferencing a nullable value that is nil at runtime, inside a function body
-// Eventual path: docs/errors/examples/nil-dereference-at-runtime/nil-dereference-at-runtime.grob
 fn firstLine(content: string?): string {
     lines := content.split("\n")
     return lines[0]

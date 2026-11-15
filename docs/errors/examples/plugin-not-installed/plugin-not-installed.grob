@@ -1,5 +1,4 @@
 // E3002 — importing a plugin that exists on the registry but has not been installed
-// Eventual path: docs/errors/examples/plugin-not-installed/plugin-not-installed.grob
 import Grob.SharePoint
 
 sharepoint.connect("https://contoso.sharepoint.com")

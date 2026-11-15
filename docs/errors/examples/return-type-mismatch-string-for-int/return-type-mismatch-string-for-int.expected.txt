@@ -1,7 +1,7 @@
 error[E0005]: return type mismatch
-  --> return-type-mismatch-string-for-int.grob:5:16
+  --> return-type-mismatch-string-for-int.grob:4:16
    |
- 5 |         return "OK"
+ 4 |         return "OK"
    |                ^^^^
    |
    = note: 'statusCode' declares return type int

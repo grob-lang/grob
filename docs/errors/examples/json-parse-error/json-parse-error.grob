@@ -1,5 +1,4 @@
 // E5501 — json.parse called on a string that is not well-formed JSON
-// Eventual path: docs/errors/examples/json-parse-error/json-parse-error.grob
 raw := fs.read(`C:\data\config.json`)
 cfg := json.parse(raw)
 print(cfg["name"])

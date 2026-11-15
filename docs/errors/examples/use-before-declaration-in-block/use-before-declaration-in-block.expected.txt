@@ -1,8 +1,8 @@
 error[E1202]: use before declaration in block scope
-  --> use-before-declaration-in-block.grob:6:27
+  --> use-before-declaration-in-block.grob:5:27
    |
- 6 |         result = result + sep + item
+ 5 |         result = result + sep + item
    |                           ^^^
    |
-   = note: 'sep' is declared on line 7, after this use in the same block
+   = note: 'sep' is declared on line 6, after this use in the same block
    = help: declare 'sep' before the loop body, or move the declaration above the use

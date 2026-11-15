@@ -1,7 +1,7 @@
 error[E5201]: nil dereference at runtime
-  --> nil-dereference-at-runtime.grob:4:14
+  --> nil-dereference-at-runtime.grob:3:14
    |
- 4 |     lines := content.split("\n")
+ 3 |     lines := content.split("\n")
    |              ^^^^^^^
    |
    = note: 'content' is nil at this call site

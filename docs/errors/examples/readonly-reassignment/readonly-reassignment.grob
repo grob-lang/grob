@@ -1,5 +1,4 @@
 // E0202 — reassigning a readonly binding after its initialiser has run
-// Eventual path: docs/errors/examples/readonly-reassignment/readonly-reassignment.grob
 readonly runId := env.get("RUN_ID") ?? "local"
 
 runId = "override"

@@ -1,5 +1,4 @@
 // E2001 — parser encounters an unexpected token where a block opening brace is required
-// Eventual path: docs/errors/examples/unexpected-token-missing-brace/unexpected-token-missing-brace.grob
 fn greet(name: string): string
     return "Hello, ${name}"
 }
