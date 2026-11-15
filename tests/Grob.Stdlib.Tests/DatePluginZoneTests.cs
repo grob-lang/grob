@@ -22,6 +22,10 @@ public sealed class DatePluginZoneTests {
     // midnight was still +03:00.
     private static readonly DateTime TransitionDay = new(2026, 3, 29, 12, 0, 0, DateTimeKind.Utc);
 
+    // 21:30Z on 10 January 2030: a year no host clock reads while these tests run, so a date
+    // or year the parser took from the host shows.
+    private static readonly DateTime FarFuture = new(2030, 1, 10, 21, 30, 0, DateTimeKind.Utc);
+
     private static string Run(DateTime utcNow, string callee, params GrobValue[] args) =>
         RunThen(utcNow, callee, null, args);
 
@@ -139,6 +143,40 @@ public sealed class DatePluginZoneTests {
     public void Parse_UnrecognisedZoneDesignator_KeepsTheDesignatorsOffset(
             string input, string pattern, string expected) {
         Assert.Equal(expected, Run(Winter, "date.parse", Str(input), Str(pattern)));
+    }
+
+    [Theory]
+    // K accepts an absent offset; the input has none, so the injected zone supplies it.
+    [InlineData("2026-07-01T12:00:00", "yyyy-MM-ddTHH:mm:ssK", "2026-07-01T12:00:00+04:00")]
+    [InlineData("2026-07-01T12:00:00+02:00", "yyyy-MM-ddTHH:mm:ssK", "2026-07-01T12:00:00+02:00")]
+    // The standard formats u, r and R mean UTC, though their Z or GMT is a literal to DateTime.
+    [InlineData("2026-01-01 14:30:00Z", "u", "2026-01-01T14:30:00Z")]
+    [InlineData("Thu, 01 Jan 2026 14:30:00 GMT", "r", "2026-01-01T14:30:00Z")]
+    [InlineData("Thu, 01 Jan 2026 14:30:00 GMT", "R", "2026-01-01T14:30:00Z")]
+    public void Parse_OffsetDecidedByTheInput_NotByThePattern(string input, string pattern, string expected) {
+        Assert.Equal(expected, Run(Winter, "date.parse", Str(input), Str(pattern)));
+    }
+
+    [Theory]
+    // A missing date or year comes from the injected clock, never the host's.
+    [InlineData("14:30 GMT", "", "2030-01-10T14:30:00Z")]
+    [InlineData("07-01", "MM-dd", "2030-07-01T00:00:00+04:00")]
+    [InlineData("01 Jul 14:30", "dd MMM HH:mm", "2030-07-01T14:30:00+04:00")]
+    [InlineData("07-01 +02:00", "MM-dd zzz", "2030-07-01T00:00:00+02:00")]
+    // ddd names the day of the week, dd the day of the month: 1 July 2030 is a Monday.
+    [InlineData("Mon, 01 Jul 14:30", "ddd, dd MMM HH:mm", "2030-07-01T14:30:00+04:00")]
+    // The standard month-day format has no year either.
+    [InlineData("July 01", "M", "2030-07-01T00:00:00+04:00")]
+    public void Parse_MissingDateOrYear_TakesItFromTheInjectedClock(string input, string pattern, string expected) {
+        Assert.Equal(expected, Run(FarFuture, "date.parse", Str(input), Str(pattern)));
+    }
+
+    [Fact]
+    public void Parse_MissingYearWithOffset_TakesTheYearInThatOffset() {
+        // 23:30Z on 31 December 2029 is already 2030 at +02:00.
+        var newYearsEve = new DateTime(2029, 12, 31, 23, 30, 0, DateTimeKind.Utc);
+
+        Assert.Equal("2030-07-01T00:00:00+02:00", Run(newYearsEve, "date.parse", Str("07-01 +02:00"), Str("MM-dd zzz")));
     }
 
     [Theory]

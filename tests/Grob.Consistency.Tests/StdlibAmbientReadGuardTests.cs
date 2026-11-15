@@ -49,8 +49,12 @@ public sealed class StdlibAmbientReadGuardTests {
 
     private static bool HasTopLevelComma(string source, int start) {
         int depth = 0;
-        for (int i = start; i < source.Length; i++) {
+        int i = start;
+        while (i < source.Length) {
             switch (source[i]) {
+                case '"' or '\'':
+                    i = LiteralEnd(source, i);
+                    break;
                 case '(' or '[' or '{':
                     depth++;
                     break;
@@ -62,8 +66,33 @@ public sealed class StdlibAmbientReadGuardTests {
                 case ',' when depth == 0:
                     return true;
             }
+            i++;
         }
         return false;
+    }
+
+    /// <summary>
+    /// The index of the quote that closes the string or char literal opened at
+    /// <paramref name="open"/>, so a comma inside it is not read as an argument separator. A
+    /// verbatim string doubles its quotes; any other literal escapes with a backslash.
+    /// </summary>
+    private static int LiteralEnd(string source, int open) {
+        char quote = source[open];
+        bool verbatim = (open > 0 && source[open - 1] == '@')
+            || (open > 1 && source[open - 1] == '$' && source[open - 2] == '@');
+        int i = open + 1;
+        while (i < source.Length) {
+            if (!verbatim && source[i] == '\\') {
+                i += 2;
+            } else if (source[i] != quote) {
+                i++;
+            } else if (verbatim && i + 1 < source.Length && source[i + 1] == quote) {
+                i += 2;
+            } else {
+                return i;
+            }
+        }
+        return source.Length;
     }
 
     [Theory]
@@ -75,6 +104,11 @@ public sealed class StdlibAmbientReadGuardTests {
     [InlineData("Path.GetFullPath(p)", OneArgumentGetFullPath)]
     [InlineData("Path.GetFullPath(p.Length == 0 ? \".\" : p)", OneArgumentGetFullPath)]
     [InlineData("Path.GetFullPath(Join(a, b))", OneArgumentGetFullPath)]
+    // A comma inside a literal is not an argument separator.
+    [InlineData("Path.GetFullPath(\"reports,2026\")", OneArgumentGetFullPath)]
+    [InlineData("Path.GetFullPath(@\"a\"\",b\")", OneArgumentGetFullPath)]
+    [InlineData("Path.GetFullPath(p + ',')", OneArgumentGetFullPath)]
+    [InlineData("Path.GetFullPath(\"a\\\",b\")", OneArgumentGetFullPath)]
     public void ForbiddenReads_PlantedRead_IsReported(string source, string pattern) {
         Assert.Equal([pattern], ForbiddenReads(source));
     }

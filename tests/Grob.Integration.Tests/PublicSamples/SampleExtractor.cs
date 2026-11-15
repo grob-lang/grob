@@ -75,9 +75,13 @@ internal static partial class SampleExtractor {
             nearMisses.Add($"{path}:{i + 1} opens a grob-like fence '{lines[i].Trim()}' that is not extracted; " +
                 "open it at column 0 with exactly three backticks and 'grob', or rename the language");
         }
-        return FindOtherClose(lines, i + 1, fence);
+        // CommonMark: four or more leading spaces (a tab counts as four) make indented code, not
+        // a fence. The near miss above is still reported, since inside a list item the same line
+        // does open a fence.
+        return IsIndentedCode(open.Groups["indent"].Value) ? i : FindOtherClose(lines, i + 1, fence);
     }
 
+    private static bool IsIndentedCode(string indent) => indent.Length > 3 || indent.Contains('\t');
 
     private static bool LooksLikeGrob(string info) {
         string word = info.TrimStart().Split([' ', '\t'], 2)[0];
@@ -95,14 +99,15 @@ internal static partial class SampleExtractor {
 
     /// <summary>
     /// A fence closes at a line of at least as many of the same fence character with nothing else
-    /// on it (CommonMark); an indented fence's closer may be indented too.
+    /// on it and at most three leading spaces (CommonMark).
     /// </summary>
     private static int FindOtherClose(string[] lines, int from, string fence) {
         char mark = fence[0];
         int i = from;
         while (i < lines.Length) {
-            string trimmed = lines[i].Trim();
-            if (trimmed.Length >= fence.Length && trimmed.All(c => c == mark)) {
+            string body = lines[i].TrimEnd();
+            string trimmed = body.TrimStart(' ');
+            if (!IsIndentedCode(body[..^trimmed.Length]) && trimmed.Length >= fence.Length && trimmed.All(c => c == mark)) {
                 break;
             }
             i++;

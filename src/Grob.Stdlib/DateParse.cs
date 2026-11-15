@@ -15,11 +15,21 @@ namespace Grob.Stdlib;
 /// injected clock.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <see cref="DateTimeStyles.NoCurrentDateDefault"/> reports "no date" as 1 January of year
 /// 1, so an input naming that exact date is read as time-only. No script dates anything to
 /// year 1; the edge is stated rather than guarded.
+/// </para>
+/// <para>
+/// A pattern with a month or day but no year has the injected clock's year appended as a
+/// literal before parsing, because .NET fills a missing year from the host clock and
+/// <see cref="DateTimeStyles.NoCurrentDateDefault"/> covers only a wholly missing date. The
+/// one-argument form has no pattern to extend: a free-form partial date such as
+/// <c>"Jul 1"</c> still takes the host's year.
+/// </para>
 /// </remarks>
 internal static partial class DateParse {
+    private const string YearSeparator = "|";
     /// <summary>
     /// Parses an ISO-8601 or invariant-culture input. Returns <see langword="false"/> when
     /// <paramref name="input"/> is not a date.
@@ -42,8 +52,15 @@ internal static partial class DateParse {
         }
         if (local.Kind != DateTimeKind.Unspecified) {
             // A zone designator the lexical split does not recognise (a trailing "GMT"): the
-            // DateTimeOffset parser keeps that designator's offset.
-            return DateTimeOffset.TryParse(input, CultureInfo.InvariantCulture, DateTimeStyles.None, out result);
+            // DateTimeOffset parser keeps that designator's offset, but dates a time-only input
+            // from the host clock, so the injected clock replaces that date.
+            if (!DateTimeOffset.TryParse(input, CultureInfo.InvariantCulture, DateTimeStyles.None, out result)) {
+                return false;
+            }
+            if (local.Year == 1) {
+                result = TodayInOwnOffset(result, utcNow);
+            }
+            return true;
         }
         result = InZone(local, utcNow, zone);
         return true;
@@ -55,27 +72,65 @@ internal static partial class DateParse {
     /// </summary>
     internal static bool TryParsePattern(
             string input, string pattern, DateTime utcNow, TimeZoneInfo zone, out DateTimeOffset result) {
-        if (HasSpecifier(pattern, "zK")) {
-            if (!DateTimeOffset.TryParseExact(input, pattern, CultureInfo.InvariantCulture, DateTimeStyles.None, out result)) {
-                return false;
-            }
-            if (!HasSpecifier(pattern, "yMd")) {
-                result = TodayInOwnOffset(result, utcNow);
-            }
-            return true;
+        if (pattern is "u" or "r" or "R") {
+            // UTC by definition, though DateTime reads their Z or GMT as a literal.
+            return DateTimeOffset.TryParseExact(input, pattern, CultureInfo.InvariantCulture, DateTimeStyles.None, out result);
         }
-        if (!DateTime.TryParseExact(
-                input, pattern, CultureInfo.InvariantCulture, DateTimeStyles.NoCurrentDateDefault, out DateTime local)) {
+        string custom = pattern is "m" or "M" ? CultureInfo.InvariantCulture.DateTimeFormat.MonthDayPattern : pattern;
+        PatternShape shape = Shape(custom);
+        if (shape.HasOffset && !(shape.OffsetIsOptional && TryParseLocal(input, WithoutK(custom), shape, utcNow, zone, out _))) {
+            return TryParseOffset(input, custom, shape, utcNow, out result);
+        }
+        string offsetFree = shape.OffsetIsOptional ? WithoutK(custom) : custom;
+        if (!TryParseLocal(input, offsetFree, shape, utcNow, zone, out DateTime local)) {
             return Fail(out result);
         }
         if (local.Kind != DateTimeKind.Unspecified) {
-            // A standard format whose designator the specifier scan cannot see ("o", "u"):
-            // the DateTimeOffset parser keeps the input's offset.
+            // A standard format whose designator the specifier scan cannot see ("o"): the
+            // DateTimeOffset parser keeps the input's offset.
             return DateTimeOffset.TryParseExact(input, pattern, CultureInfo.InvariantCulture, DateTimeStyles.None, out result);
         }
         result = InZone(local, utcNow, zone);
         return true;
     }
+
+    /// <summary>
+    /// Parses offset-free input, appending today's year in the zone when the pattern names a
+    /// month or day but no year.
+    /// </summary>
+    private static bool TryParseLocal(
+            string input, string pattern, PatternShape shape, DateTime utcNow, TimeZoneInfo zone, out DateTime local) {
+        (string text, string format) = shape.NeedsYear ? WithYear(input, pattern, TodayIn(zone, utcNow).Year) : (input, pattern);
+        return DateTime.TryParseExact(text, format, CultureInfo.InvariantCulture, DateTimeStyles.NoCurrentDateDefault, out local);
+    }
+
+    /// <summary>
+    /// Parses input with an explicit offset. A missing year is the year in that offset, so the
+    /// offset is read first and the input re-parsed when that year differs from the zone-free guess.
+    /// </summary>
+    private static bool TryParseOffset(string input, string pattern, PatternShape shape, DateTime utcNow, out DateTimeOffset result) {
+        if (!shape.NeedsYear) {
+            if (!DateTimeOffset.TryParseExact(input, pattern, CultureInfo.InvariantCulture, DateTimeStyles.None, out result)) {
+                return false;
+            }
+            if (!shape.HasDate) {
+                result = TodayInOwnOffset(result, utcNow);
+            }
+            return true;
+        }
+        int guess = utcNow.Year;
+        (string text, string format) = WithYear(input, pattern, guess);
+        if (!DateTimeOffset.TryParseExact(text, format, CultureInfo.InvariantCulture, DateTimeStyles.None, out result)) {
+            return false;
+        }
+        int year = (utcNow + result.Offset).Year;
+        return year == guess
+            || DateTimeOffset.TryParseExact(WithYear(input, pattern, year).Input, format,
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out result);
+    }
+
+    private static (string Input, string Pattern) WithYear(string input, string pattern, int year) =>
+        (input + YearSeparator + year.ToString("D4", CultureInfo.InvariantCulture), pattern + "'" + YearSeparator + "'yyyy");
 
     /// <summary>
     /// Gives an offset-free wall time the zone's offset for it, dating it today in the zone
@@ -102,13 +157,59 @@ internal static partial class DateParse {
         return new DateTimeOffset(today.Add(parsed.TimeOfDay), parsed.Offset);
     }
 
+    /// <summary>What a pattern's specifiers say about the input it parses.</summary>
+    /// <param name="HasDate">A year, month or day of the month is named.</param>
+    /// <param name="NeedsYear">A month or day is named but no year, which .NET fills from the host.</param>
+    /// <param name="HasOffset">A <c>z</c> or <c>K</c> is named.</param>
+    /// <param name="OffsetIsOptional">Only <c>K</c> is named, which also accepts an absent offset.</param>
+    private readonly record struct PatternShape(bool HasDate, bool NeedsYear, bool HasOffset, bool OffsetIsOptional) {
+        /// <summary>A single-character standard format, whose letter is not a custom specifier.</summary>
+        public static PatternShape Standard { get; } = new(true, false, false, false);
+    }
+
+    private static PatternShape Shape(string pattern) {
+        if (pattern.Length == 1) {
+            return PatternShape.Standard;
+        }
+        List<(char Letter, int Index)> specifiers = Specifiers(pattern);
+        bool year = specifiers.Exists(s => s.Letter == 'y');
+        bool monthOrDay = specifiers.Exists(s => s.Letter == 'M') || HasDayOfMonth(specifiers);
+        bool offset = specifiers.Exists(s => s.Letter == 'z');
+        bool optional = specifiers.Exists(s => s.Letter == 'K');
+        return new PatternShape(year || monthOrDay, monthOrDay && !year, offset || optional, optional && !offset);
+    }
+
+    /// <summary>A run of one or two <c>d</c>s; three or more name the day of the week.</summary>
+    private static bool HasDayOfMonth(List<(char Letter, int Index)> specifiers) {
+        int start = 0;
+        while (start < specifiers.Count) {
+            int end = start + 1;
+            while (end < specifiers.Count && specifiers[end].Letter == specifiers[start].Letter
+                    && specifiers[end].Index == specifiers[end - 1].Index + 1) {
+                end++;
+            }
+            if (specifiers[start].Letter == 'd' && end - start <= 2) {
+                return true;
+            }
+            start = end;
+        }
+        return false;
+    }
+
+    private static string WithoutK(string pattern) {
+        HashSet<int> drop = [.. Specifiers(pattern).Where(s => s.Letter == 'K').Select(s => s.Index)];
+        return string.Concat(pattern.Where((_, index) => !drop.Contains(index)));
+    }
+
     /// <summary>
-    /// True when <paramref name="pattern"/> uses one of <paramref name="specifiers"/> as a
-    /// format specifier: outside a quoted literal and not escaped by a backslash.
+    /// Each letter of <paramref name="pattern"/> that is a format specifier: outside a quoted
+    /// literal and not escaped by a backslash.
     /// </summary>
-    private static bool HasSpecifier(string pattern, string specifiers) {
+    private static List<(char Letter, int Index)> Specifiers(string pattern) {
+        var found = new List<(char Letter, int Index)>();
         char quote = '\0';
-        for (int i = 0; i < pattern.Length; i++) {
+        int i = 0;
+        while (i < pattern.Length) {
             char c = pattern[i];
             if (quote != '\0') {
                 quote = c == quote ? '\0' : quote;
@@ -116,11 +217,12 @@ internal static partial class DateParse {
                 quote = c;
             } else if (c == '\\') {
                 i++;
-            } else if (specifiers.Contains(c)) {
-                return true;
+            } else if (char.IsAsciiLetter(c)) {
+                found.Add((c, i));
             }
+            i++;
         }
-        return false;
+        return found;
     }
 
     /// <summary>

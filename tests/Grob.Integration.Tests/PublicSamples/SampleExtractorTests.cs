@@ -67,7 +67,27 @@ public sealed class SampleExtractorTests {
         Assert.Equal("print(2)\n", block.Source);
     }
 
+    [Fact]
+    public void Extract_FourSpaceIndentedFenceLine_IsIndentedCodeNotAnOpener() {
+        // CommonMark: four or more leading spaces make indented code, not a fence, so the line
+        // must not swallow the real block after it.
+        const string text = "    ```text\n\n```grob\nprint(1)\n```\n";
+
+        SampleBlock block = Assert.Single(SampleExtractor.Extract(Page, text));
+        Assert.Equal("print(1)\n", block.Source);
+    }
+
+    [Fact]
+    public void Extract_FourSpaceIndentedBackticksInsideAnotherFence_DoNotCloseIt() {
+        // CommonMark: a closing fence takes at most three leading spaces, so the indented line is
+        // content and the grob fence stays inside the outer one.
+        const string text = "````markdown\n    ````\n```grob\nprint(1)\n```\n````\n";
+
+        Assert.Empty(SampleExtractor.Extract(Page, text));
+    }
+
     [Theory]
+    [InlineData("    ```grob\nx\n    ```\n")]
     [InlineData("  ```grob\nx\n  ```\n")]
     [InlineData("```Grob\nx\n```\n")]
     [InlineData("```GROB fragment\nx\n```\n")]
