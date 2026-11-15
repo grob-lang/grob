@@ -232,12 +232,12 @@ When the branch is ready:
 3. **Confirm the branch is up to date with `main`.** `git fetch && git
 log origin/main..HEAD` — if there are commits on `main` you don't
    have, rebase or merge them in first.
-4. **Leave the session hand-off in.** If the branch carries
-   `.grob-session/handoff.md`, it stays in the PR and merges to `main`,
-   so the next session reads it from there, including from remote
-   control. Never remove it before merge; the next hand-off overwrites it.
-   If this session resumed from that hand-off, refresh it with `/handoff`
-   first, so the copy that lands on `main` describes the finished branch.
+4. **Leave the session hand-off in.** If the branch carries a hand-off
+   under `.grob-session/handoffs/`, it stays in the PR and merges to
+   `main`, so the next session reads it from there, including from remote
+   control. Never remove a branch's own hand-off before merge. If this
+   session resumed from a hand-off, refresh it with `/handoff` first, so
+   the copy that lands on `main` describes the finished branch.
 5. **Push.** `git push` (or `git push -u origin <branch>` on the first
    push).
 6. **Open the PR, or update it.** A title in conventional-commits form
