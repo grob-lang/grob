@@ -1,6 +1,6 @@
 ---
 description: Generate a conventional-commits message for the currently staged changes. Inspect the staged diff, choose the right type and scope and produce a complete message body.
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*)
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Bash(git add:*), Bash(git commit:*), Write
 ---
 
 # Generate commit message
@@ -8,11 +8,12 @@ allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(gi
 Inspect the currently staged changes (`git diff --cached`) and produce a commit message
 that follows the conventions below.
 
-## Pre-stage checklist (run before `git add`)
+## Pre-commit checklist (run before `git commit`)
 
-The pre-push hooks `trailing-whitespace`, `end-of-file-fixer` and
-`dotnet format — verify no changes` mutate the working tree on failure but do **not**
-restage. Skipping this means at least one aborted commit cycle every time.
+The pre-commit hooks `trailing-whitespace`, `end-of-file-fixer` and
+`mixed-line-ending` fix the working tree on failure but do **not** restage, and
+`dotnet format — verify no changes` fails without fixing anything. Skipping this means
+at least one aborted commit cycle every time.
 
 1. **Run `dotnet format whitespace Grob.slnx`** on the working tree — rewrites
    indentation, trailing whitespace and final newlines across every `.cs` file. Fast
@@ -20,9 +21,17 @@ restage. Skipping this means at least one aborted commit cycle every time.
 2. **Verify namespaces match folder paths.** For every new or moved `.cs` file, the
    namespace on line 1 must equal the folder path under `src/` or `tests/` (see
    `src/CLAUDE.md`).
-3. **Build and test:** `dotnet build Grob.slnx` then `dotnet test Grob.slnx --nologo`.
-   Zero warnings, zero failures.
-4. **Then** `git add -A`. Hooks are the safety net, not the workflow.
+3. **Stage the change's own files** by path (`git add <path>…`), never `git add -A`:
+   that sweeps in unrelated work and scratch. If the caller has already staged a
+   selection, as `/review-pr-comments` does, keep it and stage nothing more.
+4. **Confirm the working tree is exactly what will be committed:** `git diff --quiet`
+   (no unstaged change to any tracked file) and `git ls-files --others --exclude-standard`
+   printing nothing (no untracked file outside `.gitignore`; `.grob-session/` is ignored).
+   If either fails, stop: the user commits or sets aside the other work first. Nothing is
+   stashed or moved. Otherwise an unstaged or untracked file the build reads can pass the
+   tests while the commit is broken.
+5. **Build and test:** `dotnet build Grob.slnx` then `dotnet test Grob.slnx --nologo`.
+   Zero warnings, zero failures. Hooks are the safety net, not the workflow.
 
 ## Procedure
 
@@ -52,7 +61,7 @@ Exactly one of:
   behaviour. No new tests should be required; if you need new tests, it is not a
   refactor.
 - **`test`** — test-only changes that do not accompany a production-code change:
-  regression rows from property-test discoveries, coverage-gap filling, test
+  regression rows for inputs found after the feature landed, coverage-gap filling, test
   infrastructure, gold-master coverage for previously-uncovered diagnostics. Do not use
   `test` to commit a feature's tests separately from the feature — that is a `feat`.
 - **`docs`** — docs, comments, README, ADRs, spec files.
@@ -92,29 +101,30 @@ Good:
 feat(compiler): add lexer for double-quoted strings
 
 Supports escape sequences (\n \r \t \\ \" \$) and ${name}
-interpolation segments. Unterminated strings produce E0042
+interpolation segments. Unterminated strings produce E2002
 with source location pointing at the opening quote.
 
 Includes happy-path, failure-path, and edge-case tests covering
 empty input, EOF mid-string, escape-at-buffer-boundary, and nested
 interpolation.
 
-Implements D-185 (string literal forms).
+Implements D-047 (string interpolation).
 ```
 
 ```
 fix(vm): handle stack underflow on Pop opcode before runtime values
 
-Pop against an empty stack now throws InternalVmError with the
+Pop against an empty stack now throws GrobInternalException with the
 instruction offset rather than crashing the host process.
 
 Regression: see issue #142.
 ```
 
 ```
-refactor(core): rename TokenKind.String to TokenKind.StringLiteral
+refactor(compiler): move declaration checks into their own partial
 
-Aligns with IntLiteral and FloatLiteral naming. No behaviour change.
+TypeChecker.cs had grown past the point where a reader could find
+the declaration arms. No behaviour change.
 ```
 
 Bad — no type prefix, wrong tense, vague subject, body explains what not why, mixes two
@@ -133,8 +143,8 @@ Could a reviewer revert this commit cleanly? Are the type and scope honest? If a
 answer is "no", surface it before committing:
 
 > "These staged changes look like two commits to me — one `feat(compiler)` for the
-> lexer change, one `test(compiler)` for the regression rows from the property-test
-> discovery. Should I propose them separately?"
+> lexer change, one `test(compiler)` for the regression rows for an older bug.
+> Should I propose them separately?"
 
 If staged changes contain a feature *without* tests, do not commit them as `feat`.
 Surface the gap.
@@ -163,6 +173,12 @@ judgement you make and state, not one you skip.
 
 ## Output
 
-Present the proposed message in a fenced block, ready to paste into `git commit -F -`,
-then ask: "Commit this, or revise?" Wait for the maintainer's response. Do not run
-`git commit`, stage, push or merge autonomously.
+Write the message to `.grob-session/commit-msg.txt` with the Write tool and commit with
+`git commit -F .grob-session/commit-msg.txt`, on the feature branch only — the step 3
+check refuses `main`. The pre-commit hooks run; **never bypass them** (no `--no-verify`).
+If a hook fails, fix the cause, restage and commit again. Show the message and the new
+SHA in chat.
+
+Pushing and the PR follow root `CLAUDE.md` (*How we work*) and `/close-session`; a
+command or agent that says to stop before the push still stops there. Merging is
+Chris's action, always.

@@ -65,7 +65,7 @@ Grob.sln
 ├── bench/
 │   └── Grob.Benchmarks/         ← Console app — BenchmarkDotNet entry point
 │       ├── Compile/             ← Lex/parse/typecheck/emit benchmarks
-│       ├── Vm/                  ← Hand-constructed chunk execution benchmarks
+│       ├── Vm/                  ← Chunk execution benchmarks over compiled .grob fixtures (D-387)
 │       ├── Attribution/         ← Differential allocation-attribution fixtures
 │       ├── EndToEnd/            ← Validation suite full-pipeline benchmarks
 │       ├── Stability/           ← Long-run stability test (separate cadence)
@@ -104,8 +104,8 @@ pipeline in isolation and end-to-end:
 - Compiler throughput — bytecode emitted per second
 - End-to-end compile — source string to `Chunk` ready for the VM
 
-Source corpus for these benchmarks: the thirteen validation suite
-scripts, plus a synthetic large script (auto-generated, 1000+ lines)
+Source corpus for these benchmarks: the eleven validation suite
+scripts (D-346), plus a synthetic large script (auto-generated, 1000+ lines)
 to surface throughput characteristics the small scripts cannot.
 
 ### 4.2 VM Execution Benchmarks (`bench/Grob.Benchmarks/Vm/`)
@@ -202,7 +202,7 @@ pairwise subtraction.
 
 **Question answered:** does Grob run real scripts fast enough?
 
-The thirteen validation suite scripts, run through the full pipeline:
+The eleven validation suite scripts (D-346), run through the full pipeline:
 source file on disk → compiled → executed → exit. This is the workload
 that actually matters. If end-to-end numbers regress, something is
 wrong even if the micro-benchmarks all look fine.
@@ -288,7 +288,7 @@ Before locking these numbers in the baseline, run a single-iteration pass
 against the stdlib-substantial build that Sprint 8 produces and characterise:
 
 1. Wall-clock time for one full iteration of the **Sprint-8-runnable script
-   set** — not all thirteen. `grob-sample-scripts.md`'s validation scripts
+   set** — not all eleven. `grob-sample-scripts.md`'s validation scripts
    each depend on at least one Sprint-9 module (`fs`, `date`, `csv`, `json`,
    `process`) or an as-yet-unbuilt plugin (`Grob.Http`, `Grob.Crypto`), so
    none of them runs at Sprint 8 close; the runnable set is the five
@@ -297,10 +297,10 @@ against the stdlib-substantial build that Sprint 8 produces and characterise:
    full validation-suite stability run is deferred to a v1 release-gate step
    once Sprint 9 lands the remaining modules. This sets the realistic upper
    bound on iteration count — if one iteration takes 30 seconds, 10,000 is
-   too many for a test that ships. (D-346 also notes, separately: the
-   "thirteen" count itself is stale — `grob-sample-scripts.md` has only ever
-   held eleven scripts; see D-346 for the full account. This does not change
-   the runnable-set finding above, which is zero either way.)
+   too many for a test that ships. (D-346 also found that the suite has only
+   ever held eleven scripts, where this document once said thirteen; the
+   count is corrected throughout. It does not change the runnable-set finding
+   above, which is zero either way.)
 2. Steady-state managed heap size after the first ten iterations. This
    sets the realistic warmup window — there is no point asserting against
    the heap before it has reached its plateau. **Caution from D-346's actual
@@ -344,10 +344,10 @@ All benchmark inputs that are not C# code live under one root:
 ```
 bench/Grob.Benchmarks/
 ├── Fixtures/
-│   ├── EndToEnd/                  ← Frozen copies of the thirteen validation scripts
+│   ├── EndToEnd/                  ← Frozen copies of the eleven validation scripts
 │   │   ├── 01-calculator.grob
 │   │   ├── 02-file-organiser.grob
-│   │   └── … (eleven more)
+│   │   └── … (nine more)
 │   ├── Compile/
 │   │   └── synthetic-large.grob   ← Auto-generated, gitignored, deterministic
 │   ├── Vm/                        ← Fixtures compiled once in [GlobalSetup] (D-387)
@@ -359,33 +359,24 @@ bench/Grob.Benchmarks/
 
 Three classes of test material, three different storage policies.
 
-### 7.2 Hand-Constructed VM Chunks — Code, Not Files
+### 7.2 VM Fixtures — `.grob` Sources Compiled Once
 
-VM execution benchmarks construct their `Chunk` instances directly in
-C#. There is no `.chunk` file format and there should not be one — a
-hand-constructed chunk is code, and committing it as code keeps it
-reviewable, refactorable and visible alongside the benchmark that
-consumes it.
+VM execution benchmarks read ordinary `.grob` sources from `Fixtures/Vm/`
+(`decl-and-arith.grob`, `control-flow.grob` and the rest) and compile each
+with the real compiler in `[GlobalSetup]` (D-386 Q1', D-387). There is no
+`.chunk` file format and there should not be one, and no chunk is built by
+hand: a compiled source stays readable and measures the bytecode the
+compiler actually emits, which a hand-written chunk would drift from.
 
-```csharp
-internal static class VmFixtures
-{
-    public static Chunk TightArithmeticLoop { get; } = BuildLoop();
-    public static Chunk RecursiveFibonacci  { get; } = BuildFib();
-    // …
-
-    private static Chunk BuildLoop() { /* emit opcodes */ }
-}
-```
-
-The static read-only initialisation means construction cost is paid
-once at type initialisation, not per iteration. The chunk is reused
-across every iteration of the benchmark that consumes it.
+Compilation runs once per benchmark, outside the measured region, and the
+resulting `Chunk` is reused across every iteration of the benchmark that
+consumes it. Through Sprint 9 this section described hand-constructed
+chunks in C#; §4.2's implementation note records the correction.
 
 ### 7.3 End-to-End Scripts — Frozen Copies in Fixtures
 
-End-to-end benchmarks consume `.grob` source files. These are **frozen
-copies** of the thirteen validation suite scripts, kept under
+End-to-end benchmarks consume `.grob` source files. These will be **frozen
+copies** of the eleven validation suite scripts (D-346), kept under
 `Fixtures/EndToEnd/` and **not** referenced live from `tests/Grob.Integration.Tests/`.
 
 **Why frozen copies, not live references.** Validation suite scripts
@@ -411,7 +402,7 @@ diff, not a side effect.
 ### 7.4 Synthetic Large Script — Deterministic Generation
 
 The compile-time category needs a script larger than any of the
-thirteen validation suite scripts, to surface throughput characteristics
+eleven validation suite scripts, to surface throughput characteristics
 that small scripts cannot. Committing a 1000+ line file would bloat
 the repo and produce diff noise.
 
@@ -450,8 +441,8 @@ numbers stop meaning anything. The right answer differs by category.
 
 **VM execution benchmarks:**
 
-- `[GlobalSetup]` builds the hand-constructed `Chunk` (via the static
-  fixture properties from §7.2) and constructs a `GrobVM` instance.
+- `[GlobalSetup]` compiles the `.grob` fixture source into a `Chunk` with
+  the real compiler (D-387; §7.2) and constructs a `VirtualMachine` instance.
 - `[IterationSetup]` resets the VM's stack, globals and call frame
   array to a clean state. This is necessary because the measured
   method mutates VM state, and a benchmark that runs 1000 iterations
@@ -463,13 +454,13 @@ numbers stop meaning anything. The right answer differs by category.
 
 - `[GlobalSetup]` reads the script source from disk into a `string`
   field. This runs once.
-- `[IterationSetup]` constructs a fresh `GrobVM`. This runs every
-  iteration because end-to-end benchmarks measure the full lifecycle
-  including VM construction. The alternative — reusing a VM — would
-  hide construction cost, which is a real part of script startup
-  performance.
-- The measured method compiles the source and runs the resulting
-  `Chunk` on the iteration-fresh VM.
+- The measured method constructs a fresh `VirtualMachine`, compiles the
+  source and runs the resulting `Chunk` on it. Construction sits inside the
+  measured method, not in `[IterationSetup]`, because BenchmarkDotNet does
+  not time `[IterationSetup]`, and end-to-end benchmarks measure the full
+  lifecycle including VM construction. Reusing a VM, or building it in
+  setup, would hide construction cost, which is a real part of script
+  startup performance.
 - `[GlobalCleanup]` is empty.
 
 **Stability test:**

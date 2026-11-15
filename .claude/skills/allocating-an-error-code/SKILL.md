@@ -13,7 +13,8 @@ description: >
 # Allocating an error code
 
 Error codes are a **stability contract** — immutable once shipped (ADR-0017),
-surfaced to users through `--explain Exxxx`. So allocation is deliberate. But "never
+surfaced to users in every diagnostic and, once it is built, through
+`grob --explain Exxxx` (`grob-v1-requirements.md`). So allocation is deliberate. But "never
 invent a code" is not the same as "stop dead": the judgement of *whether* a new code is
 warranted stays explicit and surfaced, while the mechanics of *which* number and *how*
 to register are deterministic. This skill is the one home for both, so the rules stop
@@ -79,9 +80,11 @@ Register the descriptor in the `ErrorCatalog` (D-308) at the same number, so the
 ## Step 5 — Reconcile the count and let the gate ratify
 
 The count moves against the **live** total, not a prompt's `N → N+1`. After registering,
-the D-316 consistency gate (`Grob.Consistency.Tests`) asserts
-`ErrorCatalog.All.Count == ` the registry total on the commit. A green gate is the proof
-the count is right. If an increment adds more codes than its budget anticipated (the
+the D-316 consistency gate (`Grob.Consistency.Tests`, `ErrorCodeCountTests`) checks that
+`ErrorCatalog.All.Count`, the summary index and the footer total agree on the commit.
+`Corpus_HasTheExpectedLiveCountOf120`, renamed for the new count, pins the number itself:
+update its name, its three assertions and its comment in the same commit. A green gate is
+the proof the count is right. If an increment adds more codes than its budget anticipated (the
 budget said one, reality needed two), the budget arithmetic in the prompt is the stale
 part — reconcile to the live total and note the divergence; do not bend the registry to
 match the prompt.
@@ -99,5 +102,5 @@ one for the code itself.
 - [ ] Fold-versus-new judgement surfaced and decided; `D-###` logged for a new code
 - [ ] Correct category range; next free number taken from the live tail, never guessed
 - [ ] Three-location lockstep — summary row, full entry, standing total — plus the `ErrorCatalog` descriptor
-- [ ] Count reconciled against the live total; D-316 gate green on the commit
+- [ ] Count reconciled against the live total; `ErrorCodeCountTests`'s pinned count updated; D-316 gate green on the commit
 - [ ] Gold-master pair authored via `writing-an-error-test`

@@ -15,11 +15,12 @@ _A statically typed scripting language that a hobbyist can learn and a developer
 
 Grob is a statically typed scripting language with C-style syntax, type inference
 and first-class file system operations. Nullable types are explicit. Immutability
-is opt-in via `const`. It is designed to be readable by any C# or Go developer
+is opt-in: `readonly` for a value fixed once at run time, `const` for a compile-time
+constant (D-291). It is designed to be readable by any C# or Go developer
 without prior knowledge of Grob.
 
 ```grob
-param dir:  string = "C:\\Reports"
+param dir:  string = `C:\Reports`
 param from: string
 param to:   string
 
@@ -41,7 +42,7 @@ readable scripting cleanly. Grob is designed to fill that gap.
 
 ## Status
 
-Grob is being built in the open. The language design is complete and implementation is well underway — Sprint 5 (Functions and Closures) is active.
+Grob is being built in the open. The language design is complete and implementation is well underway.
 
 What exists today:
 
@@ -54,7 +55,7 @@ What exists today:
 - CLI personality and error message design
 - Mascot (Sparky) — character sheet v1 complete
 
-What comes next: standard library modules, the plugin system, and the thirteen validation scripts that are the v1 release gate.
+What comes next: standard library modules, the plugin system and the eleven validation scripts that are the v1 release gate (D-346).
 
 **This is a real project with serious design behind it. It is not ready yet.**
 Watch the repo if you want to follow along.

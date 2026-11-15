@@ -16,7 +16,8 @@ crucially, the rule for when a master may change.
 
 - A new compile-time or runtime error needs coverage.
 - A diagnostic's wording, suggestion or format changed and the affected gold masters
-  must be regenerated.
+  must be reviewed. A master the compiler still matches needs nothing. One that now
+  differs is handled by Step 4.
 - A new error code is being introduced.
 
 ## Step 1 — The error code
@@ -30,7 +31,7 @@ skill owns the gold-master pair, not the code allocation — for the code itself
 - **Register a new code** only through the `allocating-an-error-code` ladder: confirm
   nothing fits, surface the fold-versus-new judgement, get the `D-###`, then register in
   the correct category range (Type `E0xxx`, Name resolution `E1xxx`, Syntax `E2xxx`,
-  Module `E3xxx`, Param/decorator `E4xxx`, Runtime `E5xxx`) at the next free number from
+  Module `E3xxx`, Param/decorator `E4xxx`, Runtime `E5xxx`, Internal `E9xxx`) at the next free number from
   the live registry, in three-location lockstep with the `ErrorCatalog` descriptor. Codes
   are **immutable once shipped** (ADR-0017) — the judgement is the slow part, the
   mechanics are deterministic.
@@ -60,8 +61,8 @@ pair goes in `docs/errors/examples/quarantine.md` with what it produces today.
 The expected output must meet the quality bar: clear statement of what went wrong, exact
 location, and a suggested fix where the fix is obvious. No emoji; prose follows
 `house-style/SKILL.md`. If
-the generated diagnostic is poor, the fix is to improve the diagnostic in the compiler,
-then regenerate — not to bless poor output as the gold master.
+the diagnostic the compiler produces is poor, the fix is to improve it in the compiler —
+not to bless poor output as the gold master.
 
 ## Step 4 — The regeneration discipline (the part that bites)
 
@@ -71,8 +72,15 @@ source by character count**; or **a decision resolving a register divergence fin
 master's side wrong**. Otherwise the implementation is what is wrong, and the pair is
 quarantined rather than the master edited to make the harness pass.
 
+The three grounds govern code and location only. Wording alone (a title, message, note or
+suggestion) changes in the master in the same commit as the deliberate compiler change that
+produces it, with the diff reviewed: D-428's authorship rule. That is the route for Step 3's
+improved diagnostic.
+
 1. Grep the `.expected.txt` files for the affected code or wording to find the full set.
-2. Change each on one of the three grounds, or quarantine it.
+2. A master the compiler still matches needs nothing. For one that now differs: a changed
+   code or location takes one of the three grounds or quarantine; changed wording alone is
+   updated with the compiler change.
 3. Read the diff deliberately. A changed location or an altered suggestion you did not
    expect is a signal the implementation regressed, not that the gold master is wrong.
 4. Commit the masters with the change that caused them, citing the `D-###`.
@@ -95,7 +103,8 @@ is a release-gate fail, the same status as a failing positive script.
 - [ ] `<slug>.grob` triggers exactly one error, minimal, idiomatic, named for the error
 - [ ] `<slug>.expected.txt` hand-written to the registry, §10 and the README's voice
 - [ ] Diagnostic meets the quality bar (location, cause, fix) and the `house-style` checklist
-- [ ] On a change: full set of affected masters found by grep, each changed on one of
-      D-428's three grounds or quarantined
+- [ ] On a change: full set of affected masters found by grep; matching ones untouched;
+      a changed code or location on one of D-428's three grounds or quarantined; changed
+      wording alone updated in the same commit as the compiler change
 - [ ] Diff reviewed deliberately — every change intended
 - [ ] Pair indexed in the README; quarantined in `quarantine.md` if it does not yet match

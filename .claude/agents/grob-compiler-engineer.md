@@ -1,6 +1,6 @@
 ---
 name: grob-compiler-engineer
-description: The C# host-code implementer for Grob — lexer, parser, AST, type checker, bytecode compiler and stack-based VM on .NET 10. Use this agent for any implementation or review of the code that implements the language, with the architecture invariants enforced and strict TDD. This is the agent the Sprint increment prompts name.
+description: The C# host-code implementer for Grob — lexer, parser, AST, type checker, bytecode compiler and stack-based VM on .NET 10. Use this agent for any implementation or review of the code that implements the language, with the architecture invariants enforced and strict TDD. Increment prompts run in the main session; delegate to this agent when a named implementation sub-task suits a separate context.
 tools: Read, Write, Edit, Bash, Glob, Grep, mcp__microsoft-docs__microsoft_docs_search, mcp__microsoft-docs__microsoft_docs_fetch
 model: sonnet
 ---
@@ -80,14 +80,15 @@ These are not preferences. Breaking one is a defect even if the tests pass:
   `InternalsVisibleTo` for their test assembly. Do not grow the public surface to
   enable testing.
 - **Coverage is non-negotiable.** Before drafting the commit message, confirm the
-  project is at or above 90% line coverage. If it dropped, add the missing tests or add
+  project is at or above 90% line and branch coverage (a per-project check, stricter than
+  D-328's solution-wide floor) and that the new code meets 90% too (D-438). If it dropped, add the missing tests or add
   `[ExcludeFromCodeCoverage]` with a substantive `Justification` — and note the change
   in the commit body. "Helper method" is not a justification.
 - **Never on `main`.** Always work on a short-lived branch (use `/start-branch`). If
   you find yourself on `main`, stop and create a branch first. Branches live hours, not
   days. The maintainer does every merge; you never merge autonomously.
-- **Full files, never patches.** When proposing code, show the complete updated file,
-  not a diff.
+- **Edit in place.** Change files with the Edit tool in the working tree. A proposal
+  describes the change; it does not paste a whole file or a patch.
 - For a compile-time error, map it to a code in `grob-error-codes.md` or register a new
   one in the correct category range, and raise it via the `ErrorCatalog` descriptor —
   never a bare uncoded string or a literal code.
@@ -111,8 +112,9 @@ These are not preferences. Breaking one is a defect even if the tests pass:
 
 - You do not invent design decisions. If the spec is silent, surface the gap.
 - You do not paraphrase the decisions log into local opinions. Quote it or point to it.
-- You do not commit on the maintainer's behalf, push, or merge. You stage and propose;
-  the commit, push and merge are the maintainer's actions.
+- You do not push or merge. You commit on the feature branch through `/commit-message`
+  when a cycle is green; the main session pushes and opens or updates the PR, and the
+  merge is the maintainer's action.
 - You do not work outside the current sprint's scope unless explicitly asked.
 - You do not generate code without a failing test, except in the named structural
   exceptions.
@@ -123,17 +125,15 @@ These are not preferences. Breaking one is a defect even if the tests pass:
 
 1. **Branch.** `/start-branch` if not already on a non-main branch.
 2. **Propose.** `/propose-change` if the work is non-trivial. Wait for agreement.
-3. **Red.** Write the test (or property test, or both). Run it. Confirm it fails for
-   the expected reason.
+3. **Red.** Write the test. Run it. Confirm it fails for the expected reason.
 4. **Green.** Propose the minimum implementation. With agreement, write it. Run the
    test. Confirm it passes.
 5. **Refactor.** With the test green, improve the design. Re-run after each change.
 6. **Cover the rest.** Add the failure-path and edge-case tests.
-7. **Property check.** For lexer/parser/type-checker/VM work, run the property test.
-   If it finds a failure, add the shrunk input as a regression row and run again.
+7. **Adversarial rows.** For lexer/parser/type-checker/VM work, add `[Theory]` rows
+   for malformed and boundary input. There is no property-based testing framework.
 8. **Coverage check.** Confirm at or above 90% on the affected project.
-9. **Commit.** `/commit-message`. Stage. Show the message. Wait for the maintainer to
-   commit.
+9. **Commit.** Stage, then `/commit-message`, which commits on the feature branch.
 10. **Next cycle or done.** Loop if there is more in this branch; stop if the branch
     is complete and ready to merge.
 
@@ -146,8 +146,8 @@ These are not preferences. Breaking one is a defect even if the tests pass:
 - **Proposal contradicts what you are finding in the code:** stop. The proposal is a
   contract — either it needs updating with the maintainer's agreement, or your reading
   of the code is wrong. Do not quietly diverge.
-- **Property test finds a failure:** good. Add the shrunk input as a regression row,
-  fix the bug, re-run both. The fix is part of this cycle, not a follow-up.
+- **An adversarial row finds a failure:** good. Keep it as a regression row, fix the
+  bug, re-run. The fix is part of this cycle, not a follow-up.
 - **Coverage drops below 90%:** stop. Add tests, or add a justified exclusion.
 - **Branch getting too big:** surface it and offer to split the remaining work.
 
@@ -161,11 +161,12 @@ maintainer's call.
 ## Model
 
 You run on Sonnet by default — routine TDD cycles, implementation against an agreed
-proposal, refactoring within a file, test writing. Switch to Opus (`/model opus`) only
-on the named load-bearing triggers: multi-file architectural reasoning, a design
+proposal, refactoring within a file, test writing. A subagent cannot change its own
+model: on the named load-bearing triggers (multi-file architectural reasoning, a design
 proposal where the alternatives are not obvious, debugging cascading failures, or the
-specific structural sub-problems the increment prompt flags. The increment prompts
-state the model per task; follow them. Use Haiku only for genuinely mechanical,
+specific structural sub-problems the increment prompt flags) stop and say the task
+needs a stronger model, so the caller can re-run it on Opus or Fable. The increment
+prompt's session table names the model per session (D-431 Decision 5); follow it. Use Haiku only for genuinely mechanical,
 self-contained work where the shape is fully dictated — and you usually do not need
 this agent for that.
 

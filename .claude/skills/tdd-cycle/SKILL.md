@@ -11,8 +11,9 @@ explicitly, not silently.
 
 A feature is not done after one green cycle. The cycle below covers a
 single behaviour; a feature is done when happy path, failure path, and
-edge cases are all green and the project is still at or above 90% line
-coverage. See `Step 5: Extend coverage` and `Step 6: Coverage check`
+edge cases are all green, the project is still at or above 90% line
+and branch coverage (a per-project check, stricter than D-328's solution-wide floor) and
+the new code meets 90% too (D-438). See `Step 5: Extend coverage` and `Step 6: Coverage check`
 below.
 
 ## The full procedure
@@ -26,23 +27,26 @@ reachable from the test assembly. Visibility itself follows the
 internal-by-default rule below.
 
 ```csharp
-public class LexerTests
-{
+public sealed class LexerTests {
     [Fact]
-    public void Scan_EmptyInput_ReturnsEofTokenOnly()
-    {
+    public void Scan_EmptyInput_ReturnsEofTokenOnly() {
         // Arrange
-        var lexer = new Lexer("");
+        DiagnosticBag bag = new();
 
         // Act
-        var tokens = lexer.ScanAll();
+        IReadOnlyList<Token> tokens = Lexer.Scan("", bag);
 
         // Assert
-        var token = Assert.Single(tokens);
+        Token token = Assert.Single(tokens);
         Assert.Equal(TokenKind.Eof, token.Kind);
+        Assert.Empty(bag.Errors);
     }
 }
 ```
+
+The example is illustrative: the lexer is long built, and its real tests are in
+`tests/Grob.Compiler.Tests/`. The shape — one behaviour, the real entry point
+(`Lexer.Scan(source, diagnostics)`), explicit types, same-line braces — is the point.
 
 Run it: `dotnet test --filter "FullyQualifiedName~LexerTests.Scan_EmptyInput_ReturnsEofTokenOnly"`.
 
@@ -70,19 +74,12 @@ If the test expects `EofTokenOnly` on empty input, the implementation might
 be as small as:
 
 ```csharp
-// internal — only Grob.Compiler.Tests needs to construct one. Public
-// visibility is reserved for the project's contract; this is implementation.
-internal sealed class Lexer
-{
-    private readonly string _source;
-
-    public Lexer(string source) => _source = source;
-
-    public IReadOnlyList<Token> ScanAll()
-    {
-        // file path empty in test fixture — production callers pass the
-        // real path through SourceLocation.
-        return new[] { new Token(TokenKind.Eof, new SourceLocation(1, 1, "")) };
+public sealed class Lexer {
+    public static IReadOnlyList<Token> Scan(
+        string source, DiagnosticBag diagnostics, string file = "<source>") {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(diagnostics);
+        return [new Token(TokenKind.Eof, "", new SourceLocation(file, 1, 1), 0)];
     }
 }
 ```
@@ -125,16 +122,15 @@ property-based testing here.)
 [InlineData("")]
 [InlineData("```")]      // three backticks, no content
 [InlineData("\"unterminated")]
-public void Scan_PathologicalInput_DoesNotThrow(string input)
-{
-    var ex = Record.Exception(() => new Lexer(input).ScanAll().ToList());
+public void Scan_PathologicalInput_DoesNotThrow(string input) {
+    var ex = Record.Exception(() => Lexer.Scan(input, new DiagnosticBag()));
     Assert.Null(ex);
 }
 ````
 
-Stdlib and other non-pipeline work doesn't need a property test by default,
-but reach for one whenever input space is large enough that examples can't
-cover it meaningfully (JSON, CSV, regex, path operations).
+Stdlib and other non-pipeline work doesn't need adversarial rows by default,
+but add them whenever the input space is large enough that a few examples
+can't cover it meaningfully (JSON, CSV, regex, path operations).
 
 ### Step 5: Extend coverage
 
@@ -147,18 +143,17 @@ edge-case tests now, each through its own red/green/refactor cycle.
   the right error code, location, and message) or the correct `GrobError`
   subtype at runtime.
 - **Edge cases.** Inputs at the boundaries of what's representable or
-  expected. The Grob-specific edge categories per layer (lexer, parser,
-  type checker, VM, stdlib) live in `tests/CLAUDE.md` — read the
-  list for the layer you're working in. Don't guess at categories; the
-  list exists because they were chosen deliberately.
+  expected, for the layer you're working in (lexer, parser, type checker,
+  VM, stdlib). `tests/CLAUDE.md` lists the invariants that must have guard
+  tests — the §3.1.1 fields, two-mode errors and parser recovery.
 
-Each new test follows the full red/green/refactor sequence. Each property
-test failure during Step 4 is paid down here.
+Each new test follows the full red/green/refactor sequence. Each failing
+adversarial row from Step 4 is paid down here.
 
 ### Step 6: Coverage check
 
 Run coverage on the affected project. Confirm at or above 90% line
-coverage. If it dropped:
+and branch coverage. If it dropped:
 
 - **Add the missing tests.** Coverage gaps usually point at a path the
   feature exercises that none of the tests reach. Add a test.
@@ -193,14 +188,14 @@ at or above 90%:
     - **`refactor`** — structural change with no new behaviour. No new
       tests should be required; if new tests are needed, it isn't a
       refactor.
-    - **`test`** — genuinely test-only work: regression rows from
-      property-test discoveries that aren't paired with a fix, coverage
-      gap filling on already-shipped code, test infrastructure changes.
+    - **`test`** — genuinely test-only work: regression rows that aren't
+      paired with a fix, coverage gap filling on already-shipped code, test
+      infrastructure changes.
 3. If coverage moved materially — `[ExcludeFromCodeCoverage]` added,
    tested code removed, percentage dropped — note it in the commit body
    with the justification.
-4. Use the `/commit-message` prompt to draft the message.
-5. Stage and show the message to Chris. Don't auto-commit.
+4. Stage, then run `/commit-message`, which drafts the message and commits on the
+   feature branch.
 
 ## Design for testability
 
@@ -212,11 +207,12 @@ API**. Inject an abstraction:
 
 - `DateTime.Now` / `DateTime.UtcNow` → inject `IClock`.
 - `File.*` / `Directory.*` → inject `IFileSystem`.
-- `Console.*` → inject `IConsole`.
-- `Environment.*` → inject the appropriate abstraction.
-- `Process.Start` → inject `IProcessRunner`.
+- `Console.*` → inject `IStandardStreams`.
+- `Environment.*` → inject `IEnvironment`.
+- `Random` → inject `IRandomSource`.
+- `Process.Start` → no abstraction yet; propose a new interface.
 
-The interfaces live in `Grob.Core`; the concrete implementations live at
+The interfaces live in `Grob.Runtime`; the concrete implementations live at
 the composition root (`Grob.Cli`). Tests substitute fakes. This is the
 single largest determinant of whether a project hits the 90% bar — see
 `src/CLAUDE.md` for the full set of design-for-testability rules.
@@ -234,7 +230,7 @@ A bug fix is a TDD cycle with a different shape. The sequence:
     ```csharp
     // Regression: see issue #142
     [Fact]
-    public void Pop_EmptyStack_ThrowsInternalVmError()
+    public void Pop_EmptyStack_ThrowsGrobInternalException()
     ```
 
 3. **Co-locate.** Put the test alongside the related happy-path tests
@@ -246,7 +242,7 @@ A bug fix is a TDD cycle with a different shape. The sequence:
    in the same commit as the fix.
 
 The regression test asserts the **corrected** behaviour, not the bug's
-symptom. "Throws `InternalVmError` with the instruction offset" is the
+symptom. "Throws `GrobInternalException` with the instruction offset" is the
 assertion. "Doesn't crash the host process" is the symptom that pointed
 at the bug.
 
@@ -261,14 +257,13 @@ at the bug.
 
 ```csharp
 [Theory]
-[InlineData("42", 42)]
-[InlineData("0", 0)]
-[InlineData("9223372036854775807", long.MaxValue)]
-public void Scan_DecimalIntegerLiteral_ProducesIntToken(string source, long expected)
-{
-    var token = new Lexer(source).ScanAll().First();
+[InlineData("42")]
+[InlineData("0")]
+[InlineData("9223372036854775807")]
+public void Scan_DecimalIntegerLiteral_ProducesIntToken(string source) {
+    Token token = Lexer.Scan(source, new DiagnosticBag())[0];
     Assert.Equal(TokenKind.IntLiteral, token.Kind);
-    Assert.Equal(expected, token.IntValue);
+    Assert.Equal(source, token.Lexeme);
 }
 ```
 
@@ -278,25 +273,26 @@ When data doesn't fit inline — multi-line strings, generated cases, anything
 involving non-primitives:
 
 ```csharp
-public static IEnumerable<object[]> InvalidStringLiterals =>
-    new[]
-    {
-        new object[] { "\"unterminated", "E0042" },
-        new object[] { "\"newline\nin\"", "E0043" },
-        new object[] { "\"bad escape \\q\"", "E0044" },
-    };
+public static TheoryData<string, string> InvalidStringLiterals => new() {
+    { "\"unterminated", "E2002" },
+    { "`unterminated raw", "E2004" },
+    { "\"bad escape \\q\"", "E2005" },
+};
 
 [Theory]
 [MemberData(nameof(InvalidStringLiterals))]
 public void Scan_InvalidStringLiteral_ProducesExpectedDiagnostic(
     string source,
-    string expectedCode)
-{
-    var diagnostics = new Lexer(source).ScanAll().Diagnostics;
-    var diag = Assert.Single(diagnostics);
+    string expectedCode) {
+    DiagnosticBag bag = new();
+    Lexer.Scan(source, bag);
+    Diagnostic diag = Assert.Single(bag.Errors);
     Assert.Equal(expectedCode, diag.Code);
 }
 ```
+
+The codes are the registered ones (`grob-error-codes.md`); a real test also asserts the
+line and column (`tests/CLAUDE.md`, _Diagnostic assertions_).
 
 ## Assertion patterns (plain xUnit)
 
@@ -324,7 +320,7 @@ Assert.StartsWith("error:", message);
 Assert.Matches(@"line \d+", message);
 
 // Exceptions — capture and assert the payload, do not assert the type alone
-var ex = Assert.Throws<ArgumentNullException>(() => new Lexer(null!).ScanAll());
+var ex = Assert.Throws<ArgumentNullException>(() => Lexer.Scan(null!, new DiagnosticBag()));
 Assert.Equal("source", ex.ParamName);
 
 // Booleans carry a message so a failure explains itself
@@ -334,8 +330,8 @@ Assert.True(result.Ok, string.Join("; ", result.Discrepancies));
 `Assert.Single` returns the element, so the "assert one then inspect it" pattern is:
 
 ```csharp
-var diag = Assert.Single(diagnostics);
-Assert.Equal("E0042", diag.Code);
+Diagnostic diag = Assert.Single(bag.Errors);
+Assert.Equal("E2002", diag.Code);
 ```
 
 ## Named exceptions to TDD
@@ -371,9 +367,9 @@ The exception is the scaffolding. Implementation hiding behind a
 - **Two tests fail when only one should:** the second test depends on the
   first or the implementation has unwanted side effects. Investigate before
   proceeding.
-- **Property test finds a failure:** good. That's what it's for. Add the
-  shrunk input as a regression row, fix the bug, re-run both the row and
-  the property. The fix is part of this cycle, not a follow-up.
+- **An adversarial row finds a failure:** good. That's what it's for. Keep
+  it as a regression row, fix the bug, re-run. The fix is part of this
+  cycle, not a follow-up.
 - **Coverage drops below 90% at Step 6:** stop. Add tests, or add
   `[ExcludeFromCodeCoverage]` with a substantive justification — and note
   it in the commit body. Do not commit below the bar.

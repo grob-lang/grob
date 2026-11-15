@@ -20,12 +20,12 @@
 | Personality & identity locked    | ✅ Done — see grob-personality-identity.md                  |
 | Licensing model decided          | ✅ Done — MIT                                               |
 | Language fundamentals specified  | ✅ Done — April 2026                                        |
-| Plugin ecosystem model decided   | ✅ Done — see CONTRIBUTING.md, PLUGINS.md                   |
+| Plugin ecosystem model decided   | ✅ Done — see grob-plugins.md, CONTRIBUTING.md              |
 | Solution architecture locked     | ✅ Done — April 2026                                        |
 | v1 requirements specified        | ✅ Done — April 2026                                        |
 | Tooling strategy defined         | ✅ Done — April 2026                                        |
 | MVP defined and scoped           | ✅ Done — see grob-v1-requirements.md                       |
-| Implementation started           | 🔄 In progress — Sprints 1–4 complete; Sprint 4→5 interlude |
+| Implementation started           | 🔄 In progress — the latest entry in the index below        |
 
 ---
 
@@ -57,9 +57,10 @@ can. The design decisions are what matter.
 
 **Identity statement (full):**
 
-> _Grob is a statically typed scripting language with C-style syntax, type inference,
+> _Grob is a statically typed scripting language with C-style syntax, type inference
 > and first-class file system operations. Nullable types are explicit. Immutability
-> is opt-in via `const`. It’s designed to be readable by any C# or Go developer
+> is opt-in: `readonly` for a value fixed once at run time, `const` for a compile-time
+> constant (D-291). It is designed to be readable by any C# or Go developer
 > without prior knowledge of Grob._
 
 **What Grob is NOT:**
@@ -433,6 +434,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-435 | November 2026 | Security posture; Runtime — capability injection; Deferred Work Register | **Two trust modes, by owner decision; supersedes D-072.** A *trusted run* is D-072's posture unchanged and stays the default, the only mode v1 ships. A *restricted run*, post-v1, is for a script whose author is not trusted to stay in bounds — typically an agent: the host grants capabilities and an ungranted call fails. **The claim is a capability-gated standard library, never a sandbox**; plugins stay arbitrary code (D-073) and are refused in a restricted run unless granted. Files R-38; opens OQ-022 and OQ-023. No source change. |
 | D-436 | November 2026 | Runtime — capability-injection seam; Standard library — `fs`, `process`; Sprint 9C; Deferred Work Register | **The capability seam is a gate on Sprint 9C.** Every `fs` and `process` native, and every `json` and `csv` file read or write, reaches the OS through an injected capability: `IFileSystem` grown from D-430's one member, and a new `IProcessRunner`. Each interface member is one operation that either reads or changes state, never both. R-32's source guard widens to keep `Grob.Stdlib` free of direct file, directory and process calls. Makes D-319's sketch a requirement because D-435's restricted run and plan mode are an alternate host only if it holds. Files R-35. No source change. |
 | D-437 | November 2026 | Testing — public samples gate; Documentation — wiki; Runtime — capability injection; Standard library — `date`, `path`; Deferred Work Register | **Implements D-430: the public samples gate landed**, in five change groups. **123 blocks, each counted once: 45 run, 29 excused, 39 unblocked fragments and 10 blocked (five of them also marked `fragment`), 0 failing**; not D-430's 38 and 11, because W9 removed `formatAs.md` block 3's R-29 cascade. Chris's six rulings recorded: W6 widened to `Grob-Crypto.md`, whose double-quoted path compiled silently; STOPs 2 and 3 set aside; time-only `date.parse` with an offset takes today in that offset; W10's `if (…)`; W8 and W10 widened to their pages' stale tables; a near-miss fence guard. **R-32 closed**: `IClock.LocalZone` and `IFileSystem.CurrentDirectory`, `date.parse` classified lexically, a source guard. D-430 Decision 7's wording corrected: a drive-relative path on another drive resolves to that drive's root. Every mutation matched its prediction; 8b added because 8 cannot reach the unused-fixture guard. Suite 5,108; `Grob.Cli` 91.45%, `Grob.Stdlib` 96.82%. R-29 amended; **R-39 opens** for the README sample that `fs` makes runnable before parameters bind. *Findings for the corpus sweep* listed. Count unchanged at 120. |
+| D-438 | November 2026 | Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Process — coverage, commits; Deferred Work Register | **Implements D-431: the corpus sweep landed**, the last of D-420's pre-9C increments; the run ends here. Documentation only. **Every one of D-431's thirty-one rows dispositioned**: script counts to eleven (D-346); 29 missing trailing commas, row 9 widened by Chris; 77 D-285 path literals; ADR-0017's residue; the opcode sketch's banner; `toIsoDateTime`'s `Z`; increment 5's findings; the log's *Project Status*, *Identity* and *Related Documents*. **R-05 closed**: all 28 `.claude/` files, the four `CLAUDE.md` files and `AGENTS.md` read against the tree. **The 42 `// Eventual path:` lines removed** in PR #246, split out for CodeRabbit's 100-file limit. Chris's rulings recorded: files edited in place; `/commit-message` commits on the branch; **90% coverage is the floor on new code too**, extending D-328. Divergences: 12 *Reason* cells, not 14; public samples tallies 46 run and 38 fragments; mutation 5's prediction failed on the *Identity* statement, since corrected. **R-40 to R-43 open.** Suite 5,109. Count unchanged at 120. |
 
 ---
 
@@ -16868,6 +16870,181 @@ findings above).
 
 ---
 
+### D-438 — Corpus sweep landed: D-431's thirty-one rows dispositioned, `.claude/` read against the tree, the `// Eventual path:` lines removed; R-05 closed, R-40 to R-43 opened (November 2026)
+
+Area: Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Process — coverage, commits; Deferred Work Register
+Supersedes: none (implements D-431; closes R-05; extends D-328's coverage floor to new code)
+Superseded by: none
+
+**D-431 authorised this increment; this entry records it as landed and where the landing
+diverged from D-431, its prompt and its gate report.** It is the sixth and last of D-420's
+pre-9C increments, and the run ends here. Documentation only: no source, test, build or
+workflow file changed, and the only non-markdown files touched are group 4's `.grob` and
+`.expected.txt` pairs. Error-code count unchanged at **120**; no `ErrorCatalog` edit.
+
+---
+
+**What landed, in five change groups.**
+
+1. **Script counts and the release gate** (`e9fea06`, rows 3 and 20). Every living
+   "thirteen" that counts the validation scripts now says eleven, citing D-346. §14 loses
+   rows 12 and 13, and a sentence names R-08's and R-34's scripts. §12 and the sample
+   scripts' header say where each gate runs.
+2. **The design corpus, the wiki and the README** (`6fab31b`): rows 2, 9, 14, 15, 19 and 24
+   to 27, and row 30's documentation sites.
+3. **`.claude/` and the `CLAUDE.md` files** (`de37b8a`, then `2762139` for Chris's rulings
+   below): rows 21 to 23 and R-05's full read — all 28 files in `.claude/`, the four
+   `CLAUDE.md` files and `AGENTS.md`.
+4. **The `// Eventual path:` lines** (PR #246, row 13): 42 sources lose line 2 and their
+   masters and quarantine cells move with them, by the transform proved in the gate report
+   §5. Merged before this entry's PR.
+5. **Record**: this entry, the register, and the log's *Project Status*, *Identity* and
+   *Related Documents* sections.
+
+**Every row of D-431 Decision 1.**
+
+| # | Outcome |
+|---|---|
+| 1, 6, 7, 11 | Not deferrals, as D-431 says |
+| 2 | Closed by D-410, as D-431 says. Residual swept: ADR-0017 gains a status amendment and a *What Changed Since This ADR* section; `grob-error-codes.md`'s stability header states the removal rule |
+| 3 | Swept, group 1. One site the gate missed: benchmarking §7.1's fixture tree said "eleven more", now "nine more" |
+| 4 | Closed by nature: the mis-citation is the archived F8 prompt's |
+| 5 | Registered: **R-40** |
+| 8 | Closed by D-416 and D-417 |
+| 9 | Swept, groups 2 and 3, **widened by Chris** from D-417's seven sites to every multi-line Category B list in scope missing its trailing comma: 29 sites, including `writing-grob-source`'s construction with no commas at all. `grob-sample-scripts.md`'s five stay for `grob fmt` (D-421, D-422) |
+| 10 | Closed by D-430 Decision 5 and D-437 |
+| 12 | Row 3 |
+| 13 | Swept, group 4 |
+| 14 | Swept and registered. A binding and `for k, v` enforce `V`; a call argument does not. `grob-type-registry.md` gains a build-status note; the gap is **R-41** |
+| 15 | Swept: `grob-vm-architecture.md`'s sketch enum gains a non-normative banner. F7's evidence was partly wrong: `LessEqualInt`, `LessEqualFloat` and `GreaterEqualInt` have shipped since Sprint 2, so the banner cites the shipped enum, ADR-0013 and `adding-an-opcode`, not F7's reading |
+| 16 | Closed by D-431 |
+| 17 | Swept, group 5: the implementation row now points at the latest index entry, so it cannot go stale again, and the plugin row's `PLUGINS.md`, which does not exist, becomes `grob-plugins.md` |
+| 18 | Swept, group 5. Worse than F12 said: the table named a retrospective that is not in the repository, ADR-0007 for what is ADR-0012, both Sparky files under the wrong names and two `GroType` notes for documents that no longer contain it. Seven living documents were missing and are added |
+| 19 | Swept. `Z` is written only for a zero offset. The stdlib reference was wrong twice: its `d` is local midnight, so `14:30` was wrong as well as `Z` |
+| 20 | Swept, group 1 |
+| 21, 22 | Swept, group 3 |
+| 23 | Closed in part by `c5fb5e1` (#241), which stopped naming versions without a D-number. Residual swept: root `CLAUDE.md` says the increment prompt's session table names the models (D-431 Decision 5) |
+| 24 | Swept: the README, and the log's *Identity* statement, which the gate missed (below) |
+| 25 | Swept against the API as built: `NativeCatalogue.TryGetPrimitiveMembers` and `TryGetNamedType`; `VirtualMachine` |
+| 26 | Swept: 77 literals on 73 lines, where the gate counted lines |
+| 27 | Swept: `Script-Parameters.md`'s heading |
+| 28 | Accounted: R-05's 39 files were the tree at `f7acb83`'s parent; that commit deleted 14 and added 2, and #242 added one, giving 28 |
+| 29 | Closed by D-430's footer line |
+| 30 | Swept: `--env`, the `guid` table, scientific notation and `Control-Flow.md`'s mixed `select` (its string case became `case 500`). D-437's eye-read of all 44 fragments found one more site: `Functions.md` passed `sort` a two-parameter comparator, where `sort` takes a key selector. It became `items.sort(i => i.size, descending: true)`, and the "Multi-parameter" label went, since no v1 member takes one. The code defect is **R-42** |
+| 31 | Chris's and R-33's, outside the repository |
+
+**R-05's read, the corrections a later reader would act on.** `src/CLAUDE.md`'s emission
+rule cited D-315, which is about `break` and `continue` in `select`; no entry states the
+rule alone and D-354 applies it. `sonar-pr-review` read a `sonar-project.properties` that
+never existed; it now reads the project key and organisation from `sonarcloud.yml`.
+`tdd-cycle`'s examples used a lexer API (`new Lexer(s).ScanAll()`) and codes (E0042 to E0044)
+that never existed; they now use `Lexer.Scan` and E2002, E2004 and E2005, and ran green in
+a throwaway test. `emitting-closures-and-upvalues` said upvalues close only on return; the
+compiler closes them at every scope-exit pop (D-115). `sprint-plan` and `propose-change`
+split `test` and `feat` commits, against the rule that `feat` carries its tests. Root
+`CLAUDE.md` said no Claude reviewer agent exists, that a Fable-pinned agent does and that
+Sonar is not a NuGet analyzer; `grob-reviewer` exists, no agent pins Fable and
+`SonarAnalyzer.CSharp` has been a local gate since PR #104. The commit bodies list every
+class of correction.
+
+---
+
+**Chris's rulings, 15 November 2026.** On the gate report's six questions:
+
+- **Q1**: row 9 widens to every in-scope multi-line Category B list (above).
+- **Q2**: group 4 also shifts the five master notes and the quarantine *Reason* cells that
+  cite a source line. The harness checks neither.
+- **Q3**: `float.md`'s *Literals* block follows D-437. With the scientific-notation lines
+  gone it compiles clean, so its `fragment` marker is dropped.
+- **Q4**: of the four files D-431 neither named living nor a record, only
+  `docs/dev/coverage-policy.md:34` had a site, corrected in group 1. `SECURITY.md` and the
+  two issue templates are clean.
+- **Q5**: row 23's residual is the session-table sentence; `c5fb5e1` is credited.
+- **Q6**: diagnostics rendering generic types bare is a new row, **R-43**, not an amendment
+  to R-23.
+- `date.parse`'s host-year residual stays documented in `DateParse`, as D-437 recorded it.
+
+**On group 3's five findings**, applied in `2762139`. Rulings 3 to 5 are process rulings
+and are recorded here as decisions:
+
+1. The README does not track sprints; its "Sprint 5 is active" went.
+2. `coverage-policy.md` says `grob fmt`, `check`, `install` and `restore` do not exist yet,
+   naming Sprint 11 for `install` and `restore` and Sprint 12 for `fmt` and `check`, as
+   `grob-v1-requirements.md` already schedules them.
+3. **Files are edited in place with the Edit tool.** The rule that design documents are
+   delivered as complete files is retired from root `CLAUDE.md`, `logging-a-decision` and
+   the compiler-engineer agent.
+4. **`/commit-message` commits on the feature branch.** The rule that it never commits,
+   written against runaway committing, is retired; `tdd-cycle`, `trunk-flow`,
+   `start-branch` and the compiler-engineer agent follow. Merging stays Chris's.
+5. **90% line and branch coverage is the floor on every PR's new code, and more is
+   always wanted.** This extends D-328's line and branch floor to new code. SonarCloud's free-plan gate fails only
+   below 80% on new code and cannot be raised, so a green Sonar gate is not the bar.
+
+---
+
+**Divergences from the prompt, D-431 and the gate report.**
+
+- **Group 4 is its own PR**, #246, by Chris's ruling. The branch reached 151 changed files,
+  over CodeRabbit's 100-file limit, and group 4 alone is 85. It touches no file the other
+  groups touch. The prompt's five commits on one branch became four here and one there.
+- **The *Reason* cells that moved are 12, not 14.** The gate report counted every
+  quarantine *Reason* cell quoting a coordinate; the cells of pairs without the line do not
+  move. The note lines are 5, as counted.
+- **The public samples tallies moved by one block**, against the prompt's
+  unchanged-tallies deliverable, by Q3: D-437's 45 run and 39 fragments are now 46 and 38.
+- **Rulings 1 and 2 edited group 1 and group 2 files in session C**, by Chris's direct
+  instruction, against the prompt's rule that a session covers one row.
+- **The *Identity* statement is swept beyond D-431 Decision 2's named sections.** Decision 2
+  names *Project Status* and *Related Documents* as the log's living non-entry sections.
+  The re-run second queries found row 24's defect in *Identity*, which is neither an entry
+  nor a record; it now says `readonly` and `const` as the README does, by Chris's ruling.
+- **Two documents the prompt's scope names no longer exist**: `MANIFEST.md` and
+  `snippets/APPLY-THESE.md`. `prompts/sprint-9/`'s kickoff and QA briefs were taken as
+  issued prompts under Decision 3.
+- **The retrospective leaves *Related Documents***: `sharpbasic-retrospective.md` is not in
+  the repository, and *Project Status* still records it as written.
+
+**Mutation verification**, each predicted by name before it ran, then reverted:
+
+1. `top-level-return`'s `-->` restored to `5:5`: failed
+   `Master_IsConsistentWithSourceAndCatalogue` and
+   `Pair_MatchesItsMasterOrItsQuarantineRow` for that pair, as predicted.
+2. Its `// Eventual path:` line restored, the master left renumbered: the same two, as
+   predicted.
+3. `catch-after-catch-all`'s *Observed* cell left at its old numbers: only its
+   `Pair_MatchesItsMasterOrItsQuarantineRow`, as predicted. Its behavioural case is the
+   only one that reads *Observed*.
+4. A D-285 rewrite reverted to `"C:\Reports"`: run twice, on `README.md:22` in session B
+   and on `path.md:39` in session D. Each time only that block's `Block_PassesItsClass`
+   failed, on E2005 (`'\R'`), as predicted.
+5. Every second query of §1.2 re-run over the scope after group 5's edits. **The
+   prediction, no site in scope, did not hold**: the *Identity* statement carried row 24's
+   form (above). It was corrected and the queries re-run clean. Every other hit is a
+   record, the rule itself or a pattern false positive.
+
+**Gates.** Suite **5,109** passed, 0 failed. Error-examples harness 239 cases: 27 pairs
+passing, 29 quarantined, unchanged. Public samples gate 181 cases green: 46 run, 29
+excused, 38 fragments and 10 blocked. No code changed, so coverage was not measured.
+
+---
+
+**Register.** **R-05 closed.** **R-40 to R-43 open**: the synthetic large-script generator
+(row 5); a `map` argument unchecked against its parameter (row 14); a two-parameter `sort`
+selector reaching the VM, an internal error on user input that D-353 makes P0 (row 30); and
+generic types rendered bare in diagnostics (Q6). Each has an owner and a completion
+criterion in the register. **Outside the repository and still Chris's**: `grob-lang.dev`
+(R-33), and the claude.ai Project's instructions, which still say 86 codes, 40 pairs and
+`_grob.txt`.
+
+Cites D-431 (the increment's authority), D-420 (the run and its stopping rule), D-414 (the
+two queries), D-437 (the findings, the tallies and the `date.parse` residual), D-346, D-285,
+D-291, D-417 and D-421 (the sweep authorities), D-410 (ADR-0017's answer), D-328 (the
+coverage floor ruling 5 extends), D-353 (R-42's priority), D-115 and D-354 (the `.claude/`
+corrections) and D-409 (R-40).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -17078,20 +17255,32 @@ _(Full detail in `grob-vm-architecture.md`)_
 | `grob-open-questions.md`                             | Open and resolved design questions with full rationale                                                 |
 | `grob-tooling-strategy.md`                           | LSP, syntax highlighting, VS Code extension — phased plan                                              |
 | `grob-agentic-strategy.md`                           | Agentic development strategy — diagnostics contract, context kit, trust modes, benchmark (D-434)       |
+| `grob-error-codes.md`                                | Error-code registry — every code, its category and its stability (ADR-0017)                            |
+| `grob-formatter-specification.md`                    | `grob fmt` specification — layout rules, §3.5's trailing-comma constructs                              |
+| `grob-grobc-format.md`                               | `.grobc` compiled-bytecode format — the wire contract `OpCode` is held to (ADR-0013)                   |
+| `grob-benchmarking-strategy.md`                      | Benchmark suite, baselines and cadence                                                                 |
+| `grob-adversarial-testing-strategy.md`               | Pre-alpha adversarial test suite — the deliberate effort to break the language and its runtime         |
+| `grob-playground-architecture.md`                    | Playground architecture sketch — direction settled, build deferred post-v1 (D-319)                     |
 | `grob-language-brainstorm.md`                        | Early sketch notes — supplementary                                                                     |
-| `grob-vm-architecture.md`                            | VM and runtime architecture detail — `GroType` references superseded by ADR-0012                       |
+| `grob-vm-architecture.md`                            | VM and runtime architecture detail                                                                     |
 | `grob-personality-identity.md`                       | Character, tone, error messages, REPL, CLI                                                             |
 | `grob-sample-scripts.md`                             | Real-world script comparisons and API surface validation                                               |
-| `grob-plugins.md`                                    | Plugin ecosystem — authoring, registry, official plugins — `GroType` references superseded by ADR-0012 |
-| `sharpbasic-retrospective.md`                        | Completed retrospective — Grob design inputs                                                           |
-| `sparky-character-sheet-v1.png`                      | Mascot reference — approved April 2026                                                                 |
-| `sparky-illustrator-brief.pdf`                       | Brief for human illustrator commission                                                                 |
-| `docs/adr/adr-0007-solution-structure-and-naming.md` | Solution structure and `GrobType` naming decision                                                      |
+| `grob-plugins.md`                                    | Plugin ecosystem — authoring, registry, official plugins                                               |
+| `grob-linkedin-series-bible.md`                      | Reference for all Grob LinkedIn content, with the post index                                           |
+| `Sparky__Character_Sheet_v1.png`                     | Mascot reference — approved April 2026; `sparky_sheet_v2.png` and `sparky_v2.png` follow it            |
+| `Sparky__Illustrator_Brief.pdf`                      | Brief for human illustrator commission                                                                 |
+| `docs/wiki/ADR/0012-solution-structure-and-naming.md` | Solution structure and `GrobType` naming decision                                                     |
 
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-437 added, with wiki corrections and source change. **The public samples gate_
+_November 2026 — D-438 added, with corpus-wide documentation corrections; no source change. **The_
+_corpus sweep landed** (D-431), ending D-420's pre-9C run: every one of D-431's thirty-one rows_
+_dispositioned, `.claude/` read against the tree and R-05 closed, the 42 `// Eventual path:` lines_
+_removed (PR #246). *Project Status* now points at the latest entry; *Related Documents* is rebuilt_
+_against the tree; *Identity* says `readonly` and `const`. Chris's process rulings recorded,_
+_including the 90% coverage floor on new code. R-40 to R-43 opened. Count unchanged at 120._
+_Previous: November 2026 — D-437 added, with wiki corrections and source change. **The public samples gate_
 _landed** (D-430): 123 README and wiki blocks checked on every build — 45 run, 29 excused, 39_
 _fragments, 10 blocked. R-32 closed in `Grob.Stdlib`; R-29 amended; R-39 opened. The entry records_
 _Chris's six rulings and every divergence from D-430 and its prompt. It ends with the *Findings_

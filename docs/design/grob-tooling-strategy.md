@@ -248,11 +248,25 @@ LSP shares the lexer via `Grob.Compiler`.
 
 ```csharp
 // On textDocument/completion:
-var node    = typedAst.NodeAt(request.Position);
-var type    = node.ResolvedType;
-var members = TypeRegistry.MembersFor(type);
+var node = typedAst.NodeAt(request.Position);
+var name = node.ResolvedTypeName;   // "date", "Customer"; null for a primitive
+IEnumerable<string> members =
+    catalogue.TryGetPrimitiveMembers(node.ResolvedType, out var primitive)
+        ? primitive.Properties.Keys.Concat(primitive.Methods.Keys)
+    : name is not null && catalogue.TryGetNamedType(name, out var named)
+        ? named.Properties.Keys.Concat(named.Methods.Keys)
+    : name is not null && userTypes.TryGet(name) is { } declared
+        ? declared.Fields.Select(f => f.Name)
+    : [];
 return new CompletionList(members.Select(ToCompletionItem));
 ```
+
+Members come from two places. `NativeCatalogue` in `Grob.Runtime` (D-427) serves the
+registered surface: `TryGetPrimitiveMembers` for a primitive receiver and
+`TryGetNamedType` for a plugin's named type (`date`, `File`). A type the script
+declares itself is not in the catalogue: its fields come from the type checker's
+`UserTypeRegistry`, which is `internal` to `Grob.Compiler` today and must be surfaced
+for the LSP. `ResolvedTypeName` is illustrative. There is no `TypeRegistry.MembersFor`.
 
 #### 3. Hover
 

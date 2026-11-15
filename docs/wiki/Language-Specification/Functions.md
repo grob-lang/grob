@@ -57,8 +57,8 @@ to positional syntax for required arguments.
 // Single-expression
 files.filter(f => f.extension == ".jpg")
 
-// Multi-parameter
-items.sort((a, b) => a.size > b.size)
+// Key selector — sort takes one parameter, not a two-parameter comparator
+items.sort(i => i.size, descending: true)
 
 // Block body
 raw.split("\n")

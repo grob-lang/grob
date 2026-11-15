@@ -24,9 +24,10 @@ number -q .number`).
 Do the following:
 
 1. Read and follow `.claude/skills/sonar-pr-review/SKILL.md` exactly.
-2. Resolve the token (`$SONAR_TOKEN`), the org and project key (from
-   `sonar-project.properties`), and the PR number. Fail clearly on any missing input —
-   name what is missing, do not guess.
+2. Resolve the token (`$SONAR_TOKEN`, optional for this public project), the org and
+   project key (from the scanner arguments in `.github/workflows/sonarcloud.yml`), and
+   the PR number. Fail clearly on a missing org, project key or PR number — name what is
+   missing, do not guess. A missing token is not a failure: the fetch runs anonymously.
 3. Confirm the PR has a Sonar analysis (the quality-gate call). If none, stop and say so
    — do not present an empty result as clean.
 4. Fetch issues on new code, the quality-gate verdict and the new-code coverage; format

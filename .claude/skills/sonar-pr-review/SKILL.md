@@ -23,8 +23,9 @@ into the comment the human triggers and sends.
   scans, so this holds). If no analysis is found for the PR, **fail clearly** — say so
   and stop; do not present an empty result as a clean bill.
 - `curl`, `jq` and `gh` are on `PATH`.
-- A SonarCloud user token is in `$SONAR_TOKEN` (the same token the CI scan uses). Never
-  echo it, never paste it into a comment, never write it to a file.
+- A SonarCloud user token in `$SONAR_TOKEN` (the same token the CI scan uses) is
+  optional: the project is public, so without one the calls run anonymously (Step 1).
+  When it is set, never echo it, never paste it into a comment, never write it to a file.
 
 ## Step 1 — resolve inputs
 
@@ -33,17 +34,19 @@ into the comment the human triggers and sends.
    PR="${1:-$(gh pr view --json number -q .number)}"
    ```
    If neither yields a number, stop and say the PR could not be resolved.
-2. **Org and project key.** Read them from the scan config, do not hardcode:
+2. **Org and project key.** Read them from the scan config, do not hardcode. There is
+   no `sonar-project.properties`: the scanner's `begin` step in
+   `.github/workflows/sonarcloud.yml` passes them as `/k:"…"` and `/o:"…"`:
    ```bash
-   PROPS="sonar-project.properties"
-   SONAR_ORG="${SONAR_ORG:-$(grep -E '^sonar\.organization=' "$PROPS" | cut -d= -f2- | tr -d '[:space:]')}"
-   SONAR_KEY="${SONAR_PROJECT_KEY:-$(grep -E '^sonar\.projectKey=' "$PROPS" | cut -d= -f2- | tr -d '[:space:]')}"
+   WF=".github/workflows/sonarcloud.yml"
+   SONAR_ORG="${SONAR_ORG:-$(grep -oE '/o:"[^"]+"' "$WF" | head -1 | cut -d'"' -f2)}"
+   SONAR_KEY="${SONAR_PROJECT_KEY:-$(grep -oE '/k:"[^"]+"' "$WF" | head -1 | cut -d'"' -f2)}"
    ```
-   If the file or either key is absent, also try `Directory.Build.props` / `.sonarcloud`
-   or the env overrides `SONAR_ORG` / `SONAR_PROJECT_KEY`. If still unresolved, **fail
-   clearly** naming where you looked — do not guess a key.
-3. **Token.** Confirm `$SONAR_TOKEN` is set; if not, stop with a one-line instruction to
-   export it. Do not print its value.
+   The env overrides `SONAR_ORG` / `SONAR_PROJECT_KEY` win when set. If either is still
+   unresolved, **fail clearly** naming where you looked — do not guess a key.
+3. **Token.** Confirm `$SONAR_TOKEN` is set. If not, the project is public, so the same
+   calls work unauthenticated: drop the `Authorization` header and say in the block that
+   the fetch was anonymous. Do not print the token's value.
 
 ## Step 2 — confirm the PR analysis exists (and get the gate)
 
@@ -77,6 +80,9 @@ curl -fsS -H "Authorization: Bearer $SONAR_TOKEN" \
 ```
 New-code metric values come back under the measure's period — read `.period.value` and
 fall back to `.value`. This is where the 90% line+branch floor (D-328) shows up per-PR.
+The quality gate's own coverage condition is SonarCloud's free-plan 80%, which cannot
+be raised: judge coverage against 90%, never against the gate. A PR at 85% passes the
+gate and is BELOW the floor.
 
 ## Step 5 — format the findings block
 
@@ -122,8 +128,9 @@ issues is not done.
   v1.
 - **Rate limits.** Some Cloud APIs are rate-limited. Three calls per review is well
   within them; do not loop these in a tight retry.
-- **Fail clearly over fail quiet.** Every unresolved input (token, key, PR, missing
-  analysis) stops with a one-line reason. An empty issue list from a real analysis is a
+- **Fail clearly over fail quiet.** Every unresolved input (key, PR, missing analysis)
+  stops with a one-line reason. An unset token does not: the fetch runs anonymously and
+  the block says so. An empty issue list from a real analysis is a
   pass; an empty issue list from a missing analysis is a bug — distinguish them via the
   Step 2 gate check.
 - **Self-hosted caveat.** On old self-hosted SonarQube Server, the `pullRequest` filter on

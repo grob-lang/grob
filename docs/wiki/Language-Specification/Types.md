@@ -8,7 +8,7 @@ and never checked at runtime.
 | Type | Description | Literal examples |
 |------|-------------|-----------------|
 | `int` | 64-bit integer | `42`, `0xFF`, `0b1010`, `1_000_000` |
-| `float` | 64-bit floating point | `3.14`, `1.5e10`, `2.3E-4` |
+| `float` | 64-bit floating point | `3.14`, `0.5` |
 | `string` | UTF-8 text | `"hello"`, `"${name}"`, `` `raw` `` |
 | `bool` | Boolean | `true`, `false` |
 | `nil` | Absence of value | `nil` |
@@ -102,11 +102,11 @@ optional — the default is used if omitted.
 ```grob fragment
 r := Repo {
     name:    "grob",
-    ssh_url: "git@github.com/grob-lang/grob"
+    ssh_url: "git@github.com/grob-lang/grob",
 }
 
 c := Config {
-    host: "localhost"     // port and timeout use defaults
+    host: "localhost",    // port and timeout use defaults
 }
 ```
 
@@ -128,7 +128,7 @@ type Person {
 
 p := Person {
     name:    "Chris",
-    address: Address { city: "London", country: "UK" }
+    address: Address { city: "London", country: "UK" },
 }
 ```
 

@@ -25,7 +25,7 @@ type Employee {
     salary:     int
 }
 
-table := csv.read("C:\\data\\employees.csv")
+table := csv.read(`C:\data\employees.csv`)
 print("${table.rowCount} rows, headers: ${strings.join(table.headers, ", ")}")
 
 employees := table.mapAs<Employee>()

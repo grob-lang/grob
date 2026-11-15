@@ -1,8 +1,11 @@
 # Grob — Sample Scripts & API Surface Validation
 
-> **Scope.** This document holds the **thirteen release-gate validation scripts**.
-> All thirteen must compile and run correctly before v1 ships. They are implemented
-> as integration tests in `tests/Grob.Integration.Tests`.
+> **Scope.** This document holds the **eleven release-gate validation scripts** (D-346).
+> All eleven must compile and run correctly before v1 ships. Each has a corpus fixture
+> under `tests/fixtures/validation-scripts/`, guarded in `tests/Grob.Compiler.Tests` by
+> `ValidationScriptCorpusTests` and kept in step with this document by
+> `ValidationScriptMarkdownSyncTests` (D-417). Two more are owed: a decorator script
+> (R-08) and a regex log filter (R-34, D-432).
 >
 > They are **not** the sprint-close smoke scripts (`hello.grob`, `calculator.grob`,
 > `functions.grob`, `types.grob`, `errors.grob`), which are a separate, cumulative

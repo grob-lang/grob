@@ -54,7 +54,7 @@ Review across these, in this order:
   at different levels of detail.
 - Single-site findings often have additional occurrences. When you find a pattern, grep
   the corpus for it and report the full scope, not the first hit.
-- Rank findings: blockers (affect Sprint 1 acceptance or implementation correctness)
+- Rank findings: blockers (affect the current sprint's acceptance or implementation correctness)
   first, then quality, then cosmetics. A blocker is fixed now; "this re-opens a file we
   just touched" is not a reason to defer a correctness fix.
 - If you find nothing in a dimension, say so plainly. Do not manufacture findings to

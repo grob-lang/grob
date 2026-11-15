@@ -31,7 +31,9 @@ Derive the repo once: `REPO=$(gh repo view --json nameWithOwner -q .nameWithOwne
     — no Docker MCP, no opening the web UI), passing it this PR number. It returns
     each new-code issue as `severity · rule · path:line · message`, the gate
     verdict with its failing conditions, and the new-code line/branch coverage
-    against the 90% floor (D-328). Feed each new issue into the step 2 triage; the
+    against the 90% floor (D-328). SonarCloud's own gate fails only below 80% (a
+    free-plan threshold that cannot be raised), so new-code coverage between 80% and
+    90% passes the gate and is still a finding to fix. Feed each new issue into the step 2 triage; the
     **New issues** count is the number to drive to zero. The skill **only fetches**
     — fix-versus-push-back, including the hot-path suppression call below, stays in
     step 2. If the skill is unavailable, the same finding (for example cognitive

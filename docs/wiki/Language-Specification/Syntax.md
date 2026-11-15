@@ -83,7 +83,7 @@ total := price +
 // Multi-line function call
 output := someFunction(
     arg1,
-    arg2
+    arg2,
 )
 ```
 

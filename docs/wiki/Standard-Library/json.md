@@ -23,7 +23,7 @@ exist for pipeline composition and agent use cases.
 with typed accessors:
 
 ```grob
-node := json.read("C:\\data\\repos.json")
+node := json.read(`C:\data\repos.json`)
 
 name  := node["name"].asString()
 count := node["count"].asInt()
@@ -40,7 +40,7 @@ type Repo {
     ssh_url: string
 }
 
-repos := json.read("C:\\data\\repos.json").mapAs<Repo[]>()
+repos := json.read(`C:\data\repos.json`).mapAs<Repo[]>()
 
 for repo in repos {
     print(repo.name)
@@ -58,9 +58,9 @@ type Task {
     complete: bool
 }
 
-tasks := json.read("C:\\tasks.json").mapAs<Task[]>()
+tasks := json.read(`C:\tasks.json`).mapAs<Task[]>()
 pending := tasks.filter(t => !t.complete)
-json.write("C:\\pending.json", pending)
+json.write(`C:\pending.json`, pending)
 ```
 
 ### Parse process output

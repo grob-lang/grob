@@ -13,10 +13,9 @@ work that happens _inside_ a branch, see:
 
 - `tdd-cycle/SKILL.md` — the red/green/refactor procedure that produces
   the commits.
-- `the /commit-message command` — full conventional-commits
-  rules.
-- `tests/CLAUDE.md` — coverage taxonomy and the
-  90% bar that gates every commit.
+- the `/commit-message` command — full conventional-commits rules.
+- `tests/CLAUDE.md` — test routing, the diagnostic contract and the
+  coverage bar that gates every commit.
 
 ## Core rules
 
@@ -27,16 +26,22 @@ work that happens _inside_ a branch, see:
 3. **One purpose per branch.** A branch delivers one cohesive change. If
    you find yourself making two unrelated changes on the same branch, stop
    and split.
-4. **Chris always merges.** You stage commits and propose messages. The
-   merge is Chris's action.
+4. **Chris always merges.** You commit on the feature branch through
+   `/commit-message`, push it and open or update the PR. The merge is
+   Chris's action.
 5. **The trunk is always green.** Every commit on `main` must pass tests
-   _and_ keep every project at or above 90% line coverage. You don't merge
-   red. You don't merge below the coverage bar. Chris doesn't either.
+   _and_ keep every project at or above 90% line and branch coverage. That per-project
+   check is deliberately stricter than D-328, whose floor is on the solution-wide in-scope
+   denominator: 90% is the least acceptable figure, and more is always wanted. Each PR's
+   new code also meets 90% line and branch (D-438). You don't merge red. You don't merge
+   below the coverage bar. Chris doesn't either.
 
 ## Where increment prompts live
 
-Increment prompts live in `prompts/` and are read by path. They are **never**
-copied into `.claude/commands/`.
+Increment prompts are read by path and are **never** copied into
+`.claude/commands/`. An issued increment prompt is committed at
+`docs/prompts/<name>.md` with the entry that authorises it (D-431
+Decision 3); a sprint's kickoff and QA brief sit in `prompts/<sprint>/`.
 
 `.claude/commands/` holds workflow commands — the ones that recur across every
 sprint. An increment prompt is a one-shot artefact scoped to a single run, and a
@@ -44,9 +49,10 @@ copy sitting in the command list is a stale, invokable version of a document tha
 has moved on. Keeping the single copy in `prompts/` removes the failure by
 construction rather than by remembering to archive it afterwards.
 
-To run an increment, read its prompt from `prompts/` and execute against it. The
-current sprint's prompts sit in `prompts/<sprint>/`; closed sprints move to
-`prompts/archive/<sprint>/`. Neither is invokable, and a kickoff or hand-off that
+To run an increment, read its prompt by path and execute against it. Closed
+sprints' prompts move to `prompts/archive/<sprint>/`. Issued and archived prompts
+are records and are not edited (D-428 Decision 6, D-431 Decision 3). None is
+invokable, and a kickoff or hand-off that
 still names a `/sprint-N-x` slash command is stale — fix the reference rather than
 restoring the command.
 
@@ -118,7 +124,7 @@ Every commit message follows:
 <footer>
 ```
 
-See `the /commit-message command` for the full rules. The
+See the `/commit-message` command for the full rules. The
 short version:
 
 - **Imperative subject**, lowercase, no trailing full stop, ≤50 chars where
@@ -127,8 +133,8 @@ short version:
 - **`feat` and `fix` always include their tests in the same commit.** A
   `feat` commit whose diff contains no test files is not a `feat`. A `fix`
   commit without a regression test is not a `fix`. Separate `test` commits
-  are reserved for genuinely test-only work — regression rows from
-  property-test discoveries, coverage gap filling on shipped code, test
+  are reserved for genuinely test-only work — regression rows for inputs
+  found after the feature landed, coverage gap filling on shipped code, test
   infrastructure changes.
 - **Cite the decision-log entry** when the change implements a settled
   decision: `Implements D-300.`
@@ -219,7 +225,7 @@ When the branch is ready:
 1. **Confirm tests pass.** `dotnet test` against the whole solution.
    Everything green.
 2. **Confirm coverage.** Run coverage on each affected project. Every
-   project at or above 90% line coverage. If any project dropped, either
+   project at or above 90% line and branch coverage. If any project dropped, either
    add tests or add `[ExcludeFromCodeCoverage]` with a substantive
    `Justification` — and note it in the relevant commit body before
    handing off.

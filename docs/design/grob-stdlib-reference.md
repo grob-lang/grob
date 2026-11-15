@@ -76,9 +76,9 @@ response := http.patch(url, body, auth.bearer(token))
 response := http.delete(url, auth.bearer(token))
 
 // File download — streaming to disk, throws NetworkError on non-2xx
-http.download(url, "C:\\downloads\\file.zip")
-http.download(url, "C:\\downloads\\file.zip", auth.bearer(token))
-http.download(url, "C:\\downloads\\file.zip", auth.bearer(token), timeoutSeconds: 120)
+http.download(url, `C:\downloads\file.zip`)
+http.download(url, `C:\downloads\file.zip`, auth.bearer(token))
+http.download(url, `C:\downloads\file.zip`, auth.bearer(token), timeoutSeconds: 120)
 
 // Response
 response.statusCode    // int — 200, 404, 500 etc.
@@ -133,16 +133,16 @@ and only `http.*` functions accept it. Not constructable directly. `toString()` 
 import Grob.Crypto
 
 // File hashing — streams internally, never loads full file into memory
-hash := crypto.sha256File("C:\\releases\\tool.zip")   // lowercase hex string
-hash := crypto.md5File("C:\\releases\\tool.zip")       // lowercase hex string
+hash := crypto.sha256File(`C:\releases\tool.zip`)   // lowercase hex string
+hash := crypto.md5File(`C:\releases\tool.zip`)       // lowercase hex string
 
 // String hashing (UTF-8 encoded)
 hash := crypto.sha256("some-value")   // lowercase hex string
 hash := crypto.md5("some-value")      // lowercase hex string
 
 // Verification — constant-time comparison, names the intent
-ok := crypto.verifySha256("C:\\releases\\tool.zip", expected_hash)   // bool
-ok := crypto.verifyMd5("C:\\releases\\tool.zip", expected_hash)      // bool
+ok := crypto.verifySha256(`C:\releases\tool.zip`, expected_hash)   // bool
+ok := crypto.verifyMd5(`C:\releases\tool.zip`, expected_hash)      // bool
 ```
 
 All hex output is **lowercase**. File functions stream internally — never load the
@@ -159,23 +159,23 @@ SHA-1, SHA-512, HMAC, byte array output — all post-MVP.
 import Grob.Zip
 
 // Create archive from a directory path
-zip.create("archive.zip", "C:\\Reports")
-zip.create("archive.zip", "C:\\Reports", overwrite: true)
+zip.create("archive.zip", `C:\Reports`)
+zip.create("archive.zip", `C:\Reports`, overwrite: true)
 
 // Create archive from a File object (file or directory)
-folder := fs.list("C:\\Projects").filter(f => f.isDirectory).first()
+folder := fs.list(`C:\Projects`).filter(f => f.isDirectory).first()
 zip.create("archive.zip", folder)
 
 // Create archive from an explicit list of file paths
 zip.create("bundle.zip", ["config.json", "data.csv", "readme.txt"])
 
 // Create from a File[] — convert to string[] first
-files := fs.list("C:\\Reports").filter(f => f.extension == ".csv")
+files := fs.list(`C:\Reports`).filter(f => f.extension == ".csv")
 zip.create("csvs.zip", files.select(f => f.path))
 
 // Extract to a directory
-zip.extract("archive.zip", "C:\\Output")
-zip.extract("archive.zip", "C:\\Output", overwrite: true)
+zip.extract("archive.zip", `C:\Output`)
+zip.extract("archive.zip", `C:\Output`, overwrite: true)
 
 // List entries without extracting
 entries := zip.list("archive.zip")
@@ -389,9 +389,10 @@ d := date.parse("05/04/2026", "dd/MM/yyyy") // explicit pattern
 
 // Formatting
 d.toIso()                     // "2026-04-05"
-d.toIsoDateTime()             // "2026-04-05T14:30:00Z"
+t.toIsoDateTime()             // "2026-04-05T14:30:00+01:00" — the local offset (UK, BST)
+t.toUtc().toIsoDateTime()     // "2026-04-05T13:30:00Z" — Z is written only for UTC
 d.format("dd MMM yyyy")       // "05 Apr 2026"
-d.format("dd/MM/yyyy HH:mm")  // "05/04/2026 14:30"
+t.format("dd/MM/yyyy HH:mm")  // "05/04/2026 14:30"
 
 // Arithmetic — D-354: no per-unit minus* methods; a negative n subtracts, uniformly
 d.addDays(7)
@@ -475,7 +476,7 @@ print(
     results
         .filter(r => r.staleCount > 0)
         .select(r => #{ repo: r.repo, stale: r.staleCount, asOf: r.asOf })
-        .formatAs.table()
+        .formatAs.table(),
 )
 
 // Write formatted output to a file
@@ -535,15 +536,15 @@ See the Type Registry entries for `int.format(pattern)`, `float.format(pattern)`
 
 ```grob
 // List files in a directory (non-recursive)
-files := fs.list("C:\\Reports")
+files := fs.list(`C:\Reports`)
 
 // List recursively
-files := fs.list("C:\\Reports", recursive: true)
+files := fs.list(`C:\Reports`, recursive: true)
 
 // File object properties
 file.name        // "report_2026.xlsx"
-file.path        // "C:\\Reports\\report_2026.xlsx"
-file.directory   // "C:\\Reports"
+file.path        // `C:\Reports\report_2026.xlsx`
+file.directory   // `C:\Reports`
 file.extension   // ".xlsx"  — always lowercased, always includes dot
 file.size        // 204800   — bytes
 file.modified    // date value — last write time
@@ -552,36 +553,36 @@ file.isDirectory // false
 
 // File object methods
 file.rename("report_2025.xlsx")
-file.moveTo("C:\\Archive")
-file.moveTo("C:\\Archive", overwrite: true)
-file.copyTo("C:\\Backup")
-file.copyTo("C:\\Backup", overwrite: true)
+file.moveTo(`C:\Archive`)
+file.moveTo(`C:\Archive`, overwrite: true)
+file.copyTo(`C:\Backup`)
+file.copyTo(`C:\Backup`, overwrite: true)
 file.delete()
 
 // Module functions — existence checks
-fs.exists("C:\\Reports\\file.txt")        // bool
-fs.isFile("C:\\Reports\\file.txt")        // bool
-fs.isDirectory("C:\\Reports")             // bool
+fs.exists(`C:\Reports\file.txt`)        // bool
+fs.isFile(`C:\Reports\file.txt`)        // bool
+fs.isDirectory(`C:\Reports`)             // bool
 
 // Directory creation
-fs.ensureDir("C:\\Reports\\2026\\April")  // creates full path if not exists, no-op if exists
-fs.createDir("C:\\Reports\\NewFolder")    // fails with IoError if already exists
+fs.ensureDir(`C:\Reports\2026\April`)  // creates full path if not exists, no-op if exists
+fs.createDir(`C:\Reports\NewFolder`)    // fails with IoError if already exists
 
 // Deletion
-fs.delete("C:\\Reports\\old.txt")         // file or empty dir — refuses non-empty dir (IoError)
-fs.deleteRecursive("C:\\Reports\\Old")    // directory and all contents
+fs.delete(`C:\Reports\old.txt`)         // file or empty dir — refuses non-empty dir (IoError)
+fs.deleteRecursive(`C:\Reports\Old`)    // directory and all contents
 
 // Read / write
-content := fs.readText("C:\\config.json")
-lines   := fs.readLines("C:\\data.txt")   // string[]
-fs.writeText("C:\\output.txt", content)   // creates or overwrites
-fs.appendText("C:\\log.txt", line)        // creates or appends
+content := fs.readText(`C:\config.json`)
+lines   := fs.readLines(`C:\data.txt`)   // string[]
+fs.writeText(`C:\output.txt`, content)   // creates or overwrites
+fs.appendText(`C:\log.txt`, line)        // creates or appends
 
 // Copy / move by path — overwrite: false by default (throws IoError if destination exists)
-fs.copy("C:\\source.txt", "C:\\dest.txt")
-fs.copy("C:\\source.txt", "C:\\dest.txt", overwrite: true)
-fs.move("C:\\source.txt", "C:\\dest.txt")
-fs.move("C:\\source.txt", "C:\\dest.txt", overwrite: true)
+fs.copy(`C:\source.txt`, `C:\dest.txt`)
+fs.copy(`C:\source.txt`, `C:\dest.txt`, overwrite: true)
+fs.move(`C:\source.txt`, `C:\dest.txt`)
+fs.move(`C:\source.txt`, `C:\dest.txt`, overwrite: true)
 ```
 
 `File` is a built-in type registered by the `fs` stdlib plugin at startup — the type
@@ -629,7 +630,7 @@ id := guid.tryParse(someString)                              // returns nil if i
 empty := guid.empty   // 00000000-0000-0000-0000-000000000000
 
 // Instance properties
-id.version    // int — 4, 5, or 7
+id.version    // int — 4, 5 or 7 when generated; a parsed GUID's own version; 0 for guid.empty
 id.isEmpty    // bool — true if all zeros
 
 // String representation — canonical form is lowercase with hyphens
@@ -924,7 +925,7 @@ prefix := count == 1 ? "item" : "items"
 status := used_pct switch {
     >= crit_percent => "CRITICAL",
     >= warn_percent => "WARNING",
-    _               => "OK"
+    _               => "OK",
 }
 
 // Switch on a value directly
@@ -932,13 +933,13 @@ message := http_code switch {
     200 => "OK",
     404 => "Not found",
     500 => "Server error",
-    _   => "Unknown"
+    _   => "Unknown",
 }
 
 // Switch expression result assigned or passed directly
 log.info(http_code switch {
     200 => "Request succeeded",
-    _   => "Request failed with code ${http_code}"
+    _   => "Request failed with code ${http_code}",
 })
 ```
 

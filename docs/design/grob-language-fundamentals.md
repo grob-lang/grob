@@ -152,20 +152,20 @@ message := http_code switch {
     200 => "OK",
     404 => "Not found",
     500 => "Server error",
-    _   => "Unknown"
+    _   => "Unknown",
 }
 
 // Relational patterns
 status := used_pct switch {
     >= crit_percent => "CRITICAL",
     >= warn_percent => "WARNING",
-    _               => "OK"
+    _               => "OK",
 }
 
 // Nullable scrutinee
 label := user switch {
     nil => "anonymous",
-    _   => user.name
+    _   => user.name,
 }
 ```
 
@@ -861,11 +861,11 @@ type Config {
 ```grob
 r := Repo {
     name:    "grob",
-    ssh_url: "git@github.com/..."
+    ssh_url: "git@github.com/...",
 }
 
 c := Config {
-    host: "localhost"          // port and timeout use defaults
+    host: "localhost",         // port and timeout use defaults
 }
 ```
 
@@ -889,7 +889,7 @@ type Person {
 
 p := Person {
     name:    "Chris",
-    address: Address { city: "London", country: "UK" }
+    address: Address { city: "London", country: "UK" },
 }
 ```
 
@@ -947,7 +947,7 @@ e2 := Entry { label: "second" }          // id and timestamp evaluate again
 e3 := Entry {                            // label evaluates too
     id:        guid.parse("..."),
     timestamp: date.today(),
-    label:     "third"
+    label:     "third",
 }                                        // no defaults evaluate
 ```
 
@@ -1401,14 +1401,14 @@ total := price +
 // Multi-line function call — trailing comma
 result := someFunction(
     arg1,
-    arg2
+    arg2,
 )
 
 // Multi-line array literal
 items := [
     "alpha",
     "beta",
-    "gamma"
+    "gamma",
 ]
 ```
 
@@ -2314,7 +2314,7 @@ Arrays of arrays are valid. `T[][]` is the type of a two-dimensional array.
 matrix := [
     [1, 0, 0],
     [0, 1, 0],
-    [0, 0, 1]
+    [0, 0, 1],
 ]
 // matrix: int[][]
 // matrix[1][2] → 0

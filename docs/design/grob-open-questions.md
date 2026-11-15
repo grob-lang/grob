@@ -40,7 +40,7 @@ import Grob.Llm
 reply := llm.complete(
     model:     "claude-sonnet-4-5",
     prompt:    "Summarise: ${text}",
-    maxTokens: 500
+    maxTokens: 500,
 )
 
 print(reply.text)
@@ -53,7 +53,7 @@ type Triage {
 
 triage := llm.completeAs<Triage>(
     model:  "claude-sonnet-4-5",
-    prompt: "Triage this stack trace: ${stack}"
+    prompt: "Triage this stack trace: ${stack}",
 )
 
 if (triage.severity == "critical") {
@@ -138,7 +138,7 @@ ticket  := jira.callTool("get_issue", #{ id: "PROJ-123" })
 
 summary := llm.complete(
     model:  "claude-sonnet-4-5",
-    prompt: "Summarise this ticket for the standup: ${ticket.description}"
+    prompt: "Summarise this ticket for the standup: ${ticket.description}",
 )
 
 print(summary.text)
@@ -201,7 +201,7 @@ conn := sql.connect("Server=...;Database=...;Integrated Security=true",
 
 customers := conn.queryAs<Customer>(
     "SELECT id, name, email FROM customers WHERE active = @active",
-    #{ active: true }
+    #{ active: true },
 )
 
 conn.close()
@@ -609,7 +609,6 @@ authorised, and every item cites the decision that raised it.
 | # | Item | Raised by | Owner | Done when |
 |---|---|---|---|---|
 | R-04 | **`Grob.Core`'s public surface narrowed.** It becomes SDK surface when `Grob.Runtime` publishes, while holding `Chunk`, `BytecodeFunction`, `CatchHandler`, `DiagnosticBag` and `IVmCallHost` — internals a plugin author should not see. Narrowing after publication is a breaking change. | D-419 | Sprint 11, **before first package publication** | An explicit allow-list names every type in `Grob.Core`'s intended public SDK surface; `Chunk`, `BytecodeFunction`, `CatchHandler`, `DiagnosticBag` and `IVmCallHost` are `internal` with `InternalsVisibleTo` to the assemblies that need them, and no public type sits outside the allow-list |
-| R-05 | **Harness advertised-versus-built audit.** `.claude/` has never had the scrutiny the design corpus has had. Known: two skills, `src/CLAUDE.md` and — found by D-421, not on D-419's list — `plugins/CLAUDE.md:27` instruct authors to supply a `FunctionSignature` that has never existed, with a three-argument registration example that would not compile. Also found by D-421: `tests/CLAUDE.md:60` documents the error-example pair naming as `*_grob.txt`/`*_expected.txt`, while all 57 pairs on disk are `<case>.grob`/`<case>.expected.txt` — a convention an author would follow into a file the harness would not find. **Sized against `f7acb83`, the first read of `.claude/` from the live tree rather than a zip that excluded it: 39 files.** The `FunctionSignature` claim is live at eight sites across four files — `adding-a-stdlib-function/SKILL.md` (2), `authoring-a-plugin/SKILL.md` (3, including the registration example that would not compile), `src/CLAUDE.md` (1) and `plugins/CLAUDE.md` (2). The `*_grob.txt`/`*_expected.txt` naming is live at four files — `writing-an-error-test/SKILL.md` (whose entire step 2 is built on it), `writing-grob-source/SKILL.md`, `allocating-an-error-code/SKILL.md` and `tests/CLAUDE.md` — against 57 on-disk pairs all named `<case>.grob`/`<case>.expected.txt`. `f7acb83` touched four of these files and changed only their prose-convention lines, so the substantive claims are unaffected by it. **D-427 closed the eight `FunctionSignature` sites** (`adding-a-stdlib-function/SKILL.md` 2, `authoring-a-plugin/SKILL.md` 3, `src/CLAUDE.md` 1, `plugins/CLAUDE.md` 2) against the API as built; D-426's prompt said seven, its entry and this row eight, and eight is what the tree held. **D-429 corrected the four naming sites** — `writing-an-error-test/SKILL.md` (frontmatter, intro, steps 2 to 5 and the checklist), `writing-grob-source/SKILL.md`, `allocating-an-error-code/SKILL.md` and `tests/CLAUDE.md` — together with the README's project-knowledge layout section, against the pairs on disk and D-428 Decision 4's authorship rule. The full sweep remains. | D-419, owners split by D-426, full sweep owned by D-431 | The full sweep: the *corpus sweep* increment, sixth of D-420's pre-9C run (D-431 Decision 2). The naming sites were the *error-examples harness* increment's, done by D-429 | Known sites corrected in the commit that makes them true, **and** the full `.claude/` sweep is complete with every stale advertised interface it finds corrected or removed — scheduling the sweep does not close this item, only finishing it does |
 | R-06 | **Type-name LSP mechanism specified.** §3.1.1 requires `ResolvedType`/`Declaration` on identifier *expression* nodes; D-416 ruled `TypeRef` is outside it. Go-to-definition on a type name therefore resolves by some path no document names — plausibly `UserTypeRegistry` plus `Symbol.DeclaredAt`, but unstated. | D-416 | `unowned` — before any LSP work | A document states how a type name resolves to its declaration, and §3.1.1 says whether it is in scope |
 | R-07 | **D-418's corpus corrections.** `grob-type-registry.md` (which carries both `mapAs` conventions side by side), `grob-stdlib-reference.md`, wiki `json.md`/`csv.md`, and validation script 04, to the uniform whole-type convention; script 11's `[ASSUMPTION]` marker removed. Script edits touch `.grob` corpus files and their markdown publication together (D-417's sync guard). | D-418 | `mapAs<T>` increment (Sprint 9D) | All sites use `mapAs<T>(): T`; `ValidationScriptCorpusTests` and `ValidationScriptMarkdownSyncTests` green |
 | R-08 | **Decorator release-gate coverage.** All seven decorators ship in v1 (D-411), but only `@secure` appears in any validation script — six would ship unexercised, which is the advertised-but-unbuilt shape in advance. | D-411 | Sprint 10 | At least one release-gate script exercises the full decorator surface |
@@ -638,6 +637,10 @@ authorised, and every item cites the decision that raised it.
 | R-37 | **The agent benchmark exists and has run.** "First-class for agents" is a claim until it is measured, and D-434 Decision 4 makes the benchmark the only evidence that authorises a syntax change on these grounds. | D-434 | `unowned` — after R-36, once OQ-021 resolves | A committed task set covering the four driving use cases; a recorded run against at least two harnesses given only the kit, reporting first-attempt success and success within three rounds of `grob check --json`; results and the date committed under `docs/design/` |
 | R-38 | **Restricted run and plan mode built.** D-435 sets the posture and the limit of the claim; the surface is OQ-022. | D-435 | `unowned` — post-v1, after OQ-022 resolves | A run mode in which every standard-library call that needs a capability the host did not grant fails before it acts, as does a plugin import the host did not grant; proven by tests over the real CLI pipeline that cover at least an `fs` read, an `fs` write, a `process` run, a `json` and a `csv` file read and write and a plugin import, each denied and each granted; a plan run that reports each state change made through the capability seam without performing it, with plugin imports under a plan run handled as OQ-022's resolution fixes and that handling proven by test; documentation that describes the feature as a capability-gated standard library, states what it does not protect against and does not use the word sandbox |
 | R-39 | **The README's first sample becomes runnable before parameters bind.** `README.md`'s opening block reads the required parameters `from` and `to` and the defaulted `dir`, and renames files it lists through `fs.list`. It passes the public samples gate only because `fs` is excused (D-430 Decision 3). When the `fs` increment builds `fs`, the excused list's catalogue guard forces `fs` off it and the block is run. It then fails on `from`, since no `param` binds before Sprint 10 (D-430 measured E1001 on a parameter with or without a default), so that increment marks it `blocked-by=R-39`. Its file operations must meet the harness's in-memory `IFileSystem`, which R-35 (D-436) provides, never the real filesystem. Gate report F6. | D-437 | The 9C `fs` increment, which meets it first; Sprint 10 for parameter values | The gate supplies fixture values for `param` declarations as D-430 Decision 8 does for environment variables, and `README.md`'s first block passes under the harness's injected capabilities with no `blocked-by` token |
+| R-40 | **The synthetic large-script generator is unbuilt.** `grob-benchmarking-strategy.md` §4.1 and §7.4 specify a deterministic generator for a `synthetic-large.grob` compile benchmark. `bench/Grob.Benchmarks/` has no `Generators/` directory and `Compile/` holds only `CompileBenchmarks.cs`. D-409 raised it; D-431 Decision 1 row 5 sent it here once the corpus sweep's gate confirmed no row tracked it. | D-409, recorded by D-438 | The hardening and performance sprint before Sprint 10 | `bench/Grob.Benchmarks/Generators/SyntheticLargeGenerator.cs` produces a deterministic `synthetic-large.grob` of 1,000 lines or more from a fixed seed, and a compile benchmark runs over it |
+| R-41 | **A `map<K, V>` argument is not checked against a `map<K, V>` parameter.** Passing a `map<string, int>` to `fn f(m: map<string, string>)` compiles and runs, where the array mirror raises E0004. A binding does enforce `V` (E0001), and `for k, v` binds `v` as `V`. Measured by the corpus sweep's verification of review F5-1 against D-374; `grob-type-registry.md` carries the build-status note. | D-438 | `unowned` | The call raises E0004 at the argument, mirroring arrays, and a test pins it |
+| R-42 | **A non-unary `sort` key selector reaches the VM.** `xs.sort((a, b) => a.size > b.size)` passes the checker and fails at run time with "internal error: opcode GetProperty 'size' on receiver of kind Int not yet implemented". `sort` takes a key selector (`grob-type-registry.md`), and under D-353's contract an internal error on user input is P0. Found by the corpus sweep's eye-read of the wiki's `fragment` blocks (`Functions.md`, since corrected). | D-438 | `unowned` — a candidate for the Sprint 9/10 hardening interlude (D-353) | A lambda of the wrong arity passed as a key selector is a compile-time diagnostic under an existing code (E0003 or E0004, by `allocating-an-error-code`'s fold-or-register judgement), and a test pins it |
+| R-43 | **Diagnostics render generic types bare.** E0001 and E0004 name a `map<string, int>` as `'map'` and a `string[]` as `'array'`, so a message can read `'map'` to `'map'`. Cosmetic and pre-existing, the generic-type counterpart of R-23. Seen in passing by the corpus sweep's F5-1 probes. | D-438 | `unowned` | A diagnostic naming a generic type renders its type arguments (`map<string, int>`, `string[]`), with a test for each of E0001 and E0004 |
 
 ### Closed items
 
@@ -652,6 +655,7 @@ authorised, and every item cites the decision that raised it.
 | R-11 | **Error-examples library harnessed.** | D-415, D-417, refined by D-428 | **D-429** | `ErrorExampleMasterTests` checks every master's titles against `ErrorCatalog`, its `-->` lines, snippets and first caret against its own source, and the README's index against the directories; `ErrorExampleCorpusTests` runs every pair through `RunCommand`'s own pipeline over injected capabilities and compares the ordered `(severity, code, file, line, column)` list with its master's. Pairs are discovered by directory. The 29 pairs that do not match are rows of the strict manifest `docs/errors/examples/quarantine.md`, each blocked by an open register item, an unregistered namespace or Sprint 11 and each required to fail exactly as recorded. 56 pairs: 27 pass, 29 quarantined. |
 | R-18 | **Three decorator gold masters are stale.** | D-425 | **D-429** | Rewritten against D-410's braceless grammar and D-424's decorator semantics. Before the rewrite `unknown-decorator` raised E4201 plus a cascading E1001 and `invalid-allowed-argument` raised E4201 plus E0205 (its `const` array, D-289), not the codes their masters stated; `decorator-not-permitted-here`'s decorator before a local binding raised E2001, now tracked in R-27. Each new source raises exactly one diagnostic — E4001 at 2:1, E4101 at 2:10 and E4002 at 2:12 on a function parameter (D-424 Decision 2) — and each passes the harness; `unknown-decorator`'s help lists D-411's seven decorators. |
 | R-32 | **Two stdlib ambient reads sit outside `RunCommand`'s capability seam.** | D-429, amended by D-430 | **D-437** | `IClock.LocalZone` and `IFileSystem.CurrentDirectory` are capabilities on D-343's pattern, supplied by `HostCapabilities` at the composition root and injected through `RunCommand`'s seam. `date.now`, `date.today`, `date.of`, `date.ofTime`, `toLocal`, both forms of `date.parse` and `path.resolve` read them, and each is tested under injected values. No explicit or implicit read of the host zone or current directory remains in `Grob.Stdlib`; `StdlibAmbientReadGuardTests` in `Grob.Consistency.Tests` keeps it so. `date.parse` classifies its input lexically, because no `DateTimeStyles` combination avoids a host read. `FindSystemTimeZoneById` stays, as an explicit lookup. One accepted behaviour change: on Windows a drive-relative path on another drive resolves to that drive's root. |
+| R-05 | **Harness advertised-versus-built audit.** | D-419, owners split by D-426, full sweep owned by D-431 | **D-438** | Every file in `.claude/` (28), the four `CLAUDE.md` files and `AGENTS.md` read against the tree by the corpus sweep's change group 3, every advertised interface either true, corrected or removed. D-427 had closed the eight `FunctionSignature` sites and D-429 the four pair-naming sites. Among the rest: `src/CLAUDE.md`'s emission rule cited D-315, which is about `break` and `continue` in `select`; `sonar-pr-review` read a `sonar-project.properties` that never existed; `tdd-cycle`'s examples used a lexer API and error codes that never existed; `emitting-closures-and-upvalues` said upvalues close only on return; two commands split `test` and `feat` commits; root `CLAUDE.md` denied the `grob-reviewer` agent, claimed a Fable-pinned agent and said Sonar is not a NuGet analyzer. The commit bodies list every class of correction. |
 
 ---
 
@@ -1053,7 +1057,11 @@ _table of `grob-decisions-log.md`. The full rationale is preserved here._
 
 ---
 
-_Document updated November 2026 — D-437. **R-32 closed**: the local time zone and the current_
+_Document updated November 2026 — D-438. **R-05 closed**: the corpus sweep read every file in_
+_`.claude/`, the four `CLAUDE.md` files and `AGENTS.md` against the tree. **R-40 to R-43 added**:_
+_the unbuilt synthetic large-script generator, a `map` argument unchecked against its parameter,_
+_a two-parameter `sort` selector reaching the VM and generic types rendered bare in diagnostics._
+_Previous: November 2026 — D-437. **R-32 closed**: the local time zone and the current_
 _directory are capabilities, and a source guard keeps `Grob.Stdlib` free of both reads._
 _**R-29** amended: five public samples are blocked on it, not six, after W9. **R-39 added**:_
 _the README's first sample becomes runnable when `fs` is built, before Sprint 10 binds_

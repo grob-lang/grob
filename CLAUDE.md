@@ -84,16 +84,22 @@ Chris.**
   logged, never casual and never silent. (`TokenKind` follows the `OpCode`
   rule.)
 - **The strict DAG holds.** `Grob.Core` is the only shared ground.
-  `Grob.Compiler` references `Grob.Core`, never `Grob.Vm`. `Grob.Vm` references
-  `Grob.Core` and `Grob.Runtime`, never `Grob.Compiler`. `Grob.Cli` is the
-  single composition root — it references every `src/` assembly and nothing
-  references it back.
+  `Grob.Compiler` references `Grob.Core` and `Grob.Runtime`, never `Grob.Vm`.
+  `Grob.Vm` references `Grob.Core` and `Grob.Runtime`, never `Grob.Compiler`.
+  `Grob.Cli` is the single composition root — it references every `src/`
+  assembly except `Grob.Lsp`, a separate executable, and nothing references it
+  back. `src/CLAUDE.md` has the full table.
 - **C# 14 / .NET 10 (D-310).** `LangVersion 14` is canonical, from the first
   line.
 - **Test routing (§3.5).** Each test goes to the project matching its kind —
   `Grob.Compiler.Tests`, `Grob.Vm.Tests`, `Grob.Integration.Tests` and so on.
-- **Coverage.** 90% line coverage is a hard bar. `[ExcludeFromCodeCoverage]`
-  requires a substantive `Justification`.
+- **Coverage.** 90% line and branch coverage is a hard floor, on the whole (D-328)
+  and on every PR's new code (Chris's ruling, recorded in D-438), and more is
+  always wanted: 90% is the least acceptable
+  figure, not a target to stop at. SonarCloud's free-plan PR gate fails only
+  below 80% on new code and cannot be raised, so a green Sonar gate does not mean
+  the bar is met — new code below 90% is a finding to fix before the PR is
+  handed over. `[ExcludeFromCodeCoverage]` requires a substantive `Justification`.
 
 ## Quality gates
 
@@ -101,17 +107,23 @@ Chris.**
   hooks. The **pre-commit** stage runs TruffleHog secret scanning, file hygiene
   (trailing whitespace, end-of-file newline, YAML/JSON validation, merge-conflict
   markers, large-file block, LF/CRLF line-ending enforcement) and
-  `dotnet format --verify-no-changes` scoped to staged `.cs` files. The **pre-push**
+  `dotnet format --verify-no-changes` scoped to staged `.cs` files, plus
+  `tooling/prose-check.ps1`, a warn-only house-style check on staged markdown. The **pre-push**
   stage runs `tooling/coverage-gate.ps1` — `dotnet test` with coverlet's OpenCover
   collector — failing the push if overall line coverage drops below 80% (a coarse
   local proxy for SonarCloud's new-code floor, ratcheting up; distinct from the 90%
   line-coverage bar above). Every clone runs `pre-commit install` once.
 - **CodeRabbit** is the in-loop pre-PR reviewer (a deliberate step before the
-  PR is opened). There is no Claude reviewer subagent.
+  PR is opened). The `grob-reviewer` subagent is an optional self-review pass
+  before it, and `grob-design-reviewer` audits the corpus; neither replaces
+  CodeRabbit.
 - **SonarCloud** runs in CI via the `dotnet-sonarscanner` workflow
-  (`.github/workflows/sonarcloud.yml`) on push and pull request — not a NuGet
-  analyzer package. `TreatWarningsAsErrors` in `Directory.Build.props` enforces
-  the SDK Roslyn analyzers and the `NuGetAudit` advisory gate (D-317).
+  (`.github/workflows/sonarcloud.yml`) on push and pull request. A scoped local
+  gate runs the same analyzer: `Directory.Build.props` adds `SonarAnalyzer.CSharp`
+  to every non-test project and `.editorconfig` opts in a handful of rules
+  (`src/CLAUDE.md`, _Static analysis_). `TreatWarningsAsErrors` in
+  `Directory.Build.props` enforces the SDK Roslyn analyzers, those rules and the
+  `NuGetAudit` advisory gate (D-317).
   **CodeQL** runs in CI via GitHub Advanced Security default setup (too slow for
   per-push local execution); there is no `codeql.yml` and none should be added.
 - **External QA cold-read.** At sprint close, the QA brief is the instruction
@@ -130,18 +142,22 @@ aliases track the current release, so this section does not go stale.
   design that is not obvious, the reviewer agents, PR-comment triage.
 - **Fable (high effort)** is reserved for the named deep structural sub-problem,
   gated behind "only if _this specific thing_ gets fiddly", never "this part is
-  hard". It is reached via a Fable-pinned subagent under `.claude/agents/`,
-  invoked for the named sub-task only.
+  hard". It is reached through a subagent run with the `fable` model, invoked
+  for the named sub-task only. No agent under `.claude/agents/` pins it.
 - **Haiku** for genuinely mechanical, self-contained arms.
 
-`/model-select` is the procedure for choosing between them.
+**The increment prompt's session table names the model and effort for each
+session** (D-431 Decision 5), and its session-start check enforces it. Where the
+table and this section differ, the table wins for that increment. `/model-select`
+is the procedure for work no prompt covers.
 
 ## Output and prose conventions
 
 - Diagnostics and errors to **stderr**; results to **stdout**. Quiet on success,
   clear on failure. **Never emoji** in compiler or CLI output.
-- Design-doc deliverables are **complete files**, never diffs. Code is edited in
-  place in the working tree.
+- Every file — design document or code — is **edited in place with the Edit
+  tool**, in the working tree. Nothing is delivered as a whole replacement file or
+  a diff.
 - **British English** in documentation; **Oxford comma never**; never the word
   "simply".
 - Decisions-log entries follow ADR style (`D-###`, `Area`, `Supersedes`,

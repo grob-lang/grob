@@ -5,7 +5,9 @@
 > (`grob-lang.dev/errors`) is generated from it.
 >
 > **Stability:** see ADR-0017. Codes marked `pre-release` are subject to
-> change until v1.0 ships; codes marked `stable` are immutable.
+> change until v1.0 ships; codes marked `stable` are immutable. A `pre-release`
+> code that never shipped may be removed outright, and its number is permanently
+> burned: never reused (D-410, applied to E4202 by D-425).
 >
 > _Created April 2026 — initial allocation, error-code numbering scheme session._
 > _Authority: ADR-0014 (numbering scheme) and ADR-0017 (stability rule)._
