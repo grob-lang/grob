@@ -1,7 +1,21 @@
-# Session hand-off — 15 November 2026 (session C, change group 3 complete)
+# Session hand-off — 15 November 2026 (session C, change groups 3 and 4 complete)
+
+## Group 4 (`c8f81fa`)
+- Corpus wired, red 49 (39 fragments, 5 R-29, 5 R-30), then info strings on 49 fences.
+  Tallies: 45 run, 29 excused, 39 fragments, 10 blocked (five fragments), 123 in all.
+- Mutations 1-8 and 10 all ran, each matching its stated prediction; the commit message
+  records each and where it differs from the prompt's (1: +2 tests depending on execution;
+  2: five not six; 3: +decision 16's test; 4: +2 tests, 39 not 38; 8: the unused-fixture
+  guard does not fail, so mutation 8b was added and fails the planted guard test).
+  Script: `.grob-session/mutations.py`; output `.grob-session/mutations-out.txt`.
+- Full suite 5,087 passed, 0 failed.
+- Next: group 5 (§2.5): requirements §14 sentence, writing-grob-source info-string grammar
+  (and say whether CONTRIBUTING.md covers doc samples), the decisions-log entry (live tail) with
+  every decision 1-19 plus the group 4 divergences and *Findings for the corpus sweep*, the
+  register (R-32 closed, R-29/R-30 amended, any new rows).
 
 ## Where we are
-- Branch: `feat/tests-public-samples-gate`, HEAD `c5b99b9`
+- Branch: `feat/tests-public-samples-gate`, HEAD `c8f81fa`
 - Working tree: clean apart from this hand-off
 - Commits on this branch (`git log --oneline main..HEAD`): hand-off commits, plus `c9526eb`
   (change group 1, R-32), `02af086` (change group 2, the harness) and `c5b99b9` (change
