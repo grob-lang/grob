@@ -216,7 +216,7 @@ A binding enforces `V`: `b: map<string, string> := a`, where `a` is a `map<strin
 raises E0001. A call argument does not. Passing a `map<string, int>` to a user `fn`
 parameter typed `map<string, string>` compiles and runs, where the array mirror raises
 E0004. The gap is code rather than documentation and is tracked in the Deferred Work Register
-in `grob-open-questions.md`.
+in `grob-open-questions.md` as R-41 (D-438).
 
 **Construction:**
 
