@@ -19,7 +19,7 @@ Returned by `Regex.match()` and `Regex.matchAll()`.
 
 ## Examples
 
-```grob
+```grob blocked-by=R-30
 pattern := /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/
 m := pattern.match("Date: 2026-04-05")
 

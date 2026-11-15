@@ -66,7 +66,7 @@ See [formatAs module](../Standard-Library/formatAs.md).
 
 ## Indexing
 
-```grob
+```grob fragment
 items[0]            // first element
 items[items.length - 1]  // last element
 matrix[r][c]        // multi-dimensional via chained indexing
@@ -78,7 +78,7 @@ Zero-based. Out-of-range access throws `IndexError` (E5101).
 
 ### Filter and sort
 
-```grob
+```grob fragment
 large_files := files
     .filter(f => f.size > 1024 * 1024)
     .sort(f => f.size, descending: true)
@@ -86,7 +86,7 @@ large_files := files
 
 ### Project fields
 
-```grob
+```grob fragment
 names := users.select(u => u.name)
 
 // Project to anonymous struct
@@ -96,7 +96,10 @@ summaries := users.select(u => #{ name: u.name, active: u.isActive })
 ### Typed deserialisation
 
 ```grob
-type User { name: string, email: string }
+type User {
+    name: string
+    email: string
+}
 users := json.read("C:\\data\\users.json").mapAs<User>()
 ```
 

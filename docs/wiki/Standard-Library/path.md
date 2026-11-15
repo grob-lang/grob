@@ -30,7 +30,7 @@ strings only.
 
 ### Build output path
 
-```grob
+```grob fragment
 dest := path.join("C:\\Archive", year, month, file.name)
 ```
 

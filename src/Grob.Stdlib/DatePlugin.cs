@@ -35,7 +35,10 @@ public sealed class DatePlugin : IGrobPlugin {
 
     private readonly IClock _clock;
 
-    /// <summary>Initialises the plugin with the <see cref="IClock"/> <c>now</c>/<c>today</c> read from.</summary>
+    /// <summary>
+    /// Initialises the plugin with the <see cref="IClock"/> whose instant <c>now</c>/<c>today</c>
+    /// read and whose local zone every "local" conversion resolves against (R-32).
+    /// </summary>
     public DatePlugin(IClock clock) {
         ArgumentNullException.ThrowIfNull(clock);
         _clock = clock;
@@ -56,7 +59,7 @@ public sealed class DatePlugin : IGrobPlugin {
             // day the local zone's offset changes (a DST transition), the two can differ.
             DateTimeOffset now = Now();
             var midnight = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Unspecified);
-            return FromDateTimeOffset(new DateTimeOffset(midnight, TimeZoneInfo.Local.GetUtcOffset(midnight)));
+            return FromDateTimeOffset(new DateTimeOffset(midnight, _clock.LocalZone.GetUtcOffset(midnight)));
         }));
 
         registrar.RegisterNative(Signature("date.of", DateType, Param("year", IntType), Param("month", IntType), Param("day", IntType)),
@@ -70,7 +73,7 @@ public sealed class DatePlugin : IGrobPlugin {
                 // across every Sprint 9 stdlib module, not date alone.
                 var local = checked(new DateTime((int)args[0].AsInt(), (int)args[1].AsInt(), (int)args[2].AsInt(),
                     0, 0, 0, DateTimeKind.Unspecified));
-                return FromDateTimeOffset(new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)));
+                return FromDateTimeOffset(new DateTimeOffset(local, _clock.LocalZone.GetUtcOffset(local)));
             }));
 
         registrar.RegisterNative(Signature("date.ofTime", DateType,
@@ -81,12 +84,13 @@ public sealed class DatePlugin : IGrobPlugin {
                 var local = checked(new DateTime(
                     (int)args[0].AsInt(), (int)args[1].AsInt(), (int)args[2].AsInt(),
                     (int)args[3].AsInt(), (int)args[4].AsInt(), (int)args[5].AsInt(), DateTimeKind.Unspecified));
-                return FromDateTimeOffset(new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)));
+                return FromDateTimeOffset(new DateTimeOffset(local, _clock.LocalZone.GetUtcOffset(local)));
             }));
 
         // D-358: pattern is the compiler-synthesised second argument — "" (the
-        // pre-existing one-argument behaviour) selects ISO-8601 via TryParse; a
-        // non-empty pattern selects DateTimeOffset.ParseExact.
+        // pre-existing one-argument behaviour) selects ISO-8601; a non-empty pattern
+        // selects an exact parse. D-176: a string with an explicit offset preserves it; one
+        // without is local time, which since R-32 means the clock's zone (DateParse).
         registrar.RegisterNative(Signature("date.parse", DateType,
                 Param("value", StringType), Optional("pattern", StringType, GrobValue.FromString(""))),
             new NativeFunction("date.parse", 2, (args, _) => {
@@ -94,19 +98,13 @@ public sealed class DatePlugin : IGrobPlugin {
                 string pattern = args[1].AsString();
                 DateTimeOffset parsed;
                 if (pattern.Length == 0) {
-                    // D-176: a string with an explicit offset preserves it; one without is
-                    // interpreted as local time — DateTimeStyles.AssumeLocal gives exactly that.
-                    if (!DateTimeOffset.TryParse(
-                            s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out parsed)) {
+                    if (!DateParse.TryParseIso(s, _clock.UtcNow, _clock.LocalZone, out parsed)) {
                         throw new NativeFaultException(
                             "ParseError", ErrorCatalog.E5702.Code, $"date.parse: '{s}' is not a valid date.");
                     }
-                } else {
-                    if (!DateTimeOffset.TryParseExact(
-                            s, pattern, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out parsed)) {
-                        throw new NativeFaultException("ParseError", ErrorCatalog.E5702.Code,
-                            $"date.parse: '{s}' does not match pattern '{pattern}'.");
-                    }
+                } else if (!DateParse.TryParsePattern(s, pattern, _clock.UtcNow, _clock.LocalZone, out parsed)) {
+                    throw new NativeFaultException("ParseError", ErrorCatalog.E5702.Code,
+                        $"date.parse: '{s}' does not match pattern '{pattern}'.");
                 }
                 return FromDateTimeOffset(parsed);
             }));
@@ -129,7 +127,7 @@ public sealed class DatePlugin : IGrobPlugin {
     // by name rather than by the Struct tag every named type shares.
     // -----------------------------------------------------------------------
 
-    private static NamedTypeDefinition BuildNamedType() => new(
+    private NamedTypeDefinition BuildNamedType() => new(
         DateLayout.TypeName,
         [
             IntProperty("year", d => d.Year),
@@ -167,7 +165,7 @@ public sealed class DatePlugin : IGrobPlugin {
             Method("toUnixSeconds", [], IntType, (d, _) => GrobValue.FromInt(d.ToUnixTimeSeconds())),
             Method("toUnixMillis", [], IntType, (d, _) => GrobValue.FromInt(d.ToUnixTimeMilliseconds())),
             Method("toUtc", [], DateType, (d, _) => FromDateTimeOffset(d.ToUniversalTime())),
-            Method("toLocal", [], DateType, (d, _) => FromDateTimeOffset(d.ToLocalTime())),
+            Method("toLocal", [], DateType, (d, _) => FromDateTimeOffset(TimeZoneInfo.ConvertTime(d, _clock.LocalZone))),
             Method("toZone", [new SignatureParameter("zone", StringType)], DateType,
                 (d, args) => FromDateTimeOffset(TimeZoneInfo.ConvertTime(d, TimeZoneInfo.FindSystemTimeZoneById(args[0].AsString())))),
             Method("toDateOnly", [], DateType,
@@ -200,8 +198,9 @@ public sealed class DatePlugin : IGrobPlugin {
     // lockstep with Grob.Vm.DateNatives (DAG siblings; no shared code possible).
     // -----------------------------------------------------------------------
 
-    /// <summary>The current instant, converted from <see cref="IClock"/>'s UTC reading to local time (D-176).</summary>
-    private DateTimeOffset Now() => new DateTimeOffset(DateTime.SpecifyKind(_clock.UtcNow, DateTimeKind.Utc)).ToLocalTime();
+    /// <summary>The current instant, converted from <see cref="IClock"/>'s UTC reading into its local zone (D-176, R-32).</summary>
+    private DateTimeOffset Now() => TimeZoneInfo.ConvertTime(
+        new DateTimeOffset(DateTime.SpecifyKind(_clock.UtcNow, DateTimeKind.Utc)), _clock.LocalZone);
 
     private static GrobValue FromDateTimeOffset(DateTimeOffset value) => GrobValue.FromStruct(new GrobStruct(
         DateLayout.TypeName,

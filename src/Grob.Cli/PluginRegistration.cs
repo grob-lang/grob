@@ -27,5 +27,6 @@ internal static class PluginRegistration {
     /// so a caller cannot assemble a second native surface (D-426 Decision 2).
     /// </summary>
     internal static NativeCatalogue BuildCatalogue(IStandardStreams streams, bool verbose, HostCapabilities capabilities) =>
-        StdlibCatalogue.Build(capabilities.RandomSource, capabilities.Environment, streams, capabilities.Clock, verbose);
+        StdlibCatalogue.Build(
+            capabilities.RandomSource, capabilities.Environment, streams, capabilities.Clock, capabilities.FileSystem, verbose);
 }

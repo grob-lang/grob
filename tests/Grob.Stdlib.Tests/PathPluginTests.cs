@@ -11,7 +11,8 @@ namespace Grob.Stdlib.Tests;
 
 /// <summary>
 /// Sprint 8 Increment B: <see cref="PathPlugin"/> registers the full decompose/join/
-/// normalise surface (D-342), pure — no capability injection, no throw sites. End to
+/// normalise surface (D-342). Its one capability is the current directory
+/// <c>path.resolve</c> anchors to (R-32), injected as a <see cref="Grob.Runtime.IFileSystem"/>. End to
 /// end through a real <see cref="VirtualMachine"/>; chunks are hand constructed — this
 /// project has no dependency on <c>Grob.Compiler</c>.
 /// </summary>
@@ -25,19 +26,24 @@ namespace Grob.Stdlib.Tests;
 /// the Windows leg (regression: PR #130 CI, ubuntu-latest).
 /// </remarks>
 public sealed class PathPluginTests {
-    private static VirtualMachine NewRegisteredVm() {
-        var vm = new VirtualMachine(new StringWriter(), Catalogue(new PathPlugin()));
+    // A rooted directory on either CI leg. It is never touched: path.resolve only joins
+    // strings against it, so it need not exist.
+    private static readonly string BaseDirectory = Path.Join(Path.GetTempPath(), "grob-r32-base");
+
+    private static VirtualMachine NewRegisteredVm(string? currentDirectory = null) {
+        var vm = new VirtualMachine(
+            new StringWriter(), Catalogue(new PathPlugin(new TestFileSystem(currentDirectory ?? BaseDirectory))));
         return vm;
     }
 
     [Fact]
     public void Name_IsPath() {
-        Assert.Equal("path", new PathPlugin().Name);
+        Assert.Equal("path", new PathPlugin(new TestFileSystem(BaseDirectory)).Name);
     }
 
     [Fact]
     public void Register_AddsExactlyTheDocumentedPathMembers() {
-        var vm = new VirtualMachine(new StringWriter(), Catalogue(new PathPlugin()));
+        var vm = new VirtualMachine(new StringWriter(), Catalogue(new PathPlugin(new TestFileSystem(BaseDirectory))));
 
         string[] expectedMembers = [
             "separator",
@@ -167,17 +173,43 @@ public sealed class PathPluginTests {
     }
 
     [Fact]
-    public void Resolve_RelativePath_AnchorsToCwd() {
+    public void Resolve_RelativePath_AnchorsToInjectedCurrentDirectory() {
         var vm = NewRegisteredVm();
         vm.Run(BuildCallChunk("path.resolve", GrobValue.FromString("reports")));
 
-        string result = vm.Stack.Peek().AsString();
-        Assert.True(Path.IsPathRooted(result), $"expected rooted, got: {result}");
-        Assert.EndsWith("reports", result);
+        Assert.Equal(Path.Join(BaseDirectory, "reports"), vm.Stack.Peek().AsString());
     }
 
     [Fact]
-    public void Resolve_EmptyString_ResolvesToCurrentWorkingDirectory_DoesNotThrow() {
+    public void Resolve_RelativePath_IgnoresHostCurrentDirectory() {
+        // R-32: the host's current directory is never read. The injected directory differs
+        // from the process's, so a native that read the host would land elsewhere.
+        string other = Path.Join(Path.GetTempPath(), "grob-r32-other");
+        Assert.NotEqual(Environment.CurrentDirectory, other);
+        var vm = NewRegisteredVm(other);
+
+        vm.Run(BuildCallChunk("path.resolve", GrobValue.FromString(Path.Join("a", "..", "b"))));
+
+        Assert.Equal(Path.Join(other, "b"), vm.Stack.Peek().AsString());
+    }
+
+    [Fact]
+    public void Resolve_DriveRelativePathOnAnotherDrive_ResolvesToThatDrivesRoot() {
+        // R-32 (gate report F4): Windows' per-drive current directories are no longer
+        // consulted. A drive-relative path on a drive other than the injected directory's
+        // resolves to that drive's root, not to the injected directory.
+        if (!OperatingSystem.IsWindows()) {
+            return;
+        }
+        var vm = NewRegisteredVm(@"C:\base");
+
+        vm.Run(BuildCallChunk("path.resolve", GrobValue.FromString("D:sources")));
+
+        Assert.Equal(@"D:\sources", vm.Stack.Peek().AsString());
+    }
+
+    [Fact]
+    public void Resolve_EmptyString_ResolvesToInjectedCurrentDirectory_DoesNotThrow() {
         // Regression: Path.GetFullPath("") throws ArgumentException — path.resolve("")
         // must not let that raw .NET exception escape (CodeRabbit review, PR #130).
         var vm = NewRegisteredVm();
@@ -186,8 +218,7 @@ public sealed class PathPluginTests {
 
         Assert.Null(ex);
         string result = vm.Stack.Peek().AsString();
-        Assert.True(Path.IsPathRooted(result), $"expected rooted, got: {result}");
-        Assert.Equal(Path.GetFullPath("."), result);
+        Assert.Equal(BaseDirectory, result);
     }
 
     [Fact]

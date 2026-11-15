@@ -31,7 +31,7 @@ that keeps primitive type names closed to third-party plugins (D-426).
 
 ## Literals
 
-```grob
+```grob fragment
 3.14            // standard
 0.5             // leading zero required — .5 is not valid
 1.5e10          // scientific notation

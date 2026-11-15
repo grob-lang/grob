@@ -10,7 +10,7 @@ be readable by any C# or Go developer without prior knowledge of Grob.
 ```grob
 x := 42                  // declare and assign — x is int (inferred)
 x = 100                  // reassign — x must already exist
-x: int := 42             // explicit type annotation — always valid, never required here
+y: int := 42             // explicit type annotation — always valid, never required here
 
 const MAX := 100         // compile-time constant — value must be a literal or compile-time expression
 const API_VERSION: int := 2
@@ -41,7 +41,7 @@ scope chain to find the name wherever it lives. This is the Go model — mandato
 
 Opening braces go on the same line as the keyword. Bare `{ }` is always a block.
 
-```grob
+```grob fragment
 if (condition) {
     // block
 }
@@ -68,7 +68,7 @@ operator, comma, open bracket or parenthesis, member access dot, or lambda arrow
 **Leading dot** — the next line begins with `.`. The lexer peeks one token across
 the newline.
 
-```grob
+```grob fragment
 // Leading dot — recommended for method chains
 result := files
     .filter(f => f.extension == ".log")
@@ -76,12 +76,12 @@ result := files
     .sort()
 
 // Trailing operator
-total := price
-    + tax
-    + shipping
+total := price +
+    tax +
+    shipping
 
 // Multi-line function call
-result := someFunction(
+output := someFunction(
     arg1,
     arg2
 )
@@ -106,7 +106,7 @@ semantics will be attached when `grob doc` tooling exists post-MVP.
 
 ## String Literals
 
-```grob
+```grob fragment
 "hello"                 // double-quoted
 "Hello ${name}"         // interpolation
 `raw\nstring`           // raw string — backtick-delimited, no escape processing

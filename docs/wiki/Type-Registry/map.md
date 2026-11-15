@@ -51,7 +51,7 @@ opposite of the array's throwing `remove(index)`. Calling any of the three on a
 
 ## Indexing and iteration — built (D-374)
 
-```grob
+```grob fragment
 value := headers["Content-Type"]  // string? — nil if the key is absent
 
 for k, v in headers {

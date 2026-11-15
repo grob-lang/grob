@@ -118,9 +118,9 @@ public sealed class DatePluginTests {
     public void Today_UsesMidnightsOwnUtcOffset_NotNows() {
         // CodeRabbit review, PR #143: date.today() previously reused `now`'s offset for
         // midnight, wrong on a day the local zone's offset changes (a DST transition).
-        // TimeZoneInfo.Local is not mockable, so this cannot force an actual transition
-        // day, but it does pin the implementation to computing midnight's own offset
-        // rather than reusing `now`'s — the two happen to coincide outside a transition.
+        // This runs in the host zone, where the two offsets coincide outside a transition;
+        // DatePluginZoneTests.Today_InjectedZoneTransitionDay_UsesMidnightsOwnOffset forces
+        // an actual transition day through an injected zone (R-32).
         var vm = NewRegisteredVm();
         DateTimeOffset localNow = new DateTimeOffset(PinnedUtc).ToLocalTime();
         var midnight = new DateTime(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0, DateTimeKind.Unspecified);

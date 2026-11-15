@@ -36,14 +36,14 @@ The safe path has the shorter name by design.
 
 ### Run a command safely
 
-```grob
+```grob fragment
 result := process.run("az", ["group", "show", "--name", group_name])
 print(result.stdout)
 ```
 
 ### Fail fast
 
-```grob
+```grob fragment
 process.runOrFail("git", ["commit", "-m", message])
 ```
 

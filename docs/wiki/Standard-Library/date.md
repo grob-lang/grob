@@ -26,7 +26,7 @@ common source of conversion friction.
 
 ```grob
 d := date.parse("2026-04-05")
-d := date.parse("05/04/2026", "dd/MM/yyyy")
+d2 := date.parse("05/04/2026", "dd/MM/yyyy")
 ```
 
 ## Formatting
@@ -37,7 +37,7 @@ d := date.parse("05/04/2026", "dd/MM/yyyy")
 | `toIsoDateTime()` | `→ string` | `"2026-04-05T14:30:00Z"` |
 | `format(pattern: string)` | `→ string` | Custom format |
 
-```grob
+```grob fragment
 d.format("dd MMM yyyy")        // "05 Apr 2026"
 d.format("dd/MM/yyyy HH:mm")   // "05/04/2026 14:30"
 ```
@@ -47,7 +47,6 @@ d.format("dd/MM/yyyy HH:mm")   // "05/04/2026 14:30"
 | Method | Signature |
 |--------|-----------|
 | `addDays(n: int)` | `→ date` |
-| `minusDays(n: int)` | `→ date` |
 | `addMonths(n: int)` | `→ date` |
 | `addHours(n: int)` | `→ date` |
 | `addMinutes(n: int)` | `→ date` |
@@ -104,7 +103,7 @@ Zone names are preferred: `"Europe/London"`, `"America/New_York"`.
 ### File age check
 
 ```grob
-cutoff := date.today().minusDays(30)
+cutoff := date.today().addDays(-30)
 
 for file in fs.list("C:\\Logs") {
     if (file.modified < cutoff) {

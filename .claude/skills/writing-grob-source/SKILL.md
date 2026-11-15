@@ -1,6 +1,6 @@
 ---
 name: writing-grob-source
-description: Syntax, idioms and conventions for writing .grob programs — sample scripts, integration-test fixtures, error examples. Use this skill whenever you create or edit a .grob file, so the language source is idiomatic and valid against the v1 surface. Covers bindings, the three string forms, nullability, control flow, lambdas, collection pipelines, structs, errors, the stdlib surface and numerics.
+description: Syntax, idioms and conventions for writing .grob programs — sample scripts, integration-test fixtures, error examples and the grob blocks in README.md and the wiki. Use this skill whenever you create or edit a .grob file or a grob block, so the language source is idiomatic and valid against the v1 surface. Covers bindings, the three string forms, nullability, control flow, lambdas, collection pipelines, structs, errors, the stdlib surface and numerics.
 ---
 
 # Writing Grob language source
@@ -8,7 +8,9 @@ description: Syntax, idioms and conventions for writing .grob programs — sampl
 These rules apply to `.grob` files — programs written *in* Grob (sample scripts,
 integration-test fixtures, error examples). They do not apply to the C# that
 implements Grob. When you write a `.grob` file you are writing the language as a user
-would, so it must be idiomatic and must actually be valid against the v1 surface.
+would, so it must be idiomatic and must actually be valid against the v1 surface. The
+same holds for a `grob` block in the README or the wiki, which a gate also checks; see
+the last section for its info string.
 
 The canonical idiom reference is `docs/design/grob-sample-scripts.md` (the thirteen
 release-gate scripts). Match its style. The full language spec is
@@ -153,3 +155,34 @@ explicit method call (`.toFloat()`, `.toInt()`, `.toString()`).
   produce the diagnostic their gold master states. Do not edit a `.grob` without
   reviewing its `.expected.txt` against it; the `writing-an-error-test` skill says when a
   master may change.
+
+## `grob` blocks in the README and the wiki
+
+Every fence opened by ```` ```grob ```` in `README.md` and `docs/wiki/`, except
+`docs/wiki/ADR/`, is a public sample. The public samples gate (D-430,
+`tests/Grob.Integration.Tests/PublicSamples/`) runs each one through the CLI's own
+pipeline on every build. The words after `grob` on the fence line, its info string, say
+what kind of sample the block is. GitHub renders the fence by its first word, so readers
+never see them.
+
+- **No token: a program.** It is compiled and run, and must write no diagnostic and exit
+  0. An E1001 naming a namespace that is not built yet — `fs`, `json`, `csv`, `process`
+  and `regex`, and the Sprint 11 plugins' `http`, `auth`, `crypto` and `zip` — is set
+  aside. A block whose only diagnostics are those passes without being run. Any variable
+  it reads through `env` must be one of the gate's fixture variables, which are fake.
+- **`fragment`: an excerpt.** It uses names it never declares (`files`, `result`, a
+  helper defined elsewhere on the page). It is compiled but not run, and it must write at
+  least one diagnostic, every one of them E1001. A fragment that compiles clean is a
+  program, and the gate fails it until the token goes.
+- **`blocked-by=R-##`: waiting on a known defect.** The block fails its class because of
+  an open row in the Deferred Work Register (`docs/design/grob-open-questions.md`). It is
+  still run. Once the block passes, the gate fails until the token is removed; it also fails
+  a token naming a closed or absent row. It combines with `fragment`. Never use it for a
+  defect in the block itself: fix the block.
+
+Tokens are space-separated, case-sensitive and order-free, and anything else after `grob`
+fails the gate. A fence that looks like `grob` but is not extracted — indented,
+tilde-fenced, four backticks, `Grob`, `grob-x` — is reported as a near miss, so a sample
+cannot leave the gate by accident. A block outside the corpus is not checked: another
+fence language, an ADR page or a design document. `grob-sample-scripts.md` keeps D-417's
+own guard.

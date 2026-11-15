@@ -30,15 +30,15 @@ script after logging an error, call `exit(1)` explicitly.
 
 ### Operational logging
 
-```grob
-log.info("Starting deployment to ${env}")
+```grob fragment
+log.info("Starting deployment to ${environment}")
 process.runOrFail("az", ["deployment", "create", "--name", name])
 log.info("Deployment complete")
 ```
 
 ### Conditional severity
 
-```grob
+```grob fragment
 for drive in drives {
     if (drive.used_pct >= 90) {
         log.warning("${drive.name}: ${drive.used_pct}% used")
@@ -50,7 +50,7 @@ for drive in drives {
 
 ### Debug output
 
-```grob
+```grob fragment
 log.debug("Processing ${files.length} files")
 
 for file in files {

@@ -62,7 +62,7 @@ for file in fs.list("C:\\Photos") {
 ### Move old files to archive
 
 ```grob
-cutoff := date.today().minusDays(90)
+cutoff := date.today().addDays(-90)
 
 fs.list("C:\\Reports")
     .filter(f => f.modified < cutoff)

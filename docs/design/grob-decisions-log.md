@@ -432,6 +432,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-434 | November 2026 | Strategy — agentic development; Tooling — CLI, diagnostics; v1 scope; Deferred Work Register | **Adopts the agentic development strategy, by owner decision**: the toolchain has two readers, a person and an agent harness, and Grob's purpose is unchanged. Authorises `grob-agentic-strategy.md`. **Into v1, Sprint 12**: `grob check --json`, structured help and fixes on `Diagnostic`, foreign-idiom diagnostics and `grob skills`, after R-25, R-26 and R-29 close. **After Sprint 12**: an agent benchmark. **Syntax policy**: no change to suit agents before the benchmark exists, a diagnostic before a grammar change, every change a logged decision. Files R-36 and R-37; opens OQ-019, OQ-020 and OQ-021; annotates OQ-014. No source change; count unchanged at 120. |
 | D-435 | November 2026 | Security posture; Runtime — capability injection; Deferred Work Register | **Two trust modes, by owner decision; supersedes D-072.** A *trusted run* is D-072's posture unchanged and stays the default, the only mode v1 ships. A *restricted run*, post-v1, is for a script whose author is not trusted to stay in bounds — typically an agent: the host grants capabilities and an ungranted call fails. **The claim is a capability-gated standard library, never a sandbox**; plugins stay arbitrary code (D-073) and are refused in a restricted run unless granted. Files R-38; opens OQ-022 and OQ-023. No source change. |
 | D-436 | November 2026 | Runtime — capability-injection seam; Standard library — `fs`, `process`; Sprint 9C; Deferred Work Register | **The capability seam is a gate on Sprint 9C.** Every `fs` and `process` native, and every `json` and `csv` file read or write, reaches the OS through an injected capability: `IFileSystem` grown from D-430's one member, and a new `IProcessRunner`. Each interface member is one operation that either reads or changes state, never both. R-32's source guard widens to keep `Grob.Stdlib` free of direct file, directory and process calls. Makes D-319's sketch a requirement because D-435's restricted run and plan mode are an alternate host only if it holds. Files R-35. No source change. |
+| D-437 | November 2026 | Testing — public samples gate; Documentation — wiki; Runtime — capability injection; Standard library — `date`, `path`; Deferred Work Register | **Implements D-430: the public samples gate landed**, in five change groups. **123 blocks, each counted once: 45 run, 29 excused, 39 unblocked fragments and 10 blocked (five of them also marked `fragment`), 0 failing**; not D-430's 38 and 11, because W9 removed `formatAs.md` block 3's R-29 cascade. Chris's six rulings recorded: W6 widened to `Grob-Crypto.md`, whose double-quoted path compiled silently; STOPs 2 and 3 set aside; time-only `date.parse` with an offset takes today in that offset; W10's `if (…)`; W8 and W10 widened to their pages' stale tables; a near-miss fence guard. **R-32 closed**: `IClock.LocalZone` and `IFileSystem.CurrentDirectory`, `date.parse` classified lexically, a source guard. D-430 Decision 7's wording corrected: a drive-relative path on another drive resolves to that drive's root. Every mutation matched its prediction; 8b added because 8 cannot reach the unused-fixture guard. Suite 5,108; `Grob.Cli` 91.45%, `Grob.Stdlib` 96.82%. R-29 amended; **R-39 opens** for the README sample that `fs` makes runnable before parameters bind. *Findings for the corpus sweep* listed. Count unchanged at 120. |
 
 ---
 
@@ -16657,6 +16658,216 @@ isolation), D-411 and D-432 (the rebuilt Sprint 9C), D-435.
 
 ---
 
+### D-437 — Public samples gate landed: 123 README and wiki blocks checked on every build, 45 run, 29 excused, 39 fragments and 10 blocked; R-32 closed (November 2026)
+
+Area: Testing — public samples gate; Documentation — wiki; Runtime — capability injection; Standard library — `date`, `path`; Deferred Work Register
+Supersedes: none (implements D-430; closes R-32)
+Superseded by: none
+
+**D-430 authorised this increment; this entry records it as landed and where the
+landing diverged from D-430, its prompt and its gate report.** The divergences are the
+point of the entry; the code, the tests and the commit messages carry the rest.
+Error-code count unchanged at **120**; no `ErrorCatalog` edit, opcode, grammar change or
+`GrobType`, `GrobValueKind` or `TokenKind` variant. No change to `Grob.Compiler`, `Grob.Vm`
+or `Grob.Core`; `Grob.Runtime`, `Grob.Stdlib` and `Grob.Cli` changed in change group 1
+only, as D-430 licensed.
+
+---
+
+**The gate.** Re-measured on SDK 10.0.303: 123 blocks across 38 pages, and D-430's
+classification held block for block. One STOP fired outright. `Plugins/Grob-Crypto.md`'s
+second block writes `"C:\releases\tool.zip"`, W6's defect on a page the closed list did
+not name. It is worse than W6's own site: `\r` and `\t` are valid escapes, so the path
+compiles silently to `C:`, a carriage return, `eleases`, a tab and `ool.zip`. Two more
+STOPs fired on a literal reading. Chris gave six rulings on 14 November:
+
+1. **W6 widens to `Grob-Crypto.md` block 2**: both paths become backtick raw strings, on
+   D-285. Its verdict stays `fragment`.
+2. **STOPs 2 and 3 are set aside.** `RunCommand.cs`'s read of a relative script path is
+   the composition root interpreting its own command line, which no script can observe,
+   so it is outside R-32. The test-side capability assembly sites the prompt did not list
+   are tests of `Grob.Cli` and `Grob.Stdlib` constructing fakes, inside group 1's licence.
+3. **Time-only `date.parse` input with an explicit offset takes today in the input's own
+   offset**, computed from `clock.UtcNow`: .NET's convention, without the host read.
+4. **W10 covers parenthesising its bare `if`**, so the rewritten block is legal code.
+5. **W8 and W10 widen to the stale reference sites on their pages**: `Standard-Library/date.md`'s
+   `minusDays` table row, and `guid.md`'s API table and notes.
+6. **A near-miss fence guard is added**, so a sample cannot leave the gate through a fence
+   the extractor does not take.
+
+**What landed, in five change groups.**
+
+1. **R-32** (`c9526eb`, `feat(stdlib)`). `IClock.LocalZone` and a new `IFileSystem` whose
+   one member is `CurrentDirectory`, supplied by `HostCapabilities`. Every `date` native
+   and `path.resolve` reads them; a source guard keeps `Grob.Stdlib` free of the ambient
+   reads.
+2. **The harness** (`02af086`): `tests/Grob.Integration.Tests/PublicSamples/` —
+   extraction, the info-string grammar, D-430's verdicts over `RunCommand`'s own pipeline,
+   and the guards for excused namespaces, fixture variables and near-miss fences.
+3. **The wiki corrections** (`c5b99b9`): W1 to W13 on 14 pages and the one line of
+   `grob-language-fundamentals.md` §14, widened by rulings 1, 4 and 5. Each corrected block
+   reached its predicted verdict through the CLI.
+4. **The corpus enters the gate** (`c8f81fa`). Red first with no info strings: 49 cases
+   failed, as predicted. Info strings then went on 49 fences across 19 pages.
+5. **Corrections and record**: this entry, `grob-v1-requirements.md` §14's sentence,
+   `writing-grob-source`'s info-string section and the register. `CONTRIBUTING.md` gives
+   no guidance on documentation samples, so it gains no pointer.
+
+**123 blocks, each counted once: 45 run, 29 excused, 39 fragments and 10 blocked, 0
+failing.** Five of the 10 blocked blocks are also marked `fragment`; the 39 are the
+unblocked fragments. Suite green at **5,108** tests (Integration 882, up from 756). Line coverage,
+the union across every test project's report: `Grob.Cli` **91.45%** (246 of 269
+coverable lines), `Grob.Stdlib` **96.82%** (1,034 of 1,068), both above D-328's bar.
+
+---
+
+**Divergences from the prompt, D-430 and the gate report.**
+
+- **The tallies are 39 fragments and 10 blocked, not 38 and 11** (gate F2). W9 gives
+  `formatAs.table` its `columns:` label, which removes `formatAs.md` block 3's R-29
+  cascade and leaves a plain fragment. It is the only block that differs. The red count
+  was 49 either way, split 39, five R-29 and five R-30, not 38, six and five.
+- **D-430 Decision 7 misdescribes the accepted behaviour change** (gate F4). On Windows a
+  drive-relative path on another drive, `D:sources` under a C: current directory,
+  resolves to **that drive's root**, `D:\sources`. It does not resolve "from the
+  capability's directory alone". The per-drive directory is no longer consulted, which is
+  the point, and `Resolve_DriveRelativePathOnAnotherDrive_ResolvesToThatDrivesRoot` pins
+  it. That test returns early off Windows: xUnit 2.9.3 has no dynamic skip, and the
+  prompt forbids `Skip =`.
+- **`date.parse` classifies its input lexically** (gate F5), in
+  `src/Grob.Stdlib/DateParse.cs`. No `DateTimeStyles` combination avoids a host read:
+  `DateTimeOffset` parsers give offset-free input the host's offset, and `DateTime`
+  parsers convert offset-bearing input through the host zone. The ISO form counts as
+  explicit-offset only when a `Z` or `±hh[:]mm` directly follows a clock time, so a date's
+  own hyphens never read as an offset. The pattern form counts as explicit-offset when
+  `z` or `K` appears outside quotes and unescaped. A pattern with no `y`, `M` or `d` is
+  time-only. An offset-free parse that still comes back with a zone designator (a
+  trailing `GMT`, the standard format `"o"`) is reparsed and keeps that designator's
+  offset. One edge is stated, not guarded: input naming 1 January of year 1 reads as
+  time-only, since `NoCurrentDateDefault` cannot tell the two apart.
+- **The PR review found four more host reads in `date.parse`**, each fixed with a
+  regression test. A `K` pattern given input with no offset took the host's offset: `K`
+  accepts an absent offset, so the input, not the pattern, now decides, by first trying the
+  pattern with `K` removed. The standard formats `u`, `r` and `R` are UTC, though
+  `DateTime` reads their `Z` or `GMT` as a literal. A time-only input with a designator
+  the lexical split does not recognise (`14:30 GMT`) took the host's date. A pattern with
+  a month or day but no year (`MM-dd`, and the standard `M`) took the host's year, because
+  `NoCurrentDateDefault` covers only a wholly missing date: the injected year is now
+  appended as a literal, in the input's own offset when it has one. A second review pass
+  tightened both: each candidate year around a New Year boundary is tried and kept only
+  when the parsed offset dates it in that year, so a weekday is checked against the right
+  year; and `%K` is removed as a whole token. **One residual stays
+  host-dependent**: the one-argument form's free-form partial date (`"Jul 1"`) still takes
+  the host's year, because there is no pattern to extend and nothing lexical says reliably
+  whether a year was given. `DateParse`'s remarks state it.
+- **`DatePlugin.BuildNamedType` became an instance method** so `toLocal` can read the
+  zone, and `PathPlugin` is no longer documented as pure; its class doc names the
+  capability.
+- **The R-32 source guard is a test** (`StdlibAmbientReadGuardTests` in
+  `Grob.Consistency.Tests`), not a `tooling/Grob.DriftCheck` rule, to stay inside group 1's
+  licence. It counts commas at the call's own nesting level to find one-argument
+  `Path.GetFullPath(` calls. Two comments in `PathPlugin.cs` were reworded because the text
+  scan flagged them.
+- **The test zones.** `TestClock`'s zone defaults to `TimeZoneInfo.Local`, so the tests
+  written before R-32 keep their meaning. `TestZones.PlusThree` is +03:00 with daylight
+  saving. The harness's `FixedClock` uses a fixed +03:00 with none, and
+  `FixedFileSystem.HarnessDirectory` sits under the temp path and is never created.
+- **The near-miss guard reports any fence whose first info word looks like `grob` and
+  that extraction does not take.** That is ruling 6's rule — an indented, tilde, four-
+  backtick or differently cased fence — plus a column-0 `grob-x` or `grob,x`, which would
+  otherwise escape unseen.
+- **The fixture guard is lexical**: each fixture variable must appear as a double-quoted
+  literal in some block. The gate report proposed a recording environment over the
+  executed blocks; the lexical check needs no cross-case run.
+- **The E1001 subject comes from a header pass in the harness's runner**, the first quoted
+  name in the message. `ExampleDiagnostic` was not widened, because its equality drives
+  the error-examples comparison.
+- **A fragment whose only diagnostics are excused E1001s fails** as a complete program. It
+  should be a bare block, which then passes as excused. This follows D-430's "after
+  setting aside".
+- **The harness classes were written before their unit tests**, not after a red run. The
+  mutation verifications stand in for the red step, and `02af086`'s message says so.
+- **No hang protection.** xUnit 2's `Timeout` needs asynchronous tests, and the host-code
+  rules forbid `Task.Run`. A watchdog thread was considered in review and rejected: the VM
+  has no cancellation, so a watchdog could only abandon a looping sample, still spinning,
+  not stop it. Real protection is an execution budget in `Grob.Vm`, outside this increment;
+  the CI job's timeout bounds a hang meanwhile. Nothing hung in any run.
+- **The extractor follows CommonMark's indentation rule for fences**: a fence line with
+  four or more leading spaces is indented code, and a closer takes at most three. Both
+  were found in review; an indented `grob`-like line is still reported as a near miss,
+  since inside a list item it does open a fence.
+- **The R-32 source guard skips string and char literals** when it counts a
+  `Path.GetFullPath(` call's arguments, so `Path.GetFullPath("a,b")` is no longer read as
+  a two-argument call. Found in review.
+- **`DeferredWorkRegister` reads rows of two or more digits** (gate F7). It matched exactly
+  two, which would have reported an `R-100` blocker as absent.
+- **W10's "API table" is the whole function table.** Ruling 5 cited the `v4`/`v5`/`v7`
+  rows, but `parse` (which throws), `tryParse`, `empty` (a constant, not a call) and
+  `namespaces` were corrected too, because the rewritten example's `tryParse` would
+  otherwise contradict the table above it. The type-methods table is a separate table and
+  is listed below.
+- **Mutation 9 ran in group 1 and mutations 1 to 8 and 10 in group 4**, by Chris's
+  approval: their predictions name corpus cases, which exist only once the corpus is
+  wired in. Every mutation failed exactly the tests predicted before it ran. Four
+  predictions were wider than the prompt's. Mutation 1 also fails the exit-code and
+  blocked-block verdict tests, which depend on execution too. Mutation 2 fails five
+  blocked fragments, not six (F2). Mutation 3 also fails the only-excused-E1001s fragment
+  test. Mutation 4 also fails two verdict tests that use a non-namespace E1001, and 39
+  fragment cases, not 38. **Mutation 8 cannot reach the unused-fixture guard**: dropping
+  the environment from the run leaves the fixture list unchanged. A further mutation, 8b,
+  makes the guard report nothing; it fails the guard's planted test.
+
+---
+
+**Register.** **R-32 closed.** **R-29** amended: five public samples are blocked on it,
+not six. R-30 measured as D-430 and D-432 wrote it; no amendment. **R-39 opens**: the
+README's first sample reads `param` values and renames files through `fs.list`. It passes
+today only because `fs` is excused. When the `fs` increment builds `fs` the block is run,
+and it fails until Sprint 10 binds parameters (gate F6), so that increment marks it
+`blocked-by=R-39`. Its file operations must meet the harness's in-memory `IFileSystem`,
+which D-436's R-35 already requires, so R-39 owns only the block. This entry was numbered
+from the merged log's live tail after D-434 to D-436 and R-35 to R-38 landed on `main`
+while the increment ran.
+
+---
+
+**Findings for the corpus sweep.** Documentation defects the gate found outside the
+closed list, by file and line, as of this entry's commit:
+
+- `docs/wiki/CLI/Commands.md:42, 44`: `--env` invocations, inconsistent with W2's rename
+  of the parameter to `environment`.
+- `docs/wiki/Standard-Library/guid.md:23-25`: the type-methods table writes
+  `toStringUpper()` and `toStringN()` where `grob-stdlib-reference.md` and the registered
+  members write `toUpperString()` and `toCompactString()`, and it has no `version` row.
+- `docs/wiki/Language-Specification/Types.md:11`,
+  `docs/wiki/Language-Specification/Expressions.md:26` and
+  `docs/wiki/Type-Registry/float.md:37-38`: scientific-notation literals, which are
+  post-MVP (`grob-grammar-audit.md` G3). The lexer splits `1.5e10` into `1.5` and the
+  identifier `e10`, so `float.md`'s *Literals* block is a `fragment` only by accident of
+  lexing (gate F1). Once those two lines go, the block compiles clean and the gate fails
+  its marker, which is the intended prompt to drop it.
+- `docs/wiki/Language-Specification/Control-Flow.md:55`: the `select` example mixes
+  `case 0` and `case 1, 2` with `case "error"`. With `value` declared as an `int` the
+  string case raises E0001. Found in PR review. It passes the gate only because the block
+  is a fragment: its undeclared `value` is typed `unknown`, which hides the mismatch.
+
+That last finding is a limit of the fragment class, not one block's: a type error
+downstream of an undeclared name is invisible to the gate. The sweep should read each
+`fragment` block by eye for it.
+
+The style D-430's prompt left out of scope also remains for the sweep: Windows paths
+written `"C:\\..."` against D-285, trailing commas §3.5 requires in multi-line literals,
+and the retired term "`param` block" in a heading.
+
+Cites D-430 (the increment's authority), D-420 (the run and its stopping rule), D-428 and
+D-429 (the seam, the register guard and the CLI reader reused), D-343 (capability
+injection), D-417 (the principle the gate implements), D-328 (the coverage bar), D-285,
+D-274, D-410, D-412, D-342 and D-406 (the corrections' authorities), D-436 (R-35, the
+filesystem capability R-39 relies on) and D-431 (the corpus sweep, which reads the
+findings above).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -16880,7 +17091,12 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-434, D-435 and D-436 added, with spec edits; no source change. **The_
+_November 2026 — D-437 added, with wiki corrections and source change. **The public samples gate_
+_landed** (D-430): 123 README and wiki blocks checked on every build — 45 run, 29 excused, 39_
+_fragments, 10 blocked. R-32 closed in `Grob.Stdlib`; R-29 amended; R-39 opened. The entry records_
+_Chris's six rulings and every divergence from D-430 and its prompt. It ends with the *Findings_
+_for the corpus sweep* that D-431 reads. Count unchanged at 120._
+_Previous: November 2026 — D-434, D-435 and D-436 added, with spec edits; no source change. **The_
 _agentic development strategy is adopted** by owner decision (D-434): the toolchain has two_
 _readers, and `grob-agentic-strategy.md` is authorised. Sprint 12 gains `grob check --json`,_
 _structured fixes, foreign-idiom diagnostics and `grob skills`; a benchmark follows; syntax is_

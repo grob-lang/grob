@@ -21,10 +21,10 @@ import Grob.Zip
 ```grob
 import Grob.Zip
 
-zip.create("C:\backup\reports.zip", "C:\Reports")
-zip.extract("C:\backup\reports.zip", "C:\Restored")
+zip.create(`C:\backup\reports.zip`, `C:\Reports`)
+zip.extract(`C:\backup\reports.zip`, `C:\Restored`)
 
-entries := zip.list("C:\backup\reports.zip")
+entries := zip.list(`C:\backup\reports.zip`)
 for entry in entries {
     print("${entry.name}  ${entry.size} bytes")
 }

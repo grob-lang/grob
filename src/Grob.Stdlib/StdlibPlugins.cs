@@ -20,15 +20,17 @@ public static class StdlibPlugins {
             IEnvironment environment,
             IStandardStreams streams,
             IClock clock,
+            IFileSystem fileSystem,
             bool verbose) {
         ArgumentNullException.ThrowIfNull(randomSource);
         ArgumentNullException.ThrowIfNull(environment);
         ArgumentNullException.ThrowIfNull(streams);
         ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(fileSystem);
 
         return [
             new MathPlugin(randomSource),
-            new PathPlugin(),
+            new PathPlugin(fileSystem),
             new StringsPlugin(),
             new EnvPlugin(environment),
             new LogPlugin(streams, verbose ? LogLevel.Debug : LogLevel.Info),

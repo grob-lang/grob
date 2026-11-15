@@ -53,7 +53,7 @@ non-nil at compile time.
 name: string? := nil     // may be nil
 count := 42              // never nil — int is non-nullable
 
-print(name)              // compile error — name might be nil
+print(name)              // prints nil — print() accepts a nullable value
 
 if (name != nil) {
     print(name)          // safe — compiler narrows type to string
@@ -62,13 +62,13 @@ if (name != nil) {
 
 ### Nil coalescing
 
-```grob
+```grob fragment
 display := name ?? "Anonymous"
 ```
 
 ### Optional chaining
 
-```grob
+```grob fragment
 length := name?.length ?? 0
 ```
 
@@ -99,7 +99,7 @@ optional — the default is used if omitted.
 
 ### Construction
 
-```grob
+```grob fragment
 r := Repo {
     name:    "grob",
     ssh_url: "git@github.com/grob-lang/grob"
@@ -157,7 +157,7 @@ Conversions are methods on the source type. There is no `int.parse()`.
 
 Functions with no natural receiver live on the type as a namespace:
 
-```grob
+```grob fragment
 int.min(a, b)
 int.max(a, b)
 int.clamp(v, lo, hi)
