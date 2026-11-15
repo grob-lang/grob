@@ -23,8 +23,9 @@ into the comment the human triggers and sends.
   scans, so this holds). If no analysis is found for the PR, **fail clearly** — say so
   and stop; do not present an empty result as a clean bill.
 - `curl`, `jq` and `gh` are on `PATH`.
-- A SonarCloud user token is in `$SONAR_TOKEN` (the same token the CI scan uses). Never
-  echo it, never paste it into a comment, never write it to a file.
+- A SonarCloud user token in `$SONAR_TOKEN` (the same token the CI scan uses) is
+  optional: the project is public, so without one the calls run anonymously (Step 1).
+  When it is set, never echo it, never paste it into a comment, never write it to a file.
 
 ## Step 1 — resolve inputs
 
@@ -127,8 +128,9 @@ issues is not done.
   v1.
 - **Rate limits.** Some Cloud APIs are rate-limited. Three calls per review is well
   within them; do not loop these in a tight retry.
-- **Fail clearly over fail quiet.** Every unresolved input (token, key, PR, missing
-  analysis) stops with a one-line reason. An empty issue list from a real analysis is a
+- **Fail clearly over fail quiet.** Every unresolved input (key, PR, missing analysis)
+  stops with a one-line reason. An unset token does not: the fetch runs anonymously and
+  the block says so. An empty issue list from a real analysis is a
   pass; an empty issue list from a missing analysis is a bug — distinguish them via the
   Step 2 gate check.
 - **Self-hosted caveat.** On old self-hosted SonarQube Server, the `pullRequest` filter on

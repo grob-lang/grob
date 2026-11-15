@@ -12,7 +12,7 @@ bootstrap code, not a place to hide untested logic.
 
 ## Coverage target
 
-Grob targets **≥ 90% line coverage** on production code across the solution,
+Grob targets **≥ 90% line and branch coverage** (D-328) on production code across the solution,
 measured by SonarCloud against Cobertura output from `dotnet test`.
 
 The target applies to in-scope production code only. Excluded files (listed
@@ -30,15 +30,16 @@ the compiler and VM together. Contains no business logic of its own — every
 meaningful operation delegates to a class in `Grob.Compiler`, `Grob.Vm`, or
 `Grob.Runtime`.
 
-**How it is tested:** End-to-end integration tests in `Grob.Integration.Tests` drive
-`grob run` and the REPL through the CLI's own pipeline: the error-examples harness, the
-public samples gate and the smoke tests. These tests exercise the entry point in its real
-configuration, which is the only configuration that matters.
+**How it is tested:** Integration tests in `Grob.Integration.Tests` drive the classes
+`Program.cs` dispatches to. The error-examples harness, the public samples gate and the
+sprint smoke tests call `RunCommand`; the REPL tests call `ReplCommand`. No test invokes
+`Program.cs` itself, so its argv parsing and dispatch are untested: keeping the file thin
+is what keeps that gap small.
 
 The other subcommands do not exist yet, and their end-to-end tests come with them:
 `grob install` and `grob restore` in Sprint 11, `grob fmt` and `grob check` in Sprint 12
-(`grob-v1-requirements.md`). The validation scripts (D-346) run in
-`Grob.Compiler.Tests`, not through the CLI.
+(`grob-v1-requirements.md`). The validation scripts (D-346) are lexed, parsed and
+type-checked in `Grob.Compiler.Tests`, not executed, and not through the CLI.
 
 **Size constraint:** `Program.cs` must remain thin. If it grows past ~30 lines,
 extract argv parsing and subcommand dispatch into a `CommandLineRunner` (or

@@ -630,7 +630,7 @@ id := guid.tryParse(someString)                              // returns nil if i
 empty := guid.empty   // 00000000-0000-0000-0000-000000000000
 
 // Instance properties
-id.version    // int — 4, 5, or 7
+id.version    // int — 4, 5 or 7 when generated; a parsed GUID's own version; 0 for guid.empty
 id.isEmpty    // bool — true if all zeros
 
 // String representation — canonical form is lowercase with hyphens

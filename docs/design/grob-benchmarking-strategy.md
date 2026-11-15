@@ -359,32 +359,23 @@ bench/Grob.Benchmarks/
 
 Three classes of test material, three different storage policies.
 
-### 7.2 Hand-Constructed VM Chunks — Code, Not Files
+### 7.2 VM Fixtures — `.grob` Sources Compiled Once
 
-VM execution benchmarks construct their `Chunk` instances directly in
-C#. There is no `.chunk` file format and there should not be one — a
-hand-constructed chunk is code, and committing it as code keeps it
-reviewable, refactorable and visible alongside the benchmark that
-consumes it.
+VM execution benchmarks read ordinary `.grob` sources from `Fixtures/Vm/`
+(`decl-and-arith.grob`, `control-flow.grob` and the rest) and compile each
+with the real compiler in `[GlobalSetup]` (D-386 Q1', D-387). There is no
+`.chunk` file format and there should not be one, and no chunk is built by
+hand: a compiled source stays readable and measures the bytecode the
+compiler actually emits, which a hand-written chunk would drift from.
 
-```csharp
-internal static class VmFixtures
-{
-    public static Chunk TightArithmeticLoop { get; } = BuildLoop();
-    public static Chunk RecursiveFibonacci  { get; } = BuildFib();
-    // …
-
-    private static Chunk BuildLoop() { /* emit opcodes */ }
-}
-```
-
-The static read-only initialisation means construction cost is paid
-once at type initialisation, not per iteration. The chunk is reused
-across every iteration of the benchmark that consumes it.
+Compilation runs once per benchmark, outside the measured region, and the
+resulting `Chunk` is reused across every iteration of the benchmark that
+consumes it. Through Sprint 9 this section described hand-constructed
+chunks in C#; §4.2's implementation note records the correction.
 
 ### 7.3 End-to-End Scripts — Frozen Copies in Fixtures
 
-End-to-end benchmarks consume `.grob` source files. These are **frozen
+End-to-end benchmarks consume `.grob` source files. These will be **frozen
 copies** of the eleven validation suite scripts (D-346), kept under
 `Fixtures/EndToEnd/` and **not** referenced live from `tests/Grob.Integration.Tests/`.
 
@@ -450,8 +441,8 @@ numbers stop meaning anything. The right answer differs by category.
 
 **VM execution benchmarks:**
 
-- `[GlobalSetup]` builds the hand-constructed `Chunk` (via the static
-  fixture properties from §7.2) and constructs a `VirtualMachine` instance.
+- `[GlobalSetup]` compiles the `.grob` fixture source into a `Chunk` with
+  the real compiler (D-387; §7.2) and constructs a `VirtualMachine` instance.
 - `[IterationSetup]` resets the VM's stack, globals and call frame
   array to a clean state. This is necessary because the measured
   method mutates VM state, and a benchmark that runs 1000 iterations
@@ -463,13 +454,13 @@ numbers stop meaning anything. The right answer differs by category.
 
 - `[GlobalSetup]` reads the script source from disk into a `string`
   field. This runs once.
-- `[IterationSetup]` constructs a fresh `VirtualMachine`. This runs every
-  iteration because end-to-end benchmarks measure the full lifecycle
-  including VM construction. The alternative — reusing a VM — would
-  hide construction cost, which is a real part of script startup
-  performance.
-- The measured method compiles the source and runs the resulting
-  `Chunk` on the iteration-fresh VM.
+- The measured method constructs a fresh `VirtualMachine`, compiles the
+  source and runs the resulting `Chunk` on it. Construction sits inside the
+  measured method, not in `[IterationSetup]`, because BenchmarkDotNet does
+  not time `[IterationSetup]`, and end-to-end benchmarks measure the full
+  lifecycle including VM construction. Reusing a VM, or building it in
+  setup, would hide construction cost, which is a real part of script
+  startup performance.
 - `[GlobalCleanup]` is empty.
 
 **Stability test:**

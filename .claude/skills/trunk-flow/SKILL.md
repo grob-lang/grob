@@ -30,7 +30,7 @@ work that happens _inside_ a branch, see:
    `/commit-message`, push it and open or update the PR. The merge is
    Chris's action.
 5. **The trunk is always green.** Every commit on `main` must pass tests
-   _and_ keep every project at or above 90% line coverage. You don't merge
+   _and_ keep every project at or above 90% line and branch coverage (D-328). You don't merge
    red. You don't merge below the coverage bar. Chris doesn't either.
 
 ## Where increment prompts live
@@ -222,7 +222,7 @@ When the branch is ready:
 1. **Confirm tests pass.** `dotnet test` against the whole solution.
    Everything green.
 2. **Confirm coverage.** Run coverage on each affected project. Every
-   project at or above 90% line coverage. If any project dropped, either
+   project at or above 90% line and branch coverage. If any project dropped, either
    add tests or add `[ExcludeFromCodeCoverage]` with a substantive
    `Justification` — and note it in the relevant commit body before
    handing off.

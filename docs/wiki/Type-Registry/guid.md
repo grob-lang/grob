@@ -18,7 +18,7 @@ compile error.
 
 | Member | Kind | Signature | Notes |
 |--------|------|-----------|-------|
-| `version` | property | `→ int` | 4, 5, or 7 |
+| `version` | property | `→ int` | The version encoded in the value: 4, 5 or 7 for a generated GUID, whatever a parsed GUID carries, 0 for `guid.empty` |
 | `isEmpty` | property | `→ bool` | |
 | `toString()` | method | `→ string` | Lowercase with hyphens |
 | `toUpperString()` | method | `→ string` | Uppercase with hyphens |

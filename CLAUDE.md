@@ -93,8 +93,8 @@ Chris.**
   line.
 - **Test routing (§3.5).** Each test goes to the project matching its kind —
   `Grob.Compiler.Tests`, `Grob.Vm.Tests`, `Grob.Integration.Tests` and so on.
-- **Coverage.** 90% line coverage is a hard floor, on the whole (D-328) and on
-  every PR's new code (Chris's ruling, recorded with the corpus sweep), and more is
+- **Coverage.** 90% line and branch coverage is a hard floor, on the whole (D-328)
+  and on every PR's new code (Chris's ruling, recorded in D-438), and more is
   always wanted: 90% is the least acceptable
   figure, not a target to stop at. SonarCloud's free-plan PR gate fails only
   below 80% on new code and cannot be raised, so a green Sonar gate does not mean

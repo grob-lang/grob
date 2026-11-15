@@ -22,7 +22,7 @@ required. Registers the `guid` built-in type.
 | `toString()` | `→ string` | Lowercase hyphenated format (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`) |
 | `toUpperString()` | `→ string` | Uppercase hyphenated format |
 | `toCompactString()` | `→ string` | 32 hex digits, no hyphens |
-| `version` | `→ int` | The GUID version: 4, 5 or 7 |
+| `version` | `→ int` | The version encoded in the value: 4, 5 or 7 for a generated GUID, whatever a parsed GUID carries, 0 for `guid.empty` |
 | `isEmpty` | `→ bool` | True if all zeros |
 
 ## Examples

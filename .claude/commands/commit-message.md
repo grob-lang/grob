@@ -23,7 +23,10 @@ at least one aborted commit cycle every time.
    `src/CLAUDE.md`).
 3. **Build and test:** `dotnet build Grob.slnx` then `dotnet test Grob.slnx --nologo`.
    Zero warnings, zero failures.
-4. **Then** `git add -A`. Hooks are the safety net, not the workflow.
+4. **Then stage the change's own files** by path (`git add <path>…`), never `git add -A`:
+   that sweeps in unrelated work and scratch. If the caller has already staged a
+   selection, as `/review-pr-comments` does, keep it and stage nothing more. Hooks are
+   the safety net, not the workflow.
 
 ## Procedure
 

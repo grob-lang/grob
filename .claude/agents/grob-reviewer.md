@@ -60,7 +60,7 @@ A feature with only a happy-path test is not done. Flag the missing categories
 explicitly: "no failure-path test for unterminated string", "no edge-case test for EOF
 mid-token", etc.
 
-**6. Coverage metrics.** The 90% line coverage bar is a hard floor.
+**6. Coverage metrics.** The 90% line and branch coverage bar (D-328) is a hard floor.
 
 - Run the coverage report against the diff if the tooling allows; otherwise reason from
   the changed files and the tests present.

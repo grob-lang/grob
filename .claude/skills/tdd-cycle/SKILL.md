@@ -12,7 +12,7 @@ explicitly, not silently.
 A feature is not done after one green cycle. The cycle below covers a
 single behaviour; a feature is done when happy path, failure path, and
 edge cases are all green and the project is still at or above 90% line
-coverage. See `Step 5: Extend coverage` and `Step 6: Coverage check`
+and branch coverage (D-328). See `Step 5: Extend coverage` and `Step 6: Coverage check`
 below.
 
 ## The full procedure
@@ -152,7 +152,7 @@ adversarial row from Step 4 is paid down here.
 ### Step 6: Coverage check
 
 Run coverage on the affected project. Confirm at or above 90% line
-coverage. If it dropped:
+and branch coverage. If it dropped:
 
 - **Add the missing tests.** Coverage gaps usually point at a path the
   feature exercises that none of the tests reach. Add a test.

@@ -80,7 +80,7 @@ These are not preferences. Breaking one is a defect even if the tests pass:
   `InternalsVisibleTo` for their test assembly. Do not grow the public surface to
   enable testing.
 - **Coverage is non-negotiable.** Before drafting the commit message, confirm the
-  project is at or above 90% line coverage. If it dropped, add the missing tests or add
+  project is at or above 90% line and branch coverage (D-328). If it dropped, add the missing tests or add
   `[ExcludeFromCodeCoverage]` with a substantive `Justification` — and note the change
   in the commit body. "Helper method" is not a justification.
 - **Never on `main`.** Always work on a short-lived branch (use `/start-branch`). If

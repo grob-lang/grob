@@ -1333,7 +1333,7 @@ Long-form documentation for each code (cause, example, fix) is read by
 |`Grob.Compiler.Tests`   |Lexer (token stream), parser (AST shape), type checker (error detection, inference), compiler (bytecode output)|Given source → assert tokens/AST/diagnostics/bytecode. **Highest priority — this is where bugs will live**|500+           |
 |`Grob.Vm.Tests`         |Fetch/decode/execute, stack behaviour, call frames, closures                                                   |Construct chunks by hand → assert execution results                                                       |100+           |
 |`Grob.Stdlib.Tests`     |All 13 core module APIs                                                                                        |Register plugin into VM instance → assert outputs                                                         |200+           |
-|`Grob.Integration.Tests`|End-to-end through full pipeline                                                                               |Given `.grob` source file → assert stdout, stderr, exit code. The smoke scripts, the error-examples harness and the public samples gate run here; the eleven validation scripts run in `Grob.Compiler.Tests` (D-346)|50+            |
+|`Grob.Integration.Tests`|End-to-end through full pipeline                                                                               |Given `.grob` source file → assert stdout, stderr, exit code. The smoke scripts, the error-examples harness and the public samples gate run here; the eleven validation scripts are lexed, parsed and type-checked, not yet executed, in `Grob.Compiler.Tests` (D-346)|50+            |
 
 ### Test Discipline
 
@@ -1343,7 +1343,9 @@ Long-form documentation for each code (cause, example, fix) is read by
 - The VM loop can be trusted once verified on simple cases.
 - Edge cases and failure paths are tested as thoroughly as the happy path.
 - The eleven validation scripts (D-346) are guarded in `Grob.Compiler.Tests`, by
-  `ValidationScriptCorpusTests` and `ValidationScriptMarkdownSyncTests`. The
+  `ValidationScriptCorpusTests` and `ValidationScriptMarkdownSyncTests`. Today those
+  tests lex, parse and type-check each script; executing them with expected output is
+  still owed before release. The
   error-examples harness (D-428) and the public samples gate (D-430) run in
   `Grob.Integration.Tests`.
 
@@ -1352,7 +1354,8 @@ Long-form documentation for each code (cause, example, fix) is read by
 > **Authority:** D-337. Distinct from the eleven release-gate validation scripts
 > of `grob-sample-scripts.md` (D-346). The validation suite is a **v1 gate**; the smoke
 > family is a **per-sprint gate**. The smoke scripts run in `Grob.Integration.Tests`;
-> the validation scripts run in `Grob.Compiler.Tests`.
+> the validation scripts are lexed, parsed and type-checked in `Grob.Compiler.Tests`,
+> not yet executed.
 
 Each sprint close adds one end-to-end smoke script, gold-mastered against its exact
 stdout, stderr and exit code. The family is **cumulative** — every prior script must
@@ -1521,7 +1524,8 @@ block carries `blocked-by` (D-430).
 Grob v1 is ready for public release when:
 
 - [ ] All thirteen core stdlib modules pass their test suites
-- [ ] All eleven validation scripts (D-346) compile and run correctly
+- [ ] Every validation script compiles and runs correctly: D-346's eleven, R-08's
+  decorator script and R-34's regex script (§14)
 - [ ] The calculator smoke test works
 - [ ] The file organiser real-program target works end-to-end
 - [ ] `grob run`, `grob repl`, `grob check`, `grob fmt` all work

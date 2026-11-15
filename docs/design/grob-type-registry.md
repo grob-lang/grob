@@ -442,7 +442,7 @@ guid.namespaces.oid   // 6ba7b812-9dad-11d1-80b4-00c04fd430c8
 
 | Member              | Kind     | Signature  | Notes                                                                                        |
 | ------------------- | -------- | ---------- | -------------------------------------------------------------------------------------------- |
-| `version`           | property | `→ int`    | 4, 5, or 7                                                                                   |
+| `version`           | property | `→ int`    | The version encoded in the value: 4, 5 or 7 when generated, a parsed GUID's own, 0 for `guid.empty` |
 | `isEmpty`           | property | `→ bool`   | True if all zeros                                                                            |
 | `toString()`        | method   | `→ string` | Canonical lowercase with hyphens: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`                     |
 | `toUpperString()`   | method   | `→ string` | Uppercase variant — some Azure ARM endpoints require this                                    |

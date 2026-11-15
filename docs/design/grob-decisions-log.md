@@ -16977,8 +16977,8 @@ and are recorded here as decisions:
 4. **`/commit-message` commits on the feature branch.** The rule that it never commits,
    written against runaway committing, is retired; `tdd-cycle`, `trunk-flow`,
    `start-branch` and the compiler-engineer agent follow. Merging stays Chris's.
-5. **90% line coverage is the floor on every PR's new code, and more is always wanted.**
-   This extends D-328's overall floor to new code. SonarCloud's free-plan gate fails only
+5. **90% line and branch coverage is the floor on every PR's new code, and more is
+   always wanted.** This extends D-328's line and branch floor to new code. SonarCloud's free-plan gate fails only
    below 80% on new code and cannot be raised, so a green Sonar gate is not the bar.
 
 ---

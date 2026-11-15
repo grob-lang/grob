@@ -16,7 +16,8 @@ crucially, the rule for when a master may change.
 
 - A new compile-time or runtime error needs coverage.
 - A diagnostic's wording, suggestion or format changed and the affected gold masters
-  must be updated by hand (Step 4).
+  must be reviewed: each changes only on one of Step 4's grounds, and is quarantined
+  otherwise.
 - A new error code is being introduced.
 
 ## Step 1 — The error code

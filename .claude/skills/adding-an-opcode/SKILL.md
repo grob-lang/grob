@@ -32,7 +32,10 @@ Add the case to `OpCode : byte` in `Grob.Core`, in the correct category section
 and fields, Array operations, Control flow, Functions, Structs, I/O, Increment/decrement,
 Nil handling, String interpolation, Exception handling, Module, Map operations). Append
 within the category; nothing yet depends on today's numbering, but the grouping is kept
-for the reader (D-354). Document the operand layout in a trailing comment exactly as the
+for the reader (D-354). `OpCode`'s members carry no explicit values, so an insertion
+shifts the byte value of every later member. That is harmless only while no `.grobc`
+file has shipped: once one has, every value is frozen (ADR-0013), and a new opcode goes
+at the end of the enum or into a reserved gap, never mid-enum. Document the operand layout in a trailing comment exactly as the
 existing cases do — operand byte count and meaning. The `OpCode` enum is the single
 source of truth for the instruction set.
 
