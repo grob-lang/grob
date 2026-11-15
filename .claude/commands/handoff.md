@@ -39,8 +39,14 @@ contents into the hand-off; cite the path.
 6. Commit the hand-off and nothing else. `git add <path>`, then
    `git commit <path> -m "chore(handoff): session hand-off"`. Naming the path on
    the commit takes that one file whatever else is staged or modified. If this
-   session resumed from **another branch's** hand-off, it has been picked up: `git rm`
-   that file too and name both paths on the commit. Refuse on `main`.
+   session resumed from **another branch's** hand-off, it has been picked up:
+   - tracked on this branch (`git ls-files --error-unmatch <old path>` succeeds):
+     remove it with `git rm` and name both paths on the commit;
+   - not tracked here, because it was read from an unmerged PR's branch: leave it,
+     and name it in the new hand-off's *Picked up from* line, so a session that later
+     finds it on `main` retires it.
+
+   Refuse on `main`.
 7. Push the branch with a plain `git push` (`-u origin <branch>` on the first push).
    The pre-push gate runs against the working tree, so a push from a red tree is
    blocked. **Never bypass it** — no `--no-verify`. If the push is blocked, leave
@@ -60,6 +66,7 @@ contents into the hand-off; cite the path.
 - Working tree: <clean | N files modified — list them>
 - Commits on this branch: <N>  (`git log --oneline main..HEAD`)
 - Increment prompt: <path>
+- Picked up from: <the hand-off this session resumed from, or "none">
 - Phase reached: <e.g. "Phase 1 investigation complete, no edits made">
 
 ## Green state
@@ -119,8 +126,14 @@ exhaustion, degradation or the increment not finishing.>
 
 A session that resumes work lists `.grob-session/handoffs/` and reads the file for
 the branch or increment it continues. Each file names its branch and date in its
-header. If more than one could fit, ask Chris which to pick up. Keep track of the
-file you read: at close, `/close-session` step 7 and step 6 above retire it.
+header. If more than one could fit, ask Chris which to pick up. A hand-off whose PR
+has not merged yet is read from its branch: `git show origin/<branch>:<path>`. Keep
+track of the file you read: at close, `/close-session` step 7 and step 6 above
+retire it.
+
+A file in `.grob-session/handoffs/` that another hand-off names in its *Picked up
+from* line has already been picked up: remove it with `git rm` in this session's
+hand-off commit.
 
 ## When to reach for this without being asked
 
