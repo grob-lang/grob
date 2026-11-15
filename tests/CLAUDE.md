@@ -4,15 +4,17 @@ These rules apply to `tests/**/*.cs`. Tests are not optional and are never added
 retroactively. Every change ships with tests for the behaviour it adds. These rules
 sit on top of the C# host-code rules in `src/CLAUDE.md`.
 
-## The five projects and what each owns
+## The seven projects and what each owns
 
 | Project                  | Tests                                                          | Style       |
 | ------------------------ | -------------------------------------------------------------- | ----------- |
 | `Grob.Core.Tests`        | Value representation, chunk construction, opcode encoding      | Unit        |
-| `Grob.Compiler.Tests`    | **Source → assert emitted bytecode.** Highest-priority surface | Unit        |
+| `Grob.Runtime.Tests`     | Signatures, named-type definitions, the native catalogue and its builder, value display | Unit        |
+| `Grob.Compiler.Tests`    | **Source → assert emitted bytecode.** Highest-priority surface. Also runs the validation scripts | Unit        |
 | `Grob.Vm.Tests`          | Hand-constructed `Chunk` → assert execution result             | Unit        |
 | `Grob.Stdlib.Tests`      | Build a catalogue from a plugin, run a VM over it → assert output | Unit        |
-| `Grob.Integration.Tests` | `.grob` source → assert stdout, stderr and exit code           | Integration |
+| `Grob.Integration.Tests` | `.grob` source → assert stdout, stderr and exit code; the error-examples harness and the public samples gate | Integration |
+| `Grob.Consistency.Tests` | The corpus against the code: error-code count, decisions-log lockstep, catalogue guards, solution membership (via `tooling/Grob.DriftCheck`) | Consistency |
 
 Put a test in the project that owns the layer under test. A type-checker bug is a
 `Grob.Compiler.Tests` case, not an integration test. Reach for integration tests to
@@ -93,3 +95,10 @@ procedure.
   carry meaning.
 - No flaky timing assertions in the unit suites. No `Thread.Sleep`. Performance lives
   in `bench/Grob.Benchmarks`, gated separately.
+
+## Coverage
+
+D-328 sets a 90% line and branch floor on in-scope code. The pre-push hook's `tooling/coverage-gate.ps1`
+enforces an interim 80% overall, and SonarCloud gates new code at 80%;
+`docs/dev/coverage-policy.md` holds the detail. `[ExcludeFromCodeCoverage]` needs a
+substantive `Justification`: the rules are in `src/CLAUDE.md`.

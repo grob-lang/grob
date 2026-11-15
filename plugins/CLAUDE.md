@@ -8,8 +8,11 @@ be** — they reference `Grob.Runtime` and nothing else. If a first-party plugin
 special treatment from the runtime, the plugin model is broken; fix the model, not
 the plugin.
 
-`Grob.Http` is the reference implementation — the most complete example of a
-well-authored plugin. When in doubt, follow its shape.
+The three first-party plugin projects are empty shells until Sprint 11 builds them; each
+holds only a `.csproj` referencing `Grob.Runtime`. Until then the working examples of
+the contract are the stdlib modules in `src/Grob.Stdlib/` (`MathPlugin`, `DatePlugin`,
+`IoPlugin` and the rest), which implement `IGrobPlugin` the same way. `Grob.Http` is
+planned as the reference implementation once it exists.
 
 ## The contract
 
@@ -18,9 +21,9 @@ read them there rather than from a snapshot here. `Register` takes an
 `IPluginRegistrar`, never the VM.
 
 - Reference the `Grob.Runtime` NuGet package for `IGrobPlugin`, `IPluginRegistrar`,
-  `FunctionSignature`, `SignatureParameter`, `SignatureType`, `NamedTypeDefinition` and
-  the `GrobError` hierarchy. Reference nothing
-  else from the Grob solution. A plugin that needs `Grob.Vm` or `Grob.Compiler` is
+  `FunctionSignature`, `SignatureParameter`, `SignatureType` and `NamedTypeDefinition`;
+  `Grob.Core` (`GrobValue`, `NativeFunction`, `NativeFaultException`) comes with it
+  transitively. Reference nothing else from the Grob solution. A plugin that needs `Grob.Vm` or `Grob.Compiler` is
   reaching across a boundary it must not cross.
 - `Register` runs once per catalogue build: the host adds every plugin to one
   `NativeCatalogueBuilder`, and the type checker and the VM both read the
@@ -39,8 +42,10 @@ operators. Do not attempt to add grammar from a plugin.
 
 ## Type namespacing
 
-A plugin's registered types are namespaced by the plugin's default alias.
-`Grob.Http` registers `Response`, `Headers`, `Auth` under its namespace; a different
+This section is the plugin design, not yet built: `Grob.Runtime` has no alias or
+collision handling today, and Sprint 11 delivers it. A plugin's registered types are
+namespaced by the plugin's default alias. `Grob.Http` will register `Response`,
+`Headers`, `Auth` under its namespace; a different
 vendor's `AcmeCorp.Http` registering its own `Response` becomes `acme.Response`. The
 two coexist. Collisions are compile errors with a clear message — a third-party type
 colliding with a stdlib type name is rejected. Keep registered type names specific
@@ -52,9 +57,11 @@ and unambiguous.
   deliberate steps. Do not write code that fetches an assembly on demand.
 - Honour the output conventions: results to stdout, errors and diagnostics to stderr,
   no emoji, British English. A plugin that prints is part of the same product.
-- Throw only subtypes of `GrobError`. A plugin that lets a raw .NET exception escape
-  into the VM has a bug — wrap it in the appropriate `GrobError` leaf (`NetworkError`,
-  `IoError`, etc.) with a useful message.
+- Raise Grob errors only through the native-throw seam (D-342): throw
+  `NativeFaultException`, naming a `GrobError` leaf (`"NetworkError"`, `"IoError"` and
+  so on) and the plugin's registered error code. `GrobError` is a Grob-language
+  hierarchy, not a C# type. A plugin that lets a raw .NET exception escape into the VM
+  has a bug — catch it and rethrow as the right leaf with a useful message.
 
 ## Testing
 

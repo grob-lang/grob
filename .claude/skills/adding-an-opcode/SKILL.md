@@ -5,7 +5,8 @@ description: 'The full procedure for adding a bytecode instruction to Grob — t
 
 # Adding an OpCode
 
-The `OpCode` enum is meant to be complete from Sprint 2 and not grown casually. Adding
+The `OpCode` enum was written out in Sprint 2 and is closed by default; it has grown
+since only deliberately (D-354's `LessDate`/`GreaterDate` are an example). Adding
 one is a deliberate, decision-logged act governed by ADR-0013 (opcode stability). Reach
 for this skill only when a genuinely new bytecode instruction is required by a feature
 in scope — not to optimise an existing sequence without a decision behind it.
@@ -27,17 +28,20 @@ decode, or the VM has a handler nothing emits.
 ## Step 2 — The enum (`Grob.Core`)
 
 Add the case to `OpCode : byte` in `Grob.Core`, in the correct category section
-(Values, Arithmetic, Comparison, Logic, Variables, Upvalues, Properties, Array, Control
-flow, Functions, Structs, I/O, Increment/decrement, Nil, String interpolation, Exception
-handling, Module). Document the operand layout in a trailing comment exactly as the
+(Values, Arithmetic, Type promotion, Comparison, Logic, Variables, Upvalues, Properties
+and fields, Array operations, Control flow, Functions, Structs, I/O, Increment/decrement,
+Nil handling, String interpolation, Exception handling, Module, Map operations). Append
+within the category; nothing yet depends on today's numbering, but the grouping is kept
+for the reader (D-354). Document the operand layout in a trailing comment exactly as the
 existing cases do — operand byte count and meaning. The `OpCode` enum is the single
 source of truth for the instruction set.
 
 ## Step 3 — Encoding (`Grob.Core`)
 
 If the opcode carries operands, make sure the chunk's write and read helpers handle the
-operand width. Keep the line-number array in step — every emitted instruction records
-its source line in the parallel array, never inline.
+operand width. Keep the position arrays in step — every emitted byte records its
+source line and column (`Chunk.WriteOpCode(op, line, column)`) in the parallel arrays,
+never inline.
 
 ## Step 4 — The compiler selection logic (`Grob.Compiler`)
 
@@ -51,8 +55,9 @@ partial-class file by concern.
 
 Add the handler to the fetch/decode/execute switch in `VirtualMachine`. Decode operands
 with the same width the compiler wrote. Implement the stack effect precisely: how many
-values it pops, how many it pushes. Runtime errors raised here carry the source line
-from the chunk's line array and are subtypes of `GrobError`. The VM stops on the first
+values it pops, how many it pushes. Runtime errors raised here are `GrobRuntimeException`s
+carrying the code and the source line and column from the chunk's position arrays; a
+catchable one is routed to its `GrobError` leaf by the VM's handler-table walk (D-334). The VM stops on the first
 runtime error.
 
 ## Step 6 — Tests (both sides)
@@ -74,7 +79,7 @@ coverage if needed. Reference the `D-###` in the commit.
 
 - [ ] Warranted by a decision or acceptance criterion; not expressible by lowering
 - [ ] Enum case added in the right category with operand-layout comment (`Grob.Core`)
-- [ ] Chunk encode/decode handles operand width; line array kept in step
+- [ ] Chunk encode/decode handles operand width; line and column arrays kept in step
 - [ ] Compiler emits it via type-checker annotations (`Grob.Compiler`)
 - [ ] VM decodes and executes it with the correct stack effect (`Grob.Vm`)
 - [ ] Compiler-output test and VM-execution test both present and passing

@@ -61,7 +61,7 @@ postfix forms are; a primary form where the other primaries are. Keep value-posi
 type-position grammar separate — a value-position `{`/`[` must not disturb
 type-annotation parsing, and vice versa.
 
-## Step 3 — The AST node (`Grob.Core` or the AST project)
+## Step 3 — The AST node (`Grob.Compiler/Ast/`)
 
 - The node carries a **`SourceLocation`** — line, column, file — set at parse time. This
   is day-one and non-negotiable (the §3.1.1 invariant depends on it).
@@ -75,8 +75,8 @@ type-annotation parsing, and vice versa.
 ## Step 4 — Every visitor handles it (including error recovery)
 
 A new node that some visitor does not handle is a latent crash. Add the node to **every**
-visitor — the type checker, the compiler, the disassembler's any AST walk, the formatter
-if one exists — and to the **error-recovery path**: the parser must be able to degrade a
+visitor — `AstVisitor`, the type checker, the compiler, any other AST walk and the
+formatter once it exists — and to the **error-recovery path**: the parser must be able to degrade a
 malformed instance of the new form to `ErrorExpr`/`ErrorStmt`/`ErrorDecl` and continue,
 and every visitor must already absorb those error nodes via the `Error` type's universal
 assignability (D-300). The stateless, no-cap, error-recovering parser contract holds for

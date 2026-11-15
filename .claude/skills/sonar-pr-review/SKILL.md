@@ -33,17 +33,19 @@ into the comment the human triggers and sends.
    PR="${1:-$(gh pr view --json number -q .number)}"
    ```
    If neither yields a number, stop and say the PR could not be resolved.
-2. **Org and project key.** Read them from the scan config, do not hardcode:
+2. **Org and project key.** Read them from the scan config, do not hardcode. There is
+   no `sonar-project.properties`: the scanner's `begin` step in
+   `.github/workflows/sonarcloud.yml` passes them as `/k:"…"` and `/o:"…"`:
    ```bash
-   PROPS="sonar-project.properties"
-   SONAR_ORG="${SONAR_ORG:-$(grep -E '^sonar\.organization=' "$PROPS" | cut -d= -f2- | tr -d '[:space:]')}"
-   SONAR_KEY="${SONAR_PROJECT_KEY:-$(grep -E '^sonar\.projectKey=' "$PROPS" | cut -d= -f2- | tr -d '[:space:]')}"
+   WF=".github/workflows/sonarcloud.yml"
+   SONAR_ORG="${SONAR_ORG:-$(grep -oE '/o:"[^"]+"' "$WF" | head -1 | cut -d'"' -f2)}"
+   SONAR_KEY="${SONAR_PROJECT_KEY:-$(grep -oE '/k:"[^"]+"' "$WF" | head -1 | cut -d'"' -f2)}"
    ```
-   If the file or either key is absent, also try `Directory.Build.props` / `.sonarcloud`
-   or the env overrides `SONAR_ORG` / `SONAR_PROJECT_KEY`. If still unresolved, **fail
-   clearly** naming where you looked — do not guess a key.
-3. **Token.** Confirm `$SONAR_TOKEN` is set; if not, stop with a one-line instruction to
-   export it. Do not print its value.
+   The env overrides `SONAR_ORG` / `SONAR_PROJECT_KEY` win when set. If either is still
+   unresolved, **fail clearly** naming where you looked — do not guess a key.
+3. **Token.** Confirm `$SONAR_TOKEN` is set. If not, the project is public, so the same
+   calls work unauthenticated: drop the `Authorization` header and say in the block that
+   the fetch was anonymous. Do not print the token's value.
 
 ## Step 2 — confirm the PR analysis exists (and get the gate)
 

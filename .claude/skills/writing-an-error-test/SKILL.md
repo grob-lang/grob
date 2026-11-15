@@ -16,7 +16,7 @@ crucially, the rule for when a master may change.
 
 - A new compile-time or runtime error needs coverage.
 - A diagnostic's wording, suggestion or format changed and the affected gold masters
-  must be regenerated.
+  must be updated by hand (Step 4).
 - A new error code is being introduced.
 
 ## Step 1 — The error code
@@ -30,7 +30,7 @@ skill owns the gold-master pair, not the code allocation — for the code itself
 - **Register a new code** only through the `allocating-an-error-code` ladder: confirm
   nothing fits, surface the fold-versus-new judgement, get the `D-###`, then register in
   the correct category range (Type `E0xxx`, Name resolution `E1xxx`, Syntax `E2xxx`,
-  Module `E3xxx`, Param/decorator `E4xxx`, Runtime `E5xxx`) at the next free number from
+  Module `E3xxx`, Param/decorator `E4xxx`, Runtime `E5xxx`, Internal `E9xxx`) at the next free number from
   the live registry, in three-location lockstep with the `ErrorCatalog` descriptor. Codes
   are **immutable once shipped** (ADR-0017) — the judgement is the slow part, the
   mechanics are deterministic.
@@ -60,8 +60,8 @@ pair goes in `docs/errors/examples/quarantine.md` with what it produces today.
 The expected output must meet the quality bar: clear statement of what went wrong, exact
 location, and a suggested fix where the fix is obvious. No emoji; prose follows
 `house-style/SKILL.md`. If
-the generated diagnostic is poor, the fix is to improve the diagnostic in the compiler,
-then regenerate — not to bless poor output as the gold master.
+the diagnostic the compiler produces is poor, the fix is to improve it in the compiler —
+not to bless poor output as the gold master.
 
 ## Step 4 — The regeneration discipline (the part that bites)
 

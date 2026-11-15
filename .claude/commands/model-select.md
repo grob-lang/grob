@@ -13,6 +13,10 @@ operative word — cheap-and-bad is not cheap, it is wasted time.
 Tiers are named without versions. The `haiku`, `sonnet`, `opus` and `fable` aliases
 track the current release.
 
+An increment prompt's session table names the model and effort for each session
+(D-431 Decision 5), and its session-start check enforces it. This command is for work
+no prompt covers, or for a sub-task inside a session.
+
 The task to assess is **$ARGUMENTS**.
 
 ## The four models
@@ -64,8 +68,9 @@ specific structural sub-problem an increment prompt names — e.g. a mechanism e
 shaped so later sprints extend rather than duplicate it. The trigger is "later sprints
 build on this shape", not "this part is hard".
 
-It is reached through a Fable-pinned subagent under `.claude/agents/`, invoked for the
-named sub-task only, so the rest of the session stays on its own model.
+It is reached through a subagent run with the `fable` model, invoked for the named
+sub-task only, so the rest of the session stays on its own model. No agent under
+`.claude/agents/` pins it; the model is set on the subagent call.
 
 **Reach for it when:** the increment prompt names the sub-problem, or the maintainer
 does. Never on your own judgement that something is difficult — that is an Opus call.
@@ -83,7 +88,7 @@ Answer in order. Stop at the first "yes":
    → **Sonnet.**
 3. **Did the increment prompt, or the maintainer, name this part as the deep structural
    sub-problem?**
-   → **Fable**, through its pinned subagent.
+   → **Fable**, through a subagent run on it.
 4. **Does the work require choosing between non-obvious alternatives, reasoning across
    multiple files, or debugging something that resists explanation?**
    → **Opus.**

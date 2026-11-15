@@ -17,8 +17,8 @@ When two sources disagree, the higher-ranked source wins:
    rationale, supersedes/superseded-by links and a body pointing at the
    spec doc for detail.
 2. **Wiki ADRs** (`docs/wiki/ADR/`) — architecture-level decisions in full
-   ADR format. As of May 2026, sixteen are published: `ADR-0001` through
-   `ADR-0014`, `ADR-0016`, `ADR-0017`. ADR-0016 is superseded by D-288 and
+   ADR format. Eighteen are published, `ADR-0001` through `ADR-0018`; list
+   `docs/wiki/ADR/` for the current set. ADR-0016 is superseded by D-288 and
    D-291.
 3. **Live spec documents** — the rest of the corpus under `docs/design/`.
    These reflect what the decisions log has settled, but if a spec doc says
@@ -85,13 +85,17 @@ historical sketches are listed at the end of this section under
 | How does install work?                                                                                                | `grob-install-strategy.md`                                   |
 | What's the VS Code / LSP plan?                                                                                        | `grob-tooling-strategy.md`                                   |
 | What's the tone of error messages? REPL prompt? CLI conventions? Sparky's presentation?                               | `grob-personality-identity.md`                               |
+| How is performance measured and gated?                                                                                | `grob-benchmarking-strategy.md`                              |
+| How is the implementation attacked with hostile input?                                                                | `grob-adversarial-testing-strategy.md`                       |
+| How is AI-assisted development run? Trust modes?                                                                      | `grob-agentic-strategy.md`                                   |
+| What is the coverage scope and floor?                                                                                 | ADR-0018, D-328, `docs/dev/coverage-policy.md`               |
 
 When the question doesn't fit the table, default to:
 
 1. The decisions log summary index — scan for the topic.
 2. The language fundamentals doc — most "what does Grob do?" questions
    live here.
-3. `project_knowledge_search` with distinctive keywords from the
+3. A `Grep` over `docs/design/` with distinctive keywords from the
    question. Use it before reaching for arbitrary file paths.
 
 ### Out-of-scope sources
@@ -102,7 +106,8 @@ cited as design sources:
 - `grob-language-brainstorm.md` — early sketch notes. Historical context
   only.
 - `grob-early-design-conversation.md` — historical sketch transcript.
-- `sharpbasic-retrospective.md` — Grob design _inputs_, not Grob spec.
+- The SharpBASIC retrospective — Grob design _inputs_, not Grob spec. It
+  is not in this repository.
 - `grob-linkedin-series-bible.md` — public-facing series reference. Not a
   technical source.
 
@@ -115,8 +120,8 @@ decision.
 
 Two discovery mechanisms, in order of preference:
 
-1. **`project_knowledge_search`.** The fastest path to the right
-   document when you know the topic but not the file. Search with
+1. **`Grep` over `docs/design/` and `docs/wiki/`.** The fastest path to the
+   right document when you know the topic but not the file. Search with
    distinctive content words from the question — type names, error
    codes, opcodes, module names, decision numbers. Avoid generic words
    like "design", "rules", "structure" that match too broadly.
@@ -164,11 +169,11 @@ block comment?"
    subsection (§29).
 3. Cross-check decisions log: D-300 covers error-recovering parser
    behaviour generally.
-4. Citation: "Per D-300 and `grob-language-fundamentals.md` §29, the parser
-   synchronises at statement-boundary newlines outside any open bracket, or
-   the closing `}` of the enclosing block. An unterminated block comment
-   produces an `ErrorStmt` with the appropriate Exxxx-series code, and
-   recovery synchronises at the next top-level declaration keyword."
+4. Check the premise: an unterminated block comment is a lexer error, not a
+   parse failure. `grob-error-codes.md` registers it as E2003.
+5. Citation: "An unterminated `/* */` comment is E2003, raised by the lexer
+   when the comment reaches end of file unclosed. Parser recovery (D-300,
+   `grob-language-fundamentals.md` §29) does not come into it."
 
 ### Example 2: a DAG question
 
@@ -212,12 +217,12 @@ the same name?"
 1. Type: rationale question — _why_, not _what_.
 2. The decisions log will have a D-### entry; the wiki ADR will have the
    full architectural reasoning.
-3. `project_knowledge_search` with "stack-based VM register" gets there
-   fast.
-4. Citation: "Per D-297 and ADR-0013, the VM is stack-based because I/O
-   latency is the bottleneck for scripting workloads, not instruction
-   dispatch; register-based complexity has no meaningful payoff for this
-   workload."
+3. `Grep` the log for "stack-based": D-006 is the entry. ADR-0002 gives
+   the rationale for a bytecode VM over a tree-walker.
+4. Citation: "Per D-006, the VM is stack-based, informed by clox; ADR-0002
+   explains why Grob compiles to bytecode at all. Neither records a
+   stack-versus-register comparison, so that rationale is not settled in
+   the corpus." Say that rather than supplying a reason of your own.
 
 ## What you do not do
 

@@ -7,9 +7,13 @@ description: 'How to add a function or method to one of the thirteen core module
 
 The thirteen core modules (`fs`, `strings`, `json`, `csv`, `env`, `process`, `date`,
 `math`, `log`, `regex`, `path`, `formatAs`, `guid`) are implemented in `Grob.Stdlib` as
-`IGrobPlugin` implementations — one plugin class per module. `Grob.Cli` adds them all
-to one `NativeCatalogueBuilder`, and the type checker and the VM both read the single
-`NativeCatalogue` it builds (D-426). They are not hardwired into the VM. This skill covers adding a
+`IGrobPlugin` implementations, one plugin class per module, as each module's sprint
+lands. Built so far: `strings`, `env`, `date`, `math`, `log`, `path`, `formatAs` and
+`guid`, plus `IoPlugin` and the primitive-member plugins (`StringMethodsPlugin`,
+`NumericMethodsPlugin`, `NumericStaticsPlugin`). `fs`, `json`, `csv`, `process` and
+`regex` are Sprint 9's remaining work (`grob-v1-requirements.md`). `StdlibPlugins.Create` lists every plugin; the host
+adds them all to one `NativeCatalogueBuilder`, and the type checker and the VM both read
+the single `NativeCatalogue` it builds (D-426). They are not hardwired into the VM. This skill covers adding a
 function to a module or a method to a built-in type.
 
 ## Step 1 — Decide module function vs instance method
@@ -76,8 +80,10 @@ consistency review catches. Cite the `D-###` that authorised the addition.
 
 ## Step 5 — Errors and conventions
 
-Wrap failures as the appropriate `GrobError` leaf (`IoError`, `JsonError`,
-`ProcessError`, etc.) with a quality message. Results to stdout, errors to stderr, no
+Raise failures as the appropriate `GrobError` leaf (`IoError`, `JsonError`,
+`ProcessError`, etc.) with a quality message, through the native-throw seam (D-342):
+throw `NativeFaultException` with the leaf's name and the native's registered
+`ErrorCatalog` code. `IoPlugin` is the worked example. Results to stdout, errors to stderr, no
 emoji; prose follows `house-style/SKILL.md`. Windows path conventions throughout.
 
 ## Step 6 — Test
@@ -87,8 +93,9 @@ In `Grob.Stdlib.Tests`, build a catalogue over the module's plugin
 error paths. Pin the new signature in the module's signature test
 (`StdlibNamespaceSignatureTests` or `StdlibPrimitiveSignatureTests`), and add the
 native's four probes to the native-call probe corpus (correct call, wrong arity, wrong
-argument type, nullable argument) so its diagnostics are guarded. If the function appears in any of the thirteen
-release-gate sample scripts, make sure that script still compiles and runs.
+argument type, nullable argument) in `NativeCallProbeCorpusTests` so its diagnostics
+are guarded. If the function appears in any of the eleven validation scripts (D-346), or
+in a public sample the public samples gate checks, make sure it still compiles and runs.
 
 ## Checklist
 
@@ -98,6 +105,6 @@ release-gate sample scripts, make sure that script still compiles and runs.
 - [ ] Registered with a `FunctionSignature`; parameter names chosen as public API
 - [ ] Instance members registered through their type's `NamedTypeDefinition` or the internal primitive surface
 - [ ] Reference doc updated; member count kept accurate; `D-###` cited
-- [ ] Failures wrapped as the correct `GrobError` leaf
+- [ ] Failures raised as the correct `GrobError` leaf via `NativeFaultException`
 - [ ] Tested through a catalogue and a VM over it, success and error paths; signature pinned; probes added
-- [ ] Any affected release-gate script still compiles and runs
+- [ ] Any affected validation script or public sample still compiles and runs

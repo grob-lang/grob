@@ -37,11 +37,12 @@ why this and not the alternatives. Point at the spec doc that carries the
 full detail rather than reproducing it here. Keep it tight; the log is a
 record of decisions, not a spec.>
 
------
+---
 ```
 
-- The number is the next free `D-###` in sequence. Check the tail of the file for the
-  current highest.
+- The number is the next free `D-###` in sequence. Take it from the live tail of the
+  merged log, and fetch `main` and check the tail again right before pushing: a PR merged
+  meanwhile may have taken the number.
 - `Area` is a short noun phrase naming the subsystem (`VM — value representation`,
   `Control flow — select exhaustiveness`).
 - The body leads with the decision, then the rationale. Where alternatives were
@@ -59,7 +60,9 @@ A decisions-log change touches three places in the same edit:
 3. **The footer changelog** — record this session's substantive change.
 
 If you close an open question, also update `grob-open-questions.md` so the question
-moves from open to resolved with a pointer to the `D-###`.
+moves from open to resolved with a pointer to the `D-###`. If the entry opens, changes or
+closes a row in the Deferred Work Register (`R-##`, in the same file), update the row and
+that file's footer in the same edit.
 
 ## Supersession links are bidirectional
 
@@ -88,6 +91,6 @@ a diff or a patch. Every session output is a complete, ready-to-use file.
 - [ ] Summary index row added in lockstep
 - [ ] Footer changelog updated
 - [ ] Supersession links set on both ends if applicable
-- [ ] `grob-open-questions.md` updated if an `OQ-###` is closed
+- [ ] `grob-open-questions.md` updated if an `OQ-###` is closed or an `R-##` row changes
 - [ ] Affected wiki ADR and `Home.md` updated if applicable
 - [ ] Delivered as a complete file, not a patch

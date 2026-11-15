@@ -30,8 +30,8 @@ failure mode in propose-before-code workflows.
 **2. The DAG.** `Grob.Compiler` and `Grob.Vm` must never reference each other.
 `Grob.Core` references nothing outside the BCL. `Grob.Lsp` does not reference
 `Grob.Vm`. Check every `using` directive and project reference in files that changed.
-Test projects reference exactly one production project plus test support — flag any
-test project that reaches into two production projects.
+Test projects' references are listed in `src/CLAUDE.md` (_The seven test projects_) —
+flag any new production reference from a test project that the list does not show.
 
 **3. Day-one constraints.** For any AST work:
 
@@ -53,8 +53,8 @@ should have been part of the `feat` are not.
 
 - **Happy path** — the behaviour as designed with valid input.
 - **Failure path** — invalid input produces the correct diagnostic or `GrobError`.
-- **Edge cases** — the Grob-specific edge categories for this layer (`tests/CLAUDE.md`
-  lists them by layer: lexer, parser, type checker, VM, stdlib).
+- **Edge cases** — the Grob-specific edge categories for this layer (lexer, parser,
+  type checker, VM, stdlib) and the guard-test invariants `tests/CLAUDE.md` lists.
 
 A feature with only a happy-path test is not done. Flag the missing categories
 explicitly: "no failure-path test for unterminated string", "no edge-case test for EOF
@@ -98,9 +98,11 @@ dependencies directly. Flag any new use of:
 
 - `DateTime.Now`, `DateTime.UtcNow` — inject `IClock`.
 - `File.*`, `Directory.*`, `Path.*` (where Path performs I/O) — inject `IFileSystem`.
-- `Console.*` — inject `IConsole`.
-- `Environment.*` — inject the appropriate abstraction.
-- `Process.Start` — inject `IProcessRunner`.
+- `Console.*` — inject `IStandardStreams`.
+- `Environment.*` — inject `IEnvironment`.
+- `Random` — inject `IRandomSource`.
+- `Process.Start` — no abstraction exists yet; it needs a new interface in
+  `Grob.Runtime`, which the change should propose.
 
 Also flag: new `static` mutable state (any `static` field that is not `readonly`),
 `ServiceProvider.GetService<T>()` calls in business code, new `static` methods on types

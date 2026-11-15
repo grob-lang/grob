@@ -1,6 +1,6 @@
 ---
 name: 'Emitting Closures and Upvalues'
-description: 'The procedure for compiling and executing closures in Grob — the four-category variable resolution, upvalue capture of enclosing-function locals, the open/closed upvalue lifecycle, the close-on-return hand-off and per-call capture independence. Use when implementing or reviewing lambda capture (Sprint 5 Increment D), not for top-level-only lambdas.'
+description: 'The procedure for compiling and executing closures in Grob — the four-category variable resolution, upvalue capture of enclosing-function locals, the open/closed upvalue lifecycle, the close-on-return hand-off and per-call capture independence. Use when implementing, changing or reviewing lambda capture (built in Sprint 5 Increment D), not for top-level-only lambdas.'
 ---
 
 # Emitting closures and upvalues
@@ -70,11 +70,16 @@ this is what gives each enclosing-function call its own captured slot.
   live stack slot. `GetUpvalue`/`SetUpvalue` read/write through to that slot, so the
   closure and the enclosing function see the same variable, and two closures
   capturing the same open slot see each other's writes.
-- **Closed.** When the enclosing function **returns**, every open upvalue pointing at
-  one of its slots is **closed**: the value copies off the stack into a heap cell and
-  the upvalue thereafter references the heap cell. Do this in the `Return` path,
-  before the slots are discarded. After closing, the closure keeps the variable alive
-  independent of the (now gone) frame.
+- **Closed.** An open upvalue is **closed** — the value copies off the stack into a
+  heap cell and the upvalue thereafter references the heap cell — whenever its slot
+  is about to be discarded. That happens in two places. On **return**, the VM closes
+  every open upvalue at or above the frame's base (`CloseUpvaluesFrom`). At **every
+  scope exit that pops locals** — a block's end, a `for...in` body, `break` and
+  `continue` — the compiler's `EmitScopeCleanup` emits `CloseUpvalue` for each
+  captured local and `Pop` for the rest, highest slot first, instead of one `PopN`
+  (D-115). Closing only on return leaves a captured block-local reading a slot the
+  next block reuses. After closing, the closure keeps the variable alive independent
+  of the gone frame or scope.
 - `GetUpvalue`/`SetUpvalue` must be **transparent** across the transition — the same
   opcode reads/writes whether the upvalue is open (stack) or closed (heap). The
   indirection lives in the `Upvalue` object, not in the opcode.
@@ -95,7 +100,9 @@ empirically.
   resolves to an upvalue-of-enclosing chain; a **top-level-only** lambda emits **no**
   upvalue opcode (the guard that categories 1–3 are not routed through capture).
 - `Grob.Vm.Tests`: close-on-return (a closure outlives its enclosing frame and
-  reads/writes the captured variable correctly); **per-call independence** (two
+  reads/writes the captured variable correctly); close-on-scope-exit (a closure
+  capturing a block-local, a `for...in` variable or a local left by `break`, called
+  after a later block reuses the slot); **per-call independence** (two
   closures from two calls count separately); a write through an open upvalue is seen
   by another closure capturing the same open slot.
 - `Grob.Integration.Tests`: a closure factory producing independent counters and a
@@ -111,7 +118,7 @@ hand-off and per-call independence only submit to empirical proof.
 - [ ] Upvalue descriptors record local-vs-enclosing-upvalue correctly at each level
 - [ ] `Closure` emitted with descriptors; `GetUpvalue`/`SetUpvalue` for captured reads/writes
 - [ ] Open-upvalue list keyed by the current frame's stack slot
-- [ ] Upvalues close to the heap in the `Return` path, before slots are discarded
+- [ ] Upvalues close to the heap on return and at every scope-exit pop (block, `for...in`, `break`, `continue`)
 - [ ] `GetUpvalue`/`SetUpvalue` transparent across open→closed
 - [ ] Per-call independence proven (two closures, separate state)
 - [ ] Compiler-output and VM-execution tests both present; top-level-only guard test present

@@ -10,9 +10,10 @@ that follows the conventions below.
 
 ## Pre-stage checklist (run before `git add`)
 
-The pre-push hooks `trailing-whitespace`, `end-of-file-fixer` and
-`dotnet format — verify no changes` mutate the working tree on failure but do **not**
-restage. Skipping this means at least one aborted commit cycle every time.
+The pre-commit hooks `trailing-whitespace`, `end-of-file-fixer` and
+`mixed-line-ending` fix the working tree on failure but do **not** restage, and
+`dotnet format — verify no changes` fails without fixing anything. Skipping this means
+at least one aborted commit cycle every time.
 
 1. **Run `dotnet format whitespace Grob.slnx`** on the working tree — rewrites
    indentation, trailing whitespace and final newlines across every `.cs` file. Fast
@@ -52,7 +53,7 @@ Exactly one of:
   behaviour. No new tests should be required; if you need new tests, it is not a
   refactor.
 - **`test`** — test-only changes that do not accompany a production-code change:
-  regression rows from property-test discoveries, coverage-gap filling, test
+  regression rows for inputs found after the feature landed, coverage-gap filling, test
   infrastructure, gold-master coverage for previously-uncovered diagnostics. Do not use
   `test` to commit a feature's tests separately from the feature — that is a `feat`.
 - **`docs`** — docs, comments, README, ADRs, spec files.
@@ -92,29 +93,30 @@ Good:
 feat(compiler): add lexer for double-quoted strings
 
 Supports escape sequences (\n \r \t \\ \" \$) and ${name}
-interpolation segments. Unterminated strings produce E0042
+interpolation segments. Unterminated strings produce E2002
 with source location pointing at the opening quote.
 
 Includes happy-path, failure-path, and edge-case tests covering
 empty input, EOF mid-string, escape-at-buffer-boundary, and nested
 interpolation.
 
-Implements D-185 (string literal forms).
+Implements D-047 (string interpolation).
 ```
 
 ```
 fix(vm): handle stack underflow on Pop opcode before runtime values
 
-Pop against an empty stack now throws InternalVmError with the
+Pop against an empty stack now throws GrobInternalException with the
 instruction offset rather than crashing the host process.
 
 Regression: see issue #142.
 ```
 
 ```
-refactor(core): rename TokenKind.String to TokenKind.StringLiteral
+refactor(compiler): move declaration checks into their own partial
 
-Aligns with IntLiteral and FloatLiteral naming. No behaviour change.
+TypeChecker.cs had grown past the point where a reader could find
+the declaration arms. No behaviour change.
 ```
 
 Bad — no type prefix, wrong tense, vague subject, body explains what not why, mixes two
@@ -133,8 +135,8 @@ Could a reviewer revert this commit cleanly? Are the type and scope honest? If a
 answer is "no", surface it before committing:
 
 > "These staged changes look like two commits to me — one `feat(compiler)` for the
-> lexer change, one `test(compiler)` for the regression rows from the property-test
-> discovery. Should I propose them separately?"
+> lexer change, one `test(compiler)` for the regression rows for an older bug.
+> Should I propose them separately?"
 
 If staged changes contain a feature *without* tests, do not commit them as `feat`.
 Surface the gap.

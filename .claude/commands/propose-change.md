@@ -54,9 +54,8 @@ maintainer to weigh in on before you start writing code.>
 
 - **Branch:** `<type>/<scope>-<kebab-name>`
 - **Commit sequence:**
-  1. `test(<scope>): <subject>`
-  2. `feat(<scope>): <subject>`
-  3. ... (continue as needed)
+  1. `feat(<scope>): <subject>` (with its tests in the same commit)
+  2. ... (continue as needed)
 
 ## Decision needed
 <one specific question, or "agree to proceed". no fishing — be concrete about what the

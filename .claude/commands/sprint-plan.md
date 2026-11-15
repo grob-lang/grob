@@ -49,8 +49,8 @@ apply to this sprint.>
 - **Minimum implementation:** <what code makes it pass>
 - **Refactor candidates:** <what might want cleaning up afterwards>
 - **Commit:**
-  - `test(<scope>): <subject>`
-  - `feat(<scope>): <subject>`
+  - `feat(<scope>): <subject>` (the test and the implementation together; a `feat`
+    carries its tests, per `/commit-message`)
   - `refactor(<scope>): <subject>` (only if needed)
 
 ### Cycle 2: ...

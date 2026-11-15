@@ -8,8 +8,10 @@ description: 'End-to-end procedure for building a Grob plugin via IGrobPlugin �
 A Grob plugin is a NuGet package tagged `grob-plugin` that implements `IGrobPlugin` and
 teaches the type checker about new native functions and types. This skill applies to
 first-party plugins under `plugins/` (`Grob.Http`, `Grob.Crypto`, `Grob.Zip`) and to
-third-party plugins alike — they follow the same model. `Grob.Http` is the reference
-implementation; read it before starting.
+third-party plugins alike — they follow the same model. The three first-party projects
+are empty shells until Sprint 11 builds them, so read the stdlib plugins in
+`Grob.Stdlib` (`DatePlugin`, `GuidPlugin`, `IoPlugin`) before starting; they implement
+the same contract. `Grob.Http` is planned as the reference implementation.
 
 The cardinal rule: a first-party plugin gets no special treatment from the runtime. It
 references `Grob.Runtime` and nothing else from the Grob solution. If your plugin needs
@@ -103,12 +105,14 @@ The type name is a bare identifier today. Alias-namespacing plugin types
 and is not built yet. A collision with a stdlib type name is an error by design — do
 not work around it, choose a different name.
 
-## Step 5 — Wrap errors as `GrobError`
+## Step 5 — Raise errors as a `GrobError` leaf
 
 A plugin must never let a raw .NET exception escape into the VM. Catch at the boundary
-and throw the appropriate `GrobError` leaf — `NetworkError` for HTTP failures,
-`IoError` for file/stream problems, and so on — with a message that meets the quality
-bar: what went wrong, and a fix where obvious. Errors go to stderr; results to stdout;
+and raise the appropriate `GrobError` leaf — `NetworkError` for HTTP failures,
+`IoError` for file/stream problems, and so on — through the native-throw seam (D-342):
+`throw new NativeFaultException("NetworkError", <the native's ErrorCatalog code>,
+message)`. `GrobError` is the Grob-language hierarchy; there is no C# type of that name.
+The message meets the quality bar: what went wrong, and a fix where obvious. Errors go to stderr; results to stdout;
 no emoji; prose follows `house-style/SKILL.md`.
 
 ## Step 6 — No runtime auto-download
@@ -122,8 +126,9 @@ Test the plugin the way `Grob.Stdlib.Tests` tests core modules: build a catalogu
 `new NativeCatalogueBuilder().Add(plugin).Build()`, construct a VM over it and assert
 the output of its functions. Assert the registered signatures against the catalogue as
 well — they are the public contract. Cover the error paths — assert
-that a failure throws the right `GrobError` leaf with a useful message, not a leaked
-.NET exception.
+that a failure raises the right `GrobError` leaf with a useful message (a caught
+`NativeFaultException` naming the leaf, or a script's `catch` receiving it), not a
+leaked .NET exception.
 
 ## Step 8 — Package and publish
 
@@ -138,7 +143,7 @@ that a failure throws the right `GrobError` leaf with a useful message, not a le
 - [ ] Implements `IGrobPlugin` with a clear `Name`
 - [ ] Every native registered with a `FunctionSignature`; parameter names chosen as public API
 - [ ] Named types registered through `RegisterNamedType`; names specific; no stdlib collision
-- [ ] All failures wrapped as the correct `GrobError` leaf with a quality message
+- [ ] All failures raised as the correct `GrobError` leaf via `NativeFaultException`, with a quality message
 - [ ] No runtime auto-download
 - [ ] Tested through a catalogue and a VM over it, success and error paths
 - [ ] Packaged for NuGet with the `grob-plugin` tag

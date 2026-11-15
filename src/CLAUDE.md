@@ -24,19 +24,19 @@ violating it is the most damaging mistake you can make in this codebase.
 
 | Assembly        | Owns                                                                 | May reference            |
 |-----------------|----------------------------------------------------------------------|--------------------------|
-| `Grob.Core`     | `Chunk`, `OpCode`, `GrobType`, `GrobValue`, `ConstantPool`, `SourceLocation`, `Diagnostic`, AST node types, `GrobError` hierarchy, ambient-dependency interfaces | Nothing Grob-internal; no NuGet beyond the .NET 10 BCL |
-| `Grob.Runtime`  | `IGrobPlugin`, `IPluginRegistrar`, `FunctionSignature`, `SignatureParameter`, `SignatureType`, `NamedTypeDefinition`, `NativeCatalogueBuilder`/`NativeCatalogue` (D-426), `ExitSignal`, `AuthHeader` | `Grob.Core`              |
-| `Grob.Compiler` | `Lexer`, `Parser`, AST builder, `TypeChecker` (reads natives from the `NativeCatalogue` it is constructed with), `Compiler`, `.grobc` writer | `Grob.Core`, `Grob.Runtime` |
-| `Grob.Vm`       | `VirtualMachine`, `ValueStack`, `CallFrame`, `Globals`, `PluginLoader`, `Upvalue`, `.grobc` reader | `Grob.Core`, `Grob.Runtime` |
-| `Grob.Stdlib`   | 13 core modules as `IGrobPlugin` implementations                     | `Grob.Core`, `Grob.Runtime` |
-| `Grob.Cli`      | Composition root, CLI commands, REPL, error formatter, concrete ambient implementations | All `src/` assemblies    |
+| `Grob.Core`     | `Chunk`, `OpCode`, `TokenKind`, `GrobType`, `GrobValue` and the heap types (`GrobArray`, `GrobMap`, `GrobStruct`, `GrobFunction`), `SourceLocation`, `Diagnostic`/`DiagnosticBag`, `ErrorCatalog`, `NativeFunction`, the runtime exceptions (`GrobRuntimeException`, `NativeFaultException`) | Nothing Grob-internal; no NuGet beyond the .NET 10 BCL |
+| `Grob.Runtime`  | `IGrobPlugin`, `IPluginRegistrar`, `FunctionSignature`, `SignatureParameter`, `SignatureType`, `NamedTypeDefinition`, `NativeCatalogueBuilder`/`NativeCatalogue` (D-426), the ambient-dependency interfaces (`IClock`, `IFileSystem`, `IEnvironment`, `IStandardStreams`, `IRandomSource`) | `Grob.Core`              |
+| `Grob.Compiler` | `Lexer`, `Parser`, the AST node types (`Ast/`), `TypeChecker` (reads natives from the `NativeCatalogue` it is constructed with), the `GrobError` hierarchy's names (`ExceptionHierarchy`), `Compiler` | `Grob.Core`, `Grob.Runtime` |
+| `Grob.Vm`       | `VirtualMachine`, `ValueStack`, `CallFrame`, `Closure`, `Upvalue`, `Disassembler`, the built-in member natives | `Grob.Core`, `Grob.Runtime` |
+| `Grob.Stdlib`   | The core modules as `IGrobPlugin` implementations; thirteen at v1, built sprint by sprint (`grob-v1-requirements.md`) | `Grob.Core`, `Grob.Runtime` |
+| `Grob.Cli`      | Composition root, CLI commands, REPL, error formatter, concrete ambient implementations | Every `src/` assembly except `Grob.Lsp` |
 | `Grob.Lsp`      | LSP handlers (post-MVP)                                              | `Grob.Compiler`, `Grob.Core`, `Grob.Runtime` — never `Grob.Vm` |
 
 **`Grob.Compiler` must never reference `Grob.Vm` and vice versa.** If you need a type
 shared by both, it goes in `Grob.Core`. `Chunk` lives in `Grob.Core` for exactly this
 reason — the compiler writes it, the VM reads it, neither depends on the other. The
-`.grobc` binary format splits accordingly: writer in `Grob.Compiler`, reader in
-`Grob.Vm`, format types in `Grob.Core`.
+`.grobc` binary format is not built yet; when it lands it splits the same way:
+writer in `Grob.Compiler`, reader in `Grob.Vm`, format types in `Grob.Core`.
 
 Hard rules, restated so they are unmissable:
 
@@ -56,24 +56,25 @@ is almost always wrong, and where it is right it needs a decisions-log entry.
 
 ## The seven test projects
 
-One test project per production project. Same DAG, same naming:
+Five unit-test projects follow production projects, plus an integration project and a
+consistency project:
 
 ```
-Grob.Core.Tests        <- references Grob.Core
-Grob.Runtime.Tests     <- references Grob.Runtime
-Grob.Compiler.Tests    <- references Grob.Compiler
-Grob.Vm.Tests          <- references Grob.Vm
-Grob.Stdlib.Tests      <- references Grob.Stdlib
-Grob.Cli.Tests         <- references Grob.Cli
-Grob.Lsp.Tests         <- references Grob.Lsp
+Grob.Core.Tests          <- references Grob.Core
+Grob.Runtime.Tests       <- references Grob.Runtime
+Grob.Compiler.Tests      <- references Grob.Compiler and Grob.Stdlib
+Grob.Vm.Tests            <- references Grob.Vm
+Grob.Stdlib.Tests        <- references Grob.Stdlib, Grob.Vm, Grob.Runtime and Grob.Core
+Grob.Integration.Tests   <- references Grob.Cli
+Grob.Consistency.Tests   <- references tooling/Grob.DriftCheck
 ```
 
-A test project references exactly one production project plus test-support libraries.
-If you find yourself wanting to reference two production projects from one test
-project, the production design is probably wrong — surface it rather than papering
-over it. Each production project declares
-`[assembly: InternalsVisibleTo("Grob.<Project>.Tests")]` so internal types are
-reachable from tests. The detailed test conventions live in `tests/CLAUDE.md`.
+`Grob.Cli`, `Grob.Lsp` and the plugins have no test project of their own; the CLI is
+tested through `Grob.Integration.Tests`. A new production reference from a test
+project is a design signal: surface it rather than papering over it. Where a test
+needs internals, the production project names that test project in an
+`InternalsVisibleTo` item in its `.csproj`. The detailed test conventions live in
+`tests/CLAUDE.md`.
 
 ## Central package management
 
@@ -92,8 +93,7 @@ deliberately not used and are not in `Directory.Packages.props`.
 ## Namespaces follow folders
 
 The namespace matches the project name and folder path exactly, for **every**
-subfolder. `Grob.Core/Diagnostics/Diagnostic.cs` declares
-`namespace Grob.Core.Diagnostics;`. A file at
+subfolder. `Grob.Core/Diagnostic.cs` declares `namespace Grob.Core;`. A file at
 `Grob.Compiler/Ast/Expressions/BinaryExpr.cs` declares
 `namespace Grob.Compiler.Ast.Expressions;` — not `Grob.Compiler.Ast;`. When you
 create or move a file, the namespace on line 1 must mirror the full folder path under
@@ -111,7 +111,8 @@ propose the design first.
 ## Naming and style
 
 - The `Grob` prefix is always spelled in full on public runtime types: `GrobType`,
-  `GrobValue`, `GrobError`, `GrobArray`, `GrobMap`, `GrobStruct`, `GrobFunction`.
+  `GrobValue`, `GrobRuntimeException`, `GrobArray`, `GrobMap`, `GrobStruct`,
+  `GrobFunction`.
   `Gro` is not a convention here. Internal types need no prefix — the namespace
   disambiguates.
 - `PascalCase` for types, methods, properties, public fields, constants.
@@ -239,9 +240,10 @@ one of them.
 
 - **Synchronisation set:** a statement-boundary newline outside any open bracket; the
   closing `}` of an enclosing block; the start keyword of a top-level declaration
-  (`fn`, `type`, `param`, `import`, `const`, `readonly`). The lexer tracks bracket
-  nesting depth so a newline inside parentheses is not a recovery anchor. EOF
-  terminates recovery unconditionally.
+  (`fn`, `type`, `param`, `import`, `const`, `readonly`); and `@`, but only while
+  recovering from a `param`- or decorator-led top-level item (D-415). The lexer
+  tracks bracket nesting depth so a newline inside parentheses is not a recovery
+  anchor. EOF terminates recovery unconditionally.
 - **On failure:** emit a diagnostic, build the appropriate error node carrying its
   source range and the diagnostic message, advance to the next anchor, resume.
 - **Cascade suppression:** error nodes are typed `Error`, assignable to and from every
@@ -254,7 +256,8 @@ one of them.
 
 ## The OpCode set (`grob-v1-requirements.md` §3.3)
 
-`OpCode : byte` is complete from Sprint 2 — written out once, never grown additively.
+`OpCode : byte` was written out in Sprint 2 and is closed by default. It has grown
+since, each time deliberately: D-354's `LessDate`/`GreaterDate` are an example.
 Adding an opcode is a decision-logged act (governed by ADR-0013 for stability), not
 casual editing. When you touch the opcode set you touch three things together: the
 enum, the compiler's opcode-selection logic and the VM's dispatch switch. The
@@ -266,7 +269,9 @@ Forward jumps use backpatching; backward jumps (loops) use known positions. `&&`
 
 **Emission must respect the closed enum and the runtime representation — the type
 checker permitting an operation does not mean a direct opcode exists for the resolved
-operand types** (D-315). The set is intentionally asymmetric: string `<`/`>` have
+operand types.** No decisions-log entry states this rule on its own; D-354 applies
+it to `date` (D-315, which earlier copies of this file cited, is `break`/`continue`
+in `select`). The set is intentionally asymmetric: string `<`/`>` have
 opcodes but `<=`/`>=` do not — lower the latter to the strict comparison plus `Not`
 (`a <= b ≡ !(a > b)`) rather than falling through to a wrong-typed opcode that faults
 the VM. When a value's static type is widened across branches or arms (the int/float
@@ -278,9 +283,8 @@ IEEE 754 `operator==` (`NaN != NaN`), never the collection-friendly `Equals` whe
 
 ## Diagnostics infrastructure
 
-The `Diagnostics` namespace exists from Sprint 1: a `Diagnostic` record (severity,
-message, source location, optional suggestion) and a `DiagnosticBag` that accumulates
-without stopping. Every compile-time error maps to a registered code in
+`Grob.Core` holds a `Diagnostic` record (code, message, source range, severity) and a
+`DiagnosticBag` that accumulates without stopping. Every compile-time error maps to a registered code in
 `docs/design/grob-error-codes.md` (`Exxxx`, immutable once shipped per ADR-0017).
 When you add a diagnostic, use an existing code or register a new one in the right
 category range. Do not emit a bare string with no code. Raise diagnostics via the
@@ -296,13 +300,16 @@ category range. Do not emit a bare string with no code. Raise diagnostics via th
 ## Design for testability
 
 Production code is written expecting to be tested. The minimum line-coverage bar is
-90% per project — see `tests/CLAUDE.md` for the bar and the rules around exclusions.
+90%, with D-328's 90% line and branch floor on in-scope code; `docs/dev/coverage-policy.md` has the detail and `[ExcludeFromCodeCoverage]`
+below has the rules for exclusions.
 The conventions below are what makes that bar achievable without distortion.
 
 - **No ambient dependencies in business logic.** No direct use of `DateTime.Now`,
   `DateTime.UtcNow`, `Environment.*`, `File.*`, `Directory.*`, `Console.*`, or
-  `Process.Start` inside types that contain logic. Inject an abstraction (`IClock`,
-  `IFileSystem`, `IConsole`, `IProcessRunner`) through the constructor. The single
+  `Process.Start` inside types that contain logic. Inject an abstraction from
+  `Grob.Runtime` (`IClock`, `IFileSystem`, `IEnvironment`, `IStandardStreams`,
+  `IRandomSource`) through the constructor; a new ambient need gets a new interface
+  there. The single
   concrete implementation lives at the composition root — `Grob.Cli` — and is wired
   up there.
 - **No static mutable state.** `static readonly` for genuinely constant lookup tables
@@ -344,11 +351,11 @@ added may become invalid as surrounding code changes.
 
 ## Tests
 
-Five xUnit projects mirror `src/`. Every change ships tests. **`Grob.Compiler.Tests`
+Seven xUnit projects (listed above). Every change ships tests. **`Grob.Compiler.Tests`
 is the highest-priority surface** — given source, assert emitted bytecode; that is
 where bugs live (confirmed by the SharpBASIC retrospective). The full testing
-discipline — coverage taxonomy, diagnostic-assertion contract, property-based
-testing, gold-master error examples — lives in `tests/CLAUDE.md`.
+discipline — project routing, the diagnostic-assertion contract, guard-test
+invariants, gold-master error examples — lives in `tests/CLAUDE.md`.
 
 ## Performance
 
@@ -359,8 +366,9 @@ genuinely tight paths (lexer scanner, VM dispatch) avoid LINQ, avoid `string.For
 prefer `Span<T>` and `ReadOnlySpan<char>` over substring, and use `StringBuilder` for
 any assembly involving more than three concatenations or running in a loop. If you
 believe a change affects performance, the benchmark harness is how you prove it, not
-assertion. `[MemoryDiagnoser]` is on every benchmark; a 5% end-to-end regression
-against the committed baseline is the gate.
+assertion. `[MemoryDiagnoser]` is on every benchmark class. `tooling/Grob.BenchCheck`
+gates against `bench/Grob.Benchmarks/baseline/policy.json`: 5% per sprint against the
+rolling baseline, 12% cumulative against the frozen origin and 10% on allocation.
 
 ## Static analysis (local Sonar gate)
 

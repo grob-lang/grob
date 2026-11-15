@@ -12,8 +12,8 @@ would, so it must be idiomatic and must actually be valid against the v1 surface
 same holds for a `grob` block in the README or the wiki, which a gate also checks; see
 the last section for its info string.
 
-The canonical idiom reference is `docs/design/grob-sample-scripts.md` (the thirteen
-release-gate scripts). Match its style. The full language spec is
+The canonical idiom reference is `docs/design/grob-sample-scripts.md` (the eleven
+validation scripts, D-346). Match its style. The full language spec is
 `docs/design/grob-language-fundamentals.md`.
 
 ## Script structure
@@ -96,8 +96,8 @@ entirely (the one-way principle: no two ways to do the same thing). Chain fluent
 entries := fs.list(path, recursive: true)
     .filter(f => f.size > threshold)
     .select(f => FileEntry {
-        name:    f.name
-        size_mb: (f.size / 1024.0 / 1024.0).roundTo(2)
+        name:    f.name,
+        size_mb: (f.size / 1024.0 / 1024.0).roundTo(2),
     })
     .sort(e => e.size_mb, descending: true)
 
@@ -112,7 +112,9 @@ Named arguments are idiomatic for optional or boolean parameters: `recursive: tr
 
 - User-defined types via `type Name { field: Type ... }`.
 - Anonymous struct literals use `#{ ... }`.
-- Named struct construction: `FileEntry { name: ..., size_mb: ... }`.
+- Named struct construction: `FileEntry { name: ..., size_mb: ... }`. Fields are
+  comma-separated; written across lines, the last field keeps a trailing comma too
+  (D-417, D-421).
 - `map<K, V>` is a first-class built-in.
 - You **consume** generic functions in v1; you cannot **declare** generic functions or
   types yourself (D-080).
@@ -149,7 +151,7 @@ explicit method call (`.toFloat()`, `.toInt()`, `.toString()`).
 - Four-space indentation (the formatter enforces this; write it that way to begin
   with). Same-line braces. No semicolons.
 - A fixture should exercise exactly the feature its test targets — minimal, not a
-  kitchen sink — unless it is one of the thirteen release-gate scripts, which are
+  kitchen sink — unless it is one of the eleven validation scripts (D-346), which are
   deliberately realistic.
 - Error-example fixtures (`<slug>/<slug>.grob` paired with `<slug>.expected.txt`) must
   produce the diagnostic their gold master states. Do not edit a `.grob` without

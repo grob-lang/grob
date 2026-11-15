@@ -69,7 +69,8 @@ not let one's conventions leak into the other.
 ## Working procedures
 
 For repeatable jobs, follow the matching skill under `.claude/skills/`: adding an
-opcode, extending the grammar (a parser production or AST node), authoring a plugin,
-writing a gold-master error test, allocating an error code, adding a stdlib function,
-logging a decision. For grounding .NET APIs, prefer the Microsoft Learn MCP server over
+opcode, extending the grammar (a parser production or AST node), defining a type,
+emitting closures and upvalues, authoring a plugin, writing a gold-master error test,
+allocating an error code, adding a stdlib function, logging a decision. Prose follows
+`house-style` and `.grob` source follows `writing-grob-source`. For grounding .NET APIs, prefer the Microsoft Learn MCP server over
 recall.
