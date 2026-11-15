@@ -54,7 +54,7 @@ What exists today:
 - CLI personality and error message design
 - Mascot (Sparky) — character sheet v1 complete
 
-What comes next: standard library modules, the plugin system, and the thirteen validation scripts that are the v1 release gate.
+What comes next: standard library modules, the plugin system and the eleven validation scripts that are the v1 release gate (D-346).
 
 **This is a real project with serious design behind it. It is not ready yet.**
 Watch the repo if you want to follow along.

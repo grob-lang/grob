@@ -69,10 +69,10 @@ most common personal automation tasks on GitHub. It exercises:
 - `fs.ensureDir()` and `file.moveTo()`
 - `print()` for user feedback
 
-### Release Gate — All Thirteen Sample Scripts
+### Release Gate — All Eleven Sample Scripts
 
-The sample scripts document contains thirteen real-world scripts that
-validate the API surface. All thirteen must compile and run correctly
+The sample scripts document contains eleven real-world scripts that
+validate the API surface (D-346). All eleven must compile and run correctly
 against the v1 implementation before public release. Any script that
 fails reveals a gap in the implementation.
 
@@ -1071,7 +1071,7 @@ final polish.
 
 **Acceptance:** All CLI commands work. `grob fmt` produces consistent
 formatting. `grob check` reports errors without executing. The Windows
-Terminal profile registers correctly. All thirteen sample scripts compile
+Terminal profile registers correctly. All eleven sample scripts (D-346) compile
 and run.
 
 -----
@@ -1333,7 +1333,7 @@ Long-form documentation for each code (cause, example, fix) is read by
 |`Grob.Compiler.Tests`   |Lexer (token stream), parser (AST shape), type checker (error detection, inference), compiler (bytecode output)|Given source → assert tokens/AST/diagnostics/bytecode. **Highest priority — this is where bugs will live**|500+           |
 |`Grob.Vm.Tests`         |Fetch/decode/execute, stack behaviour, call frames, closures                                                   |Construct chunks by hand → assert execution results                                                       |100+           |
 |`Grob.Stdlib.Tests`     |All 13 core module APIs                                                                                        |Register plugin into VM instance → assert outputs                                                         |200+           |
-|`Grob.Integration.Tests`|End-to-end through full pipeline                                                                               |Given `.grob` source file → assert stdout, stderr, exit code. The thirteen sample scripts live here          |50+            |
+|`Grob.Integration.Tests`|End-to-end through full pipeline                                                                               |Given `.grob` source file → assert stdout, stderr, exit code. The smoke scripts, the error-examples harness and the public samples gate run here; the eleven validation scripts run in `Grob.Compiler.Tests` (D-346)|50+            |
 
 ### Test Discipline
 
@@ -1342,13 +1342,17 @@ Long-form documentation for each code (cause, example, fix) is read by
   live (per SharpBASIC retrospective).
 - The VM loop can be trusted once verified on simple cases.
 - Edge cases and failure paths are tested as thoroughly as the happy path.
-- The thirteen sample scripts are integration tests in `Grob.Integration.Tests`.
+- The eleven validation scripts (D-346) are guarded in `Grob.Compiler.Tests`, by
+  `ValidationScriptCorpusTests` and `ValidationScriptMarkdownSyncTests`. The
+  error-examples harness (D-428) and the public samples gate (D-430) run in
+  `Grob.Integration.Tests`.
 
 ### Sprint-Close Smoke Scripts
 
-> **Authority:** D-337. Distinct from the thirteen release-gate validation scripts
-> of `grob-sample-scripts.md`. The validation suite is a **v1 gate**; the smoke
-> family is a **per-sprint gate**. Both live in `Grob.Integration.Tests`.
+> **Authority:** D-337. Distinct from the eleven release-gate validation scripts
+> of `grob-sample-scripts.md` (D-346). The validation suite is a **v1 gate**; the smoke
+> family is a **per-sprint gate**. The smoke scripts run in `Grob.Integration.Tests`;
+> the validation scripts run in `Grob.Compiler.Tests`.
 
 Each sprint close adds one end-to-end smoke script, gold-mastered against its exact
 stdout, stderr and exit code. The family is **cumulative** — every prior script must
@@ -1388,14 +1392,14 @@ counts into the committed baseline alongside timing.
 |--------------------------|------------------------------------------|---------------------------------------------------------------|
 |Compile-time              |`bench/Grob.Benchmarks/Compile/`          |How fast is the compiler? (startup cost for a script language) |
 |VM execution              |`bench/Grob.Benchmarks/Vm/`               |How fast is the dispatch loop? (hand-constructed chunks)       |
-|End-to-end script         |`bench/Grob.Benchmarks/EndToEnd/`         |Do the thirteen validation scripts run fast enough?            |
+|End-to-end script         |`bench/Grob.Benchmarks/EndToEnd/`         |Do the eleven validation scripts run fast enough? (D-346)      |
 |Stability (separate run)  |`bench/Grob.Benchmarks/Stability/`        |Are there managed-side leaks invisible in single-run timing?   |
 
 **Cadence:**
 
 - Full benchmark run at the close of every sprint.
 - Stability test runs at a longer cadence — once per release, or on
-  demand. 10,000-iteration runs of all thirteen scripts are too slow
+  demand. 10,000-iteration runs of all eleven scripts are too slow
   for the per-sprint close.
 
 **Regression gate:** 5% regression on end-to-end script benchmarks
@@ -1483,8 +1487,8 @@ decisions log.
 
 ## 14. Validation Scripts
 
-These thirteen scripts from the sample scripts document serve as the
-release gate. All must compile and run correctly before v1 ships.
+These eleven scripts from the sample scripts document serve as the
+release gate (D-346). All must compile and run correctly before v1 ships.
 
 |# |Script                            |Exercises                                                                              |
 |--|----------------------------------|---------------------------------------------------------------------------------------|
@@ -1499,8 +1503,10 @@ release gate. All must compile and run correctly before v1 ships.
 |9 |Disk space monitor                |`process.run`, `json.parse`, `select/case`, `log`, `exit`                              |
 |10|Download and verify a file        |`import Grob.Http`, `import Grob.Crypto`, `http.download`, `crypto.verifySha256`       |
 |11|Azure resource provisioning helper|`guid.newV5`, `Grob.Crypto`, `map<K,V>` iteration, `Grob.Http`, `env.require`          |
-|12|Log file filter by severity/time  |`fs.readText`, regex literal, `Regex.matchAll`, `select`, `filter`, `formatAs.table`   |
-|13|Release promotion validated inputs|`@allowed`, `@minLength`, `@maxLength`, `@secure`, `Grob.Http`, `json.encode`          |
+
+Two more release-gate scripts are owed, and each joins this table when it lands: one
+exercising the full decorator surface (R-08) and a regex log filter (R-34, D-432). The
+table's former rows 12 and 13 described those two without a script behind either (D-346).
 
 The negative-test release gate stands beside them: every error-example pair in
 `docs/errors/examples/` passes the error-examples harness and the quarantine manifest,
@@ -1515,7 +1521,7 @@ block carries `blocked-by` (D-430).
 Grob v1 is ready for public release when:
 
 - [ ] All thirteen core stdlib modules pass their test suites
-- [ ] All thirteen validation scripts compile and run correctly
+- [ ] All eleven validation scripts (D-346) compile and run correctly
 - [ ] The calculator smoke test works
 - [ ] The file organiser real-program target works end-to-end
 - [ ] `grob run`, `grob repl`, `grob check`, `grob fmt` all work

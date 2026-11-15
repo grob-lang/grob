@@ -31,8 +31,8 @@ meaningful operation delegates to a class in `Grob.Compiler`, `Grob.Vm`, or
 `Grob.Runtime`.
 
 **How it is tested:** End-to-end integration tests drive `grob run`, `grob fmt`,
-`grob check`, `grob install`, and `grob restore` against the thirteen validation
-suite scripts (`grob-sample-scripts.md`) plus the error-examples library. These
+`grob check`, `grob install`, and `grob restore` against the eleven validation
+suite scripts (D-346) (`grob-sample-scripts.md`) plus the error-examples library. These
 tests exercise the entry point in its real configuration, which is the only
 configuration that matters.
 
