@@ -62,7 +62,6 @@ Pointers for that plan, all from disk:
 
 ## Open for the maintainer
 
-- **Merge #249**, after removing this file: per `trunk-flow`, `git rm .grob-session/handoff.md` in its own `chore(handoff): remove session hand-off` commit first.
-- **`handoff.md` is already tracked on `main`**: #245 landed the corpus-sweep hand-off there, against the rule that it never reaches `main`. Removing it on #249's branch would clear that too; say if you want that, or a separate clean-up.
+- **Merge #249.** This hand-off stays in the PR, by Chris's earlier agreement: Chris works in remote control, so the hand-off travels with the PR. Do not remove it before merge. The written harness still says to (`trunk-flow` step 4, the `.gitignore` comment, `/handoff`); those are stale and want a separate fix, once Chris confirms the exact rule.
 - Whether to run the lexer benchmark before merge. The new work runs only at a `/` and on bracket open and close.
 - Install the CodeRabbit CLI if you want the pre-PR pass locally; otherwise CodeRabbit reviews on the PR.
