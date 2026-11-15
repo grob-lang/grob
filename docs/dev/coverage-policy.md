@@ -28,27 +28,25 @@ is calculated.
 
 ### `src/Grob.Cli/Program.cs`
 
-**Reason:** CLI entry point. Parses `argv`, dispatches to subcommands, and wires
-the compiler and VM together. Contains no business logic of its own — every
-meaningful operation delegates to a class in `Grob.Compiler`, `Grob.Vm`, or
-`Grob.Runtime`.
+**Reason:** CLI entry point. It binds `Console.In`, `Console.Out` and `Console.Error` to
+`CommandLineRunner` and returns its exit code. It has no branch of its own.
 
-**How it is tested:** Integration tests in `Grob.Integration.Tests` drive the classes
-`Program.cs` dispatches to. The error-examples harness, the public samples gate and the
-sprint smoke tests call `RunCommand`; the REPL tests call `ReplCommand`. No test invokes
-`Program.cs` itself, so its argv parsing and dispatch are untested: keeping the file thin
-is what keeps that gap small.
+**How it is tested:** argv parsing and subcommand dispatch live in `CommandLineRunner`,
+which is in scope for coverage. `CommandLineRunnerTests` in `Grob.Integration.Tests`
+pins each branch: `run` with and without a path, `repl`, help, `--verbose` anywhere in
+`argv`, the unknown-command error and the version string. Below the runner, the
+error-examples harness, the public samples gate and the sprint smoke tests call
+`RunCommand`, and the REPL tests call `ReplCommand`.
 
-The other subcommands do not exist yet, and their end-to-end tests come with them:
+The other subcommands do not exist yet; each lands in `CommandLineRunner` with its tests:
 `grob install` and `grob restore` in Sprint 11, `grob fmt` and `grob check` in Sprint 12
 (`grob-v1-requirements.md`). The validation scripts (D-346) are lexed and parsed in
 `Grob.Compiler.Tests` and type-checked only for ordering and decorator diagnostics; they
 are not executed, and not through the CLI.
 
-**Size constraint:** `Program.cs` must remain thin. If it grows past ~30 lines,
-extract argv parsing and subcommand dispatch into a `CommandLineRunner` (or
-similar) class inside `Grob.Cli`. That class is in scope for coverage and must
-be unit tested.
+**Size constraint:** `Program.cs` stays a single statement over the console streams. A
+new command, flag or usage message goes into `CommandLineRunner`, never here: the
+exclusion is safe only while this file has nothing to test.
 
 ### `src/Grob.Lsp/Program.cs`
 
@@ -101,8 +99,10 @@ using System.Diagnostics.CodeAnalysis;
 // ... top-level statements above ...
 
 [ExcludeFromCodeCoverage(
-    Justification = "CLI entry point; covered by integration tests. See docs/dev/coverage-policy.md.")]
-internal partial class Program { }
+    Justification = "Entry point only: binds Console.In, Console.Out and Console.Error to CommandLineRunner and returns its exit code. It has no branch; all argv parsing and dispatch is in CommandLineRunner, which is unit tested.")]
+internal partial class Program {
+    protected Program() { }
+}
 ```
 
 ### 2. `.github/workflows/sonarcloud.yml`
