@@ -149,6 +149,8 @@ public sealed class DatePluginZoneTests {
     // K accepts an absent offset; the input has none, so the injected zone supplies it.
     [InlineData("2026-07-01T12:00:00", "yyyy-MM-ddTHH:mm:ssK", "2026-07-01T12:00:00+04:00")]
     [InlineData("2026-07-01T12:00:00+02:00", "yyyy-MM-ddTHH:mm:ssK", "2026-07-01T12:00:00+02:00")]
+    // %K is the same specifier written as a token; removing it must leave a valid pattern.
+    [InlineData("2026-07-01T12:00:00", "yyyy-MM-ddTHH:mm:ss%K", "2026-07-01T12:00:00+04:00")]
     // The standard formats u, r and R mean UTC, though their Z or GMT is a literal to DateTime.
     [InlineData("2026-01-01 14:30:00Z", "u", "2026-01-01T14:30:00Z")]
     [InlineData("Thu, 01 Jan 2026 14:30:00 GMT", "r", "2026-01-01T14:30:00Z")]
@@ -177,6 +179,16 @@ public sealed class DatePluginZoneTests {
         var newYearsEve = new DateTime(2029, 12, 31, 23, 30, 0, DateTimeKind.Utc);
 
         Assert.Equal("2030-07-01T00:00:00+02:00", Run(newYearsEve, "date.parse", Str("07-01 +02:00"), Str("MM-dd zzz")));
+    }
+
+    [Fact]
+    public void Parse_MissingYearWithOffsetAndWeekday_ValidatesTheWeekdayInThatYear() {
+        // 1 July 2030 is a Monday; 1 July 2029 was a Sunday. The UTC year, 2029, must not reject
+        // a weekday that the input's own offset puts in 2030.
+        var newYearsEve = new DateTime(2029, 12, 31, 23, 30, 0, DateTimeKind.Utc);
+
+        Assert.Equal("2030-07-01T00:00:00+02:00",
+            Run(newYearsEve, "date.parse", Str("Mon, 01 Jul +02:00"), Str("ddd, dd MMM zzz")));
     }
 
     [Theory]

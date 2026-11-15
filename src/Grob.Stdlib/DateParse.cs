@@ -105,8 +105,9 @@ internal static partial class DateParse {
     }
 
     /// <summary>
-    /// Parses input with an explicit offset. A missing year is the year in that offset, so the
-    /// offset is read first and the input re-parsed when that year differs from the zone-free guess.
+    /// Parses input with an explicit offset. A missing year is the year in that offset, which is
+    /// the UTC year or one either side of it. Each candidate is tried, and the one whose parsed
+    /// offset dates it in that year is kept, so a weekday is checked against the right year.
     /// </summary>
     private static bool TryParseOffset(string input, string pattern, PatternShape shape, DateTime utcNow, out DateTimeOffset result) {
         if (!shape.NeedsYear) {
@@ -118,15 +119,14 @@ internal static partial class DateParse {
             }
             return true;
         }
-        int guess = utcNow.Year;
-        (string text, string format) = WithYear(input, pattern, guess);
-        if (!DateTimeOffset.TryParseExact(text, format, CultureInfo.InvariantCulture, DateTimeStyles.None, out result)) {
-            return false;
+        foreach (int year in (int[])[utcNow.Year, utcNow.Year + 1, utcNow.Year - 1]) {
+            (string text, string format) = WithYear(input, pattern, year);
+            if (DateTimeOffset.TryParseExact(text, format, CultureInfo.InvariantCulture, DateTimeStyles.None, out result)
+                    && (utcNow + result.Offset).Year == year) {
+                return true;
+            }
         }
-        int year = (utcNow + result.Offset).Year;
-        return year == guess
-            || DateTimeOffset.TryParseExact(WithYear(input, pattern, year).Input, format,
-                CultureInfo.InvariantCulture, DateTimeStyles.None, out result);
+        return Fail(out result);
     }
 
     private static (string Input, string Pattern) WithYear(string input, string pattern, int year) =>
@@ -196,8 +196,18 @@ internal static partial class DateParse {
         return false;
     }
 
+    /// <summary>
+    /// The pattern with each <c>K</c> specifier removed, together with the <c>%</c> that makes
+    /// <c>%K</c> a single-specifier token, so what remains is a valid pattern.
+    /// </summary>
     private static string WithoutK(string pattern) {
-        HashSet<int> drop = [.. Specifiers(pattern).Where(s => s.Letter == 'K').Select(s => s.Index)];
+        HashSet<int> drop = [];
+        foreach ((char _, int index) in Specifiers(pattern).Where(s => s.Letter == 'K')) {
+            drop.Add(index);
+            if (index > 0 && pattern[index - 1] == '%' && (index < 2 || pattern[index - 2] != '\\')) {
+                drop.Add(index - 1);
+            }
+        }
         return string.Concat(pattern.Where((_, index) => !drop.Contains(index)));
     }
 
