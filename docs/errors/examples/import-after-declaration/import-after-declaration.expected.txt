@@ -1,7 +1,7 @@
 error[E2201]: `import` after declaration
-  --> import-after-declaration.grob:5:1
+  --> import-after-declaration.grob:4:1
    |
- 5 | import Grob.Http
+ 4 | import Grob.Http
    | ^^^^^^
    |
    = note: `import` statements must precede all declarations and top-level code

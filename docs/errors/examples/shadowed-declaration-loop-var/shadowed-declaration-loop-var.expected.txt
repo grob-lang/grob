@@ -1,9 +1,9 @@
 warning[E1101]: shadowed declaration
-  --> shadowed-declaration-loop-var.grob:5:9
+  --> shadowed-declaration-loop-var.grob:4:9
    |
- 5 |     for result in names {
+ 4 |     for result in names {
    |         ^^^^^^
    |
-   = note: 'result' is declared on line 4 in the enclosing scope
+   = note: 'result' is declared on line 3 in the enclosing scope
    = note: the loop variable 'result' shadows it for the duration of the loop body
    = help: rename the loop variable to make the shadowing intentional and visible

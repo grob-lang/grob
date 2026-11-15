@@ -1,5 +1,4 @@
 // E0102 — interpolating a nullable string without resolving the nil case
-// Eventual path: docs/errors/examples/nullable-interpolation/nullable-interpolation.grob
 fn welcome(title: string?): string {
     return "Hello, ${title}"
 }

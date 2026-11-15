@@ -1,7 +1,7 @@
 error[E0003]: wrong number of arguments
-  --> wrong-argument-count-too-few.grob:7:7
+  --> wrong-argument-count-too-few.grob:6:7
    |
- 7 | print(greet("Ada"))
+ 6 | print(greet("Ada"))
    |       ^^^^^^^^^^^^^
    |
    = note: 'greet' requires 2 arguments; 1 was supplied

@@ -1,12 +1,12 @@
 error[E5101]: array index out of range
-  --> array-index-out-of-range-in-function.grob:4:12
+  --> array-index-out-of-range-in-function.grob:3:12
    |
- 4 |     return items[items.length]
+ 3 |     return items[items.length]
    |            ^^^^^^^^^^^^^^^^^^^
    |
    = note: 'items' has length: 2
    = note: index requested: 2
    = note: valid indices: 0 to 1
    |
-   at lastItem (array-index-out-of-range-in-function.grob:8:7)
-   at <top-level> (array-index-out-of-range-in-function.grob:8:7)
+   at lastItem (array-index-out-of-range-in-function.grob:7:7)
+   at <top-level> (array-index-out-of-range-in-function.grob:7:7)

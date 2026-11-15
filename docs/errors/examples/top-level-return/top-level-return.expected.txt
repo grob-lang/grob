@@ -1,7 +1,7 @@
 error[E2203]: top-level `return`
-  --> top-level-return.grob:5:5
+  --> top-level-return.grob:4:5
    |
- 5 |     return
+ 4 |     return
    |     ^^^^^^
    |
    = note: `return` is not valid at script level

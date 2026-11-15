@@ -1,8 +1,8 @@
 error[E2205]: `catch` after catch-all
-  --> catch-after-catch-all.grob:7:3
+  --> catch-after-catch-all.grob:6:3
    |
- 7 | } catch (e: IoError) {
+ 6 | } catch (e: IoError) {
    |   ^^^^^
    |
-   = note: the bare `catch e` on line 5 matches any error; this clause can never be reached
+   = note: the bare `catch e` on line 4 matches any error; this clause can never be reached
    = help: place typed `catch` clauses before the bare `catch` catch-all

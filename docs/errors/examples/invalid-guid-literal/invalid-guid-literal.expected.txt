@@ -1,7 +1,7 @@
 error[E0601]: invalid `guid` string literal
-  --> invalid-guid-literal.grob:3:27
+  --> invalid-guid-literal.grob:2:27
    |
- 3 | readonly id := guid.parse("not-a-guid")
+ 2 | readonly id := guid.parse("not-a-guid")
    |                           ^^^^^^^^^^^^^
    |
    = note: 'not-a-guid' is not a valid guid literal

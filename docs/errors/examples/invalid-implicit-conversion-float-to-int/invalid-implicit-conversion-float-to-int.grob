@@ -1,5 +1,4 @@
 // E0007 — assigning a float literal to a binding declared as int, with no explicit conversion
-// Eventual path: docs/errors/examples/invalid-implicit-conversion-float-to-int/invalid-implicit-conversion-float-to-int.grob
 fn clampedScore(raw: float): int {
     result: int := raw
     return result

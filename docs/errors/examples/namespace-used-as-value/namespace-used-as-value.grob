@@ -1,5 +1,4 @@
 // E1004 — a core-module namespace referenced in value position
-// Eventual path: docs/errors/examples/namespace-used-as-value/namespace-used-as-value.grob
 result := math
 
 print(result)

@@ -1,7 +1,7 @@
 error[E2212]: `break` / `continue` outside a loop
-  --> break-continue-outside-loop.grob:5:5
+  --> break-continue-outside-loop.grob:4:5
    |
- 5 |     continue
+ 4 |     continue
    |     ^^^^^^^^
    |
    = note: `continue` is only valid inside a `while` or `for...in` loop

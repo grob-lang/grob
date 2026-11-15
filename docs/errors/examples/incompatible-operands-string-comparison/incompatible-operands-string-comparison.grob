@@ -1,5 +1,4 @@
 // E0002 — comparing a string and an int with > which requires matching numeric types
-// Eventual path: docs/errors/examples/incompatible-operands-string-comparison/incompatible-operands-string-comparison.grob
 fn isHighScore(label: string, threshold: int): bool {
     return label > threshold
 }
