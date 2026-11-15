@@ -240,7 +240,8 @@ throwaway Grob script as its way of acting. Three pieces, in order:
 2. **Plan mode.** A run over a recording host: the script executes and reads
    return real data, but each state change is recorded and reported in place of
    being performed. A person or a harness reviews what the script would do before
-   allowing it. Semantics are OQ-022.
+   allowing it. Semantics are OQ-022, including what a plan run does with a
+   granted plugin, whose effects no recording host can see.
 3. **Embedding.** A published host package so a .NET agent host runs Grob
    in-process with its own natives, its own capability set and resource limits.
    The playground (D-319) is the first embedding host; this makes the route
@@ -307,7 +308,8 @@ changed on the strength of evidence, and only after a cheaper remedy has failed.
 | When | What | Tracked |
 |---|---|---|
 | Sprint 9C | `fs` and `process` natives through the capability seam | R-35 |
-| Before Sprint 12 | OQ-019 and OQ-020 resolved; R-25, R-26 and R-29 closed | — |
+| Before the Sprint 12 kickoff | OQ-019 and OQ-020 resolved | — |
+| Sprint 12, before the agent-facing items | R-25, R-26 and R-29 closed; R-25 is Sprint 12's own work | — |
 | Sprint 12 | `grob check --json`, structured fixes, foreign-idiom diagnostics, `grob skills` | R-36 |
 | After Sprint 12 | The benchmark designed (OQ-021), built and run once | R-37 |
 | Post-v1 | Restricted run and plan mode (OQ-022) | R-38 |

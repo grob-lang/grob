@@ -16883,8 +16883,8 @@ _This document is the authoritative decisions record for Grob._
 _November 2026 — D-434, D-435 and D-436 added, with spec edits; no source change. **The_
 _agentic development strategy is adopted** by owner decision (D-434): the toolchain has two_
 _readers, and `grob-agentic-strategy.md` is authorised. Sprint 12 gains `grob check --json`,_
-_structured fixes, foreign-idiom diagnostics and `grob skills`; a benchmark follows; syntax_
-_changes wait for its evidence. **D-435 supersedes D-072**: a trusted run, unchanged and the_
+_structured fixes, foreign-idiom diagnostics and `grob skills`; a benchmark follows; syntax is_
+_not changed to suit agents before it. **D-435 supersedes D-072**: a trusted run, unchanged and the_
 _only mode in v1, and a post-v1 restricted run described as a capability-gated standard_
 _library, never a sandbox. **D-436 makes the capability seam a gate on Sprint 9C** for `fs`_
 _and `process`. R-35 to R-38 filed; OQ-019 to OQ-023 opened. Count unchanged at 120._

@@ -1048,7 +1048,8 @@ final polish.
   borrowed from a neighbouring language get a diagnostic that names them
   and gives the Grob form. `grob skills` prints agent guidance carried in
   the binary. The contract is OQ-019 and the kit OQ-020; both resolve
-  before this sprint starts, and R-25, R-26 and R-29 close first.
+  before this sprint starts. R-25, R-26 and R-29 close before these items
+  begin; R-25 is this sprint's own work and comes first within it.
 - `grob dump <file>` — compile and disassemble. Runs the full front end
   plus the compiler, then prints the resulting `Chunk` via the Sprint 2
   `Disassembler` (D-306). Does not execute. The CLI front door to the
