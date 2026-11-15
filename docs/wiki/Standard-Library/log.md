@@ -31,7 +31,7 @@ script after logging an error, call `exit(1)` explicitly.
 ### Operational logging
 
 ```grob
-log.info("Starting deployment to ${env}")
+log.info("Starting deployment to ${environment}")
 process.runOrFail("az", ["deployment", "create", "--name", name])
 log.info("Deployment complete")
 ```

@@ -53,7 +53,7 @@ non-nil at compile time.
 name: string? := nil     // may be nil
 count := 42              // never nil — int is non-nullable
 
-print(name)              // compile error — name might be nil
+print(name)              // prints nil — print() accepts a nullable value
 
 if (name != nil) {
     print(name)          // safe — compiler narrows type to string

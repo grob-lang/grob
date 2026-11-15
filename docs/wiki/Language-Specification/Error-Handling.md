@@ -27,10 +27,10 @@ content := fs.readText("C:\\config.json")   // throws IoError if file not found
 try {
     data := fs.readText("C:\\config.json")
     config := json.parse(data)
-} catch IoError e {
+} catch (e: IoError) {
     log.error("File not found: ${e.message}")
     exit(1)
-} catch JsonError e {
+} catch (e: JsonError) {
     log.error("Invalid JSON: ${e.message}")
     exit(1)
 } catch e {

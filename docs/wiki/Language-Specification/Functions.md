@@ -77,7 +77,7 @@ struct literal. The parser never has to guess.
 Lambdas capture variables from the enclosing scope.
 
 ```grob
-cutoff := date.today().minusDays(30)
+cutoff := date.today().addDays(-30)
 stale  := branches.filter(b => date.parse(b.lastCommit) < cutoff)
 ```
 

@@ -96,7 +96,10 @@ summaries := users.select(u => #{ name: u.name, active: u.isActive })
 ### Typed deserialisation
 
 ```grob
-type User { name: string, email: string }
+type User {
+    name: string
+    email: string
+}
 users := json.read("C:\\data\\users.json").mapAs<User>()
 ```
 

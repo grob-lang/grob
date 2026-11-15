@@ -7,7 +7,7 @@ typed, optionally defaultable and validated at the parameter boundary before the
 script body runs.
 
 ```grob
-param env:     string
+param environment:     string
 param dry_run: bool = false
 param days:    int  = 30
 ```
@@ -19,9 +19,9 @@ parameter is a compile error before execution.
 ## Invoking with Parameters
 
 ```
-grob run deploy.grob --env staging
-grob run deploy.grob --env staging --dry_run true
-grob run deploy.grob --env staging --days 60
+grob run deploy.grob --environment staging
+grob run deploy.grob --environment staging --dry_run true
+grob run deploy.grob --environment staging --days 60
 ```
 
 ## Param Files
@@ -31,7 +31,7 @@ with `//` comments, designed to feel native to Grob.
 
 ```
 // deploy.grobparams
-env = staging
+environment = staging
 days = 30
 // pat is intentionally absent — supply via --pat or env.require()
 ```
@@ -43,7 +43,7 @@ grob run deploy.grob --params deploy.grobparams
 Command-line arguments override param file values:
 
 ```
-grob run deploy.grob --params deploy.grobparams --env production
+grob run deploy.grob --params deploy.grobparams --environment production
 ```
 
 Param files are committable to source control. They are not JSON, not YAML, not
@@ -62,15 +62,15 @@ at the parameter boundary before the script body runs.
 | `@maxLength(n)` | String value must be at most `n` characters |
 
 ```grob
-param env: string
-    @allowed("dev", "staging", "production")
+@allowed("dev", "staging", "production")
+param environment: string
 
+@secure
 param pat: string
-    @secure
 
+@minLength(1)
+@maxLength(64)
 param project_name: string
-    @minLength(1)
-    @maxLength(64)
 ```
 
 ### `@secure`

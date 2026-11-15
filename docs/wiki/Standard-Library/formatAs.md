@@ -57,7 +57,7 @@ entries.formatAs.table()
 ### Column selection
 
 ```grob
-entries.formatAs.table(["name", "size_mb"])
+entries.formatAs.table(columns: ["name", "size_mb"])
 ```
 
 ### List output

@@ -25,6 +25,6 @@ file into memory.
 ```grob
 import Grob.Crypto
 
-hash := crypto.sha256File("C:\releases\tool.zip")
-ok := crypto.verifySha256("C:\releases\tool.zip", expected_hash)
+hash := crypto.sha256File(`C:\releases\tool.zip`)
+ok := crypto.verifySha256(`C:\releases\tool.zip`, expected_hash)
 ```

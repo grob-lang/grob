@@ -10,7 +10,7 @@ be readable by any C# or Go developer without prior knowledge of Grob.
 ```grob
 x := 42                  // declare and assign — x is int (inferred)
 x = 100                  // reassign — x must already exist
-x: int := 42             // explicit type annotation — always valid, never required here
+y: int := 42             // explicit type annotation — always valid, never required here
 
 const MAX := 100         // compile-time constant — value must be a literal or compile-time expression
 const API_VERSION: int := 2
@@ -76,12 +76,12 @@ result := files
     .sort()
 
 // Trailing operator
-total := price
-    + tax
-    + shipping
+total := price +
+    tax +
+    shipping
 
 // Multi-line function call
-result := someFunction(
+output := someFunction(
     arg1,
     arg2
 )

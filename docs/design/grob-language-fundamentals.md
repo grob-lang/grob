@@ -1394,9 +1394,9 @@ result := files.
     sort()
 
 // Multi-line expression — trailing operator
-total := price
-    + tax
-    + shipping
+total := price +
+    tax +
+    shipping
 
 // Multi-line function call — trailing comma
 result := someFunction(

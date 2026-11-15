@@ -30,7 +30,6 @@ module-level functions see [date module](../Standard-Library/date.md).
 | Member | Signature |
 |--------|-----------|
 | `addDays(n: int)` | `→ date` |
-| `minusDays(n: int)` | `→ date` |
 | `addMonths(n: int)` | `→ date` |
 | `addHours(n: int)` | `→ date` |
 | `addMinutes(n: int)` | `→ date` |
