@@ -1,8 +1,8 @@
 // Native-call probe corpus: named arguments to natives (D-426 Decision 4). Captured
 // against b202509 before any signature work. Named-argument binding to natives stays
-// unsupported: every call here must produce exactly the diagnostic it produces today,
-// including the named-type method calls that produce none. Do not regenerate the
-// expected file to match new output.
+// unsupported: every call here produces exactly the diagnostic it did at capture, bar the
+// named-type method calls, which R-20 changed from none to E0011 deliberately. Do not
+// regenerate the expected file to match new output.
 f := 2.0
 i := 3
 s := "abc"
@@ -28,7 +28,7 @@ s.replace(from: s, to: s)
 i.format(pattern: s)
 f.roundTo(decimals: i)
 
-// named-type instance members: accepted without a diagnostic today
+// named-type instance members: E0011 since R-20 (accepted without a diagnostic before it)
 d.addDays(days: i)
 d.format(pattern: s)
 d.isBefore(other: d)
