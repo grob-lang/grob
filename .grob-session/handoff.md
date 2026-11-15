@@ -1,31 +1,30 @@
-# Session hand-off — 14 November 2026 (session B, after group 1)
+# Session hand-off — 15 November 2026 (session B complete)
 
 ## Where we are
-- Branch: `feat/tests-public-samples-gate`, HEAD `c9526eb`
+- Branch: `feat/tests-public-samples-gate`, HEAD `02af086`
 - Working tree: clean apart from this hand-off
-- Commits on this branch: 3 (`git log --oneline main..HEAD`): two hand-off commits and
-  `c9526eb` (change group 1)
+- Commits on this branch (`git log --oneline main..HEAD`): hand-off commits, plus `c9526eb`
+  (change group 1, R-32) and `02af086` (change group 2, the harness)
 - Increment prompt: `docs/prompts/public-samples-compile.md`
-- Phase reached: session B. Change group 1 (R-32) is complete and committed. Change group 2
-  (the harness) is next, in this session. Groups 3 to 5 belong to session C.
+- Phase reached: session B's row is complete. Change groups 1 and 2 are committed. Groups 3, 4
+  and 5 belong to session C.
 - Gate report: `D:\Code\grob-lang\gate-reports\public-samples-compile-gate-report.md` (outside
   the working tree).
+- PR: draft #243.
 
 ## Green state
-- Tests: the full suite passed 4,904, failed 0, at group 1's code before its last five
-  `date.parse` theory cases were added. After that addition, `Grob.Stdlib.Tests` passed 597 and
-  `Grob.Integration.Tests` passed 701. The full suite was not rerun after the addition.
-  Release build, SDK 10.0.303.
-- Coverage: changed files only, from the `Grob.Stdlib.Tests` and `Grob.Integration.Tests`
-  cobertura runs. Every file group 1 touched in `Grob.Stdlib` and `Grob.Cli` is at 100% line
-  coverage (`DateParse`, `DatePlugin`, `PathPlugin`, `InertCapabilities`, `StdlibPlugins`,
-  `SystemClock`, `SystemFileSystem`, `HostCapabilities`). The project-level D-328 figure was not
-  run.
-- Pre-push gate: runs on this hand-off's push.
-- Mutation 9 run: putting `TimeZoneInfo.Local` back in `date.today` failed exactly the
+- Tests: the full suite passed 4,964, failed 0, on `02af086`'s tree. Release build, SDK
+  10.0.303.
+- Coverage: group 1's changed files in `Grob.Stdlib` and `Grob.Cli` are at 100% line coverage,
+  from the `Grob.Stdlib.Tests` and `Grob.Integration.Tests` cobertura runs. Group 2 is test code
+  only. The project-level D-328 figure was not run.
+- Pre-push gate: passed on group 1's hand-off push; runs again on this push.
+- Mutation 9 run in group 1: putting `TimeZoneInfo.Local` back in `date.today` failed exactly the
   predicted three tests (`Today_InjectedZone_TakesTheZonesDate`,
   `Today_InjectedZoneTransitionDay_UsesMidnightsOwnOffset` and
-  `StdlibSources_ReadNoAmbientZoneOrDirectory`). The line was restored afterwards.
+  `StdlibSources_ReadNoAmbientZoneOrDirectory`).
+- Mutations 1 to 8 and 10 have not run. Chris approved moving them to group 4, because their
+  predictions name corpus cases that exist only once the corpus is wired in.
 
 ## Decisions taken, not yet logged
 All go in group 5's landing entry (D-number from the live tail), in its record of where the work
@@ -77,6 +76,26 @@ Taken in session B, group 1:
 12. **The Windows-only drive-relative test returns early off Windows.** xUnit 2.9.3 has no
     dynamic skip, and the prompt forbids `Skip =`.
 
+Taken in session B, group 2 (plan approved by Chris):
+
+13. **The near-miss guard reports any fence whose first info word looks like `grob` and that
+    extraction does not take.** That is the accepted rule plus a column-0 ```` ```grob-x ```` or
+    ```` ```grob,x ````, which would otherwise escape unseen. Stated in `02af086`'s message.
+14. **The fixture guard is lexical**: each fixture variable must appear as a double-quoted
+    literal in some extracted block's source (`PublicSampleCorpus.UnreadFixtures`). This avoids a
+    cross-case aggregate run.
+15. **The E1001 subject comes from a header pass in `SampleRunner`**, the first quoted name in
+    the message. `ExampleDiagnostic` is not widened, because its equality drives the master
+    comparison. Unaccounted stderr lines (an internal error, stray output) come from
+    `CliDiagnosticReader.Read`'s problems and fail a bare block, as session A's measurement did.
+16. **A fragment whose only diagnostics are excused E1001s fails** ("is a complete program"). It
+    should be a bare block, which then passes as excused. This follows "after setting aside" in
+    §2.2 and matches mutation 4's prediction.
+17. **The harness classes were written before their unit tests**, not after a red run. Group 4's
+    mutation verifications stand in for the red step. Stated in `02af086`'s message.
+18. **No hang protection.** xUnit 2's `Timeout` needs async tests, and CLAUDE.md forbids
+    `Task.Run`. Session A measured no hangs.
+
 Measured, not decided, carried into session C: F2's tallies (45 run, 29 excused, 39 fragments,
 10 blocked, five of them fragments), which change mutation 2 to five blocked fragments and
 mutation 4 to 39 unblocked fragments; F4's corrected drive-relative wording (pinned by
@@ -95,17 +114,22 @@ None allocated. Count unchanged at 120.
   `12:00 2026-07-01`'s trailing `-01` as an offset. The regex now anchors the offset to a clock
   time.
 - A dynamic skip for the Windows-only test: not available in xUnit 2.9.3.
+- An inline `sed` to widen `DeferredWorkRegister`'s regex: the escapes collapsed and corrupted
+  the file, so it was restored from git and redone with Edit. CLAUDE.md's "scripts go in files"
+  rule exists for this.
+- Using `math.nope` as the E1002 test input: it gives E1003 (undefined namespace member). An
+  undefined member on a value (`x := 5`, `x.nope`) gives E1002.
 
 ## Quarantined or skipped tests
 None.
 
 ## Why this session stopped
-It has not. This hand-off marks group 1's completion, as the prompt requires after each group.
-Session B continues into change group 2.
+Session B's row is complete (change groups 1 and 2). The prompt forbids a session covering groups
+from two rows, so groups 3 to 5 need session C.
 
 ## Next session, first action
-Start change group 2 (`docs/prompts/public-samples-compile.md` §2.2), with the near-miss guard
-on the accepted rule and `DeferredWorkRegister` widened to `R-\d{2,}`.
+Run the prompt's session-start check for session C (Opus 5.5, medium), then start change group 3
+(§2.3, the wiki corrections, widened by rulings 1, 4 and 5).
 
 ## Open for the maintainer
 Nothing.
