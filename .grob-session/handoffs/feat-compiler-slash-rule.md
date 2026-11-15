@@ -2,9 +2,9 @@
 
 ## Where we are
 
-- Branch: `feat/compiler-slash-rule`, HEAD `631a75e` before this hand-off commit.
+- Branch: `feat/compiler-slash-rule`, HEAD `cbf7b08` before this hand-off commit.
 - Working tree: clean apart from gitignored scratch in `.grob-session/`.
-- Commits on this branch: 1 (`git log --oneline origin/main..HEAD`), plus this hand-off.
+- Commits on this branch: `631a75e` (the `/` rule) and `cbf7b08` (review fix), plus hand-off commits (`git log --oneline origin/main..HEAD`).
 - **PR #249** is open for it: `feat(compiler): complete the lexer's / rule for regex literals (D-432, D-439)`. Six files, not yet reviewed.
 - Increment prompt: none. The `regex` increment is authorised by D-432 and `grob-v1-requirements.md` (Sprint 9C, `regex` bullet). Chris said "work in the normal way".
 - Phase reached: **PR 1 of 2 is complete and pushed.** PR 2 is not started.
@@ -62,6 +62,7 @@ Pointers for that plan, all from disk:
 
 ## Open for the maintainer
 
-- **Merge #249.** This hand-off stays in the PR, by Chris's earlier agreement: Chris works in remote control, so the hand-off travels with the PR. Do not remove it before merge. The written harness still says to (`trunk-flow` step 4, the `.gitignore` comment, `/handoff`); those are stale and want a separate fix, once Chris confirms the exact rule.
+- **Merge #249.** This hand-off stays in the PR and merges to `main` (#250's rule). It lives at `.grob-session/handoffs/feat-compiler-slash-rule.md`, one file per branch, and the session that picks it up retires it with its own `/handoff`. #249 and #250 both delete the old `.grob-session/handoff.md`, so they merge in either order. Until #250 merges, this branch's `.gitignore` still ignores `handoffs/`; the file is tracked regardless.
+- **Review fix landed:** `cbf7b08` reads regex classes and comments as .NET does (CodeRabbit). The D-432 supersession link was pushed back.
 - Whether to run the lexer benchmark before merge. The new work runs only at a `/` and on bracket open and close.
 - Install the CodeRabbit CLI if you want the pre-PR pass locally; otherwise CodeRabbit reviews on the PR.
