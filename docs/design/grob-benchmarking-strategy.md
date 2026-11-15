@@ -65,7 +65,7 @@ Grob.sln
 ├── bench/
 │   └── Grob.Benchmarks/         ← Console app — BenchmarkDotNet entry point
 │       ├── Compile/             ← Lex/parse/typecheck/emit benchmarks
-│       ├── Vm/                  ← Hand-constructed chunk execution benchmarks
+│       ├── Vm/                  ← Chunk execution benchmarks over compiled .grob fixtures (D-387)
 │       ├── Attribution/         ← Differential allocation-attribution fixtures
 │       ├── EndToEnd/            ← Validation suite full-pipeline benchmarks
 │       ├── Stability/           ← Long-run stability test (separate cadence)

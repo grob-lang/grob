@@ -12,6 +12,8 @@ bootstrap code, not a place to hide untested logic.
 
 ## Coverage target
 
+Every PR's new production code must also reach **90% line and branch coverage** (D-438), so a
+PR cannot lean on solution-wide headroom.
 Grob targets **≥ 90% line and branch coverage** (D-328) on production code across the solution,
 measured by SonarCloud against Cobertura output from `dotnet test`.
 
@@ -38,8 +40,9 @@ is what keeps that gap small.
 
 The other subcommands do not exist yet, and their end-to-end tests come with them:
 `grob install` and `grob restore` in Sprint 11, `grob fmt` and `grob check` in Sprint 12
-(`grob-v1-requirements.md`). The validation scripts (D-346) are lexed, parsed and
-type-checked in `Grob.Compiler.Tests`, not executed, and not through the CLI.
+(`grob-v1-requirements.md`). The validation scripts (D-346) are lexed and parsed in
+`Grob.Compiler.Tests` and type-checked only for ordering and decorator diagnostics; they
+are not executed, and not through the CLI.
 
 **Size constraint:** `Program.cs` must remain thin. If it grows past ~30 lines,
 extract argv parsing and subcommand dispatch into a `CommandLineRunner` (or

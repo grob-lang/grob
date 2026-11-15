@@ -30,8 +30,11 @@ work that happens _inside_ a branch, see:
    `/commit-message`, push it and open or update the PR. The merge is
    Chris's action.
 5. **The trunk is always green.** Every commit on `main` must pass tests
-   _and_ keep every project at or above 90% line and branch coverage (D-328). You don't merge
-   red. You don't merge below the coverage bar. Chris doesn't either.
+   _and_ keep every project at or above 90% line and branch coverage. That per-project
+   check is deliberately stricter than D-328, whose floor is on the solution-wide in-scope
+   denominator: 90% is the least acceptable figure, and more is always wanted. Each PR's
+   new code also meets 90% line and branch (D-438). You don't merge red. You don't merge
+   below the coverage bar. Chris doesn't either.
 
 ## Where increment prompts live
 

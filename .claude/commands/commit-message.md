@@ -8,7 +8,7 @@ allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(gi
 Inspect the currently staged changes (`git diff --cached`) and produce a commit message
 that follows the conventions below.
 
-## Pre-stage checklist (run before `git add`)
+## Pre-commit checklist (run before `git commit`)
 
 The pre-commit hooks `trailing-whitespace`, `end-of-file-fixer` and
 `mixed-line-ending` fix the working tree on failure but do **not** restage, and
@@ -21,12 +21,16 @@ at least one aborted commit cycle every time.
 2. **Verify namespaces match folder paths.** For every new or moved `.cs` file, the
    namespace on line 1 must equal the folder path under `src/` or `tests/` (see
    `src/CLAUDE.md`).
-3. **Build and test:** `dotnet build Grob.slnx` then `dotnet test Grob.slnx --nologo`.
-   Zero warnings, zero failures.
-4. **Then stage the change's own files** by path (`git add <path>…`), never `git add -A`:
+3. **Stage the change's own files** by path (`git add <path>…`), never `git add -A`:
    that sweeps in unrelated work and scratch. If the caller has already staged a
-   selection, as `/review-pr-comments` does, keep it and stage nothing more. Hooks are
-   the safety net, not the workflow.
+   selection, as `/review-pr-comments` does, keep it and stage nothing more.
+4. **Confirm the staged files match the working tree:**
+   `git diff --quiet -- $(git diff --cached --name-only)`. If any staged file has
+   unstaged edits, stop and stage or discard them first, so the tests below run against
+   what will be committed: an unstaged fix can otherwise pass the tests while the staged
+   version is broken.
+5. **Build and test:** `dotnet build Grob.slnx` then `dotnet test Grob.slnx --nologo`.
+   Zero warnings, zero failures. Hooks are the safety net, not the workflow.
 
 ## Procedure
 

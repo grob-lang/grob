@@ -11,8 +11,9 @@ explicitly, not silently.
 
 A feature is not done after one green cycle. The cycle below covers a
 single behaviour; a feature is done when happy path, failure path, and
-edge cases are all green and the project is still at or above 90% line
-and branch coverage (D-328). See `Step 5: Extend coverage` and `Step 6: Coverage check`
+edge cases are all green, the project is still at or above 90% line
+and branch coverage (a per-project check, stricter than D-328's solution-wide floor) and
+the new code meets 90% too (D-438). See `Step 5: Extend coverage` and `Step 6: Coverage check`
 below.
 
 ## The full procedure
