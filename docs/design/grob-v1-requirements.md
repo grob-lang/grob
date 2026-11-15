@@ -927,6 +927,13 @@ itself implemented and producing a first passing run. Authority: D-302,
   `runShellOrFail()`. `ProcessResult`: `stdout`, `stderr`, `exitCode`.
   `timeout: int = 0` on all four functions — `0` means infinite.
   Throws `ProcessError` on timeout expiry.
+- **Capability seam** (D-436, R-35) — every `fs` and `process` native, and
+  every `json` and `csv` file read or write, reaches the OS through an
+  injected capability: `IFileSystem` and `IProcessRunner` in
+  `Grob.Runtime`. Each interface member is one operation that either reads
+  state or changes it. No type in `Grob.Stdlib` calls the file, directory
+  or process APIs directly; a source guard keeps it so. The `fs` tests run
+  over an in-memory file system.
 
 **Acceptance:** The file organiser real-program target runs correctly.
 JSON and CSV round-trip works. Regex matching and replacement works.
@@ -1025,7 +1032,8 @@ type-checked at compile time. `grob install` downloads from NuGet.
 
 **Delivers:** `grob fmt`, `grob check`, `grob dump`, `grob new`,
 `grob version`, `--help`, Windows Terminal profile, first-run
-acknowledgement, `.grobc` caching, final polish.
+acknowledgement, `.grobc` caching, the agent-facing surface (D-434),
+final polish.
 
 **Scope:**
 
@@ -1033,6 +1041,15 @@ acknowledgement, `.grobc` caching, final polish.
   Same-line braces, consistent indentation, `snake_case` warnings.
 - `grob check <file>` — run lexer, parser and type checker only. Report
   all diagnostics. Do not execute.
+- **Agent-facing surface** (D-434, R-36; `grob-agentic-strategy.md` §5
+  and §6). `grob check <file> --json` emits every diagnostic as one
+  versioned JSON document. `Diagnostic` carries `note` and `help` lines
+  and, where the fix is mechanical, structured text edits. Constructs
+  borrowed from a neighbouring language get a diagnostic that names them
+  and gives the Grob form. `grob skills` prints agent guidance carried in
+  the binary. The contract is OQ-019 and the kit OQ-020; both resolve
+  before this sprint starts. R-25, R-26 and R-29 close before these items
+  begin; R-25 is this sprint's own work and comes first within it.
 - `grob dump <file>` — compile and disassemble. Runs the full front end
   plus the compiler, then prints the resulting `Chunk` via the Sprint 2
   `Disassembler` (D-306). Does not execute. The CLI front door to the
@@ -1183,6 +1200,8 @@ and the confirmed decisions in `grob-decisions-log.md`.
 |`grob run <file> --verbose`      |Execute with debug output                 |
 |`grob repl`                      |Interactive REPL (`G>` prompt)            |
 |`grob check <file>`              |Lex, parse, type-check only — no execution|
+|`grob check <file> --json`       |The same, as one JSON document (D-434)    |
+|`grob skills`                    |Print version-matched agent guidance (D-434)|
 |`grob dump <file>`               |Compile and disassemble — print bytecode, no execution|
 |`grob fmt <file>`                |Format source code (never automatic)      |
 |`grob new <name>`                |Scaffold new script or project            |
@@ -1230,7 +1249,7 @@ Full API shapes in `grob-stdlib-reference.md` and `grob-plugins.md`.
 
 Plugin loading is running arbitrary code. Documented prominently. No
 sandbox claims. No sandbox attempted. The safe path is the obvious path.
-See D-072, D-073, D-078.
+See D-435 (which supersedes D-072), D-073, D-078.
 
 -----
 
@@ -1635,3 +1654,6 @@ Grob v1 is ready for public release when:
 *sharpbasic-retrospective.md, ADR-0012 (solution structure and naming),*
 *and past design session conversations.*
 *Update when the decisions log changes or sprint scope is adjusted.*
+*Updated November 2026 — D-434, D-435, D-436: Sprint 9 gains the capability-seam*
+*requirement; Sprint 12 and §8 gain `grob check --json` and `grob skills`; §9's*
+*Security paragraph cites D-435 in place of the superseded D-072.*
