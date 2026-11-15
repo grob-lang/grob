@@ -12,7 +12,8 @@ internal sealed partial record DeferredWorkRegister(IReadOnlySet<string> Open, I
     private const string OpenHeading = "### Open items";
     private const string ClosedHeading = "### Closed items";
 
-    [GeneratedRegex(@"^\| (R-\d{2}) \|")]
+    // Two or more digits (gate report F7): the public samples' blocker grammar admits R-100.
+    [GeneratedRegex(@"^\| (R-\d{2,}) \|")]
     private static partial Regex RowPattern();
 
     [GeneratedRegex(@"\| \*\*(D-\d{3})\*\* \|")]
