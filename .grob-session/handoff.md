@@ -5,7 +5,7 @@
 - Branch: `docs/corpus-sweep`, cut from `main` at `c351fd1`; PR #245
 - Working tree: clean apart from gitignored scratch in `.grob-session/`
 - Commits on this branch: group 1 at `e9fea06`, group 2 at `6fab31b`, group 3 at
-  `de37b8a`, plus hand-offs
+  `de37b8a`, the maintainer's rulings on group 3's findings at `2762139`, plus hand-offs
 - Increment prompt: `docs/prompts/corpus-sweep.md`
 - Phase reached: **session C complete.** Change groups 1 to 3 are committed. Groups 4
   and 5 are next and belong to session D
@@ -48,6 +48,23 @@ All become lines in the landing entry in group 5. None is in the log yet.
     that a Fable-pinned agent exists (none does) and that Sonar is not a NuGet analyzer
     (`SonarAnalyzer.CSharp` is a local gate since PR #104).
 
+- **Chris's rulings on group 3's five findings** (15 November 2026), applied in
+  `2762139`. Each is a line in the entry; R1 and R2 touch group 1 and 2 files by his
+  direct instruction, a departure from the one-row-per-session rule to record:
+  1. The README does not track sprints: `README.md:45`'s "Sprint 5 is active" removed.
+  2. `coverage-policy.md` notes `grob fmt`/`check`/`install`/`restore` do not exist yet
+     and names Sprint 11 (install, restore) and Sprint 12 (fmt, check), which
+     `grob-v1-requirements.md` already schedules.
+  3. Files are edited in place with the Edit tool; the complete-file delivery rule is
+     gone from root `CLAUDE.md`, `logging-a-decision` and the compiler-engineer agent.
+  4. `/commit-message` commits on the feature branch; the no-commit rule (against
+     runaway committing) is retired. `tdd-cycle`, `trunk-flow`, `start-branch` and the
+     compiler-engineer agent follow. Merging stays Chris's.
+  5. 90% coverage is the floor on every PR's new code too, and more is always wanted;
+     SonarCloud's free-plan 80% gate cannot be raised and is not the bar. Root and
+     `tests/` `CLAUDE.md`, `review-pr-comments` and `sonar-pr-review` say so. This
+     extends D-328 (overall floor) to new code: the entry should say it does.
+
 ## Error codes and registry state
 
 None allocated. Count 120.
@@ -71,19 +88,4 @@ Start session D (Opus 5.5, medium) with change group 4: run
 
 ## Open for the maintainer
 
-Found in group 3, outside its scope. Each is a register row or a question for group 5,
-not a sweep edit:
-
-1. `README.md:45` says "Sprint 5 (Functions and Closures) is active". Group 2's row 24
-   covered lines 17 and 18 only.
-2. `docs/dev/coverage-policy.md:30-33` says the validation scripts drive `grob fmt`,
-   `grob check`, `grob install` and `grob restore`, which do not exist yet. Q4 took only
-   line 34.
-3. `logging-a-decision` and root `CLAUDE.md` say design-doc deliverables are complete
-   files, never diffs, while root `CLAUDE.md` also says files are edited with the Edit
-   tool. A claude.ai-era rule; which holds is Chris's call.
-4. `/commit-message` says never run `git commit`, while `/close-session` step 4 commits
-   through it. Process, not interface; left alone.
-5. `sonar-pr-review` and `/review-pr-comments` compare new-code coverage against D-328's
-   90% floor, while the SonarCloud PR gate fails under 80%. Both are true; neither file
-   says which number fails the gate.
+Nothing. The five group 3 findings were ruled on and applied (above).
