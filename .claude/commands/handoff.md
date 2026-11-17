@@ -1,11 +1,14 @@
 ---
-description: Write a session hand-off to .grob-session/handoff.md so the next session resumes without re-deriving state. Use when an increment will not finish in this session, when context is running short or when the session shows degradation signs.
+description: Write a session hand-off to .grob-session/handoffs/<branch>.md so the next session resumes without re-deriving state. Use when an increment will not finish in this session, when context is running short or when the session shows degradation signs.
 allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git branch:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(git rev-parse:*), Read, Grep, Glob, Write
 ---
 
 # Write a session hand-off
 
-Produce `.grob-session/handoff.md` — the document the next session reads first.
+Produce `.grob-session/handoffs/<branch>.md` — the document the next session reads
+first. `<branch>` is the current branch with each `/` replaced by `-`, so
+`feat/compiler-slash-rule` writes `feat-compiler-slash-rule.md`. One file per branch
+means two open PRs never conflict over a hand-off.
 
 The governing constraint: **the next session must be able to rebuild its picture
 from the repository, not from your summary.** If this hand-off is being written
@@ -32,11 +35,19 @@ contents into the hand-off; cite the path.
 4. Check whether any error code allocated this session reached `ErrorCatalog.cs`
    (the D-316 gate). An allocated-but-unregistered code is the most expensive thing
    to lose across a session boundary.
-5. Write the file. Create `.grob-session/` if absent.
-6. Commit the hand-off and nothing else. `git add .grob-session/handoff.md`, then
-   `git commit .grob-session/handoff.md -m "chore(handoff): session hand-off"`.
-   Naming the path on the commit takes that one file whatever else is staged or
-   modified. Refuse on `main`.
+5. Write the file. Create `.grob-session/handoffs/` if absent.
+6. Commit the hand-off and nothing else. `git add <path>`, then
+   `git commit <path> -m "chore(handoff): session hand-off"`. Naming the path on
+   the commit takes that one file whatever else is staged or modified. If this
+   session resumed from **another branch's** hand-off, it has been picked up:
+   - tracked on this branch (`git ls-files --error-unmatch <old path>` succeeds):
+     remove it with `git rm` and name every path on the commit: the new hand-off,
+     this one and any inherited path retired under *Picking a hand-off up*;
+   - not tracked here, because it was read from an unmerged PR's branch: leave it,
+     and name it in the new hand-off's *Picked up from* line, so a session that later
+     finds it on `main` retires it.
+
+   Refuse on `main`.
 7. Push the branch with a plain `git push` (`-u origin <branch>` on the first push).
    The pre-push gate runs against the working tree, so a push from a red tree is
    blocked. **Never bypass it** — no `--no-verify`. If the push is blocked, leave
@@ -56,6 +67,8 @@ contents into the hand-off; cite the path.
 - Working tree: <clean | N files modified — list them>
 - Commits on this branch: <N>  (`git log --oneline main..HEAD`)
 - Increment prompt: <path>
+- Picked up from: <the hand-off this session resumed from, plus every path in that
+  hand-off's own *Picked up from* line not yet retired; or "none">
 - Phase reached: <e.g. "Phase 1 investigation complete, no edits made">
 
 ## Green state
@@ -96,15 +109,37 @@ exhaustion, degradation or the increment not finishing.>
 - **Never fold an unlogged decision into prose and call it recorded.** The
   hand-off is a holding place, not the decisions log. The next session still owes
   `logging-a-decision` its three-location lockstep entry.
-- **Commit the hand-off and only the hand-off.** `.grob-session/handoff.md` is the
-  one tracked file in that folder; everything else there is scratch and stays
-  gitignored. A later hand-off on the same branch overwrites the file in a new
-  commit.
-- **The hand-off never reaches `main`.** It is removed in its own commit before
-  the branch is handed over for a PR — `trunk-flow`'s merge protocol has the step.
+- **Commit the hand-off and only the hand-off.** Files under
+  `.grob-session/handoffs/` are the only tracked files in that folder; everything
+  else there is scratch and stays gitignored. A later hand-off on the same branch
+  overwrites the branch's file in a new commit.
+- **The hand-off stays in the PR and merges to `main`.** Never remove a branch's
+  own hand-off before merge. Chris often works in remote control, so the next
+  session reads the hand-off from the PR or from `main`.
+- **The session that picks a hand-off up retires it.** It is replaced when that
+  session writes its own hand-off, by overwriting on the same branch or by the
+  `git rm` in step 6 on another. So `.grob-session/handoffs/` on `main` holds one
+  file per line of work not yet picked up.
 - **Do not summarise the increment prompt.** Path only. A paraphrase written by a
   degraded session is a corrupted copy of a file that is sitting right there.
 - Prose follows `house-style`.
+
+## Picking a hand-off up
+
+A session that resumes work lists `.grob-session/handoffs/` and reads the file for
+the branch or increment it continues. Each file names its branch and date in its
+header. If more than one could fit, ask Chris which to pick up. A hand-off whose PR
+has not merged yet is read from its branch: `git show origin/<branch>:<path>`. Keep
+track of the file you read: at close, `/close-session` step 7 and step 6 above
+retire it.
+
+A file in `.grob-session/handoffs/` that another hand-off names in its *Picked up
+from* line has already been picked up: remove it with `git rm` in this session's
+hand-off commit, naming its path on the commit. A named path that is this branch's
+own hand-off is not removed: writing the new hand-off overwrites it, which retires
+it. A named path whose file has not reached this branch yet is carried forward into
+the new hand-off's *Picked up from* line, so a chain of pickups never loses a
+pending retirement.
 
 ## When to reach for this without being asked
 
