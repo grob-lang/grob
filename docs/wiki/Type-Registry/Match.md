@@ -15,7 +15,7 @@ Returned by `Regex.match()` and `Regex.matchAll()`.
 
 | Member | Signature | Notes |
 |--------|-----------|-------|
-| `group(name: string)` | `→ string?` | Named capture group. Nil if not present |
+| `group(name: string)` | `→ string?` | Named capture group. Nil if the group is absent or did not take part in the match |
 
 ## Examples
 

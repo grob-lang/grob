@@ -11,19 +11,51 @@ email   := /^[\w.]+@[\w.]+$/i
 ```
 
 Regex literals are delimited by `/`. Supported flags: `i` (case-insensitive),
-`m` (multiline `^`/`$`). Compiled once at declaration.
+`m` (multiline `^`/`$`). Other options go inline at the start of the pattern, as
+`(?s)` or `(?x)`; there is no `g` flag, because `matchAll` and `replaceAll` are the
+global forms. Matching is always culture-invariant.
+
+A literal's pattern is checked when the script compiles: an invalid one is E0602,
+with the caret where the .NET parser stopped. A literal is compiled once per site,
+so a literal inside a loop is not rebuilt on each pass.
 
 The `/` character is disambiguated by context: after an operator, assignment or
 opening paren it starts a regex literal. After a value it is the division
 operator.
 
+## Building a Regex at Run Time
+
+`regex.compile(pattern, flags, timeout)` builds a `Regex` from a string, the only way
+to make one from a value known at run time. `flags` defaults to `""` and `timeout` to
+five seconds; `0` means no limit.
+
+```grob
+prefix := "v1.2"
+release := regex.compile("^" + regex.escape(prefix) + `-\d+$`)
+print(release.isMatch("v1.2-7"))   // true
+
+slow := regex.compile(`^(\w+\s?)+$`, "i", 30)
+print(slow.timeout)                // 30
+```
+
+An invalid pattern, flag string or timeout throws `ParseError`. A string-literal
+pattern is checked when the script compiles instead (E0602).
+
+## Timeouts
+
+Every matching operation is bounded, so a pattern that backtracks catastrophically
+fails fast instead of hanging. The limit is five seconds unless the `Regex` was built
+by `regex.compile` with another `timeout`. Expiry throws `RuntimeError`, naming the
+operation and the limit but never the pattern.
+
 ## Module Convenience Functions
 
 One-shot functions that take string patterns. Compile on each call — for repeated
-use, prefer regex literals.
+use, prefer regex literals. They always use the five-second limit.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
+| `regex.compile(pattern, flags = "", timeout = 5)` | `→ Regex` | Build a `Regex` at run time |
 | `regex.isMatch(pattern, input)` | `→ bool` | Test for match |
 | `regex.match(pattern, input)` | `→ Match?` | First match or nil |
 | `regex.matchAll(pattern, input)` | `→ Match[]` | All matches |
@@ -55,7 +87,21 @@ See [Match type registry](../Type-Registry/Match.md).
 | `index` | `int` | Zero-based position |
 | `length` | `int` | Length of match |
 | `groups` | `string[]` | Capture groups (`[0]` is full match) |
-| `group(name)` | `→ string?` | Named capture group |
+| `group(name)` | `→ string?` | Named capture group; nil if absent or it did not take part |
+
+## Replacements
+
+Replacement strings use .NET's syntax: `$1` for a numbered group, `${name}` for a named
+one and `$$` for a literal `$`. Since `${` inside a double-quoted string is
+interpolation, write replacements as backtick raw strings:
+
+```grob
+dated := /(?<y>\d{4})-(?<m>\d{2})/
+print(dated.replaceAll("2026-04", `${m}/${y}`))   // 04/2026
+```
+
+As in .NET, unnamed groups are numbered before named ones, so prefer names when a
+pattern has both.
 
 ## Examples
 

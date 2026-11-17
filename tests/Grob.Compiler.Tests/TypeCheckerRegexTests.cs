@@ -173,6 +173,32 @@ public sealed class TypeCheckerRegexTests {
     }
 
     [Fact]
+    public void PatternArgument_EscapeAfterTheOffset_CaretStillAtTheOffset() {
+        // `)\d`: .NET stops at offset 1, before the escape at index 1 of the written
+        // text, so the caret maps exactly: quote at column 21, caret at column 23.
+        DiagnosticBag bag = Check("""ok := regex.isMatch(")\\d", "s")""");
+
+        AssertSingle(bag, "E0602", 1, 23);
+        Assert.Contains("insufficient opening parentheses", bag.Errors.Single().Message);
+    }
+
+    [Fact]
+    public void PatternArgument_MultiLineRawBlock_CaretAtTheDelimiter() {
+        DiagnosticBag bag = Check("ok := regex.isMatch(```\n(a\n```, \"s\")");
+
+        AssertSingle(bag, "E0602", 1, 21);
+    }
+
+    [Fact]
+    public void Literal_InvalidFlagAndPattern_ReportsBoth() {
+        DiagnosticBag bag = Check("x := /a(/g");
+
+        Assert.Equal(["E2007", "E0602"], bag.Errors.Select(d => d.Code).Order(StringComparer.Ordinal).Reverse());
+        Diagnostic e0602 = bag.Errors.Single(d => d.Code == "E0602");
+        Assert.Equal(9, e0602.Range.Start.Column);
+    }
+
+    [Fact]
     public void PatternArgument_IsValidatedAfterEscapes() {
         // Decoded, "\\(" is the pattern `\(`, an escaped parenthesis: valid. Read raw,
         // it would be a literal backslash and an unclosed group.

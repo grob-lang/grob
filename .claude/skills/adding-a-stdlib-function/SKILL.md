@@ -8,10 +8,10 @@ description: 'How to add a function or method to one of the thirteen core module
 The thirteen core modules (`fs`, `strings`, `json`, `csv`, `env`, `process`, `date`,
 `math`, `log`, `regex`, `path`, `formatAs`, `guid`) are implemented in `Grob.Stdlib` as
 `IGrobPlugin` implementations, one plugin class per module, as each module's sprint
-lands. Built so far: `strings`, `env`, `date`, `math`, `log`, `path`, `formatAs` and
-`guid`, plus `IoPlugin` and the primitive-member plugins (`StringMethodsPlugin`,
-`NumericMethodsPlugin`, `NumericStaticsPlugin`). `fs`, `json`, `csv`, `process` and
-`regex` are Sprint 9's remaining work (`grob-v1-requirements.md`). `StdlibPlugins.Create` lists every plugin; the host
+lands. Built so far: `strings`, `env`, `date`, `math`, `log`, `path`, `formatAs`, `guid`
+and `regex`, plus `IoPlugin` and the primitive-member plugins (`StringMethodsPlugin`,
+`NumericMethodsPlugin`, `NumericStaticsPlugin`). `fs`, `json`, `csv` and `process` are
+Sprint 9's remaining work (`grob-v1-requirements.md`). `StdlibPlugins.Create` lists every plugin; the host
 adds them all to one `NativeCatalogueBuilder`, and the type checker and the VM both read
 the single `NativeCatalogue` it builds (D-426). They are not hardwired into the VM. This skill covers adding a
 function to a module or a method to a built-in type.
