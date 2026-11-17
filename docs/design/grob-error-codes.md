@@ -410,8 +410,8 @@ read by `grob --explain Exxxx`.
 - **Category:** Type
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A `readonly` value cannot be mutated. This includes mutating fields of a `readonly` struct or appending to a `readonly` array.
-- **Source decision:** D-291 (deep immutability).
+- **Description:** A `readonly` value cannot be mutated. This includes mutating fields of a `readonly` struct or appending to a `readonly` array. A named type's properties (D-356) are read-only on every binding, so `d.year = 2020` on a `date` is E0204 by assignment, compound assignment or `++`/`--` (D-440).
+- **Source decision:** D-291 (deep immutability); D-440 (named-type properties).
 
 ---
 
