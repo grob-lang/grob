@@ -66,7 +66,8 @@ contents into the hand-off; cite the path.
 - Working tree: <clean | N files modified — list them>
 - Commits on this branch: <N>  (`git log --oneline main..HEAD`)
 - Increment prompt: <path>
-- Picked up from: <the hand-off this session resumed from, or "none">
+- Picked up from: <the hand-off this session resumed from, plus every path in that
+  hand-off's own *Picked up from* line not yet retired; or "none">
 - Phase reached: <e.g. "Phase 1 investigation complete, no edits made">
 
 ## Green state
@@ -133,7 +134,9 @@ retire it.
 
 A file in `.grob-session/handoffs/` that another hand-off names in its *Picked up
 from* line has already been picked up: remove it with `git rm` in this session's
-hand-off commit.
+hand-off commit. A named path whose file has not reached this branch yet is carried
+forward into the new hand-off's *Picked up from* line, so a chain of pickups never
+loses a pending retirement.
 
 ## When to reach for this without being asked
 
