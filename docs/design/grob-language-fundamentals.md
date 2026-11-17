@@ -708,7 +708,11 @@ Its members are in `grob-type-registry.md`; the `regex` module is in
 
 **Body.** Everything between the opening `/` and the first unescaped `/` that is not
 inside a character class. `\/` writes a literal `/` anywhere; an unescaped `/` inside
-`[...]` does not end the literal, as in ECMAScript. A literal cannot span lines: a
+`[...]` does not end the literal, as in ECMAScript. Classes are read as .NET reads them:
+a `]` first in a class, after an optional `^`, is part of it, and a `[` inside a `(?#…)`
+comment opens no class. A `(?#…)` comment ends at its first `)`, even after a backslash.
+The lexer does not track the `(?x)` option, so a `[` inside an `(?x)` `#` comment must be
+written `\[`; unescaped, it opens a class and the literal is E2008 (D-439). A literal cannot span lines: a
 newline before the closing `/` is E2008. The body goes to the .NET regular-expression
 engine verbatim — .NET syntax, with named groups, lookarounds and backreferences
 (D-095).
@@ -732,9 +736,10 @@ expiry throws `RuntimeError`. A literal always uses the default; to set another 
 build the value with `regex.compile(pattern, flags, timeout: n)` (D-432).
 
 **Division or a regex literal.** At a `/` that does not open a comment (`//`, `/*`),
-find the previous token, **looking through a newline only when §14 suppresses it** —
-inside an open bracket, inside a literal's braces or after a trailing operator. A
-newline §14 treats as a statement terminator is itself the previous token.
+find the previous token, **looking through a newline only inside an open `(` or `[`**,
+or after a trailing operator (§14). Every other newline is a statement terminator and
+is itself the previous token — including a newline inside `{…}`, since the lexer cannot
+tell a block's brace from a literal's (D-439).
 
 - **Division** when the previous token can end an expression: an identifier; an `int`,
   `float`, string or raw-string literal; a regex literal; `true`, `false`, `nil`; `)`,
@@ -757,7 +762,7 @@ JavaScript.
 | `f(/a/, /b/)` | two regexes | `(` and `,` before |
 | `return /^\s*$/` | regex | keyword before |
 | `if /^\d+$/.isMatch(s) {` | regex | keyword before |
-| `total := (a` ⏎ `/ b)` | division | the newline is suppressed inside `(`, so `a` is before |
+| `total := (a` ⏎ `/ b)` | division | the newline is looked through inside `(`, so `a` is before, and §14 case 3 drops it |
 | `x := 1` ⏎ `/abc/.isMatch(s)` | regex | a statement-terminating newline is before |
 | `"${/x/.isMatch(s)}"` | regex | `${` before |
 | `x /= 2` | compound division | identifier before, so `/=` lexes as itself |
@@ -1362,7 +1367,7 @@ not overlap.
 ## 14. Line Continuation
 
 Newlines are significant in Grob — they end statements. A newline is **suppressed**
-(the statement continues on the next line) in two cases:
+(the statement continues on the next line) in three cases:
 
 **Case 1 — Trailing token:** The current line ends with any of:
 
@@ -1377,6 +1382,11 @@ Newlines are significant in Grob — they end statements. A newline is **suppres
 
 **Case 2 — Leading dot:** The _next_ line begins with `.`. The lexer peeks one
 token across the newline to detect this.
+
+**Case 3 — Leading division:** The _next_ line begins with a division `/`. A `/` that
+begins a line is division only inside an open `(` or `[` (§8, "Division or a regex
+literal"); anywhere else it opens a regex literal, so this case never removes a real
+statement boundary (D-439).
 
 Leading-dot style is the **recommended form** for multi-line method chains:
 
@@ -1412,7 +1422,7 @@ items := [
 ]
 ```
 
-Both cases are implemented entirely in the lexer. The parser receives a clean
+All three cases are implemented entirely in the lexer. The parser receives a clean
 token stream with newlines already resolved. No explicit continuation character.
 No semicolons.
 

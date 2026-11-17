@@ -7,6 +7,9 @@ using static Grob.Compiler.Tests.LexerTestHelpers;
 namespace Grob.Compiler.Tests;
 
 public class LexerOperatorTests {
+    // "/" and "/=" are absent: lexed alone at the start of a file they open a regex
+    // literal (§8, D-432). Their operator forms are tested after an operand in
+    // LexerRegexTests.
     public static IEnumerable<object[]> Operators => [
         ["+", TokenKind.Plus],
         ["-", TokenKind.Minus],
@@ -30,7 +33,6 @@ public class LexerOperatorTests {
         ["+=", TokenKind.PlusAssign],
         ["-=", TokenKind.MinusAssign],
         ["*=", TokenKind.StarAssign],
-        ["/=", TokenKind.SlashAssign],
         ["%=", TokenKind.PercentAssign],
         ["++", TokenKind.PlusPlus],
         ["--", TokenKind.MinusMinus],
