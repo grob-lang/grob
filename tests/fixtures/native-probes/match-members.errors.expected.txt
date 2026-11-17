@@ -1,0 +1,36 @@
+error[E1002]: Type 'Match' has no member 'nope'.
+  --> match-members.errors.grob:13:1-13:3
+error[E1002]: Type 'Match' has no member 'nope'.
+  --> match-members.errors.grob:14:1-14:3
+error[E1002]: Type 'Match' has no member 'value'.
+  --> match-members.errors.grob:17:1-17:3
+error[E0101]: Member access via '.' on nullable type 'struct?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> match-members.errors.grob:18:1-18:4
+error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
+  --> match-members.errors.grob:19:16-19:18
+error[E1002]: Type 'Match' has no member 'index'.
+  --> match-members.errors.grob:22:1-22:3
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> match-members.errors.grob:23:19-23:21
+error[E1002]: Type 'Match' has no member 'length'.
+  --> match-members.errors.grob:26:1-26:3
+error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
+  --> match-members.errors.grob:27:20-27:22
+error[E1002]: Type 'Match' has no member 'groups'.
+  --> match-members.errors.grob:30:1-30:3
+error[E0001]: Cannot assign value of type 'array' to binding of type 'string'.
+  --> match-members.errors.grob:31:20-31:22
+error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
+  --> match-members.errors.grob:32:20-32:30
+error[E0003]: 'group' expects 1 argument, but 0 were supplied.
+  --> match-members.errors.grob:35:1-35:9
+error[E0003]: 'group' expects 1 argument, but 2 were supplied.
+  --> match-members.errors.grob:36:1-36:13
+error[E0004]: Argument to 'group' has type 'int', which is not assignable to parameter of type 'string'.
+  --> match-members.errors.grob:37:9
+error[E0004]: Argument to 'group' has type 'string?', which is not assignable to parameter of type 'string'.
+  --> match-members.errors.grob:38:9
+error[E0101]: Member access via '.' on nullable type 'struct?' may dereference nil. Use '?.' to chain or '??' to unwrap first.
+  --> match-members.errors.grob:39:1-39:4
+error[E0104]: Cannot assign value of type 'string?' to binding of type 'string'.
+  --> match-members.errors.grob:40:19-40:28

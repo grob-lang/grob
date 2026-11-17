@@ -60,6 +60,7 @@ public sealed class NativeCallProbeCorpusTests {
         "date-members",
         "regex-namespace",
         "regex-members",
+        "match-members",
     ];
 
     /// <summary>The probe files whose diagnostics are pinned by an expected file.</summary>
