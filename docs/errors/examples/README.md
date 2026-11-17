@@ -275,6 +275,7 @@ than a fatal `error[Exxxx]:`.
 | E0202 | `readonly-reassignment` | Type |
 | E0301 | `type-cycle-no-terminating-field` | Type |
 | E0601 | `invalid-guid-literal` | Type |
+| E0602 | `invalid-regex-pattern` | Type |
 | E1001 | `undefined-identifier-typo` | Name resolution |
 | E1002 | `undefined-member-access` | Name resolution |
 | E1003 | `unknown-namespace-member` | Name resolution |

@@ -5,7 +5,7 @@ import required. Powered by the .NET regex engine.
 
 ## Regex Literals
 
-```grob blocked-by=R-30
+```grob
 pattern := /\d{3}-\d{4}/
 email   := /^[\w.]+@[\w.]+$/i
 ```
@@ -61,7 +61,7 @@ See [Match type registry](../Type-Registry/Match.md).
 
 ### Filter log lines
 
-```grob blocked-by=R-30
+```grob
 pattern := /ERROR|WARN/i
 
 for line in fs.readLines(`C:\Logs\app.log`) {
@@ -73,13 +73,13 @@ for line in fs.readLines(`C:\Logs\app.log`) {
 
 ### Extract data with named groups
 
-```grob blocked-by=R-30
+```grob
 pattern := /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/
 
 m := pattern.match("Created on 2026-04-05")
 if (m != nil) {
-    year  := m.group("year")
-    month := m.group("month")
+    year  := m.group("year") ?? "?"
+    month := m.group("month") ?? "?"
     print("Year: ${year}, Month: ${month}")
 }
 ```

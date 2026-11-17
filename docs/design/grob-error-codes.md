@@ -91,6 +91,7 @@ read by `grob --explain Exxxx`.
 | E0504 | reassignment of `for...in` iterator variable       | Type              | pre-release           |
 | E0505 | non-exhaustive switch expression                   | Type              | pre-release           |
 | E0601 | invalid `guid` string literal                      | Type              | pre-release           |
+| E0602 | invalid regex pattern                              | Type              | pre-release           |
 | E1001 | undefined identifier                               | Name resolution   | pre-release           |
 | E1002 | undefined member                                   | Name resolution   | pre-release           |
 | E1003 | undefined module                                   | Name resolution   | pre-release           |
@@ -545,6 +546,16 @@ read by `grob --explain Exxxx`.
 
 ---
 
+### E0602 — invalid regex pattern
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A pattern known at compile time is validated with .NET's parser under the options it will run with. It fires on a regex literal's body, on a string-literal pattern argument to `regex.compile` or to a `regex` module function, and on `@pattern`'s argument. The message gives the error kind; the caret sits where .NET stopped parsing when the literal's text maps one-to-one onto the pattern (a regex literal, a single-line backtick string, a double-quoted string with no escape before that point) and at the opening delimiter otherwise. A double-quoted pattern is validated after its escapes are decoded, so it is checked as it will run. A pattern built at run time is not checked here; `regex.compile` throws `ParseError` (`E5702`) instead. Sits beside E0601, the same shape.
+- **Source decision:** D-432 Decision 5 (specified); D-440 (minted).
+
+---
+
 ### E1001 — undefined identifier
 
 - **Category:** Name resolution
@@ -693,8 +704,8 @@ read by `grob --explain Exxxx`.
 - **Category:** Syntax
 - **Introduced:** v1
 - **Status:** pre-release
-- **Description:** A character following the closing `/` of a regex literal is not one of the supported flags (`i`, `m`).
-- **Source decision:** D-089.
+- **Description:** A character following the closing `/` of a regex literal is not one of the supported flags (`i`, `m`). A flag other engines use carries a hint: `g` points at `matchAll` and `replaceAll`, and `s` and `x` at the inline `(?s)` and `(?x)`.
+- **Source decision:** D-089; D-432 Decision 3 (the hints, implemented by D-440).
 
 ---
 
@@ -1394,7 +1405,7 @@ None as of v1.
 
 ---
 
-**Total: 120 codes across 7 categories.** This is the canonical current count;
+**Total: 121 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
@@ -1483,3 +1494,5 @@ _Updated July 2026 — map-literal construction (`map<K, V>{ ... }`) added one c
 _Updated July 2026 — correctness batch (runtime error taxonomy) added two codes in the E59xx sub-block of the Runtime category: E5905 (result exceeds maximum size) and E5906 (sort key type does not implement Comparable), bringing the total from 119 to 121. Both repoint wrong-category misuses found while the two codes involved were still `pre-release`: D-366's allocation-ceiling guard (`string.repeat`/`padLeft`/`padRight`) had reused E5101 ("array index out of range") for a size limit, not a bounds violation; D-371's `GrobValueComparer` sort-key comparator had reused the compile-time E0004 ("argument type mismatch") for a runtime fault. E5101 and E0004 are retained, unretired, for their legitimate call sites. Neither existing code fit either condition (Step 1 of `allocating-an-error-code` — confirmed against the live registry before allocating). Source decision D-382._
 
 _Updated August 2026 — D-415: the braceless `param` declaration grammar (D-410) implemented. E4201 given its first throw site, on the D-407 pattern — a missing type annotation, a decorator not followed by `param` and a default introduced with `:=` instead of `=` are now reported as E4201 rather than the generic E2001. A fourth throw site, and the one description-only widening in this pass: a top-level decorator not followed by a newline. §19's production is `{ decorator newline } "param" ...`, but the shared decorator scanner ended each decorator with a zero-or-more newline skip, so `@secure param token: string` parsed clean; the newline is now required at the top level and still not required in a function parameter list, each pinned by its own test. No title or status moves and no code is added or removed, so the D-316 agreement gate is unaffected. E4201 retitled from "`param` block syntax error" to "`param` declaration syntax error" in the same commit as the `ErrorCatalog.cs` edit, closing the deferral D-414 recorded and keeping the D-316 agreement gate green. No code added or removed; total stays at 121. E4202 is unaffected — its removal and E2202's title widening remain deferred to the Sprint 10 increment that implements ordering enforcement, per D-410/D-414._
+
+_Updated November 2026 — the `regex` increment (D-440) added one code: E0602 (invalid regex pattern), the second entry in the E06xx sub-block of the Type category, beside E0601, bringing the total from 120 to 121. D-432 Decision 5 specified it and D-316 required it to be minted with its source. No existing code fits: E0601 is `guid`-specific, and E5702 is a Runtime-category code that ADR-0014 keeps off compile-time diagnostics. E0204 also gains a sentence: a named type's properties are read-only (D-440), with no code added._

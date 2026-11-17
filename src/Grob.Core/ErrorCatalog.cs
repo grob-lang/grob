@@ -350,6 +350,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>invalid regex pattern</summary>
+    public static readonly ErrorDescriptor E0602 = new(
+        Code: "E0602",
+        Title: "invalid regex pattern",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     // ---- Name resolution — E1001–E1999 ----
 
     /// <summary>undefined identifier</summary>
@@ -1148,6 +1157,7 @@ public static class ErrorCatalog {
         E0504,
         E0505,
         E0601,
+        E0602,
         E1001,
         E1002,
         E1003,

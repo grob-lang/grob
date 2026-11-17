@@ -1505,7 +1505,7 @@ public sealed class Parser {
             case TokenKind.RawStringLiteral:
             case TokenKind.RawStringBlockLiteral: {
                     Advance();
-                    return new RawStringLiteralExpr(new SourceRange(t.Location, t.Location), StripRawStringDelimiters(t.Lexeme));
+                    return new RawStringLiteralExpr(RawStringRange(t), StripRawStringDelimiters(t.Lexeme));
                 }
             case TokenKind.RegexLiteral: {
                     Advance();
@@ -2071,6 +2071,16 @@ public sealed class Parser {
             throw Fail(_e2001, $"invalid integer literal '{lexeme}'");
         }
     }
+
+    /// <summary>
+    /// A raw string's range: through its closing backtick when the literal sits on one
+    /// line, as a double-quoted string's does, so a diagnostic can point inside it (E0602,
+    /// D-440). A literal spanning lines keeps the point at its opening delimiter.
+    /// </summary>
+    private static SourceRange RawStringRange(Token t) =>
+        t.Lexeme.Contains('\n')
+            ? new SourceRange(t.Location, t.Location)
+            : new SourceRange(t.Location, t.Location with { Column = t.Location.Column + t.Lexeme.Length - 1 });
 
     private static string StripRawStringDelimiters(string lexeme) {
         if (lexeme.StartsWith("```", StringComparison.Ordinal) && lexeme.EndsWith("```", StringComparison.Ordinal) && lexeme.Length >= 6) {

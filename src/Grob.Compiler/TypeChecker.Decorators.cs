@@ -199,11 +199,9 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// D-424 Decision 4: <c>@pattern</c> is in the v1 set, so it is not E4001.
     /// Its name, arity, string-literal argument kind and <c>string</c> target
-    /// type are checked here; <b>the pattern itself is not compiled or
-    /// validated</b> until the <c>regex</c> increment supplies the machinery
-    /// (D-411, tracked as R-15's sibling deferral). Treating it as unknown in the
-    /// meantime would make a specified v1 decorator an error for one sprint and
-    /// then silently stop being one.
+    /// type are checked here, and the <c>regex</c> increment validates the
+    /// pattern itself (E0602, D-432 Decision 5, D-440). Matching the bound value
+    /// against it, whole-value as D-432 Decision 9 rules, is Sprint 10's (R-15).
     /// </summary>
     private void CheckPattern(Decorator decorator, ParamDecl node, GrobType paramType) {
         if (decorator.Arguments.Count != 1) {
@@ -215,6 +213,8 @@ public sealed partial class TypeChecker {
         if (LiteralTypeOf(decorator.Arguments[0]) != GrobType.String) {
             EmitError(ErrorCatalog.E4002,
                 "'@pattern' needs a string literal.", decorator.Arguments[0].Range);
+        } else {
+            CheckRegexPatternLiteral(decorator.Arguments[0]);
         }
 
         if (!IsStringLike(paramType)) {

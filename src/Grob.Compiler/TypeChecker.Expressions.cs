@@ -35,9 +35,6 @@ public sealed partial class TypeChecker {
     public override GrobType VisitNilLiteral(NilLiteralExpr node) => GrobType.Nil;
 
     /// <inheritdoc/>
-    public override GrobType VisitRegexLiteral(RegexLiteralExpr node) => GrobType.Unknown;
-
-    /// <inheritdoc/>
     public override GrobType VisitInterpolatedString(InterpolatedStringExpr node) {
         // D-279, E0102: interpolating a nullable expression is a compile error.
         // Each ${expr} slot is type-checked; if its resolved type is nullable the
@@ -1953,6 +1950,7 @@ public sealed partial class TypeChecker {
             if (returnType.NamedTypeName is not null) _callResultStructNames[node] = returnType.NamedTypeName;
             if (NativeArrayDescriptor(returnType) is { } descriptor) _callResultArrayDescriptors[node] = descriptor;
             CheckGuidParseLiteral(node, namespaceName, memberAccess.Member);
+            CheckRegexPatternArgument(node, namespaceName, memberAccess.Member);
             return returnType.Type;
         }
 
@@ -2598,6 +2596,7 @@ public sealed partial class TypeChecker {
         // named type from the array's descriptor, so its members resolve and an unknown one
         // is E1002 instead of passing as Unknown.
         IndexExpr idx => ArrayDescriptorOf(idx.Target)?.ElementNamedTypeName,
+        RegexLiteralExpr => RegexLayout.RegexTypeName,
         GroupingExpr g => GetStructTypeName(g.Inner),
         // D-403: mirrors ArrayDescriptorOf's/MapDescriptorOf's identical NilCoalesce arm
         // exactly — a '??'-unwrapped nullable named-type value (g1 ?? g2) must keep its
@@ -2634,6 +2633,7 @@ public sealed partial class TypeChecker {
                 CallExpr call => _callResultStructNames.GetValueOrDefault(call),
                 // An indexed array element (m := matches[0]), D-440.
                 IndexExpr idx => GetStructTypeName(idx),
+                RegexLiteralExpr => RegexLayout.RegexTypeName,
                 _ => null,
             };
 

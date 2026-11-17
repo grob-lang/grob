@@ -10,7 +10,11 @@ namespace Grob.Integration.Tests.PublicSamples;
 public sealed class SampleVerdictTests {
     private static readonly SampleMarkers Bare = new(false, [], []);
     private static readonly SampleMarkers Fragment = new(true, [], []);
-    private static readonly SampleMarkers Blocked = new(false, ["R-30"], []);
+    private static readonly SampleMarkers Blocked = new(false, ["R-42"], []);
+
+    // R-42: a two-parameter sort key selector passes the checker and crashes the VM. It
+    // stands in for R-30, the regex-literal crash D-440 closed.
+    private const string InternalErrorSource = "xs := [\"a\", \"bb\"]\nys := xs.sort((a, b) => a.length > b.length)\nprint(ys)\n";
 
     private static string? Check(SampleMarkers markers, string source) =>
         SampleVerdict.Check(markers, SampleRunner.Run(source, PublicSampleCorpus.FixtureEnvironment));
@@ -37,8 +41,7 @@ public sealed class SampleVerdictTests {
 
     [Fact]
     public void Bare_ReportsAnInternalError_Fails() {
-        // R-30: a regex literal compiles to broken bytecode and crashes the VM.
-        string? failure = Check(Bare, "x := /abc/\nprint(x)\n");
+        string? failure = Check(Bare, InternalErrorSource);
 
         Assert.NotNull(failure);
         Assert.Contains("internal error", failure);
@@ -77,11 +80,11 @@ public sealed class SampleVerdictTests {
 
     [Fact]
     public void Blocked_FailsItsClass_Passes() {
-        Assert.Null(Check(Blocked, "x := /abc/\nprint(x)\n"));
+        Assert.Null(Check(Blocked, InternalErrorSource));
     }
 
     [Fact]
     public void Blocked_PassesItsClass_FailsWithRemoveTheToken() {
-        Assert.Equal("passes its class but carries blocked-by=R-30; remove the token", Check(Blocked, "print(1)\n"));
+        Assert.Equal("passes its class but carries blocked-by=R-42; remove the token", Check(Blocked, "print(1)\n"));
     }
 }

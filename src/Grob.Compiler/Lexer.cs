@@ -478,6 +478,16 @@ public sealed class Lexer {
         }
     }
 
+    /// <summary>
+    /// E2007's pointer from a flag other engines use to Grob's way of saying it (D-432
+    /// Decision 3): there is no global flag, and the other options go inline.
+    /// </summary>
+    private static string RegexFlagHint(char flag) => flag switch {
+        'g' => "; use matchAll or replaceAll for every match",
+        's' or 'x' => $"; write (?{flag}) at the start of the pattern",
+        _ => "",
+    };
+
     private void ConsumeRegexFlags(StringBuilder sb) {
         // Per D-089, only 'i' (case-insensitive) and 'm' (multiline) are valid.
         // Other letters are diagnosed but still appended so the lexeme reflects
@@ -485,7 +495,8 @@ public sealed class Lexer {
         while (!IsAtEnd && IsIdentContinue(Peek()) && char.IsLetter(Peek())) {
             char flag = Peek();
             if (flag is not ('i' or 'm')) {
-                AddError(ErrorCatalog.E2007, $"invalid regex flag '{flag}' (only 'i' and 'm' are supported)", Here());
+                AddError(ErrorCatalog.E2007,
+                    $"invalid regex flag '{flag}' (only 'i' and 'm' are supported){RegexFlagHint(flag)}", Here());
             }
             sb.Append(flag);
             Advance();
