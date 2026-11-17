@@ -3,7 +3,7 @@ using Grob.Runtime;
 namespace Grob.Stdlib;
 
 /// <summary>
-/// The twelve first-party plugins in their fixed registration order (D-426 Decision 2,
+/// The thirteen first-party plugins in their fixed registration order (D-426 Decision 2,
 /// gate report §1.4.2). Every host that composes a stdlib — the CLI's run and REPL
 /// commands, the benchmarks, the tests and a compile-only catalogue — builds the list
 /// here, so the order and the capability wiring are written once. The capabilities are
@@ -38,6 +38,7 @@ public static class StdlibPlugins {
             new GuidPlugin(randomSource, clock),
             new DatePlugin(clock),
             new FormatAsPlugin(),
+            new RegexPlugin(),
             new StringMethodsPlugin(),
             new NumericMethodsPlugin(),
             new NumericStaticsPlugin(),

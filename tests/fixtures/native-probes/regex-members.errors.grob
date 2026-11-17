@@ -1,0 +1,63 @@
+// Native-call probe corpus: Regex instance members (named type), error probes (D-426
+// Decision 5, condition 2; added with the module by D-440). Do not regenerate the
+// expected file to match new output. Probe kinds per member: wrong arity, wrong argument
+// type, nullable argument for a non-nullable parameter, nullable receiver through '.',
+// return type pinned by a mismatched annotation.
+i := 3
+s := "abc"
+ns: string? := nil
+r := regex.compile(s)
+nr: Regex? := nil
+
+// unknown member
+r.nope()
+r.nope
+
+// pattern: string (property)
+r.pattern()
+nr.pattern
+rpattern: int := r.pattern
+
+// flags: string (property)
+r.flags()
+rflags: int := r.flags
+
+// timeout: int (property)
+r.timeout()
+rtimeout: string := r.timeout
+
+// isMatch(input: string): bool
+r.isMatch()
+r.isMatch(s, s)
+r.isMatch(i)
+r.isMatch(ns)
+nr.isMatch(s)
+risMatch: string := r.isMatch(s)
+
+// match(input: string): Match?
+r.match()
+r.match(i)
+r.match(ns)
+rmatch: Match := r.match(s)
+
+// matchAll(input: string): Match[]
+r.matchAll()
+r.matchAll(i)
+rmatchAll: string := r.matchAll(s)
+
+// replace(input: string, replacement: string): string
+r.replace(s)
+r.replace(s, i)
+r.replace(ns, s)
+rreplace: int := r.replace(s, s)
+
+// replaceAll(input: string, replacement: string): string
+r.replaceAll(s)
+r.replaceAll(i, s)
+r.replaceAll(s, ns)
+rreplaceAll: int := r.replaceAll(s, s)
+
+// split(input: string): string[]
+r.split()
+r.split(i)
+rsplit: string := r.split(s)

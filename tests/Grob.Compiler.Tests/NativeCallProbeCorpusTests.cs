@@ -58,6 +58,8 @@ public sealed class NativeCallProbeCorpusTests {
         "bool-members",
         "guid-members",
         "date-members",
+        "regex-namespace",
+        "regex-members",
     ];
 
     /// <summary>The probe files whose diagnostics are pinned by an expected file.</summary>

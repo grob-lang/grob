@@ -9,14 +9,14 @@ namespace Grob.Stdlib.Tests;
 /// <summary>
 /// Tests for <see cref="StdlibPlugins"/> and <see cref="StdlibCatalogue"/> (D-426
 /// Decision 2, gate report §1.3 and §1.4.2): the host builds one catalogue from the
-/// twelve first-party plugins, and a compile-only host builds it over inert
+/// thirteen first-party plugins, and a compile-only host builds it over inert
 /// capabilities, which works because no plugin touches a capability at registration.
 /// A native that does touch one at call time fails loudly rather than reading the
 /// clock, the local zone, the current directory, the environment or a stream.
 /// </summary>
 public sealed class StdlibCatalogueTests {
     private static readonly string[] ExpectedOrder = [
-        "math", "path", "strings", "env", "log", "io", "guid", "date", "formatAs", "string", "numeric", "numericStatics",
+        "math", "path", "strings", "env", "log", "io", "guid", "date", "formatAs", "regex", "string", "numeric", "numericStatics",
     ];
 
     private static readonly string BaseDirectory = Path.Join(Path.GetTempPath(), "grob-r32-base");
@@ -26,7 +26,7 @@ public sealed class StdlibCatalogueTests {
             new TestRandomSource(1), new FakeEnvironment(), new FakeStandardStreams(), new TestClock(new DateTime(2026, 1, 1)), new TestFileSystem(BaseDirectory), verbose);
 
     [Fact]
-    public void Create_ReturnsTheTwelvePluginsInRegistrationOrder() =>
+    public void Create_ReturnsTheThirteenPluginsInRegistrationOrder() =>
         Assert.Equal(ExpectedOrder, CreateWithFakes().Select(p => p.Name));
 
     [Theory]
@@ -68,7 +68,7 @@ public sealed class StdlibCatalogueTests {
         var vm = new VirtualMachine(new StringWriter(), catalogue);
 
         Assert.Equal(catalogue.Globals.Keys.Order(StringComparer.Ordinal), vm.Globals.Keys.Order(StringComparer.Ordinal));
-        Assert.Equal(["guid", "date"], catalogue.NamedTypeNames);
+        Assert.Equal(["guid", "date", "Regex", "Match"], catalogue.NamedTypeNames);
     }
 
     [Fact]
