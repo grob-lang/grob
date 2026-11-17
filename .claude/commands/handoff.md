@@ -41,7 +41,8 @@ contents into the hand-off; cite the path.
    the commit takes that one file whatever else is staged or modified. If this
    session resumed from **another branch's** hand-off, it has been picked up:
    - tracked on this branch (`git ls-files --error-unmatch <old path>` succeeds):
-     remove it with `git rm` and name both paths on the commit;
+     remove it with `git rm` and name every path on the commit: the new hand-off,
+     this one and any inherited path retired under *Picking a hand-off up*;
    - not tracked here, because it was read from an unmerged PR's branch: leave it,
      and name it in the new hand-off's *Picked up from* line, so a session that later
      finds it on `main` retires it.
@@ -134,9 +135,11 @@ retire it.
 
 A file in `.grob-session/handoffs/` that another hand-off names in its *Picked up
 from* line has already been picked up: remove it with `git rm` in this session's
-hand-off commit. A named path whose file has not reached this branch yet is carried
-forward into the new hand-off's *Picked up from* line, so a chain of pickups never
-loses a pending retirement.
+hand-off commit, naming its path on the commit. A named path that is this branch's
+own hand-off is not removed: writing the new hand-off overwrites it, which retires
+it. A named path whose file has not reached this branch yet is carried forward into
+the new hand-off's *Picked up from* line, so a chain of pickups never loses a
+pending retirement.
 
 ## When to reach for this without being asked
 
