@@ -155,6 +155,16 @@ public sealed class RegexNamedTypeTests {
     }
 
     [Fact]
+    public void Groups_ExplicitlyNumberedGroup_IsListedInGroupNumberOrder() {
+        // .NET's group enumerator drops an explicitly numbered group such as (?<2>a);
+        // groups lists every defined group by number, without gaps.
+        GrobStruct match = FirstMatch(RegexLayout.NewRegex("(?<2>a)", "", 5), "a");
+
+        Assert.Equal(["a", "a"],
+            Match.Properties["groups"].Get(match).AsArray().Elements.Select(g => g.AsString()));
+    }
+
+    [Fact]
     public void Groups_ReturnsACopyEachTime() {
         GrobStruct match = FirstMatch(Levels(), "WARN");
         GrobArray first = Match.Properties["groups"].Get(match).AsArray();

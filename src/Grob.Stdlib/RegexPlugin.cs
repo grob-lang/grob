@@ -186,7 +186,10 @@ public sealed class RegexPlugin : IGrobPlugin {
     // -----------------------------------------------------------------------
 
     private static GrobStruct ToMatch(Regex regex, Match match) {
-        GrobArray groups = new(match.Groups.Cast<Group>().Select(g => GrobValue.FromString(g.Value)));
+        // By group number, not by enumerating match.Groups: the enumerator drops an
+        // explicitly numbered group such as (?<2>a). GetGroupNumbers is ascending, so
+        // groups lists every defined group in number order without gaps (D-440).
+        GrobArray groups = new(regex.GetGroupNumbers().Select(n => GrobValue.FromString(match.Groups[n].Value)));
         GrobMap named = new();
         foreach (string name in regex.GetGroupNames().Where(n => !int.TryParse(n, out _))) {
             Group group = match.Groups[name];

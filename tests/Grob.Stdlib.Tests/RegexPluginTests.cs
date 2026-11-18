@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Grob.Core;
 using Grob.Runtime;
 
@@ -174,4 +176,22 @@ public sealed class RegexPluginTests {
     [Fact]
     public void OneShot_IsCaseSensitiveAndCultureInvariant() =>
         Assert.False(Call("isMatch", Str("ABC"), Str("abc")).AsBool());
+
+    [Fact]
+    public void IgnoreCase_UnderTurkishCulture_StillFoldsTheInvariantI() {
+        // Under tr-TR a culture-sensitive case fold maps 'I' to dotless 'ı', so
+        // (?i)^FILE$ would miss "file". RegexLayout always adds CultureInvariant.
+        CultureInfo previous = CultureInfo.CurrentCulture;
+        try {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("tr-TR");
+
+            Assert.True(Call("isMatch", Str("(?i)^FILE$"), Str("file")).AsBool());
+            GrobValue regex = Call("compile", Str("^FILE$"), Str("i"), Int(5));
+            NamedTypeSurface surface = Assert.IsType<NamedTypeSurface>(
+                Catalogue.TryGetNamedType("Regex", out NamedTypeSurface? found) ? found : null);
+            Assert.True(surface.Methods["isMatch"].Bind(regex.AsStruct()).Implementation([Str("file")], default).AsBool());
+        } finally {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
 }

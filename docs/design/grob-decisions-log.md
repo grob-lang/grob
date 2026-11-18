@@ -17191,7 +17191,9 @@ the same gap for every array of structs, user types included: `ps[0].x` typed as
 
 **Assumptions recorded, not separately ruled.** `flags` is normalised: deduplicated, `i` before
 `m`. A `Regex` prints as `/pattern/flags` and a `Match` as its `value`. Equality is structural,
-so `/a/i == /a/i`. An unmatched numbered group is `""` in `groups`. E2007 gains D-432 Decision 3's
+so `/a/i == /a/i`. An unmatched numbered group is `""` in `groups`, which lists every defined
+group in group-number order without gaps; .NET's group enumerator would drop an explicitly
+numbered group such as `(?<2>a)`, so the list is built by number. E2007 gains D-432 Decision 3's
 hints: `g` points at `matchAll` and `replaceAll`, and `s` and `x` at the inline `(?s)` and `(?x)`.
 **Registering `Match` as a named type makes a user's `type Match` E1102**, as `type date` already
 is (Chris: accepted); the "first declared at line 1" wording for a catalogue name is R-29's case.

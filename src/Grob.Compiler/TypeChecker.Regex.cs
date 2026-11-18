@@ -45,6 +45,9 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckRegexPatternLiteral(Expression argument) {
         switch (argument) {
+            case GroupingExpr grouping:
+                CheckRegexPatternLiteral(grouping.Inner);
+                break;
             case RawStringLiteralExpr raw: {
                     bool exact = SpansOneLine(raw.Range, raw.Value.Length);
                     ValidateRegexPattern(raw.Value, "", raw.Range, _ => exact);

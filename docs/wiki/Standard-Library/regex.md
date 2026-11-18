@@ -43,10 +43,10 @@ pattern is checked when the script compiles instead (E0602).
 
 ## Timeouts
 
-Every matching operation is bounded, so a pattern that backtracks catastrophically
-fails fast instead of hanging. The limit is five seconds unless the `Regex` was built
-by `regex.compile` with another `timeout`. Expiry throws `RuntimeError`, naming the
-operation and the limit but never the pattern.
+Matching is bounded by default, so a pattern that backtracks catastrophically fails
+fast instead of hanging. The limit is five seconds unless the `Regex` was built by
+`regex.compile` with another `timeout`; a `timeout` of `0` removes the limit. Expiry
+throws `RuntimeError`, naming the operation and the limit but never the pattern.
 
 ## Module Convenience Functions
 

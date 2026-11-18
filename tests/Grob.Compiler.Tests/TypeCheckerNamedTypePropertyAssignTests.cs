@@ -74,6 +74,9 @@ public sealed class TypeCheckerNamedTypePropertyAssignTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E0204", diag.Code);
+        Assert.Contains("`readonly`", diag.Message);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     [Fact]
@@ -86,6 +89,7 @@ public sealed class TypeCheckerNamedTypePropertyAssignTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E1002", diag.Code);
         Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
     }
 
     [Fact]

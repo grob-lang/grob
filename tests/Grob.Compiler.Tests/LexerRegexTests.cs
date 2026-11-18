@@ -50,6 +50,8 @@ public class LexerRegexTests {
         Assert.Equal("/abc/z", tokens[2].Lexeme);
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2007", diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(11, diag.Range.Start.Column);
     }
 
     /// <summary>
@@ -74,6 +76,9 @@ public class LexerRegexTests {
     public void RegexFlagWithNoHint_ReportsE2007Plainly() {
         var (_, diagnostics) = LexWithDiagnostics("x := /abc/z");
         Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2007", diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(11, diag.Range.Start.Column);
         Assert.Equal("invalid regex flag 'z' (only 'i' and 'm' are supported)", diag.Message);
     }
 

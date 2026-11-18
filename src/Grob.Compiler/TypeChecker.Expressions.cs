@@ -2595,7 +2595,7 @@ public sealed partial class TypeChecker {
         // D-440: an indexed array element (ps[0].x, matches[0].value) takes the element's
         // named type from the array's descriptor, so its members resolve and an unknown one
         // is E1002 instead of passing as Unknown.
-        IndexExpr idx => ArrayDescriptorOf(idx.Target)?.ElementNamedTypeName,
+        IndexExpr idx => _indexElementStructNames.GetValueOrDefault(idx),
         RegexLiteralExpr => RegexLayout.RegexTypeName,
         GroupingExpr g => GetStructTypeName(g.Inner),
         // D-403: mirrors ArrayDescriptorOf's/MapDescriptorOf's identical NilCoalesce arm
@@ -2634,6 +2634,8 @@ public sealed partial class TypeChecker {
                 // An indexed array element (m := matches[0]), D-440.
                 IndexExpr idx => GetStructTypeName(idx),
                 RegexLiteralExpr => RegexLayout.RegexTypeName,
+                // A parenthesised initialiser (r := (/a/)) has the type of what it wraps.
+                GroupingExpr grouping => ExtractFromBinding(null, grouping.Inner),
                 _ => null,
             };
 
@@ -2675,6 +2677,7 @@ public sealed partial class TypeChecker {
         ArrayTypeDescriptor? arrayDescriptor = ArrayDescriptorOf(node.Target);
         if (arrayDescriptor is not null) {
             node.ElementType = arrayDescriptor.ElementKind;
+            if (arrayDescriptor.ElementNamedTypeName is { } elementName) _indexElementStructNames[node] = elementName;
             return arrayDescriptor.ElementKind;
         }
 

@@ -157,6 +157,20 @@ public sealed class TypeCheckerNativeArrayElementTests {
     }
 
     [Fact]
+    public void BindingFromIndexedElement_KeepsItsTypeWhenTheArrayIsShadowed() {
+        DiagnosticBag bag = Check("""
+            matches := regex.matchAll("a", "a")
+            m := matches[0]
+            if (true) {
+                matches := [/b/]
+                v: string := m.value
+            }
+            """);
+
+        Assert.False(bag.HasErrors, $"unexpected: {FormatErrors(bag)}");
+    }
+
+    [Fact]
     public void StringArrayResult_ElementStaysAString() {
         DiagnosticBag bag = Check("""
             for part in regex.split(",", "a,b") {

@@ -194,8 +194,44 @@ public sealed class TypeCheckerRegexTests {
         DiagnosticBag bag = Check("x := /a(/g");
 
         Assert.Equal(["E2007", "E0602"], bag.Errors.Select(d => d.Code).Order(StringComparer.Ordinal).Reverse());
+        Diagnostic e2007 = bag.Errors.Single(d => d.Code == "E2007");
+        Assert.Equal(1, e2007.Range.Start.Line);
+        Assert.Equal(10, e2007.Range.Start.Column);
         Diagnostic e0602 = bag.Errors.Single(d => d.Code == "E0602");
+        Assert.Equal(1, e0602.Range.Start.Line);
         Assert.Equal(9, e0602.Range.Start.Column);
+    }
+
+    [Theory]
+    [InlineData("""ok := regex.compile(("a("))""")]
+    [InlineData("""ok := regex.compile((`a(`))""")]
+    public void PatternArgument_Parenthesised_IsStillValidated(string source) {
+        // The delimiter is at column 22; .NET stops at offset 2 of "a(".
+        DiagnosticBag bag = Check(source);
+
+        AssertSingle(bag, "E0602", 1, 25);
+    }
+
+    [Fact]
+    public void GroupedLiteralBinding_KeepsTheRegexType() {
+        DiagnosticBag bag = Check("""
+            r := (/a/)
+            n: int := r.pattern
+            """);
+
+        AssertSingle(bag, "E0001", 2, 11);
+        Assert.Contains("type 'string'", bag.Errors.Single().Message);
+    }
+
+    [Fact]
+    public void GroupedNamedTypeCallBinding_KeepsItsType() {
+        DiagnosticBag bag = Check("""
+            d := (date.today())
+            s: string := d.year
+            """);
+
+        AssertSingle(bag, "E0001", 2, 14);
+        Assert.Contains("type 'int'", bag.Errors.Single().Message);
     }
 
     [Fact]
