@@ -2,7 +2,7 @@
 
 ## Where we are
 
-- Branch: `feat/stdlib-regex-module`, HEAD `8c9fee3` before this hand-off commit.
+- Branch: `feat/stdlib-regex-module`, HEAD `8c9fee3` before this hand-off commit. Two review-fix commits for PR #253 follow it (`59e946f` and the map-value fix); the second keeps a map value's named type when it is indexed.
 - Working tree: clean apart from gitignored scratch in `.grob-session/`.
 - Commits on this branch: six change groups plus this hand-off (`git log --oneline origin/main..HEAD`).
 - Increment prompt: none. Authorised by D-432 and `grob-v1-requirements.md` (Sprint 9C, `regex` bullet); plan approved in session (`C:\Users\cjgro\.claude\plans\vectorized-dreaming-kay.md`, local to Chris's machine).
@@ -32,7 +32,6 @@ All argued in D-440; do not reopen them without Chris:
 - A hidden native-function field on `Regex` holding the compiled .NET object: equality becomes reference identity.
 - A bespoke checker arm for the function-form `replace`: a third hand-coded exception to the catalogue model. PR 3 grows `SignatureType` instead.
 - Clamping a bad `timeout`: fails silently.
-- A map arm in `GetStructTypeName`'s new index case: no test could build the case from source cheaply, so it was left out (YAGNI).
 
 ## Quarantined or skipped tests
 

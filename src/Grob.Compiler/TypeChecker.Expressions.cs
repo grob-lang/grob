@@ -2684,6 +2684,7 @@ public sealed partial class TypeChecker {
         MapTypeDescriptor? mapDescriptor = MapDescriptorOf(node.Target);
         if (mapDescriptor is not null) {
             node.ElementType = mapDescriptor.ValueKind;
+            if (mapDescriptor.ValueNamedTypeName is { } valueName) _indexElementStructNames[node] = valueName;
             return MapValueResultType(mapDescriptor);
         }
 

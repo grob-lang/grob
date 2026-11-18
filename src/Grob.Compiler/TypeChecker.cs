@@ -168,8 +168,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly Dictionary<CallExpr, string> _callResultStructNames =
         new(ReferenceEqualityComparer.Instance);
 
-    // _indexElementStructNames records the named type of an indexed array element
-    // (m := matches[0]) when VisitIndex checks the index, D-440. Reading it back later,
+    // _indexElementStructNames records the named type of an indexed array element or
+    // map value (m := matches[0], byName["k"]) when VisitIndex checks the index, D-440. Reading it back later,
     // rather than re-resolving the array, keeps the binding's type when an inner scope
     // shadows the array's name. Keyed by reference identity, matching the call tables.
     private readonly Dictionary<IndexExpr, string> _indexElementStructNames =

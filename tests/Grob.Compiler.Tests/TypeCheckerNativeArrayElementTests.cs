@@ -171,6 +171,21 @@ public sealed class TypeCheckerNativeArrayElementTests {
     }
 
     [Fact]
+    public void MapValueOfNamedType_IndexedInCoalesce_ReportsTheNominalMismatch() {
+        // m["k"] is a Match?; coalescing it with a Regex mixes two named types.
+        DiagnosticBag bag = Check("""
+            fn f(m: map<string, Match>): void {
+                r := m["k"] ?? /a/
+            }
+            """);
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(10, diag.Range.Start.Column);
+    }
+
+    [Fact]
     public void StringArrayResult_ElementStaysAString() {
         DiagnosticBag bag = Check("""
             for part in regex.split(",", "a,b") {
