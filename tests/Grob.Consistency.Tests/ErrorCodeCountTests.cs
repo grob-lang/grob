@@ -47,7 +47,7 @@ public sealed class ErrorCodeCountTests {
     }
 
     [Fact]
-    public void Corpus_HasTheExpectedLiveCountOf120() {
+    public void Corpus_HasTheExpectedLiveCountOf121() {
         // A standing anchor: if the count legitimately changes, this and the
         // canonical footer line move together, by intent, in the same change.
         // D-320 added E1103 (reserved identifier used as a binding name): 107 -> 108.
@@ -68,8 +68,10 @@ public sealed class ErrorCodeCountTests {
         // is permanently burned and never reused (D-410's clarification of ADR-0017 for the
         // never-shipped pre-release case). This is the first removal, so it is also the
         // first time this anchor has moved downwards.
-        Assert.Equal(120, ConsistencyChecks.ActualErrorCatalogCount());
-        Assert.Equal(120, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
-        Assert.Equal(120, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
+        // D-440 (the regex increment) minted E0602 (invalid regex pattern), specified by
+        // D-432 Decision 5: 120 -> 121.
+        Assert.Equal(121, ConsistencyChecks.ActualErrorCatalogCount());
+        Assert.Equal(121, ConsistencyChecks.ParseSummaryIndexCount(RepoPaths.ErrorCodes));
+        Assert.Equal(121, ConsistencyChecks.ParseFooterTotal(RepoPaths.ErrorCodes));
     }
 }

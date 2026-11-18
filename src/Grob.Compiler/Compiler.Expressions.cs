@@ -45,6 +45,22 @@ public sealed partial class Compiler {
 
     /// <inheritdoc/>
     /// <remarks>
+    /// A regex literal is a constant <c>Regex</c> struct (D-432 Decision 7, D-440): one
+    /// pool entry per literal site, flags normalised, the default timeout. The type checker
+    /// has already validated the pattern (E0602). No opcode is needed; the plugin compiles
+    /// the pattern once for this struct instance, however often the site runs. Closes R-30.
+    /// </remarks>
+    public override object? VisitRegexLiteral(RegexLiteralExpr node) {
+        // E2007 has already rejected any letter other than 'i' or 'm', so this succeeds.
+        _ = RegexLayout.TryNormaliseFlags(node.Flags, out string flags);
+        EmitConstant(
+            GrobValue.FromStruct(RegexLayout.NewRegex(node.Pattern, flags, RegexLayout.DefaultTimeoutSeconds)),
+            node.Range.Start.Line);
+        return null;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// Sprint 3E: String interpolation.
     /// <para>
     /// No-slot optimisation: when the string contains only literal text parts
@@ -73,7 +89,7 @@ public sealed partial class Compiler {
             // a single constant. The type checker already confirmed there are no slots.
             var sb = new System.Text.StringBuilder();
             foreach (StringTextPart text in node.Parts.OfType<StringTextPart>()) {
-                sb.Append(DecodeStringEscapes(text.Text));
+                sb.Append(StringEscapes.Decode(text.Text));
             }
             EmitConstant(GrobValue.FromString(sb.ToString()), node.Range.Start.Line);
             return null;
@@ -85,7 +101,7 @@ public sealed partial class Compiler {
         foreach (StringInterpolationPart part in node.Parts) {
             switch (part) {
                 case StringTextPart text:
-                    EmitConstant(GrobValue.FromString(DecodeStringEscapes(text.Text)), line);
+                    EmitConstant(GrobValue.FromString(StringEscapes.Decode(text.Text)), line);
                     fragmentCount++;
                     break;
                 case StringExpressionPart exprPart:
@@ -98,41 +114,6 @@ public sealed partial class Compiler {
         _chunk.WriteOpCode(OpCode.BuildString, line);
         _chunk.WriteByte(ToByteOperand(fragmentCount, "BuildString fragment count"), line);
         return null;
-    }
-
-    /// <summary>
-    /// Decodes the Grob string escape sequences stored raw in a <see cref="StringTextPart"/> lexeme.
-    /// Recognised sequences: <c>\n \r \t \\ \" \$</c>.
-    /// Any other <c>\x</c> is passed through unchanged (the lexer already emitted E2006 for those).
-    /// </summary>
-    private static string DecodeStringEscapes(string raw) {
-        if (!raw.Contains('\\')) return raw;
-
-        var sb = new System.Text.StringBuilder(raw.Length);
-        int i = 0;
-        while (i < raw.Length) {
-            if (raw[i] == '\\' && i + 1 < raw.Length) {
-                char next = raw[i + 1];
-                switch (next) {
-                    case 'n': sb.Append('\n'); i += 2; break;
-                    case 'r': sb.Append('\r'); i += 2; break;
-                    case 't': sb.Append('\t'); i += 2; break;
-                    case '\\': sb.Append('\\'); i += 2; break;
-                    case '"': sb.Append('"'); i += 2; break;
-                    case '$': sb.Append('$'); i += 2; break;
-                    default:
-                        // Unknown escape: pass both chars through; lexer already
-                        // emitted a diagnostic, so this path is error-recovery only.
-                        sb.Append(raw[i]);
-                        i++;
-                        break;
-                }
-            } else {
-                sb.Append(raw[i]);
-                i++;
-            }
-        }
-        return sb.ToString();
     }
 
     /// <inheritdoc/>

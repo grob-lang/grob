@@ -256,7 +256,7 @@ public enum TokenKind {
     /// <summary>Triple-backtick raw block string literal</summary>
     RawStringBlockLiteral,
 
-    /// <summary>Regex literal (r"…")</summary>
+    /// <summary>Regex literal (<c>/pattern/flags</c>)</summary>
     RegexLiteral,
 
     /// <summary>Identifier (includes built-in names print, exit, input)</summary>

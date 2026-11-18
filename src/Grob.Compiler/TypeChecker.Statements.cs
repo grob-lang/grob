@@ -1,5 +1,6 @@
 using Grob.Compiler.Ast;
 using Grob.Core;
+using Grob.Runtime;
 
 namespace Grob.Compiler;
 
@@ -197,11 +198,8 @@ public sealed partial class TypeChecker {
                 return GrobType.Unknown;
             }
             GrobType fieldType = Visit(memberTarget);
-            if (FindReadonlyRoot(memberTarget) is not null) {
-                EmitError(ErrorCatalog.E0204,
-                    "Cannot assign to field of `readonly` binding.",
-                    memberTarget.Range);
-            }
+            ReportReadonlyMemberTarget(memberTarget, memberTarget.Range,
+                "Cannot assign to field of `readonly` binding.");
             GrobType rhsType = Visit(node.Value);
             if (fieldType is not (GrobType.Unknown or GrobType.Error) &&
                 rhsType is not (GrobType.Unknown or GrobType.Error) &&
@@ -348,11 +346,7 @@ public sealed partial class TypeChecker {
         }
         GrobType fieldType = Visit(memberTarget);
         GrobType valueType = Visit(node.Value);
-        if (FindReadonlyRoot(memberTarget) is not null) {
-            EmitError(ErrorCatalog.E0204,
-                "Cannot mutate field of `readonly` binding.",
-                node.Range);
-        }
+        ReportReadonlyMemberTarget(memberTarget, node.Range, "Cannot mutate field of `readonly` binding.");
         if (fieldType != GrobType.Unknown) {
             EmitCompoundOperatorTypeCheck(fieldType, valueType, node.Operator, node.Range);
         }
@@ -492,11 +486,7 @@ public sealed partial class TypeChecker {
             return GrobType.Unknown;
         }
         GrobType fieldType = Visit(memberTarget);
-        if (FindReadonlyRoot(memberTarget) is not null) {
-            EmitError(ErrorCatalog.E0204,
-                "Cannot mutate field of `readonly` binding.",
-                node.Range);
-        }
+        ReportReadonlyMemberTarget(memberTarget, node.Range, "Cannot mutate field of `readonly` binding.");
 
         string opSym = node.Kind == IncrementKind.Increment ? "++" : "--";
         if (fieldType == GrobType.Float) {
@@ -637,5 +627,28 @@ public sealed partial class TypeChecker {
             if (current is not (MemberAccessExpr or IndexExpr)) break;
         }
         return current is IdentifierExpr { Declaration: ReadonlyDecl ro } ? ro : null;
+    }
+
+    /// <summary>
+    /// The E0204 guard shared by the three member-target mutation forms (<c>=</c>,
+    /// compound assignment and <c>++</c>/<c>--</c>). A <c>readonly</c> root is reported
+    /// with <paramref name="readonlyMessage"/>. Otherwise, a property of a named type
+    /// (D-356) is reported as read-only (D-440): the plugin computes it from the value's
+    /// hidden fields, so there is no field for the VM's <c>SetProperty</c> to write.
+    /// One root cause, one diagnostic: a <c>readonly</c> root suppresses the property
+    /// report. Runs after the target is visited, so the receiver's type name is resolved.
+    /// </summary>
+    private void ReportReadonlyMemberTarget(MemberAccessExpr memberTarget, SourceRange range, string readonlyMessage) {
+        if (FindReadonlyRoot(memberTarget) is not null) {
+            EmitError(ErrorCatalog.E0204, readonlyMessage, range);
+            return;
+        }
+        // An unknown member was already E1002 when the target was visited.
+        string? typeName = GetStructTypeName(memberTarget.Target);
+        if (typeName is not null && _catalogue.TryGetNamedType(typeName, out NamedTypeSurface? namedType) &&
+            (namedType.Properties.ContainsKey(memberTarget.Member) || namedType.Methods.ContainsKey(memberTarget.Member))) {
+            EmitError(ErrorCatalog.E0204,
+                $"'{memberTarget.Member}' is a read-only property of '{typeName}'.", range);
+        }
     }
 }

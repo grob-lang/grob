@@ -1,0 +1,8 @@
+error[E0602]: invalid regex pattern
+  --> invalid-regex-pattern.grob:2:23
+   |
+ 2 | levels := /(ERROR|WARN/
+   |                       ^
+   |
+   = note: '(ERROR|WARN' is not a valid regex pattern: insufficient closing parentheses
+   = help: close the group with ')' before the final '/', or write \( to match a literal parenthesis

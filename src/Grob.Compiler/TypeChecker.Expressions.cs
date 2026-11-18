@@ -35,9 +35,6 @@ public sealed partial class TypeChecker {
     public override GrobType VisitNilLiteral(NilLiteralExpr node) => GrobType.Nil;
 
     /// <inheritdoc/>
-    public override GrobType VisitRegexLiteral(RegexLiteralExpr node) => GrobType.Unknown;
-
-    /// <inheritdoc/>
     public override GrobType VisitInterpolatedString(InterpolatedStringExpr node) {
         // D-279, E0102: interpolating a nullable expression is a compile error.
         // Each ${expr} slot is type-checked; if its resolved type is nullable the
@@ -1172,6 +1169,7 @@ public sealed partial class TypeChecker {
         if (returnType.NamedTypeName is not null) {
             _callResultStructNames[node] = returnType.NamedTypeName;
         }
+        if (NativeArrayDescriptor(returnType) is { } descriptor) _callResultArrayDescriptors[node] = descriptor;
         node.ResolvedReturnType = returnType.Type;
         return returnType.Type;
     }
@@ -1234,11 +1232,20 @@ public sealed partial class TypeChecker {
         if (signature.RequiredArgumentCount < signature.Parameters.Count) {
             node.ResolvedPrimitiveParameterDefaults = [.. signature.Parameters.Select(p => p.Default)];
         }
-        if (returnType.ElementType is { } elementType) {
-            _callResultArrayDescriptors[node] = new ArrayTypeDescriptor(elementType.Type, null, null);
-        }
+        if (NativeArrayDescriptor(returnType) is { } descriptor) _callResultArrayDescriptors[node] = descriptor;
         return returnType.Type;
     }
+
+    /// <summary>
+    /// The element descriptor (D-351) a native's <c>T[]</c> return or property type
+    /// declares: the element's kind, its named type and any nested element, so a for-in or
+    /// index over the result resolves the element's members (D-440). <see langword="null"/>
+    /// when <paramref name="type"/> is not an array or declares no element type.
+    /// </summary>
+    private static ArrayTypeDescriptor? NativeArrayDescriptor(SignatureType.Concrete type) =>
+        type.ElementType is { } element
+            ? new ArrayTypeDescriptor(element.Type, element.NamedTypeName, NativeArrayDescriptor(element))
+            : null;
 
     /// <summary>
     /// Checks a primitive-member method call's argument list against
@@ -1941,7 +1948,9 @@ public sealed partial class TypeChecker {
             // native call (id := guid.newV4()) resolves field/instance-member access the
             // same way a direct struct-construction initialiser already does.
             if (returnType.NamedTypeName is not null) _callResultStructNames[node] = returnType.NamedTypeName;
+            if (NativeArrayDescriptor(returnType) is { } descriptor) _callResultArrayDescriptors[node] = descriptor;
             CheckGuidParseLiteral(node, namespaceName, memberAccess.Member);
+            CheckRegexPatternArgument(node, namespaceName, memberAccess.Member);
             return returnType.Type;
         }
 
@@ -2528,6 +2537,9 @@ public sealed partial class TypeChecker {
         if (namedType.Properties.TryGetValue(node.Member, out NamedTypePropertyBinding? property)) {
             GrobType propertyType = property.Signature.Type.Type;
             node.ResolvedFieldType = propertyType;
+            if (NativeArrayDescriptor(property.Signature.Type) is { } descriptor) {
+                _memberAccessArrayDescriptors[node] = descriptor;
+            }
             return propertyType;
         }
 
@@ -2580,6 +2592,11 @@ public sealed partial class TypeChecker {
         // CodeRabbit review PR #143 reported this for date; generalised here since the
         // same gap silently affected every struct-returning call, guid included).
         CallExpr call => _callResultStructNames.GetValueOrDefault(call),
+        // D-440: an indexed array element (ps[0].x, matches[0].value) takes the element's
+        // named type from the array's descriptor, so its members resolve and an unknown one
+        // is E1002 instead of passing as Unknown.
+        IndexExpr idx => _indexElementStructNames.GetValueOrDefault(idx),
+        RegexLiteralExpr => RegexLayout.RegexTypeName,
         GroupingExpr g => GetStructTypeName(g.Inner),
         // D-403: mirrors ArrayDescriptorOf's/MapDescriptorOf's identical NilCoalesce arm
         // exactly — a '??'-unwrapped nullable named-type value (g1 ?? g2) must keep its
@@ -2614,6 +2631,11 @@ public sealed partial class TypeChecker {
                 // A struct-returning call (box := makeBox()) — the name was recorded by
                 // VisitCall via ResolveSignatureType (Sprint 6 close).
                 CallExpr call => _callResultStructNames.GetValueOrDefault(call),
+                // An indexed array element (m := matches[0]), D-440.
+                IndexExpr idx => GetStructTypeName(idx),
+                RegexLiteralExpr => RegexLayout.RegexTypeName,
+                // A parenthesised initialiser (r := (/a/)) has the type of what it wraps.
+                GroupingExpr grouping => ExtractFromBinding(null, grouping.Inner),
                 _ => null,
             };
 
@@ -2655,12 +2677,14 @@ public sealed partial class TypeChecker {
         ArrayTypeDescriptor? arrayDescriptor = ArrayDescriptorOf(node.Target);
         if (arrayDescriptor is not null) {
             node.ElementType = arrayDescriptor.ElementKind;
+            if (arrayDescriptor.ElementNamedTypeName is { } elementName) _indexElementStructNames[node] = elementName;
             return arrayDescriptor.ElementKind;
         }
 
         MapTypeDescriptor? mapDescriptor = MapDescriptorOf(node.Target);
         if (mapDescriptor is not null) {
             node.ElementType = mapDescriptor.ValueKind;
+            if (mapDescriptor.ValueNamedTypeName is { } valueName) _indexElementStructNames[node] = valueName;
             return MapValueResultType(mapDescriptor);
         }
 

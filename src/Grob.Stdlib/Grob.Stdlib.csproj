@@ -12,4 +12,13 @@
     <ProjectReference Include="..\Grob.Runtime\Grob.Runtime.csproj" />
   </ItemGroup>
 
+  <!-- RegexCache is the regex plugin's implementation, not part of the stdlib's
+       contract; its tests pin the once-per-value compilation that gives a regex
+       literal D-432's "compiled once per site" (D-440). -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Grob.Stdlib.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

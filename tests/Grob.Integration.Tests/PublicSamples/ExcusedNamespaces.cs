@@ -8,7 +8,7 @@ namespace Grob.Integration.Tests.PublicSamples;
 /// </summary>
 internal static class ExcusedNamespaces {
     /// <summary>The core modules not yet built.</summary>
-    public static IReadOnlyList<string> CoreModules { get; } = ["fs", "json", "csv", "process", "regex"];
+    public static IReadOnlyList<string> CoreModules { get; } = ["fs", "json", "csv", "process"];
 
     /// <summary>The Sprint 11 plugin namespaces.</summary>
     public static IReadOnlyList<string> PluginNamespaces { get; } = ["http", "auth", "crypto", "zip"];

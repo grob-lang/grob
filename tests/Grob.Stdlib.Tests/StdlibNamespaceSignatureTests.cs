@@ -80,6 +80,14 @@ public sealed class StdlibNamespaceSignatureTests {
         { "formatAs.table", "(items: array, columns: array): string" },
         { "formatAs.list", "(item: struct, fields: array): string" },
         { "formatAs.csv", "(items: array, columns: array): string" },
+        { "regex.compile", "(pattern: string, flags: string = \"\", timeout: int = 5): Regex" },
+        { "regex.isMatch", "(pattern: string, input: string): bool" },
+        { "regex.match", "(pattern: string, input: string): Match?" },
+        { "regex.matchAll", "(pattern: string, input: string): Match[]" },
+        { "regex.replace", "(pattern: string, input: string, replacement: string): string" },
+        { "regex.replaceAll", "(pattern: string, input: string, replacement: string): string" },
+        { "regex.split", "(pattern: string, input: string): string[]" },
+        { "regex.escape", "(text: string): string" },
     };
 
     public static TheoryData<string, string> Constants => new() {
@@ -134,7 +142,7 @@ public sealed class StdlibNamespaceSignatureTests {
     [Fact]
     public void NamespaceNames_AreExactlyTheStdlibNamespaces() =>
         Assert.Equal(
-            ["date", "env", "float", "formatAs", "guid", "int", "log", "math", "path", "strings"],
+            ["date", "env", "float", "formatAs", "guid", "int", "log", "math", "path", "regex", "strings"],
             Catalogue.NamespaceNames.Order(StringComparer.Ordinal));
 
     private static (string NamespaceName, string MemberName) Split(string qualifiedName) {

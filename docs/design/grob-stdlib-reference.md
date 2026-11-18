@@ -860,17 +860,23 @@ lookarounds and backreferences (D-432).
 a `Regex` from a run-time string — the only way to do so, since a literal's pattern is
 fixed in the source. A string-literal `pattern` is validated at compile time (E0602); a
 pattern or flag that is invalid at run time throws `ParseError`. `timeout` is in seconds,
-as `process.run`'s is, and `0` means no limit.
+as `process.run`'s is, and `0` means no limit. A negative `timeout`, or one above .NET's
+ceiling of 2,147,483 seconds, also throws `ParseError` (D-440); `process.run` follows the
+same rule when it lands. `flags` is reported normalised: deduplicated, `i` before `m`.
 
-**Every matching operation is bounded** (D-432). The limit is five seconds unless the
-value was built by `regex.compile` with another `timeout`; literals and the one-shot
-functions always use five. Expiry throws `RuntimeError`, naming the operation and the
+**Matching is bounded by default** (D-432). The limit is five seconds unless the
+value was built by `regex.compile` with another `timeout`, where `0` removes the limit;
+literals and the one-shot functions always use five. Expiry throws `RuntimeError`, naming the operation and the
 limit, never the pattern (D-077). The bound turns catastrophic backtracking into an error instead
 of a hang.
 
 **Replacements** use .NET's syntax: `$1`, `${name}`, `$$` for a literal `$`. Since `${`
 inside a double-quoted string is interpolation, write replacements as single-backtick
-raw strings (D-285). The function form takes the `Match` and returns the replacement.
+raw strings (D-285). The function form takes the `Match` and returns the replacement;
+it is not built yet (R-44). As in .NET, unnamed groups are numbered before named ones,
+so `$1` and `groups[1]` name the first unnamed group when a pattern has both. `groups`
+lists every defined group in group-number order without gaps, an explicitly numbered
+group such as `(?<2>a)` included (D-440).
 
 **`split`** includes the text of any capture groups in its result, as .NET, JavaScript
 and Python do. Use a non-capturing group, `(?:…)`, to split without keeping it.

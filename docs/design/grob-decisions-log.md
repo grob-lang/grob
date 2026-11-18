@@ -436,6 +436,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-437 | November 2026 | Testing — public samples gate; Documentation — wiki; Runtime — capability injection; Standard library — `date`, `path`; Deferred Work Register | **Implements D-430: the public samples gate landed**, in five change groups. **123 blocks, each counted once: 45 run, 29 excused, 39 unblocked fragments and 10 blocked (five of them also marked `fragment`), 0 failing**; not D-430's 38 and 11, because W9 removed `formatAs.md` block 3's R-29 cascade. Chris's six rulings recorded: W6 widened to `Grob-Crypto.md`, whose double-quoted path compiled silently; STOPs 2 and 3 set aside; time-only `date.parse` with an offset takes today in that offset; W10's `if (…)`; W8 and W10 widened to their pages' stale tables; a near-miss fence guard. **R-32 closed**: `IClock.LocalZone` and `IFileSystem.CurrentDirectory`, `date.parse` classified lexically, a source guard. D-430 Decision 7's wording corrected: a drive-relative path on another drive resolves to that drive's root. Every mutation matched its prediction; 8b added because 8 cannot reach the unused-fixture guard. Suite 5,108; `Grob.Cli` 91.45%, `Grob.Stdlib` 96.82%. R-29 amended; **R-39 opens** for the README sample that `fs` makes runnable before parameters bind. *Findings for the corpus sweep* listed. Count unchanged at 120. |
 | D-438 | November 2026 | Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Process — coverage, commits; Deferred Work Register | **Implements D-431: the corpus sweep landed**, the last of D-420's pre-9C increments; the run ends here. Documentation only. **Every one of D-431's thirty-one rows dispositioned**: script counts to eleven (D-346); 29 missing trailing commas, row 9 widened by Chris; 77 D-285 path literals; ADR-0017's residue; the opcode sketch's banner; `toIsoDateTime`'s `Z`; increment 5's findings; the log's *Project Status*, *Identity* and *Related Documents*. **R-05 closed**: all 28 `.claude/` files, the four `CLAUDE.md` files and `AGENTS.md` read against the tree. **The 42 `// Eventual path:` lines removed** in PR #246, split out for CodeRabbit's 100-file limit. Chris's rulings recorded: files edited in place; `/commit-message` commits on the branch; **90% coverage is the floor on new code too**, extending D-328. Divergences: 12 *Reason* cells, not 14; public samples tallies 46 run and 38 fragments; mutation 5's prediction failed on the *Identity* statement, since corrected. **R-40 to R-43 open.** Suite 5,109. Count unchanged at 120. |
 | D-439 | November 2026 | Language spec — lexing; Compiler — lexer | **Implements the lexer half of D-432's `/` rule**, the first of the `regex` increment's two pull requests. Lexer and tests only; no error code. **Three defects, not two**: a `/` beginning a line after a statement newline is now a regex; an unescaped `/` inside `[...]` stays in the literal; and `/=` is decided after the regex test, so `split(/=+/)` is a regex, which D-432 did not name. **Two rulings, Chris**: every `{` is statement context, since the lexer cannot tell a literal's brace from a block's, so only `(` and `[` suppress a newline for the `/` decision; and a division's leading newline is dropped, which adds a third case to §14, since §8's `(a` ⏎ `/ b)` row lexed as division and then failed in the parser. D-432's wording about §14 corrected. Count unchanged at 120. |
+| D-440 | November 2026 | Standard library — `regex`; Compiler — type checker, emission; Runtime — named types; Error taxonomy; Deferred Work Register | **Implements the rest of D-432: the `regex` module is built** and a regex literal runs. **R-30 closed.** `Regex` and `Match` are hidden-field structs on the `guid`/`date` model (Chris); a literal is one constant `Regex` per site, compiled once per run through a weak cache keyed by the struct. **E0602 minted**: literal bodies, string-literal pattern arguments and `@pattern`'s argument (Chris), decoded before validation, caret at .NET's offset where it maps. **The function form of `replace` is deferred to a third pull request** (Chris; **R-44 opens**). A bad `timeout` is `ParseError` E5702, for `process.run` too (Chris). Found on the way: a named type's property was assignable and crashed the VM, now E0204 (Chris); a native's or an index's array element lost its named type, now kept. Count 120 → 121. |
 
 ---
 
@@ -17115,6 +17116,102 @@ statement boundary).
 
 ---
 
+### D-440 — The `regex` module built: `Regex` and `Match` are hidden-field structs, a literal is one constant per site, E0602 minted, the function-form `replace` deferred, a bad `timeout` is a `ParseError` (November 2026)
+
+Area: Standard library — `regex`; Compiler — type checker, emission; Runtime — named types; Error taxonomy; Deferred Work Register
+Supersedes: none (implements D-432; settles its open `timeout` point for `regex` and `process.run`)
+Superseded by: none
+
+**Implements the rest of D-432, the second of the `regex` increment's pull requests.** A regex
+literal type-checks as a `Regex` and runs; `regex.compile`, the seven one-shot functions and the
+`Regex` and `Match` members are built in a new `RegexPlugin`; E0602 is minted. **R-30 is closed.**
+Error-code count **120 → 121**. No opcode and no `GrobValueKind` variant, as D-432 Decision 7
+expected. The increment needed **three pull requests, not two**: the function form of `replace`
+goes to a third (Decision 3).
+
+**Decision 1 — representation: a struct with hidden fields (Chris).** A `GrobValue` cannot carry a
+.NET object, so `Regex` and `Match` follow `guid` and `date`: a `GrobStruct` whose field names
+start with a double underscore and so cannot be spelled in Grob. `RegexLayout` in `Grob.Core`
+holds the names and the rules the checker, the compiler and the plugin share: flag
+normalisation, the options (always culture-invariant), the timeout conversion and a parse-error
+description that never quotes the pattern (D-077). **Rejected**: a hidden native-function field
+closing over the compiled .NET `Regex`, which works without a cache but makes equality
+reference identity, so two identical literals would be unequal.
+
+**Decision 2 — a literal is one constant per site.** The compiler emits each literal as one
+`Constant` whose pool entry is the `Regex` struct, with its flags normalised and the default
+timeout. `RegexCache` keeps each value's compiled .NET `Regex` in a `ConditionalWeakTable` keyed
+by the struct instance. The site's constant is one instance, so its pattern is compiled once
+per run however often a loop reaches it, which is D-432 Decision 7's contract, and the table
+holds its keys weakly, so values built by `regex.compile` in a loop cannot grow it without
+bound. `regex.compile` seeds the cache with the `Regex` it built while validating.
+
+**Decision 3 — the function form of `replace` and `replaceAll` is deferred (Chris). R-44 opens.**
+D-432 Decision 6 specified `replace(input, fn: Match → string)`. The catalogue cannot express it:
+a signature has no function shape (D-426 Decision 1), nothing has an overload and a lambda's
+parameters are typed `Unknown`. Growing all three is a decision amending D-426, not a detail of
+this pull request. The spec stays as D-432 wrote it; `grob-stdlib-reference.md` notes the gap,
+and the wiki, which shows what is built, does not advertise the form. **Rejected**: a bespoke
+checker arm, as the array higher-order methods have, which would add a third hand-coded
+exception to the catalogue model.
+
+**Decision 4 — a negative or out-of-range `timeout` is `ParseError` (E5702) (Chris).** This
+settles D-432's recorded-not-decided point, for `regex.compile` and for `process.run` when it
+lands. `regex.compile` already throws `ParseError` for a bad pattern or flag string, so a bad
+timeout joins them. The ceiling is .NET's: 2,147,483 seconds. **Rejected**: `RuntimeError`
+(E5903), which timeout expiry already uses; and clamping, which fails silently.
+
+**Decision 5 — runtime codes fold into the residuals.** A pattern, flag string or timeout that
+is invalid at run time is `ParseError` E5702, the parse residual; expiry is `RuntimeError`
+E5903, the runtime residual. Neither message quotes the pattern. E0602 is the only new code: no
+existing code fits, since E0601 is `guid`'s and ADR-0014 keeps the Runtime-category E5702 off a
+compile-time diagnostic.
+
+**Decision 6 — E0602's reach and caret.** The checker builds every pattern known at compile time
+with the options it will run under: a literal's body, a string-literal pattern passed to
+`regex.compile` or a module function, and `@pattern`'s argument (Chris: validated now;
+whole-value matching at binding time stays Sprint 10's, R-15). A double-quoted pattern is
+decoded before it is validated, so it is checked as it will run; the compiler's escape decoder
+moved to a shared `StringEscapes`. The caret sits at .NET's offset when the literal maps onto the
+pattern one-to-one, and at the opening delimiter otherwise. A single-line raw string's range now
+runs to its closing backtick, as a double-quoted string's does, which is what lets the caret land
+inside it.
+
+**Decision 7 — a named type's properties are read-only: E0204 (Chris).** Found by
+`defining-a-type`'s pre-flight: `d.year = 2020` on a `date` passed the checker and crashed the VM
+with an internal error, and `r.pattern = "x"` would have too. Assignment, compound assignment and
+`++`/`--` on a named type's member are now E0204, folded in rather than minted: the property is
+computed from hidden fields, so there is nothing to write. E0204's description gains a sentence.
+
+**Decision 8 — a native's array element type is kept.** A native returning `Match[]` kept only
+the outer `array`, so `for m in r.matchAll(s) { m.nope }` passed unchecked. Every native call
+path and the named-type property path now record the element's descriptor (D-351). Indexing had
+the same gap for every array of structs, user types included: `ps[0].x` typed as `unknown`.
+`GetStructTypeName` and the `:=` binding path gain an index arm.
+
+**Assumptions recorded, not separately ruled.** `flags` is normalised: deduplicated, `i` before
+`m`. A `Regex` prints as `/pattern/flags` and a `Match` as its `value`. Equality is structural,
+so `/a/i == /a/i`. An unmatched numbered group is `""` in `groups`, which lists every defined
+group in group-number order without gaps; .NET's group enumerator would drop an explicitly
+numbered group such as `(?<2>a)`, so the list is built by number. E2007 gains D-432 Decision 3's
+hints: `g` points at `matchAll` and `replaceAll`, and `s` and `x` at the inline `(?s)` and `(?x)`.
+**Registering `Match` as a named type makes a user's `type Match` E1102**, as `type date` already
+is (Chris: accepted); the "first declared at line 1" wording for a catalogue name is R-29's case.
+
+**Not done here.** R-34's release-gate script lands with the `fs` increment, which comes second.
+The stdlib reference's `regex.compile(pattern, "i", timeout: 30)` uses a named argument, which a
+native call still rejects (E0011, D-426 Decision 4); it describes the intended surface.
+
+**Register.** **R-30 closed.** **R-44 opens**: the function form of `replace` and `replaceAll`,
+owned by the `regex` increment's third pull request.
+
+Cites D-432 (the design implemented), D-095 and D-089 (the module and its flags), D-077 (values
+out of messages), D-284 (`ParseError` and `RuntimeError`), D-285 (backtick raw strings), D-303
+and D-356 (the value representation and named types), D-351 (array descriptors), D-424
+(`@pattern`), D-426 (the catalogue and its Decision 1) and D-316 (the code minted with its source).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -17344,7 +17441,12 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-439 added, with spec edits and lexer change. **The `/` rule is implemented**_
+_November 2026 — D-440 added, with source, spec, wiki and register changes. **The `regex` module_
+_is built** (D-432): `Regex` and `Match` as hidden-field structs, a literal as one constant per_
+_site, E0602 minted and R-30 closed. Chris ruled the representation, the deferral of the_
+_function-form `replace` (R-44 opened), a bad `timeout` as `ParseError`, `@pattern` validated now_
+_and named-type properties read-only (E0204). Count 120 → 121._
+_Previous: November 2026 — D-439 added, with spec edits and lexer change. **The `/` rule is implemented**_
 _(D-432, lexer half): a `/` beginning a line after a statement newline is a regex, an unescaped_
 _`/` inside `[...]` stays in the literal, and `/=` is decided after the regex test. Chris ruled_
 _that every `{` is statement context and that a division's leading newline is dropped, which_

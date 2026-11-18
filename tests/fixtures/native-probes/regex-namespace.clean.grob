@@ -1,0 +1,26 @@
+// Native-call probe corpus: regex namespace natives, clean probes (D-426 Decision 5,
+// condition 2; added with the module by D-440). Every line must type-check and compile
+// with zero diagnostics.
+s := "abc"
+i := 5
+
+regex.compile(s)
+regex.compile(s, s)
+regex.compile(s, s, i)
+regex.compile(`^\d+$`, "im", 30)
+regex.isMatch(s, s)
+regex.match(s, s)
+regex.matchAll(s, s)
+regex.replace(s, s, s)
+regex.replaceAll(s, s, s)
+regex.split(s, s)
+regex.escape(s)
+
+// return-type threading: a struct-returning native resolves instance members
+regex.compile(s).pattern
+regex.compile(s).isMatch(s)
+rcompile: Regex := regex.compile(s)
+rmatch: Match? := regex.match(s, s)
+rmatchValue := regex.match(s, s)?.value
+rmatchAll: Match[] := regex.matchAll(s, s)
+rsplit: string[] := regex.split(s, s)

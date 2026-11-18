@@ -1,0 +1,4 @@
+// E0602 — a regex literal whose pattern .NET cannot parse: the group is never closed
+levels := /(ERROR|WARN/
+
+print(levels.isMatch("WARN"))

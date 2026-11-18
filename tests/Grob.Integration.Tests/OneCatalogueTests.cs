@@ -25,7 +25,7 @@ public sealed class OneCatalogueTests {
 
         Assert.Equal(catalogue.Globals.Keys.Order(StringComparer.Ordinal), vm.Globals.Keys.Order(StringComparer.Ordinal));
         Assert.All(catalogue.Globals, pair => Assert.Equal(pair.Value, vm.Globals[pair.Key]));
-        Assert.Equal(["guid", "date"], catalogue.NamedTypeNames);
+        Assert.Equal(["guid", "date", "Regex", "Match"], catalogue.NamedTypeNames);
     }
 
     [Fact]

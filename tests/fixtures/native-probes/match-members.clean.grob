@@ -1,0 +1,20 @@
+// Native-call probe corpus: Match instance members (named type), clean probes (D-426
+// Decision 5, condition 2; added with the module by D-440). Every line must type-check
+// and compile with zero diagnostics.
+s := "abc"
+ms := regex.matchAll(s, s)
+m := ms[0]
+
+m.value
+m.index
+m.length
+m.groups
+m.group(s)
+
+rvalue: string := m.value
+rindex: int := m.index
+rlength: int := m.length
+rgroups: string[] := m.groups
+rgroup: string? := m.group(s)
+rgroupItem: string := m.groups[0]
+rfirst := regex.match(s, s)?.value

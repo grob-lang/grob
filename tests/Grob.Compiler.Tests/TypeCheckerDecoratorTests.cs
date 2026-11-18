@@ -113,15 +113,16 @@ public sealed class TypeCheckerDecoratorTests {
     }
 
     /// <summary>
-    /// And the deferral itself, pinned so the <c>regex</c> increment finds a test
-    /// to change rather than a silent gap: <c>@pattern</c>'s argument is checked
-    /// for being a string literal and nothing more. This pattern cannot compile —
-    /// the bracket is never closed — and it is accepted anyway.
+    /// The deferral this test used to pin has ended: the <c>regex</c> increment
+    /// validates <c>@pattern</c>'s argument as a regex (E0602, D-432 Decision 5,
+    /// D-440). The bracket is never closed, so the pattern cannot compile. The caret
+    /// cases are in <c>TypeCheckerRegexTests</c>; enforcement at binding time stays
+    /// Sprint 10's (R-15).
     /// </summary>
     [Fact]
-    public void PatternArgument_IsNotValidatedAsARegex_Deferred() {
+    public void PatternArgument_InvalidRegex_IsE0602() {
         DiagnosticBag bag = Check("@pattern(\"[unclosed\")\nparam tag: string\n");
-        Assert.Empty(bag.Diagnostics);
+        AssertSingle(bag, "E0602", 1, 20, "unterminated bracket");
     }
 
     // -----------------------------------------------------------------------

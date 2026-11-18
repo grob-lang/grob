@@ -50,6 +50,36 @@ public class LexerRegexTests {
         Assert.Equal("/abc/z", tokens[2].Lexeme);
         Diagnostic diag = Assert.Single(diagnostics.Errors);
         Assert.Equal("E2007", diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(11, diag.Range.Start.Column);
+    }
+
+    /// <summary>
+    /// D-432 Decision 3, implemented by D-440: E2007 points a flag other engines spell as
+    /// a flag at Grob's way of saying it. There is no <c>g</c>; <c>s</c> and <c>x</c> go
+    /// inline at the start of the pattern.
+    /// </summary>
+    [Theory]
+    [InlineData("x := /abc/g", "use matchAll or replaceAll for every match")]
+    [InlineData("x := /abc/s", "write (?s) at the start of the pattern")]
+    [InlineData("x := /abc/x", "write (?x) at the start of the pattern")]
+    public void RegexFlagFromAnotherEngine_ReportsE2007WithAHint(string source, string hint) {
+        var (_, diagnostics) = LexWithDiagnostics(source);
+        Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2007", diag.Code);
+        Assert.Contains(hint, diag.Message);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(11, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void RegexFlagWithNoHint_ReportsE2007Plainly() {
+        var (_, diagnostics) = LexWithDiagnostics("x := /abc/z");
+        Diagnostic diag = Assert.Single(diagnostics.Errors);
+        Assert.Equal("E2007", diag.Code);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(11, diag.Range.Start.Column);
+        Assert.Equal("invalid regex flag 'z' (only 'i' and 'm' are supported)", diag.Message);
     }
 
     [Fact]

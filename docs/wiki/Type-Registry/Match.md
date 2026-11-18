@@ -15,11 +15,11 @@ Returned by `Regex.match()` and `Regex.matchAll()`.
 
 | Member | Signature | Notes |
 |--------|-----------|-------|
-| `group(name: string)` | `→ string?` | Named capture group. Nil if not present |
+| `group(name: string)` | `→ string?` | Named capture group. Nil if the group is absent or did not take part in the match |
 
 ## Examples
 
-```grob blocked-by=R-30
+```grob
 pattern := /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/
 m := pattern.match("Date: 2026-04-05")
 

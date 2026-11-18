@@ -1,6 +1,8 @@
 # Regex — Type Registry
 
-Created from regex literals (`/pattern/flags`). Compiled once at declaration.
+Created from regex literals (`/pattern/flags`), compiled once per literal site, or at
+run time by `regex.compile(pattern, flags, timeout)`. Every matching method runs under
+the value's timeout and throws `RuntimeError` when it expires.
 
 ## Properties
 
@@ -8,6 +10,7 @@ Created from regex literals (`/pattern/flags`). Compiled once at declaration.
 |--------|-----------|-------|
 | `pattern` | `→ string` | The source pattern string |
 | `flags` | `→ string` | Active flags, e.g. `"i"` or `"im"` |
+| `timeout` | `→ int` | Seconds per matching operation; `5` unless set by `regex.compile`, `0` for no limit |
 
 ## Methods
 
@@ -22,7 +25,7 @@ Created from regex literals (`/pattern/flags`). Compiled once at declaration.
 
 ## Examples
 
-```grob fragment blocked-by=R-30
+```grob fragment
 email_pattern := /^[\w.]+@[\w.]+$/i
 
 if (email_pattern.isMatch(user_input)) {
