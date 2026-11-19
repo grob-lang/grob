@@ -134,6 +134,17 @@ public sealed class SignatureParameterTests {
         Assert.Contains("type parameter", ex.Message);
     }
 
+    [Fact]
+    public void Constructor_FunctionShapedWithDefault_Throws() {
+        var shape = new SignatureType.FunctionShape([String], String);
+
+        var ex = Assert.Throws<ArgumentException>(
+            () => new SignatureParameter("fn", shape, defaultValue: GrobValue.Nil));
+
+        Assert.Equal("defaultValue", ex.ParamName);
+        Assert.Contains("function", ex.Message);
+    }
+
     [Theory]
     [InlineData(GrobType.Int, GrobValueKind.String)]
     [InlineData(GrobType.Int, GrobValueKind.Float)]

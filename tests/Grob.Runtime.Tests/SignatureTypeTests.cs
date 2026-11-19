@@ -239,4 +239,101 @@ public sealed class SignatureTypeTests {
     [Fact]
     public void TypeParameterArray_NullName_Throws() =>
         Assert.Throws<ArgumentNullException>(() => new SignatureType.TypeParameterArray(null!));
+
+    // ----- FunctionShape (D-441) -----
+
+    [Fact]
+    public void FunctionShape_ParametersAndReturn_CarriesBoth() {
+        SignatureType.Concrete match = SignatureType.Named(GrobType.Struct, "Match");
+        SignatureType.Concrete text = SignatureType.Of(GrobType.String);
+
+        var shape = new SignatureType.FunctionShape([match], text);
+
+        Assert.Equal([match], shape.Parameters);
+        Assert.Equal(text, shape.ReturnType);
+    }
+
+    [Fact]
+    public void FunctionShape_NilReturn_IsPermitted() {
+        var shape = new SignatureType.FunctionShape([SignatureType.Of(GrobType.Int)], SignatureType.Of(GrobType.Nil));
+
+        Assert.Equal(GrobType.Nil, shape.ReturnType.Type);
+    }
+
+    [Fact]
+    public void FunctionShape_CopiesParameters() {
+        var parameters = new List<SignatureType.Concrete> { SignatureType.Of(GrobType.Int) };
+        var shape = new SignatureType.FunctionShape(parameters, SignatureType.Of(GrobType.Int));
+
+        parameters.Add(SignatureType.Of(GrobType.String));
+
+        Assert.Single(shape.Parameters);
+    }
+
+    [Fact]
+    public void FunctionShape_NullParameters_Throws() {
+        var ex = Assert.Throws<ArgumentNullException>(
+            () => new SignatureType.FunctionShape(null!, SignatureType.Of(GrobType.Int)));
+
+        Assert.Equal("parameters", ex.ParamName);
+    }
+
+    [Fact]
+    public void FunctionShape_NullParameterElement_Throws() {
+        var ex = Assert.Throws<ArgumentException>(
+            () => new SignatureType.FunctionShape([null!], SignatureType.Of(GrobType.Int)));
+
+        Assert.Equal("parameters", ex.ParamName);
+        Assert.Contains("Parameter 0", ex.Message);
+    }
+
+    [Fact]
+    public void FunctionShape_NilParameter_Throws() {
+        var ex = Assert.Throws<ArgumentException>(
+            () => new SignatureType.FunctionShape([SignatureType.Of(GrobType.Nil)], SignatureType.Of(GrobType.Int)));
+
+        Assert.Equal("parameters", ex.ParamName);
+        Assert.Contains("nil", ex.Message);
+    }
+
+    [Fact]
+    public void FunctionShape_NullReturn_Throws() {
+        var ex = Assert.Throws<ArgumentNullException>(
+            () => new SignatureType.FunctionShape([SignatureType.Of(GrobType.Int)], null!));
+
+        Assert.Equal("returnType", ex.ParamName);
+    }
+
+    [Fact]
+    public void FunctionShape_SameShape_AreEqual() {
+        var a = new SignatureType.FunctionShape([SignatureType.Named(GrobType.Struct, "Match")], SignatureType.Of(GrobType.String));
+        var b = new SignatureType.FunctionShape([SignatureType.Named(GrobType.Struct, "Match")], SignatureType.Of(GrobType.String));
+
+        Assert.Equal(a, b);
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
+    }
+
+    [Fact]
+    public void FunctionShape_DifferentParameters_AreNotEqual() {
+        var a = new SignatureType.FunctionShape([SignatureType.Of(GrobType.Int)], SignatureType.Of(GrobType.String));
+        var b = new SignatureType.FunctionShape([SignatureType.Of(GrobType.Float)], SignatureType.Of(GrobType.String));
+
+        Assert.NotEqual(a, b);
+    }
+
+    [Fact]
+    public void FunctionShape_DifferentArity_AreNotEqual() {
+        var a = new SignatureType.FunctionShape([SignatureType.Of(GrobType.Int)], SignatureType.Of(GrobType.String));
+        var b = new SignatureType.FunctionShape([], SignatureType.Of(GrobType.String));
+
+        Assert.NotEqual(a, b);
+    }
+
+    [Fact]
+    public void FunctionShape_DifferentReturn_AreNotEqual() {
+        var a = new SignatureType.FunctionShape([SignatureType.Of(GrobType.Int)], SignatureType.Of(GrobType.String));
+        var b = new SignatureType.FunctionShape([SignatureType.Of(GrobType.Int)], SignatureType.Of(GrobType.Int));
+
+        Assert.NotEqual(a, b);
+    }
 }

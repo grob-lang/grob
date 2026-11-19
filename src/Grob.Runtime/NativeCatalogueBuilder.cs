@@ -95,6 +95,7 @@ public sealed class NativeCatalogueBuilder {
         RequireNotBuilt();
         ArgumentNullException.ThrowIfNull(signature);
         ArgumentNullException.ThrowIfNull(implementation);
+        RequireNoFunctionShape(signature);
         (string namespaceName, string memberName) = SplitQualified(signature.Name, nameof(signature));
         RequireNotReserved(namespaceName, owner);
         AddNamespaceNative(owner, namespaceName, memberName, signature, implementation);
@@ -149,6 +150,7 @@ public sealed class NativeCatalogueBuilder {
         ArgumentNullException.ThrowIfNull(signature);
         ArgumentNullException.ThrowIfNull(implementation);
         RequireBare(signature, "A primitive method");
+        RequireNoFunctionShape(signature);
         string qualifiedName = prefix + "." + signature.Name;
         ClaimGlobal(owner, qualifiedName, GrobValue.FromFunction(implementation));
         Tables(receiver).Methods[signature.Name] = new PrimitiveMethodEntry(signature, qualifiedName, implementation);
@@ -158,6 +160,7 @@ public sealed class NativeCatalogueBuilder {
         RequireNotBuilt();
         ArgumentNullException.ThrowIfNull(signature);
         ArgumentNullException.ThrowIfNull(implementation);
+        RequireNoFunctionShape(signature);
         (string namespaceName, string memberName) = SplitQualified(signature.Name, nameof(signature));
         if (!PrimitiveReceivers.IsReserved(namespaceName)) {
             throw new ArgumentException(
@@ -172,8 +175,21 @@ public sealed class NativeCatalogueBuilder {
         ArgumentNullException.ThrowIfNull(signature);
         ArgumentNullException.ThrowIfNull(implementation);
         RequireBare(signature, "A built-in");
+        RequireNoFunctionShape(signature);
         ClaimGlobal(owner, signature.Name, GrobValue.FromFunction(implementation));
         _builtins[signature.Name] = new NativeEntry(signature, implementation, owner);
+    }
+
+    /// <summary>
+    /// A function-shaped parameter is a named-type method's alone (D-441): the namespace,
+    /// primitive and built-in checker paths read every parameter as concrete.
+    /// </summary>
+    private static void RequireNoFunctionShape(FunctionSignature signature) {
+        if (signature.Parameters.Any(p => p.Type is SignatureType.FunctionShape)) {
+            throw new ArgumentException(
+                $"'{signature.Name}' has a function-shaped parameter; only a named type's method may take one (D-441).",
+                nameof(signature));
+        }
     }
 
     private static void RequireBare(FunctionSignature signature, string what) {

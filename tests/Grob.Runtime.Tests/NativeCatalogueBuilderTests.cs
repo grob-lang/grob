@@ -192,6 +192,48 @@ public sealed class NativeCatalogueBuilderTests {
         Assert.Contains("'second'", ex.Message);
     }
 
+    // ----- Function-shaped parameters are named-type methods only (D-441) -----
+
+    private static FunctionSignature WithCallback(string name) =>
+        new(name, [new SignatureParameter("fn", new SignatureType.FunctionShape([Int], TestPlugins.String))], TestPlugins.String);
+
+    [Fact]
+    public void RegisterNative_FunctionShapedParameter_Throws() {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            Build(new Plugin("p", r => r.RegisterNative(WithCallback("p.each"), Native("p.each", 1)))));
+
+        Assert.Equal("signature", ex.ParamName);
+        Assert.Contains("'p.each'", ex.Message);
+        Assert.Contains("named type", ex.Message);
+    }
+
+    [Fact]
+    public void RegisterPrimitiveMethod_FunctionShapedParameter_Throws() {
+        var ex = Assert.Throws<ArgumentException>(() => Build(new PrimitivePlugin("p",
+            r => r.RegisterPrimitiveMethod(GrobType.String, WithCallback("each"), Native("string.each", 1)))));
+
+        Assert.Equal("signature", ex.ParamName);
+        Assert.Contains("'each'", ex.Message);
+    }
+
+    [Fact]
+    public void RegisterPrimitiveStatic_FunctionShapedParameter_Throws() {
+        var ex = Assert.Throws<ArgumentException>(() => Build(new PrimitivePlugin("p",
+            r => r.RegisterPrimitiveStatic(WithCallback("int.each"), Native("int.each", 1)))));
+
+        Assert.Equal("signature", ex.ParamName);
+        Assert.Contains("'int.each'", ex.Message);
+    }
+
+    [Fact]
+    public void RegisterBuiltin_FunctionShapedParameter_Throws() {
+        var ex = Assert.Throws<ArgumentException>(() => Build(new PrimitivePlugin("p",
+            r => r.RegisterBuiltin(WithCallback("each"), Native("each", 1)))));
+
+        Assert.Equal("signature", ex.ParamName);
+        Assert.Contains("'each'", ex.Message);
+    }
+
     // ----- Namespace ownership -----
 
     [Fact]

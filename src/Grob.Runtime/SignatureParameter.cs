@@ -62,6 +62,9 @@ public sealed record SignatureParameter {
         if (isVariadic) {
             throw new ArgumentException("A variadic parameter cannot have a default.", nameof(defaultValue));
         }
+        if (type is SignatureType.FunctionShape) {
+            throw new ArgumentException("A function-shaped parameter cannot have a default.", nameof(defaultValue));
+        }
         if (type is not SignatureType.Concrete concrete) {
             throw new ArgumentException(
                 "A parameter typed by a type parameter cannot have a default.", nameof(defaultValue));
