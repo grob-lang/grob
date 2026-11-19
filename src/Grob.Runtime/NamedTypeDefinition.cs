@@ -14,7 +14,8 @@ public sealed record NamedTypeDefinition {
     /// Creates a definition. Throws <see cref="ArgumentNullException"/> for a null
     /// argument and <see cref="ArgumentException"/> when <paramref name="name"/> is not an
     /// identifier, a binding or one of its parts is null, a method's signature name is
-    /// not bare, or two members share a name.
+    /// not bare, two members share a name, or a method's overloads are misnamed or
+    /// ambiguous (D-441).
     /// </summary>
     public NamedTypeDefinition(
             string name,
@@ -85,6 +86,46 @@ public sealed record NamedTypeDefinition {
             if (!names.Add(memberName)) {
                 throw new ArgumentException($"Member '{memberName}' is declared twice.", nameof(methods));
             }
+            ValidateOverloads(binding, nameof(methods));
         }
+    }
+
+    /// <summary>
+    /// Each overload is named as its method is, and every pair of the method's signatures
+    /// differs at a position both require, where one takes a function and the other does
+    /// not (D-441). That is the distinction a call can make before it knows any argument's
+    /// value, so any other pair is ambiguous.
+    /// </summary>
+    private static void ValidateOverloads(NamedTypeMethodBinding binding, string paramName) {
+        string memberName = binding.Signature.Name;
+        for (int i = 0; i < binding.Overloads.Count; i++) {
+            FunctionSignature overload = binding.Overloads[i]
+                ?? throw new ArgumentException($"Overload {i} of method '{memberName}' is null.", paramName);
+            if (overload.Name != memberName) {
+                throw new ArgumentException(
+                    $"Overload '{overload.Name}' must be named as its method '{memberName}' is.", paramName);
+            }
+        }
+        IReadOnlyList<FunctionSignature> signatures = binding.Signatures;
+        for (int i = 0; i < signatures.Count; i++) {
+            for (int j = i + 1; j < signatures.Count; j++) {
+                if (!DifferByFunction(signatures[i], signatures[j])) {
+                    throw new ArgumentException(
+                        $"Overloads {i} and {j} of method '{memberName}' are ambiguous: they must differ at a required position where one takes a function and the other does not.",
+                        paramName);
+                }
+            }
+        }
+    }
+
+    private static bool DifferByFunction(FunctionSignature a, FunctionSignature b) {
+        int shared = Math.Min(a.RequiredArgumentCount, b.RequiredArgumentCount);
+        for (int position = 0; position < shared; position++) {
+            if (a.Parameters[position].Type is SignatureType.FunctionShape
+                    != b.Parameters[position].Type is SignatureType.FunctionShape) {
+                return true;
+            }
+        }
+        return false;
     }
 }
