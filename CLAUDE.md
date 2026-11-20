@@ -41,7 +41,10 @@ Chris.**
   edited with the Edit tool. Never run a bare `cat` with no file argument.
 - **Navigate by symbol, read with Read.** For a symbol question in C# — a
   definition, its references, implementers, call sites or the impact of a
-  rename — use the LSP tool when the session has it. Grep is for text: strings,
+  rename — use the LSP tool when the session has it. Where it does not (cloud
+  and planning sessions), Grep for the declaration and the bare name instead,
+  and treat the hits as a superset: text matches include comments, strings and
+  unrelated members of the same name. Otherwise Grep is for text: strings,
   comments, docs and error-code literals. Read a file or a range of lines with
   the Read tool and its offset and limit, never `sed`, `awk`, `head` or `tail`
   on a file. `sed` and `awk` are denied in `.claude/settings.json`; trimming
