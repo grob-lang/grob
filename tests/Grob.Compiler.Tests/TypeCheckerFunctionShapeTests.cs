@@ -47,6 +47,12 @@ public sealed class TypeCheckerFunctionShapeTests {
                     ],
                 },
                 new NamedTypeMethodBinding(
+                    new FunctionSignature("pairs",
+                        [new SignatureParameter("fn", new SignatureType.FunctionShape(
+                            [TokenType, new SignatureType.Concrete(GrobType.NullableArray, elementType: StringType)], StringType))],
+                        IntType),
+                    _ => Noop),
+                new NamedTypeMethodBinding(
                     new FunctionSignature("each",
                         [new SignatureParameter("fn", new SignatureType.FunctionShape([TokenType], SignatureType.Of(GrobType.Nil)))],
                         IntType),
@@ -162,6 +168,14 @@ public sealed class TypeCheckerFunctionShapeTests {
 
         AssertSingleError(bag, "E0004", 2, 14,
             "Argument to 'apply' takes 2 parameters, but parameter 'fn' expects a function of type 'fn(token): string'.");
+    }
+
+    [Fact]
+    public void Lambda_OneParameterForTwo_NamesTheFullShape() {
+        (_, DiagnosticBag bag) = Check("t := tokens.make()\nt.pairs(k => \"x\")");
+
+        AssertSingleError(bag, "E0004", 2, 9,
+            "Argument to 'pairs' takes 1 parameter, but parameter 'fn' expects a function of type 'fn(token, string[]?): string'.");
     }
 
     [Fact]
