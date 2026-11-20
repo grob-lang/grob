@@ -20,7 +20,9 @@ the value's timeout and throws `RuntimeError` when it expires.
 | `match(input: string)` | `→ Match?` | First match or nil |
 | `matchAll(input: string)` | `→ Match[]` | All non-overlapping matches |
 | `replace(input: string, replacement: string)` | `→ string` | Replace first match |
+| `replace(input: string, fn: fn(Match): string)` | `→ string` | Replace first match with `fn`'s result |
 | `replaceAll(input: string, replacement: string)` | `→ string` | Replace all matches |
+| `replaceAll(input: string, fn: fn(Match): string)` | `→ string` | Replace each match with `fn`'s result |
 | `split(input: string)` | `→ string[]` | Split on pattern |
 
 ## Examples

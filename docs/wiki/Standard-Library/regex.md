@@ -74,7 +74,9 @@ See [Regex type registry](../Type-Registry/Regex.md).
 | `match(input)` | `→ Match?` | First match or nil |
 | `matchAll(input)` | `→ Match[]` | All non-overlapping matches |
 | `replace(input, replacement)` | `→ string` | Replace first |
+| `replace(input, fn)` | `→ string` | Replace first with `fn`'s result for the `Match` |
 | `replaceAll(input, replacement)` | `→ string` | Replace all |
+| `replaceAll(input, fn)` | `→ string` | Replace each with `fn`'s result for its `Match` |
 | `split(input)` | `→ string[]` | Split on pattern |
 
 ## The Match Type
@@ -102,6 +104,17 @@ print(dated.replaceAll("2026-04", `${m}/${y}`))   // 04/2026
 
 As in .NET, unnamed groups are numbered before named ones, so prefer names when a
 pattern has both.
+
+When a replacement is computed, pass a function instead. It receives each `Match` and
+returns the replacement string; its parameter is typed `Match`, so its members are checked:
+
+```grob
+levels := /\b(ERROR|WARN)\b/
+print(levels.replaceAll("WARN then ERROR", m => m.value.lower()))   // warn then error
+```
+
+The function form is a `Regex` method only; the one-shot `regex.replace` and
+`regex.replaceAll` take a string.
 
 ## Examples
 
