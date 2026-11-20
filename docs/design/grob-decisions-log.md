@@ -437,7 +437,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-438 | November 2026 | Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Process — coverage, commits; Deferred Work Register | **Implements D-431: the corpus sweep landed**, the last of D-420's pre-9C increments; the run ends here. Documentation only. **Every one of D-431's thirty-one rows dispositioned**: script counts to eleven (D-346); 29 missing trailing commas, row 9 widened by Chris; 77 D-285 path literals; ADR-0017's residue; the opcode sketch's banner; `toIsoDateTime`'s `Z`; increment 5's findings; the log's *Project Status*, *Identity* and *Related Documents*. **R-05 closed**: all 28 `.claude/` files, the four `CLAUDE.md` files and `AGENTS.md` read against the tree. **The 42 `// Eventual path:` lines removed** in PR #246, split out for CodeRabbit's 100-file limit. Chris's rulings recorded: files edited in place; `/commit-message` commits on the branch; **90% coverage is the floor on new code too**, extending D-328. Divergences: 12 *Reason* cells, not 14; public samples tallies 46 run and 38 fragments; mutation 5's prediction failed on the *Identity* statement, since corrected. **R-40 to R-43 open.** Suite 5,109. Count unchanged at 120. |
 | D-439 | November 2026 | Language spec — lexing; Compiler — lexer | **Implements the lexer half of D-432's `/` rule**, the first of the `regex` increment's two pull requests. Lexer and tests only; no error code. **Three defects, not two**: a `/` beginning a line after a statement newline is now a regex; an unescaped `/` inside `[...]` stays in the literal; and `/=` is decided after the regex test, so `split(/=+/)` is a regex, which D-432 did not name. **Two rulings, Chris**: every `{` is statement context, since the lexer cannot tell a literal's brace from a block's, so only `(` and `[` suppress a newline for the `/` decision; and a division's leading newline is dropped, which adds a third case to §14, since §8's `(a` ⏎ `/ b)` row lexed as division and then failed in the parser. D-432's wording about §14 corrected. Count unchanged at 120. |
 | D-440 | November 2026 | Standard library — `regex`; Compiler — type checker, emission; Runtime — named types; Error taxonomy; Deferred Work Register | **Implements the rest of D-432: the `regex` module is built** and a regex literal runs. **R-30 closed.** `Regex` and `Match` are hidden-field structs on the `guid`/`date` model (Chris); a literal is one constant `Regex` per site, compiled once per run through a weak cache keyed by the struct. **E0602 minted**: literal bodies, string-literal pattern arguments and `@pattern`'s argument (Chris), decoded before validation, caret at .NET's offset where it maps. **The function form of `replace` is deferred to a third pull request** (Chris; **R-44 opens**). A bad `timeout` is `ParseError` E5702, for `process.run` too (Chris). Found on the way: a named type's property was assignable and crashed the VM, now E0204 (Chris); a native's or an index's array element lost its named type, now kept. Count 120 → 121. |
-| D-441 | November 2026 | Solution architecture — plugin SDK; Compiler — type checker; Standard library — `regex`; Deferred Work Register | **The function form of `Regex.replace` and `replaceAll` is built** (D-432 Decision 6). **R-44 closed.** The signature union gains `FunctionShape`, a parameter type on named-type methods only (**amends D-426 Decision 1**). A named-type method may carry overloads: further signatures on one binder, which must differ at a required position by taking a function. A lambda passed for a shape takes its parameter types, so `m` is a `Match`; overload selection and the function-argument checks fold into E0004. A non-string result at run time is E5903. Two pre-existing bugs found and left to their own fixes (Chris). **R-45 opens**: lambda parameter annotations are ignored. Count unchanged at 121. |
+| D-443 | November 2026 | Solution architecture — plugin SDK; Compiler — type checker; Standard library — `regex`; Deferred Work Register | **The function form of `Regex.replace` and `replaceAll` is built** (D-432 Decision 6). **R-44 closed.** The signature union gains `FunctionShape`, a parameter type on named-type methods only (**amends D-426 Decision 1**). A named-type method may carry overloads: further signatures on one binder, which must differ at a required position by taking a function. A lambda passed for a shape takes its parameter types, so `m` is a `Match`; overload selection and the function-argument checks fold into E0004. A non-string result at run time is E5903. Two pre-existing bugs found and left to their own fixes (Chris). **R-47 opens**: lambda parameter annotations are ignored. Count unchanged at 121. |
 
 ---
 
@@ -15020,7 +15020,7 @@ E1102), D-420 (whose pre-9C queue this is increment 2 of).
 
 Area: Solution architecture — plugin SDK; Compiler — type checker; Runtime — native registration; Deferred Work Register
 Supersedes: none (refines D-419 Decision 5 and R-12's completion criterion)
-Superseded by: D-441 (partially — Decision 1)
+Superseded by: D-443 (partially — Decision 1)
 
 **Decision-only. No source change.** Error-code count unchanged at 120. This
 entry authorises the *`FunctionSignature`* increment, the third of D-420's
@@ -17213,7 +17213,7 @@ and D-356 (the value representation and named types), D-351 (array descriptors),
 
 ---
 
-### D-441 — The function form of `Regex.replace` built: the signature union gains a function shape, a named-type method may carry overloads, a lambda takes its parameter types from the shape (November 2026)
+### D-443 — The function form of `Regex.replace` built: the signature union gains a function shape, a named-type method may carry overloads, a lambda takes its parameter types from the shape (November 2026)
 
 Area: Solution architecture — plugin SDK; Compiler — type checker; Standard library — `regex`; Deferred Work Register
 Supersedes: D-426 (partially — Decision 1)
@@ -17285,7 +17285,7 @@ the string form only, as `grob-stdlib-reference.md` lists them.
 as it already was, so a named function passed for a shape is accepted without its signature
 being checked and is told apart from a string at run time. A lambda parameter's own annotation,
 `(m: int) => ...`, is parsed and ignored by the checker, as it already was; under a shape the
-shape's type wins silently. **R-45 opens** for that.
+shape's type wins silently. **R-47 opens** for that.
 
 **Found, not fixed here (Chris: separate fixes).** String `+` with a parenthesised `??` operand
 miscompiles: `(s ?? "") + ":"` faults the VM and `"a" + (s ?? "b")` crashes the compiler. A
@@ -17293,7 +17293,7 @@ miscompiles: `(s ?? "") + ":"` faults the VM and `"a" + (s ?? "b")` crashes the 
 caught and then faults the VM with a value-stack underflow; array `select` shows it too. Each
 is fixed on its own branch.
 
-**Register.** **R-44 closed.** **R-45 opens**: a lambda parameter's type annotation is ignored.
+**Register.** **R-44 closed.** **R-47 opens**: a lambda parameter's type annotation is ignored.
 
 Cites D-432 (the overload specified), D-440 (the deferral and its runtime codes), D-426 (the
 catalogue and its Decision 1), D-326 (function descriptors), D-356 (named types), D-394
@@ -17530,10 +17530,10 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-441 added, with source, spec, wiki and register changes. **The function form_
+_November 2026 — D-443 added, with source, spec, wiki and register changes. **The function form_
 _of `Regex.replace` and `replaceAll` is built** (D-432 Decision 6): the signature union gains a_
 _function shape (amending D-426 Decision 1), a named-type method may carry overloads and a_
-_lambda takes its parameter types from the shape. R-44 closed, R-45 opened. Count unchanged at_
+_lambda takes its parameter types from the shape. R-44 closed, R-47 opened. Count unchanged at_
 _121. Amended in review (PR #254): bracketed lambdas, void results, explicit returns (E0005),_
 _no variadic shapes and the timeout's reach over the function stated._
 _Previous: November 2026 — D-440 added, with source, spec, wiki and register changes. **The `regex` module_

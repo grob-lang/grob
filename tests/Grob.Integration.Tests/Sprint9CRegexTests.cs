@@ -118,7 +118,7 @@ public sealed class Sprint9CRegexTests {
             """, "home:ann bob@work", "home:ann work:bob", "b$n$n$");
 
     // -----------------------------------------------------------------------
-    // The function form of replace and replaceAll (D-441, R-44)
+    // The function form of replace and replaceAll (D-443, R-44)
     // -----------------------------------------------------------------------
 
     [Fact]

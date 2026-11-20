@@ -192,7 +192,7 @@ public sealed class NativeCatalogueBuilderTests {
         Assert.Contains("'second'", ex.Message);
     }
 
-    // ----- Function-shaped parameters are named-type methods only (D-441) -----
+    // ----- Function-shaped parameters are named-type methods only (D-443) -----
 
     private static FunctionSignature WithCallback(string name) =>
         new(name, [new SignatureParameter("fn", new SignatureType.FunctionShape([Int], TestPlugins.String))], TestPlugins.String);

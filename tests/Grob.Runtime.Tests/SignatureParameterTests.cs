@@ -147,7 +147,7 @@ public sealed class SignatureParameterTests {
 
     [Fact]
     public void Constructor_VariadicFunctionShaped_Throws() {
-        // D-441: contextual lambda typing maps an argument to one parameter position, so a
+        // D-443: contextual lambda typing maps an argument to one parameter position, so a
         // variadic tail of shapes would type only its first lambda.
         var shape = new SignatureType.FunctionShape([String], String);
 

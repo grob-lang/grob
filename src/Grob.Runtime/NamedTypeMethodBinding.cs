@@ -10,7 +10,7 @@ namespace Grob.Runtime;
 /// </summary>
 /// <remarks>
 /// A method may carry <see cref="Overloads"/>: further signatures of the same name served
-/// by the same binder (D-441). The VM binds a method by name before its arguments exist,
+/// by the same binder (D-443). The VM binds a method by name before its arguments exist,
 /// so one native serves every form and tells them apart by its arguments' kinds; the
 /// checker picks the signature a call matches. <see cref="NamedTypeDefinition"/> rejects
 /// overloads a call could not tell apart.

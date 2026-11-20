@@ -139,7 +139,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly Dictionary<LambdaExpr, FunctionTypeDescriptor> _lambdaDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
-    // D-441: the function shape a named-type method expects at the argument being visited,
+    // D-443: the function shape a named-type method expects at the argument being visited,
     // set only when that argument is a lambda. VisitLambda takes it on entry and clears it,
     // so a lambda nested in the body is never typed by its parent's context.
     private SignatureType.FunctionShape? _pendingLambdaShape;

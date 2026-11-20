@@ -7,7 +7,7 @@ using Xunit;
 namespace Grob.Compiler.Tests;
 
 /// <summary>
-/// D-441: a named type's method may take a function (<see cref="SignatureType.FunctionShape"/>)
+/// D-443: a named type's method may take a function (<see cref="SignatureType.FunctionShape"/>)
 /// and carry overloads. A lambda passed where a shape is expected takes the shape's
 /// parameter types, so its parameters resolve members nominally; the checker picks the
 /// overload a call matches and checks a function argument's arity, parameters and return

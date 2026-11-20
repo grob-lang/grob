@@ -181,13 +181,13 @@ public sealed class NativeCatalogueBuilder {
     }
 
     /// <summary>
-    /// A function-shaped parameter is a named-type method's alone (D-441): the namespace,
+    /// A function-shaped parameter is a named-type method's alone (D-443): the namespace,
     /// primitive and built-in checker paths read every parameter as concrete.
     /// </summary>
     private static void RequireNoFunctionShape(FunctionSignature signature) {
         if (signature.Parameters.Any(p => p.Type is SignatureType.FunctionShape)) {
             throw new ArgumentException(
-                $"'{signature.Name}' has a function-shaped parameter; only a named type's method may take one (D-441).",
+                $"'{signature.Name}' has a function-shaped parameter; only a named type's method may take one (D-443).",
                 nameof(signature));
         }
     }

@@ -7,7 +7,7 @@ namespace Grob.Runtime;
 /// type (D-419 Decision 2, D-426 Decision 4): a <see cref="Concrete"/> Grob type, a
 /// <see cref="TypeParameterReference"/> to one of the signature's own type parameters,
 /// a <see cref="TypeParameterArray"/> of such a reference or a <see cref="FunctionShape"/>
-/// for a function argument (D-441). The hierarchy is sealed (private base constructor)
+/// for a function argument (D-443). The hierarchy is sealed (private base constructor)
 /// so a consumer can switch over exactly four shapes, and each shape validates its own
 /// fields so an invalid combination cannot exist.
 /// </summary>
@@ -37,7 +37,7 @@ public abstract record SignatureType {
         /// Creates a concrete type. Throws <see cref="ArgumentException"/> when
         /// <paramref name="type"/> is unresolved (<see cref="GrobType.Unknown"/>,
         /// <see cref="GrobType.Error"/>), undefined or a function type — a function is
-        /// described by <see cref="FunctionShape"/>, not by a bare tag (D-441) — or when
+        /// described by <see cref="FunctionShape"/>, not by a bare tag (D-443) — or when
         /// <paramref name="namedTypeName"/> or <paramref name="elementType"/> is given
         /// for a tag that cannot carry it.
         /// </summary>
@@ -84,7 +84,7 @@ public abstract record SignatureType {
             }
             if (type is GrobType.Function or GrobType.NullableFunction) {
                 throw new ArgumentException(
-                    "A concrete signature type cannot be a function type; describe a function argument with FunctionShape (D-441).",
+                    "A concrete signature type cannot be a function type; describe a function argument with FunctionShape (D-443).",
                     nameof(type));
             }
             if (!Enum.IsDefined(type)) {
@@ -127,7 +127,7 @@ public abstract record SignatureType {
 
     /// <summary>
     /// The type of a function a native takes as an argument, as in
-    /// <c>replace(input: string, fn: (Match) =&gt; string)</c> (D-441, amending D-426
+    /// <c>replace(input: string, fn: (Match) =&gt; string)</c> (D-443, amending D-426
     /// Decision 1). Its parameters and return are <see cref="Concrete"/> only, so a shape
     /// never nests another function or a type parameter. <see cref="FunctionSignature"/>
     /// permits it as a parameter type only, and the catalogue builder only on a named

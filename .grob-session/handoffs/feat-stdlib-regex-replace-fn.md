@@ -7,7 +7,7 @@
 - Commits on this branch: seven plus this hand-off (`git log --oneline origin/main..HEAD`).
 - Increment prompt: none. Authorised by D-432 Decision 6 and R-44; plan approved in session (`C:\Users\cjgro\.claude\plans\snappy-sleeping-owl.md`, local to Chris's machine).
 - Picked up from: `.grob-session/handoffs/feat-stdlib-regex-module.md`, retired in `078ca30`.
-- Phase reached: **PR 3 of 3 complete.** The function form of `Regex.replace` and `replaceAll` is built and recorded in **D-441**; R-44 is closed. The `regex` increment is finished once this merges.
+- Phase reached: **PR 3 of 3 complete.** The function form of `Regex.replace` and `replaceAll` is built and recorded in **D-443**; R-44 is closed. The `regex` increment is finished once this merges.
 
 ## Green state
 
@@ -19,7 +19,7 @@
 
 ## Decisions taken, not yet logged
 
-None. Every ruling this session is in **D-441**.
+None. Every ruling this session is in **D-443**.
 
 ## Error codes and registry state
 
@@ -27,7 +27,7 @@ None allocated. Every new diagnostic folds into E0004; the run-time non-string r
 
 ## Tried and rejected
 
-All argued in D-441; do not reopen them without Chris:
+All argued in D-443; do not reopen them without Chris:
 
 - One binding per overload, with the checker choosing an index for the compiler to emit: the VM binds a method by name before its arguments exist, so this needs a mangled name or a new operand.
 - Overloading by arity or by concrete type: nothing needs it, and the ambiguity rule would grow.
@@ -51,5 +51,5 @@ Check whether this branch's PR has merged, then cut a `fix/` branch from the upd
 - Two pre-existing bugs found and left to their own `fix/` branches (Chris, this session):
   - **Compiler:** string `+` with a parenthesised `??` operand. `s: string? := nil` then `print((s ?? "") + ":")` faults the VM (kind mismatch, expected Int); `print("a" + (s ?? "b"))` throws `InvalidOperationException` from `Compiler.GetArithmeticOpCode`. `int` and `float` work, as does binding the `??` result first.
   - **VM:** a `throw` inside a lambda that a native calls back into, caught by an enclosing `try`, prints the caught message and then fails with "value stack underflow". Array `select` reproduces it.
-- **R-45** is open and `unowned`: a lambda parameter's type annotation is ignored.
-- A top-level `fn` reference is typed `Unknown`, so a named function passed for a shape is not checked against it (recorded in D-441, no register row). Say if you want one.
+- **R-47** is open and `unowned`: a lambda parameter's type annotation is ignored.
+- A top-level `fn` reference is typed `Unknown`, so a named function passed for a shape is not checked against it (recorded in D-443, no register row). Say if you want one.

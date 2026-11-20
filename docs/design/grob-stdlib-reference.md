@@ -874,7 +874,7 @@ of a hang.
 inside a double-quoted string is interpolation, write replacements as single-backtick
 raw strings (D-285). The function form takes the `Match` and returns the replacement,
 which must be a string; the lambda's parameter is typed `Match`, so its members are
-checked (D-441). It is a `Regex` method form only: the one-shot functions take a string.
+checked (D-443). It is a `Regex` method form only: the one-shot functions take a string.
 As in .NET, unnamed groups are numbered before named ones,
 so `$1` and `groups[1]` name the first unnamed group when a pattern has both. `groups`
 lists every defined group in group-number order without gaps, an explicitly numbered

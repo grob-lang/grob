@@ -240,7 +240,7 @@ public sealed class SignatureTypeTests {
     public void TypeParameterArray_NullName_Throws() =>
         Assert.Throws<ArgumentNullException>(() => new SignatureType.TypeParameterArray(null!));
 
-    // ----- FunctionShape (D-441) -----
+    // ----- FunctionShape (D-443) -----
 
     [Fact]
     public void FunctionShape_ParametersAndReturn_CarriesBoth() {

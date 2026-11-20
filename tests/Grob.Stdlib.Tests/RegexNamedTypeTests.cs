@@ -106,7 +106,7 @@ public sealed class RegexNamedTypeTests {
         Assert.Equal("[WARN]$ and [ERROR]$",
             Call(Regex, "replaceAll", Levels(), Str("WARN and ERROR"), Str("[$1]$$")).AsString());
 
-    // ----- The function form (D-441, R-44) -----
+    // ----- The function form (D-443, R-44) -----
 
     [Theory]
     [InlineData("replace")]

@@ -32,7 +32,7 @@ public sealed record SignatureParameter {
             throw new ArgumentException("A parameter cannot have nil as its type.", nameof(type));
         }
         if (isVariadic && type is SignatureType.FunctionShape) {
-            // D-441: a lambda is typed by the one parameter at its position.
+            // D-443: a lambda is typed by the one parameter at its position.
             throw new ArgumentException("A function-shaped parameter cannot be variadic.", nameof(isVariadic));
         }
         if (defaultValue is GrobValue value) {

@@ -634,7 +634,7 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Every signature of the named-type method <paramref name="memberAccess"/> calls, or
     /// <see langword="null"/> when the receiver is not a catalogue named type or the member
-    /// is not one of its methods (D-441). Read before the arguments are visited, so a lambda
+    /// is not one of its methods (D-443). Read before the arguments are visited, so a lambda
     /// argument can take the parameter types the method expects. A nullable receiver is
     /// read through its underlying type, as an optional chain resolves it.
     /// </summary>
@@ -652,7 +652,7 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Visits one method argument. A lambda at a position where exactly one of
     /// <paramref name="signatures"/> expects a function takes that shape's parameter types
-    /// (D-441); every other argument is visited as before.
+    /// (D-443); every other argument is visited as before.
     /// </summary>
     private GrobType VisitMethodArgument(Expression argument, IReadOnlyList<FunctionSignature>? signatures, int index) {
         if (Ungrouped(argument) is LambdaExpr && signatures is not null && ShapeAt(signatures, index) is { } shape) {
@@ -1258,7 +1258,7 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// The signature of <paramref name="method"/> a call matches (D-441): the first whose
+    /// The signature of <paramref name="method"/> a call matches (D-443): the first whose
     /// arity admits the arguments and whose function-shaped positions are exactly those
     /// where a function is passed. An <see cref="GrobType.Unknown"/> or
     /// <see cref="GrobType.Error"/> argument matches either. With no match, the primary
@@ -1281,7 +1281,7 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Checks an argument passed where a method expects a function of
-    /// <paramref name="shape"/> (D-441): it must be a function, and when its descriptor is
+    /// <paramref name="shape"/> (D-443): it must be a function, and when its descriptor is
     /// known — a lambda, a named <c>fn</c>, a function-typed binding — it must take the
     /// shape's parameter count, accept the shape's parameter types and return a type the
     /// shape accepts. A shape returning <c>nil</c> accepts any return. Each failure is one
@@ -3258,7 +3258,7 @@ public sealed partial class TypeChecker {
     /// Sprint 5 Increment C — D-296 categories 1–3 only (top-level references).
     ///
     /// Registers each lambda parameter as <see cref="GrobType.Unknown"/> (inferred), or
-    /// as the type a named-type method's function shape expects there (D-441,
+    /// as the type a named-type method's function shape expects there (D-443,
     /// <see cref="_pendingLambdaShape"/>), with the <see cref="LambdaExpr"/> as its
     /// declaring node, satisfying the §3.1.1
     /// invariant: every identifier that resolves to a parameter carries a non-null
@@ -3271,7 +3271,7 @@ public sealed partial class TypeChecker {
     /// <c>filter</c>). Category-4 upvalue capture is Increment D.
     /// </remarks>
     public override GrobType VisitLambda(LambdaExpr node) {
-        // D-441: taken and cleared on entry, so only this lambda is typed by the context.
+        // D-443: taken and cleared on entry, so only this lambda is typed by the context.
         SignatureType.FunctionShape? shape = _pendingLambdaShape;
         _pendingLambdaShape = null;
 
@@ -3280,7 +3280,7 @@ public sealed partial class TypeChecker {
         var lambdaParamTypes = new List<GrobType>(node.Parameters.Count);
         for (int i = 0; i < node.Parameters.Count; i++) {
             // A lambda's parameters are inferred, not declared: Unknown, unless a method
-            // expects a function here, whose shape types them (D-441). Use the LambdaExpr
+            // expects a function here, whose shape types them (D-443). Use the LambdaExpr
             // as the declaring node — Parameter is not an AstNode.
             Parameter p = node.Parameters[i];
             SignatureType.Concrete? expected = shape is not null && i < shape.Parameters.Count ? shape.Parameters[i] : null;
@@ -3294,7 +3294,7 @@ public sealed partial class TypeChecker {
         // Track a return-type context so VisitReturn can validate early-return stmts
         // inside a block-body lambda (E0005) and distinguish them from top-level
         // returns (E2203). Under a shape that returns a value, an explicit return is
-        // checked against the shape's return type (D-441); otherwise it is permissive.
+        // checked against the shape's return type (D-443); otherwise it is permissive.
         _functionReturnTypes.Push(shape is not null && shape.ReturnType.Type != GrobType.Nil
             ? shape.ReturnType.Type
             : GrobType.Unknown);
@@ -3307,7 +3307,7 @@ public sealed partial class TypeChecker {
             _ => GrobType.Unknown,
         };
         // A void call's result is Unknown at statement position; under a shape it is the
-        // nil the call returns at run time, so a string shape rejects it (D-441).
+        // nil the call returns at run time, so a string shape rejects it (D-443).
         if (shape is not null && EndsInVoidCall(node.Body)) bodyType = GrobType.Nil;
         _lambdaReturnTypes[node] = bodyType;
 

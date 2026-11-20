@@ -288,7 +288,7 @@ public sealed class FunctionSignatureTests {
         Assert.Contains("'T'", ex.Message);
     }
 
-    // ----- Function shapes (D-441) -----
+    // ----- Function shapes (D-443) -----
 
     private static readonly SignatureType.FunctionShape Callback = new([Int], String);
 

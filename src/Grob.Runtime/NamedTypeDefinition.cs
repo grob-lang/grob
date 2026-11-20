@@ -15,7 +15,7 @@ public sealed record NamedTypeDefinition {
     /// argument and <see cref="ArgumentException"/> when <paramref name="name"/> is not an
     /// identifier, a binding or one of its parts is null, a method's signature name is
     /// not bare, two members share a name, or a method's overloads are misnamed or
-    /// ambiguous (D-441).
+    /// ambiguous (D-443).
     /// </summary>
     public NamedTypeDefinition(
             string name,
@@ -93,7 +93,7 @@ public sealed record NamedTypeDefinition {
     /// <summary>
     /// Each overload is named as its method is, and every pair of the method's signatures
     /// differs at a position both require, where one takes a function and the other does
-    /// not (D-441). That is the distinction a call can make before it knows any argument's
+    /// not (D-443). That is the distinction a call can make before it knows any argument's
     /// value, so any other pair is ambiguous.
     /// </summary>
     private static void ValidateOverloads(NamedTypeMethodBinding binding, string paramName) {

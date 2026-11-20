@@ -23,7 +23,7 @@ namespace Grob.Stdlib;
 /// pattern (D-077).</para>
 /// <para>The <c>Regex</c> methods <c>replace</c> and <c>replaceAll</c> take a replacement
 /// string or a function from <c>Match</c> to string, as one native with an overload
-/// (D-441). The one-shot functions take a string only.</para>
+/// (D-443). The one-shot functions take a string only.</para>
 /// </remarks>
 public sealed class RegexPlugin : IGrobPlugin {
     private const string ParseErrorLeaf = "ParseError";
@@ -159,7 +159,7 @@ public sealed class RegexPlugin : IGrobPlugin {
 
     /// <summary>
     /// <c>replace</c> or <c>replaceAll</c>: the string form, with the function form as its
-    /// overload (D-441). One native serves both and tells them apart by the second
+    /// overload (D-443). One native serves both and tells them apart by the second
     /// argument's kind; the checker has already proved it is one or the other.
     /// </summary>
     private NamedTypeMethodBinding ReplaceMethod(string name, int count) {

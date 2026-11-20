@@ -164,7 +164,7 @@ public sealed class NamedTypeDefinitionTests {
         Assert.Contains("'year'", ex.Message);
     }
 
-    // ----- Overloads: one binder, several signatures (D-441) -----
+    // ----- Overloads: one binder, several signatures (D-443) -----
 
     private static readonly SignatureType.FunctionShape Callback = new([Int], TestPlugins.String);
 

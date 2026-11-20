@@ -40,7 +40,7 @@ public sealed class FunctionSignature {
         ArgumentNullException.ThrowIfNull(returnType);
         if (returnType is SignatureType.FunctionShape) {
             throw new ArgumentException(
-                "A function shape is permitted only as a parameter type, not as a return type (D-441).", nameof(returnType));
+                "A function shape is permitted only as a parameter type, not as a return type (D-443).", nameof(returnType));
         }
 
         SignatureParameter[] copiedParameters = [.. parameters];
