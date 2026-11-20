@@ -144,6 +144,11 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // so a lambda nested in the body is never typed by its parent's context.
     private SignatureType.FunctionShape? _pendingLambdaShape;
 
+    // The type the most recently checked 'return' yields: its value's type, nil for a bare
+    // return, or Error once the return has been reported. A block lambda ending in a return
+    // reads it as its result type.
+    private GrobType _lastReturnType = GrobType.Unknown;
+
     // D-381: print/exit have no runtime representation outside the dedicated Print/Exit
     // opcodes Compiler.Statements.cs emits for the exact bare-statement-call shape. These
     // two one-shot context flags let VisitCall/VisitIdentifier (TypeChecker.Expressions.cs)

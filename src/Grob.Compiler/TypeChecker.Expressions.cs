@@ -599,7 +599,7 @@ public sealed partial class TypeChecker {
         IReadOnlyList<FunctionSignature>? namedMethodSignatures = NamedMethodSignatures(memberAccess, receiverType);
         var argTypes = new GrobType[node.Arguments.Count];
         for (int i = 0; i < node.Arguments.Count; i++)
-            argTypes[i] = VisitMethodArgument(node.Arguments[i].Value, namedMethodSignatures, i);
+            argTypes[i] = VisitMethodArgument(node.Arguments[i].Value, namedMethodSignatures, argTypes, i);
 
         // D-408: cascade suppression mirroring VisitMemberAccess's identical Error
         // arm — if the receiver already errored (an undefined identifier, a broken
@@ -650,12 +650,15 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Visits one method argument. A lambda at a position where exactly one of
-    /// <paramref name="signatures"/> expects a function takes that shape's parameter types
-    /// (D-443); every other argument is visited as before.
+    /// Visits one method argument. A lambda at a position where exactly one of the
+    /// <paramref name="signatures"/> still viable expects a function takes that shape's
+    /// parameter types (D-443); every other argument is visited as before.
+    /// <paramref name="argTypes"/> holds the types of the arguments before
+    /// <paramref name="index"/>.
     /// </summary>
-    private GrobType VisitMethodArgument(Expression argument, IReadOnlyList<FunctionSignature>? signatures, int index) {
-        if (Ungrouped(argument) is LambdaExpr && signatures is not null && ShapeAt(signatures, index) is { } shape) {
+    private GrobType VisitMethodArgument(
+            Expression argument, IReadOnlyList<FunctionSignature>? signatures, GrobType[] argTypes, int index) {
+        if (Ungrouped(argument) is LambdaExpr && signatures is not null && ShapeAt(signatures, argTypes, index) is { } shape) {
             _pendingLambdaShape = shape;
         }
         return Visit(argument);
@@ -668,12 +671,14 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// The function shape the signatures expect at <paramref name="index"/>, when exactly
+    /// The function shape expected at <paramref name="index"/> by the signatures that admit
+    /// the call's argument count and fit, by function, the arguments before it, when exactly
     /// one distinct shape is expected there; otherwise <see langword="null"/>.
     /// </summary>
-    private static SignatureType.FunctionShape? ShapeAt(IReadOnlyList<FunctionSignature> signatures, int index) {
+    private static SignatureType.FunctionShape? ShapeAt(
+            IReadOnlyList<FunctionSignature> signatures, GrobType[] argTypes, int index) {
         SignatureType.FunctionShape[] shapes = [.. signatures
-            .Where(s => index < s.Parameters.Count)
+            .Where(s => FitsByFunction(s, argTypes, index))
             .Select(s => s.Parameters[index].Type)
             .OfType<SignatureType.FunctionShape>()
             .Distinct()];
@@ -1267,11 +1272,16 @@ public sealed partial class TypeChecker {
     private static FunctionSignature SelectOverload(NamedTypeMethodBinding method, GrobType[] argTypes) =>
         method.Overloads.Count == 0
             ? method.Signature
-            : method.Signatures.FirstOrDefault(s => FitsByFunction(s, argTypes)) ?? method.Signature;
+            : method.Signatures.FirstOrDefault(s => FitsByFunction(s, argTypes, argTypes.Length)) ?? method.Signature;
 
-    private static bool FitsByFunction(FunctionSignature signature, GrobType[] argTypes) {
+    /// <summary>
+    /// True when <paramref name="signature"/> admits the call's argument count and its
+    /// function-shaped positions among the first <paramref name="known"/> are exactly those
+    /// where a function is passed.
+    /// </summary>
+    private static bool FitsByFunction(FunctionSignature signature, GrobType[] argTypes, int known) {
         if (argTypes.Length < signature.RequiredArgumentCount || argTypes.Length > signature.Parameters.Count) return false;
-        for (int i = 0; i < argTypes.Length; i++) {
+        for (int i = 0; i < known; i++) {
             if (argTypes[i] is GrobType.Unknown or GrobType.Error) continue;
             bool passesFunction = argTypes[i] is GrobType.Function or GrobType.NullableFunction;
             if (passesFunction != signature.Parameters[i].Type is SignatureType.FunctionShape) return false;
@@ -3327,8 +3337,8 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Visits all statements in a block-body lambda and infers the return type.
     /// Returns the type of the last <see cref="ExpressionStmt"/>'s expression (the
-    /// implicit last-expression result per D-276), <see cref="GrobType.Unknown"/> when the
-    /// last statement is a <c>return</c>, or <see cref="GrobType.Nil"/> otherwise.
+    /// implicit last-expression result per D-276), the returned type when the last
+    /// statement is a <c>return</c>, or <see cref="GrobType.Nil"/> otherwise.
     /// </summary>
     private GrobType VisitLambdaBlock(LambdaBlockBody blockBody) {
         IReadOnlyList<AstNode> stmts = blockBody.Block.Statements;
@@ -3342,9 +3352,9 @@ public sealed partial class TypeChecker {
         if (last is ExpressionStmt exprStmt)
             return VisitStatementPositionExpression(exprStmt.Expression); // implicit return value; don't emit Pop
         Visit(last);
-        // A final explicit return is checked where it stands (VisitReturn), so the body
-        // does not also claim the nil of falling off the end.
-        return last is ReturnStmt ? GrobType.Unknown : GrobType.Nil;
+        // A final explicit return yields its value's type, not the nil of falling off the
+        // end; a return already reported is Error, so it is not reported twice.
+        return last is ReturnStmt ? _lastReturnType : GrobType.Nil;
     }
 
     /// <summary>True when the lambda's result is a void call, such as <c>print(...)</c>.</summary>

@@ -238,6 +238,26 @@ public sealed class TypeCheckerLambdaTests {
         Assert.Equal(22, diag.Range.Start.Column);
     }
 
+    [Fact]
+    public void Filter_BlockLambdaReturningInt_EmitsE0004() {
+        // A block ending in an explicit return takes the returned value's type (PR #254).
+        DiagnosticBag bag = Check("arr := [1, 2, 3]\nresult := arr.filter(x => {\n    return 1\n})");
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", diag.Code);
+        Assert.Equal("'filter' predicate must return 'bool'; found 'int'.", diag.Message);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(22, diag.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Filter_BlockLambdaReturningBool_TypeChecksClean() {
+        DiagnosticBag bag = Check("arr := [1, 2, 3]\nresult := arr.filter(x => {\n    return true\n})");
+
+        Assert.False(bag.HasErrors,
+            $"unexpected: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
+    }
+
     // -----------------------------------------------------------------------
     // Lambda referencing top-level variables (categories 1–3)
     // -----------------------------------------------------------------------

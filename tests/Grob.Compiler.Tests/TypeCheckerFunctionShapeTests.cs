@@ -44,6 +44,12 @@ public sealed class TypeCheckerFunctionShapeTests {
                             [new SignatureParameter("input", StringType),
                              new SignatureParameter("fn", new SignatureType.FunctionShape([TokenType], StringType))],
                             StringType),
+                        // A second shape at position 1: only the call's earlier arguments
+                        // tell which one a lambda there takes (PR #254).
+                        new FunctionSignature("apply",
+                            [new SignatureParameter("first", new SignatureType.FunctionShape([IntType], StringType)),
+                             new SignatureParameter("second", new SignatureType.FunctionShape([IntType], StringType))],
+                            StringType),
                     ],
                 },
                 new NamedTypeMethodBinding(
@@ -239,6 +245,16 @@ public sealed class TypeCheckerFunctionShapeTests {
     }
 
     // ----- Review fixes (PR #254) -----
+
+    [Fact]
+    public void Lambda_TwoShapesAtOnePosition_TakesTheViableOverloadsShape() {
+        (CompilationUnit unit, DiagnosticBag bag) = Check(
+            "t := tokens.make()\ns: string := t.apply(n => n > 0 ? \"a\" : \"b\", m => m > 0 ? \"c\" : \"d\")");
+
+        Assert.False(bag.HasErrors, Messages(bag));
+        Assert.Equal(GrobType.Int, Assert.Single(Identifiers(unit, "n")).ResolvedType);
+        Assert.Equal(GrobType.Int, Assert.Single(Identifiers(unit, "m")).ResolvedType);
+    }
 
     [Fact]
     public void Lambda_InsideGrouping_TakesTheShapesType() {

@@ -62,6 +62,8 @@ public sealed partial class TypeChecker {
 
     /// <inheritdoc/>
     public override GrobType VisitReturn(ReturnStmt node) {
+        // _lastReturnType is set after the value is visited, since a lambda inside the
+        // value has returns of its own; a reported return leaves Error (cascade suppression).
         // A return outside any function body is a script-level return (E2203).
         // §22: use exit(<n>) to terminate a script. Still visit the value so its
         // sub-expressions are resolved (§3.1.1) and any nested errors surface.
@@ -70,12 +72,14 @@ public sealed partial class TypeChecker {
                 "'return' is not valid at script level. Use 'exit(<n>)' to terminate a script with a status code.",
                 node.Range);
             if (node.Value is not null) Visit(node.Value);
+            _lastReturnType = GrobType.Error;
             return GrobType.Unknown;
         }
 
         if (IsInsideOwnFunctionsFinally()) {
             EmitError(ErrorCatalog.E2207, "'return' is not permitted inside a 'finally' block.", node.Range);
             if (node.Value is not null) Visit(node.Value);
+            _lastReturnType = GrobType.Error;
             return GrobType.Unknown;
         }
 
@@ -92,7 +96,10 @@ public sealed partial class TypeChecker {
         if (expected != GrobType.Unknown && actual != GrobType.Error
             && !ComputeReturnCompatibility(actual, expected, node.Value)) {
             EmitReturnTypeMismatch(node, actual, expected);
+            _lastReturnType = GrobType.Error;
+            return GrobType.Unknown;
         }
+        _lastReturnType = actual;
         return GrobType.Unknown;
     }
 

@@ -17370,7 +17370,8 @@ surface needs yet.
 
 **Decision 3 — a lambda passed for a shape takes its parameter types.** The checker reads the
 method's signatures before it visits the arguments. A lambda at a position where exactly one
-signature expects a function has its parameters registered with that shape's types, the
+shape is expected, among the signatures that admit the argument count and fit the arguments
+before it, has its parameters registered with that shape's types, the
 nominal name included, so `m.value` resolves and `m.nope` is E1002. The context is taken and
 cleared as the lambda is entered, so a lambda nested in its body keeps `Unknown` parameters,
 as every other lambda does. Brackets around the lambda do not hide it from the context. An
@@ -17387,7 +17388,9 @@ function type, `fn(Match): string`. A non-function or nullable function passed f
 E0004 too. A lambda whose result is a void call such as `print` returns `nil` for this check.
 An explicit `return` inside a lambda passed for a shape that returns a value is checked
 where it stands, as a function's return is: a mismatch or a bare `return` is E0005. A block
-that ends in a `return` therefore does not also claim the `nil` of falling off its end.
+lambda that ends in a `return` yields the returned value's type, not the `nil` of falling off
+its end, for every lambda and not only one passed for a shape. A return already reported
+counts as `Error`, so it is not reported twice.
 **Rejected**: a new code for the function argument, since every case is a value not
 assignable to its parameter's type. A variadic parameter cannot take a function shape, since a
 lambda is typed by the one parameter at its position.
