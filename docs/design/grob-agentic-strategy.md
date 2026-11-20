@@ -316,6 +316,7 @@ can argue for a change and cannot outvote a person's ability to read the result.
 | When | What | Tracked |
 |---|---|---|
 | Sprint 9C | `fs` and `process` natives through the capability seam | R-35 |
+| Agent-scripting interlude, after Sprint 9 and before Sprint 10 | Claude Code scripts in Grob on this repository: inline and stdin source, start-up measured, a scripting guide, the repository rule (D-444); OQ-026 and OQ-027 resolved first | R-48 to R-51 |
 | Before the Sprint 12 kickoff | OQ-019 and OQ-020 resolved | — |
 | Sprint 12, before the agent-facing items | R-25, R-26 and R-29 closed; R-25 is Sprint 12's own work | — |
 | Sprint 12 | `grob check --json`, structured fixes, foreign-idiom diagnostics, `grob skills` | R-36 |
@@ -356,3 +357,4 @@ Read on 15 November 2026. Web sources are context, not authority, and will age.
 
 *Created November 2026 — D-434, D-435, D-436.*
 *Updated November 2026 — D-441, D-442: the purpose statement and §11.*
+*Updated November 2026 — D-444: §13 gains the agent-scripting interlude.*

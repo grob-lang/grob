@@ -631,6 +631,65 @@ where an agent session is most likely to meet Grob.
 
 ---
 
+### OQ-026 — Inline and Stdin Source for `grob run`
+
+**Question:** What is the command-line surface for running a script whose source is
+not in a file, and how does it behave?
+
+**Raised by:** D-444. **Must resolve before:** the agent-scripting interlude's first
+increment prompt, because the answer is behaviour that increment builds (R-48).
+
+**Context.** D-444 makes both forms v1: source read from stdin, and source passed
+inline as an argument. `grob run` today takes a file path only. The forms are for short
+scripts an agent writes and discards, so the diagnostics and exit codes must be exactly
+those a file would produce.
+
+**To decide:** the spelling — `grob run -` for stdin is the common convention, and the
+inline flag could be `-e` (Node, Perl, Ruby), `-c` (Python, the POSIX shells) or a long
+form; whether the inline form needs `run` at all; the name diagnostics give the source
+in place of a file name; what `input()`, `json.stdin()` and `csv.stdin()` see when the
+script itself arrived on stdin; how `param` values reach an inline script once Sprint 10
+lands; that `.grobc` caching does not apply; whether `grob check` accepts the same forms
+when it lands in Sprint 12; and quoting on each platform's shells, since an inline
+script with `${}` interpolation and double quotes is awkward to quote in PowerShell and
+in POSIX shells alike.
+
+**Tentative direction:** `grob run -` and `grob run -e <source>`, with `<stdin>` and
+`<inline>` as the names in diagnostics. When the source came from stdin the script
+sees stdin at end of input, and the documentation says so. `grob check` accepts both
+forms from the start. The quoting cost makes stdin the form the scripting guide (R-50)
+recommends for anything longer than a line.
+
+---
+
+### OQ-027 — Do the Foreign-Idiom Diagnostics Leave R-36?
+
+**Question:** Do the diagnostics that answer a neighbouring language's construct with
+the Grob form (`var x = 1` answered with `x := 1`) move from Sprint 12 into the
+agent-scripting interlude?
+
+**Raised by:** D-444. **Must resolve before:** the agent-scripting interlude's prompts
+are written, because the answer decides the interlude's scope.
+
+**Context.** R-36 bundles four things in Sprint 12: `grob check --json`, `note` and
+`help` lines with structured fixes, the foreign-idiom diagnostics and `grob skills`.
+The idiom diagnostics do not need `--json`. They are the cheapest correction for the
+interference `grob-agentic-strategy.md` §3 describes, and the interlude is the first
+time an agent writes Grob every day. Whether they need R-25's renderer depends on
+whether the Grob form is carried as a `help` line or as message text.
+
+**To decide:** whether to split R-36; if so, whether the idiom diagnostics ship with
+the Grob form in the message text now and move to a `help` line when R-25 lands, at the
+cost of rewriting their gold masters once; which idioms are covered, and from what
+evidence; and how any new codes are allocated under D-316 in the increment that mints
+them.
+
+**Tentative direction:** none yet. The case for waiting is that the interlude produces
+the evidence the idiom list should rest on. The case for moving is that every session
+until Sprint 12 pays for each idiom the compiler does not yet name.
+
+---
+
 ## Deferred Work Register
 
 **Authority: D-420.** This is the single tracking home for work that is
@@ -682,7 +741,7 @@ authorised, and every item cites the decision that raised it.
 | R-33 | **`grob-lang.dev`'s samples are outside every gate.** The site's source is another repository, so the public samples gate (D-430) cannot see it. Measured by D-430 on 13 November: its one sample, `organise.grob`, calls `fs.list`, `fs.ensureDir`, `file.moveTo` and `path.join`, does not compile today because `fs` is not built, and is shown in a terminal printing "47 files organised" from a script that has no `print`. D-417's principle — every public sample compiled by a gate — does not yet reach it. | D-430 | `unowned` — the site's repository | Every Grob sample the site shows is either generated from a block this repository's public samples gate checks, or checked by a gate of the site's own against a released `grob`; any output the site shows is what the script prints |
 | R-34 | **No release-gate script exercises `regex`.** None of the eleven validation scripts uses a regex literal or the `regex` module. D-186 required a `regex.compile()` script only if regex literals were cut; D-432 keeps them and requires a script anyway, on R-08's footing — surface that would ship unexercised by the release gate. The script is the log filter that `grob-v1-requirements.md` §14's row 12 described without a script behind it. It reads a log through `fs`, so it lands with whichever of the two increments comes second. | D-432 | Whichever of the `regex` and `fs` increments lands second | A validation script in `grob-sample-scripts.md` and its corpus fixture, guarded by `ValidationScriptCorpusTests` and D-417's sync guard, uses a regex literal, `regex.compile`, `matchAll`, a named group and `replace`, and runs green with expected output |
 | R-35 | **Every `fs` and `process` native reaches the OS through an injected capability.** D-319 sketched `IFileSystem` and `IProcessRunner`; D-343 landed the mechanism; D-430 gives `IFileSystem` its first member. Sprint 9C builds the two modules through which a script changes the machine, and D-435's restricted run and plan mode are an alternate host only if they are built through the seam. | D-436 | Sprint 9C — the `fs` and `process` increments | `IFileSystem` carries the `fs` surface and `IProcessRunner` the `process` surface, both in `Grob.Runtime`, each member one operation that either reads state or changes it; `json` and `csv` file reads and writes go through `IFileSystem`; no type in `Grob.Stdlib` calls `System.IO.File`, `Directory`, `FileInfo`, `DirectoryInfo`, `FileStream` or `System.Diagnostics.Process` directly, and R-32's source guard is widened to keep it so; the `fs` tests run over an in-memory `IFileSystem` and the `process` tests over a scripted `IProcessRunner` |
-| R-36 | **The agent-facing CLI surface.** `grob check --json`, `note`, `help` and structured fixes on `Diagnostic`, foreign-idiom diagnostics and `grob skills` (`grob-agentic-strategy.md` §5 and §6). | D-434 | Sprint 12, after OQ-019 and OQ-020 resolve and R-25, R-26 and R-29 close | `grob check --json` emits one document conforming to the schema OQ-019's resolution fixes, pinned by a test over the error-examples corpus; every diagnostic in it carries a column; each foreign idiom that resolution lists has a gold master showing the Grob form; `grob skills` prints the kit OQ-020's resolution specifies, and every sample in it compiles under the public-samples gate |
+| R-36 | **The agent-facing CLI surface.** `grob check --json`, `note`, `help` and structured fixes on `Diagnostic`, foreign-idiom diagnostics and `grob skills` (`grob-agentic-strategy.md` §5 and §6). | D-434 | Sprint 12, after OQ-019 and OQ-020 resolve and R-25, R-26 and R-29 close; OQ-027 may move the foreign-idiom diagnostics into the agent-scripting interlude (D-444) | `grob check --json` emits one document conforming to the schema OQ-019's resolution fixes, pinned by a test over the error-examples corpus; every diagnostic in it carries a column; each foreign idiom that resolution lists has a gold master showing the Grob form; `grob skills` prints the kit OQ-020's resolution specifies, and every sample in it compiles under the public-samples gate |
 | R-37 | **The agent benchmark exists and has run.** "First-class for agents" is a claim until it is measured, and D-434 Decision 4 makes the benchmark the only evidence that authorises a syntax change on these grounds. | D-434 | `unowned` — after R-36, once OQ-021 resolves | A committed task set covering the four driving use cases; a recorded run against at least two harnesses given only the kit, reporting first-attempt success and success within three rounds of `grob check --json`; results and the date committed under `docs/design/` |
 | R-38 | **Restricted run and plan mode built.** D-435 sets the posture and the limit of the claim; the surface is OQ-022. | D-435 | `unowned` — post-v1, after OQ-022 resolves | A run mode in which every standard-library call that needs a capability the host did not grant fails before it acts, as does a plugin import the host did not grant; proven by tests over the real CLI pipeline that cover at least an `fs` read, an `fs` write, a `process` run, a `json` and a `csv` file read and write and a plugin import, each denied and each granted; a plan run that reports each state change made through the capability seam without performing it, with plugin imports under a plan run handled as OQ-022's resolution fixes and that handling proven by test; documentation that describes the feature as a capability-gated standard library, states what it does not protect against and does not use the word sandbox |
 | R-39 | **The README's first sample becomes runnable before parameters bind.** `README.md`'s opening block reads the required parameters `from` and `to` and the defaulted `dir`, and renames files it lists through `fs.list`. It passes the public samples gate only because `fs` is excused (D-430 Decision 3). When the `fs` increment builds `fs`, the excused list's catalogue guard forces `fs` off it and the block is run. It then fails on `from`, since no `param` binds before Sprint 10 (D-430 measured E1001 on a parameter with or without a default), so that increment marks it `blocked-by=R-39`. Its file operations must meet the harness's in-memory `IFileSystem`, which R-35 (D-436) provides, never the real filesystem. Gate report F6. | D-437 | The 9C `fs` increment, which meets it first; Sprint 10 for parameter values | The gate supplies fixture values for `param` declarations as D-430 Decision 8 does for environment variables, and `README.md`'s first block passes under the harness's injected capabilities with no `blocked-by` token |
@@ -693,6 +752,10 @@ authorised, and every item cites the decision that raised it.
 | R-45 | **Release artifacts are never executed before they are published.** `release.yml` publishes `win-x64` and `linux-x64` as self-contained, single-file, trimmed builds and packages each without running it. Trimming removes code the build cannot see being used, so a tree that passes every test can still ship an executable that fails to start, on either platform. | D-442 | `unowned` — before the first public release | `release.yml` runs each published artifact on its own platform before packaging it — at least `grob version` and a script that prints, reads a file and runs a process — and the release fails if either artifact fails |
 | R-46 | **The corpus still describes a Windows-only language.** D-442 makes Windows and Linux equal, and changed only the requirement, ADR-0007 and the strategy. Every example in `grob-stdlib-reference.md`, `grob-language-fundamentals.md`, `grob-sample-scripts.md` and `docs/wiki/` that carries an absolute Windows path, `grob-install-strategy.md` throughout, the Windows-only environment matrix in `grob-adversarial-testing-strategy.md` and the `grob.exe` naming in `grob-v1-requirements.md` predate it. | D-442 | `unowned` — before the documentation site is built | Every example follows D-442 Decision 3 and still passes the public-samples gate; `grob-install-strategy.md` covers Linux as OQ-025's resolution fixes; the adversarial environment matrix names a Linux distribution; each standard-library function whose behaviour differs by platform says so in `grob-stdlib-reference.md`; the executable is named without `.exe` wherever the text is not Windows-specific |
 | R-47 | **A lambda parameter's type annotation is ignored.** `(m: int) => m + 1` parses, but `VisitLambda` registers every parameter as `Unknown`, or as the type a method's function shape expects (D-443), and never reads the annotation, so a wrong annotation passes silently and a right one adds nothing. | D-443 | `unowned` | A lambda parameter's annotation types it; an annotation that disagrees with a function shape's parameter type is a diagnostic, with tests for each |
+| R-48 | **`grob run` cannot take source from stdin or inline.** It takes a file path only, so an agent must write a file before running a short script it will discard. D-444 makes both forms v1. | D-444 | The agent-scripting interlude, after OQ-026 resolves | Both forms OQ-026's resolution fixes run a script through the same front end and VM path as a file; diagnostics name the source as that resolution says and are otherwise identical to the file form, pinned by tests that run one error example both ways; exit codes 0, 1 and 2 match the file form; stdin's state inside a script that arrived on stdin is pinned by a test; the tests run on Windows and Linux in CI |
+| R-49 | **Nothing measures the start-up requirement against a release artifact.** `grob-v1-requirements.md` §1 requires `grob run hello.grob` under 500 ms cold and 200 ms warm. `release.yml` publishes single-file trimmed builds without ReadyToRun or Native AOT, and no job times them. An agent pays start-up on every script. | D-444 | The agent-scripting interlude | `hello.grob` timed cold and warm on the `win-x64` and `linux-x64` release builds, method and figures recorded in `grob-benchmarking-strategy.md`; where either breaches §1, a logged decision chooses the remedy (ReadyToRun, Native AOT or a narrower change) and the figures are re-taken after it; where neither breaches, the entry records that. A re-taken figure that still breaches §1 does not hold R-49 open: R-49 closes, and a new register item opens, owned by the v1 release gate, done when both figures meet §1 on both release builds |
+| R-50 | **No guide teaches an agent to script in Grob.** `.claude/skills/writing-grob-source` is written for contributors editing `.grob` files in this repository, not for scripting with the standard library. | D-444 | The agent-scripting interlude | A repository skill for scripting with Grob covers `fs`, `process`, `json`, `csv`, `regex`, `io`, `env` and `path`, the inline and stdin forms R-48 builds and paired examples translating short PowerShell and Python scripts into Grob; every sample in it compiles under the public-samples gate (D-430); it states that it is the seed of OQ-020's kit |
+| R-51 | **Nothing tells Claude Code to script in Grob, or on which binary.** | D-444 | The agent-scripting interlude, after R-48 and R-50 | The repository `CLAUDE.md` tells Claude Code to prefer Grob for scripts it writes to do a job, points at R-50's skill, keeps gating scripts out of Grob until Pillars 1–6 close (D-444 Decision 5) and states the permission limit D-444 records; a tooling script provisions a Grob binary built from `main`, not from the working tree, on Windows and Linux, and the rule names it |
 
 ### Closed items
 
@@ -1111,7 +1174,10 @@ _table of `grob-decisions-log.md`. The full rationale is preserved here._
 
 ---
 
-_Document updated November 2026 — D-443. **R-44 closed**: the function form of `Regex.replace`_
+_Document updated November 2026 — D-444. **OQ-026 and OQ-027 opened**: the surface of inline_
+_and stdin source for `grob run`, and whether the foreign-idiom diagnostics leave R-36. **R-48 to_
+_R-51 added**: the agent-scripting interlude's four items. R-36's owner cell notes OQ-027._
+_Previous: November 2026 — D-443. **R-44 closed**: the function form of `Regex.replace`_
 _and `replaceAll` is built. **R-47 added**: a lambda parameter's type annotation is ignored._
 _Previous: November 2026 — D-442. **OQ-024 and OQ-025 opened**: the shell_
 _`process.runShell` invokes on each platform, and how Grob installs on Linux. **R-45 and R-46_
