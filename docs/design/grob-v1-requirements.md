@@ -952,6 +952,16 @@ Process execution captures stdout/stderr.
 >  deadlock), exhaustion, soak and cold-read all run here. Pillar 7 (hostile
 >  network) waits for `Grob.Http` — see the post-Sprint-11 note.
 
+>  **Agent-scripting interlude (Sprint 9/10) — Grob as Claude Code's scripting language
+>  on this repository.** Authority: D-444. Runs alongside the hardening interlude,
+>  after Sprint 9 and before Sprint 10. Four items: `grob run` takes source from stdin
+>  and inline (R-48, surface OQ-026); the start-up requirement in §1 measured on both
+>  release artifacts, with any remedy chosen by a logged decision (R-49); a scripting
+>  guide as a repository skill, the seed of the context kit (R-50); and the repository
+>  rule that tells Claude Code to prefer Grob, run on a binary built from `main` (R-51).
+>  Gating scripts stay out of Grob until Pillars 1–6 close. Whether the foreign-idiom
+>  diagnostics join this interlude from Sprint 12 is OQ-027.
+
 ### Sprint 10 — Script Parameters and Decorators
 
 **Delivers:** `param` declarations, `.grobparams` files, six of the seven
@@ -1201,6 +1211,7 @@ and the confirmed decisions in `grob-decisions-log.md`.
 |Command                          |Description                               |
 |---------------------------------|------------------------------------------|
 |`grob run <file>`                |Compile and execute a script              |
+|`grob run -`, inline form        |Execute source read from stdin, or passed inline (D-444; surface OQ-026)|
 |`grob run <file> --params <file>`|Execute with parameter file               |
 |`grob run <file> --verbose`      |Execute with debug output                 |
 |`grob repl`                      |Interactive REPL (`G>` prompt)            |
@@ -1675,3 +1686,6 @@ Grob v1 is ready for public release when:
 *Updated November 2026 — D-434, D-435, D-436: Sprint 9 gains the capability-seam*
 *requirement; Sprint 12 and §8 gain `grob check --json` and `grob skills`; §9's*
 *Security paragraph cites D-435 in place of the superseded D-072.*
+*Updated November 2026 — D-444: §4 gains the agent-scripting interlude between the*
+*hardening interlude and Sprint 10, which moves behind it; §8 gains `grob run`'s stdin*
+*and inline forms.*

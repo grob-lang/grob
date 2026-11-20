@@ -440,6 +440,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-441 | November 2026 | Foundational principle; Strategy — agentic development | **People and agents are two audiences of equal standing, by owner decision; refines D-434's "second audience".** Equal for the toolchain, the standard library, the documentation and the build and release. **People keep the tiebreak on how the language reads**: agents shape what the language can do and how it explains itself, people shape how it reads, because an agent's script is worth trusting only if a person can check it. D-434's syntax policy stands and cannot be outvoted by benchmark evidence. Purpose, tagline and the core-module rule unchanged. No source change. |
 | D-442 | November 2026 | Platform support; v1 non-functional requirements; Documentation; Deferred Work Register | **Windows and Linux are equal platforms, by owner decision; ADR-0007's Windows-first design is superseded.** CI already builds and tests both and releases ship both; this makes it a promise. Same language, stdlib, diagnostics and exit codes; platform differences documented per function. Examples use relative paths valid on both, or show both forms. Windows is not demoted; macOS is not claimed. Files R-45 (release artifacts executed before publishing) and R-46 (the corpus brought into line); opens OQ-024 (`process.runShell`'s shell) and OQ-025 (Linux install). No source change. |
 | D-443 | November 2026 | Solution architecture — plugin SDK; Compiler — type checker; Standard library — `regex`; Deferred Work Register | **The function form of `Regex.replace` and `replaceAll` is built** (D-432 Decision 6). **R-44 closed.** The signature union gains `FunctionShape`, a parameter type on named-type methods only (**amends D-426 Decision 1**). A named-type method may carry overloads: further signatures on one binder, which must differ at a required position by taking a function. A lambda passed for a shape takes its parameter types, so `m` is a `Match`; overload selection and the function-argument checks fold into E0004. A non-string result at run time is E5903. Two pre-existing bugs found and left to their own fixes (Chris). **R-47 opens**: lambda parameter annotations are ignored. Count unchanged at 121. |
+| D-444 | November 2026 | Sprint sequencing; CLI — `grob run`; Agentic development; Deferred Work Register | **Claude Code uses Grob as its scripting language on the Grob repository, during development, by owner decision.** Verified at `046512d`: `grob run` takes a file path only, and inline or stdin source is planned nowhere. **Inline and stdin source are v1** (surface OQ-026, build R-48). **An agent-scripting interlude follows Sprint 9**, alongside the hardening interlude: inline and stdin source, the start-up requirement measured on both release artifacts (R-49), a scripting guide as a repository skill (R-50) and the repository rule to prefer Grob on a binary not built from the tree being changed (R-51). **Sprint 10 moves behind it**, scope unchanged. Gating scripts stay out of Grob until Pillars 1–6 close. Approving `grob run` approves any command once `process` exists; recorded as a known limit, not safety. Whether the foreign-idiom diagnostics leave R-36 is OQ-027. No source change. |
 
 ---
 
@@ -17430,6 +17431,94 @@ catalogue and its Decision 1), D-326 (function descriptors), D-356 (named types)
 
 ---
 
+### D-444 — Grob becomes the scripting language Claude Code uses on the Grob repository, during development: an agent-scripting interlude after Sprint 9, inline and stdin source in v1, Sprint 10 behind it (November 2026)
+
+Area: Sprint sequencing; CLI — `grob run`; Agentic development; Deferred Work Register
+Supersedes: none
+Superseded by: none
+
+**Decision-only, with spec edits. No source change.** Error-code count unchanged.
+**Owner decision**: Chris, 20 November — Claude Code, working on Grob in VS Code, is to
+use Grob as its scripting language while Grob is still being built; inline and stdin
+source are v1; Sprint 10 moves behind the work that makes this possible.
+
+**Verified at `046512d`.** `grob run` takes a file path and nothing else
+(`CommandLineRunner`): no source from stdin and no inline source, and neither is
+planned anywhere in the corpus. The CLI has `run`, `repl` and `version`. `fs`, `process`, `json`
+and `csv` are unbuilt; `regex`, `io`, `env`, `path`, `date` and `strings` are built.
+`release.yml` publishes single-file trimmed builds without ReadyToRun or Native AOT, and
+nothing measures the start-up requirement in `grob-v1-requirements.md` §1 against them.
+
+**Decision 1 — the goal.** On the Grob repository, the short scripts Claude Code writes
+to do a job — find files, search them, reshape JSON, run `git` or `dotnet` and summarise
+the output — are written in Grob, not Bash, PowerShell or Python. This is use case 5
+(D-434, D-435) practised on the project itself, ahead of the benchmark (R-37) rather
+than in place of it.
+
+**Decision 2 — inline and stdin source are v1.** `grob run` accepts a script's source
+from stdin and inline on the command line, compiled and run through the same path as a
+file, with the same diagnostics and exit codes. An agent's scripts are mostly short and
+thrown away; a language that needs a file written first loses to one that does not, and
+use case 5 assumed this form without any decision providing it. The surface is
+**OQ-026**. The build is **R-48**.
+
+**Decision 3 — an agent-scripting interlude after Sprint 9.** Sprint 9 completes
+`fs`, `process`, `json` and `csv`, the modules these scripts need first; its increment
+order is unchanged. The interlude follows it, alongside the hardening interlude rather than after
+it, and before Sprint 10. It holds four items: inline and stdin source (R-48); the
+start-up requirement measured on both platforms' release artifacts, with any remedy
+chosen by a logged decision (R-49); a scripting guide as a repository skill, the seed of
+OQ-020's kit (R-50); and the repository rule that tells Claude Code to prefer Grob, run
+on a binary not built from the tree it is changing (R-51). Daily use is expected to find
+VM and standard-library defects the fuzzing pillars do not, which is why it runs beside
+the hardening interlude rather than waiting for it.
+
+**Decision 4 — Sprint 10 moves behind the interlude.** Nothing the goal needs depends
+on `param`: an agent writes its values into the script. Sprint 10 keeps its name, scope
+and place in v1. Under D-433 there is no date for the move to threaten.
+
+**Decision 5 — what stays out of Grob for now.** A script that gates something — a
+pre-commit or pre-push hook, a CI check — is not written in Grob until Pillars 1–6 of
+the hardening interlude close. A gate written in a language, checking that language's
+own repository, passes silently whenever the language is wrong in the gate's favour.
+
+**Why.** Every script Claude Code writes on this repository in Bash or Python is
+evidence about Grob that is not being gathered, and the agent benchmark is at least a
+sprint away. Waiting for Sprint 12 would mean a year of agent sessions on a scripting
+language's own repository using every scripting language but that one.
+
+**Known limit, recorded so it is not mistaken for safety.** Once `process` exists,
+approving `grob run` in Claude Code's permission rules approves any command, because a
+script can run one. Claude Code's permission prompt is the only boundary until R-38's
+restricted run exists. That is acceptable on the project's own repository and is no
+basis for recommending the practice to anyone else before v1.
+
+**Not decided.** Whether the foreign-idiom diagnostics leave R-36 and join the interlude,
+and whether they need R-25's `help` line first: **OQ-027**, to resolve before the
+interlude's prompts are written. Until it does, R-36 stands as filed and Sprint 12 owns
+the idiom diagnostics. In-repository success is not evidence for D-434's claim: the
+benchmark gives a harness the kit and nothing else, and Claude Code here has the full
+corpus.
+
+**Rejected.** *Waiting for Sprint 12* — the cost is described above. *Renumbering the
+sprints* — every reference in the corpus would move, for no gain over a named interlude.
+*Reordering Sprint 9 to bring `process` forward* — all four modules land before the
+interlude starts, so order within Sprint 9 does not change when it can begin, and OQ-024 must
+resolve before the `process` prompt in any case. *Grob in gating paths now* — Decision
+5. *Calling the interlude Sprint 9D* — the corpus already uses "9D" for the `mapAs<T>`
+increment (R-07).
+
+**Spec edits in this commit.** `grob-v1-requirements.md`: §4 gains the interlude between
+the hardening interlude and Sprint 10, §8 gains the inline and stdin forms of
+`grob run`. `grob-agentic-strategy.md`: §13 gains the interlude's row.
+`grob-open-questions.md`: OQ-026 and OQ-027 opened, R-48 to R-51 filed and R-36's owner
+cell notes OQ-027.
+
+Cites D-433 (no delivery date), D-434 and D-435 (use case 5), D-353 (the hardening
+interlude), D-430 (the samples gate), D-420 (the register) and D-442 (both platforms).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -17659,7 +17748,11 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-443 added, with source, spec, wiki and register changes. **The function form_
+_November 2026 — D-444 added, with spec edits; no source change. **Claude Code uses Grob as_
+_its scripting language on the Grob repository while Grob is built**: inline and stdin source_
+_become v1, an agent-scripting interlude follows Sprint 9 beside the hardening interlude and_
+_Sprint 10 moves behind it. R-48 to R-51 filed; OQ-026 and OQ-027 opened. Count unchanged._
+_Previous: November 2026 — D-443 added, with source, spec, wiki and register changes. **The function form_
 _of `Regex.replace` and `replaceAll` is built** (D-432 Decision 6): the signature union gains a_
 _function shape (amending D-426 Decision 1), a named-type method may carry overloads and a_
 _lambda takes its parameter types from the shape. R-44 closed, R-47 opened. Count unchanged at_
