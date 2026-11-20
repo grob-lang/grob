@@ -622,7 +622,7 @@ file.modified    // date — last write time, local
 file.created     // date — creation time, local; see Platform differences
 file.isDirectory // false
 
-// Methods that change the file system return the new entry.
+// rename, moveTo and copyTo return the new entry; delete returns nothing.
 // Each step below works on the entry the step before it returned.
 renamed  := file.rename("report_2025.xlsx")
 archived := renamed.moveTo("archive/2026", ensureDir: true)
@@ -650,15 +650,23 @@ Every path argument is normalised as `path.normalise` does before it is used, so
 and `\` both separate on both platforms and `reports\2026` names the same place on
 Windows and Linux. The same holds for the paths `json` and `csv` read and write.
 
-One consequence is specific to Linux, where `\` is a legal character in a name. An
-entry whose name contains one cannot be reached through the standard library: no path
-argument can name it, and `fs.list`, `fs.find` and `fs.info` never return a `File` for
-it. That is deliberate. Its path, passed back as an argument, would be normalised into
-the path of a different entry — a file named `..\..\x` would read as a path two
-directories up — so no value is ever made that could be mistaken for one.
-`fs.deleteRecursive` still removes such an entry along with the directory that holds
-it, and `fs.delete` on a directory that holds one reports that the directory is not
-empty.
+One consequence is specific to Linux, where `\` is a legal character in a name. The
+rule is this: **the standard library never returns, and never acts on, a path with a
+component that contains `\`.** Such a path, passed back as an argument, would be
+normalised into the path of a different entry — a file named `..\..\x` would read as a
+path two directories up — so no value is ever made that could be mistaken for one.
+What follows from the rule:
+
+- No path argument can name such an entry.
+- `fs.list`, `fs.find` and `fs.info` never return a `File` for such an entry, or for
+  anything beneath a directory with such a name. A recursive listing and a `**` do not
+  descend into one.
+- If the current directory itself lies beneath such a name, a call that resolves a
+  relative path throws `IoError`. This is the script's own starting point, not
+  something found on the way, so it is reported, not skipped.
+- `fs.deleteRecursive` still removes such an entry along with the directory that
+  holds it, and `fs.delete` on a directory that holds one reports that the directory
+  is not empty.
 
 **Listing.** `fs.list` returns an array, built in full before it returns, so a loop
 may move, rename or delete the entries it is walking. It includes files and
@@ -667,7 +675,8 @@ above: nothing is left out for
 being hidden or for having a name that starts with a dot. The order is the same on
 both platforms: the entries of a directory are in ordinal order of `name`, and in a
 recursive listing each directory is followed at once by its own contents. A link to a
-directory is listed as an entry and is not descended into.
+directory is listed as an entry and is not descended into. On Linux, a directory whose
+name contains `\` is neither listed nor descended into (see *Paths*).
 
 **Patterns.** `fs.find(dir, pattern)` returns the entries beneath `dir` whose path
 relative to `dir` matches `pattern`, in the order `fs.list` would give them. No match
@@ -685,6 +694,8 @@ is an empty array, not an error.
 - No segment descends into a link to a directory, neither `**` nor a literal name. A
   link beneath `dir` matches as an entry only. `dir` itself may be a link, as it may
   for `fs.list`.
+- On Linux, an entry whose name contains `\` never matches, and nothing beneath a
+  directory with such a name is searched (see *Paths*).
 - `dir` is never read as a pattern, so a directory name taken from a parameter or
   from another program's output cannot change what the pattern means.
 - Only the directories a pattern can still match are read: `fs.find("src", "**/*.cs")`

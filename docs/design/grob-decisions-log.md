@@ -17657,9 +17657,13 @@ capability (D-436). **Rejected**: passing
 the path through and documenting the difference, which keeps the failure D-442 exists
 to remove and leaves the Windows idiom unusable in a portable script.
 
-*The cost, and how it is contained.* On Linux an entry whose name contains `\` cannot be
-reached through the standard library: no path argument can name it, and `fs.list`,
-`fs.find` and `fs.info` never return a `File` for it. The second half was settled in
+*The cost, and how it is contained.* On Linux the standard library never returns, and
+never acts on, a path with a component that contains `\`. No path argument can name
+such an entry, and `fs.list`, `fs.find` and `fs.info` never return a `File` for one or
+for anything beneath a directory so named; a recursive listing and a `**` do not descend
+into it. If the current directory itself lies beneath such a name, a call that resolves
+a relative path throws `IoError`, because that is the script's own starting point and
+not something met on the way. The rule was settled in
 review of PR #258, by the session. Returning such an entry would hand the script a path
 that normalisation turns into the path of a different entry the moment it is passed
 back: a file named `..\..\x` in a directory of untrusted files would read as a path two
@@ -17931,8 +17935,9 @@ _has one order on both platforms, `fs.find`, `fs.info`, `fs.writeLines` and `fs.
 _added, copy and move gain `ensureDir`, failure behaviour is specified and a path argument is_
 _normalised so `\` separates on both platforms. R-52 to R-54 filed. Count unchanged at 121._
 _Amended in review (PR #258), before landing: a `File` method acts on its path, not on an_
-_entry's identity; no pattern segment descends into a link; a Linux entry whose name contains_
-_`\` is never returned, so no path can be normalised into another entry's._
+_entry's identity; no pattern segment descends into a link; on Linux no path with a component_
+_that contains `\` is returned or acted on, descendants included, so no path can be normalised_
+_into another entry's._
 _Previous: November 2026 — D-444 added, with spec edits; no source change. **Claude Code uses Grob as_
 _its scripting language on the Grob repository while Grob is built**: inline and stdin source_
 _become v1, an agent-scripting interlude follows Sprint 9 beside the hardening interlude and_
