@@ -17251,7 +17251,8 @@ method's signatures before it visits the arguments. A lambda at a position where
 signature expects a function has its parameters registered with that shape's types, the
 nominal name included, so `m.value` resolves and `m.nope` is E1002. The context is taken and
 cleared as the lambda is entered, so a lambda nested in its body keeps `Unknown` parameters,
-as every other lambda does. An optional chain reads its receiver's underlying type.
+as every other lambda does. Brackets around the lambda do not hide it from the context. An
+optional chain reads its receiver's underlying type.
 
 **Decision 4 — overload selection and the function-argument check fold into E0004.** The
 checker picks the first signature whose function-shaped positions are exactly those where a
@@ -17261,13 +17262,21 @@ descriptor is known (a lambda or a function-typed binding) must take the shape's
 count, accept its parameter types and return a type it accepts; a shape returning `nil`
 accepts any return. Each failure is E0004 at the argument, naming the shape as Grob spells a
 function type, `fn(Match): string`. A non-function or nullable function passed for a shape is
-E0004 too. **Rejected**: a new code for the function argument, since every case is a value
-not assignable to its parameter's type.
+E0004 too. A lambda whose result is a void call such as `print` returns `nil` for this check.
+An explicit `return` inside a lambda passed for a shape that returns a value is checked
+where it stands, as a function's return is: a mismatch or a bare `return` is E0005. A block
+that ends in a `return` therefore does not also claim the `nil` of falling off its end.
+**Rejected**: a new code for the function argument, since every case is a value not
+assignable to its parameter's type. A variadic parameter cannot take a function shape, since a
+lambda is typed by the one parameter at its position.
 
 **Decision 5 — the run-time form.** `RegexPlugin` registers the function form as each method's
 overload. The native calls .NET's `Regex.Replace` with an evaluator that builds each `Match` as
-`match` and `matchAll` do and calls the Grob function through `VmInvoker`, inside the same
-timeout bound as the string form. A result that is not a string, reachable only through a
+`match` and `matchAll` do and calls the Grob function through `VmInvoker`. The regex's
+timeout bounds each match the engine makes, as in the string form, but not the function's own
+run time: .NET times each match on its own, so only cancellation of the run bounds a
+function that does not return. Giving the function a deadline of its own would be a separate
+decision. A result that is not a string, reachable only through a
 function whose return the checker could not type, is `RuntimeError` E5903, D-440 Decision 5's
 runtime residual. A `throw` inside the function propagates. The one-shot module functions keep
 the string form only, as `grob-stdlib-reference.md` lists them.
@@ -17525,7 +17534,8 @@ _November 2026 — D-441 added, with source, spec, wiki and register changes. **
 _of `Regex.replace` and `replaceAll` is built** (D-432 Decision 6): the signature union gains a_
 _function shape (amending D-426 Decision 1), a named-type method may carry overloads and a_
 _lambda takes its parameter types from the shape. R-44 closed, R-45 opened. Count unchanged at_
-_121._
+_121. Amended in review (PR #254): bracketed lambdas, void results, explicit returns (E0005),_
+_no variadic shapes and the timeout's reach over the function stated._
 _Previous: November 2026 — D-440 added, with source, spec, wiki and register changes. **The `regex` module_
 _is built** (D-432): `Regex` and `Match` as hidden-field structs, a literal as one constant per_
 _site, E0602 minted and R-30 closed. Chris ruled the representation, the deferral of the_

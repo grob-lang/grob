@@ -238,6 +238,61 @@ public sealed class TypeCheckerFunctionShapeTests {
         Assert.False(bag.HasErrors, Messages(bag));
     }
 
+    // ----- Review fixes (PR #254) -----
+
+    [Fact]
+    public void Lambda_InsideGrouping_TakesTheShapesType() {
+        (_, DiagnosticBag bag) = Check("t := tokens.make()\nt.apply(\"a\", (k => k.nope))");
+
+        AssertSingleError(bag, "E1002", 2, 20, "Type 'token' has no member 'nope'.");
+    }
+
+    [Fact]
+    public void Lambda_EndingInAVoidCall_ForAStringShape_IsE0004() {
+        (_, DiagnosticBag bag) = Check("t := tokens.make()\nt.apply(\"a\", k => print(k.name))");
+
+        AssertSingleError(bag, "E0004", 2, 14,
+            "Argument to 'apply' returns 'nil', but parameter 'fn' expects a function of type 'fn(token): string'.");
+    }
+
+    [Fact]
+    public void Lambda_EndingInAVoidCall_ForANilShape_IsAccepted() {
+        (_, DiagnosticBag bag) = Check("t := tokens.make()\nn: int := t.each(k => print(k.name))");
+
+        Assert.False(bag.HasErrors, Messages(bag));
+    }
+
+    [Fact]
+    public void BlockLambda_ExplicitStringReturn_IsAccepted() {
+        (_, DiagnosticBag bag) = Check("t := tokens.make()\ns: string := t.apply(\"a\", k => {\n    return k.name\n})");
+
+        Assert.False(bag.HasErrors, Messages(bag));
+    }
+
+    [Fact]
+    public void BlockLambda_EarlyNonStringReturn_IsE0005() {
+        (_, DiagnosticBag bag) = Check(
+            "t := tokens.make()\nt.apply(\"a\", k => {\n    if (k.secret > 0) {\n        return k.secret\n    }\n    k.name\n})");
+
+        AssertSingleError(bag, "E0005", 4, 16,
+            "Cannot return a value of type 'int' from a function declared to return 'string'.");
+    }
+
+    [Fact]
+    public void BlockLambda_BareReturn_ForAStringShape_IsE0005() {
+        (_, DiagnosticBag bag) = Check("t := tokens.make()\nt.apply(\"a\", k => {\n    return\n})");
+
+        AssertSingleError(bag, "E0005", 3, 5,
+            "A bare 'return' yields 'nil', which is not assignable to the declared return type 'string'.");
+    }
+
+    [Fact]
+    public void BlockLambda_AnyReturn_ForANilShape_IsAccepted() {
+        (_, DiagnosticBag bag) = Check("t := tokens.make()\nn := t.each(k => {\n    return k.secret\n})");
+
+        Assert.False(bag.HasErrors, Messages(bag));
+    }
+
     [Fact]
     public void NonFunction_ToAShape_IsE0004() {
         (_, DiagnosticBag bag) = Check("t := tokens.make()\nt.each(5)");

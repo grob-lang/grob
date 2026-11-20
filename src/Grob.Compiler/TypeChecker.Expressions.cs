@@ -655,10 +655,16 @@ public sealed partial class TypeChecker {
     /// (D-441); every other argument is visited as before.
     /// </summary>
     private GrobType VisitMethodArgument(Expression argument, IReadOnlyList<FunctionSignature>? signatures, int index) {
-        if (argument is LambdaExpr && signatures is not null && ShapeAt(signatures, index) is { } shape) {
+        if (Ungrouped(argument) is LambdaExpr && signatures is not null && ShapeAt(signatures, index) is { } shape) {
             _pendingLambdaShape = shape;
         }
         return Visit(argument);
+    }
+
+    /// <summary>The expression inside any enclosing brackets.</summary>
+    private static Expression Ungrouped(Expression expr) {
+        while (expr is GroupingExpr grouping) expr = grouping.Inner;
+        return expr;
     }
 
     /// <summary>
@@ -3287,8 +3293,11 @@ public sealed partial class TypeChecker {
 
         // Track a return-type context so VisitReturn can validate early-return stmts
         // inside a block-body lambda (E0005) and distinguish them from top-level
-        // returns (E2203).
-        _functionReturnTypes.Push(GrobType.Unknown);
+        // returns (E2203). Under a shape that returns a value, an explicit return is
+        // checked against the shape's return type (D-441); otherwise it is permissive.
+        _functionReturnTypes.Push(shape is not null && shape.ReturnType.Type != GrobType.Nil
+            ? shape.ReturnType.Type
+            : GrobType.Unknown);
         _controlFrameFloors.Push(_controlFrames.Count);
 
         // Infer the body type and store it for callers (e.g. ValidateArrayMethodCall).
@@ -3297,6 +3306,9 @@ public sealed partial class TypeChecker {
             LambdaBlockBody blockBody => VisitLambdaBlock(blockBody),
             _ => GrobType.Unknown,
         };
+        // A void call's result is Unknown at statement position; under a shape it is the
+        // nil the call returns at run time, so a string shape rejects it (D-441).
+        if (shape is not null && EndsInVoidCall(node.Body)) bodyType = GrobType.Nil;
         _lambdaReturnTypes[node] = bodyType;
 
         // Build and store the structural descriptor for this lambda (D-326); arity is exact.
@@ -3315,8 +3327,8 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Visits all statements in a block-body lambda and infers the return type.
     /// Returns the type of the last <see cref="ExpressionStmt"/>'s expression (the
-    /// implicit last-expression result per D-276), or <see cref="GrobType.Nil"/> when
-    /// the last statement is not an expression.
+    /// implicit last-expression result per D-276), <see cref="GrobType.Unknown"/> when the
+    /// last statement is a <c>return</c>, or <see cref="GrobType.Nil"/> otherwise.
     /// </summary>
     private GrobType VisitLambdaBlock(LambdaBlockBody blockBody) {
         IReadOnlyList<AstNode> stmts = blockBody.Block.Statements;
@@ -3330,8 +3342,17 @@ public sealed partial class TypeChecker {
         if (last is ExpressionStmt exprStmt)
             return VisitStatementPositionExpression(exprStmt.Expression); // implicit return value; don't emit Pop
         Visit(last);
-        return GrobType.Nil;
+        // A final explicit return is checked where it stands (VisitReturn), so the body
+        // does not also claim the nil of falling off the end.
+        return last is ReturnStmt ? GrobType.Unknown : GrobType.Nil;
     }
+
+    /// <summary>True when the lambda's result is a void call, such as <c>print(...)</c>.</summary>
+    private static bool EndsInVoidCall(LambdaBody body) => body switch {
+        LambdaExpressionBody expression => IsVoidCall(expression.Expression),
+        LambdaBlockBody { Block.Statements: [.., ExpressionStmt last] } => IsVoidCall(last.Expression),
+        _ => false,
+    };
 
     // -----------------------------------------------------------------------
     // Internal guards
