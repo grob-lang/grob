@@ -596,8 +596,10 @@ different things under each, so a `runShell` script is not portable by default.
 
 **To decide:** the default on each platform; whether a script can name the shell;
 whether the `ProcessResult` or the documentation states which shell ran; and what the
-documentation says about portability. `process.run` with an argument array is already
-portable, and D-075 makes it the primary form.
+documentation says about portability. `process.run` with an argument array involves no
+shell, so its behaviour does not depend on which shell a platform has, and D-075 makes it
+the primary form. That removes one source of difference and no more: a script is portable
+only if the executable it names, and the arguments it passes, exist on both platforms.
 
 **Tentative direction:** `cmd.exe /c` on Windows and `/bin/sh -c` on Linux, the
 lowest common denominator on each, with an optional named parameter to choose another.
