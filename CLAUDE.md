@@ -2,8 +2,9 @@
 
 Grob is a statically typed scripting language with a stack-based bytecode VM,
 written in C# 14 / .NET 10. It targets the gap between Go (too ceremonious),
-PowerShell (syntactically hostile) and Python (untyped at scale), for an
-audience of Windows developers and sysadmins. It is a serious language, not a
+PowerShell (syntactically hostile) and Python (untyped at scale), for
+developers and sysadmins on Windows and Linux and the agents that script on
+their behalf (D-441, D-442). It is a serious language, not a
 toy — when a choice is between the more instructive path and the better
 language, choose the better language.
 

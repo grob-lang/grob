@@ -437,6 +437,8 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-438 | November 2026 | Documentation — corpus consistency; Harness — `.claude/`; Testing — error-examples corpus; Process — coverage, commits; Deferred Work Register | **Implements D-431: the corpus sweep landed**, the last of D-420's pre-9C increments; the run ends here. Documentation only. **Every one of D-431's thirty-one rows dispositioned**: script counts to eleven (D-346); 29 missing trailing commas, row 9 widened by Chris; 77 D-285 path literals; ADR-0017's residue; the opcode sketch's banner; `toIsoDateTime`'s `Z`; increment 5's findings; the log's *Project Status*, *Identity* and *Related Documents*. **R-05 closed**: all 28 `.claude/` files, the four `CLAUDE.md` files and `AGENTS.md` read against the tree. **The 42 `// Eventual path:` lines removed** in PR #246, split out for CodeRabbit's 100-file limit. Chris's rulings recorded: files edited in place; `/commit-message` commits on the branch; **90% coverage is the floor on new code too**, extending D-328. Divergences: 12 *Reason* cells, not 14; public samples tallies 46 run and 38 fragments; mutation 5's prediction failed on the *Identity* statement, since corrected. **R-40 to R-43 open.** Suite 5,109. Count unchanged at 120. |
 | D-439 | November 2026 | Language spec — lexing; Compiler — lexer | **Implements the lexer half of D-432's `/` rule**, the first of the `regex` increment's two pull requests. Lexer and tests only; no error code. **Three defects, not two**: a `/` beginning a line after a statement newline is now a regex; an unescaped `/` inside `[...]` stays in the literal; and `/=` is decided after the regex test, so `split(/=+/)` is a regex, which D-432 did not name. **Two rulings, Chris**: every `{` is statement context, since the lexer cannot tell a literal's brace from a block's, so only `(` and `[` suppress a newline for the `/` decision; and a division's leading newline is dropped, which adds a third case to §14, since §8's `(a` ⏎ `/ b)` row lexed as division and then failed in the parser. D-432's wording about §14 corrected. Count unchanged at 120. |
 | D-440 | November 2026 | Standard library — `regex`; Compiler — type checker, emission; Runtime — named types; Error taxonomy; Deferred Work Register | **Implements the rest of D-432: the `regex` module is built** and a regex literal runs. **R-30 closed.** `Regex` and `Match` are hidden-field structs on the `guid`/`date` model (Chris); a literal is one constant `Regex` per site, compiled once per run through a weak cache keyed by the struct. **E0602 minted**: literal bodies, string-literal pattern arguments and `@pattern`'s argument (Chris), decoded before validation, caret at .NET's offset where it maps. **The function form of `replace` is deferred to a third pull request** (Chris; **R-44 opens**). A bad `timeout` is `ParseError` E5702, for `process.run` too (Chris). Found on the way: a named type's property was assignable and crashed the VM, now E0204 (Chris); a native's or an index's array element lost its named type, now kept. Count 120 → 121. |
+| D-441 | November 2026 | Foundational principle; Strategy — agentic development | **People and agents are two audiences of equal standing, by owner decision; refines D-434's "second audience".** Equal for the toolchain, the standard library, the documentation and the build and release. **People keep the tiebreak on how the language reads**: agents shape what the language can do and how it explains itself, people shape how it reads, because an agent's script is worth trusting only if a person can check it. D-434's syntax policy stands and cannot be outvoted by benchmark evidence. Purpose, tagline and the core-module rule unchanged. No source change. |
+| D-442 | November 2026 | Platform support; v1 non-functional requirements; Documentation; Deferred Work Register | **Windows and Linux are equal platforms, by owner decision; ADR-0007's Windows-first design is superseded.** CI already builds and tests both and releases ship both; this makes it a promise. Same language, stdlib, diagnostics and exit codes; platform differences documented per function. Examples use relative paths valid on both, or show both forms. Windows is not demoted; macOS is not claimed. Files R-45 (release artifacts executed before publishing) and R-46 (the corpus brought into line); opens OQ-024 (`process.runShell`'s shell) and OQ-025 (Linux install). No source change. |
 
 ---
 
@@ -17212,6 +17214,126 @@ and D-356 (the value representation and named types), D-351 (array descriptors),
 
 ---
 
+### D-441 — Two audiences of equal standing, people and agents; people keep the tiebreak on how the language reads (November 2026)
+
+Area: Foundational principle; Strategy — agentic development
+Supersedes: none
+Superseded by: none
+Refines: D-434
+
+**Decision-only, with spec edits. No source change.** Error-code count unchanged.
+**Owner decision**: Chris, 20 November. Verified at `596816f`.
+
+**What changes.** D-434 called agents a second audience for the toolchain. That
+undersold where scripting work is going and left the standard library and the
+documentation written for one reader. This entry puts the two audiences on equal
+footing and says where the equality stops.
+
+**Decision 1 — equal standing.** A person and an agent are both first-class users of
+Grob. That holds for four things: the toolchain (D-434's surface), the standard
+library, the documentation and the build and release. A module's surface is judged
+against what both do with it. A reference page is written to be used by both: complete
+signatures, no dependence on another page to be understood and examples that pass the
+public-samples gate (D-430). Neither audience is served as an afterthought to the other.
+
+**Decision 2 — people keep the tiebreak on how the language reads.** Where the two
+audiences pull apart on syntax or readability, the person reading the script decides.
+The rule: agents shape what the language can do and how it explains itself; people
+shape how it reads. The reason is the claim Grob makes. A script an agent wrote is
+worth trusting only if a person can read it and check it, and that is what separates
+Grob from the Python and shell an agent writes today.
+
+**Decision 3 — D-434's syntax policy stands, strengthened.** Benchmark evidence can
+argue for a syntax change. It cannot outvote Decision 2. A change that would make
+Grob harder for a person to read is not made for a gain in first-attempt success.
+
+**Not changed.** Grob's purpose: a statically typed scripting language, scripting
+first. The tagline in `README.md`, the log header and `docs/wiki/Home.md`, which names
+the hobbyist and the developer; whether it should name the agent is left to the owner.
+The core-module rule in `grob-stdlib-reference.md`. Which gaps in the standard library
+this principle exposes, and which sprint owns each, is a separate decision.
+
+**Rejected.** *Agents as the primary audience* — it would trade the readability that
+makes an agent's output checkable. *Leaving D-434's wording* — "second" reads as
+lesser, and work scoped under it would keep treating agent needs as additions.
+
+**Spec edits in this commit.** `grob-agentic-strategy.md`: the purpose statement and
+§11. `CLAUDE.md`: the opening paragraph's audience.
+
+Cites D-434 (the strategy and its syntax policy), D-430 (the public-samples gate) and
+D-442.
+
+---
+
+### D-442 — Windows and Linux are equal platforms; ADR-0007's Windows-first design is superseded (November 2026)
+
+Area: Platform support; v1 non-functional requirements; Documentation; Deferred Work Register
+Supersedes: none
+Superseded by: none
+
+**Decision-only, with spec edits. No source change.** Error-code count unchanged.
+**Owner decision**: Chris, 20 November — Grob is to "run equally well on Linux and
+Windows".
+
+**Verified at `596816f`.** No `D-###` records the Windows-first position; it lives in
+`docs/wiki/ADR/0007-windows-first-design.md` and in the Windows-native requirement of
+`grob-v1-requirements.md`. `ci.yml` builds and tests every pull request on
+`windows-latest` and `ubuntu-latest`. `release.yml` publishes `win-x64` and `linux-x64`
+as self-contained, single-file, trimmed builds, and runs neither before packaging it.
+One test in `tests/` is conditional on the operating system. Linux is therefore built,
+tested and shipped already, and promised nowhere.
+
+**Decision 1 — two equal platforms.** Grob supports Windows and Linux equally: the same
+language, the same standard library, the same diagnostics and exit codes. Every release
+ships both. Where behaviour must differ by platform — the path separator, file creation
+time, case sensitivity — the function's documentation says so.
+
+**Decision 2 — the evidence.** Every test runs on both platforms in CI, as it does
+today. A test that cannot run on one platform states why in the test. Each release
+artifact is executed on its own platform before it is published (R-45). The startup
+requirement applies to both.
+
+**Decision 3 — documentation and examples.** An example whose subject is not a path
+uses a relative path that is valid on both platforms. An example whose subject is an
+absolute path shows both forms. ADR-0007 rejected platform-neutral documentation as
+helping nobody concretely; that is reversed, because a person or an agent on either
+platform must be able to run an example as written.
+
+**Decision 4 — Windows is not demoted.** ADR-0007's concern stands: Windows is never an
+afterthought. Backtick raw strings remain the idiom for Windows paths (D-285). Features
+that exist only on Windows stay and say so: the Windows Terminal profile (D-056) and
+`winget` delivery.
+
+**Decision 5 — macOS is not claimed.** There is no CI leg and no artifact. It is
+neither promised nor excluded, and a claim needs both first.
+
+**Why.** D-441 makes agents first-class users, and agent sessions run largely in Linux
+containers and CI runners. That is a judgement from published session studies, not a
+measurement of Grob's own users. The position being left — built and shipped but
+unpromised — was the weakest available: people will run the Linux artifact whether or
+not anything is promised about it.
+
+**Not decided.** Which shell `process.runShell` invokes on each platform is unspecified
+anywhere in the corpus: **OQ-024**. Where Grob installs on Linux and how it is delivered:
+**OQ-025**. Bringing the existing documents into line is **R-46**. The canonical
+benchmark runner stays `windows-latest`; nothing here changes the benchmark policy.
+
+**Rejected.** *Linux as best effort* — the position described above. *Linux first* — it
+would abandon the audience Grob was built for. *Three platforms now* — a promise with
+no test behind it.
+
+**Spec edits in this commit.** `grob-v1-requirements.md`: the Windows-native requirement
+is replaced. `docs/wiki/ADR/0007-windows-first-design.md`: status, and a section on what
+changed. `grob-linkedin-series-bible.md`: the target-platform row.
+`grob-open-questions.md`: OQ-024 and OQ-025 opened, R-45 and R-46 filed. `CLAUDE.md`:
+the opening paragraph.
+
+Cites D-441 (the audience this serves), D-285 (raw strings for Windows paths), D-056
+(the Windows Terminal profile), D-075 (`process.runShell`), D-430 (the samples gate)
+and D-420 (the register).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -17441,7 +17563,12 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-440 added, with source, spec, wiki and register changes. **The `regex` module_
+_November 2026 — D-441 and D-442 added, with spec edits; no source change. **People and agents_
+_are two audiences of equal standing** (D-441, refining D-434), and people keep the tiebreak on_
+_how the language reads. **Windows and Linux are equal platforms** (D-442): ADR-0007's_
+_Windows-first design is superseded, examples run as written on both and macOS is not claimed._
+_R-45 and R-46 filed; OQ-024 and OQ-025 opened. Count unchanged._
+_Previous: November 2026 — D-440 added, with source, spec, wiki and register changes. **The `regex` module_
 _is built** (D-432): `Regex` and `Match` as hidden-field structs, a literal as one constant per_
 _site, E0602 minted and R-30 closed. Chris ruled the representation, the deferral of the_
 _function-form `replace` (R-44 opened), a bad `timeout` as `ParseError`, `@pattern` validated now_

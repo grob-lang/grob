@@ -85,9 +85,14 @@ fails reveals a gap in the implementation.
   number, column number, what went wrong, and a suggested fix when the
   fix is obvious. No stack traces exposed to end users unless `--verbose`
   is set.
-- **Windows-native:** Grob runs on Windows 11 without WSL. All paths use
-  Windows conventions. All examples use Windows paths. The primary target
-  user is a Windows developer or sysadmin.
+- **Windows and Linux, equally** (D-442, superseding ADR-0007): Grob runs on
+  Windows 11 without WSL and on Linux, with the same language, standard
+  library, diagnostics and exit codes. Every release ships both. Where
+  behaviour must differ by platform the function's documentation says so.
+  Examples use relative paths valid on both, or show both forms where an
+  absolute path is the subject. The users are developers and sysadmins on
+  either platform and the agents that script on their behalf (D-441). macOS
+  is not claimed.
 - **Zero external dependencies at runtime:** `grob.exe` is a
   self-contained .NET deployment. No separate .NET install required by the
   end user.

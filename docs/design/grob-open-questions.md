@@ -581,6 +581,54 @@ host call and resume; and which assemblies become supported public API as a resu
 
 ---
 
+### OQ-024 — The Shell `process.runShell` Invokes
+
+**Question:** Which shell runs a `process.runShell` command on each platform, and
+what does a script author have to know about the difference?
+
+**Raised by:** D-442. **Must resolve before:** the Sprint 9C `process` increment
+prompt, because the answer is behaviour the increment builds.
+
+**Context.** D-075 names `runShell` as the form where shell interpretation is wanted
+and says nothing about which shell. On Windows the candidates are `cmd.exe`, Windows
+PowerShell and `pwsh`; on Linux, `/bin/sh` and `bash`. The same command string means
+different things under each, so a `runShell` script is not portable by default.
+
+**To decide:** the default on each platform; whether a script can name the shell;
+whether the `ProcessResult` or the documentation states which shell ran; and what the
+documentation says about portability. `process.run` with an argument array is already
+portable, and D-075 makes it the primary form.
+
+**Tentative direction:** `cmd.exe /c` on Windows and `/bin/sh -c` on Linux, the
+lowest common denominator on each, with an optional named parameter to choose another.
+Documentation states plainly that `runShell` strings are platform-specific.
+
+---
+
+### OQ-025 — Installing Grob on Linux
+
+**Question:** Where does Grob live on Linux, and how does it get there?
+
+**Raised by:** D-442. **Must resolve before:** Sprint 11, which builds `grob install`
+and the package search path, and before the first public release.
+
+**Context.** `grob-install-strategy.md` is written for Windows throughout:
+`%USERPROFILE%\.grob\`, `%ProgramFiles%\Grob\packages\`, `grob.exe` and `winget`.
+`release.yml` already produces `grob-linux-x64.tar.gz`, with no stated way to install
+it.
+
+**To decide:** the user root — `~/.grob/` to mirror Windows, or the XDG base
+directories; the system scope and whether one exists; the three-level package search
+path's Linux form; delivery — a tarball and an install script, a package manager or a
+container image; and whether `linux-arm64` is published, given how many development
+machines and runners are ARM.
+
+**Tentative direction:** `~/.grob/` for symmetry with the Windows layout, a tarball
+with an install script first and a container image soon after, since a container is
+where an agent session is most likely to meet Grob.
+
+---
+
 ## Deferred Work Register
 
 **Authority: D-420.** This is the single tracking home for work that is
@@ -641,6 +689,8 @@ authorised, and every item cites the decision that raised it.
 | R-42 | **A non-unary `sort` key selector reaches the VM.** `xs.sort((a, b) => a.size > b.size)` passes the checker and fails at run time with "internal error: opcode GetProperty 'size' on receiver of kind Int not yet implemented". `sort` takes a key selector (`grob-type-registry.md`), and under D-353's contract an internal error on user input is P0. Found by the corpus sweep's eye-read of the wiki's `fragment` blocks (`Functions.md`, since corrected). | D-438 | `unowned` — a candidate for the Sprint 9/10 hardening interlude (D-353) | A lambda of the wrong arity passed as a key selector is a compile-time diagnostic under an existing code (E0003 or E0004, by `allocating-an-error-code`'s fold-or-register judgement), and a test pins it |
 | R-43 | **Diagnostics render generic types bare.** E0001 and E0004 name a `map<string, int>` as `'map'` and a `string[]` as `'array'`, so a message can read `'map'` to `'map'`. Cosmetic and pre-existing, the generic-type counterpart of R-23. Seen in passing by the corpus sweep's F5-1 probes. | D-438 | `unowned` | A diagnostic naming a generic type renders its type arguments (`map<string, int>`, `string[]`), with a test for each of E0001 and E0004 |
 | R-44 | **The function form of `replace` and `replaceAll` is unbuilt.** D-432 Decision 6 specified `replace(input, fn: Match → string)` and its `replaceAll` twin beside the string forms. The catalogue cannot express them: a signature has no function shape (D-426 Decision 1), no native or method has an overload and a lambda's parameters are typed `Unknown`. D-440 shipped the string forms and left the spec as D-432 wrote it. | D-440 | The `regex` increment's third pull request | `r.replace(s, m => m.value.upper())` and `r.replaceAll(...)` type-check with the lambda's parameter typed `Match` and run, with tests for each; a decision amends D-426 Decision 1 for the function shape and the overload; `grob-stdlib-reference.md` loses its "not built yet" note |
+| R-45 | **Release artifacts are never executed before they are published.** `release.yml` publishes `win-x64` and `linux-x64` as self-contained, single-file, trimmed builds and packages each without running it. Trimming removes code the build cannot see being used, so a tree that passes every test can still ship an executable that fails to start, on either platform. | D-442 | `unowned` — before the first public release | `release.yml` runs each published artifact on its own platform before packaging it — at least `grob version` and a script that prints, reads a file and runs a process — and the release fails if either artifact fails |
+| R-46 | **The corpus still describes a Windows-only language.** D-442 makes Windows and Linux equal, and changed only the requirement, ADR-0007 and the strategy. Every example in `grob-stdlib-reference.md`, `grob-language-fundamentals.md`, `grob-sample-scripts.md` and `docs/wiki/` that carries an absolute Windows path, `grob-install-strategy.md` throughout, the Windows-only environment matrix in `grob-adversarial-testing-strategy.md` and the `grob.exe` naming in `grob-v1-requirements.md` predate it. | D-442 | `unowned` — before the documentation site is built | Every example follows D-442 Decision 3 and still passes the public-samples gate; `grob-install-strategy.md` covers Linux as OQ-025's resolution fixes; the adversarial environment matrix names a Linux distribution; each standard-library function whose behaviour differs by platform says so in `grob-stdlib-reference.md`; the executable is named without `.exe` wherever the text is not Windows-specific |
 
 ### Closed items
 
@@ -1058,7 +1108,11 @@ _table of `grob-decisions-log.md`. The full rationale is preserved here._
 
 ---
 
-_Document updated November 2026 — D-440. **R-30 closed**: a regex literal compiles to a constant_
+_Document updated November 2026 — D-442. **OQ-024 and OQ-025 opened**: the shell_
+_`process.runShell` invokes on each platform, and how Grob installs on Linux. **R-45 and R-46_
+_added**: release artifacts executed before they are published, and the corpus brought into_
+_line with two equal platforms._
+_Previous: November 2026 — D-440. **R-30 closed**: a regex literal compiles to a constant_
 _`Regex` and runs, and the five samples it blocked pass. **R-44 added**: the function form of_
 _`replace` and `replaceAll`, deferred to the `regex` increment's third pull request._
 _Previous: November 2026 — D-438. **R-05 closed**: the corpus sweep read every file in_

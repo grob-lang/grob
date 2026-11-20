@@ -3,12 +3,15 @@
 > **Purpose:** This document defines how Grob becomes a first-class citizen for
 > agentic development — what an AI harness needs from a language toolchain to treat
 > that language as native, what Grob builds to supply it and in what order. Grob's
-> purpose does not change: it is a statically typed scripting language for Windows
-> developers and sysadmins. What changes is that the toolchain now has two readers.
+> purpose does not change: it is a statically typed scripting language for
+> developers and sysadmins. What changes is that it has two audiences of equal
+> standing, people and agents (D-441), on two equal platforms, Windows and Linux
+> (D-442).
 >
 > **Authority:** D-434 adopts this strategy. D-435 sets the security posture it
 > depends on, superseding D-072. D-436 makes the capability seam a gate on Sprint
-> 9C. The decisions log remains the authority on conflict.
+> 9C. D-441 puts the two audiences on equal footing and gives people the tiebreak
+> on how the language reads. The decisions log remains the authority on conflict.
 >
 > **Status:** Planning. One item is time-critical — the seam gate on Sprint 9C
 > (§7). The v1 deliverables land in Sprint 12. The rest is post-v1 and waits on
@@ -277,6 +280,11 @@ host that needs isolation runs Grob inside a container or an OS sandbox as well.
 Grob's syntax is not changed to suit agents on the strength of an argument. It is
 changed on the strength of evidence, and only after a cheaper remedy has failed.
 
+One rule sits above the four below (D-441): agents shape what the language can do
+and how it explains itself; people shape how it reads. An agent's script is worth
+trusting only if a person can read it and check it, so evidence from the benchmark
+can argue for a change and cannot outvote a person's ability to read the result.
+
 1. **No change before the benchmark.** Until §8 exists there is no evidence of
    where agents fail, only expectation.
 2. **A diagnostic before a grammar change.** If agents write `var`, the first
@@ -347,3 +355,4 @@ Read on 15 November 2026. Web sources are context, not authority, and will age.
 -----
 
 *Created November 2026 — D-434, D-435, D-436.*
+*Updated November 2026 — D-441, D-442: the purpose statement and §11.*

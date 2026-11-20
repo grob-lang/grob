@@ -275,7 +275,7 @@ Quick reference — use these details consistently across all posts.
 |Language            |Statically typed scripting language                                    |
 |Implementation      |C# .NET, bytecode VM                                                   |
 |Syntax              |C-style, no semicolons, type inference                                 |
-|Target platform     |Windows-native                                                         |
+|Target platform     |Windows and Linux, equally (D-442; Windows-native until November 2026) |
 |Mascot              |Sparky — raccoon, blue hoodie, utility belt, wrench. Not used in posts.|
 |Logo mark           |`G>` — forward chevron on G                                            |
 |Website             |grob-lang.dev                                                          |
