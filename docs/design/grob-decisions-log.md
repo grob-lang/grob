@@ -17444,8 +17444,9 @@ source are v1; Sprint 10 moves behind the work that makes this possible.
 
 **Verified at `046512d`.** `grob run` takes a file path and nothing else
 (`CommandLineRunner`): no source from stdin and no inline source, and neither is
-planned anywhere in the corpus. The CLI has `run`, `repl` and `version`. `fs`, `process`, `json`
-and `csv` are unbuilt; `regex`, `io`, `env`, `path`, `date` and `strings` are built.
+planned anywhere in the corpus. The CLI has `run` and `repl`; `--help` prints the usage
+and the version. `fs`, `process`, `json` and `csv` are unbuilt; `regex`, `io`, `env`,
+`path`, `date` and `strings` are built.
 `release.yml` publishes single-file trimmed builds without ReadyToRun or Native AOT, and
 nothing measures the start-up requirement in `grob-v1-requirements.md` §1 against them.
 
