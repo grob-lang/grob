@@ -39,6 +39,24 @@ Chris.**
   the Write tool to `.grob-session/`, which is gitignored scratch, and run from
   there — never a heredoc, never inline `sed` with regex escapes. Files are
   edited with the Edit tool. Never run a bare `cat` with no file argument.
+- **Navigate by symbol, read with Read.** For a symbol question in C# — a
+  definition, its references, implementers, call sites or the impact of a
+  rename — use the LSP tool when the session has it. Where it does not (cloud
+  and planning sessions), Grep for the declaration and the bare name instead.
+  The hits are neither exact nor complete: they include comments, strings and
+  unrelated members of the same name, and miss uses that never spell the name,
+  such as a `using` alias or a `var` binding. Report a text-based impact search
+  as unconfirmed until LSP has checked it. A name held in a string escapes LSP
+  and the compiler alike: the reflection pins in
+  `SideChannelHelperExhaustivenessTests` call private `TypeChecker` helpers by
+  string, so a rename that misses them still builds and fails only under
+  `dotnet test`. Confirm a rename with a build and a full test run, not the
+  build alone. Otherwise Grep is for text: strings, comments, docs and
+  error-code literals.
+  Read a file or a range of lines with the Read tool and its offset and limit,
+  never `sed`, `awk`, `head` or `tail` on a file. `sed` and `awk` are denied in
+  `.claude/settings.json`; trimming command output with `head` or `tail` is
+  still fine.
 - **Verify before relying on a citation.** When a prompt cites a `D-###` or a
   `§`, grep the corpus and confirm it says what the prompt assumes. If it has
   been superseded, renumbered or drifted, surface it — do not invent a
