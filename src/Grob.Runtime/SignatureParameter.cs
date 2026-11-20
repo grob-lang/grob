@@ -31,6 +31,10 @@ public sealed record SignatureParameter {
         if (type is SignatureType.Concrete { Type: GrobType.Nil }) {
             throw new ArgumentException("A parameter cannot have nil as its type.", nameof(type));
         }
+        if (isVariadic && type is SignatureType.FunctionShape) {
+            // D-443: a lambda is typed by the one parameter at its position.
+            throw new ArgumentException("A function-shaped parameter cannot be variadic.", nameof(isVariadic));
+        }
         if (defaultValue is GrobValue value) {
             RequireDefaultFits(type, isVariadic, value);
         }
@@ -61,6 +65,9 @@ public sealed record SignatureParameter {
     private static void RequireDefaultFits(SignatureType type, bool isVariadic, GrobValue defaultValue) {
         if (isVariadic) {
             throw new ArgumentException("A variadic parameter cannot have a default.", nameof(defaultValue));
+        }
+        if (type is SignatureType.FunctionShape) {
+            throw new ArgumentException("A function-shaped parameter cannot have a default.", nameof(defaultValue));
         }
         if (type is not SignatureType.Concrete concrete) {
             throw new ArgumentException(

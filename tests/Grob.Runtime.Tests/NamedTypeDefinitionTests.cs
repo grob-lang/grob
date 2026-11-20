@@ -163,4 +163,117 @@ public sealed class NamedTypeDefinitionTests {
         Assert.Equal("methods", ex.ParamName);
         Assert.Contains("'year'", ex.Message);
     }
+
+    // ----- Overloads: one binder, several signatures (D-443) -----
+
+    private static readonly SignatureType.FunctionShape Callback = new([Int], TestPlugins.String);
+
+    private static FunctionSignature Replace(SignatureType second, string secondName = "replacement") =>
+        new("replace", [new SignatureParameter("input", TestPlugins.String), new SignatureParameter(secondName, second)],
+            TestPlugins.String);
+
+    private static NamedTypeMethodBinding Overloaded(params FunctionSignature[] overloads) =>
+        new(Replace(TestPlugins.String), s => Native("replace", 2)) { Overloads = overloads };
+
+    [Fact]
+    public void Binding_NoOverloads_SignaturesIsThePrimaryAlone() {
+        Assert.Empty(AddDays.Overloads);
+        Assert.Same(AddDays.Signature, Assert.Single(AddDays.Signatures));
+    }
+
+    [Fact]
+    public void Binding_WithOverload_SignaturesListsPrimaryFirst() {
+        FunctionSignature fnForm = Replace(Callback, "fn");
+        NamedTypeMethodBinding binding = Overloaded(fnForm);
+
+        Assert.Equal(2, binding.Signatures.Count);
+        Assert.Same(binding.Signature, binding.Signatures[0]);
+        Assert.Same(fnForm, binding.Signatures[1]);
+    }
+
+    [Fact]
+    public void Binding_OverloadsCopied_AreNotAliased() {
+        var overloads = new List<FunctionSignature> { Replace(Callback, "fn") };
+        var binding = new NamedTypeMethodBinding(Replace(TestPlugins.String), s => Native("replace", 2)) { Overloads = overloads };
+
+        overloads.Clear();
+
+        Assert.Single(binding.Overloads);
+    }
+
+    [Fact]
+    public void Binding_NullOverloads_Throws() =>
+        Assert.Throws<ArgumentNullException>(() =>
+            new NamedTypeMethodBinding(Replace(TestPlugins.String), s => Native("replace", 2)) { Overloads = null! });
+
+    [Fact]
+    public void Constructor_OverloadDistinguishedByFunction_IsPermitted() {
+        NamedTypeMethodBinding binding = Overloaded(Replace(Callback, "fn"));
+
+        var definition = new NamedTypeDefinition("Regex", [], [binding], Render);
+
+        Assert.Same(binding, Assert.Single(definition.Methods));
+    }
+
+    [Fact]
+    public void Constructor_NullOverload_Throws() {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            new NamedTypeDefinition("Regex", [], [Overloaded((FunctionSignature)null!)], Render));
+
+        Assert.Equal("methods", ex.ParamName);
+        Assert.Contains("'replace'", ex.Message);
+    }
+
+    [Fact]
+    public void Constructor_OverloadWithAnotherName_Throws() {
+        var other = new FunctionSignature("swap",
+            [new SignatureParameter("input", TestPlugins.String), new SignatureParameter("fn", Callback)], TestPlugins.String);
+
+        var ex = Assert.Throws<ArgumentException>(() =>
+            new NamedTypeDefinition("Regex", [], [Overloaded(other)], Render));
+
+        Assert.Equal("methods", ex.ParamName);
+        Assert.Contains("'swap'", ex.Message);
+        Assert.Contains("'replace'", ex.Message);
+    }
+
+    [Fact]
+    public void Constructor_OverloadsDifferingOnlyInConcreteType_Throws() {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            new NamedTypeDefinition("Regex", [], [Overloaded(Replace(Int, "count"))], Render));
+
+        Assert.Equal("methods", ex.ParamName);
+        Assert.Contains("ambiguous", ex.Message);
+    }
+
+    [Fact]
+    public void Constructor_OverloadsDifferingOnlyInArity_Throws() {
+        var shorter = new FunctionSignature("replace", [new SignatureParameter("input", TestPlugins.String)], TestPlugins.String);
+
+        var ex = Assert.Throws<ArgumentException>(() =>
+            new NamedTypeDefinition("Regex", [], [Overloaded(shorter)], Render));
+
+        Assert.Contains("ambiguous", ex.Message);
+    }
+
+    [Fact]
+    public void Constructor_FunctionAtAPositionNotBothRequire_Throws() {
+        var defaulted = new FunctionSignature("replace",
+            [new SignatureParameter("input", TestPlugins.String),
+             new SignatureParameter("replacement", TestPlugins.String, defaultValue: GrobValue.FromString(""))],
+            TestPlugins.String);
+        var binding = new NamedTypeMethodBinding(defaulted, s => Native("replace", 2)) { Overloads = [Replace(Callback, "fn")] };
+
+        var ex = Assert.Throws<ArgumentException>(() => new NamedTypeDefinition("Regex", [], [binding], Render));
+
+        Assert.Contains("ambiguous", ex.Message);
+    }
+
+    [Fact]
+    public void Constructor_ThirdOverloadAmbiguousWithSecond_Throws() {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            new NamedTypeDefinition("Regex", [], [Overloaded(Replace(Callback, "fn"), Replace(Callback, "other"))], Render));
+
+        Assert.Contains("ambiguous", ex.Message);
+    }
 }

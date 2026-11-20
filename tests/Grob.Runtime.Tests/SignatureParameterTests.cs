@@ -134,6 +134,29 @@ public sealed class SignatureParameterTests {
         Assert.Contains("type parameter", ex.Message);
     }
 
+    [Fact]
+    public void Constructor_FunctionShapedWithDefault_Throws() {
+        var shape = new SignatureType.FunctionShape([String], String);
+
+        var ex = Assert.Throws<ArgumentException>(
+            () => new SignatureParameter("fn", shape, defaultValue: GrobValue.Nil));
+
+        Assert.Equal("defaultValue", ex.ParamName);
+        Assert.Contains("function", ex.Message);
+    }
+
+    [Fact]
+    public void Constructor_VariadicFunctionShaped_Throws() {
+        // D-443: contextual lambda typing maps an argument to one parameter position, so a
+        // variadic tail of shapes would type only its first lambda.
+        var shape = new SignatureType.FunctionShape([String], String);
+
+        var ex = Assert.Throws<ArgumentException>(() => new SignatureParameter("fns", shape, isVariadic: true));
+
+        Assert.Equal("isVariadic", ex.ParamName);
+        Assert.Equal("A function-shaped parameter cannot be variadic. (Parameter 'isVariadic')", ex.Message);
+    }
+
     [Theory]
     [InlineData(GrobType.Int, GrobValueKind.String)]
     [InlineData(GrobType.Int, GrobValueKind.Float)]

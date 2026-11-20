@@ -287,4 +287,24 @@ public sealed class FunctionSignatureTests {
         Assert.Equal("typeParameters", ex.ParamName);
         Assert.Contains("'T'", ex.Message);
     }
+
+    // ----- Function shapes (D-443) -----
+
+    private static readonly SignatureType.FunctionShape Callback = new([Int], String);
+
+    [Fact]
+    public void Constructor_FunctionShapedParameter_IsPermitted() {
+        var signature = new FunctionSignature("replace", [Required("input"), new SignatureParameter("fn", Callback)], String);
+
+        Assert.Same(Callback, signature.Parameters[1].Type);
+        Assert.Equal(2, signature.RequiredArgumentCount);
+    }
+
+    [Fact]
+    public void Constructor_FunctionShapedReturn_Throws() {
+        var ex = Assert.Throws<ArgumentException>(() => new FunctionSignature("make", [], Callback));
+
+        Assert.Equal("returnType", ex.ParamName);
+        Assert.Contains("parameter", ex.Message);
+    }
 }

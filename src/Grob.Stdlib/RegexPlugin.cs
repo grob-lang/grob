@@ -21,8 +21,9 @@ namespace Grob.Stdlib;
 /// (E5903), naming the operation and the limit. A pattern, flag string or timeout that is
 /// invalid at run time throws <c>ParseError</c> (E5702). Neither message quotes the
 /// pattern (D-077).</para>
-/// <para>The function form of <c>replace</c> and <c>replaceAll</c> is not registered: a
-/// signature has no function shape and a method no overloads yet (R-44).</para>
+/// <para>The <c>Regex</c> methods <c>replace</c> and <c>replaceAll</c> take a replacement
+/// string or a function from <c>Match</c> to string, as one native with an overload
+/// (D-443). The one-shot functions take a string only.</para>
 /// </remarks>
 public sealed class RegexPlugin : IGrobPlugin {
     private const string ParseErrorLeaf = "ParseError";
@@ -36,6 +37,7 @@ public sealed class RegexPlugin : IGrobPlugin {
     private static readonly SignatureType.Concrete NullableMatchType =
         SignatureType.Named(GrobType.NullableStruct, RegexLayout.MatchTypeName);
     private static readonly SignatureType.Concrete MatchArrayType = SignatureType.ArrayOf(MatchType);
+    private static readonly SignatureType.FunctionShape ReplacementFunctionType = new([MatchType], StringType);
 
     private readonly RegexCache _cache = new();
 
@@ -155,10 +157,45 @@ public sealed class RegexPlugin : IGrobPlugin {
             receiver => new NativeFunction($"Regex.{name}", 1, (args, _) =>
                 Bounded($"Regex.{name}", TimeoutOf(receiver), () => body(_cache.Get(receiver), args[0].AsString()))));
 
-    private NamedTypeMethodBinding ReplaceMethod(string name, int count) =>
-        new(Signature(name, StringType, Param(InputName, StringType), Param(ReplacementName, StringType)),
-            receiver => new NativeFunction($"Regex.{name}", 2, (args, _) => Bounded($"Regex.{name}", TimeoutOf(receiver), () =>
-                GrobValue.FromString(_cache.Get(receiver).Replace(args[0].AsString(), args[1].AsString(), count)))));
+    /// <summary>
+    /// <c>replace</c> or <c>replaceAll</c>: the string form, with the function form as its
+    /// overload (D-443). One native serves both and tells them apart by the second
+    /// argument's kind; the checker has already proved it is one or the other.
+    /// </summary>
+    private NamedTypeMethodBinding ReplaceMethod(string name, int count) {
+        string operation = $"Regex.{name}";
+        return new NamedTypeMethodBinding(
+            Signature(name, StringType, Param(InputName, StringType), Param(ReplacementName, StringType)),
+            receiver => new NativeFunction(operation, 2, (args, invoker) => Bounded(operation, TimeoutOf(receiver), () => {
+                Regex regex = _cache.Get(receiver);
+                string input = args[0].AsString();
+                if (args[1].Kind != GrobValueKind.Function) {
+                    return GrobValue.FromString(regex.Replace(input, args[1].AsString(), count));
+                }
+                GrobValue fn = args[1];
+                return ReplaceWith(operation, regex, input, count, match => invoker.Invoke(fn, [match]));
+            }))) {
+            Overloads = [Signature(name, StringType, Param(InputName, StringType), Param("fn", ReplacementFunctionType))],
+        };
+    }
+
+    /// <summary>
+    /// Replaces up to <paramref name="count"/> matches (<c>-1</c> for all) with what
+    /// <paramref name="evaluate"/> returns for each <c>Match</c> (D-432 Decision 6). A
+    /// result that is not a string — reachable only through a function whose return the
+    /// checker could not type — is <c>RuntimeError</c> (E5903), naming
+    /// <paramref name="operation"/>. An exception from <paramref name="evaluate"/>, a Grob
+    /// <c>throw</c> included, propagates unchanged.
+    /// </summary>
+    internal static GrobValue ReplaceWith(string operation, Regex regex, string input, int count, Func<GrobValue, GrobValue> evaluate) =>
+        GrobValue.FromString(regex.Replace(input, match => {
+            GrobValue replacement = evaluate(GrobValue.FromStruct(ToMatch(regex, match)));
+            if (replacement.Kind != GrobValueKind.String) {
+                throw new NativeFaultException(RuntimeErrorLeaf, ErrorCatalog.E5903.Code,
+                    $"{operation}: the replacement function must return a string, not {replacement.Kind.ToString().ToLowerInvariant()}.");
+            }
+            return replacement.AsString();
+        }, count));
 
     private static long TimeoutOf(GrobStruct regex) => regex.GetField(RegexLayout.TimeoutFieldName).AsInt();
 

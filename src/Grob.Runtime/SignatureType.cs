@@ -5,10 +5,11 @@ namespace Grob.Runtime;
 /// <summary>
 /// The closed union a <see cref="FunctionSignature"/> uses for a parameter or return
 /// type (D-419 Decision 2, D-426 Decision 4): a <see cref="Concrete"/> Grob type, a
-/// <see cref="TypeParameterReference"/> to one of the signature's own type parameters
-/// or a <see cref="TypeParameterArray"/> of such a reference. The hierarchy is sealed
-/// (private base constructor) so a consumer can switch over exactly three shapes, and
-/// each shape validates its own fields so an invalid combination cannot exist.
+/// <see cref="TypeParameterReference"/> to one of the signature's own type parameters,
+/// a <see cref="TypeParameterArray"/> of such a reference or a <see cref="FunctionShape"/>
+/// for a function argument (D-443). The hierarchy is sealed (private base constructor)
+/// so a consumer can switch over exactly four shapes, and each shape validates its own
+/// fields so an invalid combination cannot exist.
 /// </summary>
 /// <remarks>
 /// A signature is data (D-419 Decision 1): nothing here references an implementation,
@@ -35,8 +36,8 @@ public abstract record SignatureType {
         /// <summary>
         /// Creates a concrete type. Throws <see cref="ArgumentException"/> when
         /// <paramref name="type"/> is unresolved (<see cref="GrobType.Unknown"/>,
-        /// <see cref="GrobType.Error"/>), undefined or a function type — the union has
-        /// no function shape by design (D-426 Decision 1) — or when
+        /// <see cref="GrobType.Error"/>), undefined or a function type — a function is
+        /// described by <see cref="FunctionShape"/>, not by a bare tag (D-443) — or when
         /// <paramref name="namedTypeName"/> or <paramref name="elementType"/> is given
         /// for a tag that cannot carry it.
         /// </summary>
@@ -83,7 +84,7 @@ public abstract record SignatureType {
             }
             if (type is GrobType.Function or GrobType.NullableFunction) {
                 throw new ArgumentException(
-                    "A signature type cannot be a function type; the signature union has no function shape (D-426 Decision 1).",
+                    "A concrete signature type cannot be a function type; describe a function argument with FunctionShape (D-443).",
                     nameof(type));
             }
             if (!Enum.IsDefined(type)) {
@@ -122,6 +123,57 @@ public abstract record SignatureType {
 
         /// <summary>The element type parameter's name.</summary>
         public string Name { get; }
+    }
+
+    /// <summary>
+    /// The type of a function a native takes as an argument, as in
+    /// <c>replace(input: string, fn: (Match) =&gt; string)</c> (D-443, amending D-426
+    /// Decision 1). Its parameters and return are <see cref="Concrete"/> only, so a shape
+    /// never nests another function or a type parameter. <see cref="FunctionSignature"/>
+    /// permits it as a parameter type only, and the catalogue builder only on a named
+    /// type's method.
+    /// </summary>
+    public sealed record FunctionShape : SignatureType {
+        private readonly Concrete[] _parameters;
+
+        /// <summary>
+        /// Creates a shape. Throws <see cref="ArgumentNullException"/> for a null list or
+        /// return type and <see cref="ArgumentException"/> for a null or <c>nil</c>
+        /// parameter type. A <c>nil</c> return means the function's result is unused.
+        /// </summary>
+        public FunctionShape(IReadOnlyList<Concrete> parameters, Concrete returnType) {
+            ArgumentNullException.ThrowIfNull(parameters);
+            ArgumentNullException.ThrowIfNull(returnType);
+            Concrete[] copied = [.. parameters];
+            for (int i = 0; i < copied.Length; i++) {
+                if (copied[i] is null) {
+                    throw new ArgumentException($"Parameter {i} of a function shape is null.", nameof(parameters));
+                }
+                if (copied[i].Type == GrobType.Nil) {
+                    throw new ArgumentException($"Parameter {i} of a function shape cannot have nil as its type.", nameof(parameters));
+                }
+            }
+            _parameters = copied;
+            ReturnType = returnType;
+        }
+
+        /// <summary>The function's parameter types, in call order.</summary>
+        public IReadOnlyList<Concrete> Parameters => _parameters;
+
+        /// <summary>The function's return type.</summary>
+        public Concrete ReturnType { get; }
+
+        /// <summary>Structural equality: the same parameter types in order and the same return.</summary>
+        public bool Equals(FunctionShape? other) =>
+            other is not null && ReturnType.Equals(other.ReturnType) && _parameters.SequenceEqual(other._parameters);
+
+        /// <inheritdoc/>
+        public override int GetHashCode() {
+            var hash = new HashCode();
+            hash.Add(ReturnType);
+            foreach (Concrete parameter in _parameters) hash.Add(parameter);
+            return hash.ToHashCode();
+        }
     }
 
     /// <summary>A concrete type with no nominal name and no element type.</summary>

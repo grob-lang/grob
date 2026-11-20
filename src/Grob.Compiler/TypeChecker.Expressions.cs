@@ -596,9 +596,10 @@ public sealed partial class TypeChecker {
         // Visit argument values to satisfy §3.1.1 on any identifiers inside them —
         // unconditionally, even when the receiver itself already errored below: an
         // argument's own mistake is a separate root cause and must still surface.
+        IReadOnlyList<FunctionSignature>? namedMethodSignatures = NamedMethodSignatures(memberAccess, receiverType);
         var argTypes = new GrobType[node.Arguments.Count];
         for (int i = 0; i < node.Arguments.Count; i++)
-            argTypes[i] = Visit(node.Arguments[i].Value);
+            argTypes[i] = VisitMethodArgument(node.Arguments[i].Value, namedMethodSignatures, argTypes, i);
 
         // D-408: cascade suppression mirroring VisitMemberAccess's identical Error
         // arm — if the receiver already errored (an undefined identifier, a broken
@@ -628,6 +629,60 @@ public sealed partial class TypeChecker {
         }
 
         return DispatchMemberAccessCall(node, memberAccess, argTypes, receiverType);
+    }
+
+    /// <summary>
+    /// Every signature of the named-type method <paramref name="memberAccess"/> calls, or
+    /// <see langword="null"/> when the receiver is not a catalogue named type or the member
+    /// is not one of its methods (D-443). Read before the arguments are visited, so a lambda
+    /// argument can take the parameter types the method expects. A nullable receiver is
+    /// read through its underlying type, as an optional chain resolves it.
+    /// </summary>
+    private IReadOnlyList<FunctionSignature>? NamedMethodSignatures(MemberAccessExpr memberAccess, GrobType receiverType) {
+        GrobType underlying = GrobTypeHelpers.IsNullable(receiverType) ? GrobTypeHelpers.ElementType(receiverType) : receiverType;
+        if (underlying != GrobType.Struct ||
+                GetStructTypeName(memberAccess.Target) is not string typeName ||
+                !_catalogue.TryGetNamedType(typeName, out NamedTypeSurface? namedType) ||
+                !namedType.Methods.TryGetValue(memberAccess.Member, out NamedTypeMethodBinding? method)) {
+            return null;
+        }
+        return method.Signatures;
+    }
+
+    /// <summary>
+    /// Visits one method argument. A lambda at a position where exactly one of the
+    /// <paramref name="signatures"/> still viable expects a function takes that shape's
+    /// parameter types (D-443); every other argument is visited as before.
+    /// <paramref name="argTypes"/> holds the types of the arguments before
+    /// <paramref name="index"/>.
+    /// </summary>
+    private GrobType VisitMethodArgument(
+            Expression argument, IReadOnlyList<FunctionSignature>? signatures, GrobType[] argTypes, int index) {
+        if (Ungrouped(argument) is LambdaExpr && signatures is not null && ShapeAt(signatures, argTypes, index) is { } shape) {
+            _pendingLambdaShape = shape;
+        }
+        return Visit(argument);
+    }
+
+    /// <summary>The expression inside any enclosing brackets.</summary>
+    private static Expression Ungrouped(Expression expr) {
+        while (expr is GroupingExpr grouping) expr = grouping.Inner;
+        return expr;
+    }
+
+    /// <summary>
+    /// The function shape expected at <paramref name="index"/> by the signatures that admit
+    /// the call's argument count and fit, by function, the arguments before it, when exactly
+    /// one distinct shape is expected there; otherwise <see langword="null"/>.
+    /// </summary>
+    private static SignatureType.FunctionShape? ShapeAt(
+            IReadOnlyList<FunctionSignature> signatures, GrobType[] argTypes, int index) {
+        SignatureType.FunctionShape[] shapes = [.. signatures
+            .Where(s => FitsByFunction(s, argTypes, index))
+            .Select(s => s.Parameters[index].Type)
+            .OfType<SignatureType.FunctionShape>()
+            .Distinct()];
+        return shapes.Length == 1 ? shapes[0] : null;
     }
 
     /// <summary>
@@ -1161,11 +1216,12 @@ public sealed partial class TypeChecker {
                 $"Type '{namedType.Definition.Name}' has no member '{memberAccess.Member}'.",
                 memberAccess.Range);
         }
-        RequireNonGeneric(method.Signature);
+        FunctionSignature signature = SelectOverload(method, argTypes);
+        RequireNonGeneric(signature);
         if (!RejectNamedMemberArgs(node, memberAccess)) {
-            CheckNamedTypeMethodArgs(node, memberAccess, argTypes, method.Signature);
+            CheckNamedTypeMethodArgs(node, memberAccess, argTypes, signature);
         }
-        var returnType = (SignatureType.Concrete)method.Signature.ReturnType;
+        var returnType = (SignatureType.Concrete)signature.ReturnType;
         if (returnType.NamedTypeName is not null) {
             _callResultStructNames[node] = returnType.NamedTypeName;
         }
@@ -1190,6 +1246,10 @@ public sealed partial class TypeChecker {
         for (int i = 0; i < argTypes.Length; i++) {
             if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
             Expression argExpr = node.Arguments[i].Value;
+            if (signature.Parameters[i].Type is SignatureType.FunctionShape shape) {
+                CheckFunctionArgument(memberAccess.Member, signature.Parameters[i].Name, argExpr, argTypes[i], shape);
+                continue;
+            }
             SignatureType.Concrete expected = ParameterTypeAt(signature, i);
             bool compatible = expected.NamedTypeName is string nominalName
                 ? argTypes[i] == GrobType.Struct && GetStructTypeName(argExpr) == nominalName
@@ -1200,6 +1260,95 @@ public sealed partial class TypeChecker {
                     argExpr.Range);
             }
         }
+    }
+
+    /// <summary>
+    /// The signature of <paramref name="method"/> a call matches (D-443): the first whose
+    /// arity admits the arguments and whose function-shaped positions are exactly those
+    /// where a function is passed. An <see cref="GrobType.Unknown"/> or
+    /// <see cref="GrobType.Error"/> argument matches either. With no match, the primary
+    /// signature, so the mismatch is reported against it.
+    /// </summary>
+    private static FunctionSignature SelectOverload(NamedTypeMethodBinding method, GrobType[] argTypes) =>
+        method.Overloads.Count == 0
+            ? method.Signature
+            : method.Signatures.FirstOrDefault(s => FitsByFunction(s, argTypes, argTypes.Length)) ?? method.Signature;
+
+    /// <summary>
+    /// True when <paramref name="signature"/> admits the call's argument count and its
+    /// function-shaped positions among the first <paramref name="known"/> are exactly those
+    /// where a function is passed.
+    /// </summary>
+    private static bool FitsByFunction(FunctionSignature signature, GrobType[] argTypes, int known) {
+        if (argTypes.Length < signature.RequiredArgumentCount || argTypes.Length > signature.Parameters.Count) return false;
+        for (int i = 0; i < known; i++) {
+            if (argTypes[i] is GrobType.Unknown or GrobType.Error) continue;
+            bool passesFunction = argTypes[i] is GrobType.Function or GrobType.NullableFunction;
+            if (passesFunction != signature.Parameters[i].Type is SignatureType.FunctionShape) return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Checks an argument passed where a method expects a function of
+    /// <paramref name="shape"/> (D-443): it must be a function, and when its descriptor is
+    /// known — a lambda, a named <c>fn</c>, a function-typed binding — it must take the
+    /// shape's parameter count, accept the shape's parameter types and return a type the
+    /// shape accepts. A shape returning <c>nil</c> accepts any return. Each failure is one
+    /// <see cref="ErrorCatalog.E0004"/> at the argument.
+    /// </summary>
+    private void CheckFunctionArgument(
+            string member, string parameterName, Expression argExpr, GrobType argType, SignatureType.FunctionShape shape) {
+        string shapeName = SignatureTypeName(shape);
+        if (argType != GrobType.Function) {
+            EmitError(ErrorCatalog.E0004,
+                $"Argument to '{member}' has type '{TypeName(argType)}', which is not assignable to parameter of type '{shapeName}'.",
+                argExpr.Range);
+            return;
+        }
+        if (ExpressionDescriptor(argExpr) is not { } descriptor) return;
+        if (FunctionArgumentProblem(descriptor, shape) is string problem) {
+            EmitError(ErrorCatalog.E0004,
+                $"Argument to '{member}' {problem}, but parameter '{parameterName}' expects a function of type '{shapeName}'.",
+                argExpr.Range);
+        }
+    }
+
+    /// <summary>
+    /// What makes <paramref name="descriptor"/> unfit for <paramref name="shape"/>, phrased
+    /// to follow "Argument to 'm' ", or <see langword="null"/> when it fits. Unknown and
+    /// Error types on the descriptor are permissive.
+    /// </summary>
+    private static string? FunctionArgumentProblem(FunctionTypeDescriptor descriptor, SignatureType.FunctionShape shape) {
+        int count = descriptor.ParameterTypes.Count;
+        if (count != shape.Parameters.Count) {
+            return count == 1 ? "takes 1 parameter" : $"takes {count} parameters";
+        }
+        for (int i = 0; i < count; i++) {
+            GrobType declared = descriptor.ParameterTypes[i];
+            if (declared is GrobType.Unknown or GrobType.Error) continue;
+            if (!TypesAreAssignable(shape.Parameters[i].Type, declared)) {
+                return $"takes '{TypeName(declared)}' as parameter {i + 1}";
+            }
+        }
+        GrobType returned = descriptor.ReturnType;
+        if (shape.ReturnType.Type != GrobType.Nil && returned is not (GrobType.Unknown or GrobType.Error) &&
+                !TypesAreAssignable(returned, shape.ReturnType.Type)) {
+            return $"returns '{TypeName(returned)}'";
+        }
+        return null;
+    }
+
+    /// <summary>A function shape as Grob spells a function type: <c>fn(Match): string</c>.</summary>
+    private static string SignatureTypeName(SignatureType.FunctionShape shape) =>
+        $"fn({string.Join(", ", shape.Parameters.Select(SignatureTypeName))}): {SignatureTypeName(shape.ReturnType)}";
+
+    /// <summary>A concrete signature type by its nominal name, its element type or its tag.</summary>
+    private static string SignatureTypeName(SignatureType.Concrete type) {
+        string nullable = type.IsNullable ? "?" : "";
+        if (type.NamedTypeName is string name) return name + nullable;
+        if (type.ElementType is { } element) return SignatureTypeName(element) + "[]" + nullable;
+        return TypeName(type.Type);
     }
 
     /// <summary>
@@ -3118,8 +3267,10 @@ public sealed partial class TypeChecker {
     /// <remarks>
     /// Sprint 5 Increment C — D-296 categories 1–3 only (top-level references).
     ///
-    /// Registers each lambda parameter as <see cref="GrobType.Unknown"/> (inferred)
-    /// with the <see cref="LambdaExpr"/> as its declaring node, satisfying the §3.1.1
+    /// Registers each lambda parameter as <see cref="GrobType.Unknown"/> (inferred), or
+    /// as the type a named-type method's function shape expects there (D-443,
+    /// <see cref="_pendingLambdaShape"/>), with the <see cref="LambdaExpr"/> as its
+    /// declaring node, satisfying the §3.1.1
     /// invariant: every identifier that resolves to a parameter carries a non-null
     /// <see cref="IdentifierExpr.Declaration"/>. The body is then visited in the
     /// parameter scope so all nested identifier nodes are resolved.
@@ -3130,18 +3281,33 @@ public sealed partial class TypeChecker {
     /// <c>filter</c>). Category-4 upvalue capture is Increment D.
     /// </remarks>
     public override GrobType VisitLambda(LambdaExpr node) {
+        // D-443: taken and cleared on entry, so only this lambda is typed by the context.
+        SignatureType.FunctionShape? shape = _pendingLambdaShape;
+        _pendingLambdaShape = null;
+
         // Open a scope for the lambda's parameters.
         _scopes.Push(new Dictionary<string, Symbol>());
-        foreach (Parameter p in node.Parameters) {
-            // Lambda parameter types are inferred (not declared), so register as Unknown.
-            // Use the LambdaExpr as the declaring node — Parameter is not an AstNode.
-            RegisterSymbol(p.Name, GrobType.Unknown, p.Range.Start, node);
+        var lambdaParamTypes = new List<GrobType>(node.Parameters.Count);
+        for (int i = 0; i < node.Parameters.Count; i++) {
+            // A lambda's parameters are inferred, not declared: Unknown, unless a method
+            // expects a function here, whose shape types them (D-443). Use the LambdaExpr
+            // as the declaring node — Parameter is not an AstNode.
+            Parameter p = node.Parameters[i];
+            SignatureType.Concrete? expected = shape is not null && i < shape.Parameters.Count ? shape.Parameters[i] : null;
+            GrobType paramType = expected?.Type ?? GrobType.Unknown;
+            lambdaParamTypes.Add(paramType);
+            RegisterSymbol(p.Name, paramType, p.Range.Start, node, typeIdentity: new SymbolTypeIdentity(
+                NamedStructTypeName: expected?.NamedTypeName,
+                ArrayDescriptor: expected is null ? null : NativeArrayDescriptor(expected)));
         }
 
         // Track a return-type context so VisitReturn can validate early-return stmts
         // inside a block-body lambda (E0005) and distinguish them from top-level
-        // returns (E2203).
-        _functionReturnTypes.Push(GrobType.Unknown);
+        // returns (E2203). Under a shape that returns a value, an explicit return is
+        // checked against the shape's return type (D-443); otherwise it is permissive.
+        _functionReturnTypes.Push(shape is not null && shape.ReturnType.Type != GrobType.Nil
+            ? shape.ReturnType.Type
+            : GrobType.Unknown);
         _controlFrameFloors.Push(_controlFrames.Count);
 
         // Infer the body type and store it for callers (e.g. ValidateArrayMethodCall).
@@ -3150,11 +3316,12 @@ public sealed partial class TypeChecker {
             LambdaBlockBody blockBody => VisitLambdaBlock(blockBody),
             _ => GrobType.Unknown,
         };
+        // A void call's result is Unknown at statement position; under a shape it is the
+        // nil the call returns at run time, so a string shape rejects it (D-443).
+        if (shape is not null && EndsInVoidCall(node.Body)) bodyType = GrobType.Nil;
         _lambdaReturnTypes[node] = bodyType;
 
-        // Build and store the structural descriptor for this lambda (D-326).
-        // Lambda parameter types are inferred (Unknown) in v1; arity is exact.
-        List<GrobType> lambdaParamTypes = node.Parameters.Select(_ => GrobType.Unknown).ToList();
+        // Build and store the structural descriptor for this lambda (D-326); arity is exact.
         _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, bodyType);
 
         _controlFrameFloors.Pop();
@@ -3170,8 +3337,8 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Visits all statements in a block-body lambda and infers the return type.
     /// Returns the type of the last <see cref="ExpressionStmt"/>'s expression (the
-    /// implicit last-expression result per D-276), or <see cref="GrobType.Nil"/> when
-    /// the last statement is not an expression.
+    /// implicit last-expression result per D-276), the returned type when the last
+    /// statement is a <c>return</c>, or <see cref="GrobType.Nil"/> otherwise.
     /// </summary>
     private GrobType VisitLambdaBlock(LambdaBlockBody blockBody) {
         IReadOnlyList<AstNode> stmts = blockBody.Block.Statements;
@@ -3185,8 +3352,17 @@ public sealed partial class TypeChecker {
         if (last is ExpressionStmt exprStmt)
             return VisitStatementPositionExpression(exprStmt.Expression); // implicit return value; don't emit Pop
         Visit(last);
-        return GrobType.Nil;
+        // A final explicit return yields its value's type, not the nil of falling off the
+        // end; a return already reported is Error, so it is not reported twice.
+        return last is ReturnStmt ? _lastReturnType : GrobType.Nil;
     }
+
+    /// <summary>True when the lambda's result is a void call, such as <c>print(...)</c>.</summary>
+    private static bool EndsInVoidCall(LambdaBody body) => body switch {
+        LambdaExpressionBody expression => IsVoidCall(expression.Expression),
+        LambdaBlockBody { Block.Statements: [.., ExpressionStmt last] } => IsVoidCall(last.Expression),
+        _ => false,
+    };
 
     // -----------------------------------------------------------------------
     // Internal guards

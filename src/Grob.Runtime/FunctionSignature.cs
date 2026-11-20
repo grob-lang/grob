@@ -38,6 +38,10 @@ public sealed class FunctionSignature {
         Identifiers.RequireQualifiedName(name, nameof(name), "A signature name");
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(returnType);
+        if (returnType is SignatureType.FunctionShape) {
+            throw new ArgumentException(
+                "A function shape is permitted only as a parameter type, not as a return type (D-443).", nameof(returnType));
+        }
 
         SignatureParameter[] copiedParameters = [.. parameters];
         TypeParameter[] copiedTypeParameters = typeParameters is null ? [] : [.. typeParameters];
