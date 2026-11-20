@@ -17415,8 +17415,12 @@ shape's type wins silently. **R-47 opens** for that.
 **Found, not fixed here (Chris: separate fixes).** String `+` with a parenthesised `??` operand
 miscompiles: `(s ?? "") + ":"` faults the VM and `"a" + (s ?? "b")` crashes the compiler. A
 `throw` inside a lambda that a native calls back into, caught by an enclosing `try`, is
-caught and then faults the VM with a value-stack underflow; array `select` shows it too. Each
-is fixed on its own branch.
+caught and then faults the VM with a value-stack underflow; array `select` shows it too. A
+function declared to return `float` that returns an `int` hands back the `int` uncoerced, and
+the next `float` operation faults the VM: a named `fn` and an expression lambda do this on
+`main`. A block lambda ending in `return 1`, bound to `fn(): float`, was rejected before this
+decision and now type-checks, since it takes its returned type (Decision 4), so it reaches the
+same fault. Each is fixed on its own branch.
 
 **Register.** **R-44 closed.** **R-47 opens**: a lambda parameter's type annotation is ignored.
 

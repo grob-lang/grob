@@ -43,13 +43,14 @@ The increment is complete and pushed; merging is Chris's action.
 
 ## Next session, first action
 
-Check whether this branch's PR has merged, then cut a `fix/` branch from the updated `main` for the first of the two pre-existing bugs below.
+Check whether this branch's PR has merged, then cut a `fix/` branch from the updated `main` for the first of the three pre-existing bugs below.
 
 ## Open for the maintainer
 
 - **Merge this PR.** This hand-off stays in it and merges to `main`.
-- Two pre-existing bugs found and left to their own `fix/` branches (Chris, this session):
+- Three pre-existing bugs found and left to their own `fix/` branches (Chris, this session):
   - **Compiler:** string `+` with a parenthesised `??` operand. `s: string? := nil` then `print((s ?? "") + ":")` faults the VM (kind mismatch, expected Int); `print("a" + (s ?? "b"))` throws `InvalidOperationException` from `Compiler.GetArithmeticOpCode`. `int` and `float` work, as does binding the `??` result first.
   - **VM:** a `throw` inside a lambda that a native calls back into, caught by an enclosing `try`, prints the caught message and then fails with "value stack underflow". Array `select` reproduces it.
+  - **Compiler:** an `int` returned from a function declared `float` is not coerced. `fn g(): float { return 1 }` then `print(g() / 2)` faults the VM (kind mismatch, expected Float); so does `f: fn(): float := () => 1`. Since this PR, a block lambda ending in `return 1` bound to `fn(): float` type-checks and faults the same way (before, it was wrongly rejected with E0001). `IntToFloat` exists, so named fns need only emission at the return; lambdas need typing from their binding's annotation, which is a design decision to log.
 - **R-47** is open and `unowned`: a lambda parameter's type annotation is ignored.
 - A top-level `fn` reference is typed `Unknown`, so a named function passed for a shape is not checked against it (recorded in D-443, no register row). Say if you want one.
