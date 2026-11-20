@@ -17549,14 +17549,17 @@ when the value was produced. No later change on disk alters it and none of its o
 methods does. `rename`, `moveTo` and `copyTo` return a new `File` for the entry they
 produced, where the registry had `void`, and leave the receiver as it was. The README's
 first sample already depends on this. Mutation in place would also let a native change
-a value held by a `readonly` binding, which is deeply immutable (D-291). **Rejected**:
+a value held by a `readonly` binding, which is deeply immutable (D-291). A `File` method
+acts on whatever is at the `File`'s `path` when it is called, as the same call by path
+would: Grob does not track an entry's identity, so a method throws if nothing is there
+and acts on the replacement if something else is. **Rejected**:
 mutating the receiver, for both reasons; and `void` with a snapshot, which leaves a
 script no way to reach the entry it has just moved except by rebuilding its path.
 
 **Decision 2 — a listing has one order, on both platforms (Chris).** `fs.list` returns an
 array built in full before it returns, so a loop may move or delete what it walks. It
 holds files and directories, and every entry the operating system reports, with nothing
-left out for being hidden. The entries of a directory are in ordinal order of `name`; in
+left out for being hidden; Decision 7 makes the one exception. The entries of a directory are in ordinal order of `name`; in
 a recursive listing each directory is followed at once by its contents. A link to a
 directory is listed and not descended into, and `fs.deleteRecursive` removes a link
 without following it. The order is stated by name within a directory, not by whole
@@ -17603,7 +17606,9 @@ differ from the `fs.glob(pattern)` first proposed.
   followed by a filter reads every directory beneath `dir` to do it.
 
 A malformed pattern throws `ParseError` (E5702), as `regex.compile` does (D-440). No
-match is an empty array. **Rejected**: `fs.glob`, for the name; a pattern parameter on
+match is an empty array. No segment of a pattern descends into a link to a directory,
+neither `**` nor a literal name, so a search stays within the tree beneath `dir`; `dir`
+itself may be a link, as it may for `fs.list`. **Rejected**: `fs.glob`, for the name; a pattern parameter on
 `fs.list`, which would give one function two meanings of `recursive`; wildcards that skip
 dot names, the shell's rule, because it leaves entries out without saying so and Grob
 does not swallow things silently; matching case as the platform does, which gives one
@@ -17648,10 +17653,21 @@ character in a name, so that script would run on one platform and fail on the ot
 with E5301. Every path a standard-library function passes to `IFileSystem` is first
 normalised as `path.normalise` does, which already splits on both separators on both
 platforms: `fs`, and the file reads and writes of `json` and `csv`, which use the same
-capability (D-436). The cost is stated in the reference: a Linux file with a literal
-`\` in its name cannot be reached through the standard library. **Rejected**: passing
+capability (D-436). **Rejected**: passing
 the path through and documenting the difference, which keeps the failure D-442 exists
 to remove and leaves the Windows idiom unusable in a portable script.
+
+*The cost, and how it is contained.* On Linux an entry whose name contains `\` cannot be
+reached through the standard library: no path argument can name it, and `fs.list`,
+`fs.find` and `fs.info` never return a `File` for it. The second half was settled in
+review of PR #258, by the session. Returning such an entry would hand the script a path
+that normalisation turns into the path of a different entry the moment it is passed
+back: a file named `..\..\x` in a directory of untrusted files would read as a path two
+directories up, and `fs.delete(file.path)` would delete whatever is there. A value that
+can be mistaken for another entry is never made. `fs.deleteRecursive` still removes such
+an entry with the directory that holds it. **Rejected**: listing it and warning in the
+documentation, for the reason given; and throwing from the listing, which lets one
+stray file stop every listing and search of its directory.
 
 **Not decided.** The two missing error codes, and
 the error for a `File.rename` whose name contains a separator: **R-52**, minted with
@@ -17914,6 +17930,9 @@ _for the 9C increment**: a `File` is a snapshot whose methods return the new `Fi
 _has one order on both platforms, `fs.find`, `fs.info`, `fs.writeLines` and `fs.appendLine` are_
 _added, copy and move gain `ensureDir`, failure behaviour is specified and a path argument is_
 _normalised so `\` separates on both platforms. R-52 to R-54 filed. Count unchanged at 121._
+_Amended in review (PR #258), before landing: a `File` method acts on its path, not on an_
+_entry's identity; no pattern segment descends into a link; a Linux entry whose name contains_
+_`\` is never returned, so no path can be normalised into another entry's._
 _Previous: November 2026 — D-444 added, with spec edits; no source change. **Claude Code uses Grob as_
 _its scripting language on the Grob repository while Grob is built**: inline and stdin source_
 _become v1, an agent-scripting interlude follows Sprint 9 beside the hardening interlude and_

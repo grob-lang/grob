@@ -622,20 +622,25 @@ file.modified    // date — last write time, local
 file.created     // date — creation time, local; see Platform differences
 file.isDirectory // false
 
-// Methods that change the file system return the new entry
+// Methods that change the file system return the new entry.
+// Each step below works on the entry the step before it returned.
 renamed  := file.rename("report_2025.xlsx")
-archived := file.moveTo("archive")
-archived := file.moveTo("archive/2026", ensureDir: true)
-copy     := file.copyTo("backup", overwrite: true)
-file.delete()
+archived := renamed.moveTo("archive/2026", ensureDir: true)
+copy     := archived.copyTo("backup", overwrite: true)
+archived.delete()
 ```
 
 **A `File` is a snapshot.** It records the entry as it was when the value was
 produced, and nothing changes it afterwards — not a later change on disk and not its
 own methods. `rename`, `moveTo` and `copyTo` return a new `File` for the entry they
 produced and leave the receiver as it was, so after `file.rename("b.txt")` the value
-`file.name` is still the old name. A method called on a `File` whose entry has since
-gone throws `IoError`, as the same call by path would.
+`file.name` is still the old name, and `file` no longer names anything on disk.
+
+**A `File` method acts on a path.** It acts on whatever is at the `File`'s `path` when
+it is called, exactly as the same call by path would: `file.delete()` is
+`fs.delete(file.path)`. Grob does not track the identity of an entry. If nothing is at
+that path any more, the method throws `IoError`. If the entry has been replaced by
+another at the same path, the method acts on the replacement.
 
 **Paths.** A relative path resolves against the current directory, the same one
 `path.resolve` uses. It does not resolve against the script's location. `File.path`
@@ -643,13 +648,22 @@ and `File.directory` are always absolute and use the platform's separator.
 
 Every path argument is normalised as `path.normalise` does before it is used, so `/`
 and `\` both separate on both platforms and `reports\2026` names the same place on
-Windows and Linux. The same holds for the paths `json` and `csv` read and write. One
-consequence is specific to Linux, where `\` is a legal character in a name: a file
-whose name contains one cannot be reached through the standard library.
+Windows and Linux. The same holds for the paths `json` and `csv` read and write.
+
+One consequence is specific to Linux, where `\` is a legal character in a name. An
+entry whose name contains one cannot be reached through the standard library: no path
+argument can name it, and `fs.list`, `fs.find` and `fs.info` never return a `File` for
+it. That is deliberate. Its path, passed back as an argument, would be normalised into
+the path of a different entry — a file named `..\..\x` would read as a path two
+directories up — so no value is ever made that could be mistaken for one.
+`fs.deleteRecursive` still removes such an entry along with the directory that holds
+it, and `fs.delete` on a directory that holds one reports that the directory is not
+empty.
 
 **Listing.** `fs.list` returns an array, built in full before it returns, so a loop
 may move, rename or delete the entries it is walking. It includes files and
-directories, and every entry the operating system reports: nothing is left out for
+directories, and every entry the operating system reports, with the one exception
+above: nothing is left out for
 being hidden or for having a name that starts with a dot. The order is the same on
 both platforms: the entries of a directory are in ordinal order of `name`, and in a
 recursive listing each directory is followed at once by its own contents. A link to a
@@ -668,7 +682,9 @@ is an empty array, not an error.
   and no escape character.
 - Matching ignores case on both platforms, as `File.extension` does.
 - A wildcard matches a name that starts with a dot.
-- `**` does not descend into a link to a directory.
+- No segment descends into a link to a directory, neither `**` nor a literal name. A
+  link beneath `dir` matches as an entry only. `dir` itself may be a link, as it may
+  for `fs.list`.
 - `dir` is never read as a pattern, so a directory name taken from a parameter or
   from another program's output cannot change what the pattern means.
 - Only the directories a pattern can still match are read: `fs.find("src", "**/*.cs")`
@@ -687,7 +703,10 @@ segment each throw `ParseError` (E5702), as a bad pattern does in `regex.compile
   the end of the file does not produce an empty last element.
 - Every write is UTF-8 without a BOM, on both platforms. No encoding parameter in v1.
 - `fs.writeLines()` and `fs.appendLine()` end each line with `\n` on both
-  platforms. `fs.readLines()` reads either terminator, so the two round-trip.
+  platforms. `fs.readLines()` reads either terminator, so lines written this way read
+  back as they were written, provided no line itself contains a terminator. A line is
+  written as given: an element that contains `\n` becomes more than one line in the
+  file.
 - `fs.writeText()` and `fs.appendText()` write the string as given and add nothing.
 - A write does not create a missing parent directory. Call `fs.ensureDir` first.
 
@@ -727,8 +746,9 @@ determined — permission refused on a parent, for one — they return false.
 
 **Platform differences.** The functions, their results and their errors are the same
 on Windows and Linux (D-442). What differs is the file system beneath them, and it
-differs in three places: the separator in `File.path` and `File.directory`; whether
-two names that differ only in case are one entry or two; and `File.created`, which
+differs in four places: the separator in `File.path` and `File.directory`; whether
+two names that differ only in case are one entry or two; a Linux name that contains
+`\`, which the standard library does not return (see *Paths*); and `File.created`, which
 is the creation time where the file system records one. What `created` holds on a
 Linux file system that records none is verified by the `fs` increment and stated
 here before `fs` ships (R-53).
