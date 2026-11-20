@@ -17540,8 +17540,9 @@ gives no order for `fs.list`, does not say whether a listing holds directories, 
 leaves undefined what happens on a missing path, a missing destination directory, a
 link or a directory handed to `copy`. `README.md`'s first sample calls `file.rename(...)`
 and then prints `file.name`, expecting the old name. `grob-v1-requirements.md` §7 counts
-15 module functions where D-109 and the Sprint 9 scope both name 14. No error code
-covers "destination already exists" or "directory not empty". E5303's description cites
+15 module functions where D-109 and the Sprint 9 scope both name 14. Neither
+"destination already exists" nor "directory not empty" has an error code of its own;
+only the residual E5305 would catch them. E5303's description cites
 `fs.read()`, which has never existed.
 
 **Decision 1 — a `File` is a snapshot (Chris).** A `File` records an entry as it was
