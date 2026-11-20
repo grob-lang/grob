@@ -117,6 +117,94 @@ public sealed class Sprint9CRegexTests {
             print(/a/.replaceAll("banana", `$$`))
             """, "home:ann bob@work", "home:ann work:bob", "b$n$n$");
 
+    // -----------------------------------------------------------------------
+    // The function form of replace and replaceAll (D-441, R-44)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void ReplaceFunction_ReplacesTheFirstMatch() =>
+        AssertRuns("""
+            print(/\b\w/.replace("hello world", m => m.value.upper()))
+            """, "Hello world");
+
+    [Fact]
+    public void ReplaceAllFunction_ComputesEachReplacementFromTheMatch() =>
+        AssertRuns("""
+            print(/(\w+)@(\w+)/.replaceAll("ann@home bob@work", m => m.groups[2] + ":" + m.groups[1]))
+            print(/\w/.replaceAll("abc", m => "${m.index}"))
+            """, "home:ann work:bob", "012");
+
+    [Fact]
+    public void ReplaceAllFunction_BlockBodyCapturesItsScope() =>
+        AssertRuns("""
+            levels := /\b(ERROR|WARN)\b/
+            prefix := "!"
+            print(levels.replaceAll("WARN then ERROR", m => {
+                lower := m.value.lower()
+                "${prefix}${lower}"
+            }))
+            """, "!warn then !error");
+
+    [Fact]
+    public void ReplaceFunction_NamedFunction_IsCalled() =>
+        AssertRuns("""
+            fn shout(m: Match): string {
+                return m.value.upper()
+            }
+            print(/a/.replaceAll("banana", shout))
+            """, "bAnAnA");
+
+    [Fact]
+    public void ReplaceFunction_StringForm_IsUnchanged() =>
+        AssertRuns("""
+            print(/a/.replace("banana", "o"))
+            """, "bonana");
+
+    [Fact]
+    public void ReplaceFunction_ThrowInsideTheFunction_Propagates() {
+        // Uncaught on purpose: catching a throw raised inside a native's callback fails on
+        // main today for array select too, and is fixed on its own branch.
+        (string stdout, string stderr, int exitCode) = RunSource("""
+            x := /a/.replace("banana", m => {
+                if (m.index == 1) {
+                    throw RuntimeError { message: "stop at ${m.index}" }
+                }
+                m.value
+            })
+            print(x)
+            """);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, stdout);
+        Assert.Contains("E5904", stderr);
+        Assert.Contains("stop at 1", stderr);
+    }
+
+    [Fact]
+    public void ReplaceFunction_TimesOutAsARuntimeError() =>
+        AssertRuns("""
+            r := regex.compile(`^(a+)+$`, "", 1)
+            evil := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!"
+            try {
+                r.replace(evil, m => m.value)
+            } catch (e: RuntimeError) {
+                print(e.message)
+            }
+            """, "Regex.replace: matching exceeded the 1-second limit.");
+
+    [Fact]
+    public void ReplaceFunction_NonStringBody_IsE0004BeforeAnythingRuns() {
+        (string stdout, string stderr, int exitCode) = RunSource("""
+            print("never")
+            /a/.replace("a", m => m.index)
+            """);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, stdout);
+        Assert.Contains("E0004", stderr);
+        Assert.Contains(":2:18", stderr);
+    }
+
     [Fact]
     public void Split_KeepsCapturedSeparators() =>
         AssertRuns("""

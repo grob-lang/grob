@@ -40,7 +40,7 @@ internal static class Signatures {
         new(name, parameters, returnType);
 
     /// <summary>A required positional parameter.</summary>
-    internal static SignatureParameter Param(string name, SignatureType.Concrete type) => new(name, type);
+    internal static SignatureParameter Param(string name, SignatureType type) => new(name, type);
 
     /// <summary>A trailing parameter a call may omit; the compiler fills <paramref name="defaultValue"/> (D-358).</summary>
     internal static SignatureParameter Optional(string name, SignatureType.Concrete type, GrobValue defaultValue) =>

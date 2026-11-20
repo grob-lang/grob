@@ -106,6 +106,84 @@ public sealed class RegexNamedTypeTests {
         Assert.Equal("[WARN]$ and [ERROR]$",
             Call(Regex, "replaceAll", Levels(), Str("WARN and ERROR"), Str("[$1]$$")).AsString());
 
+    // ----- The function form (D-441, R-44) -----
+
+    [Theory]
+    [InlineData("replace")]
+    [InlineData("replaceAll")]
+    public void ReplaceMethods_CarryAFunctionOverload(string method) {
+        NamedTypeMethodBinding binding = Regex.Methods[method];
+
+        FunctionSignature overload = Assert.Single(binding.Overloads);
+        Assert.Equal(method, overload.Name);
+        var shape = Assert.IsType<SignatureType.FunctionShape>(overload.Parameters[1].Type);
+        Assert.Equal([SignatureType.Named(GrobType.Struct, "Match")], shape.Parameters);
+        Assert.Equal(SignatureType.Of(GrobType.String), shape.ReturnType);
+        Assert.Equal(SignatureType.Of(GrobType.String), overload.ReturnType);
+    }
+
+    private static System.Text.RegularExpressions.Regex Compiled() =>
+        new(@"\b(?<level>ERROR|WARN)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static GrobValue Lower(GrobValue match) =>
+        Str(Match.Properties["value"].Get(match.AsStruct()).AsString().ToLowerInvariant());
+
+    [Fact]
+    public void ReplaceWith_CountOne_ReplacesTheFirstMatchOnly() =>
+        Assert.Equal("warn and ERROR",
+            RegexPlugin.ReplaceWith("Regex.replace", Compiled(), "WARN and ERROR", 1, Lower).AsString());
+
+    [Fact]
+    public void ReplaceWith_AllMatches_CallsTheFunctionForEach() =>
+        Assert.Equal("warn and error",
+            RegexPlugin.ReplaceWith("Regex.replaceAll", Compiled(), "WARN and ERROR", -1, Lower).AsString());
+
+    [Fact]
+    public void ReplaceWith_PassesAFullMatch() {
+        var seen = new List<GrobStruct>();
+
+        RegexPlugin.ReplaceWith("Regex.replaceAll", Compiled(), "x WARN y error", -1, m => {
+            seen.Add(m.AsStruct());
+            return Str("");
+        });
+
+        Assert.Equal([2L, 9L], seen.Select(m => Match.Properties["index"].Get(m).AsInt()));
+        Assert.Equal("error", Call(Match, "group", seen[1], Str("level")).AsString());
+    }
+
+    [Fact]
+    public void ReplaceWith_NoMatch_ReturnsTheInputWithoutCalling() {
+        int calls = 0;
+
+        GrobValue result = RegexPlugin.ReplaceWith("Regex.replaceAll", Compiled(), "all quiet", -1, m => {
+            calls++;
+            return Str("");
+        });
+
+        Assert.Equal("all quiet", result.AsString());
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public void ReplaceWith_NonStringResult_IsARuntimeError() {
+        var ex = Assert.Throws<NativeFaultException>(() =>
+            RegexPlugin.ReplaceWith("Regex.replace", Compiled(), "WARN", 1, _ => GrobValue.FromInt(1)));
+
+        Assert.Equal("RuntimeError", ex.LeafTypeName);
+        Assert.Equal(ErrorCatalog.E5903.Code, ex.Code);
+        Assert.Equal("Regex.replace: the replacement function must return a string, not int.", ex.Message);
+    }
+
+    [Fact]
+    public void ReplaceWith_FunctionThrows_PropagatesTheException() {
+        var thrown = new InvalidOperationException("boom");
+
+        Exception caught = Assert.Throws<InvalidOperationException>(() =>
+            RegexPlugin.ReplaceWith("Regex.replace", Compiled(), "WARN", 1, _ => throw thrown));
+
+        Assert.Same(thrown, caught);
+    }
+
     [Fact]
     public void Split_SplitsOnThePattern() {
         GrobArray parts = Call(Regex, "split", RegexLayout.NewRegex(@"\s*,\s*", "", 5), Str("a , b,c")).AsArray();
