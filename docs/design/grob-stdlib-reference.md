@@ -16,7 +16,7 @@ If a reasonable developer expects it in any scripting language, it's core.
 
 |Module   |Purpose                                                                                                     |Status   |
 |---------|------------------------------------------------------------------------------------------------------------|---------|
-|`fs`     |File system — list, read, write, rename, copy, move, delete, traverse                                       |Specified|
+|`fs`     |File system — list, find, read, write, rename, copy, move, delete, traverse                                 |Specified|
 |`strings`|String operations — `join()` module function; all other ops are instance methods on the `string` type       |Specified|
 |`process`|External command execution — `run()`, `runOrFail()`, `runShell()`, `runShellOrFail()`, capture stdout/stderr|Specified|
 |`env`    |Environment variables — `get(key): string?`, `require(key): string`                                         |Specified|
@@ -532,80 +532,206 @@ See the Type Registry entries for `int.format(pattern)`, `float.format(pattern)`
 
 -----
 
-### `fs` Module — Shape (Sketch)
+### `fs` Module — Shape
+
+Files and directories: list, find, read, write, copy, move and delete. The surface
+below is fixed by D-445, which completes D-109, D-150 and D-177. Every function
+reaches the operating system through `IFileSystem` (D-436).
 
 ```grob
-// List files in a directory (non-recursive)
-files := fs.list(`C:\Reports`)
+// List a directory — files and directories, in a fixed order
+entries := fs.list("reports")
 
-// List recursively
-files := fs.list(`C:\Reports`, recursive: true)
+// List a directory and everything beneath it
+entries := fs.list("reports", recursive: true)
 
-// File object properties
-file.name        // "report_2026.xlsx"
-file.path        // `C:\Reports\report_2026.xlsx`
-file.directory   // `C:\Reports`
-file.extension   // ".xlsx"  — always lowercased, always includes dot
-file.size        // 204800   — bytes
-file.modified    // date value — last write time
-file.created     // date value — creation time
-file.isDirectory // false
+// Find by pattern, beneath a directory
+sources := fs.find("src", "**/*.cs")
+logs    := fs.find("logs", "2026-*.log")
 
-// File object methods
-file.rename("report_2025.xlsx")
-file.moveTo(`C:\Archive`)
-file.moveTo(`C:\Archive`, overwrite: true)
-file.copyTo(`C:\Backup`)
-file.copyTo(`C:\Backup`, overwrite: true)
-file.delete()
+// One entry, by path
+report := fs.info("reports/summary.xlsx")
 
-// Module functions — existence checks
-fs.exists(`C:\Reports\file.txt`)        // bool
-fs.isFile(`C:\Reports\file.txt`)        // bool
-fs.isDirectory(`C:\Reports`)             // bool
+// Existence checks — never throw
+fs.exists("reports/summary.xlsx")       // bool
+fs.isFile("reports/summary.xlsx")       // bool
+fs.isDirectory("reports")               // bool
 
 // Directory creation
-fs.ensureDir(`C:\Reports\2026\April`)  // creates full path if not exists, no-op if exists
-fs.createDir(`C:\Reports\NewFolder`)    // fails with IoError if already exists
+fs.ensureDir("reports/2026/april")      // creates the whole path, no-op if it exists
+fs.createDir("reports/new")             // one level, throws IoError if it exists
 
 // Deletion
-fs.delete(`C:\Reports\old.txt`)         // file or empty dir — refuses non-empty dir (IoError)
-fs.deleteRecursive(`C:\Reports\Old`)    // directory and all contents
+fs.delete("reports/old.txt")            // a file or an empty directory
+fs.deleteRecursive("reports/old")       // a directory and all its contents
 
-// Read / write
-content := fs.readText(`C:\config.json`)
-lines   := fs.readLines(`C:\data.txt`)   // string[]
-fs.writeText(`C:\output.txt`, content)   // creates or overwrites
-fs.appendText(`C:\log.txt`, line)        // creates or appends
+// Read
+content := fs.readText("config.json")
+lines   := fs.readLines("data.txt")     // string[]
 
-// Copy / move by path — overwrite: false by default (throws IoError if destination exists)
-fs.copy(`C:\source.txt`, `C:\dest.txt`)
-fs.copy(`C:\source.txt`, `C:\dest.txt`, overwrite: true)
-fs.move(`C:\source.txt`, `C:\dest.txt`)
-fs.move(`C:\source.txt`, `C:\dest.txt`, overwrite: true)
+// Write
+fs.writeText("output.txt", content)     // creates or overwrites
+fs.writeLines("output.txt", lines)      // creates or overwrites, one line per element
+fs.appendText("run.log", content)       // creates or appends, adds nothing
+fs.appendLine("run.log", "finished")    // creates or appends, ends the line
+
+// Copy and move by path — the destination is a path, not a directory
+fs.copy("source.txt", "backup/source.txt")
+fs.copy("source.txt", "backup/source.txt", overwrite: true)
+fs.move("source.txt", "archive/2026/source.txt", ensureDir: true)
 ```
 
-`File` is a built-in type registered by the `fs` stdlib plugin at startup — the type
-checker knows its full shape. Calling an undefined property or method on a `File` value
-is a compile error.
+**Module functions (18):**
 
-**Encoding conventions:**
+| Function | Returns | Notes |
+|----------|---------|-------|
+| `fs.list(dir: string, recursive: bool = false)` | `File[]` | Every entry in `dir`. See *Listing* |
+| `fs.find(dir: string, pattern: string)` | `File[]` | Entries beneath `dir` that match `pattern`. See *Patterns* |
+| `fs.info(path: string)` | `File` | The entry at `path`, a file or a directory |
+| `fs.exists(path: string)` | `bool` | True if `path` is a file or a directory |
+| `fs.isFile(path: string)` | `bool` | True if `path` is a file |
+| `fs.isDirectory(path: string)` | `bool` | True if `path` is a directory |
+| `fs.ensureDir(path: string)` | `void` | Creates the directory and any missing parents. No-op if it exists |
+| `fs.createDir(path: string)` | `void` | Creates one directory. Its parent must exist and it must not |
+| `fs.delete(path: string)` | `void` | Deletes a file or an empty directory |
+| `fs.deleteRecursive(path: string)` | `void` | Deletes a directory and everything beneath it |
+| `fs.readText(path: string)` | `string` | The whole file as text |
+| `fs.readLines(path: string)` | `string[]` | The file as lines, without terminators |
+| `fs.writeText(path: string, content: string)` | `void` | Creates or overwrites |
+| `fs.writeLines(path: string, lines: string[])` | `void` | Creates or overwrites. Each element is written followed by `\n` |
+| `fs.appendText(path: string, content: string)` | `void` | Creates or appends. Writes `content` and nothing else |
+| `fs.appendLine(path: string, line: string)` | `void` | Creates or appends. Writes `line` followed by `\n` |
+| `fs.copy(src: string, dest: string, overwrite: bool = false, ensureDir: bool = false)` | `void` | Copies a file to the path `dest` |
+| `fs.move(src: string, dest: string, overwrite: bool = false, ensureDir: bool = false)` | `void` | Moves a file or a directory to the path `dest` |
+
+**The `File` type.** `fs.list`, `fs.find` and `fs.info` return `File` values. `File` is
+a built-in type registered by the `fs` stdlib plugin at startup — the type checker
+knows its full shape, and an undefined property or method on a `File` is a compile
+error. A `File` describes a file or a directory; `isDirectory` says which.
+
+```grob
+file := fs.info("reports/report_2026.xlsx")
+
+file.name        // "report_2026.xlsx"
+file.path        // absolute: `C:\work\reports\report_2026.xlsx` on Windows,
+                 //           "/home/chris/work/reports/report_2026.xlsx" on Linux
+file.directory   // the parent directory, absolute
+file.extension   // ".xlsx" — always lowercased, always includes the dot
+file.size        // 204800 — bytes; 0 for a directory
+file.modified    // date — last write time, local
+file.created     // date — creation time, local; see Platform differences
+file.isDirectory // false
+
+// Methods that change the file system return the new entry
+renamed  := file.rename("report_2025.xlsx")
+archived := file.moveTo("archive")
+archived := file.moveTo("archive/2026", ensureDir: true)
+copy     := file.copyTo("backup", overwrite: true)
+file.delete()
+```
+
+**A `File` is a snapshot.** It records the entry as it was when the value was
+produced, and nothing changes it afterwards — not a later change on disk and not its
+own methods. `rename`, `moveTo` and `copyTo` return a new `File` for the entry they
+produced and leave the receiver as it was, so after `file.rename("b.txt")` the value
+`file.name` is still the old name. A method called on a `File` whose entry has since
+gone throws `IoError`, as the same call by path would.
+
+**Paths.** A relative path resolves against the current directory, the same one
+`path.resolve` uses. It does not resolve against the script's location. `File.path`
+and `File.directory` are always absolute and use the platform's separator.
+
+Every path argument is normalised as `path.normalise` does before it is used, so `/`
+and `\` both separate on both platforms and `reports\2026` names the same place on
+Windows and Linux. The same holds for the paths `json` and `csv` read and write. One
+consequence is specific to Linux, where `\` is a legal character in a name: a file
+whose name contains one cannot be reached through the standard library.
+
+**Listing.** `fs.list` returns an array, built in full before it returns, so a loop
+may move, rename or delete the entries it is walking. It includes files and
+directories, and every entry the operating system reports: nothing is left out for
+being hidden or for having a name that starts with a dot. The order is the same on
+both platforms: the entries of a directory are in ordinal order of `name`, and in a
+recursive listing each directory is followed at once by its own contents. A link to a
+directory is listed as an entry and is not descended into.
+
+**Patterns.** `fs.find(dir, pattern)` returns the entries beneath `dir` whose path
+relative to `dir` matches `pattern`, in the order `fs.list` would give them. No match
+is an empty array, not an error.
+
+- A pattern is segments separated by `/` or `\`. Both separate on both platforms.
+- `*` matches any run of characters within one name, including none.
+- `?` matches exactly one character within one name.
+- `**`, as a whole segment, matches any number of directories, including none. As
+  the last segment it matches every entry beneath that point.
+- Every other character matches itself. There are no character classes, no braces
+  and no escape character.
+- Matching ignores case on both platforms, as `File.extension` does.
+- A wildcard matches a name that starts with a dot.
+- `**` does not descend into a link to a directory.
+- `dir` is never read as a pattern, so a directory name taken from a parameter or
+  from another program's output cannot change what the pattern means.
+- Only the directories a pattern can still match are read: `fs.find("src", "**/*.cs")`
+  never opens a sibling of `src`.
+
+An empty pattern, a rooted pattern, a `..` segment and a `**` that is not a whole
+segment each throw `ParseError` (E5702), as a bad pattern does in `regex.compile`.
+
+**Reading and writing:**
 
 - `fs.readText()` reads as UTF-8. If a BOM (byte order mark) is present, it is
   consumed and the encoding is detected from it (UTF-8, UTF-16LE, UTF-16BE). If
-  no BOM is present, UTF-8 is assumed. No encoding parameter in v1 — UTF-8 covers
-  the vast majority of scripting use cases on modern Windows.
-- `fs.writeText()` and `fs.appendText()` write as UTF-8 without BOM — the modern
-  Windows convention. No encoding parameter in v1.
-- `fs.readLines()` follows the same encoding rules as `fs.readText()`. Lines are
-  split on `\n` and `\r\n` — both are handled transparently. The returned strings
-  do not include line terminators.
+  no BOM is present, UTF-8 is assumed. No encoding parameter in v1.
+- `fs.readLines()` follows the same encoding rules. Lines are split on `\n` and
+  `\r\n`, and the returned strings do not include the terminator. A terminator at
+  the end of the file does not produce an empty last element.
+- Every write is UTF-8 without a BOM, on both platforms. No encoding parameter in v1.
+- `fs.writeLines()` and `fs.appendLine()` end each line with `\n` on both
+  platforms. `fs.readLines()` reads either terminator, so the two round-trip.
+- `fs.writeText()` and `fs.appendText()` write the string as given and add nothing.
+- A write does not create a missing parent directory. Call `fs.ensureDir` first.
 
-`file.extension` is always lowercased and always includes the dot — callers never need
-to normalise it. `".jpg"`, `".xlsx"`, `".csv"` — always that form.
+**Copy and move:**
 
-Two levels of delete by design: `fs.delete()` refuses a non-empty directory and throws
-`IoError`. `fs.deleteRecursive()` makes the destructive intent explicit at the call site.
+- `overwrite: false` is the default. If the destination exists the call throws
+  `IoError` and changes nothing (D-150). `overwrite: true` replaces a file; it never
+  replaces a directory.
+- `ensureDir: false` is the default. If the destination's directory does not exist
+  the call throws `IoError`. `ensureDir: true` creates it first, as `fs.ensureDir`
+  would. For `fs.copy` and `fs.move` that is the parent of `dest`; for `moveTo` and
+  `copyTo` it is `destDir` itself.
+- `fs.move` and `File.moveTo` accept a directory. `fs.copy` and `File.copyTo` refuse
+  one in v1: copying a tree is not specified.
+- `File.rename(newName)` takes a name, not a path.
+
+**Delete.** Two levels by design: `fs.delete()` refuses a non-empty directory and
+throws `IoError`; `fs.deleteRecursive()` makes the destructive intent explicit at the
+call site. Both throw `IoError` if the path does not exist — a delete that finds
+nothing to delete is reported, not swallowed. `fs.deleteRecursive()` removes a link
+it meets and never follows it to delete the target's contents.
+
+**Failures.** Every failure is an `IoError`, except a bad pattern.
+
+| Failure | Code |
+|---------|------|
+| The path does not exist, or a parent directory of a path being written does not | E5301 |
+| The operating system refused permission | E5302 |
+| A directory where a file is needed: `fs.readText`, `fs.copy` | E5303 |
+| A file where a directory is needed: `fs.list`, `fs.find`, `fs.ensureDir`, `fs.deleteRecursive` | E5304 |
+| The destination exists and `overwrite` is false; `fs.createDir` on an existing path | to be minted by the `fs` increment (R-52) |
+| `fs.delete` on a directory that is not empty | to be minted by the `fs` increment (R-52) |
+| Anything else | E5305 |
+
+`fs.exists`, `fs.isFile` and `fs.isDirectory` never throw. Where the answer cannot be
+determined — permission refused on a parent, for one — they return false.
+
+**Platform differences.** The functions, their results and their errors are the same
+on Windows and Linux (D-442). What differs is the file system beneath them, and it
+differs in three places: the separator in `File.path` and `File.directory`; whether
+two names that differ only in case are one entry or two; and `File.created`, which
+is the creation time where the file system records one. What `created` holds on a
+Linux file system that records none is verified by the `fs` increment and stated
+here before `fs` ships (R-53).
 
 -----
 
@@ -998,7 +1124,13 @@ lambda becomes a `Closure` object at runtime — a `BytecodeFunction` plus its u
 
 -----
 
-*Document updated April 2026 — math module reconciled with D-093: function set restored*
+*Document updated November 2026 — D-445: the `fs` section is rewritten from the April*
+*sketch as the surface to build. `fs.find`, `fs.info`, `fs.writeLines` and `fs.appendLine`*
+*added, bringing the module to 18 functions; `File.rename`, `moveTo` and `copyTo` return*
+*the new `File` and a `File` is a snapshot; copy and move gain `ensureDir`; listing order,*
+*pattern rules, failure behaviour and platform differences specified; examples use paths*
+*valid on Windows and Linux (D-442).*
+*Previous: April 2026 — math module reconciled with D-093: function set restored*
 *to 16 functions plus 3 constants (sqrt, pow, log, log10, full trig set including asin/acos/atan/atan2,*
 *toRadians, toDegrees, random, randomInt, randomSeed); abs/floor/ceil/round/truncate/min/max/clamp*
 *confirmed as type registry members not math members; ArithmeticError throw sites extended to*

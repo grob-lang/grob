@@ -281,22 +281,28 @@ for k, v in headers {
 
 ---
 
-## `File` (Returned by `fs.list()`)
+## `File` (Returned by `fs.list()`, `fs.find()` and `fs.info()`)
 
-| Member                                             | Kind     | Signature  | Notes                                                                                          |
-| -------------------------------------------------- | -------- | ---------- | ---------------------------------------------------------------------------------------------- |
-| `name`                                             | property | `→ string` | Filename with extension, no path                                                               |
-| `path`                                             | property | `→ string` | Full absolute path                                                                             |
-| `directory`                                        | property | `→ string` | Parent directory path                                                                          |
-| `extension`                                        | property | `→ string` | Lowercased, includes dot — e.g. `.xlsx`                                                        |
-| `size`                                             | property | `→ int`    | Size in bytes                                                                                  |
-| `modified`                                         | property | `→ date`   | Last write time                                                                                |
-| `created`                                          | property | `→ date`   | Creation time                                                                                  |
-| `isDirectory`                                      | property | `→ bool`   | True if entry is a directory                                                                   |
-| `rename(newName: string)`                          | method   | `→ void`   | Rename in place — new name only, not path                                                      |
-| `moveTo(destDir: string, overwrite: bool = false)` | method   | `→ void`   | Move to destination directory. Throws `IoError` if destination exists and `overwrite` is false |
-| `copyTo(destDir: string, overwrite: bool = false)` | method   | `→ void`   | Copy to destination directory. Throws `IoError` if destination exists and `overwrite` is false |
-| `delete()`                                         | method   | `→ void`   | Delete the file                                                                                |
+A `File` describes a file or a directory. It is a snapshot (D-445): it records the
+entry as it was when the value was produced, and no later change on disk and none of
+its own methods alters it. `rename`, `moveTo` and `copyTo` return a new `File` for the
+entry they produced and leave the receiver unchanged. Full rules are in
+`grob-stdlib-reference.md`, `fs` Module.
+
+| Member                                                                        | Kind     | Signature  | Notes                                                                                                                             |
+| ----------------------------------------------------------------------------- | -------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                                                                        | property | `→ string` | Name with extension, no path                                                                                                      |
+| `path`                                                                        | property | `→ string` | Full absolute path, with the platform's separator                                                                                 |
+| `directory`                                                                   | property | `→ string` | Parent directory, absolute                                                                                                        |
+| `extension`                                                                   | property | `→ string` | Lowercased, includes dot — e.g. `.xlsx`                                                                                           |
+| `size`                                                                        | property | `→ int`    | Size in bytes; `0` for a directory                                                                                                |
+| `modified`                                                                    | property | `→ date`   | Last write time, local                                                                                                            |
+| `created`                                                                     | property | `→ date`   | Creation time, local, where the file system records one (R-53)                                                                    |
+| `isDirectory`                                                                 | property | `→ bool`   | True if the entry is a directory                                                                                                  |
+| `rename(newName: string)`                                                     | method   | `→ File`   | Renames within the same directory — a name, not a path. Returns the renamed entry                                                 |
+| `moveTo(destDir: string, overwrite: bool = false, ensureDir: bool = false)`   | method   | `→ File`   | Moves into `destDir`. Throws `IoError` if the destination exists and `overwrite` is false, or if `destDir` is missing and `ensureDir` is false. Returns the moved entry |
+| `copyTo(destDir: string, overwrite: bool = false, ensureDir: bool = false)`   | method   | `→ File`   | Copies a file into `destDir`, with the same two rules. Refuses a directory. Returns the copy                                     |
+| `delete()`                                                                    | method   | `→ void`   | Deletes the entry, as `fs.delete` would: a file or an empty directory                                                             |
 
 ---
 
@@ -623,6 +629,9 @@ _This registry will grow as stdlib design progresses. Add entries here when lock
 
 ---
 
+_Document updated November 2026 — D-445: `File` is a snapshot; `rename`, `moveTo` and_
+_`copyTo` return the new `File` (previously `void`); `moveTo` and `copyTo` gain_
+_`ensureDir: bool = false`; `fs.find()` and `fs.info()` also return `File`._
 _Document updated June 2026 — D-326: `fn(T…): R` function type section added._
 _Function types are compile-time only (erased at runtime), structurally identified_
 _and invariantly assignable. Cross-references D-296 and D-303._
