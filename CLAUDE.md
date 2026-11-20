@@ -46,8 +46,13 @@ Chris.**
   The hits are neither exact nor complete: they include comments, strings and
   unrelated members of the same name, and miss uses that never spell the name,
   such as a `using` alias or a `var` binding. Report a text-based impact search
-  as unconfirmed until LSP or, for a rename, a clean build has checked it.
-  Otherwise Grep is for text: strings, comments, docs and error-code literals.
+  as unconfirmed until LSP has checked it. A name held in a string escapes LSP
+  and the compiler alike: the reflection pins in
+  `SideChannelHelperExhaustivenessTests` call private `TypeChecker` helpers by
+  string, so a rename that misses them still builds and fails only under
+  `dotnet test`. Confirm a rename with a build and a full test run, not the
+  build alone. Otherwise Grep is for text: strings, comments, docs and
+  error-code literals.
   Read a file or a range of lines with the Read tool and its offset and limit,
   never `sed`, `awk`, `head` or `tail` on a file. `sed` and `awk` are denied in
   `.claude/settings.json`; trimming command output with `head` or `tail` is
