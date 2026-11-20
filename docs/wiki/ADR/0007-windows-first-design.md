@@ -1,6 +1,6 @@
 # ADR-0007: Windows-First Design
 
-**Status:** Accepted
+**Status:** Superseded by D-442 — see "What Changed Since This ADR" below
 **Date:** April 2026
 **Decision:** Grob is designed Windows-first. All paths, examples and tooling default to Windows conventions.
 
@@ -41,3 +41,21 @@ Install experience is native and frictionless.
 Negative: Linux and macOS users see Windows paths in examples. This is
 documented as intentional. Path-handling functions (`path.join()`,
 `path.normalise()`) are platform-aware at runtime.
+
+## What Changed Since This ADR
+
+This ADR made Windows the design target and treated other platforms as possible
+but unpromised. **D-442** (November 2026) replaces that: Windows and Linux are
+equal platforms, with the same language, standard library and diagnostics, and
+every release ships both. D-442, not this ADR, describes current platform
+support.
+
+Two things here are reversed. Documentation examples no longer default to
+Windows paths: an example uses a relative path valid on both platforms, or shows
+both forms where an absolute path is the subject. And platform-neutral
+documentation, rejected above, is now the rule, because a person or an agent on
+either platform must be able to run an example as written.
+
+What stands: Windows is never an afterthought. Backtick raw strings remain the
+idiom for Windows paths, and the Windows Terminal profile and `winget` delivery
+stay as Windows-only features. macOS is not claimed.
