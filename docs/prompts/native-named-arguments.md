@@ -248,11 +248,17 @@ behaviour where D-446 or D-447 changes that behaviour; name the clause in the co
 
 Required:
 
-- **The convention on each native path**: for namespace, primitive and named-type calls
-  and for `input`, a named argument binds; named arguments in either order bind the same; E0008, E0009, E0010
+- **The convention on each native path**: for namespace, primitive and named-type calls, a
+  named argument binds; named arguments in either order bind the same; E0008, E0009, E0010
   and E0011 each fire with the message §1.4 fixed; E0003 and E0004 are checked on the bound
-  set and suppressed by a binding error.
-- **Skip and fill** on each path, and through a plugin registered on the public surface.
+  set and suppressed by a binding error. A case needs a signature that can exercise it:
+  two defaults for either-order binding, a required parameter for E0009. Where no
+  registered signature on a path has that shape, use a member registered by the test.
+- **`input`**, whose one parameter is defaulted: `prompt` binds by name; omitting it still
+  works; E0008, E0010 and E0011 fire. E0009, either-order binding and skip and fill do not
+  apply to it and are not required of it.
+- **Skip and fill** on the namespace, primitive and named-type paths, and through a plugin
+  registered on the public surface.
 - **Overloads**: positional arguments choose; a name only the other signature declares is
   E0011; every overloaded call in the suite today chooses as it did.
 - **Named-type default fill**: a positional call that omits a trailing default now works on

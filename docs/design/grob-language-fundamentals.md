@@ -1325,7 +1325,8 @@ another signature declares is E0011.
 a call to one takes no named arguments.
 
 **Built-ins.** `input` has a signature, with a defaulted `prompt`, and is called as any
-native is: `input(prompt: "Name: ")`.
+native is: `input(prompt: "Name: ")`. The *native named arguments* increment builds
+that; until it lands `input` does not read an argument's name.
 
 **Callables with no signature (D-447).** Array methods, map methods, `print`, `exit`
 and a call through a function value record no parameter names, so there is
