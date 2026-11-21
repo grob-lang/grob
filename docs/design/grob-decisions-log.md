@@ -444,7 +444,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-445 | November 2026 | Standard library — `fs`, `File`; Platform support; Runtime — capability-injection seam; Deferred Work Register | **The `fs` surface is fixed for the 9C increment**, refining D-109, D-150, D-177 and D-436 on seven owner rulings. Verified at `7349f98`: the April sketch gives no listing order and no failure behaviour, and is written for Windows alone. **A `File` is a snapshot**: `rename`, `moveTo` and `copyTo` return the new `File` and leave the receiver unchanged, as the README's first sample already assumes. **A listing has one order on both platforms**: ordinal by name within a directory, each directory followed by its contents, links not descended into. **Four functions added**, to 18: `fs.find(dir, pattern)` with `*`, `?` and `**`, named and shaped for Grob's plain-word surface in place of `fs.glob`; `fs.info`; `fs.writeLines`; `fs.appendLine`. **Copy and move gain `ensureDir: bool = false`**. Deletes throw on a missing path; `copy` refuses a directory; the existence checks never throw. **Failing is not reading**: an `overwrite: false` copy is one seam member, not a check and a copy. **A path argument is normalised as `path.normalise` does** before it reaches `IFileSystem`, so `\` separates on Linux too, for `fs`, `json` and `csv`. R-52 to R-54 filed. No source change. |
 | D-446 | November 2026 | Type system — call binding; Compiler — argument emission; Standard library — signatures; Plugin SDK; Deferred Work Register | **Named arguments bind to natives**, refining D-113, D-318, D-358, D-426 Decision 4 and D-428 Decision 9 on six owner rulings. Verified at `9f7384d`: script functions bind D-113 in full and every native path refuses a named argument, so D-445's `fs` surface does not compile. **One convention**: D-113 applies unchanged to namespace functions, primitive methods, named-type methods and plugin functions; a required parameter stays positional only. **A defaulted parameter's name is contract** and is pinned to the reference by the drift check (R-55). Overloads resolve on positional arguments first. Natives inherit today's evaluation order, which no decision states: **OQ-028**. **Built by its own increment ahead of `fs`**, closing R-20, which is re-owned. `grob-language-fundamentals.md` gains §12.2, the section on calls it never had. No error code, opcode or grammar added. No source change. |
 | D-447 | November 2026 | Type system — call binding; Compiler — argument emission; Testing — probe corpus; Deferred Work Register | **Authorises the *native named arguments* increment**, refining D-446 and D-426 Decision 1; prompt at `docs/prompts/native-named-arguments.md`. Read at `a30cadf`, not run: array methods, map methods, `print`, `exit` and calls through a function value carry no signature and no code on those paths reads an argument's name, a set D-446 did not name. **A call with no signature refuses a named argument** with E0011, on PR #248's precedent, if the gate confirms it is accepted today; binding there waits on signatures (R-56). The `input` built-in has a signature, and the increment is to bind it with the other three paths. Named-type methods gain default fill. The probe masters change on D-428's first ground, line by line. The gate runs what the planning sessions read. No source change. |
-| D-448 | November 2026 | Compiler — type checker, argument emission; VM — calls; Deferred Work Register | **A call through a function-typed parameter calls the value**, not the enclosing function its symbol records; the gate's STOP S1, fixed on its own branch (Chris). The checker records a direct call's function on the call node and the compiler reads only that. **Rejected**: a declaration node for parameters. **A call through a function value refuses a named argument now**, with E0011, taking D-447 Decision 2's refusal ahead of the increment, and **checks its arguments against its function type**, E0003 and E0004, where the checker knows that type; the fix would otherwise have let a wrong call through a parameter compile. **R-57 filed**: a declared function held in a binding, a struct field and an array element are still unchecked, so `h(3, 100)` through `h := twice` prints `100`, and the VM does not compare a call's argument count with the callee's arity. **R-58 filed**: an `int` where a `float` is expected is never widened outside an arithmetic or comparison operand, so `x: float := 1` then `x / 2`, and `add(1, 2)`, stop with an internal error, on `main` too. Count unchanged at 121. |
+| D-448 | November 2026 | Compiler — type checker, argument emission; VM — calls; Deferred Work Register | **A call through a function-typed parameter calls the value**, not the enclosing function its symbol records; the gate's STOP S1, fixed on its own branch (Chris). The checker records a direct call's function on the call node and the compiler reads only that. **Rejected**: a declaration node for parameters. **A call through a function value refuses a named argument now**, with E0011, taking D-447 Decision 2's refusal ahead of the increment, and **checks its arguments against its function type**, E0003 and E0004, where the checker knows that type; the fix would otherwise have let a wrong call through a parameter compile. **R-57 filed**: a declared function held in a binding, a struct field and an array element are still unchecked, so `h(3, 100)` through `h := twice` prints `100`, and the VM does not compare a call's argument count with the callee's arity. **R-58 filed**: an `int` where a `float` is expected is not widened in a binding, a return, a struct field, a parameter default or an argument, so `x: float := 1` then `x / 2`, and `add(1, 2)`, stop with an internal error, on `main` too. Count unchanged at 121. |
 
 ---
 
@@ -17921,8 +17921,9 @@ The increment keeps the refusal for array methods, map methods, `print` and `exi
 
 **Decision 3 — a call through a function value checks its arguments against its function
 type.** At `74ee294` the checker read only the function type's return type, so neither the
-number nor the types of the arguments were checked. Before the fix every call through a
-parameter was rejected against the enclosing function; after it, a wrong call through a
+number nor the types of the arguments were checked. Before the fix a call through a
+parameter was checked against the enclosing function's signature: it could be rejected for
+the wrong reason, or pass and be miscompiled, as `h(n)` above was. After it, a wrong call through a
 parameter would have compiled and run on the wrong slots. CodeRabbit found that on PR #262.
 Where the checker knows the callee's function type — a parameter, a binding whose type is
 a function type, a grouped callee, a lambda called where it is written, a call's result —
@@ -17932,7 +17933,14 @@ A function type records each parameter's kind and the shape of a function-typed 
 not an array parameter's element type or a struct parameter's name, so an `int[]` against
 a `string[]` or one struct against another is not caught here (R-57).
 A lambda's parameter annotations are not read yet (R-47), so a lambda's parameters are
-`Unknown` and only the count of a call to one is checked. Both codes exist; none is minted.
+`Unknown` and only the count of a call to one is checked. A lambda that returns a function
+carries that function's shape, so `() => () => 1` matches `fn(): fn(): int`; a block lambda
+carries it only when every `return` in it and its final value share one shape, so an early
+`return` of another shape matches no declared nested shape. The shapes must be equal, so an
+inferred lambda (`Unknown` positions) and a concrete function value returned by the same
+lambda do not combine and that lambda matches no declared nested shape, as every lambda
+returning a function did before the fix; how such shapes should merge is not decided here.
+Both codes exist; none is minted.
 
 **Decision 4 — R-57 and R-58 are filed.** Measured through `grob run`, at `74ee294` unless
 stated:
@@ -17949,11 +17957,12 @@ stated:
 - `fn add(a: float, b: float): float` called as `add(1, 2)` stops with an internal error,
   `expected Float, actual Int`, and so does `x: float := 1` followed by `x / 2`; both
   measured on `main` at `67b268d` as well. The checker accepts an `int` wherever a `float`
-  is expected, and the compiler widens it only as an arithmetic or comparison operand.
+  is expected; the compiler widens it as an arithmetic or comparison operand and in a
+  ternary or switch arm that unifies to `float`, but nowhere else.
   A `float` return, struct field, parameter default, native argument (`math.sqrt(4)`) and
   a call through a function value fail the same way. Decision 3 lets a call through a
   function-typed parameter reach that failure where the enclosing function's signature
-  used to reject it; widening that one path would leave the rest. The class is R-58.
+  could reject it; widening that one path would leave the rest. The class is R-58.
 
 **Spec edits in this commit.** `grob-language-fundamentals.md` §12.2: a call through a
 function value refuses a named argument already. `grob-open-questions.md`: R-57 and R-58
@@ -18198,7 +18207,7 @@ _function-typed parameter calls the value**, not the enclosing function. A call 
 _function value refuses a named argument with E0011 and checks its arguments against its_
 _function type where the checker knows it. R-57 filed: the function values it does not know,_
 _and the VM's missing arity check. R-58 filed: an `int` where a `float` is expected is_
-_never widened outside an arithmetic or comparison operand, on `main` too. Count unchanged at 121._
+_not widened in a binding, a return, a struct field, a parameter default or an argument, on `main` too. Count unchanged at 121._
 _Previous: November 2026 — D-447 added, with spec edits; no source change. **The *native named_
 _arguments* increment is authorised**, its prompt committed with it. The increment is to make a_
 _call with no signature — an array or map method, `print`, `exit`, a call through a function_
