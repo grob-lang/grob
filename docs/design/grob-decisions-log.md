@@ -17940,7 +17940,10 @@ carries it only when every `return` in it and its final value share one shape, s
 inferred lambda (`Unknown` positions) and a concrete function value returned by the same
 lambda do not combine and that lambda matches no declared nested shape, as every lambda
 returning a function did before the fix; how such shapes should merge is not decided here.
-Both codes exist; none is minted.
+Reassigning a function-typed binding or parameter keeps its function type, as a
+declaration's initialiser must: `f = () => "s"` into `f: fn(int): int` is E0001, since a
+later `f(1)` is checked against that type. Where the value's shape is not tracked, such as a
+struct field's, only the kind is compared. Both codes exist; none is minted.
 
 **Decision 4 — R-57 and R-58 are filed.** Measured through `grob run`, at `74ee294` unless
 stated:
