@@ -316,4 +316,24 @@ public sealed class CompilerFunctionTests {
         Assert.True(fBind.Offset < xBind.Offset,
             "the fn prologue runs before any top-level value-binding code");
     }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_EmitsSuppliedArgumentsOnly() {
+        // 'h(n)' calls the parameter h with one argument. It used to be taken for a call
+        // to 'apply' itself: the type checks passed by coincidence (n fits apply's first
+        // parameter, the second has a default) and the reorder path then emitted apply's
+        // default lambda as a second argument, 'Call 2' in place of 'Call 1'.
+        Chunk chunk = CompileSource("""
+            fn apply(n: int, h: fn(int): int = v => v): int {
+            return h(n)
+            }
+            """);
+        BytecodeFunction fn = SingleFunctionConstant(chunk);
+        List<Instr> body = Decode(fn.Bytecode);
+
+        Assert.Equal(
+            [new Instr(0, OpCode.GetLocal, 1), new Instr(2, OpCode.GetLocal, 0), new Instr(4, OpCode.Call, 1)],
+            body.Take(3));
+        Assert.Equal(OpCode.Return, body[3].Op);
+    }
 }

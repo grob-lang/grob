@@ -792,8 +792,10 @@ public sealed partial class Compiler {
         // Named arguments, or a positional call that omits a defaulted parameter,
         // need reorder-and-fill so the callee receives a fully-bound positional list
         // in parameter declaration order. A pure positional call that supplies every
-        // parameter takes the fast path, emitting arguments in source order.
-        if (node.Callee is IdentifierExpr { Declaration: FnDecl fn } &&
+        // parameter takes the fast path, emitting arguments in source order. The checker's
+        // ResolvedFunction, not the callee's Declaration, says the call is to a declared
+        // function: a function-typed parameter's identifier carries its owning FnDecl too.
+        if (node.ResolvedFunction is { } fn &&
             (node.Arguments.Any(a => a.Name is not null) || node.Arguments.Count != fn.Parameters.Count)) {
             EmitReorderedArguments(node, fn);
             _chunk.WriteOpCode(OpCode.Call, line);

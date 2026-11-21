@@ -1128,13 +1128,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         MapTypeDescriptor? MapDescriptor = null);
 
     private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode,
-                               bool provisional = false, SymbolTypeIdentity typeIdentity = default) {
+                               bool provisional = false, SymbolTypeIdentity typeIdentity = default, bool isParameter = false) {
         _scopes.Peek()[name] = new Symbol {
             Name = name,
             Type = type,
             DeclaredAt = declaredAt,
             DeclarationNode = declarationNode,
             Provisional = provisional,
+            IsParameter = isParameter,
             FunctionDescriptor = typeIdentity.FunctionDescriptor,
             NamedStructTypeName = typeIdentity.NamedStructTypeName,
             ArrayDescriptor = typeIdentity.ArrayDescriptor,

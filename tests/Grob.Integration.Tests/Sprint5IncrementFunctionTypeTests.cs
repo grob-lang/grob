@@ -86,4 +86,45 @@ public sealed class Sprint5IncrementFunctionTypeTests {
 
         Assert.Equal($"1{NL}1{NL}2{NL}", stdout);
     }
+
+    // -----------------------------------------------------------------------
+    // Calls through a function-typed parameter — the higher-order shape. The call
+    // used to be checked and compiled against the enclosing function.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_RunsTheArgument() {
+        string stdout = Run("""
+            fn applyTo(f: fn(int): int, x: int): int {
+                return f(x)
+            }
+            fn combine(f: fn(int, int): int, a: int, b: int): int {
+                return f(a, b)
+            }
+            print(applyTo(n => n * 2, 21))
+            print(combine((p, q) => p - q, 10, 3))
+            """);
+
+        Assert.Equal($"42{NL}7{NL}", stdout);
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_WithDefaultedSibling_DoesNotEvaluateTheSiblingDefault() {
+        // 'h(n)' used to be compiled as a call to 'apply', so the body evaluated apply's
+        // default for h, 'identity()', as a second argument on every call. The VM accepts
+        // the surplus argument silently; the print in 'identity' is what makes it visible.
+        string stdout = Run("""
+            fn identity(): fn(int): int {
+                print("default made")
+                return v => v
+            }
+            fn apply(n: int, h: fn(int): int = identity()): int {
+                return h(n)
+            }
+            print(apply(21, v => v * 2))
+            print(apply(21))
+            """);
+
+        Assert.Equal($"42{NL}default made{NL}21{NL}", stdout);
+    }
 }

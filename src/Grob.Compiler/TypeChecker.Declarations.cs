@@ -40,8 +40,10 @@ public sealed partial class TypeChecker {
             // The struct name/array/map descriptor travel on the symbol itself (not recoverable
             // from DeclarationNode alone) so a struct-typed, T[]-typed or map<string, V>-typed
             // parameter resolves inside the function body the same way a `:=`-inferred local does.
+            // isParameter marks it, so a call through a function-typed parameter is not taken
+            // for a call to the owning function (VisitCall's DirectCallee).
             RegisterSymbol(p.Name, paramType, p.Range.Start, node,
-                typeIdentity: new(paramDesc, paramStructName, paramArrayDesc, paramMapDesc));
+                typeIdentity: new(paramDesc, paramStructName, paramArrayDesc, paramMapDesc), isParameter: true);
         }
 
         // Track the declared return type so VisitReturn can check returned values

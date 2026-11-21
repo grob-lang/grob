@@ -462,4 +462,92 @@ public sealed class TypeCheckerFunctionTypeTests {
         (_, DiagnosticBag bag) = TypeCheckSource("fn f(action: fn(): int = (() => 1)): void { }\n");
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
     }
+
+    // -----------------------------------------------------------------------
+    // Calls through a function-typed parameter
+    //
+    // A parameter's symbol records the enclosing FnDecl as its declaration node
+    // (Parameter is not an AstNode), so the call arm used to take `f(x)` inside
+    // `applyTo` for a call to applyTo itself and bind the arguments against
+    // applyTo's parameters. The call is to a function value and takes the
+    // function-value path, as a lambda held in a binding does.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_TypeChecksWithoutBindingToEnclosingFunction() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn applyTo(f: fn(int): int, x: int): int {
+                return f(x)
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_ShadowingTopLevelFunction_CallsTheParameter() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn pair(a: int, b: int): int {
+                return a + b
+            }
+            fn useIt(pair: fn(int): int): int {
+                return pair(1)
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_NamedAsItsOwnFunction_CallsTheParameter() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn twice(twice: fn(int): int): int {
+                return twice(1)
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void ResolvedFunction_DirectCall_IsTheDeclaredFunction() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            fn add(a: int, b: int): int {
+                return a + b
+            }
+            x := add(1, 2)
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+
+        FnDecl add = Assert.Single(unit.TopLevel.OfType<FnDecl>());
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Same(add, call.ResolvedFunction);
+    }
+
+    [Fact]
+    public void ResolvedFunction_CallThroughFunctionTypedParameter_IsNull() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            fn applyTo(f: fn(int): int, x: int): int {
+                return f(x)
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+
+        CallExpr call = Assert.Single(CollectCalls(unit));
+        Assert.Null(call.ResolvedFunction);
+    }
+
+    private static List<CallExpr> CollectCalls(CompilationUnit unit) {
+        var collector = new CallCollector();
+        collector.Visit(unit);
+        return collector.Calls;
+    }
+
+    private sealed class CallCollector : AstWalker {
+        public List<CallExpr> Calls { get; } = [];
+        public override Unit VisitCall(CallExpr node) {
+            Calls.Add(node);
+            return base.VisitCall(node);
+        }
+        public override Unit VisitErrorExpr(ErrorExpr node) => default;
+        public override Unit VisitErrorStmt(ErrorStmt node) => default;
+        public override Unit VisitErrorDecl(ErrorDecl node) => default;
+    }
 }
