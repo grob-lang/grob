@@ -701,6 +701,70 @@ public sealed class TypeCheckerFunctionTypeTests {
         Assert.Equal(26, d.Range.Start.Column);
     }
 
+    // -----------------------------------------------------------------------
+    // Reassigning a function-typed binding or parameter (D-326)
+    //
+    // A call through a parameter is checked against the parameter's function type, so
+    // reassigning the parameter must keep that type: otherwise f = () => "s" followed by
+    // f(1) types as int and yields a string.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Reassignment_FunctionTypedParameter_WrongShape_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn apply(f: fn(int): int): int {
+                f = () => "s"
+                return f(1)
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(9, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Reassignment_FunctionTypedBinding_WrongShape_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            g: fn(int): int := (x: int) => x + 1
+            g = () => "s"
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(5, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Reassignment_FunctionTypedParameter_CompatibleShape_IsAccepted() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn apply(f: fn(int): int, g: fn(int): int): int {
+                f = (x) => x + 1
+                f = g
+                return f(1)
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    /// <summary>
+    /// A struct field's function shape is not tracked, so assigning one compares the flat
+    /// kind rather than rejecting the value for want of a shape.
+    /// </summary>
+    [Fact]
+    public void Reassignment_FunctionTypedParameter_FromStructField_IsAccepted() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(int): int
+            }
+            fn apply(f: fn(int): int, bx: Box): int {
+                f = bx.op
+                return f(1)
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
     [Fact]
     public void LambdaBinding_EarlyReturnAlreadyInError_IsNotReportedAgain() {
         (_, DiagnosticBag bag) = TypeCheckSource("""

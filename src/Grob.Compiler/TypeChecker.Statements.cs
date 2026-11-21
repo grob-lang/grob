@@ -246,7 +246,7 @@ public sealed partial class TypeChecker {
         // also permissive — it could be the right type at runtime; the VM validates.
         if (symbol.Type != GrobType.Error && symbol.Type != GrobType.Unknown &&
             valueType != GrobType.Error && valueType != GrobType.Unknown &&
-            !TypesAreAssignable(valueType, symbol.Type)) {
+            !IsAssignableToBinding(valueType, node.Value, symbol)) {
             EmitError(PickAssignabilityError(valueType, symbol.Type),
                 $"Cannot assign value of type '{TypeName(valueType)}' to binding '{target.Name}' of type '{TypeName(symbol.Type)}'.",
                 node.Value.Range);
@@ -254,6 +254,19 @@ public sealed partial class TypeChecker {
 
         return GrobType.Unknown;
     }
+
+    /// <summary>
+    /// Whether a value of <paramref name="valueType"/> may be assigned to
+    /// <paramref name="target"/>. A binding or parameter whose function type is known keeps
+    /// it: the value's shape must match, as a declaration's initialiser must (D-326), since a
+    /// later call is checked against that type. When either side's shape is not tracked (a
+    /// struct field's value, for one), only the flat kind is compared, so a value of an
+    /// untracked shape is not rejected for want of one.
+    /// </summary>
+    private bool IsAssignableToBinding(GrobType valueType, Expression value, Symbol target) =>
+        target.FunctionDescriptor is { } targetDescriptor && InitialiserDescriptor(value) is { } valueDescriptor
+            ? TypesAreAssignable(valueType, target.Type, valueDescriptor, targetDescriptor)
+            : TypesAreAssignable(valueType, target.Type);
 
     /// <inheritdoc/>
     /// <remarks>
