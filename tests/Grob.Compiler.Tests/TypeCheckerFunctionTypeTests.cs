@@ -660,6 +660,37 @@ public sealed class TypeCheckerFunctionTypeTests {
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
     }
 
+    /// <summary>
+    /// A lambda that returns a lambda carries the returned lambda's shape, so it matches
+    /// a parameter that declares that nested return shape: an expression body, a block's
+    /// final expression and a block's final <c>return</c> alike.
+    /// </summary>
+    [Theory]
+    [InlineData("k(() => () => 1)")]
+    [InlineData("k(() => {\n        f := () => 1\n        f\n    })")]
+    [InlineData("k(() => {\n        return () => 1\n    })")]
+    public void CallThroughFunctionTypedParameter_LambdaReturningLambda_MatchesNestedShape(string call) {
+        (_, DiagnosticBag bag) = TypeCheckSource($$"""
+            fn run(k: fn(fn(): fn(): int): int): int {
+                return {{call}}
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_LambdaReturningWrongLambda_IsE0004() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn run(k: fn(fn(): fn(): int): int): int {
+                return k(() => () => "s")
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(14, d.Range.Start.Column);
+    }
+
     [Fact]
     public void CallThroughFunctionTypedParameter_ArgumentAlreadyInError_IsNotReportedAgain() {
         (_, DiagnosticBag bag) = TypeCheckSource("""

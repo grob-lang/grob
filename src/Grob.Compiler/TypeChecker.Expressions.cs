@@ -3408,7 +3408,9 @@ public sealed partial class TypeChecker {
         _lambdaReturnTypes[node] = bodyType;
 
         // Build and store the structural descriptor for this lambda (D-326); arity is exact.
-        _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, bodyType);
+        // Read while the parameters are still in scope, so a returned lambda or function
+        // value resolves its own shape.
+        _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, bodyType, [], LambdaResultDescriptor(node.Body));
 
         _controlFrameFloors.Pop();
         _functionReturnTypes.Pop();
@@ -3419,6 +3421,18 @@ public sealed partial class TypeChecker {
         // descriptor use _lambdaDescriptors.
         return GrobType.Function;
     }
+
+    /// <summary>
+    /// The function-type descriptor of the value a lambda returns, when that value is
+    /// itself a function: its expression body, or a block body's final expression or final
+    /// <c>return</c>. <see langword="null"/> for any other result.
+    /// </summary>
+    private FunctionTypeDescriptor? LambdaResultDescriptor(LambdaBody body) => body switch {
+        LambdaExpressionBody exprBody => ExpressionDescriptor(exprBody.Expression),
+        LambdaBlockBody { Block.Statements: [.., ExpressionStmt last] } => ExpressionDescriptor(last.Expression),
+        LambdaBlockBody { Block.Statements: [.., ReturnStmt { Value: { } returned }] } => ExpressionDescriptor(returned),
+        _ => null,
+    };
 
     /// <summary>
     /// Visits all statements in a block-body lambda and infers the return type.
