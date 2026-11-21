@@ -20,6 +20,7 @@ Chris's rulings on the gate's STOP conditions, 21 November. The group 7 landing 
 - **S2: `sort` binds `descending`.** The bespoke `sort` arm passes a one-entry parameter list (`fn` required, `descending` defaulted) to the shared binder. Every other array method, every map method, `print`, `exit` and function values refuse with E0011. This narrows D-447 Decision 2 for one callable. Group 6's drift check should pin `descending` as well.
 - **S3: refuse.** A member call on an `Unknown` receiver refuses a named argument with E0011 in group 5. This extends D-447 Decision 2 to a fifth kind.
 - **`strings.join`: fix the doc.** `grob-type-registry.md:337` loses `separator`'s default; the code is unchanged. This lands in group 6 with the other §1.3 document fixes (adding signatures for `date.parse`'s `pattern` and `input`'s `prompt` to the stdlib reference).
+- **Refusal wording for a callee with no name: agreed.** `A function value does not accept named arguments; pass them positionally.` (gate report §1.4), for group 5.
 
 The gate report proposes the binder (§1.4), the emission record (§1.5) and the probe-master line list (§1.6). These are not yet approved; the rulings above change none of them.
 
@@ -41,5 +42,4 @@ Run the prompt's session-start check for session B (Opus, high), then build grou
 
 ## Open for the maintainer
 
-- The new refusal wording for a callee that has no name: `A function value does not accept named arguments; pass them positionally.` (gate report §1.4). Needed by group 5.
-- The S1 fix branch is not yet cut. It must merge before group 5 starts.
+- The S1 fix is on `fix/compiler-function-typed-parameter-call`, cut from `main`. It must merge before group 5 starts, and #261 then takes it in from `main`.
