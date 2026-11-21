@@ -1264,6 +1264,77 @@ diagnostic (§19.1) fires at that read.
 
 ---
 
+## 12.2 Calls and Named Arguments
+
+```grob
+fn connect(host: string, port: int = 443, retries: int = 3): bool {
+    return true
+}
+
+connect("example.org")                           // port 443, retries 3
+connect("example.org", 8443)                     // positional
+connect("example.org", retries: 5)               // port keeps its default
+connect("example.org", retries: 5, port: 8443)   // named, in either order
+```
+
+**The convention (D-113):**
+
+- Positional arguments come first, in declaration order. Named arguments follow.
+- Named arguments may be written in any order.
+- Only a parameter with a default may be passed by name. A required parameter is
+  positional only.
+- A defaulted parameter that is not supplied takes its default. A named argument may
+  therefore skip the defaulted parameters before it.
+
+**One convention for every callable (D-446).** The rules above hold for a function
+declared in the script and for every native: a namespace function, a method on a
+primitive, a method on a named type and a function a plugin registers. There is no
+second rule for natives.
+
+```grob
+when := date.parse("05/04/2026", pattern: "dd/MM/yyyy")
+fs.copy("report.txt", "backup/report.txt", overwrite: true)
+moved := file.moveTo("archive/2026", ensureDir: true)   // overwrite keeps its default
+```
+
+A native's parameter names are the ones `grob-stdlib-reference.md` and
+`grob-type-registry.md` give in its signature. The name of a defaulted parameter is
+part of the function's contract: it cannot change once shipped.
+
+**Diagnostics.** Each is a compile error, and all that apply to a call are reported
+together (D-318):
+
+| Mistake | Code |
+|---------|------|
+| A positional argument after a named one | E0008 |
+| A named argument for a required parameter | E0009 |
+| A parameter supplied twice | E0010 |
+| A name the callee does not declare | E0011 |
+
+Argument count (E0003) and argument types (E0004) are checked on the bound set, once
+binding has succeeded.
+
+**Defaults.** A script function's default is an expression, compiled at each call
+that omits it. A native's default is a compile-time constant (D-358).
+
+**Overloads.** Where a method has more than one signature, the positional arguments
+choose the signature and the named arguments then bind against it. A name that only
+another signature declares is E0011.
+
+**Variadic functions.** A function with a variadic tail has no defaulted parameter, so
+a call to one takes no named arguments.
+
+**`formatAs.table`.** Its `columns:` argument is the one exception. The compiler
+resolves it, not a signature (D-345): it is always written by name and cannot be
+passed positionally.
+
+**Evaluation order.** When a call uses named arguments or omits a default, its
+arguments are evaluated in the order the parameters are declared, not the order they
+are written. That is what the compiler does today. Whether it should is OQ-028, so a
+script should not depend on it.
+
+---
+
 ## 13. `print()` Built-in
 
 ```grob
@@ -2826,7 +2897,10 @@ without noise.
 
 ---
 
-_Document updated August 2026 — D-415: §29.1's synchronisation anchor set_
+_Document updated November 2026 — D-446: §12.2 Calls and Named Arguments added. The_
+_convention D-113 set and D-318 gave codes to had no section here, though D-318 pointed_
+_at one. The section states it for script functions and, under D-446, for every native._
+_Previous: August 2026 — D-415: §29.1's synchronisation anchor set_
 _gains a seventh anchor, `@` — the token that opens a top-level declaration's_
 _decorator stack. Confirmed empirically that without it, an adversarial_
 _`param` default that leaves a bracket permanently open disables the newline_

@@ -30,6 +30,16 @@ If a reasonable developer expects it in any scripting language, it's core.
 |`formatAs`|Output formatting — collection-to-string terminators: `table()`, `list()`, `csv()`. Chained form: `x.formatAs.table()`|Specified|
 |`guid`   |GUID generation — v4 random, v7 time-ordered, v5 deterministic; parsing, well-known namespaces               |Specified|
 
+**Calling convention.** Every function and method in this reference is called as a
+script's own functions are (D-446): positional arguments first, then any defaulted
+parameter by name, in any order. A parameter shown with `= value` in a signature has a
+default and may be named; one without is positional only. The rules and their
+diagnostics are in `grob-language-fundamentals.md` §12.2.
+
+There is one exception. `formatAs.table`'s `columns` is always written by name,
+`formatAs.table(columns: [...])`, though its signature shows no default. The compiler
+resolves it, not a signature (D-345), and it cannot be passed positionally.
+
 -----
 
 ## First-Party Plugins — Explicit Import Required
@@ -1155,7 +1165,9 @@ lambda becomes a `Closure` object at runtime — a `BytecodeFunction` plus its u
 
 -----
 
-*Document updated November 2026 — D-445: the `fs` section is rewritten from the April*
+*Document updated November 2026 — D-446: calling-convention note added under Core Modules;*
+*every defaulted parameter in this reference may be passed by name.*
+*Previous: November 2026 — D-445: the `fs` section is rewritten from the April*
 *sketch as the surface to build. `fs.find`, `fs.info`, `fs.writeLines` and `fs.appendLine`*
 *added, bringing the module to 18 functions; `File.rename`, `moveTo` and `copyTo` return*
 *the new `File` and a `File` is a snapshot; copy and move gain `ensureDir`; listing order,*
