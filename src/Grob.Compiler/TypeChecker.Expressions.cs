@@ -520,10 +520,14 @@ public sealed partial class TypeChecker {
         // C). A callee bound to a function-typed value (D-362) still resolves a return
         // type — via its descriptor rather than a declared FnDecl signature — so
         // GetExprType can pick the right typed opcode when the call is used as an
-        // arithmetic operand; no argument validation is added for this shape, that stays
-        // out of scope. Any other unresolved callee is permissive.
+        // arithmetic operand. A function type names no parameters (D-326), so a named
+        // argument is refused (D-447 Decision 2); the arguments' count and types are not
+        // checked yet (R-57). Any other unresolved callee is permissive.
         if (DirectCallee(node.Callee) is not FnDecl fn) {
             if (ExpressionDescriptor(node.Callee) is FunctionTypeDescriptor calleeDescriptor) {
+                RejectNamedFunctionValueArgs(node);
+                if (calleeDescriptor.ReturnDescriptor is { } returnDescriptor)
+                    _callResultDescriptors[node] = returnDescriptor;
                 node.ResolvedReturnType = calleeDescriptor.ReturnType;
                 return calleeDescriptor.ReturnType;
             }
@@ -558,6 +562,19 @@ public sealed partial class TypeChecker {
         callee is IdentifierExpr { Declaration: FnDecl fn } id && LookupSymbol(id.Name) is not { IsParameter: true }
             ? fn
             : null;
+
+    /// <summary>
+    /// Reports E0011 at each named argument of a call through a function value. A
+    /// function type carries no parameter names (D-326), so a name has nothing to bind
+    /// against and would otherwise be dropped, passing the value in source order.
+    /// </summary>
+    private void RejectNamedFunctionValueArgs(CallExpr node) {
+        foreach (CallArgument arg in node.Arguments.Where(a => a.Name is not null)) {
+            EmitError(ErrorCatalog.E0011,
+                "A function value does not accept named arguments; pass them positionally.",
+                arg.Range);
+        }
+    }
 
     /// <summary>
     /// Visits an expression whose result is implicitly discarded, or is a lambda's own

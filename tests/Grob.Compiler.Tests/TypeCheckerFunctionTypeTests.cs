@@ -534,6 +534,64 @@ public sealed class TypeCheckerFunctionTypeTests {
         Assert.Null(call.ResolvedFunction);
     }
 
+    /// <summary>
+    /// A function type carries no parameter names (D-326), so a named argument through a
+    /// function-typed parameter has nothing to bind against. It is refused with E0011 at
+    /// each named argument (D-447 Decision 2), never passed in source order.
+    /// </summary>
+    [Fact]
+    public void CallThroughFunctionTypedParameter_NamedArguments_AreE0011AtEachArgument() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn apply(f: fn(int, int): int): int {
+                return f(right: 1, left: 10)
+            }
+            """);
+        Assert.Collection(bag.Errors,
+            d => AssertFunctionValueNamedArgument(d, line: 2, column: 14),
+            d => AssertFunctionValueNamedArgument(d, line: 2, column: 24));
+    }
+
+    [Fact]
+    public void CallThroughFunctionValueBinding_NamedArgument_IsE0011() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            sub := (a: int, b: int) => a - b
+            x := sub(10, b: 1)
+            """);
+        AssertFunctionValueNamedArgument(Assert.Single(bag.Errors), line: 2, column: 14);
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_ReturningFunctionType_FlowsItsDescriptor() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn outer(make: fn(): fn(): int): int {
+                g: fn(): int := make()
+                return g()
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_ReturningMismatchedFunctionType_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn outer(make: fn(): fn(): int): int {
+                g: fn(): string := make()
+                return 0
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(24, d.Range.Start.Column);
+    }
+
+    private static void AssertFunctionValueNamedArgument(Diagnostic d, int line, int column) {
+        Assert.Equal("E0011", d.Code);
+        Assert.Equal("A function value does not accept named arguments; pass them positionally.", d.Message);
+        Assert.Equal(line, d.Range.Start.Line);
+        Assert.Equal(column, d.Range.Start.Column);
+    }
+
     private static List<CallExpr> CollectCalls(CompilationUnit unit) {
         var collector = new CallCollector();
         collector.Visit(unit);
