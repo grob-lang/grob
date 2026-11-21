@@ -885,16 +885,23 @@ itself implemented and producing a first passing run. Authority: D-302,
 
 **Scope:**
 
-- **`fs`** — full API as specified. `File` type registered with type
-  checker. `list()`, `exists()`, `isFile()`, `isDirectory()`,
+- **`fs`** — the surface D-445 fixes, specified in
+  `grob-stdlib-reference.md`. `File` type registered with type
+  checker. Eighteen module functions: `list()`, `find(dir, pattern)`,
+  `info()`, `exists()`, `isFile()`, `isDirectory()`,
   `ensureDir()`, `createDir()`, `delete()`, `deleteRecursive()`,
-  `readText()`, `readLines()`, `writeText()`, `appendText()`,
-  `copy(src, dest, overwrite: bool = false)`,
-  `move(src, dest, overwrite: bool = false)`. `File` properties: `name`,
+  `readText()`, `readLines()`, `writeText()`, `writeLines()`,
+  `appendText()`, `appendLine()`,
+  `copy(src, dest, overwrite: bool = false, ensureDir: bool = false)`,
+  `move(src, dest, overwrite: bool = false, ensureDir: bool = false)`.
+  `File` properties: `name`,
   `path`, `directory`, `extension`, `size`, `modified`, `created`,
   `isDirectory`. `File` methods: `rename()`,
-  `moveTo(destDir, overwrite: bool = false)`,
-  `copyTo(destDir, overwrite: bool = false)`, `delete()`.
+  `moveTo(destDir, overwrite: bool = false, ensureDir: bool = false)`,
+  `copyTo(destDir, overwrite: bool = false, ensureDir: bool = false)`,
+  each returning the new `File`, and `delete()`. A `File` is a snapshot.
+  Listing order, results and errors are the same on Windows and Linux.
+  A path argument is normalised first, so `/` and `\` separate on both.
 - **`date`** — full API as specified (D-354 amends the arithmetic/comparison
   surface below). `now()`, `today()`, `of()`, `ofTime()`, `parse()`.
   Properties: `year`, `month`, `day`, `hour`, `minute`, `second`,
@@ -1187,7 +1194,7 @@ required. All are implemented as `IGrobPlugin` classes.
 
 |Module   |Functions                |Types Registered     |
 |---------|-------------------------|---------------------|
-|`fs`     |15 module functions      |`File`               |
+|`fs`     |18 module functions      |`File`               |
 |`strings`|1 (`join`)               |—                    |
 |`json`   |5 module functions       |`json.Node`          |
 |`csv`    |5 module functions       |`csv.Table`, `CsvRow`|
@@ -1689,3 +1696,7 @@ Grob v1 is ready for public release when:
 *Updated November 2026 — D-444: §4 gains the agent-scripting interlude between the*
 *hardening interlude and Sprint 10, which moves behind it; §8 gains `grob run`'s stdin*
 *and inline forms.*
+*Updated November 2026 — D-445: Sprint 9's `fs` scope is the surface D-445 fixes —*
+*eighteen module functions, `File` methods that return the new `File`, `ensureDir` on*
+*copy and move; §7's `fs` row corrected from 15 functions, a count no decision supported,*
+*to 18.*

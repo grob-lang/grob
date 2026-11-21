@@ -441,6 +441,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-442 | November 2026 | Platform support; v1 non-functional requirements; Documentation; Deferred Work Register | **Windows and Linux are equal platforms, by owner decision; ADR-0007's Windows-first design is superseded.** CI already builds and tests both and releases ship both; this makes it a promise. Same language, stdlib, diagnostics and exit codes; platform differences documented per function. Examples use relative paths valid on both, or show both forms. Windows is not demoted; macOS is not claimed. Files R-45 (release artifacts executed before publishing) and R-46 (the corpus brought into line); opens OQ-024 (`process.runShell`'s shell) and OQ-025 (Linux install). No source change. |
 | D-443 | November 2026 | Solution architecture — plugin SDK; Compiler — type checker; Standard library — `regex`; Deferred Work Register | **The function form of `Regex.replace` and `replaceAll` is built** (D-432 Decision 6). **R-44 closed.** The signature union gains `FunctionShape`, a parameter type on named-type methods only (**amends D-426 Decision 1**). A named-type method may carry overloads: further signatures on one binder, which must differ at a required position by taking a function. A lambda passed for a shape takes its parameter types, so `m` is a `Match`; overload selection and the function-argument checks fold into E0004. A non-string result at run time is E5903. Two pre-existing bugs found and left to their own fixes (Chris). **R-47 opens**: lambda parameter annotations are ignored. Count unchanged at 121. |
 | D-444 | November 2026 | Sprint sequencing; CLI — `grob run`; Agentic development; Deferred Work Register | **Claude Code uses Grob as its scripting language on the Grob repository, during development, by owner decision.** Verified at `046512d`: `grob run` takes a file path only, and inline or stdin source is planned nowhere. **Inline and stdin source are v1** (surface OQ-026, build R-48). **An agent-scripting interlude follows Sprint 9**, alongside the hardening interlude: inline and stdin source, the start-up requirement measured on both release artifacts (R-49), a scripting guide as a repository skill (R-50) and the repository rule to prefer Grob on a binary not built from the tree being changed (R-51). **Sprint 10 moves behind it**, scope unchanged. Gating scripts stay out of Grob until Pillars 1–6 close. Approving `grob run` approves any command once `process` exists; recorded as a known limit, not safety. Whether the foreign-idiom diagnostics leave R-36 is OQ-027. No source change. |
+| D-445 | November 2026 | Standard library — `fs`, `File`; Platform support; Runtime — capability-injection seam; Deferred Work Register | **The `fs` surface is fixed for the 9C increment**, refining D-109, D-150, D-177 and D-436 on seven owner rulings. Verified at `7349f98`: the April sketch gives no listing order and no failure behaviour, and is written for Windows alone. **A `File` is a snapshot**: `rename`, `moveTo` and `copyTo` return the new `File` and leave the receiver unchanged, as the README's first sample already assumes. **A listing has one order on both platforms**: ordinal by name within a directory, each directory followed by its contents, links not descended into. **Four functions added**, to 18: `fs.find(dir, pattern)` with `*`, `?` and `**`, named and shaped for Grob's plain-word surface in place of `fs.glob`; `fs.info`; `fs.writeLines`; `fs.appendLine`. **Copy and move gain `ensureDir: bool = false`**. Deletes throw on a missing path; `copy` refuses a directory; the existence checks never throw. **Failing is not reading**: an `overwrite: false` copy is one seam member, not a check and a copy. **A path argument is normalised as `path.normalise` does** before it reaches `IFileSystem`, so `\` separates on Linux too, for `fs`, `json` and `csv`. R-52 to R-54 filed. No source change. |
 
 ---
 
@@ -17520,6 +17521,186 @@ interlude), D-430 (the samples gate), D-420 (the register) and D-442 (both platf
 
 ---
 
+### D-445 — The `fs` surface fixed for the 9C increment: a `File` is a snapshot, listing has one order on both platforms, `fs.find`, `fs.info`, `fs.writeLines` and `fs.appendLine` added, `ensureDir` on copy and move, failure behaviour specified (November 2026)
+
+Area: Standard library — `fs`, `File`; Platform support; Runtime — capability-injection seam; Deferred Work Register
+Supersedes: none
+Superseded by: none
+Refines: D-109, D-150, D-177, D-436
+
+**Decision-only, with spec edits. No source change.** Error-code count unchanged at 121.
+**Owner decisions**: Chris, 20 November, on seven forks a design pass put to him. Where a
+detail below is this session's design under one of those rulings, it says so.
+
+**Verified at `7349f98`.** `fs` is unbuilt and `IFileSystem` has one member,
+`CurrentDirectory`. The surface is D-109's function list, D-150's `overwrite` and D-177's
+encoding, drawn in `grob-stdlib-reference.md` as a sketch. That sketch predates D-441 and
+D-442: every example is a `C:\` path, and its encoding rules argue from Windows. It
+gives no order for `fs.list`, does not say whether a listing holds directories, and
+leaves undefined what happens on a missing path, a missing destination directory, a
+link or a directory handed to `copy`. `README.md`'s first sample calls `file.rename(...)`
+and then prints `file.name`, expecting the old name. `grob-v1-requirements.md` §7 counts
+15 module functions where D-109 and the Sprint 9 scope both name 14. Neither
+"destination already exists" nor "directory not empty" has an error code of its own;
+only the residual E5305 would catch them. E5303's description cites
+`fs.read()`, which has never existed.
+
+**Decision 1 — a `File` is a snapshot (Chris).** A `File` records an entry as it was
+when the value was produced. No later change on disk alters it and none of its own
+methods does. `rename`, `moveTo` and `copyTo` return a new `File` for the entry they
+produced, where the registry had `void`, and leave the receiver as it was. The README's
+first sample already depends on this. Mutation in place would also let a native change
+a value held by a `readonly` binding, which is deeply immutable (D-291). A `File` method
+acts on whatever is at the `File`'s `path` when it is called, as the same call by path
+would: Grob does not track an entry's identity, so a method throws if nothing is there
+and acts on the replacement if something else is. **Rejected**:
+mutating the receiver, for both reasons; and `void` with a snapshot, which leaves a
+script no way to reach the entry it has just moved except by rebuilding its path.
+
+**Decision 2 — a listing has one order, on both platforms (Chris).** `fs.list` returns an
+array built in full before it returns, so a loop may move or delete what it walks. It
+holds files and directories, and every entry the operating system reports, with nothing
+left out for being hidden; Decision 7 makes the one exception. The entries of a directory are in ordinal order of `name`; in
+a recursive listing each directory is followed at once by its contents. A link to a
+directory is listed and not descended into, and `fs.deleteRecursive` removes a link
+without following it. The order is stated by name within a directory, not by whole
+path, because the separator differs by platform and sorts differently against digits and
+capitals: sorted by path, `a1` and `a/b` would come out in one order on Linux and the
+other on Windows. **Rejected**: the operating system's order, which is sorted on NTFS
+and not on ext4, so the same script would print differently on the two platforms D-442
+makes equal.
+
+**Decision 3 — three gaps closed (Chris).** `fs.info(path): File` returns one entry by
+path; before it, the only way to a `File` was to list its parent and search.
+`fs.writeLines(path, lines)` is the counterpart `fs.readLines` lacked.
+`fs.appendLine(path, line)` appends a line and ends it; `fs.appendText` adds nothing to
+what it is given, so the sketch's own logging example wrote one unbroken line. Both new
+writers end a line with `\n` on both platforms, and `fs.readLines` reads either
+terminator. A terminator at the end of a file does not produce an empty last element,
+which D-177 left unsaid.
+
+**Decision 4 — `fs.find(dir, pattern)`.** Chris agreed to a pattern search on a
+condition: that it fit Grob's syntax and its character, and that the session look harder
+if in doubt. The name and shape below are this session's answer to that condition and
+differ from the `fs.glob(pattern)` first proposed.
+
+- *The name is `find`.* The module's names are plain words that say what happens: `list`,
+  `exists`, `ensureDir`, `deleteRecursive`. `glob` is Unix jargon, and Grob's character is
+  plain English that does not make a hobbyist or a Windows administrator feel they should
+  already know (`grob-personality-identity.md`). People keep the tiebreak on how the
+  language reads (D-441); an agent loses nothing by the plainer word.
+- *The directory and the pattern are separate arguments.* `fs.find("src", "**/*.cs")`
+  follows `fs.list(dir)`, and `dir` is never read as a pattern, so a directory taken from
+  a parameter or from another program's output cannot change what the pattern means. A
+  single string would be shorter and would make every directory name part of a pattern
+  language.
+- *The pattern language is three wildcards.* `*` and `?` within one name and `**` as a
+  whole segment. Every other character is itself: no classes, no braces, no escape
+  character. `[` and `{` are legal in file names on both platforms and `\` is a separator
+  on one, so each addition would need an escape, and the escape would need a rule. This
+  is the form the audience already reads in `.gitignore` and in pipeline path filters.
+- *Both separators, no case, no hidden rule.* `/` and `\` both separate segments on both
+  platforms. Matching ignores case on both, as `File.extension` already normalises it. A
+  wildcard matches a name that starts with a dot.
+- *It reads only what can match.* This is what the function is for. D-444 names finding
+  files as the first job of an agent's script, and `fs.list(dir, recursive: true)`
+  followed by a filter reads every directory beneath `dir` to do it.
+
+A malformed pattern throws `ParseError` (E5702), as `regex.compile` does (D-440). No
+match is an empty array. No segment of a pattern descends into a link to a directory,
+neither `**` nor a literal name, so a search stays within the tree beneath `dir`; `dir`
+itself may be a link, as it may for `fs.list`. **Rejected**: `fs.glob`, for the name; a pattern parameter on
+`fs.list`, which would give one function two meanings of `recursive`; wildcards that skip
+dot names, the shell's rule, because it leaves entries out without saying so and Grob
+does not swallow things silently; matching case as the platform does, which gives one
+script two results. That agents reach for a pattern search more than for a filter is a
+judgement, not a measurement; R-37's benchmark can test it.
+
+**Decision 5 — failure behaviour (Chris).** Complete rules are in
+`grob-stdlib-reference.md`. The ones that were open:
+
+- `fs.delete` and `fs.deleteRecursive` throw on a path that does not exist. A delete
+  that found nothing is reported.
+- `fs.move` and `File.moveTo` accept a directory. `fs.copy` and `File.copyTo` refuse one
+  in v1; copying a tree is not specified.
+- `fs.exists`, `fs.isFile` and `fs.isDirectory` never throw, and return false where the
+  answer cannot be determined.
+- A relative path resolves against the current directory, the one `path.resolve` uses,
+  not against the script's location. D-122's walk from the script file is for the
+  manifest only, and inline source (D-444) has no location.
+- A write does not create a missing parent directory.
+- **A missing destination directory throws, unless the call asks for it.** The session
+  proposed that `moveTo` and `copyTo` throw; Chris added an optional parameter,
+  defaulting to false, that creates the directory. It is `ensureDir: bool = false`, on
+  `File.moveTo`, `File.copyTo`, `fs.copy` and `fs.move`, since D-150 put `overwrite` on
+  all four. The name is this session's: `fs.ensureDir` is the function with exactly this
+  behaviour, while `fs.createDir` fails if the directory exists, so `createDir: true`
+  would borrow the name of the function that does the other thing.
+
+**Decision 6 — failing is not reading (Chris).** D-436 Decision 2 makes each `IFileSystem`
+member one operation that reads state or changes it, never both. A copy or move under
+`overwrite: false` is one change member that fails if the destination exists. It is not
+an existence check followed by a copy: two calls leave a gap in which the destination
+can appear, and the operating system can do the whole thing at once. A member that
+changes state may fail without having read. Where the platform offers no single
+operation — `fs.createDir`'s refusal of an existing directory — the increment says so in
+the member's documentation. The members themselves remain the increment's to design.
+
+**Decision 7 — a path argument is normalised before it is used (Chris).** The pass
+raised this as a seventh fork, and Chris ruled on it before the entry landed. Backtick
+raw strings are the idiom for Windows paths (D-285), so scripts are written with
+`reports\2026`. Windows takes `/` and `\`; Linux takes `/` only and reads `\` as a
+character in a name, so that script would run on one platform and fail on the other
+with E5301. Every path a standard-library function passes to `IFileSystem` is first
+normalised as `path.normalise` does, which already splits on both separators on both
+platforms: `fs`, and the file reads and writes of `json` and `csv`, which use the same
+capability (D-436). **Rejected**: passing
+the path through and documenting the difference, which keeps the failure D-442 exists
+to remove and leaves the Windows idiom unusable in a portable script.
+
+*The cost, and how it is contained.* On Linux the standard library never returns, and
+never acts on, a path with a component that contains `\`. No path argument can name
+such an entry, and `fs.list`, `fs.find` and `fs.info` never return a `File` for one or
+for anything beneath a directory so named; a recursive listing and a `**` do not descend
+into it. If the current directory itself lies beneath such a name, a call that resolves
+a relative path throws `IoError`, because that is the script's own starting point and
+not something met on the way. The rule was settled in
+review of PR #258, by the session. Returning such an entry would hand the script a path
+that normalisation turns into the path of a different entry the moment it is passed
+back: a file named `..\..\x` in a directory of untrusted files would read as a path two
+directories up, and `fs.delete(file.path)` would delete whatever is there. A value that
+can be mistaken for another entry is never made. `fs.deleteRecursive` still removes such
+an entry with the directory that holds it. **Rejected**: listing it and warning in the
+documentation, for the reason given; and throwing from the listing, which lets one
+stray file stop every listing and search of its directory.
+
+**Not decided.** The two missing error codes, and
+the error for a `File.rename` whose name contains a separator: **R-52**, minted with
+their source under D-316. What `File.created` holds on a Linux file system with no
+creation time, what a directory move across volumes does and how a link is reported:
+**R-53**, measured by the increment and then written down. The wiki's two `fs` pages
+still describe the April surface: **R-54**.
+
+**Not changed.** D-177's encoding rules, D-150's `overwrite` default, the two levels of
+delete and every name in D-109. No sample in the corpus changes: each one that calls a
+`File` method discards the result, which is allowed, and reads the receiver afterwards
+as Decision 1 has it. The increment prompt is not written here; it cites this entry
+when it is.
+
+**Spec edits in this commit.** `grob-stdlib-reference.md`: the `fs` section rewritten
+from the sketch as the surface to build, with examples valid on both platforms (D-442
+Decision 3). `grob-type-registry.md`: `File`. `grob-v1-requirements.md`: Sprint 9's `fs`
+scope, and §7's count corrected to 18. `grob-error-codes.md`: E5303's description names
+`fs.readText()`; no title changes. `grob-open-questions.md`: R-52 to R-54 filed.
+
+Cites D-109, D-150 and D-177 (the surface refined), D-436 (the seam), D-441 (who keeps
+the tiebreak on how the language reads), D-442 (equal platforms), D-444 (what agents'
+scripts do first), D-291 (deep `readonly`), D-285 (raw strings for Windows paths), D-122
+(the manifest walk), D-440 (`ParseError` for a bad pattern), D-316 (codes minted with
+source) and D-420 (the register).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -17749,7 +17930,16 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-444 added, with spec edits; no source change. **Claude Code uses Grob as_
+_November 2026 — D-445 added, with spec edits; no source change. **The `fs` surface is fixed_
+_for the 9C increment**: a `File` is a snapshot whose methods return the new `File`, a listing_
+_has one order on both platforms, `fs.find`, `fs.info`, `fs.writeLines` and `fs.appendLine` are_
+_added, copy and move gain `ensureDir`, failure behaviour is specified and a path argument is_
+_normalised so `\` separates on both platforms. R-52 to R-54 filed. Count unchanged at 121._
+_Amended in review (PR #258), before landing: a `File` method acts on its path, not on an_
+_entry's identity; no pattern segment descends into a link; on Linux no path with a component_
+_that contains `\` is returned or acted on, descendants included, so no path can be normalised_
+_into another entry's._
+_Previous: November 2026 — D-444 added, with spec edits; no source change. **Claude Code uses Grob as_
 _its scripting language on the Grob repository while Grob is built**: inline and stdin source_
 _become v1, an agent-scripting interlude follows Sprint 9 beside the hardening interlude and_
 _Sprint 10 moves behind it. R-48 to R-51 filed; OQ-026 and OQ-027 opened. Count unchanged._

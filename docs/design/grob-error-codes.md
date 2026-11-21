@@ -1169,7 +1169,7 @@ read by `grob --explain Exxxx`.
 - **Introduced:** v1
 - **Status:** pre-release
 - **Throws:** `IoError`
-- **Description:** A file-shaped operation (e.g. `fs.read()`) was applied to a directory path.
+- **Description:** A file-shaped operation (e.g. `fs.readText()`) was applied to a directory path.
 
 ---
 
@@ -1496,3 +1496,5 @@ _Updated July 2026 — correctness batch (runtime error taxonomy) added two code
 _Updated August 2026 — D-415: the braceless `param` declaration grammar (D-410) implemented. E4201 given its first throw site, on the D-407 pattern — a missing type annotation, a decorator not followed by `param` and a default introduced with `:=` instead of `=` are now reported as E4201 rather than the generic E2001. A fourth throw site, and the one description-only widening in this pass: a top-level decorator not followed by a newline. §19's production is `{ decorator newline } "param" ...`, but the shared decorator scanner ended each decorator with a zero-or-more newline skip, so `@secure param token: string` parsed clean; the newline is now required at the top level and still not required in a function parameter list, each pinned by its own test. No title or status moves and no code is added or removed, so the D-316 agreement gate is unaffected. E4201 retitled from "`param` block syntax error" to "`param` declaration syntax error" in the same commit as the `ErrorCatalog.cs` edit, closing the deferral D-414 recorded and keeping the D-316 agreement gate green. No code added or removed; total stays at 121. E4202 is unaffected — its removal and E2202's title widening remain deferred to the Sprint 10 increment that implements ordering enforcement, per D-410/D-414._
 
 _Updated November 2026 — the `regex` increment (D-440) added one code: E0602 (invalid regex pattern), the second entry in the E06xx sub-block of the Type category, beside E0601, bringing the total from 120 to 121. D-432 Decision 5 specified it and D-316 required it to be minted with its source. No existing code fits: E0601 is `guid`-specific, and E5702 is a Runtime-category code that ADR-0014 keeps off compile-time diagnostics. E0204 also gains a sentence: a named type's properties are read-only (D-440), with no code added._
+
+_Updated November 2026 — D-445: E5303's description named `fs.read()`, a function that has never existed; it now names `fs.readText()`. No title changed and no code added: the two `fs` codes D-445 calls for are minted by the `fs` increment with their source (D-316, R-52). Count unchanged at 121._
