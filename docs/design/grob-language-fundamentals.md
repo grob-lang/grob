@@ -1324,8 +1324,9 @@ another signature declares is E0011.
 **Variadic functions.** A function with a variadic tail has no defaulted parameter, so
 a call to one takes no named arguments.
 
-**`formatAs.table`.** Its `columns:` argument is resolved by the compiler and not
-through a signature (D-345). It reads as any other named argument does.
+**`formatAs.table`.** Its `columns:` argument is the one exception. The compiler
+resolves it, not a signature (D-345): it is always written by name and cannot be
+passed positionally.
 
 **Evaluation order.** When a call uses named arguments or omits a default, its
 arguments are evaluated in the order the parameters are declared, not the order they

@@ -17717,7 +17717,11 @@ named arguments after in any order, only a defaulted parameter nameable and a na
 argument free to skip the defaults before it. E0008 to E0011 report the four mistakes.
 Natives do not. `RejectNamedNativeArgs` refuses every named argument on a namespace
 call and `RejectNamedMemberArgs` on a primitive or named-type method call, both with
-E0011 and "does not accept named arguments; pass them positionally". Every native
+E0011 and "does not accept named arguments; pass them positionally". The named-type
+path joined the other two in PR #248 on 15 November, which built the first of R-20's
+two outcomes; R-20's row was not updated and still described the earlier silence, and
+is corrected in this commit. Because every path refuses, no call can reach a native with
+its arguments reordered today, the two-argument `Regex.replace` included. Every native
 signature already records its parameters' names and defaults (D-426 Decision 4), and
 native defaults fill missing trailing arguments only (D-358). D-445 fixed an `fs`
 surface whose every optional parameter is written by name, and
@@ -17730,8 +17734,8 @@ section on calls or named arguments, though D-318 points at one.
 **Decision 1 — one convention, unchanged (Chris).** D-113 applies to a native exactly as
 it applies to a script function. There is no rule that holds for natives alone. A
 required parameter stays positional only, so `fs.list(dir: "reports")` is E0009.
-**Rejected**: refusing named arguments on every native path, R-20's other outcome,
-which makes `file.copyTo(dest, false, true)` the only legal call — the bare boolean
+**Rejected**: keeping today's refusal on every native path, the first of R-20's
+outcomes, which makes `file.copyTo(dest, false, true)` the only legal call — the bare boolean
 D-113 exists to prevent; and letting natives name required parameters, which would be a
 second convention.
 
@@ -17779,10 +17783,10 @@ supplied, so a native keeps a fixed arity and `NativeDefaultArgumentFill`'s trai
 fill becomes the case of that rule in which nothing is named. No opcode, no grammar and
 no error code is added.
 
-**Behaviour that changes.** `d.addDays(days: 1)` compiles silently today, the silence
-R-20 records and the probe corpus pins. `days` is required, so it becomes E0009. A
-named argument on a namespace or primitive call stops being E0011 where it names a
-defaulted parameter and becomes a bound argument. `formatAs.table`'s `columns:` keeps
+**Behaviour that changes.** `d.addDays(days: 1)` is E0011 today, with the message that
+named arguments are not accepted, and `TypeCheckerDateTests` and the probe corpus pin
+that. `days` is required, so it becomes E0009. A named argument on any native call
+stops being E0011 where it names a defaulted parameter and becomes a bound argument. `formatAs.table`'s `columns:` keeps
 its compiler-resolved path (D-345) and reads as before.
 
 **Spec edits in this commit.** `grob-language-fundamentals.md`: §12.2 Calls and Named
@@ -18032,6 +18036,8 @@ _November 2026 — D-446 added, with spec edits; no source change. **Named argum
 _natives**: D-113's convention applies unchanged to every native call path and to plugins; a_
 _defaulted parameter's name is contract; the work is its own increment ahead of `fs`._
 _OQ-028 opened; R-20 re-owned; R-55 filed. Count unchanged at 121._
+_Amended in review (PR #259), before landing: named-type method calls already refuse a named_
+_argument, since PR #248; the entry and R-20's row said they were accepted silently._
 _Previous: November 2026 — D-445 added, with spec edits; no source change. **The `fs` surface is fixed_
 _for the 9C increment**: a `File` is a snapshot whose methods return the new `File`, a listing_
 _has one order on both platforms, `fs.find`, `fs.info`, `fs.writeLines` and `fs.appendLine` are_

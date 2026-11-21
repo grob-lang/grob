@@ -36,6 +36,10 @@ parameter by name, in any order. A parameter shown with `= value` in a signature
 default and may be named; one without is positional only. The rules and their
 diagnostics are in `grob-language-fundamentals.md` §12.2.
 
+There is one exception. `formatAs.table`'s `columns` is always written by name,
+`formatAs.table(columns: [...])`, though its signature shows no default. The compiler
+resolves it, not a signature (D-345), and it cannot be passed positionally.
+
 -----
 
 ## First-Party Plugins — Explicit Import Required
