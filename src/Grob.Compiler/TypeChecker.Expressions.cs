@@ -522,7 +522,7 @@ public sealed partial class TypeChecker {
         // GetExprType can pick the right typed opcode when the call is used as an
         // arithmetic operand; no argument validation is added for this shape, that stays
         // out of scope. Any other unresolved callee is permissive.
-        if (node.Callee is not IdentifierExpr { Declaration: FnDecl fn }) {
+        if (DirectCallee(node.Callee) is not FnDecl fn) {
             if (ExpressionDescriptor(node.Callee) is FunctionTypeDescriptor calleeDescriptor) {
                 node.ResolvedReturnType = calleeDescriptor.ReturnType;
                 return calleeDescriptor.ReturnType;
@@ -530,6 +530,7 @@ public sealed partial class TypeChecker {
             return GrobType.Unknown;
         }
 
+        node.ResolvedFunction = fn;
         CheckCall(node, fn, callArgTypes);
         // Resolve the declared return type with its structural descriptor so a call that
         // returns a function type (makeCounter(): fn(): int) flows its descriptor to the
@@ -545,6 +546,18 @@ public sealed partial class TypeChecker {
         node.ResolvedReturnType = resultKind;
         return resultKind;
     }
+
+    /// <summary>
+    /// The function a call names directly, or <see langword="null"/> when its callee is
+    /// anything else. A parameter's identifier also resolves to the owning
+    /// <see cref="FnDecl"/> (a parameter has no declaration node of its own), so a callee
+    /// whose symbol is a parameter is a call through a function value, not a call to the
+    /// enclosing function.
+    /// </summary>
+    private FnDecl? DirectCallee(Expression callee) =>
+        callee is IdentifierExpr { Declaration: FnDecl fn } id && LookupSymbol(id.Name) is not { IsParameter: true }
+            ? fn
+            : null;
 
     /// <summary>
     /// Visits an expression whose result is implicitly discarded, or is a lambda's own
