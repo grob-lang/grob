@@ -678,6 +678,78 @@ public sealed class TypeCheckerFunctionTypeTests {
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
     }
 
+    /// <summary>
+    /// A block lambda whose early <c>return</c> yields a different function shape from
+    /// its final value has no single nested return shape, so it does not match a binding
+    /// that declares one: otherwise <c>pick(true)() + 1</c> would type as <c>int</c> and
+    /// add to a string at run time.
+    /// </summary>
+    [Fact]
+    public void LambdaBinding_EarlyReturnOfDifferentShape_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            flag := true
+            pick: fn(): fn(): int := () => {
+                if (flag) {
+                    return () => "s"
+                }
+                return () => 1
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(26, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void LambdaBinding_EarlyReturnAlreadyInError_IsNotReportedAgain() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            flag := true
+            pick: fn(): fn(): int := () => {
+                if (flag) {
+                    return nope
+                }
+                () => 1
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", d.Code);
+        Assert.Equal(4, d.Range.Start.Line);
+        Assert.Equal(16, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void LambdaBinding_EarlyReturnOfSameShape_IsAccepted() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            flag := true
+            pick: fn(): fn(): int := () => {
+                if (flag) {
+                    return () => 2
+                }
+                () => 1
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_LambdaEarlyReturnOfNonFunction_IsE0004() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn run(k: fn(fn(): fn(): int): int, flag: bool): int {
+                return k(() => {
+                    if (flag) {
+                        return 5
+                    }
+                    () => 1
+                })
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(14, d.Range.Start.Column);
+    }
+
     [Fact]
     public void CallThroughFunctionTypedParameter_LambdaReturningWrongLambda_IsE0004() {
         (_, DiagnosticBag bag) = TypeCheckSource("""

@@ -3397,6 +3397,8 @@ public sealed partial class TypeChecker {
         _controlFrameFloors.Push(_controlFrames.Count);
 
         // Infer the body type and store it for callers (e.g. ValidateArrayMethodCall).
+        var returnDescriptors = new List<FunctionTypeDescriptor?>();
+        _lambdaReturnDescriptors.Push(returnDescriptors);
         GrobType bodyType = node.Body switch {
             LambdaExpressionBody exprBody => VisitStatementPositionExpression(exprBody.Expression),
             LambdaBlockBody blockBody => VisitLambdaBlock(blockBody),
@@ -3410,8 +3412,9 @@ public sealed partial class TypeChecker {
         // Build and store the structural descriptor for this lambda (D-326); arity is exact.
         // Read while the parameters are still in scope, so a returned lambda or function
         // value resolves its own shape.
-        _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, bodyType, [], LambdaResultDescriptor(node.Body));
+        _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, bodyType, [], LambdaResultDescriptor(node.Body, returnDescriptors));
 
+        _lambdaReturnDescriptors.Pop();
         _controlFrameFloors.Pop();
         _functionReturnTypes.Pop();
         _scopes.Pop();
@@ -3424,15 +3427,22 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// The function-type descriptor of the value a lambda returns, when that value is
-    /// itself a function: its expression body, or a block body's final expression or final
-    /// <c>return</c>. <see langword="null"/> for any other result.
+    /// itself a function: its expression body's, or for a block body the one shape that
+    /// every <c>return</c> in it (<paramref name="returned"/>) and its final expression
+    /// share. <see langword="null"/> when any result is not a function or two results
+    /// differ, so a lambda with an early <c>return</c> of another shape matches no
+    /// declared nested return shape.
     /// </summary>
-    private FunctionTypeDescriptor? LambdaResultDescriptor(LambdaBody body) => body switch {
-        LambdaExpressionBody exprBody => ExpressionDescriptor(exprBody.Expression),
-        LambdaBlockBody { Block.Statements: [.., ExpressionStmt last] } => ExpressionDescriptor(last.Expression),
-        LambdaBlockBody { Block.Statements: [.., ReturnStmt { Value: { } returned }] } => ExpressionDescriptor(returned),
-        _ => null,
-    };
+    private FunctionTypeDescriptor? LambdaResultDescriptor(LambdaBody body, List<FunctionTypeDescriptor?> returned) {
+        if (body is LambdaExpressionBody exprBody) {
+            return ExpressionDescriptor(exprBody.Expression);
+        }
+        var results = new List<FunctionTypeDescriptor?>(returned);
+        if (body is LambdaBlockBody { Block.Statements: [.., ExpressionStmt last] }) {
+            results.Add(ExpressionDescriptor(last.Expression));
+        }
+        return results.Count > 0 && results[0] is { } first && results.TrueForAll(first.Equals) ? first : null;
+    }
 
     /// <summary>
     /// Visits all statements in a block-body lambda and infers the return type.

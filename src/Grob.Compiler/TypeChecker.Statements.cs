@@ -90,6 +90,10 @@ public sealed partial class TypeChecker {
         // still satisfy the declared type: it is accepted only by a nullable or nil
         // return type, and is E0005 against a non-nullable one.
         GrobType actual = node.Value is not null ? Visit(node.Value) : GrobType.Nil;
+        // A value already in error is not recorded, so its lambda is not rejected again.
+        if (actual != GrobType.Error && _lambdaReturnDescriptors.TryPeek(out List<FunctionTypeDescriptor?>? lambdaReturns)) {
+            lambdaReturns.Add(node.Value is not null ? ExpressionDescriptor(node.Value) : null);
+        }
 
         // An Unknown declared return type (a deferred type) is permissive; cascade
         // suppression covers an already-errored value.

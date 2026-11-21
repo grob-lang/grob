@@ -149,6 +149,12 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // reads it as its result type.
     private GrobType _lastReturnType = GrobType.Unknown;
 
+    // One entry per lambda being checked, innermost on top: the function-type descriptor of
+    // each value its 'return' statements yield (null for a value that is not a function).
+    // A block lambda has a nested return shape only when all of them and its final value
+    // agree (LambdaResultDescriptor).
+    private readonly Stack<List<FunctionTypeDescriptor?>> _lambdaReturnDescriptors = new();
+
     // D-381: print/exit have no runtime representation outside the dedicated Print/Exit
     // opcodes Compiler.Statements.cs emits for the exact bare-statement-call shape. These
     // two one-shot context flags let VisitCall/VisitIdentifier (TypeChecker.Expressions.cs)
