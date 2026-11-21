@@ -494,7 +494,7 @@ public sealed partial class TypeChecker {
         // VisitIdentifier's print/exit-as-value rejection stays silent here — this method's
         // own checks below give the more specific arity/value-position diagnostic instead.
         _isCallCalleePosition = true;
-        Visit(node.Callee);
+        GrobType calleeType = Visit(node.Callee);
         _isCallCalleePosition = false;
         var callArgTypes = new GrobType[node.Arguments.Count];
         for (int i = 0; i < node.Arguments.Count; i++) {
@@ -517,21 +517,9 @@ public sealed partial class TypeChecker {
 
         // Only user-defined functions are checked positionally here — print/exit and
         // input are validated above, each with its own shape (D-381, Sprint 8 Increment
-        // C). A callee bound to a function-typed value (D-362) still resolves a return
-        // type — via its descriptor rather than a declared FnDecl signature — so
-        // GetExprType can pick the right typed opcode when the call is used as an
-        // arithmetic operand. A function type names no parameters (D-326), so a named
-        // argument is refused (D-447 Decision 2); the arguments' count and types are not
-        // checked yet (R-57). Any other unresolved callee is permissive.
+        // C). Every other callee is a function value (CheckFunctionValueCall).
         if (DirectCallee(node.Callee) is not FnDecl fn) {
-            if (ExpressionDescriptor(node.Callee) is FunctionTypeDescriptor calleeDescriptor) {
-                RejectNamedFunctionValueArgs(node);
-                if (calleeDescriptor.ReturnDescriptor is { } returnDescriptor)
-                    _callResultDescriptors[node] = returnDescriptor;
-                node.ResolvedReturnType = calleeDescriptor.ReturnType;
-                return calleeDescriptor.ReturnType;
-            }
-            return GrobType.Unknown;
+            return CheckFunctionValueCall(node, calleeType, callArgTypes);
         }
 
         node.ResolvedFunction = fn;
@@ -564,15 +552,78 @@ public sealed partial class TypeChecker {
             : null;
 
     /// <summary>
-    /// Reports E0011 at each named argument of a call through a function value. A
-    /// function type carries no parameter names (D-326), so a name has nothing to bind
-    /// against and would otherwise be dropped, passing the value in source order.
+    /// Checks a call whose callee is a function value rather than a declared function. A
+    /// function value names no parameters (D-326), so a named argument is refused (D-447
+    /// Decision 2) unless the callee is already broken. A callee whose function type the
+    /// checker tracks (D-362) has its arguments checked against that type and resolves its
+    /// return type, so GetExprType can pick the right typed opcode when the call is an
+    /// arithmetic operand. Any other callee, such as a struct field or an array element,
+    /// is unchecked (R-57) and resolves to <see cref="GrobType.Unknown"/>.
     /// </summary>
-    private void RejectNamedFunctionValueArgs(CallExpr node) {
+    private GrobType CheckFunctionValueCall(CallExpr node, GrobType calleeType, GrobType[] argTypes) {
+        bool namesRefused = calleeType != GrobType.Error && RejectNamedFunctionValueArgs(node);
+        if (ExpressionDescriptor(node.Callee) is not FunctionTypeDescriptor calleeDescriptor) {
+            return GrobType.Unknown;
+        }
+        if (!namesRefused) {
+            CheckFunctionValueArguments(node, calleeDescriptor, argTypes);
+        }
+        if (calleeDescriptor.ReturnDescriptor is { } returnDescriptor) {
+            _callResultDescriptors[node] = returnDescriptor;
+        }
+        node.ResolvedReturnType = calleeDescriptor.ReturnType;
+        return calleeDescriptor.ReturnType;
+    }
+
+    /// <summary>
+    /// Reports E0011 at each named argument of a call through a function value and
+    /// returns whether there was one. A function type carries no parameter names (D-326),
+    /// so a name has nothing to bind against and would otherwise be dropped, passing the
+    /// value in source order.
+    /// </summary>
+    private bool RejectNamedFunctionValueArgs(CallExpr node) {
+        bool rejected = false;
         foreach (CallArgument arg in node.Arguments.Where(a => a.Name is not null)) {
             EmitError(ErrorCatalog.E0011,
                 "A function value does not accept named arguments; pass them positionally.",
                 arg.Range);
+            rejected = true;
+        }
+        return rejected;
+    }
+
+    /// <summary>
+    /// Checks a function value's arguments against its function type: the count (E0003),
+    /// then each argument's type (E0004), descending into a function-typed parameter's
+    /// shape. A function type has no defaults, so the count must match exactly. An
+    /// <see cref="GrobType.Unknown"/> on either side is permissive, and an argument that
+    /// already errored is not reported again. A function type records an array
+    /// parameter's kind but not its element type, and a struct parameter not by name, so
+    /// neither is compared here (R-57).
+    /// </summary>
+    private void CheckFunctionValueArguments(CallExpr node, FunctionTypeDescriptor descriptor, GrobType[] argTypes) {
+        string? calleeName = (node.Callee as IdentifierExpr)?.Name;
+        int paramCount = descriptor.ParameterTypes.Count;
+        if (argTypes.Length != paramCount) {
+            string subject = calleeName is null ? "The function value" : $"Function value '{calleeName}'";
+            string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
+            EmitError(ErrorCatalog.E0003,
+                $"{subject} expects {paramCount} {Plural(paramCount, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
+                node.Range);
+            return;
+        }
+        string callee = calleeName is null ? "the function value" : $"function value '{calleeName}'";
+        for (int i = 0; i < paramCount; i++) {
+            GrobType paramType = descriptor.ParameterTypes[i];
+            GrobType argType = argTypes[i];
+            if (paramType == GrobType.Unknown || argType is GrobType.Unknown or GrobType.Error) continue;
+
+            Expression argExpr = node.Arguments[i].Value;
+            if (!TypesAreAssignable(argType, paramType, InitialiserDescriptor(argExpr), descriptor.ParameterDescriptorAt(i))) {
+                EmitError(ErrorCatalog.E0004,
+                    $"Argument {i + 1} to {callee} has type '{TypeName(argType)}', which is not assignable to parameter type '{TypeName(paramType)}'.",
+                    argExpr.Range);
+            }
         }
     }
 
@@ -806,7 +857,12 @@ public sealed partial class TypeChecker {
         // path's unrecognised-field diagnostic instead of falling through to the
         // generic Unknown fallback below and crashing the VM at emission.
         if (receiverType is GrobType.Struct or GrobType.AnonStruct) {
-            return ValidateStructMemberCall(memberAccess);
+            // A call that names a field is a call through the field's value, so a named
+            // argument has nothing to bind to (D-326, D-447 Decision 2). A call that names
+            // no field has already failed with E1002 and is not reported twice.
+            GrobType fieldCallType = ValidateStructMemberCall(memberAccess);
+            if (fieldCallType != GrobType.Error) RejectNamedFunctionValueArgs(node);
+            return fieldCallType;
         }
         return GrobType.Unknown;
     }

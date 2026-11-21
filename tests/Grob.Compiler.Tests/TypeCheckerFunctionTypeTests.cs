@@ -561,6 +561,197 @@ public sealed class TypeCheckerFunctionTypeTests {
     }
 
     [Fact]
+    public void CallThroughFunctionTypedStructField_NamedArgument_IsE0011() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(int, int): int
+            }
+            bx := Box { op: (a: int, b: int) => a - b }
+            x := bx.op(10, b: 1)
+            """);
+        AssertFunctionValueNamedArgument(Assert.Single(bag.Errors), line: 5, column: 16);
+    }
+
+    // -----------------------------------------------------------------------
+    // Argument count (E0003) and types (E0004) through a function value
+    //
+    // Before the parameter fix every call through a function-typed parameter was
+    // rejected against the enclosing function; after it the call takes the
+    // function-value path, which must check the arguments against the function
+    // type or a wrong call compiles and runs on the wrong slots.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_TooManyArguments_IsE0003() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn apply(h: fn(int): int): int {
+                return h(3, 100)
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0003", d.Code);
+        Assert.Equal("Function value 'h' expects 1 argument, but 2 were supplied.", d.Message);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(12, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughFunctionValueBinding_TooFewArguments_IsE0003() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            g := (a: int, b: int) => a + b
+            x := g(5)
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0003", d.Code);
+        Assert.Equal("Function value 'g' expects 2 arguments, but 1 was supplied.", d.Message);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(6, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughCallResult_WrongCount_NamesNoValue() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn make(): fn(int): int {
+                return (n: int) => n
+            }
+            x := make()()
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0003", d.Code);
+        Assert.Equal("The function value expects 1 argument, but 0 were supplied.", d.Message);
+        Assert.Equal(4, d.Range.Start.Line);
+        Assert.Equal(6, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_WrongArgumentType_IsE0004() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn apply(h: fn(int): int): int {
+                return h("x")
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+        Assert.Equal("Argument 1 to function value 'h' has type 'string', which is not assignable to parameter type 'int'.", d.Message);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(14, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_FunctionArgumentOfWrongShape_IsE0004() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn run(k: fn(fn(int): int): int): int {
+                return k(() => 1)
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(14, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_FunctionArgumentOfRightShape_IsAccepted() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn run(k: fn(fn(int): int): int): int {
+                return k((n: int) => n + 1)
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_ArgumentAlreadyInError_IsNotReportedAgain() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn apply(h: fn(int): int): int {
+                return h(nope)
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(14, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_UnknownArgument_IsAccepted() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(int): int
+            }
+            fn apply(h: fn(int): int, bx: Box): int {
+                return h(bx.op(1))
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    /// <summary>
+    /// A lambda's parameter annotations are not read yet (R-47), so a lambda held in a
+    /// binding has a function type whose parameters are Unknown: the count is checked,
+    /// an argument's type is not.
+    /// </summary>
+    [Fact]
+    public void CallThroughLambdaBinding_ParametersUntyped_ChecksCountOnly() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            g := (a: int) => a
+            x := g("s")
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void CallThroughFunctionValue_NamedArgumentAndWrongCount_IsE0011Only() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            sub := (a: int, b: int) => a - b
+            x := sub(b: 1)
+            """);
+        AssertFunctionValueNamedArgument(Assert.Single(bag.Errors), line: 2, column: 10);
+    }
+
+    [Fact]
+    public void CallThroughArrayElement_NamedArgument_IsE0011() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            ops := [(a: int, b: int) => a - b]
+            x := ops[0](10, b: 1)
+            """);
+        AssertFunctionValueNamedArgument(Assert.Single(bag.Errors), line: 2, column: 17);
+    }
+
+    [Fact]
+    public void CallThroughUndefinedName_NamedArgument_IsNotReportedTwice() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := nope(10, b: 1)\n");
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(6, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallOnStructNamingNoField_NamedArgument_IsE1002Only() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(int, int): int
+            }
+            bx := Box { op: (a: int, b: int) => a - b }
+            x := bx.nope(10, b: 1)
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E1002", d.Code);
+        Assert.Equal(5, d.Range.Start.Line);
+        Assert.Equal(6, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedAnonStructField_NamedArgument_IsE0011() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            bx := #{ op: (a: int, b: int) => a - b }
+            x := bx.op(10, b: 1)
+            """);
+        AssertFunctionValueNamedArgument(Assert.Single(bag.Errors), line: 2, column: 16);
+    }
+
+    [Fact]
     public void CallThroughFunctionTypedParameter_ReturningFunctionType_FlowsItsDescriptor() {
         (_, DiagnosticBag bag) = TypeCheckSource("""
             fn outer(make: fn(): fn(): int): int {

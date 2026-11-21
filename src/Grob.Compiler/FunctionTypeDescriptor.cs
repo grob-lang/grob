@@ -96,6 +96,13 @@ public sealed class FunctionTypeDescriptor {
         return true;
     }
 
+    /// <summary>
+    /// The nested descriptor of parameter <paramref name="index"/>, or
+    /// <see langword="null"/> when that parameter is not a function type, including when
+    /// <see cref="ParameterDescriptors"/> is empty because no parameter is.
+    /// </summary>
+    public FunctionTypeDescriptor? ParameterDescriptorAt(int index) => DescriptorAt(ParameterDescriptors, index);
+
     private static FunctionTypeDescriptor? DescriptorAt(IReadOnlyList<FunctionTypeDescriptor?> list, int index) =>
         index < list.Count ? list[index] : null;
 
