@@ -42,4 +42,5 @@ Run the prompt's session-start check for session B (Opus, high), then build grou
 
 ## Open for the maintainer
 
-- The S1 fix is on `fix/compiler-function-typed-parameter-call`, cut from `main`. It must merge before group 5 starts, and #261 then takes it in from `main`.
+- The S1 fix is on `fix/compiler-function-typed-parameter-call` (PR #262), cut from `main`. It must merge before group 5 starts, and #261 then takes it in from `main`.
+- **#262 also builds the function-value refusal** (CodeRabbit review, 21 November): a call through a function value, parameter or binding, reports E0011 at each named argument with the agreed wording, from `TypeChecker.RejectNamedFunctionValueArgs`. Group 5 does not build it again; it builds the refusal for array methods (bar `sort`'s `descending`), map methods, `print`, `exit` and `Unknown` receivers. It is logged as D-448, which also files R-57 (function-value calls check no argument count or types). The landing entry cites D-448 rather than claiming the function-value refusal.
