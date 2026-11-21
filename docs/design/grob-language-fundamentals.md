@@ -1324,6 +1324,16 @@ another signature declares is E0011.
 **Variadic functions.** A function with a variadic tail has no defaulted parameter, so
 a call to one takes no named arguments.
 
+**Built-ins.** `input` has a signature, with a defaulted `prompt`, and is called as any
+native is: `input(prompt: "Name: ")`. The *native named arguments* increment builds
+that; until it lands `input` does not read an argument's name.
+
+**Callables with no signature (D-447).** Array methods, map methods, `print`, `exit`
+and a call through a function value record no parameter names, so there is
+nothing for a name to bind to. Their arguments are positional. D-447 has a named
+argument on one refused with E0011; the *native named arguments* increment builds that
+refusal, and until it lands the checker does not read an argument's name on these calls.
+
 **`formatAs.table`.** Its `columns:` argument is the one exception. The compiler
 resolves it, not a signature (D-345): it is always written by name and cannot be
 passed positionally.
@@ -2897,7 +2907,9 @@ without noise.
 
 ---
 
-_Document updated November 2026 — D-446: §12.2 Calls and Named Arguments added. The_
+_Document updated November 2026 — D-447: §12.2 names the callables that have no signature_
+_and so take no named argument._
+_Previous: November 2026 — D-446: §12.2 Calls and Named Arguments added. The_
 _convention D-113 set and D-318 gave codes to had no section here, though D-318 pointed_
 _at one. The section states it for script functions and, under D-446, for every native._
 _Previous: August 2026 — D-415: §29.1's synchronisation anchor set_
