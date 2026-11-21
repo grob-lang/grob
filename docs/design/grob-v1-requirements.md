@@ -728,6 +728,10 @@ closures.
 - Named parameters at call sites: positional first, named after. Only
   parameters with defaults may be named. Compile errors for: named before
   positional, naming a required param, duplicate names, unknown names.
+  The same convention binds calls to natives — namespace functions, primitive
+  methods, named-type methods and plugin functions (D-446) — built by the
+  *native named arguments* increment, which runs before the Sprint 9C `fs`
+  increment.
 - Lambda expressions: `x => expr`, `x => { block }`, `(a, b) => expr`.
 - Closures: upvalue capture. `GetUpvalue`, `SetUpvalue`, `CloseUpvalue`,
   `Closure` opcodes. Open upvalues reference stack slots; closed upvalues
@@ -1700,3 +1704,5 @@ Grob v1 is ready for public release when:
 *eighteen module functions, `File` methods that return the new `File`, `ensureDir` on*
 *copy and move; §7's `fs` row corrected from 15 functions, a count no decision supported,*
 *to 18.*
+*Updated November 2026 — D-446: the named-argument convention binds calls to natives,*
+*built by its own increment ahead of the Sprint 9C `fs` increment.*

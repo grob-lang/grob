@@ -690,6 +690,36 @@ until Sprint 12 pays for each idiom the compiler does not yet name.
 
 ---
 
+### OQ-028 — Evaluation Order of Reordered Arguments
+
+**Question:** When a call uses named arguments, in what order are its arguments
+evaluated?
+
+**Raised by:** D-446. **Must resolve before:** v1, since the answer is behaviour a
+script can observe and a later change would break scripts that came to rely on it.
+
+**Context.** Verified at `9f7384d`: `EmitReorderedArguments` in `Grob.Compiler` emits
+a call's arguments in the order the parameters are declared whenever the call names
+an argument or omits a default. `f(b: g(), a: h())` therefore runs `h` before `g`. A
+call that supplies every parameter positionally is emitted in source order. No
+decision states either rule; D-113 fixes how arguments bind and says nothing of when
+they are evaluated. D-446 extends the convention to natives and lets them inherit
+today's behaviour, so that there is one behaviour and not two, without ruling that it
+is right. C# and Python both evaluate in the order written.
+
+**To decide:** whether evaluation follows the order written or the order declared;
+if the order written, how the emitter delivers arguments to their slots, since the
+callee receives a positional list; whether a default's expression, which is compiled
+at the call site, is evaluated in its parameter's position or after every written
+argument; and whether the rule is one a diagnostic can teach or only the reference
+can state.
+
+**Tentative direction:** the order written, with defaults after. It is what a reader
+of the call expects and what the languages Grob sits beside do. The cost is in the
+emitter, for script functions and natives alike.
+
+---
+
 ## Deferred Work Register
 
 **Authority: D-420.** This is the single tracking home for work that is
@@ -727,7 +757,7 @@ authorised, and every item cites the decision that raised it.
 | R-15 | **Decorator constraints enforced at parameter-binding time.** D-424 splits decorator handling in two: static validation (name, arity, literal kind, target type) lands with the decorator AST node; *enforcement* — rejecting a supplied value against `@allowed`, `@minLength`, `@maxLength`, `@minValue`, `@maxValue` or `@pattern` — needs a bound parameter value and is Sprint 10 work. Until it lands, a statically valid decorator has no runtime effect whatsoever, which is a weaker state than "unexercised": the script compiles and the constraint silently does not apply. | D-424 | Sprint 10 (parameter binding) | Each of the seven decorators rejects a violating supplied value with the specified diagnostic, exercised by the release-gate script R-08 requires; `@pattern` may land later with `regex` if that increment has not yet run |
 | R-16 | **A `type` or `fn` after top-level code has no error code.** §19 requires top-level code to follow all declarations, and D-425's ordering walk classifies a `type` or `fn` appearing after a statement, `const` or `readonly` as a backward step — but only §19 categories 1 and 2 have codes allocated (E2201, E2202), so the walk deliberately stays silent rather than borrowing a code that names something else. `fn f(): int { return 1 }` after `x := 1` therefore compiles clean against a normative rule. Either the rule is narrower than §19's prose reads and the prose should say so, or the condition needs a code of its own. | D-425 | `unowned` — a taxonomy decision, not an implementation gap; the walk already has the hook | §19's prose and the enforced rule agree: either a code exists and `ReportOrderingError` gains its arm with a test per pair, or §19 states that `type`/`fn` placement relative to top-level code is unenforced and why |
 | R-17 | **`@secure` and `@pattern` have no error code of their own.** §19's Decorators table assigns E4101 to `@allowed` and E4102 to the four length and value constraints, and D-424 Decision 7 fixes E4102's title at exactly those four. Nothing covers `@secure`'s arity check or `@pattern`'s arity and string-literal-kind checks, so D-425 raises both through E4002 with distinct wording, its stop conditions forbidding a new code. That works, but E4002's title — "decorator not permitted here" — describes a placement error, not an argument one. | D-425 | `unowned` — an error-taxonomy decision | Either §19's table names the code these checks report, or a code is allocated and E4002 narrows back to placement and target-type errors |
-| R-20 | **Named-type method calls accept named arguments silently.** `d.addDays(days: 1)` and `d.isBefore(other: d)` produce no diagnostic, where namespace and primitive calls report E0011 (gate report F3). Emission keeps source order, so it is harmless while no named-type method takes two parameters, and a latent miscompile once a Sprint 9C method does. D-426 Decision 4 required today's behaviour to survive, and the probe corpus pins the silence. | D-426, recorded by D-427 | The Sprint 9C increment that first registers `File`, as its first change group (D-428 Decision 9) — was `unowned`; `File.moveTo` and `File.copyTo` are the first two-parameter named-type methods, `Regex.replace` and `Regex.replaceAll` the next | Either a named argument on a named-type method call reports E0011 exactly as the namespace and primitive paths do, or a decision enables named-argument binding to natives (D-428 recommends it) and the named-type path binds by name; the probe corpus's expected output is updated by the increment that makes the change and a test pins it |
+| R-20 | **Named-type method calls accept named arguments silently.** `d.addDays(days: 1)` and `d.isBefore(other: d)` produce no diagnostic, where namespace and primitive calls report E0011 (gate report F3). Emission keeps source order, so it is harmless while no named-type method takes two parameters, and a latent miscompile once a Sprint 9C method does. D-426 Decision 4 required today's behaviour to survive, and the probe corpus pins the silence. | D-426, recorded by D-427 | The *native named arguments* increment, which runs before the 9C `fs` increment (D-446, refining D-428 Decision 9) — was the first change group of the increment that first registers `File` | D-446 takes the second of this row's two former outcomes: binding. A named argument on a call to a namespace function, a primitive method or a named-type method binds by D-113 exactly as it does for a script function, reporting E0008 to E0011; `RejectNamedNativeArgs` and `RejectNamedMemberArgs` are gone; a call that names a later defaulted parameter and omits an earlier one reaches the native with the earlier default filled, proved on a registered test native with two defaults; an overloaded method binds names against the signature its positional arguments choose; `d.addDays(days: 1)` reports E0009, and the probe corpus and `TypeCheckerDateTests` are updated by that increment to say so |
 | R-21 | **Array parameter element types are declared but not enforced.** `path.joinAll(parts: string[])` and `strings.join(parts: string[])` carry `SignatureType.ArrayOf(string)`, but the checker accepts any array there, as it did before signatures (gate report F4). Only return threading reads `ElementType` (`string.split`'s `string[]`). | D-426, recorded by D-427 | `unowned` | The checker rejects an array argument whose element type does not match the parameter's declared element type, with an existing code or one allocated by the procedure, and a test per enforcing native pins it |
 | R-22 | **`strings.join`'s documented default separator is not built.** `grob-type-registry.md` and D-071 give `separator: string = ""`; the registered signature and `StringsPlugin` require both arguments, and the probe corpus pins E0003 on `strings.join(arr)` (gate report F5). Doc/code drift. | D-071, recorded by D-427 | `unowned` | Either the signature gains `Optional("separator", StringType, "")` and `strings.join(arr)` runs, with the corpus updated by that increment, or the documented default is removed by a decision; the reference and the code agree |
 | R-23 | **Nullable named types render as `struct?` in diagnostics.** E0101 on `nd.year` and E0004 on `d.isBefore(nd)` say `'struct?'`, not `'date?'` (gate report F10). Cosmetic and pre-existing; pinned by the probe corpus. | D-426, recorded by D-427 | `unowned` | A diagnostic naming a nullable named type spells it `'date?'`/`'guid?'`, the corpus is updated by that increment and a test pins one case per named type |
@@ -759,6 +789,7 @@ authorised, and every item cites the decision that raised it.
 | R-52 | **Two `fs` failures have no error code.** D-150 throws `IoError` when a copy or move finds its destination and `overwrite` is false, and D-109 has `fs.delete` refuse a directory that is not empty. Neither has a code of its own. Only E5305, the residual, would catch them, and its description says the bar for raising it stays high because specific failures get specific codes. D-445 also leaves two cases to the increment's budget: the error for a `File.rename` whose name contains a separator, and the error when the current directory on Linux lies beneath a name that contains `\` (D-445 Decision 7). A design session cannot mint a code (D-316). | D-445 | The 9C `fs` increment | `ErrorCatalog.cs` and `grob-error-codes.md` carry a code for "destination already exists", raised by `fs.copy`, `fs.move`, `File.copyTo` and `File.moveTo` under `overwrite: false` and by `fs.createDir`, and a code for "directory not empty", raised by `fs.delete` and `File.delete`, both minted in the increment's commit under D-316; the rename case and the current-directory case are each folded or minted by a ruling the increment's decision records; `grob-stdlib-reference.md`'s failure table names the codes in place of its two R-52 cells |
 | R-53 | **Three platform facts about `fs` are stated nowhere because nobody has measured them.** What `File.created` holds on a Linux file system that records no creation time; what moving a directory to another volume does on each platform; and how a link is reported — its `isDirectory`, its `size` and what a broken one returns. D-442 Decision 1 requires a function's documentation to state where behaviour differs by platform, and D-445 would not write down a guess. | D-445 | The 9C `fs` increment | Each of the three is observed on `windows-latest` and `ubuntu-latest` by a test over the OS-backed `IFileSystem`, and `grob-stdlib-reference.md`'s `fs` section states the observed behaviour in place of its reference to R-53 |
 | R-54 | **The wiki describes the April `fs`.** `docs/wiki/Standard-Library/fs.md` and `docs/wiki/Type-Registry/File.md` list fourteen functions, `File` methods returning `void` and no `overwrite` parameter, and every example is a `C:\` path. The wiki shows what is built (D-440), so it changes with the increment that builds `fs`, not with the decision. | D-445 | The 9C `fs` increment | Both pages match D-445's surface as built; every example follows D-442 Decision 3 and passes the public samples gate (D-430) with `fs` off the excused list |
+| R-55 | **Nothing pins a native's parameter names to its documentation.** D-446 lets a script pass any defaulted parameter of a native by name, so that name is contract: renaming it in a signature breaks scripts, and a reference that spells it differently documents a call that does not compile. `SignatureParameter.Name` is described as the name the stdlib reference documents, and no check holds the two together. | D-446 | The *native named arguments* increment | The drift check compares the name of every defaulted parameter in the core modules' registered signatures with the signature `grob-stdlib-reference.md` or `grob-type-registry.md` gives for that function or method, and fails on a difference or on a defaulted parameter the documents do not show |
 
 ### Closed items
 
@@ -1177,7 +1208,11 @@ _table of `grob-decisions-log.md`. The full rationale is preserved here._
 
 ---
 
-_Document updated November 2026 — D-445. **R-52 to R-54 added**: the two `fs` error codes the_
+_Document updated November 2026 — D-446. **OQ-028 opened**: the order in which a reordered_
+_call's arguments are evaluated. **R-20 re-owned and its criterion fixed on binding**: the_
+_*native named arguments* increment, ahead of the 9C `fs` increment. **R-55 added**: a drift_
+_check that pins a native's defaulted parameter names to its documentation._
+_Previous: November 2026 — D-445. **R-52 to R-54 added**: the two `fs` error codes the_
 _increment mints, three platform facts it measures and the wiki pages it brings into line._
 _Previous: November 2026 — D-444. **OQ-026 and OQ-027 opened**: the surface of inline_
 _and stdin source for `grob run`, and whether the foreign-idiom diagnostics leave R-36. **R-48 to_

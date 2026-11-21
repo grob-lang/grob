@@ -442,6 +442,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-443 | November 2026 | Solution architecture — plugin SDK; Compiler — type checker; Standard library — `regex`; Deferred Work Register | **The function form of `Regex.replace` and `replaceAll` is built** (D-432 Decision 6). **R-44 closed.** The signature union gains `FunctionShape`, a parameter type on named-type methods only (**amends D-426 Decision 1**). A named-type method may carry overloads: further signatures on one binder, which must differ at a required position by taking a function. A lambda passed for a shape takes its parameter types, so `m` is a `Match`; overload selection and the function-argument checks fold into E0004. A non-string result at run time is E5903. Two pre-existing bugs found and left to their own fixes (Chris). **R-47 opens**: lambda parameter annotations are ignored. Count unchanged at 121. |
 | D-444 | November 2026 | Sprint sequencing; CLI — `grob run`; Agentic development; Deferred Work Register | **Claude Code uses Grob as its scripting language on the Grob repository, during development, by owner decision.** Verified at `046512d`: `grob run` takes a file path only, and inline or stdin source is planned nowhere. **Inline and stdin source are v1** (surface OQ-026, build R-48). **An agent-scripting interlude follows Sprint 9**, alongside the hardening interlude: inline and stdin source, the start-up requirement measured on both release artifacts (R-49), a scripting guide as a repository skill (R-50) and the repository rule to prefer Grob on a binary not built from the tree being changed (R-51). **Sprint 10 moves behind it**, scope unchanged. Gating scripts stay out of Grob until Pillars 1–6 close. Approving `grob run` approves any command once `process` exists; recorded as a known limit, not safety. Whether the foreign-idiom diagnostics leave R-36 is OQ-027. No source change. |
 | D-445 | November 2026 | Standard library — `fs`, `File`; Platform support; Runtime — capability-injection seam; Deferred Work Register | **The `fs` surface is fixed for the 9C increment**, refining D-109, D-150, D-177 and D-436 on seven owner rulings. Verified at `7349f98`: the April sketch gives no listing order and no failure behaviour, and is written for Windows alone. **A `File` is a snapshot**: `rename`, `moveTo` and `copyTo` return the new `File` and leave the receiver unchanged, as the README's first sample already assumes. **A listing has one order on both platforms**: ordinal by name within a directory, each directory followed by its contents, links not descended into. **Four functions added**, to 18: `fs.find(dir, pattern)` with `*`, `?` and `**`, named and shaped for Grob's plain-word surface in place of `fs.glob`; `fs.info`; `fs.writeLines`; `fs.appendLine`. **Copy and move gain `ensureDir: bool = false`**. Deletes throw on a missing path; `copy` refuses a directory; the existence checks never throw. **Failing is not reading**: an `overwrite: false` copy is one seam member, not a check and a copy. **A path argument is normalised as `path.normalise` does** before it reaches `IFileSystem`, so `\` separates on Linux too, for `fs`, `json` and `csv`. R-52 to R-54 filed. No source change. |
+| D-446 | November 2026 | Type system — call binding; Compiler — argument emission; Standard library — signatures; Plugin SDK; Deferred Work Register | **Named arguments bind to natives**, refining D-113, D-318, D-358, D-426 Decision 4 and D-428 Decision 9 on six owner rulings. Verified at `9f7384d`: script functions bind D-113 in full and every native path refuses a named argument, so D-445's `fs` surface does not compile. **One convention**: D-113 applies unchanged to namespace functions, primitive methods, named-type methods and plugin functions; a required parameter stays positional only. **A defaulted parameter's name is contract** and is pinned to the reference by the drift check (R-55). Overloads resolve on positional arguments first. Natives inherit today's evaluation order, which no decision states: **OQ-028**. **Built by its own increment ahead of `fs`**, closing R-20, which is re-owned. `grob-language-fundamentals.md` gains §12.2, the section on calls it never had. No error code, opcode or grammar added. No source change. |
 
 ---
 
@@ -17701,6 +17702,103 @@ source) and D-420 (the register).
 
 ---
 
+### D-446 — Named arguments bind to natives: one calling convention for script functions, namespace functions, primitive methods, named-type methods and plugins, built by its own increment ahead of `fs` (November 2026)
+
+Area: Type system — call binding; Compiler — argument emission; Standard library — signatures; Plugin SDK; Deferred Work Register
+Supersedes: none
+Superseded by: none
+Refines: D-113, D-318, D-358, D-426 Decision 4, D-428 Decision 9
+
+**Decision-only, with spec edits. No source change.** Error-code count unchanged at 121.
+**Owner decisions**: Chris, 21 November, on six forks.
+
+**Verified at `9f7384d`.** A script function binds D-113 in full: positionals first,
+named arguments after in any order, only a defaulted parameter nameable and a named
+argument free to skip the defaults before it. E0008 to E0011 report the four mistakes.
+Natives do not. `RejectNamedNativeArgs` refuses every named argument on a namespace
+call and `RejectNamedMemberArgs` on a primitive or named-type method call, both with
+E0011 and "does not accept named arguments; pass them positionally". Every native
+signature already records its parameters' names and defaults (D-426 Decision 4), and
+native defaults fill missing trailing arguments only (D-358). D-445 fixed an `fs`
+surface whose every optional parameter is written by name, and
+`file.moveTo("archive/2026", ensureDir: true)` names the second default while omitting
+the first. None of it compiles. D-445 should have named that dependency and did not.
+R-20 offered two outcomes, parity in refusal or a decision to bind; D-428 Decision 9
+recommended binding and left it undecided. `grob-language-fundamentals.md` has no
+section on calls or named arguments, though D-318 points at one.
+
+**Decision 1 — one convention, unchanged (Chris).** D-113 applies to a native exactly as
+it applies to a script function. There is no rule that holds for natives alone. A
+required parameter stays positional only, so `fs.list(dir: "reports")` is E0009.
+**Rejected**: refusing named arguments on every native path, R-20's other outcome,
+which makes `file.copyTo(dest, false, true)` the only legal call — the bare boolean
+D-113 exists to prevent; and letting natives name required parameters, which would be a
+second convention.
+
+**Decision 2 — every native path, at once (Chris).** Namespace functions, methods on
+primitives and methods on named types all bind, in the same increment. R-20 exists
+because the paths disagreed. A plugin's functions bind too, with no change to the SDK,
+since they register the same `FunctionSignature`. The two refusing functions are
+removed. E0011 keeps its code and its title; the message that named arguments are not
+accepted goes.
+
+**Decision 3 — a defaulted parameter's name is contract (Chris).** Once
+`overwrite: true` compiles, renaming `overwrite` breaks scripts. The name of a
+defaulted parameter of a shipped native does not change, on the footing error codes
+stand on. Required parameters cannot be named, so their names stay documentation. The
+drift check pins each defaulted parameter name in the core modules to the signature
+the reference gives (R-55), and the plugin guide says the same to plugin authors.
+
+**Decision 4 — overloads resolve first (Chris).** Where a method has more than one
+signature, the positional arguments choose it, as D-443 requires overloads to differ at
+a required position, and the named arguments bind against the one chosen. A name that
+only another signature declares is E0011. A variadic signature cannot carry a default
+(`FunctionSignature` refuses the pair), so a call to one takes no named arguments and
+no rule is needed for it.
+
+**Decision 5 — natives evaluate as script functions do, and the order is an open
+question (Chris).** `EmitReorderedArguments` emits a reordered call's arguments in the
+order the parameters are declared, so `f(b: g(), a: h())` runs `h` first. No decision
+states that. Natives inherit it, so that there is one behaviour and not two, and
+**OQ-028** asks whether it should be the order written. It is not settled here as a
+side effect of a binding decision: the answer changes emission for script functions
+too.
+
+**Decision 6 — its own increment, before `fs` (Chris).** D-428 Decision 9 made R-20 the
+first change group of the increment that first registers `File`. Since D-445 that
+increment builds eighteen functions, the `File` type, the `IFileSystem` members and an
+in-memory file system. Binding touches every native call path in the checker and the
+compiler and has nothing to do with files. It lands alone, as the *native named
+arguments* increment, and closes R-20 and R-55. Decision 9's reason stands: it blocks
+`fs`. Only the packaging changes.
+
+**Mechanism, for the increment to confirm.** The checker binds a native call with the
+routine that binds a script function's, reading names and defaults from the signature.
+The compiler emits the bound list in parameter order, a constant for each default not
+supplied, so a native keeps a fixed arity and `NativeDefaultArgumentFill`'s trailing
+fill becomes the case of that rule in which nothing is named. No opcode, no grammar and
+no error code is added.
+
+**Behaviour that changes.** `d.addDays(days: 1)` compiles silently today, the silence
+R-20 records and the probe corpus pins. `days` is required, so it becomes E0009. A
+named argument on a namespace or primitive call stops being E0011 where it names a
+defaulted parameter and becomes a bound argument. `formatAs.table`'s `columns:` keeps
+its compiler-resolved path (D-345) and reads as before.
+
+**Spec edits in this commit.** `grob-language-fundamentals.md`: §12.2 Calls and Named
+Arguments, new, stating the convention for every callable. `grob-stdlib-reference.md`: a
+calling-convention note. `grob-plugins.md`: defaulted parameter names. `grob-v1-requirements.md`:
+the convention extended to natives and the increment placed before `fs`.
+`grob-open-questions.md`: OQ-028 opened, R-20 re-owned with its criterion fixed on
+binding, R-55 filed.
+
+Cites D-113 (the convention), D-318 (its codes), D-358 (native defaults), D-426 (names
+recorded so that binding would be additive), D-427 and D-428 (R-20 and its owner),
+D-443 (overloads), D-445 (the surface that needs it), D-345 (`formatAs`) and D-420 (the
+register).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -17930,7 +18028,11 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-445 added, with spec edits; no source change. **The `fs` surface is fixed_
+_November 2026 — D-446 added, with spec edits; no source change. **Named arguments bind to_
+_natives**: D-113's convention applies unchanged to every native call path and to plugins; a_
+_defaulted parameter's name is contract; the work is its own increment ahead of `fs`._
+_OQ-028 opened; R-20 re-owned; R-55 filed. Count unchanged at 121._
+_Previous: November 2026 — D-445 added, with spec edits; no source change. **The `fs` surface is fixed_
 _for the 9C increment**: a `File` is a snapshot whose methods return the new `File`, a listing_
 _has one order on both platforms, `fs.find`, `fs.info`, `fs.writeLines` and `fs.appendLine` are_
 _added, copy and move gain `ensureDir`, failure behaviour is specified and a path argument is_

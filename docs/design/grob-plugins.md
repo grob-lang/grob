@@ -241,7 +241,9 @@ to run — if they do, the plugin has not been published yet.
 - **Namespace your functions** — prefix all function names with your plugin’s
   alias: `xml.parse()`, `pnp.getSite()`. Not just `parse()` or `getSite()`
 - **Name your parameters deliberately** — the `FunctionSignature` every
-  registration requires records them, and they are public API once published. The
+  registration requires records them, and they are public API once published. A
+  script may pass any parameter you give a default by name (D-446), so renaming a
+  defaulted parameter breaks the scripts that name it. The
   signature is what gives scripts compile-time type safety at your plugin boundary
 - **Fail with `GrobRuntimeException`** — throw this rather than letting raw C#
   exceptions surface to the script author
