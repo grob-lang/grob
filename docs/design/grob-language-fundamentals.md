@@ -1326,8 +1326,9 @@ a call to one takes no named arguments.
 
 **Callables with no signature (D-447).** Array methods, map methods, `print`, `exit`,
 `input` and a call through a function value record no parameter names, so there is
-nothing for a name to bind to. A named argument on one is E0011. Their arguments are
-positional.
+nothing for a name to bind to. Their arguments are positional. D-447 has a named
+argument on one refused with E0011; the *native named arguments* increment builds that
+refusal, and until it lands the checker does not read an argument's name on these calls.
 
 **`formatAs.table`.** Its `columns:` argument is the one exception. The compiler
 resolves it, not a signature (D-345): it is always written by name and cannot be

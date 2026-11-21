@@ -18100,9 +18100,10 @@ _(Full detail in `grob-vm-architecture.md`)_
 
 _This document is the authoritative decisions record for Grob._
 _November 2026 — D-447 added, with spec edits; no source change. **The *native named_
-_arguments* increment is authorised**, its prompt committed with it. A call with no signature —_
-_an array or map method, `print`, `exit`, `input`, a call through a function value — refuses a_
-_named argument until it has one. R-56 filed. Count unchanged at 121._
+_arguments* increment is authorised**, its prompt committed with it. The increment is to make a_
+_call with no signature — an array or map method, `print`, `exit`, `input`, a call through a_
+_function value — refuse a named argument, where its gate confirms one is accepted today. R-56_
+_filed. Count unchanged at 121._
 _Previous: November 2026 — D-446 added, with spec edits; no source change. **Named arguments bind to_
 _natives**: D-113's convention applies unchanged to every native call path and to plugins; a_
 _defaulted parameter's name is contract; the work is its own increment ahead of `fs`._

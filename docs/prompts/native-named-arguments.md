@@ -146,8 +146,12 @@ byte-identical to today's.** Say which existing tests prove that and add what is
 `tests/fixtures/native-probes/named-arguments.expected.txt` and
 `date-members.errors.expected.txt` pin today's refusals. D-446 changes the language under
 them, which is the first of D-428's three grounds for changing a master. List every line
-that will change, its new text and the clause of D-446 or D-447 that changes it. Any line
-not on that list must be byte-identical at the end.
+that will change, its new text, the clause of D-446 or D-447 that changes it and the change
+group in §2 that changes it. Any line not on that list must be byte-identical at the end.
+
+The probe tests compare each master on every run, so a master's line changes **in the
+commit that changes the behaviour it pins**, never later. A group that removes a refusal
+and leaves the master for another group is a red commit.
 
 ---
 
@@ -155,7 +159,8 @@ not on that list must be byte-identical at the end.
 
 Seven change groups, each a green commit. Land them in this order. Each group that makes a
 path bind changes the checker and the compiler together: a checker that binds while the
-compiler still emits in source order is the miscompile R-20 was opened for.
+compiler still emits in source order is the miscompile R-20 was opened for. Groups 2 to 5
+each update the probe-master lines §1.6 assigns to them, in the same commit.
 
 1. *Session B — Opus, high.* **The shared binder.** The D-113 routine binds a `FnDecl` or
    a `FunctionSignature` (§1.4). Nothing new binds yet. Every existing test passes
@@ -175,9 +180,10 @@ compiler still emits in source order is the miscompile R-20 was opened for.
 6. *Session D — Sonnet, medium.* **The parameter-name drift check** (R-55), in
    `tooling/Grob.DriftCheck`, with its consistency test. Any name §1.3 found in
    disagreement is settled first: see §6.
-7. *Session D — Sonnet, medium.* **Record.** The probe masters, per §1.6. The wiki and the
+7. *Session D — Sonnet, medium.* **Record.** The wiki and the
    skills under `.claude/skills/` that describe calling a native, each corrected in this
-   commit, which is the one that makes it true. The landing entry. R-20 and R-55 moved to
+   commit, once every path is true. A check that the probe masters differ from their
+   capture on §1.6's lines and no others. The landing entry. R-20 and R-55 moved to
    the register's Closed Items table.
 
 ### Out of scope — report, do not fix
