@@ -443,7 +443,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-444 | November 2026 | Sprint sequencing; CLI — `grob run`; Agentic development; Deferred Work Register | **Claude Code uses Grob as its scripting language on the Grob repository, during development, by owner decision.** Verified at `046512d`: `grob run` takes a file path only, and inline or stdin source is planned nowhere. **Inline and stdin source are v1** (surface OQ-026, build R-48). **An agent-scripting interlude follows Sprint 9**, alongside the hardening interlude: inline and stdin source, the start-up requirement measured on both release artifacts (R-49), a scripting guide as a repository skill (R-50) and the repository rule to prefer Grob on a binary not built from the tree being changed (R-51). **Sprint 10 moves behind it**, scope unchanged. Gating scripts stay out of Grob until Pillars 1–6 close. Approving `grob run` approves any command once `process` exists; recorded as a known limit, not safety. Whether the foreign-idiom diagnostics leave R-36 is OQ-027. No source change. |
 | D-445 | November 2026 | Standard library — `fs`, `File`; Platform support; Runtime — capability-injection seam; Deferred Work Register | **The `fs` surface is fixed for the 9C increment**, refining D-109, D-150, D-177 and D-436 on seven owner rulings. Verified at `7349f98`: the April sketch gives no listing order and no failure behaviour, and is written for Windows alone. **A `File` is a snapshot**: `rename`, `moveTo` and `copyTo` return the new `File` and leave the receiver unchanged, as the README's first sample already assumes. **A listing has one order on both platforms**: ordinal by name within a directory, each directory followed by its contents, links not descended into. **Four functions added**, to 18: `fs.find(dir, pattern)` with `*`, `?` and `**`, named and shaped for Grob's plain-word surface in place of `fs.glob`; `fs.info`; `fs.writeLines`; `fs.appendLine`. **Copy and move gain `ensureDir: bool = false`**. Deletes throw on a missing path; `copy` refuses a directory; the existence checks never throw. **Failing is not reading**: an `overwrite: false` copy is one seam member, not a check and a copy. **A path argument is normalised as `path.normalise` does** before it reaches `IFileSystem`, so `\` separates on Linux too, for `fs`, `json` and `csv`. R-52 to R-54 filed. No source change. |
 | D-446 | November 2026 | Type system — call binding; Compiler — argument emission; Standard library — signatures; Plugin SDK; Deferred Work Register | **Named arguments bind to natives**, refining D-113, D-318, D-358, D-426 Decision 4 and D-428 Decision 9 on six owner rulings. Verified at `9f7384d`: script functions bind D-113 in full and every native path refuses a named argument, so D-445's `fs` surface does not compile. **One convention**: D-113 applies unchanged to namespace functions, primitive methods, named-type methods and plugin functions; a required parameter stays positional only. **A defaulted parameter's name is contract** and is pinned to the reference by the drift check (R-55). Overloads resolve on positional arguments first. Natives inherit today's evaluation order, which no decision states: **OQ-028**. **Built by its own increment ahead of `fs`**, closing R-20, which is re-owned. `grob-language-fundamentals.md` gains §12.2, the section on calls it never had. No error code, opcode or grammar added. No source change. |
-| D-447 | November 2026 | Type system — call binding; Compiler — argument emission; Testing — probe corpus; Deferred Work Register | **Authorises the *native named arguments* increment**, refining D-446 and D-426 Decision 1; prompt at `docs/prompts/native-named-arguments.md`. Read at `a30cadf`, not run: array methods, map methods, `print`, `exit`, `input` and calls through a function value carry no signature and no code on those paths reads an argument's name, a set D-446 did not name. **A call with no signature refuses a named argument** with E0011, on PR #248's precedent, if the gate confirms it is accepted today; binding there waits on signatures (R-56). Named-type methods gain default fill. The probe masters change on D-428's first ground, line by line. The gate runs what the planning sessions read. No source change. |
+| D-447 | November 2026 | Type system — call binding; Compiler — argument emission; Testing — probe corpus; Deferred Work Register | **Authorises the *native named arguments* increment**, refining D-446 and D-426 Decision 1; prompt at `docs/prompts/native-named-arguments.md`. Read at `a30cadf`, not run: array methods, map methods, `print`, `exit` and calls through a function value carry no signature and no code on those paths reads an argument's name, a set D-446 did not name. **A call with no signature refuses a named argument** with E0011, on PR #248's precedent, if the gate confirms it is accepted today; binding there waits on signatures (R-56). The `input` built-in has a signature and binds with the other three paths. Named-type methods gain default fill. The probe masters change on D-428's first ground, line by line. The gate runs what the planning sessions read. No source change. |
 
 ---
 
@@ -17823,19 +17823,25 @@ name at four sites only: the script-function binder, the two functions that refu
 arguments on namespace calls and on primitive and named-type method calls, and
 `formatAs.table`'s `columns:`. Array method calls, map method calls, `print`, `exit`,
 `input` and a call that is not to a declared function are checked by position, and no
-code on those paths reads a name. D-426 Decision 1 kept all of them out of
-`FunctionSignature`, so they record no parameter names. D-446 named four kinds of native
-and said there is no second rule for natives; it did not name these. Separately,
-`CallExpr` carries resolved defaults for namespace and primitive calls only, so a
-named-type method call has no default fill at all.
+code on those paths reads a name. Array methods, map methods, `print` and `exit` have no
+`FunctionSignature` and so record no parameter names. `input` has one: `IoPlugin`
+registers it as a built-in with a defaulted `prompt`. D-446 named four kinds of native
+and said there is no second rule for natives; it named none of these. Seven parameters
+on six callables carry a default today: `date.parse`'s `pattern`; `input`'s `prompt`;
+`regex.compile`'s `flags` and `timeout`; `char`, `char` and `suffix` on the string
+methods `padLeft`, `padRight` and `truncate`. Separately, `CallExpr` carries resolved
+defaults for namespace and primitive calls only, so a named-type method call has no
+default fill at all.
 
 **Decision 1 — the increment is authorised.** Its scope is D-446 Decisions 1 to 4 and
-R-55, on the three paths that have signatures: namespace functions, primitive methods and
-named-type methods. It closes R-20 and R-55. Named-type methods gain default fill, the
+R-55, on the four paths that have signatures: namespace functions, primitive methods,
+named-type methods and the `input` built-in, which D-446 did not list and which binds as
+the others do. It closes R-20 and R-55. Named-type methods gain default fill, the
 mechanism D-446 described, since `File.moveTo` cannot work without it.
 
-**Decision 2 — a call with no signature refuses a named argument.** Where a callable
-records no parameter names there is nothing to bind against. If the gate confirms that
+**Decision 2 — a call with no signature refuses a named argument.** Array methods, map
+methods, `print`, `exit` and a call through a function value record no parameter names,
+so there is nothing to bind against. If the gate confirms that
 such a call accepts a named argument today, it accepts any name at all:
 `xs.contains(banana: 1)` compiles, and `xs.insert(value: v, index: 0)` reaches the
 native in the order written, the value where the index belongs. That is the defect R-20 recorded for named
@@ -17857,8 +17863,9 @@ statements about the code are the gate's first job, and a statement the code doe
 bear out is a STOP, not a detail to work round.
 
 **Not decided.** Evaluation order stays OQ-028; the increment leaves it as it is and pins
-that natives and script functions agree. Whether array methods, map methods and the
-built-ins should have signatures, and bind, is **R-56**.
+that natives and script functions agree. Whether array methods, map methods, `print` and
+`exit` should have signatures, and whether a function type should carry parameter names,
+is **R-56**.
 
 **Spec edits in this commit.** `grob-language-fundamentals.md` §12.2: the callables with
 no signature and what a named argument on one does. `grob-open-questions.md`: R-56 filed.
@@ -18101,9 +18108,9 @@ _(Full detail in `grob-vm-architecture.md`)_
 _This document is the authoritative decisions record for Grob._
 _November 2026 — D-447 added, with spec edits; no source change. **The *native named_
 _arguments* increment is authorised**, its prompt committed with it. The increment is to make a_
-_call with no signature — an array or map method, `print`, `exit`, `input`, a call through a_
-_function value — refuse a named argument, where its gate confirms one is accepted today. R-56_
-_filed. Count unchanged at 121._
+_call with no signature — an array or map method, `print`, `exit`, a call through a function_
+_value — refuse a named argument, where its gate confirms one is accepted today. `input` has a_
+_signature and binds. R-56 filed. Count unchanged at 121._
 _Previous: November 2026 — D-446 added, with spec edits; no source change. **Named arguments bind to_
 _natives**: D-113's convention applies unchanged to every native call path and to plugins; a_
 _defaulted parameter's name is contract; the work is its own increment ahead of `fs`._

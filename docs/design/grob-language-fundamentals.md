@@ -1324,8 +1324,11 @@ another signature declares is E0011.
 **Variadic functions.** A function with a variadic tail has no defaulted parameter, so
 a call to one takes no named arguments.
 
-**Callables with no signature (D-447).** Array methods, map methods, `print`, `exit`,
-`input` and a call through a function value record no parameter names, so there is
+**Built-ins.** `input` has a signature, with a defaulted `prompt`, and is called as any
+native is: `input(prompt: "Name: ")`.
+
+**Callables with no signature (D-447).** Array methods, map methods, `print`, `exit`
+and a call through a function value record no parameter names, so there is
 nothing for a name to bind to. Their arguments are positional. D-447 has a named
 argument on one refused with E0011; the *native named arguments* increment builds that
 refusal, and until it lands the checker does not read an argument's name on these calls.

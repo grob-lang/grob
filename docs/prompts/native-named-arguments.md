@@ -93,13 +93,15 @@ column, message — or, where it compiles, what it prints when run.
 4. A named-type method (`d.addDays`), and an overloaded one (`Regex.replace`).
 5. An array method with one parameter and one with two.
 6. A map method with one parameter and one with two.
-7. `print`, `exit` and `input`.
+7. `print` and `exit`, which have no signature, and `input`, which has one with a
+   defaulted `prompt`.
 8. `formatAs.table`, function form and chained form.
 9. A call through a lambda held in a binding, and through a function-typed parameter.
 10. A method call on a nullable receiver through `?.`.
 
 Present the result as one table. **D-447 expects kinds 5, 6, 7 and 9 to accept any name
-without a diagnostic today.** Say plainly whether each does. For a two-parameter array or
+without a diagnostic today**, `input` included, since `CheckInputCall` reads no name. Say
+plainly whether each does. For a two-parameter array or
 map method, also show whether writing the two named arguments in the other order changes
 what runs.
 
@@ -109,8 +111,11 @@ A call path that is none of these ten is a STOP (§6).
 
 List every parameter with a default in every registered signature — namespace, primitive
 and named-type — with its name in code, its default and the name the same parameter has in
-`grob-stdlib-reference.md` or `grob-type-registry.md`. State the count you expect from
-reading the registrations before you run anything that counts. Mark every disagreement and
+`grob-stdlib-reference.md` or `grob-type-registry.md`. D-447 read seven at `a30cadf`, on
+six callables: `date.parse`'s `pattern`; `input`'s `prompt`; `regex.compile`'s `flags`
+and `timeout`; one each on `padLeft`, `padRight` and `truncate`. State the count you
+expect from reading the registrations before you run anything that counts, and explain
+any difference from seven. Mark every disagreement and
 every defaulted parameter the documents do not show. This is R-55's input, and each name on
 it freezes when this increment ships (D-446 Decision 3).
 
@@ -137,7 +142,7 @@ D-446 requires one convention. Propose, with the alternatives considered and why
 
 The native keeps a fixed arity and receives a fully bound positional list (D-358, D-446).
 Propose how the checker hands the compiler the bound order — one record on `CallExpr` that
-serves all three native paths, in place of the two `Resolved…ParameterDefaults`
+serves every native path that binds, in place of the two `Resolved…ParameterDefaults`
 properties — and one emission helper. **A complete all-positional call must emit bytecode
 byte-identical to today's.** Say which existing tests prove that and add what is missing.
 
@@ -165,9 +170,11 @@ each update the probe-master lines §1.6 assigns to them, in the same commit.
 1. *Session B — Opus, high.* **The shared binder.** The D-113 routine binds a `FnDecl` or
    a `FunctionSignature` (§1.4). Nothing new binds yet. Every existing test passes
    unchanged and every script-function message is byte-identical.
-2. *Session B — Opus, high.* **Namespace natives bind.** The checker binds
+2. *Session B — Opus, high.* **Namespace natives and `input` bind.** The checker binds
    `ns.fn(...)` calls and the compiler emits the bound list (§1.5).
-   `RejectNamedNativeArgs` is deleted.
+   `RejectNamedNativeArgs` is deleted. `input` is the one built-in with a signature
+   (D-447 Decision 1); it binds on the same binder, and its prompt-defaulting arm (D-344)
+   becomes a case of the same emission.
 3. *Session C — Sonnet, high.* **Primitive methods bind**, on the same binder and the same
    emission helper.
 4. *Session C — Sonnet, high.* **Named-type methods bind**, with default fill, which this
@@ -175,7 +182,7 @@ each update the probe-master lines §1.6 assigns to them, in the same commit.
    `RejectNamedMemberArgs` is deleted. The nullable-receiver arm binds the same way.
 5. *Session C — Sonnet, high.* **Calls with no signature refuse** (D-447 Decision 2).
    Every kind §1.2 found accepting a named argument silently — array methods, map methods,
-   `print`, `exit`, `input` and calls through a function value, as measured — reports
+   `print`, `exit` and calls through a function value, as measured — reports
    E0011. `formatAs.table`'s `columns:` is untouched.
 6. *Session D — Sonnet, medium.* **The parameter-name drift check** (R-55), in
    `tooling/Grob.DriftCheck`, with its consistency test. Any name §1.3 found in
@@ -190,7 +197,7 @@ each update the probe-master lines §1.6 assigns to them, in the same commit.
 
 - **Evaluation order** (OQ-028). `EmitReorderedArguments` keeps its order and natives match
   it. Do not make either evaluate in the order written.
-- **Signatures for array methods, map methods and the built-ins** (R-56). Group 5 makes
+- **Signatures for array methods, map methods, `print` and `exit`** (R-56). Group 5 makes
   them refuse; it does not make them bind.
 - **`formatAs.table`'s `columns:`** (D-345).
 - **`fs`, `File` and `IFileSystem`.** No part of D-445 is built here.
@@ -212,9 +219,11 @@ are E0009, not bound. That is D-113, and it is why a required parameter's name s
 documentation and a defaulted one's becomes contract.
 
 **Skip and fill.** `m(a, c: x)` against `m(a, b = 1, c = 2)` reaches the native as
-`m(a, 1, x)`. No registered native has two defaults yet; `File.moveTo` will be the first.
-Prove it on a native registered by the test, on each of the three paths and through the
-public registrar as a third-party plugin would register it.
+`m(a, 1, x)`. `regex.compile(pattern, flags, timeout)` is the only registered native with
+two defaults, so `regex.compile(p, timeout: 2)` is the proof on the namespace path. No
+primitive or named-type method has two; `File.moveTo` will be the first. Prove those two
+paths on a member registered by the test, and prove one through the public registrar as a
+third-party plugin would register it.
 
 **Defaults are constants.** A native default is a `GrobValue` scalar on the signature
 (D-358). Emit it as a constant. Nothing is evaluated at the call site for it.
@@ -239,8 +248,8 @@ behaviour where D-446 or D-447 changes that behaviour; name the clause in the co
 
 Required:
 
-- **The convention on each native path**: for namespace, primitive and named-type calls, a
-  named argument binds; named arguments in either order bind the same; E0008, E0009, E0010
+- **The convention on each native path**: for namespace, primitive and named-type calls
+  and for `input`, a named argument binds; named arguments in either order bind the same; E0008, E0009, E0010
   and E0011 each fire with the message §1.4 fixed; E0003 and E0004 are checked on the bound
   set and suppressed by a binding error.
 - **Skip and fill** on each path, and through a plugin registered on the public surface.
