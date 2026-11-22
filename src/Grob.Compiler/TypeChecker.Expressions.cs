@@ -720,16 +720,33 @@ public sealed partial class TypeChecker {
     /// so a name has nothing to bind against and would otherwise be dropped, passing the
     /// value in source order.
     /// </summary>
-    private bool RejectNamedFunctionValueArgs(CallExpr node) {
-        bool rejected = false;
+    private bool RejectNamedFunctionValueArgs(CallExpr node) =>
+        RefuseNamedArguments(node, "A function value does not accept named arguments; pass them positionally.");
+
+    /// <summary>
+    /// Refuses named arguments on a callee that records no parameter names (D-447 Decision
+    /// 2): <see cref="ErrorCatalog.E0011"/> with <paramref name="message"/> at each named
+    /// argument. A name would otherwise be dropped and its value passed in source order, so
+    /// a reordered pair such as <c>xs.insert(value: 9, index: 0)</c> would compile and run
+    /// swapped (R-20). Returns <see langword="true"/> when there was one, so the caller
+    /// suppresses the arity and type checks (one diagnostic per root cause).
+    /// </summary>
+    private bool RefuseNamedArguments(CallExpr node, string message) {
+        bool refused = false;
         foreach (CallArgument arg in node.Arguments.Where(a => a.Name is not null)) {
-            EmitError(ErrorCatalog.E0011,
-                "A function value does not accept named arguments; pass them positionally.",
-                arg.Range);
-            rejected = true;
+            EmitError(ErrorCatalog.E0011, message, arg.Range);
+            refused = true;
         }
-        return rejected;
+        return refused;
     }
+
+    /// <summary>
+    /// <see cref="RefuseNamedArguments"/> for a callee known by a bare name: an array or map
+    /// method, <c>print</c>, <c>exit</c> or a member of a receiver with nothing to bind
+    /// against.
+    /// </summary>
+    private bool RefuseNamedArgumentsTo(CallExpr node, string callee) =>
+        RefuseNamedArguments(node, $"'{callee}' does not accept named arguments; pass them positionally.");
 
     /// <summary>
     /// Checks a function value's arguments against its function type: the count (E0003),
@@ -1006,6 +1023,10 @@ public sealed partial class TypeChecker {
             // not reported twice.
             return CheckFunctionValueCall(node, ResolveStructFieldAccess(memberAccess), argTypes);
         }
+
+        // A receiver with no checked member surface, such as a lambda parameter with no
+        // shape, has no signature to bind a name against: refuse it (Chris's ruling S3).
+        RefuseNamedArgumentsTo(node, memberAccess.Member);
         return GrobType.Unknown;
     }
 
@@ -1027,6 +1048,7 @@ public sealed partial class TypeChecker {
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
         switch (memberAccess.Member) {
             case "filter": {
+                    RefuseNamedArgumentsTo(node, memberAccess.Member);
                     // First argument must be a predicate returning bool.
                     if (node.Arguments.Count >= 1 &&
                         node.Arguments[0].Value is LambdaExpr lambdaPred &&
@@ -1040,18 +1062,12 @@ public sealed partial class TypeChecker {
                     return GrobType.Array;
                 }
             case "select":
+                RefuseNamedArgumentsTo(node, memberAccess.Member);
                 return GrobType.Array;
             case "sort":
-                // Optional second arg must be bool (the 'descending' flag).
-                if (node.Arguments.Count >= 2 &&
-                    argTypes[1] != GrobType.Bool && argTypes[1] != GrobType.Unknown &&
-                    argTypes[1] != GrobType.Error) {
-                    EmitError(ErrorCatalog.E0004,
-                        $"'sort' second argument ('descending') must be 'bool'; found '{TypeName(argTypes[1])}'.",
-                        node.Arguments[1].Value.Range);
-                }
-                return GrobType.Array;
+                return ValidateArraySortCall(node, memberAccess, argTypes);
             case "each":
+                RefuseNamedArgumentsTo(node, memberAccess.Member);
                 node.IsVoidReturn = true;
                 return GrobType.Unknown; // void
             case "first":
@@ -1068,6 +1084,34 @@ public sealed partial class TypeChecker {
                 return EmitErrorAndReturn(ErrorCatalog.E1002,
                     $"Type 'T[]' has no member '{memberAccess.Member}'.", memberAccess.Range);
         }
+    }
+
+    /// <summary>
+    /// Validates a <c>sort(fn, descending = false)</c> call, the one array method that binds
+    /// a name (Chris's ruling S2): <c>descending</c> is bound on the shared
+    /// <see cref="ArgumentBinder"/> through <see cref="ArraySortParameters"/>, so naming it,
+    /// naming it twice, an unknown name and a positional after a named one are E0008 to
+    /// E0011 as for any callee. <c>fn</c> is required, so a call that leaves it unbound or
+    /// passes more than two arguments is E0003, and a supplied <c>descending</c> must be
+    /// <c>bool</c> (E0004). The flag can only follow a positional <c>fn</c>, so a clean
+    /// call is already in parameter order: <c>sort</c> binds for its diagnostics and gets
+    /// no <see cref="CallExpr.ResolvedBinding"/>, and its bytes are what they were.
+    /// </summary>
+    private GrobType ValidateArraySortCall(CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, new ArraySortParameters());
+        if (ReportBindingProblems(node, binding, BindingWording.ForNative(memberAccess.Member))) return GrobType.Array;
+        if (binding.TooManyPositionals || binding.MissingRequired) {
+            EmitMemberArityError(node, memberAccess, argTypes.Length, requiredCount: 1, fullArity: 2);
+            return GrobType.Array;
+        }
+
+        int descending = binding.SlotArgument[1];
+        if (descending != ArgumentBinder.Unbound && argTypes[descending] is not (GrobType.Bool or GrobType.Unknown or GrobType.Error)) {
+            EmitError(ErrorCatalog.E0004,
+                $"'sort' second argument ('descending') must be 'bool'; found '{TypeName(argTypes[descending])}'.",
+                node.Arguments[descending].Value.Range);
+        }
+        return GrobType.Array;
     }
 
     /// <summary>
@@ -1672,13 +1716,17 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Exact-arity guard (<see cref="ErrorCatalog.E0003"/>) for an array or map member call,
-    /// which records no signature to bind against (R-56): the supplied count must be
-    /// <paramref name="expectedCount"/>. Returns <c>true</c> when it is and per-argument
+    /// Guard for an array or map member call, which records no signature to bind against
+    /// (R-56): a named argument is refused (<see cref="RefuseNamedArguments(CallExpr, string)"/>,
+    /// E0011), otherwise the supplied count must be <paramref name="expectedCount"/>
+    /// (<see cref="ErrorCatalog.E0003"/>). Returns <c>true</c> when it is and per-argument
     /// checking should proceed.
     /// </summary>
     private bool MemberArgCountMatches(
             CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int expectedCount) {
+        // A name has nothing to bind to (R-56): refuse it, and skip the arity check that
+        // would count it as the root cause too.
+        if (RefuseNamedArgumentsTo(node, memberAccess.Member)) return false;
         if (suppliedCount == expectedCount) return true;
         EmitMemberArityError(node, memberAccess, suppliedCount, expectedCount, expectedCount);
         return false;
@@ -2534,8 +2582,11 @@ public sealed partial class TypeChecker {
     private GrobType CheckPrintExitCall(
             CallExpr node, IdentifierExpr callee, GrobType[] argTypes, bool isStatementPositionCall) {
         string name = callee.Name;
+        // print and exit record no parameter names (D-447 Decision 2): a name is refused
+        // and replaces the arity diagnostic, which would count it as a second root cause.
+        bool namesRefused = RefuseNamedArgumentsTo(node, name);
         bool arityOk = name == "print" ? argTypes.Length == 1 : argTypes.Length <= 1;
-        if (!arityOk) {
+        if (!namesRefused && !arityOk) {
             string expected = name == "print" ? "1 argument" : "0 or 1 arguments";
             EmitError(ErrorCatalog.E0003,
                 $"'{name}' expects {expected}, but {argTypes.Length} were supplied.",

@@ -75,6 +75,43 @@ public sealed class NativeNamedArgumentTests {
     }
 
     // -----------------------------------------------------------------------
+    // Groups 3 and 5: primitive methods bind; sort binds descending; the rest refuse.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void PadLeft_NamedChar_PadsWithIt() =>
+        AssertRuns("""
+            s := "abc"
+            print(s.padLeft(5, char: "*"))
+            print(s.padLeft(5))
+            print("[${s.padRight(5, char: ".")}]")
+            """, "**abc", "  abc", "[abc..]");
+
+    [Fact]
+    public void ArraySort_NamedDescending_SortsDescending() =>
+        AssertRuns("""
+            xs := [2, 3, 1]
+            print(xs.sort(x => x, descending: true))
+            print(xs.sort(x => x))
+            print(xs.sort(x => x, descending: false))
+            """, "[3, 2, 1]", "[1, 2, 3]", "[1, 2, 3]");
+
+    [Theory]
+    [InlineData("xs := [1, 2, 3]\nxs.insert(value: 9, index: 0)\n", "'insert' does not accept named arguments")]
+    [InlineData("m := map<string, int>{\"a\": 1}\nm.set(value: 2, key: \"b\")\n", "'set' does not accept named arguments")]
+    [InlineData("print(value: \"x\")\n", "'print' does not accept named arguments")]
+    [InlineData("exit(code: 3)\n", "'exit' does not accept named arguments")]
+    [InlineData("lam := x => x.insert(value: 9, index: 0)\n", "'insert' does not accept named arguments")]
+    public void CallWithNoSignature_NamedArgument_FailsToCompileWithE0011(string source, string message) {
+        (string stdout, string stderr, int exitCode) = RunSource(source);
+
+        Assert.Equal(string.Empty, stdout);
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("E0011", stderr, StringComparison.Ordinal);
+        Assert.Contains(message, stderr, StringComparison.Ordinal);
+    }
+
+    // -----------------------------------------------------------------------
     // R-58 native widening.
     // -----------------------------------------------------------------------
 
