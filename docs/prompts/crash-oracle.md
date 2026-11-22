@@ -35,7 +35,8 @@ that checks that at scale, runs a first campaign and triages what it finds.
 **This increment builds an oracle; it does not fix what the oracle finds.** D-420's stopping
 rule applies: a finding goes to the register with a minimal reproducer, unless it blocks the
 harness itself. The one fix it makes is to the CLI, which reports such a failure as
-E9001 in place of a .NET stack trace (D-451 Decision 2).
+E9001 in place of a .NET stack trace (D-451 Decision 2) and exits with the documented
+codes (D-451 Decision 5, closing R-64).
 
 **Model and effort, by session.**
 
@@ -43,7 +44,7 @@ E9001 in place of a .NET stack trace (D-451 Decision 2).
 |---|---|---|---|
 | A | §1 investigation gate | Opus | high |
 | B | Change groups 1 and 2 — the oracle and the CI slice | Opus | high |
-| C | Change groups 3 and 4 — the CLI's E9001 report and the mutator | Sonnet | high |
+| C | Change groups 3 and 4 — the CLI's E9001 report and exit codes; the mutator | Sonnet | high |
 | D | Change group 5 — the generator | Opus | high |
 | E | Change groups 6 and 7 — the first campaign and triage; record | Opus | high |
 
@@ -122,8 +123,14 @@ group 3:
 - **What it prints.** The E9001 title from `ErrorCatalog`, the phase, the exception's
   message, the bug-report line and no stack trace, all on stderr; the exit code, taken
   from the documented set (requirements §8, the strategy's §1), with the reason for it.
-  R-64 records that today's codes are not that set. Show the exact text for one
-  compile-phase and one VM-phase failure.
+  Show the exact text for one compile-phase and one VM-phase failure.
+- **The exit codes (R-64, D-451 Decision 5).** A compile-time diagnostic exits `2` and a
+  usage error `3`, where both exit `1` today. List every path that returns an exit code
+  in `CommandLineRunner`, `RunCommand` and `ReplCommand`, with its code today and under
+  the documented set. Say which side an unreadable file falls on (the strategy's §1 names
+  a missing file as a usage error) and what the REPL returns. List every test that
+  asserts an exit code, saying which change and which stay, and every document that
+  states one.
 - **How it is tested** without an open defect's reproducer, which stops reproducing when
   its row closes: name the seam that makes a phase throw on demand, and say whether it
   needs a constructor or an `internal` hook on `RunCommand` and `ReplCommand`.
@@ -234,7 +241,9 @@ Seven change groups, each a green commit. Land them in this order.
    `WriteInternalError`'s coverage exclusion removed. Integration tests show a
    compile-phase and a VM-phase failure each print E9001 with the bug-report line, no
    stack trace and the exit code §1.2 chose, and that a Grob runtime error and `exit(n)`
-   are unchanged.
+   are unchanged. The CLI's exit codes become the documented set, closing R-64: a
+   compile-time diagnostic exits `2` and a usage error `3`. Every test §1.2 lists changes
+   with it, and every document that states the old codes is corrected.
 4. *Session C — Sonnet, high.* **The mutator**, with §1.6's operators and the minimiser.
    Each operator has a test showing the edit it makes on a small source. The CI slice
    gains a fixed-seed sample of mutants, still inside §1.5's budget, and the
@@ -266,7 +275,6 @@ Seven change groups, each a green commit. Land them in this order.
 - **The rest of the strategy's Pillar 1**: §3.1's byte and token mutation, §3.2's
   pathological generation and the parser depth guard it expects to force, and §3.3's
   SharpFuzz campaigns. They stay with the interlude (strategy §11).
-- **R-64, the exit codes**, unless Chris folds it into change group 3.
 - **Mutation testing of the C# test suite** (Stryker.NET). That belongs to the Sprint 9/10
   hardening interlude, with the adversarial review.
 
@@ -310,6 +318,9 @@ Required:
 - The known-signature list: an entry without a register row fails the slice, and a
   program the list does not name is reported even when its signature matches an entry.
 - An `exit(n)` outside `0..255` is classified as a finding, and `exit(42)` as allowed.
+- The exit codes, through `grob run` and `CommandLineRunner`: `0` for a clean run, `1` for
+  a Grob runtime error, `2` for a type error and for a syntax error, `3` for an unknown
+  command, a missing file path and a file that does not exist, and `n` for `exit(n)`.
 - The E9001 report: a host exception from the lexer, parser, checker, compiler and VM each
   reaches it in `grob run`, and at least one phase does in the REPL; a `GrobRuntimeException`
   and a `GrobExitException` do not.
@@ -334,6 +345,8 @@ signature before running**, confirm it, restore.
   signature; each new register row and each known row matched.
 - Coverage on new code at or above 90% line and branch.
 - Error-code count unchanged, from the live registry; D-316 gate green.
+- R-64 moved to the register's closed section by the landing entry, citing the exit-code
+  tests as its evidence.
 - The benchmark gate's result, with no baseline updated.
 - A landing entry in the decisions log, in three-location lockstep, recording what was
   built and every divergence from this prompt. **Take the D-number from the live tail of
