@@ -34,6 +34,11 @@ New in session C (inside the plan Chris approved on 22 November):
 - **`RejectNamedMemberArgs` is deleted (group 4) and `RefuseNamedArguments` is new (group 5)**: one refusal, with the function-value check calling it too. `MemberArgCountMatches`, now array and map only, refuses first and counts after, so a refusal never has an arity error beside it. `MemberArgCountInRange` is folded into it and `EmitMemberArityError` is the one E0003 wording for a member call.
 - **Group 7's fixture header** in `named-arguments.grob` is still stale (it says binding "stays unsupported"). Rewrite it without moving a line.
 
+Chris's rulings after session C's CodeRabbit review (22 November, after the push):
+
+- **E0003 names the missing required parameter, folded into group 7.** When the bound set leaves a required parameter unbound (`MissingRequired`), E0003 reports that parameter, not an arity range. This is session B's register finding, now fixed in this increment instead. It is one change to every path: script functions (`EmitArityError`), namespace natives (`CheckNativeCall`), `input` keeps its own "0 or 1" wording, primitive and named-type methods (`CheckPrimitiveMemberArgs`, `CheckNamedTypeMethodArgs`) and `sort` (`ValidateArraySortCall`), through `EmitMemberArityError` where it is shared. The count wording stays for too many positionals. **It overrides the prompt's "wording of any script-function diagnostic" out-of-scope line**, so the landing entry records a divergence, and the error code and the count of 122 are unchanged (wording only). **The new sentence is not yet chosen**: session D proposes it to Chris against `house-style` before editing, and a design question of that kind is a §6 stop for an Opus session. Pins that will move, to be found by running the suite: `TypeCheckerNativeNamedArgumentTests.NamespaceCall_NamedDefaultWithRequiredMissing_ReportsE0003AtTheCall`, the primitive, named-type and `sort` equivalents in the files session C added, `TypeCheckerDateTests` and `TypeCheckerNamedArgumentTests` where they assert a range for a missing required parameter, and `named-arguments.expected.txt` line 18 (`date.parse(pattern: s)`). Check that none of the four named-argument error examples under `docs/errors/examples/` pins it; a master changes only on D-428's grounds, so name the ground in the commit.
+- **A nullable named-type parameter rejecting `nil` and a nullable value** (`CheckNamedTypeArgumentType`) is fixed in the `fs` increment, where `File` first registers one, not here. The landing entry files it in the register with that owner.
+
 ## Error codes and registry state
 
 None allocated. The live count is 122.
@@ -55,14 +60,12 @@ Session C's rows are done. Groups 6 and 7 belong to session D (Sonnet, medium), 
 
 ## Next session, first action
 
-Run the prompt's session-start check for session D, then read `git show 4f31cf1 f467d50 5938a67 --stat --format=%B` before building group 6's drift check, which must pin `descending` on `sort` as well as the seven signature defaults.
+Run the prompt's session-start check for session D, then read `git show 4f31cf1 f467d50 5938a67 --stat --format=%B` before building group 6's drift check, which must pin `descending` on `sort` as well as the seven signature defaults. Group 7 carries the E0003 wording change above: take its sentence to Chris first.
 
 ## Open for the maintainer
 
 Nothing blocking. For awareness:
 
-- The pre-push CodeRabbit review of the whole branch (`coderabbit review --agent --deep --fresh --base main -c .coderabbit.yaml`) ran once: four findings and one unverified. Two fixed in `a2436fd`: `filter` judged a refused name as its predicate, and an E1001 assertion lacked its location. Two left, for Chris to rule on:
-  - **E0003 does not name the missing required parameter.** Session B's finding, raised again, and now on member calls and `sort` too (`s.padLeft(char: "*")` and `xs.sort(descending: true)` read as an arity range). The prompt puts script-function wording out of scope and D-446 asks for one convention, so the fix is one change to every path (script, namespace, primitive, named-type, `sort`) and the `TypeCheckerDateTests` pin. Register it, or fold it into group 7?
-  - **A nullable named-type parameter rejects `nil` and a nullable value** (`CheckNamedTypeArgumentType`, line near 1530). The check is the old one, moved: no registered method has such a parameter, and the registrar would accept one with a `nil` default. A latent defect for the `fs` increment (`File`), so it is a register finding unless Chris wants it fixed here.
-  - The unverified finding asks the next session to run the benchmark workflow on the canonical runner. It is Chris's to dispatch.
-- The `E0003` and nullable findings above are the two things the landing entry must file in the register (D-420), with the VM fault on `ns?.padLeft(5)` and the missing E1002 for an unknown member on a receiver with no surface.
+- The pre-push CodeRabbit review of the whole branch (`coderabbit review --agent --deep --fresh --base main -c .coderabbit.yaml`) ran once: four findings and one unverified. Two fixed in `a2436fd`: `filter` judged a refused name as its predicate, and an E1001 assertion lacked its location. Chris ruled on the other two (see *Decisions taken*): the E0003 wording is folded into group 7 and the nullable named-type parameter goes to the `fs` increment.
+- The unverified finding asks for the benchmark workflow to run on the canonical runner, which checks the timing thresholds a local run cannot. It is Chris's to dispatch.
+- The landing entry files these in the register (D-420): the nullable named-type parameter (owner: the `fs` increment), the VM fault on `ns?.padLeft(5)` and the missing E1002 for an unknown member on a receiver with no surface.
