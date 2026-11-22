@@ -2132,7 +2132,9 @@ name := user?.address?.city    // nil if user is nil OR address is nil
 
 When any step in the chain evaluates to `nil`, the entire chain immediately
 evaluates to `nil` — no further member access or method calls are attempted.
-The result type of the chain is always nullable (`T?`).
+On a nullable receiver, the result type of the chain is nullable (`T?`) (D-402). A
+`?.` call through a field of non-nullable function type, on a non-nullable receiver,
+keeps the function's return type (D-449).
 
 `?.` may appear multiple times in a single chain. Each `?.` is an independent
 nil check. The chain short-circuits at the first `nil` encountered.
@@ -2141,8 +2143,8 @@ nil check. The chain short-circuits at the first `nil` encountered.
 
 A value of nullable function type may be `nil`, so calling it directly is E0101
 (D-449). A binding or parameter is called inside a nil check, which narrows it; a
-struct field is called with `?.`, which gives `nil` when the field holds `nil`, so
-the call's result is nullable; any function value can be unwrapped with `??` first.
+nullable struct field is called with `?.`, which gives `nil` when the field holds `nil`,
+so the call's result is nullable; any function value can be unwrapped with `??` first.
 
 ```grob
 type Job {
