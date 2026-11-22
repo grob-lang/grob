@@ -214,7 +214,7 @@ public sealed partial class TypeChecker {
             GrobType rhsType = Visit(node.Value);
             if (fieldType is not (GrobType.Unknown or GrobType.Error) &&
                 rhsType is not (GrobType.Unknown or GrobType.Error) &&
-                !TypesAreAssignable(rhsType, fieldType)) {
+                !IsAssignableToFunctionShape(rhsType, node.Value, fieldType, ExpressionDescriptor(memberTarget))) {
                 _diagnostics.Add(Diagnostic.Of(PickAssignabilityError(rhsType, fieldType),
                     node.Value.Range,
                     $"Cannot assign '{TypeName(rhsType)}' to field of type '{TypeName(fieldType)}'."));
@@ -246,7 +246,7 @@ public sealed partial class TypeChecker {
         // also permissive — it could be the right type at runtime; the VM validates.
         if (symbol.Type != GrobType.Error && symbol.Type != GrobType.Unknown &&
             valueType != GrobType.Error && valueType != GrobType.Unknown &&
-            !IsAssignableToBinding(valueType, node.Value, symbol)) {
+            !IsAssignableToFunctionShape(valueType, node.Value, symbol.Type, symbol.FunctionDescriptor)) {
             EmitError(PickAssignabilityError(valueType, symbol.Type),
                 $"Cannot assign value of type '{TypeName(valueType)}' to binding '{target.Name}' of type '{TypeName(symbol.Type)}'.",
                 node.Value.Range);
@@ -256,17 +256,19 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Whether a value of <paramref name="valueType"/> may be assigned to
-    /// <paramref name="target"/>. A binding or parameter whose function type is known keeps
-    /// it: the value's shape must match, as a declaration's initialiser must (D-326), since a
-    /// later call is checked against that type. When either side's shape is not tracked (a
-    /// struct field's value, for one), only the flat kind is compared, so a value of an
-    /// untracked shape is not rejected for want of one.
+    /// Whether a value of <paramref name="valueType"/> may be assigned to a binding,
+    /// parameter or struct field of <paramref name="targetType"/>. A target whose function
+    /// type is known keeps it: the value's shape must match, as a declaration's initialiser
+    /// must (D-326, D-448), since a later call through the target is checked against that
+    /// type. A function value whose shape is not tracked, such as an array element, cannot
+    /// be shown to match and is rejected. A target with no tracked shape compares the flat
+    /// kind only.
     /// </summary>
-    private bool IsAssignableToBinding(GrobType valueType, Expression value, Symbol target) =>
-        target.FunctionDescriptor is { } targetDescriptor && InitialiserDescriptor(value) is { } valueDescriptor
-            ? TypesAreAssignable(valueType, target.Type, valueDescriptor, targetDescriptor)
-            : TypesAreAssignable(valueType, target.Type);
+    private bool IsAssignableToFunctionShape(
+            GrobType valueType, Expression value, GrobType targetType, FunctionTypeDescriptor? targetDescriptor) =>
+        targetDescriptor is not null
+            ? TypesAreAssignable(valueType, targetType, InitialiserDescriptor(value), targetDescriptor)
+            : TypesAreAssignable(valueType, targetType);
 
     /// <inheritdoc/>
     /// <remarks>

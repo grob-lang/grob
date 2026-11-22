@@ -748,17 +748,83 @@ public sealed class TypeCheckerFunctionTypeTests {
     }
 
     /// <summary>
-    /// An array element's function shape is not tracked, so assigning one compares the
-    /// flat kind rather than rejecting the value for want of a shape.
+    /// An array element's function shape is not tracked, so it cannot be shown to match
+    /// the parameter's function type and is rejected, as a declaration's initialiser is;
+    /// accepting it would leave a later call trusting a shape nothing checked.
     /// </summary>
     [Fact]
-    public void Reassignment_FunctionTypedParameter_FromArrayElement_IsAccepted() {
+    public void Reassignment_FunctionTypedParameter_FromUntrackedArrayElement_IsE0001() {
         (_, DiagnosticBag bag) = TypeCheckSource("""
             fn apply(f: fn(int): int): int {
                 ops := [(a: int) => a + 1]
                 f = ops[0]
                 return f(1)
             }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(9, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Reassignment_UntrackedFunctionBinding_AcceptsAnyFunction() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            ops := [(a: int) => a + 1]
+            f := ops[0]
+            f = () => "s"
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void FieldAssignment_FunctionTypedField_WrongShape_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(): int
+            }
+            bx := Box { op: () => 1 }
+            bx.op = () => "s"
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(5, d.Range.Start.Line);
+        Assert.Equal(9, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void FieldAssignment_FunctionTypedField_UntrackedValue_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(): int
+            }
+            bx := Box { op: () => 1 }
+            ops := [() => 2]
+            bx.op = ops[0]
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(6, d.Range.Start.Line);
+        Assert.Equal(9, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void FieldAssignment_FunctionTypedField_SameShape_IsAccepted() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(): int
+            }
+            bx := Box { op: () => 1 }
+            bx.op = () => 2
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void FieldAssignment_AnonStructFunctionField_ComparesKindOnly() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            bx := #{ op: () => 1 }
+            bx.op = () => "s"
             """);
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
     }
