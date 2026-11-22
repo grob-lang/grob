@@ -969,7 +969,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// annotation, while two fully-concrete descriptors are still compared invariantly.
     /// An Unknown return that carries a <see cref="FunctionTypeDescriptor.ReturnBound"/>,
     /// as a combined shape does where one branch returns a concrete type (D-448 Decision
-    /// 7), is checked through its bound, so that branch's return must still fit.
+    /// 7), is compared through its bound on either side: a value's bound must fit the
+    /// target, and a value must fit a target's bound, as a binding inferred from a
+    /// combined shape holds a reassignment to it.
     /// </summary>
     private static bool DescriptorsAreAssignable(FunctionTypeDescriptor from, FunctionTypeDescriptor to) {
         if (from.ParameterTypes.Count != to.ParameterTypes.Count) return false;
@@ -982,10 +984,19 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             }
         }
 
-        return from.ReturnBound is { } bound
-            ? PositionAssignable(bound, to.ReturnType, from.ReturnBoundDescriptor, to.ReturnDescriptor)
-            : PositionAssignable(from.ReturnType, to.ReturnType, from.ReturnDescriptor, to.ReturnDescriptor);
+        (GrobType fromReturn, FunctionTypeDescriptor? fromShape) = KnownReturn(from);
+        (GrobType toReturn, FunctionTypeDescriptor? toShape) = KnownReturn(to);
+        return PositionAssignable(fromReturn, toReturn, fromShape, toShape);
     }
+
+    /// <summary>
+    /// A descriptor's return as far as it is known: the bound where the return is Unknown
+    /// and carries one, the return type and nested shape otherwise.
+    /// </summary>
+    private static (GrobType Type, FunctionTypeDescriptor? Shape) KnownReturn(FunctionTypeDescriptor descriptor) =>
+        descriptor.ReturnBound is { } bound
+            ? (bound, descriptor.ReturnBoundDescriptor)
+            : (descriptor.ReturnType, descriptor.ReturnDescriptor);
 
     private static FunctionTypeDescriptor? DescriptorAt(IReadOnlyList<FunctionTypeDescriptor?> list, int index) =>
         index < list.Count ? list[index] : null;

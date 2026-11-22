@@ -1484,6 +1484,53 @@ public sealed class TypeCheckerFunctionTypeTests {
         Assert.Equal(10, d.Range.Start.Column);
     }
 
+    /// <summary>
+    /// A binding inferred from a combined shape keeps the bound as its declared shape, so
+    /// a reassignment whose return conflicts with the bound is refused, as it is against a
+    /// concrete return (D-448 Decision 3), and a later annotation cannot read a stale bound.
+    /// </summary>
+    [Fact]
+    public void CombinedBinding_ReassignedWithConflictingReturn_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn run(flag: bool, f: fn(int): int): void {
+                g := flag ? f : (x) => x
+                g = (x) => "s"
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(9, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CombinedBinding_ReassignedWithConflictingBound_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn run(flag: bool, f: fn(int): int, s: fn(int): string): void {
+                g := flag ? f : (x) => x
+                g = flag ? s : (x) => x
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(9, d.Range.Start.Column);
+    }
+
+    [Theory]
+    [InlineData("(x: int) => 7")]
+    [InlineData("(x) => x")]
+    [InlineData("f")]
+    public void CombinedBinding_ReassignedWithMatchingOrUnknownReturn_IsAccepted(string replacement) {
+        (_, DiagnosticBag bag) = TypeCheckSource($$"""
+            fn run(flag: bool, f: fn(int): int): void {
+                g := flag ? f : (x) => x
+                g = {{replacement}}
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
     [Fact]
     public void LambdaBinding_TrackedReturnAndUnknownReturnTail_ConflictingDeclaredShape_IsE0001() {
         (_, DiagnosticBag bag) = TypeCheckSource("""
