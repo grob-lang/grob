@@ -214,17 +214,18 @@ public sealed class TypeCheckerDateTests {
     }
 
     [Fact]
-    public void AddDays_NamedArgument_ReportsSingleE0011() {
-        // R-20: a named-type method call took a named argument silently, where namespace and
-        // primitive calls report E0011. Emission keeps source order, so it would miscompile
-        // once a named-type method takes two parameters.
+    public void AddDays_NamedRequiredArgument_ReportsSingleE0009() {
+        // D-446 Decision 2 (replacing R-20's E0011 refusal): a named-type method binds like
+        // any callee, and addDays's days is required, so it cannot be named (D-113).
         DiagnosticBag bag = Check("""
             d := date.now()
             readonly x := d.addDays(days: 1)
             """);
         Diagnostic diag = Assert.Single(bag.Errors);
-        Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
-        Assert.Equal("'addDays' does not accept named arguments; pass them positionally.", diag.Message);
+        Assert.Equal(ErrorCatalog.E0009.Code, diag.Code);
+        Assert.Equal(
+            "Parameter 'days' of 'addDays' is required and has no default, so it cannot be passed by name. Pass it positionally.",
+            diag.Message);
         Assert.Equal(2, diag.Range.Start.Line);
         Assert.Equal(25, diag.Range.Start.Column);
     }

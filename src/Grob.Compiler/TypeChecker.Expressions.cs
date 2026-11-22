@@ -818,8 +818,12 @@ public sealed partial class TypeChecker {
         // argument's own mistake is a separate root cause and must still surface.
         IReadOnlyList<FunctionSignature>? namedMethodSignatures = NamedMethodSignatures(memberAccess, receiverType);
         var argTypes = new GrobType[node.Arguments.Count];
-        for (int i = 0; i < node.Arguments.Count; i++)
-            argTypes[i] = VisitMethodArgument(node.Arguments[i].Value, namedMethodSignatures, argTypes, i);
+        for (int i = 0; i < node.Arguments.Count; i++) {
+            // A lambda passed by name can never bind to a function-shaped parameter, which
+            // cannot carry a default and so cannot be named (D-113): it takes no shape.
+            IReadOnlyList<FunctionSignature>? shapes = node.Arguments[i].Name is null ? namedMethodSignatures : null;
+            argTypes[i] = VisitMethodArgument(node.Arguments[i].Value, shapes, argTypes, i);
+        }
 
         // D-408: cascade suppression mirroring VisitMemberAccess's identical Error
         // arm — if the receiver already errored (an undefined identifier, a broken
@@ -1412,11 +1416,12 @@ public sealed partial class TypeChecker {
                 $"Type '{namedType.Definition.Name}' has no member '{memberAccess.Member}'.",
                 memberAccess.Range);
         }
-        FunctionSignature signature = SelectOverload(method, argTypes);
+        // Overloads are chosen on the positional arguments alone (D-443, D-447): a required
+        // parameter cannot be named (D-113), so the position an overload differs at is
+        // always positional in a valid call, and a name binds against the one chosen.
+        FunctionSignature signature = SelectOverload(method, argTypes[..PositionalArgumentCount(node)]);
         RequireNonGeneric(signature);
-        if (!RejectNamedMemberArgs(node, memberAccess)) {
-            CheckNamedTypeMethodArgs(node, memberAccess, argTypes, signature);
-        }
+        CheckNamedTypeMethodArgs(node, memberAccess, argTypes, signature);
         var returnType = (SignatureType.Concrete)signature.ReturnType;
         if (returnType.NamedTypeName is not null) {
             _callResultStructNames[node] = returnType.NamedTypeName;
@@ -1428,35 +1433,70 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Checks a named-type instance-method call's argument list against
-    /// <paramref name="signature"/> — arity (<see cref="ErrorCatalog.E0003"/>) then
-    /// per-argument type (<see cref="ErrorCatalog.E0004"/>). A parameter whose concrete
-    /// type names a nominal struct (<c>date.isBefore</c>'s <c>other: date</c>) means "must
-    /// be exactly that type" (nominal, not the flat <see cref="GrobType.Struct"/> tag every
-    /// struct shares), and the diagnostic names the nominal type. The wording differs from
-    /// <see cref="CheckNativeArgumentType"/>'s (no argument index) and the probe corpus
-    /// pins it. Cascade suppression for an already-errored argument.
+    /// <paramref name="signature"/> on the shared <see cref="ArgumentBinder"/> (D-446): the
+    /// binding diagnostics (E0008 to E0011, member wording), then arity
+    /// (<see cref="ErrorCatalog.E0003"/>) and per-argument type
+    /// (<see cref="ErrorCatalog.E0004"/>) on the bound set. A clean binding is handed to the
+    /// compiler on <see cref="CallExpr.ResolvedBinding"/>, each skipped or omitted default
+    /// carried as its signature constant, so the method always receives its full arity in
+    /// parameter order. A binding problem suppresses the arity and type checks (one
+    /// diagnostic per root cause).
     /// </summary>
     private void CheckNamedTypeMethodArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, FunctionSignature signature) {
-        if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, signature.Parameters.Count)) return;
-        for (int i = 0; i < argTypes.Length; i++) {
-            if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
-            Expression argExpr = node.Arguments[i].Value;
-            if (signature.Parameters[i].Type is SignatureType.FunctionShape shape) {
-                CheckFunctionArgument(memberAccess.Member, signature.Parameters[i].Name, argExpr, argTypes[i], shape);
-                continue;
-            }
-            SignatureType.Concrete expected = ParameterTypeAt(signature, i);
-            bool compatible = expected.NamedTypeName is string nominalName
-                ? argTypes[i] == GrobType.Struct && GetStructTypeName(argExpr) == nominalName
-                : TypesAreAssignable(argTypes[i], expected.Type);
-            if (!compatible) {
-                EmitError(ErrorCatalog.E0004,
-                    $"Argument to '{memberAccess.Member}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{expected.NamedTypeName ?? TypeName(expected.Type)}'.",
-                    argExpr.Range);
-            }
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, new SignatureParameters(signature));
+        if (ReportBindingProblems(node, binding, BindingWording.ForNative(memberAccess.Member))) return;
+        if (binding.TooManyPositionals || binding.MissingRequired) {
+            EmitMemberArityError(node, memberAccess, argTypes.Length, signature.RequiredArgumentCount, signature.Parameters.Count);
+            return;
+        }
+
+        var widen = new bool[binding.SlotArgument.Count];
+        for (int p = 0; p < widen.Length; p++) {
+            int a = binding.SlotArgument[p];
+            if (a == ArgumentBinder.Unbound) continue;
+            CheckNamedTypeArgumentType(memberAccess, argTypes[a], node.Arguments[a].Value, signature, p);
+            widen[p] = signature.Parameters[p].Type is SignatureType.Concrete concrete && Widens(argTypes[a], concrete.Type);
+        }
+        node.ResolvedBinding = BoundArguments(binding, widen, signature);
+    }
+
+    /// <summary>
+    /// Checks one named-type method argument against parameter <paramref name="index"/> of
+    /// <paramref name="signature"/>: a function shape takes <see cref="CheckFunctionArgument"/>,
+    /// a parameter whose concrete type names a nominal struct (<c>date.isBefore</c>'s
+    /// <c>other: date</c>) means "must be exactly that type" (nominal, not the flat
+    /// <see cref="GrobType.Struct"/> tag every struct shares), and anything else is
+    /// assignability (E0004, at the argument). The wording differs from
+    /// <see cref="CheckNativeArgumentType"/>'s (no argument index) and the probe corpus pins
+    /// it. An argument that already errored or is <see cref="GrobType.Unknown"/> is not
+    /// reported again.
+    /// </summary>
+    private void CheckNamedTypeArgumentType(
+            MemberAccessExpr memberAccess, GrobType argType, Expression argExpr, FunctionSignature signature, int index) {
+        if (argType is GrobType.Error or GrobType.Unknown) return;
+        if (signature.Parameters[index].Type is SignatureType.FunctionShape shape) {
+            CheckFunctionArgument(memberAccess.Member, signature.Parameters[index].Name, argExpr, argType, shape);
+            return;
+        }
+        SignatureType.Concrete expected = ParameterTypeAt(signature, index);
+        bool compatible = expected.NamedTypeName is string nominalName
+            ? argType == GrobType.Struct && GetStructTypeName(argExpr) == nominalName
+            : TypesAreAssignable(argType, expected.Type);
+        if (!compatible) {
+            EmitError(ErrorCatalog.E0004,
+                $"Argument to '{memberAccess.Member}' has type '{TypeName(argType)}', which is not assignable to parameter of type '{expected.NamedTypeName ?? TypeName(expected.Type)}'.",
+                argExpr.Range);
         }
     }
+
+    /// <summary>
+    /// How many of <paramref name="node"/>'s arguments are positional: those before the first
+    /// named one. A positional argument after a named one is a binding error (E0008) and
+    /// takes no part in choosing an overload.
+    /// </summary>
+    private static int PositionalArgumentCount(CallExpr node) =>
+        node.Arguments.TakeWhile(a => a.Name is null).Count();
 
     /// <summary>
     /// The signature of <paramref name="method"/> a call matches (D-443): the first whose
@@ -1632,30 +1672,16 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// Shared exact-arity guard for a member-call argument list — the named-type (D-356)
-    /// path, which declares no defaults today. A thin wrapper over
-    /// <see cref="MemberArgCountInRange"/> with <c>required == full == expectedCount</c>,
-    /// so its message and behaviour are unchanged from before D-365.
+    /// Exact-arity guard (<see cref="ErrorCatalog.E0003"/>) for an array or map member call,
+    /// which records no signature to bind against (R-56): the supplied count must be
+    /// <paramref name="expectedCount"/>. Returns <c>true</c> when it is and per-argument
+    /// checking should proceed.
     /// </summary>
     private bool MemberArgCountMatches(
-            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int expectedCount) =>
-        MemberArgCountInRange(node, memberAccess, suppliedCount, expectedCount, expectedCount);
-
-    /// <summary>
-    /// Shared required-to-full arity guard for a member-call argument list (<see
-    /// cref="ErrorCatalog.E0003"/>) — the named-type (D-356) and primitive (D-066/D-365)
-    /// receivers share this shape, mirroring <see cref="CheckNativeCall"/>'s namespace-native
-    /// range check and its "between X and Y arguments" phrasing when the range is not a
-    /// single value. Returns <c>true</c> when the supplied count falls within range and
-    /// per-argument checking should proceed.
-    /// </summary>
-    private bool MemberArgCountInRange(
-            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int requiredCount, int fullArity) {
-        if (suppliedCount < requiredCount || suppliedCount > fullArity) {
-            EmitMemberArityError(node, memberAccess, suppliedCount, requiredCount, fullArity);
-            return false;
-        }
-        return true;
+            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int expectedCount) {
+        if (suppliedCount == expectedCount) return true;
+        EmitMemberArityError(node, memberAccess, suppliedCount, expectedCount, expectedCount);
+        return false;
     }
 
     /// <summary>
@@ -1673,29 +1699,6 @@ public sealed partial class TypeChecker {
         EmitError(ErrorCatalog.E0003,
             $"'{memberAccess.Member}' expects {expectedPhrase}, but {suppliedCount} {suppliedVerb} supplied.",
             node.Range);
-    }
-
-    /// <summary>
-    /// Rejects named arguments on a primitive-member or named-type-method call with
-    /// <see cref="ErrorCatalog.E0011"/>. Named-argument binding to natives is unsupported
-    /// even though a signature names its parameters (D-426 Decision 4), so a named
-    /// argument cannot bind — and emission preserves source
-    /// order, which would otherwise let a swapped pair (e.g. <c>s.replace(to: "b",
-    /// from: "a")</c>) pass the type checks yet call the native with mis-ordered
-    /// arguments. Instance members are positional-only until D-358 adds parameter-name
-    /// binding; named-type methods joined the rule under R-20. Returns <c>true</c> when at
-    /// least one named argument was found, so the caller suppresses the downstream
-    /// arity/type checks (one diagnostic per root cause).
-    /// </summary>
-    private bool RejectNamedMemberArgs(CallExpr node, MemberAccessExpr memberAccess) {
-        bool rejected = false;
-        foreach (CallArgument arg in node.Arguments.Where(a => a.Name is not null)) {
-            EmitError(ErrorCatalog.E0011,
-                $"'{memberAccess.Member}' does not accept named arguments; pass them positionally.",
-                arg.Range);
-            rejected = true;
-        }
-        return rejected;
     }
 
     /// <summary>
