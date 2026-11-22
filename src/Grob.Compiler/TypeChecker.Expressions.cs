@@ -746,7 +746,18 @@ public sealed partial class TypeChecker {
     /// against.
     /// </summary>
     private bool RefuseNamedArgumentsTo(CallExpr node, string callee) =>
+        // The common call has no name, and this runs for every print and array method call:
+        // build the message only for the call that needs it, so compiling allocates nothing
+        // extra for one that does not (R-24's compile allocation gate).
+        HasNamedArgument(node) &&
         RefuseNamedArguments(node, $"'{callee}' does not accept named arguments; pass them positionally.");
+
+    private static bool HasNamedArgument(CallExpr node) {
+        for (int i = 0; i < node.Arguments.Count; i++) {
+            if (node.Arguments[i].Name is not null) return true;
+        }
+        return false;
+    }
 
     /// <summary>
     /// Checks a function value's arguments against its function type: the count (E0003),
