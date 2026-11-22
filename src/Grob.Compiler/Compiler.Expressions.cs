@@ -382,11 +382,7 @@ public sealed partial class Compiler {
         int line = node.Range.Start.Line;
         // D-450: with one operand of unknown type, the opcode comes from the known one,
         // whichever side it is on; the checker has refused a known operand with no opcode.
-        (GrobType lt, GrobType rt) = (GetExprType(node.Left), GetExprType(node.Right)) switch {
-            (GrobType.Unknown, GrobType known) => (known, known),
-            (GrobType known, GrobType.Unknown) => (known, known),
-            var pair => pair,
-        };
+        (GrobType lt, GrobType rt) = WithKnownOperandType(GetExprType(node.Left), GetExprType(node.Right));
 
         switch (node.Operator) {
             case BinaryOperator.NilCoalesce:
@@ -1346,9 +1342,20 @@ public sealed partial class Compiler {
         _ => GrobType.Unknown
     };
 
+    /// <summary>
+    /// Gives a single operand of unknown type the other operand's type (D-450), so the
+    /// opcode, and the result type a parent expression sees, come from the known operand
+    /// whichever side it is on. Two unknown operands are returned unchanged.
+    /// </summary>
+    private static (GrobType Left, GrobType Right) WithKnownOperandType(GrobType left, GrobType right) =>
+        (left, right) switch {
+            (GrobType.Unknown, GrobType known) => (known, known),
+            (GrobType known, GrobType.Unknown) => (known, known),
+            _ => (left, right),
+        };
+
     private static GrobType GetBinaryResultType(BinaryExpr node) {
-        GrobType lt = GetExprType(node.Left);
-        GrobType rt = GetExprType(node.Right);
+        (GrobType lt, GrobType rt) = WithKnownOperandType(GetExprType(node.Left), GetExprType(node.Right));
         return node.Operator switch {
             BinaryOperator.Add
                 or BinaryOperator.Subtract

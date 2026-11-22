@@ -209,8 +209,12 @@ public sealed class Sprint5IncrementFunctionTypeTests {
             before := (s) => s < "m"
             print(before("a"))
             print(before("z"))
+            sandwich := (s) => s + "a" + s
+            print(sandwich("x"))
+            shifted := (n) => n - 1 + 2.5
+            print(shifted(3))
             """);
 
-        Assert.Equal($"Hi ada{NL}Hi bob{NL}[x]{NL}true{NL}false{NL}", stdout);
+        Assert.Equal($"Hi ada{NL}Hi bob{NL}[x]{NL}true{NL}false{NL}xax{NL}4.5{NL}", stdout);
     }
 }

@@ -131,8 +131,33 @@ public sealed class CompilerUnknownOperandOpcodeTests {
     }
 
     /// <summary>
+    /// The inner <c>s + "a"</c> is a <c>string</c>, so the outer <c>+</c> has a known
+    /// operand too and concatenates.
+    /// </summary>
+    [Fact]
+    public void NestedUnknownAndString_Add_EmitsConcatAtEachLevel() {
+        List<OpCode> ops = LambdaOpcodes("f := (s) => s + \"a\" + s\n");
+
+        Assert.Equal(2, ops.Count(o => o == OpCode.Concat));
+        Assert.DoesNotContain(OpCode.AddInt, ops);
+    }
+
+    /// <summary>
+    /// The inner <c>s - 1</c> is an <c>int</c>, so the outer <c>+ 2.5</c> widens it before
+    /// adding floats.
+    /// </summary>
+    [Fact]
+    public void NestedUnknownAndInt_ThenFloat_WidensTheInnerResult() {
+        List<OpCode> ops = LambdaOpcodes("f := (n) => n - 1 + 2.5\n");
+
+        int widen = ops.IndexOf(OpCode.IntToFloat);
+        Assert.True(widen > ops.IndexOf(OpCode.SubtractInt), string.Join(", ", ops));
+        Assert.Equal(OpCode.AddFloat, ops[widen + 2]);
+    }
+
+    /// <summary>
     /// Two operands of unknown type give nothing to choose from, so the opcode stays the
-    /// <c>int</c> default; typing a lambda's parameters is R-47.
+    /// <c>int</c> default (R-63).
     /// </summary>
     [Fact]
     public void TwoUnknownOperands_Add_KeepsTheIntDefault() {
