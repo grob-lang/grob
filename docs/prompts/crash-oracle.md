@@ -318,9 +318,9 @@ Required:
 - The known-signature list: an entry without a register row fails the slice, and a
   program the list does not name is reported even when its signature matches an entry.
 - An `exit(n)` outside `0..255` is classified as a finding, and `exit(42)` as allowed.
-- The exit codes, through `grob run` and `CommandLineRunner`: `0` for a clean run, `1` for
-  a Grob runtime error, `2` for a type error and for a syntax error, `3` for an unknown
-  command, a missing file path and a file that does not exist, and `n` for `exit(n)`.
+- The exit codes, through `grob run` and `CommandLineRunner`: `0` for a clean run; `1` for
+  a Grob runtime error; `2` for a type error and for a syntax error; `3` for an unknown
+  command, a missing file path and a file that does not exist; `n` for `exit(n)`.
 - The E9001 report: a host exception from the lexer, parser, checker, compiler and VM each
   reaches it in `grob run`, and at least one phase does in the REPL; a `GrobRuntimeException`
   and a `GrobExitException` do not.
