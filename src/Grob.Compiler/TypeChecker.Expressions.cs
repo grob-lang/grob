@@ -1574,9 +1574,6 @@ public sealed partial class TypeChecker {
         var returnType = (SignatureType.Concrete)signature.ReturnType;
         node.ResolvedReturnType = returnType.Type;
         node.ResolvedPrimitiveNativeName = method.QualifiedNativeName;
-        if (signature.RequiredArgumentCount < signature.Parameters.Count) {
-            node.ResolvedPrimitiveParameterDefaults = [.. signature.Parameters.Select(p => p.Default)];
-        }
         if (NativeArrayDescriptor(returnType) is { } descriptor) _callResultArrayDescriptors[node] = descriptor;
         return returnType.Type;
     }
@@ -1604,19 +1601,34 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckPrimitiveMemberArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, FunctionSignature signature) {
-        if (RejectNamedMemberArgs(node, memberAccess)) return;
-        int fullArity = signature.Parameters.Count;
-        if (!MemberArgCountInRange(node, memberAccess, argTypes.Length, signature.RequiredArgumentCount, fullArity)) return;
-        for (int i = 0; i < argTypes.Length; i++) {
-            if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
-            Expression argExpr = node.Arguments[i].Value;
-            GrobType expected = ParameterTypeAt(signature, i).Type;
-            if (!TypesAreAssignable(argTypes[i], expected)) {
-                EmitError(ErrorCatalog.E0004,
-                    $"Argument to '{memberAccess.Member}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{TypeName(expected)}'.",
-                    argExpr.Range);
-            }
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, new SignatureParameters(signature));
+        if (ReportBindingProblems(node, binding, BindingWording.ForNative(memberAccess.Member))) return;
+        if (binding.TooManyPositionals || binding.MissingRequired) {
+            EmitMemberArityError(node, memberAccess, argTypes.Length, signature.RequiredArgumentCount, signature.Parameters.Count);
+            return;
         }
+
+        var widen = new bool[binding.SlotArgument.Count];
+        for (int p = 0; p < widen.Length; p++) {
+            int a = binding.SlotArgument[p];
+            if (a == ArgumentBinder.Unbound) continue;
+            GrobType expected = ParameterTypeAt(signature, p).Type;
+            CheckPrimitiveArgumentType(memberAccess, argTypes[a], node.Arguments[a].Value, expected);
+            widen[p] = Widens(argTypes[a], expected);
+        }
+        node.ResolvedBinding = BoundArguments(binding, widen, signature);
+    }
+
+    /// <summary>
+    /// Checks one primitive-member argument against its parameter's type (E0004, at the
+    /// argument). An argument that already errored or is <see cref="GrobType.Unknown"/> is
+    /// not reported again.
+    /// </summary>
+    private void CheckPrimitiveArgumentType(MemberAccessExpr memberAccess, GrobType argType, Expression argExpr, GrobType expected) {
+        if (argType is GrobType.Error or GrobType.Unknown || TypesAreAssignable(argType, expected)) return;
+        EmitError(ErrorCatalog.E0004,
+            $"Argument to '{memberAccess.Member}' has type '{TypeName(argType)}', which is not assignable to parameter of type '{TypeName(expected)}'.",
+            argExpr.Range);
     }
 
     /// <summary>
@@ -1640,16 +1652,27 @@ public sealed partial class TypeChecker {
     private bool MemberArgCountInRange(
             CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int requiredCount, int fullArity) {
         if (suppliedCount < requiredCount || suppliedCount > fullArity) {
-            string suppliedVerb = suppliedCount == 1 ? "was" : "were";
-            string expectedPhrase = requiredCount == fullArity
-                ? $"{fullArity} {Plural(fullArity, ArgumentNoun)}"
-                : $"between {requiredCount} and {fullArity} {ArgumentNoun}s";
-            EmitError(ErrorCatalog.E0003,
-                $"'{memberAccess.Member}' expects {expectedPhrase}, but {suppliedCount} {suppliedVerb} supplied.",
-                node.Range);
+            EmitMemberArityError(node, memberAccess, suppliedCount, requiredCount, fullArity);
             return false;
         }
         return true;
+    }
+
+    /// <summary>
+    /// Reports E0003 for a member call whose argument list does not satisfy a signature
+    /// of <paramref name="requiredCount"/> to <paramref name="fullArity"/> parameters,
+    /// worded as native arity messages are: the bare member name, a single number or a
+    /// "between" range, and the count the call supplied.
+    /// </summary>
+    private void EmitMemberArityError(
+            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int requiredCount, int fullArity) {
+        string suppliedVerb = suppliedCount == 1 ? "was" : "were";
+        string expectedPhrase = requiredCount == fullArity
+            ? $"{fullArity} {Plural(fullArity, ArgumentNoun)}"
+            : $"between {requiredCount} and {fullArity} {ArgumentNoun}s";
+        EmitError(ErrorCatalog.E0003,
+            $"'{memberAccess.Member}' expects {expectedPhrase}, but {suppliedCount} {suppliedVerb} supplied.",
+            node.Range);
     }
 
     /// <summary>

@@ -801,9 +801,18 @@ public sealed partial class Compiler {
         int nilSite = EmitJump(OpCode.JumpIfTrue, line);
 
         _chunk.WriteOpCode(OpCode.Pop, line);          // pop false
-        foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
+        int argumentCount = node.Arguments.Count;
+        if (node.ResolvedBinding is { } binding) {
+            // A method the checker bound (a primitive or named-type member, D-446) takes
+            // its arguments in parameter order with its defaults filled, as the plain
+            // call does; the argument expressions are still only evaluated here.
+            EmitBoundArguments(node, binding, node.ResolvedFunction, line);
+            argumentCount = binding.Slots.Count;
+        } else {
+            foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
+        }
         _chunk.WriteOpCode(OpCode.Call, line);
-        _chunk.WriteByte(ToByteOperand(node.Arguments.Count, CallArgumentCountOperand), line);
+        _chunk.WriteByte(ToByteOperand(argumentCount, CallArgumentCountOperand), line);
         int skipSite = EmitJump(OpCode.Jump, line);
 
         PatchJump(nilSite);
@@ -845,13 +854,10 @@ public sealed partial class Compiler {
     /// Emits a primitive instance-method call (D-066, <c>string</c> first): <c>GetGlobal
     /// "&lt;qualified native&gt;"</c> (the callee, pushed first — the same shape every
     /// namespace-qualified native call already uses), the receiver
-    /// (<paramref name="callee"/>'s target), then the call's own arguments in source
-    /// order. When <see cref="CallExpr.ResolvedPrimitiveParameterDefaults"/> is set and the
-    /// call under-supplies (<c>padLeft</c>/<c>padRight</c>/<c>truncate</c>, D-365), the
-    /// trailing defaults <see cref="NativeDefaultArgumentFill.Resolve"/> returns are emitted
-    /// as further <c>Constant</c>s before <see cref="OpCode.Call"/> — the same "inject a
-    /// synthesised constant argument" shape <see cref="EmitBoundArguments"/> uses for a
-    /// namespace native's defaults (D-364). <see cref="OpCode.Call"/>'s operand is therefore the full
+    /// (<paramref name="callee"/>'s target), then the call's arguments from the checker's
+    /// bound list (<see cref="EmitBoundArguments"/>): in parameter order, with a skipped or
+    /// omitted default (<c>padLeft</c>/<c>padRight</c>/<c>truncate</c>, D-365) as its
+    /// constant (D-358, D-446). <see cref="OpCode.Call"/>'s operand is therefore the full
     /// declared arity plus the receiver, not the source call's own argument count — a no-op
     /// change in shape for every method with no declared defaults, where full arity always
     /// equals the supplied count. No <see cref="OpCode.GetProperty"/> is emitted — a
@@ -864,16 +870,13 @@ public sealed partial class Compiler {
         _chunk.WriteByte(ToByteOperand(qualifiedIdx, "primitive-member native name"), line);
 
         Visit(callee.Target);
-        foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
-
-        int fullArity = node.ResolvedPrimitiveParameterDefaults?.Count ?? node.Arguments.Count;
-        foreach (GrobValue value in NativeDefaultArgumentFill.Resolve(
-                node.Arguments.Count, fullArity, node.ResolvedPrimitiveParameterDefaults)) {
-            EmitConstant(value, line);
-        }
+        // The checker binds every primitive call it resolves to a native, and a call that
+        // failed to bind never reaches the compiler.
+        BoundArgumentList binding = node.ResolvedBinding!;
+        EmitBoundArguments(node, binding, fn: null, line);
 
         _chunk.WriteOpCode(OpCode.Call, line);
-        _chunk.WriteByte(ToByteOperand(fullArity + 1, CallArgumentCountOperand), line);
+        _chunk.WriteByte(ToByteOperand(binding.Slots.Count + 1, CallArgumentCountOperand), line);
     }
 
     /// <summary>

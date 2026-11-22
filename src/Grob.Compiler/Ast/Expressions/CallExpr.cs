@@ -78,16 +78,6 @@ public sealed record CallExpr(
     public string? ResolvedPrimitiveNativeName { get; set; }
 
     /// <summary>
-    /// Set by the type checker (D-365) alongside <see cref="ResolvedPrimitiveNativeName"/>
-    /// to the resolved method signature's parameter defaults, one entry per parameter —
-    /// the compile-time constants a call that omits trailing optional arguments is filled
-    /// with. <see langword="null"/> whenever the resolved method declares no
-    /// defaults (every primitive member but <c>padLeft</c>/<c>padRight</c>/<c>truncate</c>
-    /// today) or this call is not a primitive-member call at all.
-    /// </summary>
-    public IReadOnlyList<GrobValue?>? ResolvedPrimitiveParameterDefaults { get; set; }
-
-    /// <summary>
     /// Set by the type checker when this call is a direct call to a function declared in
     /// the script: its callee is an identifier that names the <see cref="FnDecl"/> itself.
     /// <see langword="null"/> for every other call, including a call through a parameter

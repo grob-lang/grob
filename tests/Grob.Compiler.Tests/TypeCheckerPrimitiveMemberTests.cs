@@ -212,17 +212,16 @@ public sealed class TypeCheckerPrimitiveMemberTests {
     }
 
     [Fact]
-    public void NamedArgument_OnPrimitiveMember_ReportsSingleE0011() {
-        // The registry carries no parameter names, so a named argument cannot bind — and
-        // emission preserves source order, which would silently mis-order a swapped pair.
-        // Reject with E0011 (positional-only) rather than let it type-check as valid.
+    public void NamedArgument_OnRequiredPrimitiveParameter_ReportsSingleE0009() {
+        // D-446 Decision 2 (replacing the E0011 refusal of D-426 Decision 4): a primitive
+        // member binds like any callee, and a required parameter cannot be named (D-113).
         DiagnosticBag bag = Check("""
             s := "abc"
             readonly v := s.repeat(count: 3)
             """);
 
         Diagnostic diag = Assert.Single(bag.Errors);
-        Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
+        Assert.Equal(ErrorCatalog.E0009.Code, diag.Code);
         Assert.Equal(2, diag.Range.Start.Line);
         Assert.Equal(24, diag.Range.Start.Column);
     }
@@ -252,10 +251,18 @@ public sealed class TypeCheckerPrimitiveMemberTests {
         CallExpr call = Assert.Single(CollectCalls(unit));
         Assert.Equal(GrobType.String, call.ResolvedReturnType);
         Assert.Equal(expectedNative, call.ResolvedPrimitiveNativeName);
-        Assert.NotNull(call.ResolvedPrimitiveParameterDefaults);
-        Assert.Equal(2, call.ResolvedPrimitiveParameterDefaults!.Count);
-        Assert.Null(call.ResolvedPrimitiveParameterDefaults[0]);
-        Assert.Equal(GrobValue.FromString(expectedDefault), call.ResolvedPrimitiveParameterDefaults[1]);
+        Assert.NotNull(call.ResolvedBinding);
+        BoundSlot[] slots = [.. call.ResolvedBinding.Slots];
+        Assert.Equal(2, slots.Length);
+        Assert.Equal(0, slots[0].ArgumentIndex);
+        Assert.Null(slots[0].NativeDefault);
+        // The omitted-default form fills slot 1 with the constant; the supplied form binds it.
+        if (callExpr.Contains(',', StringComparison.Ordinal)) {
+            Assert.Equal(1, slots[1].ArgumentIndex);
+        } else {
+            Assert.True(slots[1].IsDefault);
+            Assert.Equal(GrobValue.FromString(expectedDefault), slots[1].NativeDefault);
+        }
     }
 
     [Theory]
@@ -318,14 +325,16 @@ public sealed class TypeCheckerPrimitiveMemberTests {
     }
 
     [Fact]
-    public void NamedArgument_OnDefaultParameterMethod_ReportsSingleE0011() {
+    public void NamedRequiredArgument_OnDefaultParameterMethod_ReportsSingleE0009() {
+        // D-446 Decision 2: padLeft's width is required, so naming it is E0009 although
+        // the method has a defaulted parameter.
         DiagnosticBag bag = Check("""
             s := "abc"
             readonly v := s.padLeft(width: 5)
             """);
 
         Diagnostic diag = Assert.Single(bag.Errors);
-        Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
+        Assert.Equal(ErrorCatalog.E0009.Code, diag.Code);
         Assert.Equal(2, diag.Range.Start.Line);
         Assert.Equal(25, diag.Range.Start.Column);
     }

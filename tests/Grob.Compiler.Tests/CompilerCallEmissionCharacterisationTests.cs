@@ -288,6 +288,10 @@ public sealed class CompilerCallEmissionCharacterisationTests {
             Return
             """);
 
+    // Changed in group 3 (D-446 Decision 2; gate report §1.4, "Nullable receivers"): the
+    // guarded call now emits the bound argument list, so the omitted default is filled
+    // (Constant " ", Call 2) where the source-order emission supplied one argument to a
+    // native of two. The complete call below is the form that must stay byte-identical.
     [Fact]
     public void OptionalChainCall_PrimitivePadLeft_EmitsPinnedBytes() =>
         AssertEmits("""
@@ -304,13 +308,41 @@ public sealed class CompilerCallEmissionCharacterisationTests {
             Jump 1
             Pop
             IsNil
-            JumpIfTrue 8
+            JumpIfTrue 10
             Pop
             Constant [3] Int 5
-            Call 1
+            Constant [4] String " "
+            Call 2
             Jump 1
             Pop
-            DefineGlobal [4] String "t"
+            DefineGlobal [5] String "t"
+            Return
+            """);
+
+    [Fact]
+    public void OptionalChainCall_PrimitivePadLeftComplete_EmitsPinnedBytes() =>
+        AssertEmits("""
+            ns: string? := "x"
+            t := ns?.padLeft(5, "*")
+            """, """
+            Constant [0] String "x"
+            DefineGlobal [1] String "ns"
+            GetGlobal [1] String "ns"
+            IsNil
+            JumpIfTrue 6
+            Pop
+            GetProperty [2] String "padLeft"
+            Jump 1
+            Pop
+            IsNil
+            JumpIfTrue 10
+            Pop
+            Constant [3] Int 5
+            Constant [4] String "*"
+            Call 2
+            Jump 1
+            Pop
+            DefineGlobal [5] String "t"
             Return
             """);
 }
