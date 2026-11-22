@@ -193,9 +193,10 @@ public sealed partial class TypeChecker {
 
         // One or both operands are of unknown type (e.g. a lambda parameter whose type
         // is inferred at the call site, or a deferred member type).  Be permissive and
-        // propagate Unknown — the VM will validate types at runtime.  This mirrors the
-        // Unknown pass-through in ResolveComparison below.
-        if (left == GrobType.Unknown || right == GrobType.Unknown) return GrobType.Unknown;
+        // propagate Unknown — the VM will validate types at runtime — but only when the
+        // known operand suits the operator (D-450): the compiler takes the opcode from it,
+        // and no opcode exists for any other.
+        if (left == GrobType.Unknown || right == GrobType.Unknown) return ResolveUnknownArithmetic(node, left, right);
 
         // All other combinations are type errors — e.g. int + string.
         return EmitErrorAndReturn(ErrorCatalog.E0002,
@@ -238,12 +239,78 @@ public sealed partial class TypeChecker {
         return expr is CallExpr { IsVoidReturn: true };
     }
 
+    /// <summary>
+    /// Resolves arithmetic with an operand of unknown type (D-450). The known operand must
+    /// suit the operator, and the result has the known operand's type, as the compiler
+    /// takes it, so an operator applied to the result is checked against the type the
+    /// compiler chooses its opcode from. With two unknown operands the result stays
+    /// <see cref="GrobType.Unknown"/>.
+    /// </summary>
+    private GrobType ResolveUnknownArithmetic(BinaryExpr node, GrobType left, GrobType right) {
+        GrobType known = KnownOperandType(left, right);
+        return SuitsArithmetic(node.Operator, known) ? known : RejectKnownOperand(node, left, right);
+    }
+
+    /// <summary>
+    /// The type of the operand that is not <see cref="GrobType.Unknown"/>, or
+    /// <see cref="GrobType.Unknown"/> when both are.
+    /// </summary>
+    private static GrobType KnownOperandType(GrobType left, GrobType right) =>
+        left == GrobType.Unknown ? right : left;
+
+    /// <summary>
+    /// Whether an arithmetic operator has an opcode for <paramref name="known"/>, the type
+    /// of its one known operand (D-450): <c>+</c> for an <c>int</c>, a <c>float</c> or a
+    /// <c>string</c>, the other operators for an <c>int</c> or a <c>float</c>. Two unknown
+    /// operands leave nothing to check.
+    /// </summary>
+    private static bool SuitsArithmetic(BinaryOperator op, GrobType known) => known switch {
+        GrobType.Unknown or GrobType.Int or GrobType.Float => true,
+        GrobType.String => op == BinaryOperator.Add,
+        _ => false,
+    };
+
+    /// <summary>
+    /// Whether a relational operator has an opcode for the one known operand of
+    /// <paramref name="node"/> (D-450): an <c>int</c>, a <c>float</c>, a <c>string</c> or
+    /// a <c>date</c>, the types two known operands may be ordered by.
+    /// </summary>
+    private bool SuitsOrdering(BinaryExpr node, GrobType left, GrobType right) {
+        bool leftKnown = left != GrobType.Unknown;
+        return KnownOperandType(left, right) switch {
+            GrobType.Unknown or GrobType.Int or GrobType.Float or GrobType.String => true,
+            GrobType.Struct => GetStructTypeName(leftKnown ? node.Left : node.Right) == DateLayout.TypeName,
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// Reports E0002 at the known operand of <paramref name="node"/>, whose other operand
+    /// is of unknown type, when the operator has no opcode for it (D-450).
+    /// </summary>
+    private GrobType RejectKnownOperand(BinaryExpr node, GrobType left, GrobType right) {
+        bool leftKnown = left != GrobType.Unknown;
+        return EmitErrorAndReturn(ErrorCatalog.E0002,
+            $"Operator '{OperatorSymbol(node.Operator)}' cannot be applied to type '{TypeName(KnownOperandType(left, right))}'.",
+            (leftKnown ? node.Left : node.Right).Range);
+    }
+
+    /// <summary>
+    /// Resolves a comparison with an operand of unknown type: <c>==</c> and <c>!=</c> take
+    /// any other operand, and a relational operator one it has an opcode for (D-450).
+    /// </summary>
+    private GrobType ResolveUnknownComparison(BinaryExpr node, GrobType left, GrobType right) =>
+        node.Operator is BinaryOperator.Equal or BinaryOperator.NotEqual || SuitsOrdering(node, left, right)
+            ? GrobType.Bool
+            : RejectKnownOperand(node, left, right);
+
     private GrobType ResolveComparison(BinaryExpr node, GrobType left, GrobType right) {
         // An operand of unknown type (e.g. an array element, whose element type is
         // untracked until generics) is permissive: a comparison always yields bool.
-        // '==' / '!=' compile to the type-agnostic Equal/NotEqual; a relational
-        // operator falls to the int comparison, correct for the int element case.
-        if (left == GrobType.Unknown || right == GrobType.Unknown) return GrobType.Bool;
+        // '==' / '!=' compile to the type-agnostic Equal/NotEqual and take any operand; a
+        // relational operator takes its opcode from the known operand, so that operand
+        // must be one two known operands may be ordered by (D-450).
+        if (left == GrobType.Unknown || right == GrobType.Unknown) return ResolveUnknownComparison(node, left, right);
 
         // == and != accept same-type operands or mixed numeric operands.
         if (node.Operator == BinaryOperator.Equal || node.Operator == BinaryOperator.NotEqual) {
