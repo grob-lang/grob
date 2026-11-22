@@ -2,9 +2,9 @@
 
 ## Where we are
 
-- Branch: `feat/native-named-arguments`, HEAD is the hand-off commit on top of `0dfa925` (`git log -1`)
-- Working tree: clean (scratch in gitignored `.grob-session/nna/`, including `newcov.py` and `commit-g3.txt` to `commit-g5.txt`)
-- Commits on this branch: 20 with this one (`git log --oneline origin/main..HEAD`). Change groups: 1 at `a2a50be`, 2 at `d401715`, 3 at `4f31cf1`, 4 at `f467d50`, 5 at `5938a67`, then `0dfa925` (two cascade tests for group 3, no source change)
+- Branch: `feat/native-named-arguments`, HEAD is the hand-off commit on top of `6a329d0` (`git log -1`)
+- Working tree: clean (scratch in gitignored `.grob-session/nna/`, including `newcov.py`, `commit-g3.txt` to `commit-g5.txt` and the CodeRabbit output `coderabbit-sessionC.ndjson`)
+- Commits on this branch: `git log --oneline origin/main..HEAD`. Change groups: 1 at `a2a50be`, 2 at `d401715`, 3 at `4f31cf1`, 4 at `f467d50`, 5 at `5938a67`. After them: `0dfa925` (two cascade tests for group 3), `a2436fd` (review fix: `filter` stops after a refused name) and `6a329d0` (allocation fix, below)
 - PR: draft #261. Push onto it and update its description through a REST PATCH; do not open a new PR.
 - Increment prompt: `docs/prompts/native-named-arguments.md`
 - Gate report: `D:\Code\grob-lang\gate-reports\native-named-arguments-gate-report.md`
@@ -13,9 +13,9 @@
 
 ## Green state
 
-- Tests: `dotnet test`, whole solution, on `5938a67`: all eight projects passed, 0 failed, 5,736 (Core 345, Consistency 55, BenchCheck 76, Runtime 378, Compiler 2,789, Vm 473, Stdlib 672, Integration 948). `0dfa925` adds two Compiler tests and the Compiler project alone was run on it: 2,791, 0 failed
-- Coverage: new code, the `src/` diff against `origin/main` (groups 1 to 5), Compiler and Integration cobertura unioned by `.grob-session/nna/newcov.py`: 258/258 lines, 171/171 branches, on `0dfa925`. Only `Grob.Compiler` changed under `src/`. Whole-solution figure not run
-- Benchmark gate: a local run of every benchmark was started in the background at the end of the session, writing to the session scratchpad (`bench/` and `bench-run.log` under it). If it finished, its result is in the PR description; if not, run it before the PR is marked ready. It is a `workflow_dispatch` job on a canonical runner (`.github/workflows/benchmark.yml`), so `BenchCheck` fails the runner guard locally by design: compare the allocation columns to `bench/Grob.Benchmarks/baseline/compile.json` by eye, report against R-24 and update no baseline
+- Tests: `dotnet test`, whole solution, on `6a329d0`: all eight projects passed, 0 failed, 5,740 (Core 345, Consistency 55, BenchCheck 76, Runtime 378, Compiler 2,793, Vm 473, Stdlib 672, Integration 948). `dotnet format --verify-no-changes` clean
+- Coverage: new code, the `src/` diff against `origin/main` (groups 1 to 5), Compiler and Integration cobertura unioned by `.grob-session/nna/newcov.py`: 258/258 lines, 171/171 branches, measured on `0dfa925`. `a2436fd` and `6a329d0` add a few lines (the `filter` early return, `HasNamedArgument`) with tests for the first, and the figure was not re-measured. Only `Grob.Compiler` changed under `src/`. Whole-solution figure not run
+- Benchmark gate: run locally on all benchmarks (the canonical-runner `workflow_dispatch` job was not run, so the timing thresholds are unchecked: `BenchCheck` fails the runner guard locally by design, and that run is Chris's to trigger). Allocation, compile benchmarks, bytes per operation on this machine: `origin/main` 10,552 (`Compile_TwoExpressions`) and 18,256 (`Compile_TenPrints`); the branch before `6a329d0` 10,984 and 20,416; the branch at `6a329d0` 10,536 and 18,176. The eager refusal string in group 5 was the whole of the rise (216 bytes per `print`), now fixed, so the increment does not move R-24's red gate: the committed rolling baseline (9,216 and 15,896) is +14.3% on both, as it was on main. The VM benchmarks allocate exactly the baseline and the attribution ones 0.3% to 6.1% below it. No baseline updated
 - Pre-push gate: runs on this hand-off's push
 
 ## Decisions taken, not yet logged
@@ -61,5 +61,8 @@ Run the prompt's session-start check for session D, then read `git show 4f31cf1 
 
 Nothing blocking. For awareness:
 
-- The pre-push CodeRabbit review (`coderabbit review --agent --deep --fresh --base main -c .coderabbit.yaml`) was not yet run on groups 3 to 5 when this was written; see the PR for its outcome.
-- The E0003 wording finding from session B (a missing required parameter reads as an arity range, not by name) is still open for the register. Groups 3 and 4 inherited it on member calls: `s.padLeft(char: "*")` reads "expects between 1 and 2 arguments, but 1 was supplied". One change to every path fixes it.
+- The pre-push CodeRabbit review of the whole branch (`coderabbit review --agent --deep --fresh --base main -c .coderabbit.yaml`) ran once: four findings and one unverified. Two fixed in `a2436fd`: `filter` judged a refused name as its predicate, and an E1001 assertion lacked its location. Two left, for Chris to rule on:
+  - **E0003 does not name the missing required parameter.** Session B's finding, raised again, and now on member calls and `sort` too (`s.padLeft(char: "*")` and `xs.sort(descending: true)` read as an arity range). The prompt puts script-function wording out of scope and D-446 asks for one convention, so the fix is one change to every path (script, namespace, primitive, named-type, `sort`) and the `TypeCheckerDateTests` pin. Register it, or fold it into group 7?
+  - **A nullable named-type parameter rejects `nil` and a nullable value** (`CheckNamedTypeArgumentType`, line near 1530). The check is the old one, moved: no registered method has such a parameter, and the registrar would accept one with a `nil` default. A latent defect for the `fs` increment (`File`), so it is a register finding unless Chris wants it fixed here.
+  - The unverified finding asks the next session to run the benchmark workflow on the canonical runner. It is Chris's to dispatch.
+- The `E0003` and nullable findings above are the two things the landing entry must file in the register (D-420), with the VM fault on `ns?.padLeft(5)` and the missing E1002 for an unknown member on a receiver with no surface.
