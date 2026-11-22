@@ -16,7 +16,7 @@
 > immediately after Sprint 9; the CPU-heavy campaigns run in two passes — a Sprint
 > 9/10 interlude for Pillars 1–6 and a post-Sprint-11 pass for Pillar 7 (§11).
 >
-> **Last updated:** July 2026
+> **Last updated:** November 2026 (D-451: the crash oracle brought forward, §11.1)
 
 -----
 
@@ -457,6 +457,14 @@ exist.
 - The Pillar 4 fixture set for the modules Sprint 9 lands — these modules are
   precisely what Pillar 4 hammers, and finding parser hangs and pipe deadlocks now
   is cheaper than finding them later.
+
+**Brought forward (D-451).** The *crash oracle* increment builds the `Grob.Torture`
+skeleton before the 9C `fs` increment, with two semantic layers aimed at the type
+checker ahead of §3.1 and §3.2: AST-span mutation of the seed corpus and a
+type-directed generator of well-typed programs. It runs in process, gates a fixed-seed
+slice in CI from the start and makes the CLI report an internal failure from any phase
+as E9001. §3.1, §3.2 and black-box mode stay here unless its gate brings black-box
+mode forward. The prompt is `docs/prompts/crash-oracle.md`.
 
 ### 11.2 The Sprint 9/10 interlude proper — Pillars 1–6
 

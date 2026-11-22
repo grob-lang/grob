@@ -447,6 +447,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-448 | November 2026 | Compiler — type checker, argument emission; VM — calls; Deferred Work Register | **A call through a function-typed parameter calls the value**, not the enclosing function its symbol records; the gate's STOP S1, fixed on its own branch (Chris). The checker records a direct call's function on the call node and the compiler reads only that. **Rejected**: a declaration node for parameters. **A call through a function value refuses a named argument now**, with E0011, taking D-447 Decision 2's refusal ahead of the increment, and **checks its arguments against its function type**, E0003 and E0004, where the checker knows that type; the fix would otherwise have let a wrong call through a parameter compile. **Calling a value that is not a function is E0017**, a new code (Chris), where the call would otherwise fault in the VM. **A struct field declared with a function type keeps that type when read**, so it is compared by shape and a call through it is checked. **Compatible function shapes combine** (Chris): across a lambda's return paths and a ternary's, switch's or `??`'s arms, an inferred lambda's `Unknown` parameters take a concrete shape's types (an `Unknown` return stays `Unknown`) and a `nil` path makes the result a nullable function; conflicting concrete shapes still do not. **R-57 filed**: a declared function held in a binding, an anonymous struct's field and an array element are still unchecked, so `h(3, 100)` through `h := twice` prints `100`, and the VM does not compare a call's argument count with the callee's arity. **R-58 filed**: an `int` where a `float` is expected is not widened in a binding, a return, a struct field, a parameter default or an argument, so `x: float := 1` then `x / 2`, and `add(1, 2)`, stop with an internal error, on `main` too. **R-59 filed**: a call through a nullable function value is not checked for `nil` and reaches the VM (Chris: record it, fix it on its own branch). Count 121 -> 122. |
 | D-449 | November 2026 | Compiler — type checker; Deferred Work Register | **A call through a nullable function value is E0101** (Chris), on a binding, a parameter, a struct field called with `.` and a call result, where it reached the VM and stopped with an internal error. No new code: E0101 already names a nullable value dereferenced without `?.` or `??`. Three forms stay legal: a call narrowed by `if (f != nil)`, a call through `??` and a struct field called with `?.`, which gives `nil` when the field is `nil`. **A `?.` call through a nullable function field is nullable**, as a `?.` call on a nullable receiver is (D-402), so `x: int := bx?.op()` is E0104. **Rejected**: a runtime check in place of the compile-time refusal. Refuses programs that ran while the value was never `nil`. R-59 closed. **R-60, R-61 and R-62 filed** (Chris): the array methods do not check their function argument; an operator with one operand of unknown type takes its opcode from the wrong side, so `(s) => "[" + s` crashes the compiler and `(s) => s + "]"` miscompiles, fixed next; `fn(): void` is refused only as a struct field's type. Count unchanged at 122. |
 | D-450 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **With one operand of unknown type, a binary operator takes its opcode from the known operand**, whichever side it is on, so `(s) => "[" + s` and `names.select((n) => "Hi " + n)` concatenate where they crashed the compiler, and `(s) => s + "]"` and `(s) => s < "z"` no longer compile to `int` opcodes. **The known operand must suit the operator** (Chris): `+` an `int`, `float` or `string`; `-`, `*`, `/`, `%` an `int` or `float`; `<`, `<=`, `>`, `>=` an `int`, `float`, `string` or `date`; otherwise E0002 at that operand. An arithmetic result has the known operand's type, so an operator on it is checked; a comparison is `bool`. Refuses only expressions that crashed the compiler or could not run successfully. **Rejected**: a compiler-only fix, which leaves `true + s` crashing. R-61 closed. **R-63 filed**: an operand of unknown type compiles to an assumed type, so `(n) => n + 2.5` given `1` stops. Count unchanged at 122. |
+| D-451 | November 2026 | Process / Tooling — adversarial testing; CLI — internal-error reporting; Deferred Work Register | **Authorises the *crash oracle* increment** as the first slice of D-353's Pillar 1, brought forward before 9C; prompt at `docs/prompts/crash-oracle.md`. It checks D-353's contract on source text: no program makes Grob raise an internal error or throw a host exception. Built in `tooling/Grob.Torture` with a CI slice in `tests/Grob.Torture.Tests`; it departs from the strategy by mutating AST spans and generating well-typed programs, running in process and gating a fixed-seed slice in CI from the start. **The CLI reports an internal failure from any phase as E9001** with the bug-report line and no stack trace (Chris). The long mode is run by hand (Chris). Read at `639a21c`: the compile phase has no handler and E9001 is raised nowhere. **R-64 filed and folded in** (Chris): a compile error and a usage error both exit `1`; the increment makes them `2` and `3`, the documented set, and §8 gains the usage row. No source change. Count unchanged at 122. |
 
 ---
 
@@ -18186,6 +18187,110 @@ register).
 
 ---
 
+### D-451 — The *crash oracle* increment authorised, as the first slice of D-353's Pillar 1 brought forward before 9C; the CLI reports an internal failure as E9001 and exits with the documented codes; R-64 filed (November 2026)
+
+Area: Process / Tooling — adversarial testing; CLI — internal-error reporting; Deferred Work Register
+Supersedes: none
+Superseded by: none
+Refines: D-353
+
+**Decision-only, with spec edits. No source change.** Error-code count unchanged at 122.
+This entry authorises the *crash oracle* increment. Its prompt is committed with it at
+`docs/prompts/crash-oracle.md`. Probing near PR #262 and its two follow-ups found R-57 to
+R-63, most of them the checker accepting a program the compiler or the VM cannot run, and
+three of them on `main` before the PRs. On 22 November Chris chose a bounded harness that
+finds that class mechanically over reading the compiler end to end or finding defects as
+they come, and ruled on the three questions the draft prompt carried. Each ruling took
+the draft's recommendation.
+
+**Read at `639a21c`, not run.** `RunCommand` catches `GrobInternalException` around the VM
+only. The lexer, parser, checker and compiler run outside any handler, so R-61's crash
+printed a .NET stack trace, and neither phase catches any other host exception.
+`WriteInternalError` is excluded from coverage as unreachable, which R-58, R-59 and R-60
+disprove. Its comment cites D-039 for hiding the stack trace; D-039 is the two-mode error
+strategy and does not cover it. E9001, *internal compiler error — please report*, is
+registered and raised nowhere. `RunCommand` returns `1` for a compile-time diagnostic and
+for an unreadable file, where `grob-v1-requirements.md` §8 gives `2` for the first and
+D-353's strategy §1 gives `3` for the second.
+
+**Decision 1 — the increment is authorised, as D-353's Pillar 1 brought forward.** The
+property it checks is D-353's contract, applied to source text: no program, valid or not,
+makes Grob raise an internal error or throw a host exception. A program gets diagnostics
+with registered codes, or compiles and runs, with any failure a Grob runtime error. The
+increment builds the harness D-353's strategy names, `tooling/Grob.Torture`, with its CI
+slice in `tests/Grob.Torture.Tests`; a mutator; a type-directed generator of programs over
+the v1 surface; and a first campaign whose findings go to the register with minimised
+reproducers (D-420), not into fixes. It departs from the strategy in three ways, each
+recorded here so the strategy need not be rewritten:
+
+- **Semantic layers first.** The strategy's §3.1 and §3.2 mutate bytes and tokens and
+  generate pathological programs, aimed at the lexer and the parser. The defects found
+  were in the checker, so this increment's mutations edit AST node spans, its generator
+  writes programs meant to type-check, and the strategy's own layers stay with its
+  interlude.
+- **In process first.** The strategy makes the black-box CLI driver the primary mode and
+  reserves the in-process mode for SharpFuzz. The oracle runs in process, because only
+  there can it check the §3.1.1 invariant and supply fake capabilities. The gate decides
+  whether this increment also builds the black-box mode.
+- **A CI slice from the start.** The strategy graduates a subset to CI once campaigns
+  stabilise. Here a fixed-seed slice joins `dotnet test` with the oracle itself,
+  over the seed corpus and then, once the mutator lands, its mutants, adding no more than 30 seconds. It stays
+  green while a row is open through a known-signature list whose entries name a register
+  row and the programs they cover, since one signature can belong to two root causes.
+  Every run in the slice and the long mode is bounded, so a mutant whose loop never ends
+  fails as a finding and does not block the suite. The gate chooses the mechanism; none
+  adds a per-instruction check to the VM dispatch loop. `VirtualMachine.Run` already
+  takes a cancellation token.
+
+**Decision 2 — the CLI reports an internal failure as E9001.** An internal error or a host
+exception from any phase, in every command that runs the pipeline, is reported as E9001
+with the bug-report line and no host stack trace. A Grob runtime error and `exit(n)` keep
+their paths. This is the CLI half of D-353's contract, which no decision had applied
+to the compile phase, and the requirements' rule that no stack trace reaches an end user
+without `--verbose` (§1). The gate designs where the handler sits, what it prints, its exit
+code and how it is tested without an open defect's reproducer; `WriteInternalError` loses
+its coverage exclusion and `RunCommand`'s D-039 citation is corrected. **Rejected**:
+leaving the trace, which shows a user a .NET stack for a bug in Grob, and leaves E9001
+registered for nothing.
+
+**Decision 3 — before 9C.** The increment runs after PRs #262, #263 and #264 merge and
+before the 9C `fs` increment, so the oracle covers 9C's natives from their first day.
+D-353's strategy placed Pillar 1's first layers during and immediately after Sprint 9;
+this moves the harness skeleton ahead of 9C, the last Sprint 9 increment.
+
+**Decision 4 — the long mode is run by hand.** No scheduled CI workflow runs it, as the
+strategy's §10 has it for long campaigns. The Sprint 9/10 hardening interlude revisits
+that with its own campaigns.
+
+**Decision 5 — the CLI exits with the documented codes; R-64 filed and owned here.** The
+CLI's exit codes are not mapped as documented: a compile error and a usage error both exit
+`1`, where requirements §8 and D-353's strategy give `2` and `3`. Exit `1` is inside the
+`{0, 1, 2, 3}` that D-353's contract holds runtime exit codes to, so its P0 membership
+rule cannot catch the wrong mapping; only a test per code can. A script's own `exit(n)` is
+outside the membership rule: `n` passes through, and only an `n` outside `0..255` is a
+P1. Chris folded R-64 into the E9001 change
+group: a compile-time diagnostic exits `2` and a usage error `3`, the tests that assert
+the present codes change with it, and the landing entry closes R-64. Requirements §8's
+table gains the usage row D-353's strategy pinned, so the two documents state one set.
+**Rejected**: leaving R-64 for a later increment, which leaves automation unable to tell a
+script that does not compile from one that fails at run time, while the change group that
+rewrites the CLI's failure paths is open.
+
+**Not decided.** The strategy's remaining Pillar 1 layers, the parser depth guard its §3.2
+expects to force, Stryker.NET mutation testing of the C# suite and an adversarial review
+session belong to the Sprint 9/10 interlude; this entry authorises none of them.
+
+**Spec edits in this commit.** `grob-adversarial-testing-strategy.md` §11.1: the slice
+brought forward. `grob-v1-requirements.md` §8 and its CLI summary: exit code `3`, a
+usage error. `grob-open-questions.md`: R-64 filed, owned by this increment.
+`docs/prompts/crash-oracle.md`: the prompt, new.
+
+Cites D-353 (the adversarial strategy), D-039 (misattributed in `RunCommand`), D-311 (the
+§3.1.1 sentinels), D-335 (solution membership), D-420 (the register and the stopping
+rule), D-431 Decision 5 (the session table) and D-316 (no code is minted here).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -18415,7 +18520,13 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-450 added, with a source fix. **With one operand of unknown type, a binary_
+_November 2026 — D-451 added, with spec edits; no source change. **The *crash oracle* increment is_
+_authorised**, its prompt committed with it, as the first slice of D-353's Pillar 1 brought_
+_forward before 9C: semantic mutation and type-directed generation, in process, with a CI_
+_slice. The CLI is to report an internal failure from any phase as E9001. The long mode is run_
+_by hand. R-64 filed and folded into the increment: a compile error and a usage error both exit_
+_`1`, and are to exit `2` and `3`. Count unchanged at 122._
+_Previous: November 2026 — D-450 added, with a source fix. **With one operand of unknown type, a binary_
 _operator takes its opcode from the known operand**, which must suit the operator or is E0002._
 _R-61 closed. R-63 filed: an operand of unknown type compiles to an assumed type. Count_
 _unchanged at 122._
