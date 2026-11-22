@@ -241,14 +241,14 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Resolves arithmetic with an operand of unknown type (D-450). The known operand must
-    /// suit the operator. <c>+</c> with a <c>string</c> operand can only concatenate, so its
-    /// result is a <c>string</c>, as the compiler takes it, and an operator applied to that
-    /// result is checked; any other result stays <see cref="GrobType.Unknown"/>.
+    /// suit the operator, and the result has the known operand's type, as the compiler
+    /// takes it, so an operator applied to the result is checked against the type the
+    /// compiler chooses its opcode from. With two unknown operands the result stays
+    /// <see cref="GrobType.Unknown"/>.
     /// </summary>
     private GrobType ResolveUnknownArithmetic(BinaryExpr node, GrobType left, GrobType right) {
         GrobType known = KnownOperandType(left, right);
-        if (!SuitsArithmetic(node.Operator, known)) return RejectKnownOperand(node, left, right);
-        return known == GrobType.String ? GrobType.String : GrobType.Unknown;
+        return SuitsArithmetic(node.Operator, known) ? known : RejectKnownOperand(node, left, right);
     }
 
     /// <summary>

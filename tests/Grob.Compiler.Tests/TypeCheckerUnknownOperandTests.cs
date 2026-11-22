@@ -95,6 +95,35 @@ public sealed class TypeCheckerUnknownOperandTests {
         Assert.Equal(13, d.Range.Start.Column);
     }
 
+    /// <summary>
+    /// An arithmetic result with a known <c>int</c> or <c>float</c> operand has that type,
+    /// as the compiler takes it (PR #264 review), so a parent operator is checked against
+    /// it: <c>"a" + (s - 1)</c> is <c>string + int</c>, which the compiler has no opcode for.
+    /// </summary>
+    [Theory]
+    [InlineData("\"a\" + (s - 1)", "Operator '+' cannot be applied to types 'string' and 'int'.")]
+    [InlineData("(s - 1) + \"a\"", "Operator '+' cannot be applied to types 'int' and 'string'.")]
+    [InlineData("\"a\" + (s * 2.5)", "Operator '+' cannot be applied to types 'string' and 'float'.")]
+    public void UnknownWithNumericOperand_IsThatType_SoAParentOperatorIsChecked(string body, string message) {
+        DiagnosticBag bag = TypeCheckSource($"f := (s) => {body}\n");
+
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", d.Code);
+        Assert.Equal(message, d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(13, d.Range.Start.Column);
+    }
+
+    [Theory]
+    [InlineData("wrap := (n) => n - 1\ng: int := wrap(3)\n")]
+    [InlineData("wrap := (n) => n * 2.5\ng: float := wrap(3.0)\n")]
+    [InlineData("wrap := (n) => n - 1 + 2.5\ng: float := wrap(3)\n")]
+    public void UnknownWithNumericOperand_LambdaResult_IsAssignableToThatType(string source) {
+        DiagnosticBag bag = TypeCheckSource(source);
+
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
     [Fact]
     public void UnknownPlusString_LambdaResult_IsAssignableToString() {
         DiagnosticBag bag = TypeCheckSource("""
