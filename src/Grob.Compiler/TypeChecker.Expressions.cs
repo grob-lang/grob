@@ -196,11 +196,7 @@ public sealed partial class TypeChecker {
         // propagate Unknown — the VM will validate types at runtime — but only when the
         // known operand suits the operator (D-450): the compiler takes the opcode from it,
         // and no opcode exists for any other.
-        if (left == GrobType.Unknown || right == GrobType.Unknown) {
-            return SuitsArithmetic(node.Operator, KnownOperandType(left, right))
-                ? GrobType.Unknown
-                : RejectKnownOperand(node, left, right);
-        }
+        if (left == GrobType.Unknown || right == GrobType.Unknown) return ResolveUnknownArithmetic(node, left, right);
 
         // All other combinations are type errors — e.g. int + string.
         return EmitErrorAndReturn(ErrorCatalog.E0002,
@@ -241,6 +237,18 @@ public sealed partial class TypeChecker {
     private static bool IsVoidCall(Expression expr) {
         while (expr is GroupingExpr grouping) expr = grouping.Inner;
         return expr is CallExpr { IsVoidReturn: true };
+    }
+
+    /// <summary>
+    /// Resolves arithmetic with an operand of unknown type (D-450). The known operand must
+    /// suit the operator. <c>+</c> with a <c>string</c> operand can only concatenate, so its
+    /// result is a <c>string</c>, as the compiler takes it, and an operator applied to that
+    /// result is checked; any other result stays <see cref="GrobType.Unknown"/>.
+    /// </summary>
+    private GrobType ResolveUnknownArithmetic(BinaryExpr node, GrobType left, GrobType right) {
+        GrobType known = KnownOperandType(left, right);
+        if (!SuitsArithmetic(node.Operator, known)) return RejectKnownOperand(node, left, right);
+        return known == GrobType.String ? GrobType.String : GrobType.Unknown;
     }
 
     /// <summary>

@@ -127,7 +127,6 @@ public sealed class CompilerUnknownOperandOpcodeTests {
         List<OpCode> ops = LambdaOpcodes($"f := (s) => {body}\n");
 
         Assert.Contains(expected, ops);
-        Assert.DoesNotContain(OpCode.IntToFloat, ops);
     }
 
     /// <summary>

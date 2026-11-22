@@ -79,6 +79,32 @@ public sealed class TypeCheckerUnknownOperandTests {
         Assert.Equal(17, d.Range.Start.Column);
     }
 
+    /// <summary>
+    /// <c>s + "a"</c> can only concatenate, so it is a <c>string</c> and the outer
+    /// <c>- 1</c> is checked as <c>string - int</c>; the compiler, which types the inner
+    /// expression the same way, would otherwise have no opcode for it.
+    /// </summary>
+    [Fact]
+    public void UnknownPlusString_IsString_SoAParentOperatorIsChecked() {
+        DiagnosticBag bag = TypeCheckSource("f := (s) => (s + \"a\") - 1\n");
+
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", d.Code);
+        Assert.Equal("Operator '-' cannot be applied to types 'string' and 'int'.", d.Message);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(13, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void UnknownPlusString_LambdaResult_IsAssignableToString() {
+        DiagnosticBag bag = TypeCheckSource("""
+            wrap := (s) => "[" + s
+            g: string := wrap("x")
+            """);
+
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
     [Theory]
     [InlineData("\"[\" + s")]
     [InlineData("s + \"]\"")]
