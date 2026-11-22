@@ -792,17 +792,17 @@ public sealed partial class Compiler {
             return null;
         }
 
-        // Named arguments, or a positional call that omits a defaulted parameter,
-        // need reorder-and-fill so the callee receives a fully-bound positional list
-        // in parameter declaration order. A pure positional call that supplies every
-        // parameter takes the fast path, emitting arguments in source order. The checker's
-        // ResolvedFunction, not the callee's Declaration, says the call is to a declared
-        // function: a function-typed parameter's identifier carries its owning FnDecl too.
-        if (node.ResolvedFunction is { } fn &&
-            (node.Arguments.Any(a => a.Name is not null) || node.Arguments.Count != fn.Parameters.Count)) {
-            EmitReorderedArguments(node, fn);
+        // A call to a declared function emits the checker's bound argument list, so the
+        // callee receives a fully bound positional list in parameter order: named
+        // arguments reordered, omitted defaults filled. A complete positional call binds
+        // each slot to the argument in the same position, so it emits exactly what the
+        // source-order loop below would. The checker's ResolvedFunction, not the callee's
+        // Declaration, says the call is to a declared function: a function-typed
+        // parameter's identifier carries its owning FnDecl too.
+        if (node.ResolvedFunction is { } fn && node.ResolvedBinding is { } binding) {
+            EmitBoundArguments(node, binding, fn);
             _chunk.WriteOpCode(OpCode.Call, line);
-            _chunk.WriteByte(ToByteOperand(fn.Parameters.Count, CallArgumentCountOperand), line);
+            _chunk.WriteByte(ToByteOperand(binding.Slots.Count, CallArgumentCountOperand), line);
             return null;
         }
 
@@ -924,41 +924,18 @@ public sealed partial class Compiler {
     }
 
     /// <summary>
-    /// Emits the arguments of <paramref name="node"/> in parameter declaration order:
-    /// positionals into the leading slots, named arguments into their parameters, and
-    /// omitted defaults materialised into the remaining slots. The default expression
-    /// compiles at the call site. The type checker has already validated the binding,
-    /// so every slot resolves to a positional or a default here.
+    /// Emits <paramref name="node"/>'s arguments from the checker's
+    /// <paramref name="binding"/>, one slot per parameter in parameter order: the
+    /// argument bound to the slot, or the parameter's default expression, compiled at the
+    /// call site. The compiler does not bind the call again: it reads the one binding the
+    /// checker made, so the order checked is the order emitted (R-20). Evaluation
+    /// therefore follows parameter order, not source order (OQ-028).
     /// </summary>
-    private void EmitReorderedArguments(CallExpr node, FnDecl fn) {
-        var boundExprs = new Expression?[fn.Parameters.Count];
-
-        int positional = 0;
-        foreach (CallArgument arg in node.Arguments) {
-            if (arg.Name is null) {
-                if (positional < boundExprs.Length) boundExprs[positional] = arg.Value;
-                positional++;
-            } else {
-                int p = ParameterIndex(fn, arg.Name);
-                if (p >= 0) boundExprs[p] = arg.Value;
-            }
+    private void EmitBoundArguments(CallExpr node, BoundArgumentList binding, FnDecl fn) {
+        for (int p = 0; p < binding.Slots.Count; p++) {
+            BoundSlot slot = binding.Slots[p];
+            Visit(slot.IsDefault ? fn.Parameters[p].DefaultValue! : node.Arguments[slot.ArgumentIndex].Value);
         }
-
-        for (int i = 0; i < boundExprs.Length; i++) {
-            Expression value = boundExprs[i] ?? fn.Parameters[i].DefaultValue!;
-            Visit(value);
-        }
-    }
-
-    /// <summary>
-    /// Returns the index of the parameter named <paramref name="name"/> in
-    /// <paramref name="fn"/>, or <c>-1</c> when no parameter has that name.
-    /// </summary>
-    private static int ParameterIndex(FnDecl fn, string name) {
-        for (int i = 0; i < fn.Parameters.Count; i++) {
-            if (fn.Parameters[i].Name == name) return i;
-        }
-        return -1;
     }
 
     // -----------------------------------------------------------------------
@@ -1090,7 +1067,7 @@ public sealed partial class Compiler {
     /// <remarks>
     /// Emits field values in declaration order (supplied values or default expressions),
     /// then <see cref="OpCode.NewStruct"/> with the type-table index. Mirrors the
-    /// Sprint 5B call-site default pattern (<see cref="EmitReorderedArguments"/>).
+    /// Sprint 5B call-site default pattern (<see cref="EmitBoundArguments"/>).
     /// </remarks>
     public override object? VisitStructConstruction(StructConstructionExpr node) {
         int line = node.Range.Start.Line;

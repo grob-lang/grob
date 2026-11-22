@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Grob.Compiler.Ast;
+using Grob.Compiler.Binding;
 using Grob.Core;
 using Grob.Runtime;
 
@@ -1677,116 +1678,34 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Validates a call against a resolved <paramref name="fn"/> under the D-113
     /// calling convention: positional arguments first, then named arguments, with
-    /// only defaulted parameters eligible to be named. Binding runs in three phases —
-    /// positionals into the leading slots, named arguments into the remaining
-    /// defaulted slots, then defaults fill the rest — and detects the four call-site
-    /// diagnostics (E0008 named-before-positional, E0009 naming a required parameter,
-    /// E0010 duplicate, E0011 unknown name) during binding. Arity (E0003) and per
-    /// argument type (E0004) are checked on the bound set, and a binding error
-    /// suppresses them to keep one diagnostic per root cause.
+    /// only defaulted parameters eligible to be named. The shared
+    /// <see cref="ArgumentBinder"/> binds the call; its problems become the four
+    /// call-site diagnostics (E0008 to E0011) with the script-function wording. Arity
+    /// (E0003) and per-argument type (E0004) are checked on the bound set, and a binding
+    /// error suppresses them to keep one diagnostic per root cause. A clean binding is
+    /// handed to the compiler on <see cref="CallExpr.ResolvedBinding"/>.
     /// </summary>
     private void CheckCall(CallExpr node, FnDecl fn, GrobType[] argTypes) {
-        int paramCount = fn.Parameters.Count;
-        var boundType = new GrobType?[paramCount];
-        var boundRange = new SourceRange?[paramCount];
-        // The bound argument expression per slot, so a function-typed parameter can be
-        // checked against the argument's structural descriptor (D-326; Fix J).
-        var boundExpr = new Expression?[paramCount];
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, new ScriptParameters(fn));
+        if (ReportBindingProblems(node, binding, BindingWording.ForScriptFunction(fn.Name))) return;
 
-        // Binding errors (E0008–E0011) are all collected, then suppress the
-        // downstream arity/type checks to keep one diagnostic per root cause.
-        if (!BindArguments(node, fn, argTypes, boundType, boundRange, boundExpr, out int positionalCount)) {
-            return;
-        }
-
-        // Arity (E0003) on the bound set — too many positionals, or a required
+        // Arity (E0003) on the bound set: too many positionals, or a required
         // (defaultless) parameter left unbound.
-        if (positionalCount > paramCount || HasUnboundRequired(fn, boundType)) {
+        if (binding.TooManyPositionals || binding.MissingRequired) {
             EmitArityError(node, fn);
             return;
         }
 
-        // Type (E0004) on each caller-supplied argument. Default-filled slots were
-        // checked at the declaration site.
-        for (int i = 0; i < paramCount; i++) {
-            if (boundRange[i] is SourceRange range && boundType[i] is GrobType argType) {
-                CheckBoundArgumentType(fn, i, argType, range, boundExpr[i]);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Binds the arguments of <paramref name="node"/> to the parameters of
-    /// <paramref name="fn"/>: positionals into the leading slots, named arguments
-    /// into their parameters. Emits the call-site binding diagnostics (E0008 named
-    /// before positional, E0009/E0010/E0011 via <see cref="TryBindNamed"/>) and
-    /// collects every independent one. Returns <see langword="true"/> when binding
-    /// was clean, <see langword="false"/> when any binding error was emitted.
-    /// </summary>
-    private bool BindArguments(CallExpr node, FnDecl fn, GrobType[] argTypes,
-            GrobType?[] boundType, SourceRange?[] boundRange, Expression?[] boundExpr, out int positionalCount) {
-        bool ok = true;
-        bool seenNamed = false;
-        positionalCount = 0;
-
-        for (int i = 0; i < node.Arguments.Count; i++) {
-            CallArgument arg = node.Arguments[i];
-            if (arg.Name is not null) {
-                seenNamed = true;
-                if (!TryBindNamed(fn, arg, argTypes[i], boundType, boundRange, boundExpr)) ok = false;
-                continue;
-            }
-
-            // A positional argument after a named one breaks the convention. Keep
-            // scanning so independent later errors still surface.
-            if (seenNamed) {
-                EmitError(ErrorCatalog.E0008,
-                    $"In the call to '{fn.Name}', a positional argument follows a named argument. Move all named arguments after the positional ones.",
-                    arg.Value.Range);
-                ok = false;
-                continue;
-            }
-            if (positionalCount < boundType.Length) {
-                boundType[positionalCount] = argTypes[i];
-                boundRange[positionalCount] = arg.Value.Range;
-                boundExpr[positionalCount] = arg.Value;
-            }
-            positionalCount++;
+        // Type (E0004) on each caller-supplied argument, in parameter order. Default-filled
+        // slots were checked at the declaration site.
+        for (int p = 0; p < binding.SlotArgument.Count; p++) {
+            int a = binding.SlotArgument[p];
+            if (a == ArgumentBinder.Unbound) continue;
+            Expression value = node.Arguments[a].Value;
+            CheckBoundArgumentType(fn, p, argTypes[a], value.Range, value);
         }
 
-        return ok;
-    }
-
-    /// <summary>
-    /// Binds one named argument to its parameter, emitting E0011 (unknown name),
-    /// E0009 (names a required parameter) or E0010 (already supplied) when it cannot.
-    /// Returns <see langword="true"/> when the argument bound cleanly.
-    /// </summary>
-    private bool TryBindNamed(FnDecl fn, CallArgument arg, GrobType argType,
-            GrobType?[] boundType, SourceRange?[] boundRange, Expression?[] boundExpr) {
-        int p = ParameterIndex(fn, arg.Name!);
-        if (p < 0) {
-            EmitError(ErrorCatalog.E0011,
-                $"Function '{fn.Name}' has no parameter named '{arg.Name}'.",
-                arg.Range);
-            return false;
-        }
-        if (fn.Parameters[p].DefaultValue is null) {
-            EmitError(ErrorCatalog.E0009,
-                $"Parameter '{arg.Name}' of '{fn.Name}' is required and has no default, so it cannot be passed by name. Pass it positionally.",
-                arg.Range);
-            return false;
-        }
-        if (boundType[p] is not null) {
-            EmitError(ErrorCatalog.E0010,
-                $"Parameter '{arg.Name}' of '{fn.Name}' is already supplied.",
-                arg.Range);
-            return false;
-        }
-        boundType[p] = argType;
-        boundRange[p] = arg.Value.Range;
-        boundExpr[p] = arg.Value;
-        return true;
+        node.ResolvedBinding = ScriptBoundArguments(binding);
     }
 
     /// <summary>
@@ -1814,28 +1733,6 @@ public sealed partial class TypeChecker {
     // this file (positional-call, native-call and date-method arity checks) — a shared
     // constant rather than four independent literals.
     private const string ArgumentNoun = "argument";
-
-    /// <summary>
-    /// Returns the index of the parameter named <paramref name="name"/> in
-    /// <paramref name="fn"/>, or <c>-1</c> when no parameter has that name.
-    /// </summary>
-    private static int ParameterIndex(FnDecl fn, string name) {
-        for (int i = 0; i < fn.Parameters.Count; i++) {
-            if (fn.Parameters[i].Name == name) return i;
-        }
-        return -1;
-    }
-
-    /// <summary>
-    /// Returns <see langword="true"/> when a required (defaultless) parameter has no
-    /// bound argument after the positional and named binding passes.
-    /// </summary>
-    private static bool HasUnboundRequired(FnDecl fn, GrobType?[] boundType) {
-        for (int i = 0; i < fn.Parameters.Count; i++) {
-            if (fn.Parameters[i].DefaultValue is null && boundType[i] is null) return true;
-        }
-        return false;
-    }
 
     /// <summary>
     /// Checks one bound argument's type against its parameter (E0004). An Unknown

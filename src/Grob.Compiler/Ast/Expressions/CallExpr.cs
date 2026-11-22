@@ -110,6 +110,16 @@ public sealed record CallExpr(
     /// </summary>
     public FnDecl? ResolvedFunction { get; set; }
 
+    /// <summary>
+    /// Set by the type checker when this call's arguments bound cleanly to a declared
+    /// parameter list and its arity holds on the bound set: the arguments in parameter
+    /// order, each slot an argument of this call or a default. The compiler emits these
+    /// slots in order rather than binding the call again. <see langword="null"/> for a
+    /// call that does not bind, and for any call with a binding or arity error. Set today
+    /// for a call to a script function (<see cref="ResolvedFunction"/>).
+    /// </summary>
+    public BoundArgumentList? ResolvedBinding { get; set; }
+
     /// <inheritdoc/>
     public override T Accept<T>(AstVisitor<T> visitor) => visitor.VisitCall(this);
 }
