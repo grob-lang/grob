@@ -161,6 +161,15 @@ public static class ErrorCatalog {
         Severity: DiagnosticSeverity.Error,
         Throws: null);
 
+    /// <summary>called value is not a function</summary>
+    public static readonly ErrorDescriptor E0017 = new(
+        Code: "E0017",
+        Title: "called value is not a function",
+        Category: ErrorCategory.Type,
+        Status: ErrorStatus.PreRelease,
+        Severity: DiagnosticSeverity.Error,
+        Throws: null);
+
     /// <summary>nil dereference without `?.` or `??`</summary>
     public static readonly ErrorDescriptor E0101 = new(
         Code: "E0101",
@@ -1136,6 +1145,7 @@ public static class ErrorCatalog {
         E0014,
         E0015,
         E0016,
+        E0017,
         E0101,
         E0102,
         E0103,

@@ -224,6 +224,13 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private readonly Dictionary<MemberAccessExpr, ArrayTypeDescriptor> _memberAccessArrayDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
+    // _memberAccessFunctionDescriptors is the function-type twin of the dictionary above:
+    // a read of a struct field declared with a function type (D-448), recorded by
+    // ResolveStructFieldAccess, so the field is compared by shape on assignment and a
+    // call through it checks its arguments and resolves its return type.
+    private readonly Dictionary<MemberAccessExpr, FunctionTypeDescriptor> _memberAccessFunctionDescriptors =
+        new(ReferenceEqualityComparer.Instance);
+
     // -----------------------------------------------------------------------
     // Flow-sensitive narrowing (Sprint 5 Increment E; §6, §19.1 narrowing rule).
     //
@@ -579,6 +586,7 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         LambdaExpr lambda => _lambdaDescriptors.GetValueOrDefault(lambda),
         CallExpr call => _callResultDescriptors.GetValueOrDefault(call),
         IdentifierExpr id => LookupSymbol(id.Name)?.FunctionDescriptor,
+        MemberAccessExpr member => _memberAccessFunctionDescriptors.GetValueOrDefault(member),
         GroupingExpr grp => ExpressionDescriptor(grp.Inner),
         // D-403: mirrors ArrayDescriptorOf's/MapDescriptorOf's identical NilCoalesce arm
         // exactly — a '??'-unwrapped nullable function value (f ?? g) must keep its

@@ -553,15 +553,27 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Checks a call whose callee is a function value rather than a declared function. A
-    /// function value names no parameters (D-326), so a named argument is refused (D-447
-    /// Decision 2) unless the callee is already broken. A callee whose function type the
-    /// checker tracks (D-362) has its arguments checked against that type and resolves its
+    /// callee of known non-function type cannot be called (E0017, D-448) and would
+    /// otherwise fault in the VM. A callee already in error makes the call
+    /// <see cref="GrobType.Error"/>, so nothing that uses its result reports the same root
+    /// cause again. A function value names no parameters (D-326), so a named argument is
+    /// refused (D-447 Decision 2). A callee
+    /// whose function type the checker tracks (D-362), including a struct field declared
+    /// with one (D-448), has its arguments checked against that type and resolves its
     /// return type, so GetExprType can pick the right typed opcode when the call is an
-    /// arithmetic operand. Any other callee, such as a struct field or an array element,
-    /// is unchecked (R-57) and resolves to <see cref="GrobType.Unknown"/>.
+    /// arithmetic operand. Any other callee, such as an array element, is unchecked (R-57)
+    /// and resolves to <see cref="GrobType.Unknown"/>.
     /// </summary>
     private GrobType CheckFunctionValueCall(CallExpr node, GrobType calleeType, GrobType[] argTypes) {
-        bool namesRefused = calleeType != GrobType.Error && RejectNamedFunctionValueArgs(node);
+        if (calleeType == GrobType.Error) {
+            return GrobType.Error;
+        }
+        if (calleeType is not (GrobType.Function or GrobType.NullableFunction or GrobType.Unknown)) {
+            return EmitErrorAndReturn(ErrorCatalog.E0017,
+                $"{NotCallableSubject(node.Callee)} has type '{TypeName(calleeType)}', which is not a function, so it cannot be called.",
+                node.Callee.Range);
+        }
+        bool namesRefused = RejectNamedFunctionValueArgs(node);
         if (ExpressionDescriptor(node.Callee) is not FunctionTypeDescriptor calleeDescriptor) {
             return GrobType.Unknown;
         }
@@ -574,6 +586,27 @@ public sealed partial class TypeChecker {
         node.ResolvedReturnType = calleeDescriptor.ReturnType;
         return calleeDescriptor.ReturnType;
     }
+
+    /// <summary>
+    /// The name a function-value callee goes by in a diagnostic: a binding's or
+    /// parameter's name, or a struct field's member name. <see langword="null"/> for any
+    /// other callee, such as a call result.
+    /// </summary>
+    private static string? FunctionValueName(Expression callee) => callee switch {
+        IdentifierExpr id => id.Name,
+        MemberAccessExpr member => member.Member,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The subject of an E0017 message: <c>'n'</c> for a binding or parameter,
+    /// <c>Field 'count'</c> for a struct field and <c>The called value</c> otherwise.
+    /// </summary>
+    private static string NotCallableSubject(Expression callee) => callee switch {
+        IdentifierExpr id => $"'{id.Name}'",
+        MemberAccessExpr member => $"Field '{member.Member}'",
+        _ => "The called value",
+    };
 
     /// <summary>
     /// Reports E0011 at each named argument of a call through a function value and
@@ -602,7 +635,7 @@ public sealed partial class TypeChecker {
     /// neither is compared here (R-57).
     /// </summary>
     private void CheckFunctionValueArguments(CallExpr node, FunctionTypeDescriptor descriptor, GrobType[] argTypes) {
-        string? calleeName = (node.Callee as IdentifierExpr)?.Name;
+        string? calleeName = FunctionValueName(node.Callee);
         int paramCount = descriptor.ParameterTypes.Count;
         if (argTypes.Length != paramCount) {
             string subject = calleeName is null ? "The function value" : $"Function value '{calleeName}'";
@@ -848,51 +881,22 @@ public sealed partial class TypeChecker {
 
         // D-408: an ordinary user 'type' struct or an anonymous struct (#{ }) has no
         // method surface in v1 (D-043/D-080) — but a call through a genuinely declared
-        // field whose value happens to be callable (box.callback(), a function-typed
-        // field) must keep resolving permissively, exactly as it does today. Reusing
-        // ResolveStructFieldAccess's own field-lookup-by-name semantics (rather than a
-        // blanket "any call on a Struct/AnonStruct receiver is E1002") is what tells
-        // the two cases apart: a name that names a declared field, of any type, stays
-        // Unknown; a name that names no field at all is E1002 — mirroring the property
-        // path's unrecognised-field diagnostic instead of falling through to the
-        // generic Unknown fallback below and crashing the VM at emission.
+        // field whose value is callable (box.callback(), a function-typed field) is a
+        // call through a function value. Reusing ResolveStructFieldAccess's own
+        // field-lookup-by-name semantics (rather than a blanket "any call on a
+        // Struct/AnonStruct receiver is E1002") is what tells the two cases apart: a name
+        // that names no field at all is E1002 — mirroring the property path's
+        // unrecognised-field diagnostic instead of falling through to the generic Unknown
+        // fallback below and crashing the VM at emission.
         if (receiverType is GrobType.Struct or GrobType.AnonStruct) {
-            // A call that names a field is a call through the field's value, so a named
-            // argument has nothing to bind to (D-326, D-447 Decision 2). A call that names
-            // no field has already failed with E1002 and is not reported twice.
-            GrobType fieldCallType = ValidateStructMemberCall(memberAccess);
-            if (fieldCallType != GrobType.Error) RejectNamedFunctionValueArgs(node);
-            return fieldCallType;
+            // A call that names a field is checked as a call through the field's value
+            // (D-448): a non-function field is E0017, a named argument has nothing to bind
+            // to (D-326, D-447 Decision 2) and a declared function type checks the
+            // arguments. A call that names no field has already failed with E1002 and is
+            // not reported twice.
+            return CheckFunctionValueCall(node, ResolveStructFieldAccess(memberAccess), argTypes);
         }
         return GrobType.Unknown;
-    }
-
-    /// <summary>
-    /// Validates a call whose receiver is an ordinary user <c>type</c> struct or an
-    /// anonymous struct (D-408, finding 2). Field-lookup-based, deliberately: v1 gives
-    /// structs no method surface, but a call through a declared field whose value is
-    /// callable (<c>box.callback()</c>) is a legitimate, currently-working pattern that
-    /// must not be rejected merely because the receiver is a struct. Returns
-    /// <see cref="GrobType.Unknown"/> when <paramref name="memberAccess"/>'s member
-    /// names a declared field (regardless of that field's own type — the same
-    /// permissive outcome this call already reached before this fix), and raises
-    /// <see cref="ErrorCatalog.E1002"/>, the same code and wording
-    /// <see cref="ResolveStructFieldAccess"/> already raises for an unrecognised field
-    /// on the property path, when it names no field at all.
-    /// </summary>
-    private GrobType ValidateStructMemberCall(MemberAccessExpr memberAccess) {
-        string? typeName = GetStructTypeName(memberAccess.Target);
-        if (typeName is null) return GrobType.Unknown;
-
-        UserTypeInfo? typeInfo = TryGetTypeInfo(typeName);
-        if (typeInfo is null) return GrobType.Unknown;
-
-        bool hasField = typeInfo.Fields.Any(f => f.Name == memberAccess.Member);
-        if (hasField) return GrobType.Unknown;
-
-        return EmitErrorAndReturn(ErrorCatalog.E1002,
-            $"Type '{typeName}' has no member '{memberAccess.Member}'.",
-            memberAccess.Range);
     }
 
     /// <summary>
@@ -2758,6 +2762,9 @@ public sealed partial class TypeChecker {
 
         node.ResolvedFieldType = field.Kind;
         node.ResolvedStructTypeName = field.NamedTypeName;
+        if (field.FunctionDescriptor is { } functionDescriptor) {
+            _memberAccessFunctionDescriptors[node] = functionDescriptor;
+        }
         return field.Kind;
     }
 

@@ -1,0 +1,7 @@
+// E0017 — an int parameter called as if it were a function
+fn backup(retries: int): void {
+    count := retries()
+    print(count)
+}
+
+backup(3)

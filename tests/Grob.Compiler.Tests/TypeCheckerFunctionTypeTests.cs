@@ -748,9 +748,21 @@ public sealed class TypeCheckerFunctionTypeTests {
     }
 
     /// <summary>
-    /// A struct field's function shape is not tracked, so assigning one compares the flat
-    /// kind rather than rejecting the value for want of a shape.
+    /// An array element's function shape is not tracked, so assigning one compares the
+    /// flat kind rather than rejecting the value for want of a shape.
     /// </summary>
+    [Fact]
+    public void Reassignment_FunctionTypedParameter_FromArrayElement_IsAccepted() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn apply(f: fn(int): int): int {
+                ops := [(a: int) => a + 1]
+                f = ops[0]
+                return f(1)
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
     [Fact]
     public void Reassignment_FunctionTypedParameter_FromStructField_IsAccepted() {
         (_, DiagnosticBag bag) = TypeCheckSource("""
@@ -843,11 +855,8 @@ public sealed class TypeCheckerFunctionTypeTests {
     [Fact]
     public void CallThroughFunctionTypedParameter_UnknownArgument_IsAccepted() {
         (_, DiagnosticBag bag) = TypeCheckSource("""
-            type Box {
-                op: fn(int): int
-            }
-            fn apply(h: fn(int): int, bx: Box): int {
-                return h(bx.op(1))
+            fn apply(h: fn(int): int): int {
+                return h(((x) => x)(1))
             }
             """);
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
@@ -941,6 +950,219 @@ public sealed class TypeCheckerFunctionTypeTests {
         Assert.Equal("E0001", d.Code);
         Assert.Equal(2, d.Range.Start.Line);
         Assert.Equal(24, d.Range.Start.Column);
+    }
+
+    // -----------------------------------------------------------------------
+    // Calling a value that is not a function (E0017)
+    //
+    // A callee whose type is known and is not a function type would otherwise
+    // reach the VM, which faults with an internal error.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CallThroughNonFunctionParameter_IsE0017() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn run(n: int): int {
+                return n()
+            }
+            """);
+        AssertNotCallable(Assert.Single(bag.Errors), "'n' has type 'int'", line: 2, column: 12);
+    }
+
+    [Fact]
+    public void CallThroughNonFunctionBinding_IsE0017() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := 5\ny := x()\n");
+        AssertNotCallable(Assert.Single(bag.Errors), "'x' has type 'int'", line: 2, column: 6);
+    }
+
+    [Fact]
+    public void CallThroughNonFunctionCallResult_IsE0017() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn g(): string {
+                return "s"
+            }
+            y := g()()
+            """);
+        AssertNotCallable(Assert.Single(bag.Errors), "The called value has type 'string'", line: 4, column: 6);
+    }
+
+    [Fact]
+    public void CallThroughNonFunctionStructField_IsE0017() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                count: int
+            }
+            bx := Box { count: 1 }
+            y := bx.count()
+            """);
+        AssertNotCallable(Assert.Single(bag.Errors), "Field 'count' has type 'int'", line: 5, column: 6);
+    }
+
+    [Fact]
+    public void CallThroughNonFunctionAnonStructField_IsE0017() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            bx := #{ count: 1 }
+            y := bx.count()
+            """);
+        AssertNotCallable(Assert.Single(bag.Errors), "Field 'count' has type 'int'", line: 2, column: 6);
+    }
+
+    [Fact]
+    public void CallThroughNonFunctionBinding_NamedArgument_IsE0017Only() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := 5\ny := x(a: 1)\n");
+        AssertNotCallable(Assert.Single(bag.Errors), "'x' has type 'int'", line: 2, column: 6);
+    }
+
+    [Fact]
+    public void CallThroughNonFunctionBinding_ArgumentErrorsStillReported() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := 5\ny := x(nope)\n");
+        List<Diagnostic> errors = [.. bag.Errors];
+        Assert.Equal(2, errors.Count);
+        Assert.Equal("E1001", errors[0].Code);
+        Assert.Equal(2, errors[0].Range.Start.Line);
+        Assert.Equal(8, errors[0].Range.Start.Column);
+        AssertNotCallable(errors[1], "'x' has type 'int'", line: 2, column: 6);
+    }
+
+    [Fact]
+    public void CallThroughNonFunctionResult_UsedAsOperand_IsNotReportedAgain() {
+        (_, DiagnosticBag bag) = TypeCheckSource("x := 5\ny := x() + 1\n");
+        AssertNotCallable(Assert.Single(bag.Errors), "'x' has type 'int'", line: 2, column: 6);
+    }
+
+    [Fact]
+    public void CallThroughNonFunctionResult_CalledAgainAsArgument_IsNotReportedAgain() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn take(x: int): int {
+                return x
+            }
+            fn run(n: int): int {
+                return take(n()())
+            }
+            """);
+        AssertNotCallable(Assert.Single(bag.Errors), "'n' has type 'int'", line: 5, column: 17);
+    }
+
+    [Fact]
+    public void CallThroughUnknownCallee_IsAccepted() {
+        (_, DiagnosticBag bag) = TypeCheckSource("g := (f) => f()\n");
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void CallThroughNullableFunctionParameter_IsNotE0017() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn run(f: (fn(): int)?): void {
+                print(f())
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    // -----------------------------------------------------------------------
+    // A struct field's declared function type
+    //
+    // A field declared with a function type keeps that type when read, so it
+    // is compared by shape wherever a tracked function value is (D-326).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Reassignment_FunctionTypedParameter_FromStructFieldOfWrongShape_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(int): string
+            }
+            fn apply(f: fn(int): int, bx: Box): int {
+                f = bx.op
+                return f(1)
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(5, d.Range.Start.Line);
+        Assert.Equal(9, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Declaration_FromStructFieldOfSameShape_IsAccepted() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(int): int
+            }
+            bx := Box { op: (a: int) => a + 1 }
+            g: fn(int): int := bx.op
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void Declaration_FromStructFieldOfWrongShape_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(int): int
+            }
+            bx := Box { op: (a: int) => a + 1 }
+            g: fn(string): int := bx.op
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(5, d.Range.Start.Line);
+        Assert.Equal(23, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedStructField_WrongArgumentType_IsE0004() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(int): int
+            }
+            bx := Box { op: (a: int) => a + 1 }
+            y := bx.op("s")
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+        Assert.Equal("Argument 1 to function value 'op' has type 'string', which is not assignable to parameter type 'int'.", d.Message);
+        Assert.Equal(5, d.Range.Start.Line);
+        Assert.Equal(12, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedStructField_WrongCount_IsE0003() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(int): int
+            }
+            bx := Box { op: (a: int) => a + 1 }
+            y := bx.op(1, 2)
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0003", d.Code);
+        Assert.Equal("Function value 'op' expects 1 argument, but 2 were supplied.", d.Message);
+        Assert.Equal(5, d.Range.Start.Line);
+        Assert.Equal(6, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedStructField_ResolvesReturnType() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(int): int
+            }
+            bx := Box { op: (a: int) => a + 1 }
+            s: string := bx.op(1)
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal("Cannot assign value of type 'int' to binding of type 'string'.", d.Message);
+        Assert.Equal(5, d.Range.Start.Line);
+        Assert.Equal(14, d.Range.Start.Column);
+    }
+
+    private static void AssertNotCallable(Diagnostic d, string subject, int line, int column) {
+        Assert.Equal("E0017", d.Code);
+        Assert.Equal($"{subject}, which is not a function, so it cannot be called.", d.Message);
+        Assert.Equal(line, d.Range.Start.Line);
+        Assert.Equal(column, d.Range.Start.Column);
     }
 
     private static void AssertFunctionValueNamedArgument(Diagnostic d, int line, int column) {

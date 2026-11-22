@@ -117,7 +117,7 @@ public sealed class SideChannelHelperExhaustivenessTests {
 
     // =========================================================================
     // ExpressionDescriptor (TypeChecker.cs) — the function-descriptor side channel.
-    // Handled: LambdaExpr, CallExpr, IdentifierExpr, GroupingExpr,
+    // Handled: LambdaExpr, CallExpr, IdentifierExpr, MemberAccessExpr, GroupingExpr,
     // BinaryExpr{NilCoalesce}, TernaryExpr, SwitchExprNode. Not handled: everything
     // else (IntLiteralExpr pinned).
     // =========================================================================
@@ -211,6 +211,23 @@ public sealed class SideChannelHelperExhaustivenessTests {
 
         SwitchExprNode sw = Assert.IsType<SwitchExprNode>(Collect(unit).Single(n => n is SwitchExprNode));
         Assert.NotNull(Invoke(checker, "ExpressionDescriptor", sw));
+    }
+
+    [Fact]
+    public void ExpressionDescriptor_MemberAccessExpr_ReturnsDescriptor() {
+        // D-448: a read of a struct field declared with a function type.
+        (TypeChecker checker, CompilationUnit unit, DiagnosticBag bag) = CheckKeepInstance("""
+            type Box {
+                op: fn(int): int
+            }
+            bx := Box { op: (a: int) => a + 1 }
+            g := bx.op
+            """);
+        Assert.False(bag.HasErrors, FormatErrors(bag));
+
+        MemberAccessExpr access = Assert.IsType<MemberAccessExpr>(
+            Collect(unit).Single(n => n is MemberAccessExpr { Member: "op" }));
+        Assert.NotNull(Invoke(checker, "ExpressionDescriptor", access));
     }
 
     [Fact]
