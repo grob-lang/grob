@@ -1,10 +1,4 @@
-using System.Globalization;
-using System.Text;
-using Grob.Compiler.Ast;
-using Grob.Core;
 using Xunit;
-
-using GrobCompiler = Grob.Compiler.Compiler;
 
 namespace Grob.Compiler.Tests;
 
@@ -14,91 +8,11 @@ namespace Grob.Compiler.Tests;
 /// it appears in the expected text, and pins what a complete all-positional call
 /// (or a call that omits a trailing default) emitted before the shared binder
 /// existed. D-446 requires those calls to stay byte-identical when named arguments
-/// start binding on native paths, so these expectations must not change.
+/// start binding on native paths, so these expectations must not change. Rendering is
+/// <see cref="ChunkRendering"/>'s.
 /// </summary>
-/// <remarks>
-/// The renderer reads the operands of the opcodes these programs use. An opcode it
-/// does not know is rendered on its own and its operand bytes are rendered as the
-/// instructions that follow, so the rendering still covers every byte: a change in
-/// any byte changes the text.
-/// </remarks>
 public sealed class CompilerCallEmissionCharacterisationTests {
-    private static Chunk CompileSource(string source) {
-        DiagnosticBag bag = new();
-        IReadOnlyList<Token> tokens = Lexer.Scan(source, bag);
-        CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag, SharedCatalogue.Stdlib).Check(unit);
-        Assert.False(bag.HasErrors,
-            $"TypeChecker errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
-        Chunk chunk = GrobCompiler.Compile(unit, bag);
-        Assert.False(bag.HasErrors,
-            $"Compiler errors: {string.Join("; ", bag.Errors.Select(d => $"[{d.Code}] {d.Message}"))}");
-        return chunk;
-    }
-
-    private static string Constant(Chunk chunk, int index) {
-        GrobValue value = chunk.ReadConstant(index);
-        string shown = value.Kind switch {
-            GrobValueKind.String => $"\"{value.AsString()}\"",
-            GrobValueKind.Function when value.TryAsFunction(out GrobFunction? fn) && fn is not null => fn.Name.Length == 0 ? "fn <lambda>" : $"fn {fn.Name}",
-            _ => Convert.ToString(value.ToString(), CultureInfo.InvariantCulture) ?? "?",
-        };
-        return $"[{index}] {value.Kind} {shown}";
-    }
-
-    private static string Render(Chunk chunk) {
-        var text = new StringBuilder();
-        int offset = 0;
-        while (offset < chunk.Count) {
-            var op = (OpCode)chunk.ReadByte(offset++);
-            text.Append(op.ToString());
-            switch (op) {
-                case OpCode.Jump:
-                case OpCode.JumpIfFalse:
-                case OpCode.JumpIfTrue:
-                case OpCode.Loop:
-                    text.Append(' ').Append((chunk.ReadByte(offset) << 8) | chunk.ReadByte(offset + 1));
-                    offset += 2;
-                    break;
-                case OpCode.ConstantLong:
-                    text.Append(' ').Append(Constant(chunk, (chunk.ReadByte(offset) << 8) | chunk.ReadByte(offset + 1)));
-                    offset += 2;
-                    break;
-                case OpCode.Constant:
-                case OpCode.DefineGlobal:
-                case OpCode.GetGlobal:
-                case OpCode.SetGlobal:
-                case OpCode.GetProperty:
-                    text.Append(' ').Append(Constant(chunk, chunk.ReadByte(offset++)));
-                    break;
-                case OpCode.GetLocal:
-                case OpCode.SetLocal:
-                case OpCode.PopN:
-                case OpCode.NewArray:
-                case OpCode.BuildString:
-                case OpCode.Call:
-                    text.Append(' ').Append(chunk.ReadByte(offset++));
-                    break;
-                case OpCode.Closure:
-                    int fnIndex = chunk.ReadByte(offset++);
-                    text.Append(' ').Append(Constant(chunk, fnIndex));
-                    if (chunk.ReadConstant(fnIndex).TryAsFunction(out GrobFunction? gf) && gf is BytecodeFunction closure) {
-                        for (int u = 0; u < closure.UpvalueCount; u++) {
-                            text.Append(' ').Append(chunk.ReadByte(offset)).Append(':').Append(chunk.ReadByte(offset + 1));
-                            offset += 2;
-                        }
-                    }
-                    break;
-                default:
-                    break;
-            }
-            text.Append('\n');
-        }
-        return text.ToString();
-    }
-
-    private static void AssertEmits(string source, string expected) =>
-        Assert.Equal(expected.ReplaceLineEndings("\n").TrimEnd('\n') + "\n", Render(CompileSource(source)));
+    private static void AssertEmits(string source, string expected) => ChunkRendering.AssertEmits(source, expected);
 
     // -----------------------------------------------------------------------
     // Script functions — complete positional, omitted default, named reorder.

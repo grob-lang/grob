@@ -197,19 +197,20 @@ public sealed class TypeCheckerDateTests {
     }
 
     [Fact]
-    public void Parse_NamedArgument_ReportsSingleE0011() {
-        // NativeMember carries no parameter names and emission preserves source order, so a
-        // named argument cannot bind — it would otherwise slot "dd/MM/yyyy" into the input
-        // parameter and let the pattern take its "" default (CodeRabbit review, PR #154).
-        // Reject with E0011 (positional-only), matching RejectNamedMemberArgs.
+    public void Parse_NamedPatternWithoutValue_ReportsSingleE0003() {
+        // D-446 Decision 2: a named argument binds to a native, so pattern: binds to the
+        // pattern parameter and the required value is left unbound. Arity is checked on
+        // the bound set (D-318), at the call, as for a script function. Before D-446 this
+        // call was refused with E0011, because a named argument could not bind and source-
+        // order emission would have slotted the pattern into the value parameter.
         DiagnosticBag bag = Check("""readonly x := date.parse(pattern: "dd/MM/yyyy")""");
         Diagnostic diag = Assert.Single(bag.Errors);
-        Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
+        Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
         Assert.Equal(
-            "'date.parse' does not accept named arguments; pass them positionally.",
+            "'date.parse' expects between 1 and 2 arguments, but 1 was supplied.",
             diag.Message);
         Assert.Equal(1, diag.Range.Start.Line);
-        Assert.Equal(26, diag.Range.Start.Column);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]

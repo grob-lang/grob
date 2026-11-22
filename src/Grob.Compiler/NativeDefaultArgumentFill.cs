@@ -7,10 +7,11 @@ namespace Grob.Compiler;
 /// runtime native receives its full, fixed arity regardless of how many trailing
 /// optional parameters the source call omitted (D-358). A pure function of the call's
 /// own shape — supplied argument count, declared full arity, and the registry's
-/// per-parameter defaults — with no <c>Chunk</c>/emission dependency, so it is callable
-/// from any native-call emission branch (the namespace-native branch wires it this
-/// increment; the primitive-member and named-type-method branches can call it unchanged
-/// once they gain default-argument metadata of their own).
+/// per-parameter defaults — with no <c>Chunk</c>/emission dependency. Only the
+/// primitive-member branch still uses it: namespace natives and <c>input</c> fill their
+/// defaults from the checker's bound argument list (<see cref="Ast.BoundArgumentList"/>),
+/// and the native named arguments increment moves primitive members onto it too (change
+/// group 3), which retires this helper.
 /// </summary>
 internal static class NativeDefaultArgumentFill {
     /// <summary>

@@ -1,6 +1,7 @@
 using Grob.Compiler.Ast;
 using Grob.Compiler.Binding;
 using Grob.Core;
+using Grob.Runtime;
 
 namespace Grob.Compiler;
 
@@ -15,11 +16,24 @@ public sealed partial class TypeChecker {
     /// How the binding diagnostics name a callee. <paramref name="Name"/> appears in
     /// quotes in E0008, E0009 and E0010; <paramref name="Subject"/> opens E0011. A script
     /// function is <c>'f'</c> and <c>Function 'f'</c>, the wording these four codes have
-    /// always had.
+    /// always had. A native is named as its arity messages name it (<c>'date.parse'</c>,
+    /// <c>'input'</c>), and its E0011 drops "Function", as those messages do (gate report
+    /// §1.4): the same sentences, so there is one convention (D-446 Decision 1).
     /// </summary>
     private readonly record struct BindingWording(string Name, string Subject) {
         public static BindingWording ForScriptFunction(string name) => new(name, $"Function '{name}'");
+
+        public static BindingWording ForNative(string name) => new(name, $"'{name}'");
     }
+
+    /// <summary>
+    /// Whether an argument of <paramref name="argumentType"/> bound to a parameter of
+    /// <paramref name="parameterType"/> is the one implicit widening the checker accepts,
+    /// <c>int</c> to <c>float</c>, which the compiler must make real with
+    /// <see cref="OpCode.IntToFloat"/> (R-58).
+    /// </summary>
+    private static bool Widens(GrobType argumentType, GrobType parameterType) =>
+        argumentType == GrobType.Int && parameterType == GrobType.Float;
 
     /// <summary>
     /// Reports each of <paramref name="binding"/>'s problems at the argument it names,
@@ -56,11 +70,20 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// The record a script-function call hands the compiler: each slot the argument
-    /// bound to it, or a default the compiler emits from the declaration's default
-    /// expression.
+    /// The record a clean call hands the compiler: each slot the argument bound to it,
+    /// marked where it widens (<paramref name="widen"/>, one entry per parameter), or the
+    /// parameter's default. A native's default is its signature constant
+    /// (<paramref name="signature"/>); a script function passes <see langword="null"/>,
+    /// and the compiler emits the declaration's default expression instead.
     /// </summary>
-    private static BoundArgumentList ScriptBoundArguments(ArgumentBinding binding) =>
-        new([.. binding.SlotArgument.Select(a => new BoundSlot(
-            a == ArgumentBinder.Unbound ? BoundSlot.DefaultArgument : a, NativeDefault: null))]);
+    private static BoundArgumentList BoundArguments(ArgumentBinding binding, bool[] widen, FunctionSignature? signature) {
+        var slots = new BoundSlot[binding.SlotArgument.Count];
+        for (int p = 0; p < slots.Length; p++) {
+            int a = binding.SlotArgument[p];
+            slots[p] = a == ArgumentBinder.Unbound
+                ? new BoundSlot(BoundSlot.DefaultArgument, signature?.Parameters[p].Default)
+                : new BoundSlot(a, NativeDefault: null, WidenToFloat: widen[p]);
+        }
+        return new BoundArgumentList(slots);
+    }
 }

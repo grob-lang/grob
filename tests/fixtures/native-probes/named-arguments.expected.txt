@@ -1,26 +1,24 @@
-error[E0011]: 'math.sqrt' does not accept named arguments; pass them positionally.
+error[E0011]: 'math.sqrt' has no parameter named 'x'.
   --> named-arguments.grob:14:11-14:17
-error[E0011]: 'math.sqrt' does not accept named arguments; pass them positionally.
+error[E0009]: Parameter 'n' of 'math.sqrt' is required and has no default, so it cannot be passed by name. Pass it positionally.
   --> named-arguments.grob:15:11-15:15
-error[E0011]: 'math.pow' does not accept named arguments; pass them positionally.
+error[E0009]: Parameter 'base' of 'math.pow' is required and has no default, so it cannot be passed by name. Pass it positionally.
   --> named-arguments.grob:16:10-16:17
-error[E0011]: 'math.pow' does not accept named arguments; pass them positionally.
+error[E0009]: Parameter 'exp' of 'math.pow' is required and has no default, so it cannot be passed by name. Pass it positionally.
   --> named-arguments.grob:16:19-16:25
-error[E0011]: 'date.parse' does not accept named arguments; pass them positionally.
-  --> named-arguments.grob:17:15-17:25
-error[E0011]: 'date.parse' does not accept named arguments; pass them positionally.
-  --> named-arguments.grob:18:12-18:22
-error[E0011]: 'strings.join' does not accept named arguments; pass them positionally.
+error[E0003]: 'date.parse' expects between 1 and 2 arguments, but 1 was supplied.
+  --> named-arguments.grob:18:1-18:22
+error[E0009]: Parameter 'parts' of 'strings.join' is required and has no default, so it cannot be passed by name. Pass it positionally.
   --> named-arguments.grob:19:14-19:24
-error[E0011]: 'strings.join' does not accept named arguments; pass them positionally.
+error[E0009]: Parameter 'separator' of 'strings.join' is required and has no default, so it cannot be passed by name. Pass it positionally.
   --> named-arguments.grob:19:26-19:38
-error[E0011]: 'guid.newV5' does not accept named arguments; pass them positionally.
+error[E0009]: Parameter 'name' of 'guid.newV5' is required and has no default, so it cannot be passed by name. Pass it positionally.
   --> named-arguments.grob:20:15-20:22
-error[E0011]: 'int.min' does not accept named arguments; pass them positionally.
+error[E0009]: Parameter 'a' of 'int.min' is required and has no default, so it cannot be passed by name. Pass it positionally.
   --> named-arguments.grob:21:9-21:13
-error[E0011]: 'int.min' does not accept named arguments; pass them positionally.
+error[E0009]: Parameter 'b' of 'int.min' is required and has no default, so it cannot be passed by name. Pass it positionally.
   --> named-arguments.grob:21:15-21:19
-error[E0011]: 'path.join' does not accept named arguments; pass them positionally.
+error[E0009]: Parameter 'parts' of 'path.join' is required and has no default, so it cannot be passed by name. Pass it positionally.
   --> named-arguments.grob:22:11-22:19
 error[E0011]: 'padLeft' does not accept named arguments; pass them positionally.
   --> named-arguments.grob:25:11-25:19

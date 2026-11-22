@@ -124,24 +124,37 @@ public sealed class TypeCheckerNativeCatalogueTests {
         Assert.Contains(bag.Errors, e => e.Code == "E1102");
     }
 
+    // Native named arguments, change group 2: the defaults reach the compiler on the bound
+    // argument list (CallExpr.ResolvedBinding), which replaced ResolvedNativeParameterDefaults.
+    // The annotation now exists for every clean call, not only one that omits a default.
+
     [Fact]
     public void CatalogueNativeWithDefault_OmittedArgument_AnnotatesTheDefaults() {
         (CompilationUnit unit, DiagnosticBag bag) = Check("acme.greet(\"x\")", Acme);
         Assert.False(bag.HasErrors);
         CallExpr call = Find<CallExpr>(unit);
-        Assert.Equal([null, GrobValue.FromString("hi")], call.ResolvedNativeParameterDefaults);
+        Assert.NotNull(call.ResolvedBinding);
+        Assert.Equal(
+            [new BoundSlot(0, null), new BoundSlot(BoundSlot.DefaultArgument, GrobValue.FromString("hi"))],
+            call.ResolvedBinding.Slots);
     }
 
     [Fact]
-    public void NativeWithoutDefaults_LeavesTheDefaultsAnnotationNull() {
+    public void NativeWithoutDefaults_AnnotatesNoDefaultConstant() {
         (CompilationUnit unit, _) = Check("math.sqrt(4.0)", SharedCatalogue.Stdlib);
-        Assert.Null(Find<CallExpr>(unit).ResolvedNativeParameterDefaults);
+        BoundArgumentList? binding = Find<CallExpr>(unit).ResolvedBinding;
+        Assert.NotNull(binding);
+        Assert.Equal([new BoundSlot(0, null)], binding.Slots);
     }
 
     [Fact]
     public void HandTableNativeWithDefault_AnnotatesTheDefaults() {
         (CompilationUnit unit, _) = Check("date.parse(\"2026-04-05\")", SharedCatalogue.Stdlib);
-        Assert.Equal([null, GrobValue.FromString("")], Find<CallExpr>(unit).ResolvedNativeParameterDefaults);
+        BoundArgumentList? binding = Find<CallExpr>(unit).ResolvedBinding;
+        Assert.NotNull(binding);
+        Assert.Equal(
+            [new BoundSlot(0, null), new BoundSlot(BoundSlot.DefaultArgument, GrobValue.FromString(""))],
+            binding.Slots);
     }
 
     [Fact]
