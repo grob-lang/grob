@@ -1,52 +1,69 @@
 # Session hand-off — 22 November 2026
 
 ## Where we are
-- Branch: `feat/native-named-arguments`, HEAD `a2a50be` (group 1)
-- Working tree: clean (scratch in gitignored `.grob-session/nna/`)
-- Commits on this branch: 10 (`git log --oneline origin/main..HEAD`): hand-off commits, the merge of `main` at `567cf08` (#262 to #265) and group 1
+
+- Branch: `feat/native-named-arguments`, HEAD `d401715` (group 2)
+- Working tree: clean (scratch in gitignored `.grob-session/nna/`, including `newcov.py`, the new-code coverage script)
+- Commits on this branch: 12 (`git log --oneline origin/main..HEAD`). Change groups: 1 at `a2a50be`, 2 at `d401715`
 - Increment prompt: `docs/prompts/native-named-arguments.md`
 - Gate report: `D:\Code\grob-lang\gate-reports\native-named-arguments-gate-report.md`
-- Picked up from: this branch's own hand-off (session A), overwritten here
-- Phase reached: session B, change group 1 committed (`a2a50be`). Group 2 is next, in this session if context allows. Chris approved the session B plan for groups 1 and 2 (chat, 22 November); its substance is under *Decisions* below.
+- Picked up from: this branch's own hand-off (session B, after group 1), overwritten here
+- Phase reached: session B complete. Groups 1 and 2 are committed and green. Groups 3, 4 and 5 are session C (Sonnet, high).
 
 ## Green state
-- Tests: `dotnet test` on `a2a50be`: 5,619 passed, 0 failed
-- Coverage: not run this session
+
+- Tests: `dotnet test` on `d401715`: 5,659 passed, 0 failed (the validation scripts run inside `Grob.Compiler.Tests`)
+- Coverage: new code in groups 1 and 2 (the `src/` diff against `origin/main`, Compiler and Integration cobertura unioned): 149/149 lines, 87/87 branches. Whole-solution figure not run this session
+- Benchmark gate: not run this session (a §5 deliverable; run it before the PR)
 - Pre-push gate: runs on this hand-off's push
 
 ## Decisions taken, not yet logged
+
 All go into the landing entry (group 7). Take its D-number from the live tail.
 
-Carried from session A (Chris's rulings, 21 and 22 November; unchanged):
-- **S1:** fixed separately, merged as #262 (D-448). Group 5's refusal on function values is already built by #262 (`RejectNamedFunctionValueArgs`); the landing entry cites D-448 rather than claiming it.
-- **S2:** `sort` binds `descending` through the shared binder from a one-entry parameter list in its bespoke arm; every other array method, map methods, `print`, `exit` refuse with E0011. Narrows D-447 Decision 2. Group 6's drift check pins `descending` too.
-- **S3:** a member call on an `Unknown` receiver refuses a named argument with E0011 in group 5. Extends D-447 Decision 2.
-- **S4:** `date-members.errors.expected.txt` pins no named argument and stays byte-identical; a line in the landing entry.
-- **`strings.join`:** fix the doc (`grob-type-registry.md:337` loses `separator`'s default) in group 6, with the stdlib-reference signatures for `date.parse`'s `pattern` and `input`'s `prompt`.
-- **Function-value refusal wording:** `A function value does not accept named arguments; pass them positionally.` (built by #262).
-- **R-58 native widening folds in** (22 November): the emission helper emits `IntToFloat` for an `int` argument bound to a `float` parameter. The rest of R-58 (bindings, returns, struct fields, parameter defaults, calls through function values) stays on its own `fix/` branch; the landing entry narrows R-58.
-- **Crash oracle follows this increment** (22 November): the landing commit also changes `docs/prompts/crash-oracle.md`'s *When it runs* line to "after the native named arguments increment lands, and before the 9C `fs` increment".
+Carried from session A (Chris's rulings of 21 and 22 November, unchanged):
 
-New this session (in the approved plan):
-- **Widening covers direct script-function calls too.** Every checked script call now emits through `EmitBoundArguments`, so group 2's widening flag (`BoundSlot.WidenToFloat`, set by the checker) makes `half(3)` against `x: float` run. Parameter defaults are not widened (they are on R-58's `fix/` list). The landing entry says so.
-- **Every checked script call goes through the record**, not only reordered or default-omitting ones; byte identity for complete positional calls is pinned by `CompilerCallEmissionCharacterisationTests`.
-- **E0004 on a named native argument** is numbered by the argument's written position (gate report §1.4), so no pinned message moves.
+- **S1:** fixed separately and merged as #262 (D-448). #262 already builds group 5's refusal on function values (`RejectNamedFunctionValueArgs`), so the landing entry cites D-448 rather than claiming it.
+- **S2:** `sort` binds `descending` through the shared binder, from a one-entry parameter list in its bespoke arm. Every other array method, every map method, `print` and `exit` refuse with E0011. This narrows D-447 Decision 2. Group 6's drift check pins `descending` as well.
+- **S3:** a member call on an `Unknown` receiver refuses a named argument with E0011 in group 5. This extends D-447 Decision 2.
+- **S4:** `date-members.errors.expected.txt` pins no named argument and stays byte-identical. The landing entry records it in one line.
+- **`strings.join`:** fix the document, not the code. `grob-type-registry.md:337` loses `separator`'s default in group 6, alongside the stdlib-reference signatures for `date.parse`'s `pattern` and `input`'s `prompt`.
+- **Function-value refusal wording:** `A function value does not accept named arguments; pass them positionally.`, built by #262.
+- **R-58 native widening folds in:** the emission helper widens an `int` argument bound to a `float` parameter. The rest of R-58 (bindings, returns, struct fields, parameter defaults, calls through function values) stays on its own `fix/` branch, and the landing entry narrows R-58 to those.
+- **The crash oracle follows this increment:** the landing commit changes `docs/prompts/crash-oracle.md`'s *When it runs* line to "after the native named arguments increment lands, and before the 9C `fs` increment".
+
+New in session B (inside the plan Chris approved on 22 November; the group 2 commit body records each one):
+
+- **Widening covers direct script-function calls too.** It is built in group 2 for namespace natives and script functions. Default slots are never widened.
+- **Every checked call goes through `ResolvedBinding`:** script functions, non-variadic namespace natives and `input`, complete positional calls included. Byte identity is pinned by `CompilerCallEmissionCharacterisationTests`.
+- **E0004 on a named native argument** is numbered by the argument's written position.
+- **`input`'s signature comes from the catalogue.** A catalogue with no `input` built-in throws `GrobInternalException` as a host misconfiguration, which `InputCall_CatalogueWithoutInput_IsAHostMisconfiguration` tests.
+- **A variadic native binds only for its diagnostics.** It gets no record and keeps positional emission.
 
 ## Error codes and registry state
-None allocated. Live count 122.
+
+None allocated. The live count is 122.
 
 ## Tried and rejected
-- `fn:` as a named argument in a test does not parse (keyword). Do not use it.
-- Characterisation expectations were captured from the base with a temporary file-dump hook (removed before commit). Do not hand-edit them: they must stay byte-identical through groups 2 to 4.
+
+- `fn:` as a named argument in a test: it does not parse, because `fn` is a keyword.
+- Do not hand-edit the characterisation expectations. They were captured from the base and must stay byte-identical through groups 3 and 4.
 
 ## Quarantined or skipped tests
+
 None.
 
 ## Why this session stopped
-Not stopped: hand-off after group 1, as the prompt requires after each group.
+
+Session B's rows are done. Groups 3 to 5 belong to session C (Sonnet, high), and the prompt forbids one session covering groups from two rows.
 
 ## Next session, first action
-Build group 2 per the approved plan (namespace natives and `input` bind on `ArgumentBinder`, `RejectNamedNativeArgs` deleted, R-58 widening in `EmitBoundArguments`, probe-master lines 14 to 22 updated per gate report §1.6), starting with its red tests.
+
+Run the prompt's session-start check for session C. Then read the group 1 and group 2 commit bodies (`git show a2a50be d401715 --stat --format=%B`) before building group 3 on `ArgumentBinder`, `TypeChecker.BoundArguments` and `Compiler.EmitBoundArguments`.
 
 ## Open for the maintainer
-Nothing.
+
+Nothing blocking. For session C's awareness, from the gate report:
+
+- A non-nil nullable primitive `?.` call faults the VM (`ns?.padLeft(5)`). Group 3 can prove its nullable-receiver case in bytecode only.
+- `EmitOptionalChainCall` emits arguments in source order and must call `EmitBoundArguments` in its non-nil branch (gate report §1.4).
