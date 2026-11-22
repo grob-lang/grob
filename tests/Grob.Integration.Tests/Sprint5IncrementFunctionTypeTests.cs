@@ -193,4 +193,24 @@ public sealed class Sprint5IncrementFunctionTypeTests {
 
         Assert.Equal($"40{NL}7{NL}-1{NL}3{NL}", stdout);
     }
+
+    [Fact]
+    public void UntypedLambdaParameter_StringOperators_Run() {
+        // D-450: with one operand of unknown type the opcode comes from the known operand,
+        // so a string on either side of '+' concatenates and a string comparison compares
+        // strings. Each crashed the compiler or compiled to an int opcode (R-61).
+        string stdout = Run("""
+            names := ["ada", "bob"]
+            for greeting in names.select((n) => "Hi " + n) {
+                print(greeting)
+            }
+            wrap := (s) => "[" + s + "]"
+            print(wrap("x"))
+            before := (s) => s < "m"
+            print(before("a"))
+            print(before("z"))
+            """);
+
+        Assert.Equal($"Hi ada{NL}Hi bob{NL}[x]{NL}true{NL}false{NL}", stdout);
+    }
 }

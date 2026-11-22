@@ -380,8 +380,13 @@ public sealed partial class Compiler {
     /// </remarks>
     public override object? VisitBinary(BinaryExpr node) {
         int line = node.Range.Start.Line;
-        GrobType lt = GetExprType(node.Left);
-        GrobType rt = GetExprType(node.Right);
+        // D-450: with one operand of unknown type, the opcode comes from the known one,
+        // whichever side it is on; the checker has refused a known operand with no opcode.
+        (GrobType lt, GrobType rt) = (GetExprType(node.Left), GetExprType(node.Right)) switch {
+            (GrobType.Unknown, GrobType known) => (known, known),
+            (GrobType known, GrobType.Unknown) => (known, known),
+            var pair => pair,
+        };
 
         switch (node.Operator) {
             case BinaryOperator.NilCoalesce:
@@ -520,8 +525,10 @@ public sealed partial class Compiler {
 
         bool leftNeedsCoerce = lt == GrobType.Int && rt == GrobType.Float;
         bool rightNeedsCoerce = rt == GrobType.Int && lt == GrobType.Float;
-        // resultType: Float if either operand is float; Unknown operands default to Int —
-        // the same optimistic convention used in ComparisonCategory. This is a documented
+        // resultType: Float if either operand is float. VisitBinary has already given a
+        // single Unknown operand the other operand's type (D-450), so Unknown reaches here
+        // only when both operands are; it defaults to Int, the same optimistic convention
+        // used in ComparisonCategory. This is a documented
         // permissive assumption for the residue GetExprType (below) cannot resolve
         // statically: an untyped lambda-parameter identifier, and an Unknown-receiver-field
         // MemberAccessExpr (D-360) — a VM-level type fault is the fallback if the runtime

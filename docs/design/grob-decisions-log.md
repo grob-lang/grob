@@ -446,6 +446,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-447 | November 2026 | Type system — call binding; Compiler — argument emission; Testing — probe corpus; Deferred Work Register | **Authorises the *native named arguments* increment**, refining D-446 and D-426 Decision 1; prompt at `docs/prompts/native-named-arguments.md`. Read at `a30cadf`, not run: array methods, map methods, `print`, `exit` and calls through a function value carry no signature and no code on those paths reads an argument's name, a set D-446 did not name. **A call with no signature refuses a named argument** with E0011, on PR #248's precedent, if the gate confirms it is accepted today; binding there waits on signatures (R-56). The `input` built-in has a signature, and the increment is to bind it with the other three paths. Named-type methods gain default fill. The probe masters change on D-428's first ground, line by line. The gate runs what the planning sessions read. No source change. |
 | D-448 | November 2026 | Compiler — type checker, argument emission; VM — calls; Deferred Work Register | **A call through a function-typed parameter calls the value**, not the enclosing function its symbol records; the gate's STOP S1, fixed on its own branch (Chris). The checker records a direct call's function on the call node and the compiler reads only that. **Rejected**: a declaration node for parameters. **A call through a function value refuses a named argument now**, with E0011, taking D-447 Decision 2's refusal ahead of the increment, and **checks its arguments against its function type**, E0003 and E0004, where the checker knows that type; the fix would otherwise have let a wrong call through a parameter compile. **Calling a value that is not a function is E0017**, a new code (Chris), where the call would otherwise fault in the VM. **A struct field declared with a function type keeps that type when read**, so it is compared by shape and a call through it is checked. **Compatible function shapes combine** (Chris): across a lambda's return paths and a ternary's, switch's or `??`'s arms, an inferred lambda's `Unknown` parameters take a concrete shape's types (an `Unknown` return stays `Unknown`) and a `nil` path makes the result a nullable function; conflicting concrete shapes still do not. **R-57 filed**: a declared function held in a binding, an anonymous struct's field and an array element are still unchecked, so `h(3, 100)` through `h := twice` prints `100`, and the VM does not compare a call's argument count with the callee's arity. **R-58 filed**: an `int` where a `float` is expected is not widened in a binding, a return, a struct field, a parameter default or an argument, so `x: float := 1` then `x / 2`, and `add(1, 2)`, stop with an internal error, on `main` too. **R-59 filed**: a call through a nullable function value is not checked for `nil` and reaches the VM (Chris: record it, fix it on its own branch). Count 121 -> 122. |
 | D-449 | November 2026 | Compiler — type checker; Deferred Work Register | **A call through a nullable function value is E0101** (Chris), on a binding, a parameter, a struct field called with `.` and a call result, where it reached the VM and stopped with an internal error. No new code: E0101 already names a nullable value dereferenced without `?.` or `??`. Three forms stay legal: a call narrowed by `if (f != nil)`, a call through `??` and a struct field called with `?.`, which gives `nil` when the field is `nil`. **A `?.` call through a nullable function field is nullable**, as a `?.` call on a nullable receiver is (D-402), so `x: int := bx?.op()` is E0104. **Rejected**: a runtime check in place of the compile-time refusal. Refuses programs that ran while the value was never `nil`. R-59 closed. **R-60, R-61 and R-62 filed** (Chris): the array methods do not check their function argument; an operator with one operand of unknown type takes its opcode from the wrong side, so `(s) => "[" + s` crashes the compiler and `(s) => s + "]"` miscompiles, fixed next; `fn(): void` is refused only as a struct field's type. Count unchanged at 122. |
+| D-450 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **With one operand of unknown type, a binary operator takes its opcode from the known operand**, whichever side it is on, so `(s) => "[" + s` and `names.select((n) => "Hi " + n)` concatenate where they crashed the compiler, and `(s) => s + "]"` and `(s) => s < "z"` no longer compile to `int` opcodes. **The known operand must suit the operator** (Chris): `+` an `int`, `float` or `string`; `-`, `*`, `/`, `%` an `int` or `float`; `<`, `<=`, `>`, `>=` an `int`, `float`, `string` or `date`; otherwise E0002 at that operand. Refuses only programs that crashed the compiler or could never run. **Rejected**: a compiler-only fix, which leaves `true + s` crashing. Two unknown operands stay R-47's. R-61 closed. Count unchanged at 122. |
 
 ---
 
@@ -18116,6 +18117,61 @@ nullable), D-420 (the register) and D-428 (the error-examples harness).
 
 ---
 
+### D-450 — With one operand of unknown type, a binary operator takes its opcode from the known operand, which must suit the operator; R-61 closed (November 2026)
+
+Area: Compiler — type checker, bytecode emission; Deferred Work Register
+Supersedes: none
+Superseded by: none
+
+**A bug fix that refuses programs which crash or can never run today.** No code is minted;
+the count stays at 122. D-449 filed the defect as R-61, and on 22 November Chris ruled that
+it is fixed on its own branch, the type checker included.
+
+**The defect.** An operand's type is unknown when it is a lambda's untyped parameter (R-47),
+an array element whose element type is not tracked or a field of a receiver whose type is
+not known. With one such operand, the checker accepted the expression without looking at the
+other operand, and the compiler chose the opcode from the left operand, or assumed `int` when
+the left was the unknown one. Measured through `grob run` at `e9e5dbc`:
+
+- `(s) => "[" + s`, and `names.select((n) => "Hi " + n)`, crashed the compiler with an
+  unhandled `InvalidOperationException`, `Operator Add with result type String is not
+  supported in Sprint 2`; on `main` at `67b268d` too. So did `"a" - s`, `"a" * s`,
+  `true + s`, `[1] + s` and `nil + s`.
+- `(s) => s + "]"` and `(s) => s < "z"` compiled to `AddInt` and `LessInt`, so a call given a
+  `string` stopped with `GrobValue kind mismatch: expected Int, actual String`. `s + true` and
+  `true < s` compiled to `int` opcodes that no argument can satisfy.
+
+**Decision 1 — the compiler takes the opcode from the known operand.** With exactly one
+operand of unknown type, `VisitBinary` gives it the known operand's type before choosing an
+opcode, whichever side the known operand is on. `+` with a `string` emits `Concat`; a
+relational operator with a `string` emits the `string` comparison, `<=` and `>=` lowered to
+the strict comparison and `Not` as before; with a `date`, `LessDate` or `GreaterDate`; with
+an `int` or a `float`, the numeric opcode, as before. Two operands of unknown type still
+default to `int`: nothing says which opcode is right, and typing a lambda's parameters is
+R-47.
+
+**Decision 2 — the known operand must suit the operator.** The checker now refuses, with
+E0002 at the known operand, one the operator has no opcode for: `+` takes an `int`, a `float`
+or a `string`; `-`, `*`, `/` and `%` an `int` or a `float`; `<`, `<=`, `>` and `>=` an `int`,
+a `float`, a `string` or a `date`. These are the types the same operators accept when both
+operands are known. `==` and `!=` take any operand, as before. The message names the operator
+and the known operand's type, `Operator '-' cannot be applied to type 'string'.`, since the
+unknown operand adds nothing to it. Every program this refuses crashed the compiler or
+compiled to code that fails whatever it is given.
+
+**Rejected: a compiler-only fix.** Choosing from the known operand alone fixes the `string`
+forms, but a known `bool`, array, `nil` or non-`date` struct has no opcode to choose, so
+`true + s` would still crash the compiler. Chris chose to add the checker rule.
+
+**Spec edits in this commit.** None to the language documents: the operators' types are
+unchanged, and the rule applies them where one operand's type is unknown.
+`grob-open-questions.md`: R-61 closed.
+
+Cites D-449 (R-61), D-443 (R-47), D-354 (the `date` comparison opcodes) and D-420 (the
+register).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -18345,7 +18401,10 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-449 added, with a source fix and spec edits. **A call through a nullable_
+_November 2026 — D-450 added, with a source fix. **With one operand of unknown type, a binary_
+_operator takes its opcode from the known operand**, which must suit the operator or is E0002._
+_R-61 closed. Count unchanged at 122._
+_Previous: November 2026 — D-449 added, with a source fix and spec edits. **A call through a nullable_
 _function value is E0101** unless a nil check narrows it, `??` unwraps it or `?.` calls it,_
 _and a `?.` call through a nullable function field is nullable. R-59 closed. R-60, R-61 and R-62_
 _filed: unchecked array-method function arguments, an operator's opcode taken from its unknown_
