@@ -158,17 +158,27 @@ Propose, with the alternatives considered and why they lost:
   clock. The oracle runs every program against fake capabilities from `Grob.Runtime`'s
   ambient interfaces and never touches the real file system, environment, network or
   processes. Show how `PluginRegistration.BuildCatalogue` is given fakes.
-- **Bounding a run.** A mutation can make a loop run forever. The VM dispatch loop is a hot
-  path guarded by the benchmark gate and must not gain a per-instruction check. Propose how
-  a run is bounded: a generator and mutator that never write an unbounded loop, process
-  isolation with a timeout for the long mode, or another way, with its cost measured.
+- **Bounding a run.** Every run is bounded, in the CI slice and the long mode alike: a
+  mutation can delete a loop's update, and a run that never ends blocks `dotnet test`.
+  The VM dispatch loop is a hot path guarded by the benchmark gate and must not gain a
+  per-instruction check. It needs none: `VirtualMachine.Run` takes a `CancellationToken`
+  and checks it once per budget of steps, a check the code attributes to D-319's
+  playground host. Propose the bound: a token cancelled after a timeout per run is the
+  first candidate. Say how a cancelled run is classified (a finding, per §1.1), how the
+  lexer, parser, checker and compiler are bounded, since the token reaches only the VM,
+  and what each option costs.
 - **Determinism.** Every program is reproducible from a seed. A finding is reported with
   its seed, its source and a minimised reproducer.
 - **Minimisation.** A delta-debugging pass over lines, then over AST node spans, that keeps
   the failure signature while shrinking the source.
-- **Signatures and known failures.** A finding's signature is the phase, the exception type
-  and the message with values removed, which refines the strategy's §2 deduplication (the
-  normalised first stack frame); say whether the frame is added. A finding is preserved in
+- **Signatures and known failures.** A finding raised as an exception has a signature of
+  the phase, the exception type and the message with values removed, which refines the
+  strategy's §2 deduplication (the normalised first stack frame); say whether the frame is
+  added. §1.1's other findings raise no exception, so define a signature for each: an
+  `exit(n)` out of range, a diagnostic with no code or a location outside the source, an
+  identifier missing its `ResolvedType` or `Declaration`, and a run past its bound. For
+  each, name the fields it uses, so that it can be deduplicated, minimised and matched to
+  a register row as an exception's signature is. A finding is preserved in
   the strategy's `findings/` layout, named by its signature. A known-signature list keeps
   the CI slice green while a row is open. **A signature does not identify a root cause**:
   R-58 and R-63 both stop with `GrobValue kind mismatch: expected Float, actual Int`. So
@@ -288,7 +298,8 @@ Required:
 
 - Each finding class in §1.1 is caught: an internal error, a host exception in the
   compile phase and in the VM, a diagnostic outside the source, a missing `ResolvedType`
-  and a run past the budget.
+  and a run past the budget, each with the signature §1.4 defines for it; two programs
+  with the same root cause share a signature, and two with different ones do not.
 - Each allowed outcome passes: diagnostics, a clean exit, `exit(n)` and a Grob runtime
   error.
 - The fake capabilities: a seed that writes, deletes and runs a process touches nothing on

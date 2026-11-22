@@ -18237,6 +18237,10 @@ recorded here so the strategy need not be rewritten:
   over the seed corpus and then, once the mutator lands, its mutants, adding no more than 30 seconds. It stays
   green while a row is open through a known-signature list whose entries name a register
   row and the programs they cover, since one signature can belong to two root causes.
+  Every run in the slice and the long mode is bounded, so a mutant whose loop never ends
+  fails as a finding and does not block the suite. The gate chooses the mechanism; none
+  adds a per-instruction check to the VM dispatch loop. `VirtualMachine.Run` already
+  takes a cancellation token.
 
 **Decision 2 — the CLI reports an internal failure as E9001.** An internal error or a host
 exception from any phase, in every command that runs the pipeline, is reported as E9001
