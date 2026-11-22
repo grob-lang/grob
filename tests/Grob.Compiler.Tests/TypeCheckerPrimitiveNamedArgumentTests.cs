@@ -154,6 +154,24 @@ public sealed class TypeCheckerPrimitiveNamedArgumentTests {
             25);
     }
 
+    [Fact]
+    public void PrimitiveCall_UnknownArgument_IsNotReportedAsAMismatch() {
+        // x has no shape, so its type is Unknown, which is assignable to anything.
+        var lambdaBag = new DiagnosticBag();
+        CompilationUnit unit = Parser.Parse(Lexer.Scan("lam := x => \"abc\".padLeft(x)", lambdaBag), lambdaBag);
+        new TypeChecker(lambdaBag, SharedCatalogue.Stdlib).Check(unit);
+
+        Assert.False(lambdaBag.HasErrors, string.Join("; ", lambdaBag.Errors.Select(d => d.Message)));
+    }
+
+    [Fact]
+    public void PrimitiveCall_ErroredArgument_ReportsOnlyTheRootCause() {
+        (_, DiagnosticBag bag) = CheckCall("s.padLeft(missing)");
+
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E1001", diag.Code);
+    }
+
     // -----------------------------------------------------------------------
     // A nullable receiver binds the same way, and keeps the guarded path.
     // -----------------------------------------------------------------------
