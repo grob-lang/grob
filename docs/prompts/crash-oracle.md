@@ -255,10 +255,12 @@ Seven change groups, each a green commit. Land them in this order.
    not is reported by the generator's own test, not by the oracle. R-40's benchmark
    generator is a separate concern and is not built here.
 6. *Session E — Opus, high.* **The first campaign.** The long mode run at §1.5's size over
-   the mutator and the generator. Every distinct new signature is minimised and filed in
-   the register, one row per root cause, each with its reproducer and the measured output.
-   Known rows are matched by minimised reproducer, not by signature alone, and are not
-   refiled.
+   the mutator and the generator. Every failing program is minimised before any is set
+   aside as a duplicate, and reproducers that share a signature, whether first seen in
+   this campaign or listed as known, are compared with each other and with the register
+   rows: a signature does not identify a root cause (§1.4). Each root cause is filed in
+   the register as one row, with its reproducer and the measured output. Known rows are
+   matched by minimised reproducer, not by signature alone, and are not refiled.
 7. *Session E — Opus, high.* **Record.** `docs/dev/` gains a page on running the oracle by
    hand, reading a finding and adding a known signature. The landing entry.
 
@@ -282,9 +284,11 @@ Seven change groups, each a green commit. Land them in this order.
 
 ## 3. Implementation notes
 
-**The oracle is a test of the checker.** Every finding means the checker accepted a program
-it should have refused, or a later phase lost an invariant. Report it as that, with the
-phase and the source, not as a VM bug.
+**Attribute each finding to the phase it arose in.** A finding from the checker or a later
+phase means the checker accepted a program it should have refused, or a later phase lost
+an invariant: report it as that, not as a VM bug. A finding from the lexer or the parser
+arises before the checker runs, so it is a lexer or parser defect, reported as one. Every
+report names the phase and carries the source.
 
 **Never trust a green campaign.** A campaign that finds nothing proves only that its
 operators found nothing. Before the first campaign, check the oracle finds R-58 and R-60

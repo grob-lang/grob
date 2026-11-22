@@ -18264,8 +18264,10 @@ that with its own campaigns.
 
 **Decision 5 — the CLI exits with the documented codes; R-64 filed and owned here.** The
 CLI's exit codes are not the documented set: a compile error and a usage error both exit
-`1`. D-353's contract makes a runtime exit code outside `{0, 1, 2, 3}` a P0, so its
-harness asserts a set the CLI does not produce. Chris folded R-64 into the E9001 change
+`1`. D-353's contract makes an exit code the runtime itself produces outside
+`{0, 1, 2, 3}` a P0, so its harness asserts a set the CLI does not produce. A script's
+own `exit(n)` is outside that rule: `n` passes through, and only an `n` outside `0..255` is
+a P1. Chris folded R-64 into the E9001 change
 group: a compile-time diagnostic exits `2` and a usage error `3`, the tests that assert
 the present codes change with it, and the landing entry closes R-64. Requirements §8's
 table gains the usage row D-353's strategy pinned, so the two documents state one set.
