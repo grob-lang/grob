@@ -395,6 +395,12 @@ public sealed partial class TypeChecker {
     /// </para>
     /// </remarks>
     private string? MergeIdentityMismatch(IReadOnlyList<Expression> branches, GrobType elemType) {
+        // Combining function shapes is not transitive (D-448 Decision 7): two concrete arms
+        // can each combine with an inferred arm between them and still conflict, so every
+        // arm is folded into one shape rather than checked pair by pair.
+        if (elemType == GrobType.Function) {
+            return FunctionShapesCombine(branches) ? null : "function signatures do not match";
+        }
         for (int i = 0; i < branches.Count - 1; i++) {
             if (BranchPairIdentityMismatch(branches[i], branches[i + 1], elemType) is string mismatch) {
                 return mismatch;
@@ -416,8 +422,6 @@ public sealed partial class TypeChecker {
                 "map value types do not match",
             GrobType.Array when !ArrayElementAssignable(ArrayDescriptorOf(left), ArrayDescriptorOf(right)) =>
                 "array element types do not match",
-            GrobType.Function when !FunctionDescriptorsAgree(left, right) =>
-                "function signatures do not match",
             GrobType.Struct when !StructIdentitiesAgree(left, right) =>
                 "named types do not match",
             // PR #189 follow-up review: the anonymous twin of the arm above. An
@@ -431,14 +435,19 @@ public sealed partial class TypeChecker {
         };
 
     /// <summary>
-    /// True when both operands' function descriptors resolve to the same signature, or when
-    /// either side has no descriptor to compare — the permissive-on-missing shape
+    /// True when every branch's tracked function shape combines into one (D-448 Decision 7:
+    /// an inferred lambda's Unknown positions take another branch's types). A branch with no
+    /// tracked shape has nothing to compare and is skipped — the permissive-on-missing shape
     /// <see cref="ArrayElementAssignable"/> and <see cref="MapValueAssignable"/> already use.
     /// </summary>
-    private bool FunctionDescriptorsAgree(Expression left, Expression right) {
-        FunctionTypeDescriptor? leftDescriptor = ExpressionDescriptor(left);
-        FunctionTypeDescriptor? rightDescriptor = ExpressionDescriptor(right);
-        return leftDescriptor is null || rightDescriptor is null || leftDescriptor.Equals(rightDescriptor);
+    private bool FunctionShapesCombine(IReadOnlyList<Expression> branches) {
+        FunctionTypeDescriptor? combined = null;
+        foreach (Expression branch in branches) {
+            if (ExpressionDescriptor(branch) is not { } descriptor) continue;
+            combined = combined is null ? descriptor : FunctionTypeDescriptor.Merge(combined, descriptor);
+            if (combined is null) return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -3404,8 +3413,8 @@ public sealed partial class TypeChecker {
         _controlFrameFloors.Push(_controlFrames.Count);
 
         // Infer the body type and store it for callers (e.g. ValidateArrayMethodCall).
-        var returnDescriptors = new List<FunctionTypeDescriptor?>();
-        _lambdaReturnDescriptors.Push(returnDescriptors);
+        var returns = new List<LambdaReturn>();
+        _lambdaReturns.Push(returns);
         GrobType bodyType = node.Body switch {
             LambdaExpressionBody exprBody => VisitStatementPositionExpression(exprBody.Expression),
             LambdaBlockBody blockBody => VisitLambdaBlock(blockBody),
@@ -3419,9 +3428,10 @@ public sealed partial class TypeChecker {
         // Build and store the structural descriptor for this lambda (D-326); arity is exact.
         // Read while the parameters are still in scope, so a returned lambda or function
         // value resolves its own shape.
-        _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, bodyType, [], LambdaResultDescriptor(node.Body, returnDescriptors));
+        (GrobType resultType, FunctionTypeDescriptor? resultDescriptor) = LambdaResult(node.Body, bodyType, returns);
+        _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, resultType, [], resultDescriptor);
 
-        _lambdaReturnDescriptors.Pop();
+        _lambdaReturns.Pop();
         _controlFrameFloors.Pop();
         _functionReturnTypes.Pop();
         _scopes.Pop();
@@ -3433,22 +3443,70 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// The function-type descriptor of the value a lambda returns, when that value is
-    /// itself a function: its expression body's, or for a block body the one shape that
-    /// every <c>return</c> in it (<paramref name="returned"/>) and its final expression
-    /// share. <see langword="null"/> when any result is not a function or two results
-    /// differ, so a lambda with an early <c>return</c> of another shape matches no
-    /// declared nested return shape.
+    /// The result type and, when the result is a function, the function shape a lambda
+    /// returns: its expression body's, or for a block body the combination of every
+    /// <c>return</c> in it (<paramref name="returned"/>) and its final value (D-448
+    /// Decision 7). A block that can end without a value contributes <c>nil</c>.
     /// </summary>
-    private FunctionTypeDescriptor? LambdaResultDescriptor(LambdaBody body, List<FunctionTypeDescriptor?> returned) {
+    private (GrobType Type, FunctionTypeDescriptor? Descriptor) LambdaResult(
+            LambdaBody body, GrobType bodyType, List<LambdaReturn> returned) {
         if (body is LambdaExpressionBody exprBody) {
-            return ExpressionDescriptor(exprBody.Expression);
+            return (bodyType, ExpressionDescriptor(exprBody.Expression));
         }
-        var results = new List<FunctionTypeDescriptor?>(returned);
-        if (body is LambdaBlockBody { Block.Statements: [.., ExpressionStmt last] }) {
-            results.Add(ExpressionDescriptor(last.Expression));
+        var results = new List<LambdaReturn>(returned);
+        switch (body) {
+            case LambdaBlockBody { Block.Statements: [.., ExpressionStmt last] }:
+                results.Add(new LambdaReturn(bodyType, ExpressionDescriptor(last.Expression)));
+                break;
+            case LambdaBlockBody { Block.Statements: [.., AstNode last] } when AlwaysLeaves(last):
+                break;
+            default:
+                results.Add(new LambdaReturn(GrobType.Nil, null));
+                break;
         }
-        return results.Count > 0 && results[0] is { } first && results.TrueForAll(first.Equals) ? first : null;
+        return CombineFunctionResults(results) ?? (bodyType, null);
+    }
+
+    /// <summary>
+    /// Whether control cannot run past <paramref name="statement"/>: a <c>return</c> or
+    /// <c>throw</c>, a block whose last statement cannot, an <c>if</c> with an <c>else</c>
+    /// where neither branch can, or a <c>try</c> whose body and every <c>catch</c> cannot
+    /// (a <c>finally</c> cannot return, E2207, so it never decides). Any other statement may
+    /// fall through, so a block lambda ending in one can end without a value.
+    /// </summary>
+    private static bool AlwaysLeaves(AstNode statement) => statement switch {
+        ReturnStmt or ThrowStmt => true,
+        BlockStmt { Statements: [.., Statement last] } => AlwaysLeaves(last),
+        IfStmt { Else: { } elseBranch } ifStmt => AlwaysLeaves(ifStmt.Then) && AlwaysLeaves(elseBranch),
+        TryStmt tryStmt => AlwaysLeaves(tryStmt.Body) && tryStmt.Catches.All(c => AlwaysLeaves(c.Body)),
+        _ => false,
+    };
+
+    /// <summary>
+    /// Combines a block lambda's results when each is a function value of tracked shape or
+    /// <c>nil</c> and at least one is a function: the shapes merge
+    /// (<see cref="FunctionTypeDescriptor.Merge"/>), and a <c>nil</c> or nullable result
+    /// makes the result a nullable function. <see langword="null"/> when any result is
+    /// another kind, an untracked function or a shape that conflicts, so the lambda carries
+    /// no nested shape and matches no declared one.
+    /// </summary>
+    private static (GrobType Type, FunctionTypeDescriptor? Descriptor)? CombineFunctionResults(List<LambdaReturn> results) {
+        FunctionTypeDescriptor? combined = null;
+        bool nullable = false;
+        foreach (LambdaReturn result in results) {
+            if (result.Kind == GrobType.Nil) {
+                nullable = true;
+                continue;
+            }
+            if (result.Kind is not (GrobType.Function or GrobType.NullableFunction) || result.Descriptor is null) {
+                return null;
+            }
+            nullable |= result.Kind == GrobType.NullableFunction;
+            combined = combined is null ? result.Descriptor : FunctionTypeDescriptor.Merge(combined, result.Descriptor);
+            if (combined is null) return null;
+        }
+        if (combined is null) return null;
+        return (nullable ? GrobType.NullableFunction : GrobType.Function, combined);
     }
 
     /// <summary>

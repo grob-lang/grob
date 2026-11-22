@@ -103,6 +103,69 @@ public sealed class FunctionTypeDescriptor {
     /// </summary>
     public FunctionTypeDescriptor? ParameterDescriptorAt(int index) => DescriptorAt(ParameterDescriptors, index);
 
+    /// <summary>
+    /// Combines two function shapes that one value may take (D-448 Decision 7): the return
+    /// paths of a lambda, or the arms of a ternary, a switch expression or <c>??</c>. An
+    /// <see cref="GrobType.Unknown"/> parameter, as an inferred lambda carries, takes the
+    /// other shape's type and nested shape, which only adds checks on the arguments. An
+    /// Unknown return stays Unknown: the inferred lambda's body is not shown to produce the
+    /// other shape's type, so no typed opcode may be chosen from it. Two concrete positions
+    /// must be equal, and two function-typed positions must both carry a nested shape that
+    /// combines in turn. Returns <see langword="null"/> when the arities differ or any
+    /// position conflicts.
+    /// </summary>
+    public static FunctionTypeDescriptor? Merge(FunctionTypeDescriptor left, FunctionTypeDescriptor right) {
+        int count = left.ParameterTypes.Count;
+        if (count != right.ParameterTypes.Count) return null;
+
+        var parameterTypes = new GrobType[count];
+        var parameterDescriptors = new FunctionTypeDescriptor?[count];
+        for (int i = 0; i < count; i++) {
+            if (!TryMergePosition(
+                    left.ParameterTypes[i], left.ParameterDescriptorAt(i),
+                    right.ParameterTypes[i], right.ParameterDescriptorAt(i),
+                    unknownTakesOther: true,
+                    out parameterTypes[i], out parameterDescriptors[i])) {
+                return null;
+            }
+        }
+        return TryMergePosition(
+                left.ReturnType, left.ReturnDescriptor, right.ReturnType, right.ReturnDescriptor,
+                unknownTakesOther: false,
+                out GrobType returnType, out FunctionTypeDescriptor? returnDescriptor)
+            ? new FunctionTypeDescriptor(parameterTypes, returnType, parameterDescriptors, returnDescriptor)
+            : null;
+    }
+
+    /// <summary>
+    /// A position where at least one side is <see cref="GrobType.Unknown"/>: a parameter
+    /// takes the other side's type and nested shape; a return stays Unknown.
+    /// </summary>
+    private static (GrobType Type, FunctionTypeDescriptor? Shape) MergeUnknownPosition(
+            GrobType leftType, FunctionTypeDescriptor? leftShape,
+            GrobType rightType, FunctionTypeDescriptor? rightShape,
+            bool unknownTakesOther) {
+        if (!unknownTakesOther) return (GrobType.Unknown, null);
+        return leftType == GrobType.Unknown ? (rightType, rightShape) : (leftType, leftShape);
+    }
+
+    private static bool TryMergePosition(
+            GrobType leftType, FunctionTypeDescriptor? leftShape,
+            GrobType rightType, FunctionTypeDescriptor? rightShape,
+            bool unknownTakesOther,
+            out GrobType type, out FunctionTypeDescriptor? shape) {
+        if (leftType == GrobType.Unknown || rightType == GrobType.Unknown) {
+            (type, shape) = MergeUnknownPosition(leftType, leftShape, rightType, rightShape, unknownTakesOther);
+            return true;
+        }
+        type = leftType;
+        shape = null;
+        if (leftType != rightType) return false;
+        if (leftShape is null || rightShape is null) return leftShape is null && rightShape is null;
+        shape = Merge(leftShape, rightShape);
+        return shape is not null;
+    }
+
     private static FunctionTypeDescriptor? DescriptorAt(IReadOnlyList<FunctionTypeDescriptor?> list, int index) =>
         index < list.Count ? list[index] : null;
 

@@ -1224,6 +1224,295 @@ public sealed class TypeCheckerFunctionTypeTests {
         Assert.Equal(14, d.Range.Start.Column);
     }
 
+    // -----------------------------------------------------------------------
+    // Combining function shapes (D-448 Decision 7)
+    //
+    // Where one value may come from several places — a lambda's return paths,
+    // the arms of a ternary, a switch expression or '??' — compatible shapes
+    // combine: an inferred lambda's Unknown positions take the concrete type of
+    // another path, and a nil path makes the result a nullable function.
+    // Conflicting concrete shapes still do not combine.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void LambdaBinding_TrackedReturnAndInferredTail_CombineIntoDeclaredShape() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            flag := true
+            fn outer(f: fn(int): int): void {
+                t: fn(): fn(int): int := () => {
+                    if (flag) {
+                        return f
+                    }
+                    (x) => 1
+                }
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void Reassignment_TrackedReturnAndInferredTail_CombineIntoDeclaredShape() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn install(flag: bool, f: fn(int): int, target: fn(): fn(int): int): void {
+                target = () => {
+                    if (flag) {
+                        return f
+                    }
+                    (x) => 1
+                }
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void InferredLambdaBinding_CombinedReturnShape_ChecksCallsThroughIt() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            flag := true
+            fn outer(f: fn(int): int): void {
+                t := () => {
+                    if (flag) {
+                        return f
+                    }
+                    (x) => 1
+                }
+                print(t()("s"))
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+        Assert.Equal(9, d.Range.Start.Line);
+        Assert.Equal(15, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void LambdaBinding_NilEarlyReturn_MatchesNullableFunctionResult() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            flag := true
+            fn outer(f: fn(int): int): void {
+                t: fn(): (fn(int): int)? := () => {
+                    if (flag) {
+                        return nil
+                    }
+                    f
+                }
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void LambdaBinding_NilEarlyReturn_DoesNotMatchNonNullableFunctionResult() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            flag := true
+            fn outer(f: fn(int): int): void {
+                t: fn(): fn(int): int := () => {
+                    if (flag) {
+                        return nil
+                    }
+                    f
+                }
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(30, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void LambdaBinding_ReturnsOnlyInsideIf_DoesNotMatchNonNullableFunctionResult() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            flag := true
+            fn outer(f: fn(int): int): void {
+                t: fn(): fn(int): int := () => {
+                    if (flag) {
+                        return f
+                    }
+                }
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(30, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Ternary_InferredAndTrackedArms_CombineShapes() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn pick(flag: bool, f: fn(int): int): void {
+                g := flag ? (x) => 1 : f
+                print(g("s"))
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(13, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Ternary_InferredAndTrackedArms_BindToDeclaredShape() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn pick(flag: bool, f: fn(int): int): void {
+                h: fn(int): int := flag ? f : (x) => 1
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    /// <summary>
+    /// An arm whose shape is not tracked has nothing to combine with, so the arms are not
+    /// held to agree (D-404's permissive-on-missing rule).
+    /// </summary>
+    [Theory]
+    [InlineData("flag ? f : bx.op")]
+    [InlineData("flag ? bx.op : f")]
+    public void Ternary_UntrackedArm_IsAccepted(string ternary) {
+        (_, DiagnosticBag bag) = TypeCheckSource($$"""
+            fn pick(flag: bool, f: fn(int): int): void {
+                bx := #{ op: (x) => "s" }
+                g := {{ternary}}
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void Ternary_ConflictingConcreteArms_IsE0002() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn pick(flag: bool, f: fn(int): int): void {
+                g := flag ? f : (x) => "s"
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(10, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void SwitchExpression_InferredAndTrackedArms_CombineShapes() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn pick(n: int, f: fn(int): int): void {
+                g := n switch { 1 => (x) => 1, _ => f }
+                print(g("s"))
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(13, d.Range.Start.Column);
+    }
+
+    /// <summary>
+    /// Combining is not transitive: each neighbouring pair of these arms combines through
+    /// the inferred middle arm, but the first and last conflict, so every arm is combined
+    /// into one shape rather than checked pair by pair.
+    /// </summary>
+    [Fact]
+    public void SwitchExpression_ArmsCombinePairwiseButNotOverall_IsE0002() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn pick(n: int, f: fn(int): int, s: fn(string): int): void {
+                g := n switch { 1 => f, 2 => (x) => 0, _ => s }
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", d.Code);
+        Assert.Equal("Switch arms must produce the same type: function signatures do not match.", d.Message);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(10, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void LambdaBinding_IfElseReturnsOnBothPaths_MatchesNonNullableFunctionResult() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            flag := true
+            t: fn(): fn(): int := () => {
+                if (flag) {
+                    return () => 1
+                } else {
+                    return () => 2
+                }
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void LambdaBinding_IfBranchFallsThrough_DoesNotMatchNonNullableFunctionResult() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            flag := true
+            t: fn(): fn(): int := () => {
+                if (flag) {
+                    print("no value")
+                } else {
+                    return () => 2
+                }
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(23, d.Range.Start.Column);
+    }
+
+    [Theory]
+    [InlineData("try { return () => 1 } catch (e: IoError) { return () => 2 }")]
+    [InlineData("try { return () => 1 } finally { print(2) }")]
+    public void LambdaBinding_TryThatAlwaysReturns_MatchesNonNullableFunctionResult(string tryStmt) {
+        (_, DiagnosticBag bag) = TypeCheckSource($$"""
+            t: fn(): fn(): int := () => {
+                {{tryStmt}}
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Theory]
+    [InlineData("try { return () => 1 } catch (e: IoError) { print(2) }")]
+    [InlineData("try { print(1) } catch (e: IoError) { return () => 2 }")]
+    public void LambdaBinding_TryThatCanFallThrough_DoesNotMatchNonNullableFunctionResult(string tryStmt) {
+        (_, DiagnosticBag bag) = TypeCheckSource($$"""
+            t: fn(): fn(): int := () => {
+                {{tryStmt}}
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(1, d.Range.Start.Line);
+        Assert.Equal(23, d.Range.Start.Column);
+    }
+
+    /// <summary>
+    /// The inferred arm's Unknown return is not shown to be the tracked arm's
+    /// <c>string</c>, so a call through the combined value is not typed <c>string</c> and no
+    /// string opcode is chosen for a value that may be an <c>int</c>.
+    /// </summary>
+    [Fact]
+    public void Ternary_InferredArmWithUnknownReturn_LeavesCallResultUnknown() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            fn pick(flag: bool, f: fn(int): string): void {
+                g := flag ? f : (x) => x
+                print(g(1))
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+        CallExpr call = CollectCalls(unit).Single(c => c.Callee is IdentifierExpr { Name: "g" });
+        Assert.Equal(GrobType.Unknown, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void NilCoalesce_InferredFallback_CombinesWithTrackedShape() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn pick(f: (fn(int): int)?): void {
+                h: fn(int): int := f ?? ((x) => 1)
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
     private static void AssertNotCallable(Diagnostic d, string subject, int line, int column) {
         Assert.Equal("E0017", d.Code);
         Assert.Equal($"{subject}, which is not a function, so it cannot be called.", d.Message);

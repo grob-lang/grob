@@ -127,4 +127,42 @@ public sealed class Sprint5IncrementFunctionTypeTests {
 
         Assert.Equal($"42{NL}default made{NL}21{NL}", stdout);
     }
+
+    [Fact]
+    public void CombinedFunctionShapes_LambdaReturnsAndSwitchArms_Run() {
+        // D-448 Decision 7: shapes that combine (an inferred lambda with a tracked function,
+        // a nil path with a function) type-check and the program runs every path.
+        string stdout = Run("""
+            fn choose(flag: bool, f: fn(int): int): fn(int): int {
+                t: fn(): fn(int): int := () => {
+                    if (flag) {
+                        return f
+                    }
+                    (x) => x + 100
+                }
+                return t()
+            }
+            fn maybe(flag: bool, f: fn(int): int): (fn(int): int)? {
+                t: fn(): (fn(int): int)? := () => {
+                    if (flag) {
+                        return nil
+                    }
+                    f
+                }
+                return t()
+            }
+            triple := (a: int) => a * 3
+            print(choose(true, triple)(2))
+            print(choose(false, triple)(2))
+            print(maybe(true, triple) == nil)
+            n := maybe(false, triple)
+            if (n != nil) {
+                print(n(5))
+            }
+            k := 2 switch { 1 => (x) => x - 1, _ => triple }
+            print(k(4))
+            """);
+
+        Assert.Equal($"6{NL}102{NL}true{NL}15{NL}12{NL}", stdout);
+    }
 }

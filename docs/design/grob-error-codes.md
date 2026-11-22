@@ -1422,7 +1422,7 @@ it is the live total in the summary index above and is asserted equal to
 D-316). The dated lines below are the historical record of how the count
 changed; this line is the single source for the present total.
 
-_Updated November 2026 — D-448 added one code: E0017 (called value is not a function), the next free entry in the E00xx sub-block of the Type category, bringing the total from 121 to 122. A call through a function value now reaches the VM only when the callee is a function, so a callee of known non-function type needs a compile-time rejection. No existing code fits: E0003 counts arguments against a function and E1002 is a missing member, not a present one of the wrong type._
+_Updated November 2026 — D-448 added one code: E0017 (called value is not a function), the next free entry in the E00xx sub-block of the Type category, bringing the total from 121 to 122. A callee of known non-function type, such as an `int` parameter, compiled and then faulted in the VM; it is now rejected at compile time. A callee of unknown type, such as an untyped lambda parameter, is still not checked. No existing code fits: E0003 counts arguments against a function and E1002 is a missing member, not a present one of the wrong type._
 
 _Updated November 2026 — D-433. E4101's source note no longer calls validation decorators a_
 _scope-cut candidate, and its description drops the clause conditioning runtime validation on_
