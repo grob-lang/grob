@@ -565,7 +565,9 @@ public sealed partial class TypeChecker {
     /// callee of known non-function type cannot be called (E0017, D-448) and would
     /// otherwise fault in the VM. A callee already in error makes the call
     /// <see cref="GrobType.Error"/>, so nothing that uses its result reports the same root
-    /// cause again. A function value names no parameters (D-326), so a named argument is
+    /// cause again. A callee of nullable function type may be nil, so a call through it is
+    /// E0101 unless it is a <c>?.</c> member access, whose result is then nullable too
+    /// (D-449). A function value names no parameters (D-326), so a named argument is
     /// refused (D-447 Decision 2). A callee
     /// whose function type the checker tracks (D-362), including a struct field declared
     /// with one (D-448), has its arguments checked against that type and resolves its
@@ -582,19 +584,46 @@ public sealed partial class TypeChecker {
                 $"{NotCallableSubject(node.Callee)} has type '{TypeName(calleeType)}', which is not a function, so it cannot be called.",
                 node.Callee.Range);
         }
-        bool namesRefused = RejectNamedFunctionValueArgs(node);
-        if (ExpressionDescriptor(node.Callee) is not FunctionTypeDescriptor calleeDescriptor) {
-            return GrobType.Unknown;
+        bool mayBeNil = calleeType == GrobType.NullableFunction;
+        bool optionalCall = node.Callee is MemberAccessExpr { IsOptional: true };
+        if (mayBeNil && !optionalCall) {
+            EmitError(ErrorCatalog.E0101, MayBeNilMessage(node.Callee), node.Callee.Range);
         }
-        if (!namesRefused) {
+        bool namesRefused = RejectNamedFunctionValueArgs(node);
+        FunctionTypeDescriptor? calleeDescriptor = ExpressionDescriptor(node.Callee);
+        if (calleeDescriptor is not null && !namesRefused) {
             CheckFunctionValueArguments(node, calleeDescriptor, argTypes);
+        }
+        if (mayBeNil && !optionalCall) {
+            return GrobType.Error;
+        }
+        if (calleeDescriptor is null) {
+            return GrobType.Unknown;
         }
         if (calleeDescriptor.ReturnDescriptor is { } returnDescriptor) {
             _callResultDescriptors[node] = returnDescriptor;
         }
-        node.ResolvedReturnType = calleeDescriptor.ReturnType;
-        return calleeDescriptor.ReturnType;
+        // '?.' gives nil when the field holds nil, so the call's result may be nil too.
+        GrobType returnType = mayBeNil
+            ? GrobTypeHelpers.ToNullable(calleeDescriptor.ReturnType)
+            : calleeDescriptor.ReturnType;
+        node.ResolvedReturnType = returnType;
+        return returnType;
     }
+
+    /// <summary>
+    /// The E0101 message for a call through a value of nullable function type (D-449),
+    /// naming the remedy that fits the callee: a binding or parameter can be narrowed by a
+    /// nil check, a struct field can be called with <c>?.</c> and any value can be
+    /// unwrapped with <c>??</c>.
+    /// </summary>
+    private static string MayBeNilMessage(Expression callee) => callee switch {
+        IdentifierExpr id =>
+            $"'{id.Name}' may be nil, so it cannot be called. Check it with 'if ({id.Name} != nil)' or unwrap it with '??' first.",
+        MemberAccessExpr member =>
+            $"Field '{member.Member}' may be nil, so it cannot be called. Call it with '?.' or unwrap it with '??' first.",
+        _ => "The called value may be nil, so it cannot be called. Unwrap it with '??' first.",
+    };
 
     /// <summary>
     /// The name a function-value callee goes by in a diagnostic: a binding's or

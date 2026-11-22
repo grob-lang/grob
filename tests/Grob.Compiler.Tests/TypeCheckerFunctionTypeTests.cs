@@ -1116,13 +1116,160 @@ public sealed class TypeCheckerFunctionTypeTests {
     }
 
     [Fact]
-    public void CallThroughNullableFunctionParameter_IsNotE0017() {
+    public void CallThroughNullableFunctionParameter_Narrowed_IsNotE0017() {
         (_, DiagnosticBag bag) = TypeCheckSource("""
             fn run(f: (fn(): int)?): void {
-                print(f())
+                if (f != nil) {
+                    print(f())
+                }
             }
             """);
         Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    // -----------------------------------------------------------------------
+    // Calling a nullable function value (E0101, D-449)
+    //
+    // A call on nil would otherwise reach the VM, which faults with an
+    // internal error. A nil check, '?.' or '??' makes the call safe.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CallThroughNullableFunctionBinding_IsE0101() {
+        (_, DiagnosticBag bag) = TypeCheckSource("f: (fn(): int)? := nil\ny := f()\n");
+        AssertMayBeNil(Assert.Single(bag.Errors),
+            "'f' may be nil, so it cannot be called. Check it with 'if (f != nil)' or unwrap it with '??' first.",
+            line: 2, column: 6);
+    }
+
+    [Fact]
+    public void CallThroughNullableFunctionParameter_IsE0101() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn run(f: (fn(int): int)?): int {
+                return f(1)
+            }
+            """);
+        AssertMayBeNil(Assert.Single(bag.Errors),
+            "'f' may be nil, so it cannot be called. Check it with 'if (f != nil)' or unwrap it with '??' first.",
+            line: 2, column: 12);
+    }
+
+    [Fact]
+    public void CallThroughNullableFunctionField_IsE0101() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: (fn(): int)?
+            }
+            bx := Box { op: nil }
+            y := bx.op()
+            """);
+        AssertMayBeNil(Assert.Single(bag.Errors),
+            "Field 'op' may be nil, so it cannot be called. Call it with '?.' or unwrap it with '??' first.",
+            line: 5, column: 6);
+    }
+
+    [Fact]
+    public void CallThroughNullableFunctionCallResult_IsE0101() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn mk(): (fn(): int)? {
+                return nil
+            }
+            y := mk()()
+            """);
+        AssertMayBeNil(Assert.Single(bag.Errors),
+            "The called value may be nil, so it cannot be called. Unwrap it with '??' first.",
+            line: 4, column: 6);
+    }
+
+    [Fact]
+    public void CallThroughNullableFunctionBinding_ResultUsedAsOperand_IsNotReportedAgain() {
+        (_, DiagnosticBag bag) = TypeCheckSource("f: (fn(): int)? := nil\ny := f() + 1\n");
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0101", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(6, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughNullableFunctionBinding_ArgumentsStillChecked() {
+        (_, DiagnosticBag bag) = TypeCheckSource("f: (fn(int): int)? := nil\ny := f(nope)\n");
+        List<Diagnostic> errors = [.. bag.Errors];
+        Assert.Equal(2, errors.Count);
+        Assert.Equal("E1001", errors[0].Code);
+        Assert.Equal(2, errors[0].Range.Start.Line);
+        Assert.Equal(8, errors[0].Range.Start.Column);
+        Assert.Equal("E0101", errors[1].Code);
+        Assert.Equal(2, errors[1].Range.Start.Line);
+        Assert.Equal(6, errors[1].Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughNullableFunctionBinding_UnwrappedWithNilCoalesce_IsAccepted() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            f: (fn(): int)? := nil
+            g: fn(): int := () => 7
+            y := (f ?? g)()
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+        CallExpr call = CollectCalls(unit).Single(c => c.Callee is GroupingExpr);
+        Assert.Equal(GrobType.Int, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void CallThroughNullableFunctionField_OptionalChain_IsAcceptedAndNullable() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: (fn(): int)?
+            }
+            bx := Box { op: nil }
+            y := bx?.op()
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+        CallExpr call = CollectCalls(unit).Single(c => c.Callee is MemberAccessExpr { Member: "op" });
+        Assert.Equal(GrobType.NullableInt, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void CallThroughNullableFunctionField_OptionalChainIntoInt_IsE0104() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: (fn(): int)?
+            }
+            bx := Box { op: nil }
+            x: int := bx?.op()
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0104", d.Code);
+        Assert.Equal(5, d.Range.Start.Line);
+        Assert.Equal(11, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void CallThroughNullableFunctionField_OptionalChainOnNullableReceiver_IsNullable() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: (fn(): int)?
+            }
+            bx: Box? := nil
+            y := bx?.op()
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+        CallExpr call = CollectCalls(unit).Single(c => c.Callee is MemberAccessExpr { Member: "op" });
+        Assert.Equal(GrobType.NullableInt, call.ResolvedReturnType);
+    }
+
+    [Fact]
+    public void CallThroughFunctionField_OptionalChainOnNonNullableField_KeepsReturnType() {
+        (CompilationUnit unit, DiagnosticBag bag) = TypeCheckSource("""
+            type Box {
+                op: fn(): int
+            }
+            bx := Box { op: () => 1 }
+            y := bx?.op()
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+        CallExpr call = CollectCalls(unit).Single(c => c.Callee is MemberAccessExpr { Member: "op" });
+        Assert.Equal(GrobType.Int, call.ResolvedReturnType);
     }
 
     // -----------------------------------------------------------------------
@@ -1641,6 +1788,13 @@ public sealed class TypeCheckerFunctionTypeTests {
     private static void AssertNotCallable(Diagnostic d, string subject, int line, int column) {
         Assert.Equal("E0017", d.Code);
         Assert.Equal($"{subject}, which is not a function, so it cannot be called.", d.Message);
+        Assert.Equal(line, d.Range.Start.Line);
+        Assert.Equal(column, d.Range.Start.Column);
+    }
+
+    private static void AssertMayBeNil(Diagnostic d, string message, int line, int column) {
+        Assert.Equal("E0101", d.Code);
+        Assert.Equal(message, d.Message);
         Assert.Equal(line, d.Range.Start.Line);
         Assert.Equal(column, d.Range.Start.Column);
     }
