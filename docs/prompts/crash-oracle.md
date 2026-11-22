@@ -319,7 +319,8 @@ Required:
 - Each finding class in §1.1 is caught: an internal error, a host exception in the
   compile phase and in the VM, a diagnostic outside the source, a missing `ResolvedType`
   and a run past the budget, each with the signature §1.4 defines for it; two programs
-  with the same root cause share a signature, and two with different ones do not.
+  with the same root cause share a signature. Two root causes may share one too (§1.4), so
+  no test requires different root causes to have different signatures.
 - Each allowed outcome passes: diagnostics, a clean exit, `exit(n)` and a Grob runtime
   error.
 - The fake capabilities: a seed that writes, deletes and runs a process touches nothing on
