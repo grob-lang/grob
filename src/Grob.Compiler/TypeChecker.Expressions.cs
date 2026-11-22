@@ -1048,7 +1048,10 @@ public sealed partial class TypeChecker {
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
         switch (memberAccess.Member) {
             case "filter": {
-                    RefuseNamedArgumentsTo(node, memberAccess.Member);
+                    // A refused name bound to nothing, so the predicate check below would
+                    // judge an argument that bound to no parameter. Independent errors in
+                    // the lambda itself were reported when the argument was visited.
+                    if (RefuseNamedArgumentsTo(node, memberAccess.Member)) return GrobType.Array;
                     // First argument must be a predicate returning bool.
                     if (node.Arguments.Count >= 1 &&
                         node.Arguments[0].Value is LambdaExpr lambdaPred &&

@@ -74,6 +74,16 @@ public sealed class TypeCheckerNoSignatureNamedArgumentTests {
         AssertRefusals(CheckCall("xs.filter(p: x => true)"), Refusal("filter"), 3, 11);
 
     [Fact]
+    public void ArrayFilter_NamedArgumentWithANonBoolPredicate_IsRefusedWithoutAPredicateError() =>
+        // The refused name bound to no parameter, so its lambda is not judged as the
+        // predicate; the positional form still is (E0004).
+        AssertRefusals(CheckCall("xs.filter(p: x => 1)"), Refusal("filter"), 3, 11);
+
+    [Fact]
+    public void ArrayFilter_PositionalNonBoolPredicate_StillReportsE0004() =>
+        Assert.Equal("E0004", Assert.Single(CheckCall("xs.filter(x => 1)").Errors).Code);
+
+    [Fact]
     public void ArraySelect_NamedArgument_IsRefused() =>
         AssertRefusals(CheckCall("xs.select(p: x => x)"), Refusal("select"), 3, 11);
 

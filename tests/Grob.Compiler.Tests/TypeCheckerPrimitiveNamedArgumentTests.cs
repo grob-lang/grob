@@ -170,6 +170,8 @@ public sealed class TypeCheckerPrimitiveNamedArgumentTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal("E1001", diag.Code);
+        Assert.Equal(2, diag.Range.Start.Line);
+        Assert.Equal(16, diag.Range.Start.Column);
     }
 
     // -----------------------------------------------------------------------
