@@ -99,6 +99,17 @@ public sealed record CallExpr(
     /// </summary>
     public IReadOnlyList<GrobValue?>? ResolvedNativeParameterDefaults { get; set; }
 
+    /// <summary>
+    /// Set by the type checker when this call is a direct call to a function declared in
+    /// the script: its callee is an identifier that names the <see cref="FnDecl"/> itself.
+    /// <see langword="null"/> for every other call, including a call through a parameter
+    /// of function type, whose identifier also carries the enclosing <see cref="FnDecl"/>
+    /// as its <see cref="IdentifierExpr.Declaration"/> (a parameter has no declaration node
+    /// of its own). The compiler reads this, not the callee's declaration, to decide
+    /// whether to bind the arguments against a declared parameter list.
+    /// </summary>
+    public FnDecl? ResolvedFunction { get; set; }
+
     /// <inheritdoc/>
     public override T Accept<T>(AstVisitor<T> visitor) => visitor.VisitCall(this);
 }

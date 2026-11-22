@@ -1331,8 +1331,9 @@ that; until it lands `input` does not read an argument's name.
 **Callables with no signature (D-447).** Array methods, map methods, `print`, `exit`
 and a call through a function value record no parameter names, so there is
 nothing for a name to bind to. Their arguments are positional. D-447 has a named
-argument on one refused with E0011; the *native named arguments* increment builds that
-refusal, and until it lands the checker does not read an argument's name on these calls.
+argument on one refused with E0011. A call through a function value refuses one already
+(D-448); for the other four the *native named arguments* increment builds the refusal,
+and until it lands the checker does not read an argument's name on those calls.
 
 **`formatAs.table`.** Its `columns:` argument is the one exception. The compiler
 resolves it, not a signature (D-345): it is always written by name and cannot be
@@ -2907,7 +2908,9 @@ without noise.
 
 ---
 
-_Document updated November 2026 — D-447: §12.2 names the callables that have no signature_
+_Document updated November 2026 — D-448: §12.2 says a call through a function value_
+_refuses a named argument already._
+_Previous: November 2026 — D-447: §12.2 names the callables that have no signature_
 _and so take no named argument._
 _Previous: November 2026 — D-446: §12.2 Calls and Named Arguments added. The_
 _convention D-113 set and D-318 gave codes to had no section here, though D-318 pointed_

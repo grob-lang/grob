@@ -40,6 +40,14 @@ public sealed class Symbol {
     public bool Provisional { get; init; }
 
     /// <summary>
+    /// <see langword="true"/> when this entry is a parameter of a declared function. Such a
+    /// symbol's <see cref="DeclarationNode"/> is the owning <see cref="FnDecl"/>, because a
+    /// parameter has no node of its own, so this flag is what tells a call through the
+    /// parameter apart from a call to the function itself.
+    /// </summary>
+    public bool IsParameter { get; init; }
+
+    /// <summary>
     /// When <see cref="Type"/> is <see cref="GrobType.Function"/> or
     /// <see cref="GrobType.NullableFunction"/>, carries the structural descriptor
     /// (parameter types and return type). <see langword="null"/> for all other types

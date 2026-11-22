@@ -149,6 +149,18 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // reads it as its result type.
     private GrobType _lastReturnType = GrobType.Unknown;
 
+    // One entry per lambda being checked, innermost on top: the kind and function-type
+    // descriptor of each value its 'return' statements yield (a bare 'return' is nil). A
+    // block lambda's result shape combines them with its final value (LambdaResult,
+    // D-448 Decision 7).
+    private readonly Stack<List<LambdaReturn>> _lambdaReturns = new();
+
+    /// <summary>
+    /// One value a block lambda can return: its kind and, for a function value whose shape
+    /// is tracked, that shape.
+    /// </summary>
+    private readonly record struct LambdaReturn(GrobType Kind, FunctionTypeDescriptor? Descriptor);
+
     // D-381: print/exit have no runtime representation outside the dedicated Print/Exit
     // opcodes Compiler.Statements.cs emits for the exact bare-statement-call shape. These
     // two one-shot context flags let VisitCall/VisitIdentifier (TypeChecker.Expressions.cs)
@@ -216,6 +228,13 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // above, so a chained call on the result (m.keys.first(), m.values.contains(x))
     // resolves its element type rather than degrading to Unknown.
     private readonly Dictionary<MemberAccessExpr, ArrayTypeDescriptor> _memberAccessArrayDescriptors =
+        new(ReferenceEqualityComparer.Instance);
+
+    // _memberAccessFunctionDescriptors is the function-type twin of the dictionary above:
+    // a read of a struct field declared with a function type (D-448), recorded by
+    // ResolveStructFieldAccess, so the field is compared by shape on assignment and a
+    // call through it checks its arguments and resolves its return type.
+    private readonly Dictionary<MemberAccessExpr, FunctionTypeDescriptor> _memberAccessFunctionDescriptors =
         new(ReferenceEqualityComparer.Instance);
 
     // -----------------------------------------------------------------------
@@ -573,23 +592,39 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         LambdaExpr lambda => _lambdaDescriptors.GetValueOrDefault(lambda),
         CallExpr call => _callResultDescriptors.GetValueOrDefault(call),
         IdentifierExpr id => LookupSymbol(id.Name)?.FunctionDescriptor,
+        MemberAccessExpr member => _memberAccessFunctionDescriptors.GetValueOrDefault(member),
         GroupingExpr grp => ExpressionDescriptor(grp.Inner),
         // D-403: mirrors ArrayDescriptorOf's/MapDescriptorOf's identical NilCoalesce arm
         // exactly — a '??'-unwrapped nullable function value (f ?? g) must keep its
         // function descriptor, so a direct call on the grouped result ((f ?? g)()) still
         // resolves the declared return type instead of falling back to Unknown.
         BinaryExpr { Operator: BinaryOperator.NilCoalesce } binary =>
-            ExpressionDescriptor(binary.Left) ?? ExpressionDescriptor(binary.Right),
+            CombinedDescriptor([binary.Left, binary.Right]),
         // D-404: the ternary/switch-expression twin of the NilCoalesce arm above — a
         // structural merge whose result is called directly, e.g. (cond ? f : g)(), must
-        // keep a function descriptor too. First-non-null in source order, mirroring the
-        // NilCoalesce arm's Left ?? Right convention; VisitTernary/VisitSwitchExpr already
-        // guard (MergeIdentityMismatch, D-404) that every branch agrees on the descriptor
-        // before this arm is ever consulted, so "first" is also "authoritative".
-        TernaryExpr t => ExpressionDescriptor(t.Then) ?? ExpressionDescriptor(t.Else),
-        SwitchExprNode sw => sw.Arms.Select(a => ExpressionDescriptor(a.Result)).FirstOrDefault(d => d is not null),
+        // keep a function descriptor too. VisitTernary/VisitSwitchExpr already guard
+        // (MergeIdentityMismatch, D-404) that the branches' descriptors combine before
+        // this arm is consulted; CombinedDescriptor returns that combination (D-448
+        // Decision 7), so an inferred lambda arm takes a tracked arm's concrete types.
+        TernaryExpr t => CombinedDescriptor([t.Then, t.Else]),
+        SwitchExprNode sw => CombinedDescriptor([.. sw.Arms.Select(a => a.Result)]),
         _ => null,
     };
+
+    /// <summary>
+    /// The function shape of a value that may come from any of <paramref name="branches"/>:
+    /// the combination of every branch's tracked shape (D-448 Decision 7), skipping a
+    /// branch with none, as the D-403/D-404 arms did. Where two shapes conflict the merge
+    /// check has already reported it, and the first shape stands.
+    /// </summary>
+    private FunctionTypeDescriptor? CombinedDescriptor(IReadOnlyList<Expression> branches) {
+        FunctionTypeDescriptor? combined = null;
+        foreach (Expression branch in branches) {
+            if (ExpressionDescriptor(branch) is not { } descriptor) continue;
+            combined = combined is null ? descriptor : FunctionTypeDescriptor.Merge(combined, descriptor) ?? combined;
+        }
+        return combined;
+    }
 
     /// <summary>
     /// Returns the element-type descriptor of an arbitrary array-typed expression (D-351) —
@@ -932,6 +967,11 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// permissive — this is what lets an inferred lambda (whose parameter and body types
     /// are <see cref="GrobType.Unknown"/> in v1) bind to a concrete <c>fn(int): int</c>
     /// annotation, while two fully-concrete descriptors are still compared invariantly.
+    /// An Unknown return that carries a <see cref="FunctionTypeDescriptor.ReturnBound"/>,
+    /// as a combined shape does where one branch returns a concrete type (D-448 Decision
+    /// 7), is compared through its bound on either side: a value's bound must fit the
+    /// target, and a value must fit a target's bound, as a binding inferred from a
+    /// combined shape holds a reassignment to it.
     /// </summary>
     private static bool DescriptorsAreAssignable(FunctionTypeDescriptor from, FunctionTypeDescriptor to) {
         if (from.ParameterTypes.Count != to.ParameterTypes.Count) return false;
@@ -944,8 +984,19 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             }
         }
 
-        return PositionAssignable(from.ReturnType, to.ReturnType, from.ReturnDescriptor, to.ReturnDescriptor);
+        (GrobType fromReturn, FunctionTypeDescriptor? fromShape) = KnownReturn(from);
+        (GrobType toReturn, FunctionTypeDescriptor? toShape) = KnownReturn(to);
+        return PositionAssignable(fromReturn, toReturn, fromShape, toShape);
     }
+
+    /// <summary>
+    /// A descriptor's return as far as it is known: the bound where the return is Unknown
+    /// and carries one, the return type and nested shape otherwise.
+    /// </summary>
+    private static (GrobType Type, FunctionTypeDescriptor? Shape) KnownReturn(FunctionTypeDescriptor descriptor) =>
+        descriptor.ReturnBound is { } bound
+            ? (bound, descriptor.ReturnBoundDescriptor)
+            : (descriptor.ReturnType, descriptor.ReturnDescriptor);
 
     private static FunctionTypeDescriptor? DescriptorAt(IReadOnlyList<FunctionTypeDescriptor?> list, int index) =>
         index < list.Count ? list[index] : null;
@@ -1128,13 +1179,14 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         MapTypeDescriptor? MapDescriptor = null);
 
     private void RegisterSymbol(string name, GrobType type, SourceLocation declaredAt, AstNode declarationNode,
-                               bool provisional = false, SymbolTypeIdentity typeIdentity = default) {
+                               bool provisional = false, SymbolTypeIdentity typeIdentity = default, bool isParameter = false) {
         _scopes.Peek()[name] = new Symbol {
             Name = name,
             Type = type,
             DeclaredAt = declaredAt,
             DeclarationNode = declarationNode,
             Provisional = provisional,
+            IsParameter = isParameter,
             FunctionDescriptor = typeIdentity.FunctionDescriptor,
             NamedStructTypeName = typeIdentity.NamedStructTypeName,
             ArrayDescriptor = typeIdentity.ArrayDescriptor,
