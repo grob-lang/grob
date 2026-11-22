@@ -177,7 +177,13 @@ Propose, with the alternatives considered and why they lost:
 - **Determinism.** Every program is reproducible from a seed. A finding is reported with
   its seed, its source and a minimised reproducer.
 - **Minimisation.** A delta-debugging pass over lines, then over AST node spans, that keeps
-  the failure signature while shrinking the source.
+  the failure signature while shrinking the source. Keeping the signature does not keep
+  the root cause: a program holding R-58's construct and R-63's can shrink to either, since
+  they share a signature. So a finding keeps its original source and seed beside the
+  reproducer, and nothing is discarded because its reproducer matched. Propose how triage
+  detects that a reduction slipped from one root cause to another, for example by
+  minimising again with the matched construct removed, and say whether any part of that
+  can be automated.
 - **Signatures and known failures.** A finding raised as an exception has a signature of
   the phase, the exception type and the message with values removed, which refines the
   strategy's §2 deduplication (the normalised first stack frame); say whether the frame is
@@ -185,8 +191,10 @@ Propose, with the alternatives considered and why they lost:
   `exit(n)` out of range, a diagnostic with no code or a location outside the source, an
   identifier missing its `ResolvedType` or `Declaration`, and a run past its bound. For
   each, name the fields it uses, so that it can be deduplicated, minimised and matched to
-  a register row as an exception's signature is. A finding is preserved in
-  the strategy's `findings/` layout, named by its signature. A known-signature list keeps
+  a register row as an exception's signature is. Each failing program is
+  preserved as its own record, keyed by its seed and mutation and grouped under its
+  signature, and an existing record is never overwritten: the strategy's §10 names a
+  finding by signature alone, which would let one program's record replace another's. A known-signature list keeps
   the CI slice green while a row is open. **A signature does not identify a root cause**:
   R-58 and R-63 both stop with `GrobValue kind mismatch: expected Float, actual Int`. So
   an entry names its register row and the programs it covers, by seed and mutation, and
@@ -316,7 +324,10 @@ Required:
   error.
 - The fake capabilities: a seed that writes, deletes and runs a process touches nothing on
   the machine.
-- Each mutation operator's edit, and the minimiser keeping a signature while shrinking.
+- Each mutation operator's edit, and the minimiser keeping a signature while shrinking and
+  keeping the original source beside the reproducer.
+- Two programs with one signature leave two records, and a second run over the same
+  program leaves the first record unchanged.
 - The generator: a sample of generated programs type-checks.
 - The CI slice is deterministic: two runs produce the same programs and the same results.
 - The known-signature list: an entry without a register row fails the slice, and a
