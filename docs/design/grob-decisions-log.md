@@ -18233,9 +18233,10 @@ recorded here so the strategy need not be rewritten:
   there can it check the §3.1.1 invariant and supply fake capabilities. The gate decides
   whether this increment also builds the black-box mode.
 - **A CI slice from the start.** The strategy graduates a subset to CI once campaigns
-  stabilise. Here a fixed-seed slice joins `dotnet test` from the first change group,
-  adding no more than 30 seconds, with a known-signature list keyed to open register rows
-  so it stays green while a row is open.
+  stabilise. Here a fixed-seed slice joins `dotnet test` with the oracle itself,
+  over the seed corpus and then, once the mutator lands, its mutants, adding no more than 30 seconds. It stays
+  green while a row is open through a known-signature list whose entries name a register
+  row and the programs they cover, since one signature can belong to two root causes.
 
 **Decision 2 — the CLI reports an internal failure as E9001.** An internal error or a host
 exception from any phase, in every command that runs the pipeline, is reported as E9001

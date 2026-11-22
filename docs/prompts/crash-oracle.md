@@ -88,9 +88,11 @@ List every way a run can end today, from source text to exit code, and classify 
 **allowed** or a **finding**. Confirm or correct this starting list against the code:
 
 - Allowed: diagnostics, each with a code registered in `ErrorCatalog`, a line and a column
-  inside the source; a clean exit; `exit(n)`; a Grob runtime error reported through
-  `DiagnosticFormatter.WriteRuntime`.
-- Finding: a `GrobInternalException` from any phase; any other host exception from the
+  inside the source; a clean exit; `exit(n)` with `n` in `0..255`; a Grob runtime error
+  reported through `DiagnosticFormatter.WriteRuntime`.
+- Finding: an `exit(n)` with `n` outside `0..255`, a P1 under the strategy's §1, which
+  leaves open whether the runtime clamps or diagnoses it (record it, do not choose); a
+  `GrobInternalException` from any phase; any other host exception from the
   lexer, parser, checker, compiler or VM; a diagnostic with no code, or with a location
   outside the source; an identifier left without a `ResolvedType` or a `Declaration` after
   checking (§3.1.1, D-311); a run that does not finish within the budget §1.5 sets.
@@ -167,9 +169,12 @@ Propose, with the alternatives considered and why they lost:
 - **Signatures and known failures.** A finding's signature is the phase, the exception type
   and the message with values removed, which refines the strategy's §2 deduplication (the
   normalised first stack frame); say whether the frame is added. A finding is preserved in
-  the strategy's `findings/` layout, named by its signature. A known signature list maps each signature still
-  open to its register row, so the CI slice stays green while the row is open. An entry
-  names its row; a row that closes takes its entries with it.
+  the strategy's `findings/` layout, named by its signature. A known-signature list keeps
+  the CI slice green while a row is open. **A signature does not identify a root cause**:
+  R-58 and R-63 both stop with `GrobValue kind mismatch: expected Float, actual Int`. So
+  an entry names its register row and the programs it covers, by seed and mutation, and
+  the slice suppresses only those programs; a new program with a known signature is a
+  finding until it is triaged. A row that closes takes its entries with it.
 
 ### 1.5 Plan the budget
 
@@ -211,8 +216,9 @@ Seven change groups, each a green commit. Land them in this order.
    finding class is caught, using small hand-written sources and one known reproducer from
    R-58 and from R-60.
 2. *Session B — Opus, high.* **The CI slice.** A deterministic run over the seed corpus
-   unmutated, then a fixed-seed sample of mutants, inside §1.5's budget, as a test in the
-   oracle's test project. The known-signature list starts with the open rows the slice hits.
+   unmutated, inside §1.5's budget, as a test in the oracle's test project. The
+   known-signature list starts with the open rows the slice hits. Mutants join the slice
+   in group 4, once the mutator exists.
 3. *Session C — Sonnet, high.* **The CLI's E9001 report**, as §1.2 designs it, in every
    command that runs the pipeline. `RunCommand`'s D-039 citation is corrected and
    `WriteInternalError`'s coverage exclusion removed. Integration tests show a
@@ -220,7 +226,9 @@ Seven change groups, each a green commit. Land them in this order.
    stack trace and the exit code §1.2 chose, and that a Grob runtime error and `exit(n)`
    are unchanged.
 4. *Session C — Sonnet, high.* **The mutator**, with §1.6's operators and the minimiser.
-   Each operator has a test showing the edit it makes on a small source.
+   Each operator has a test showing the edit it makes on a small source. The CI slice
+   gains a fixed-seed sample of mutants, still inside §1.5's budget, and the
+   known-signature list gains entries for the open rows those mutants hit.
 5. *Session D — Opus, high.* **The generator.** A depth-bounded, type-directed generator of
    programs over the v1 surface: bindings, arithmetic, strings, arrays, maps, structs,
    anonymous structs, lambdas, nullables, `if`, `while`, `for...in`, `select`, the switch
@@ -230,7 +238,8 @@ Seven change groups, each a green commit. Land them in this order.
 6. *Session E — Opus, high.* **The first campaign.** The long mode run at §1.5's size over
    the mutator and the generator. Every distinct new signature is minimised and filed in
    the register, one row per root cause, each with its reproducer and the measured output.
-   Known rows are matched, not refiled.
+   Known rows are matched by minimised reproducer, not by signature alone, and are not
+   refiled.
 7. *Session E — Opus, high.* **Record.** `docs/dev/` gains a page on running the oracle by
    hand, reading a finding and adding a known signature. The landing entry.
 
@@ -287,7 +296,9 @@ Required:
 - Each mutation operator's edit, and the minimiser keeping a signature while shrinking.
 - The generator: a sample of generated programs type-checks.
 - The CI slice is deterministic: two runs produce the same programs and the same results.
-- The known-signature list: an entry without a register row fails the slice.
+- The known-signature list: an entry without a register row fails the slice, and a
+  program the list does not name is reported even when its signature matches an entry.
+- An `exit(n)` outside `0..255` is classified as a finding, and `exit(42)` as allowed.
 - The E9001 report: a host exception from the lexer, parser, checker, compiler and VM each
   reaches it in `grob run`, and at least one phase does in the REPL; a `GrobRuntimeException`
   and a `GrobExitException` do not.
