@@ -165,4 +165,32 @@ public sealed class Sprint5IncrementFunctionTypeTests {
 
         Assert.Equal($"6{NL}102{NL}true{NL}15{NL}12{NL}", stdout);
     }
+
+    [Fact]
+    public void NullableFunctionValues_CalledSafely_Run() {
+        // D-449: a call through a nullable function value compiles only once it is safe —
+        // narrowed by a nil check, unwrapped with '??' or called with '?.' — and each form
+        // runs, '?.' giving nil when the field is nil.
+        string stdout = Run("""
+            type Box {
+                op: (fn(): int)?
+            }
+            fn runIfSet(f: (fn(int): int)?): void {
+                if (f != nil) {
+                    print(f(4))
+                }
+            }
+            runIfSet(nil)
+            runIfSet((x) => x * 10)
+            missing: (fn(): int)? := nil
+            fallback: fn(): int := () => 7
+            print((missing ?? fallback)())
+            empty := Box { op: nil }
+            full := Box { op: () => 3 }
+            print(empty?.op() ?? -1)
+            print(full?.op() ?? -1)
+            """);
+
+        Assert.Equal($"40{NL}7{NL}-1{NL}3{NL}", stdout);
+    }
 }
