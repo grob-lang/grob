@@ -445,7 +445,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-446 | November 2026 | Type system — call binding; Compiler — argument emission; Standard library — signatures; Plugin SDK; Deferred Work Register | **Named arguments bind to natives**, refining D-113, D-318, D-358, D-426 Decision 4 and D-428 Decision 9 on six owner rulings. Verified at `9f7384d`: script functions bind D-113 in full and every native path refuses a named argument, so D-445's `fs` surface does not compile. **One convention**: D-113 applies unchanged to namespace functions, primitive methods, named-type methods and plugin functions; a required parameter stays positional only. **A defaulted parameter's name is contract** and is pinned to the reference by the drift check (R-55). Overloads resolve on positional arguments first. Natives inherit today's evaluation order, which no decision states: **OQ-028**. **Built by its own increment ahead of `fs`**, closing R-20, which is re-owned. `grob-language-fundamentals.md` gains §12.2, the section on calls it never had. No error code, opcode or grammar added. No source change. |
 | D-447 | November 2026 | Type system — call binding; Compiler — argument emission; Testing — probe corpus; Deferred Work Register | **Authorises the *native named arguments* increment**, refining D-446 and D-426 Decision 1; prompt at `docs/prompts/native-named-arguments.md`. Read at `a30cadf`, not run: array methods, map methods, `print`, `exit` and calls through a function value carry no signature and no code on those paths reads an argument's name, a set D-446 did not name. **A call with no signature refuses a named argument** with E0011, on PR #248's precedent, if the gate confirms it is accepted today; binding there waits on signatures (R-56). The `input` built-in has a signature, and the increment is to bind it with the other three paths. Named-type methods gain default fill. The probe masters change on D-428's first ground, line by line. The gate runs what the planning sessions read. No source change. |
 | D-448 | November 2026 | Compiler — type checker, argument emission; VM — calls; Deferred Work Register | **A call through a function-typed parameter calls the value**, not the enclosing function its symbol records; the gate's STOP S1, fixed on its own branch (Chris). The checker records a direct call's function on the call node and the compiler reads only that. **Rejected**: a declaration node for parameters. **A call through a function value refuses a named argument now**, with E0011, taking D-447 Decision 2's refusal ahead of the increment, and **checks its arguments against its function type**, E0003 and E0004, where the checker knows that type; the fix would otherwise have let a wrong call through a parameter compile. **Calling a value that is not a function is E0017**, a new code (Chris), where the call would otherwise fault in the VM. **A struct field declared with a function type keeps that type when read**, so it is compared by shape and a call through it is checked. **Compatible function shapes combine** (Chris): across a lambda's return paths and a ternary's, switch's or `??`'s arms, an inferred lambda's `Unknown` parameters take a concrete shape's types (an `Unknown` return stays `Unknown`) and a `nil` path makes the result a nullable function; conflicting concrete shapes still do not. **R-57 filed**: a declared function held in a binding, an anonymous struct's field and an array element are still unchecked, so `h(3, 100)` through `h := twice` prints `100`, and the VM does not compare a call's argument count with the callee's arity. **R-58 filed**: an `int` where a `float` is expected is not widened in a binding, a return, a struct field, a parameter default or an argument, so `x: float := 1` then `x / 2`, and `add(1, 2)`, stop with an internal error, on `main` too. **R-59 filed**: a call through a nullable function value is not checked for `nil` and reaches the VM (Chris: record it, fix it on its own branch). Count 121 -> 122. |
-| D-449 | November 2026 | Compiler — type checker; Deferred Work Register | **A call through a nullable function value is E0101** (Chris), on a binding, a parameter, a struct field called with `.` and a call result, where it reached the VM and stopped with an internal error. No new code: E0101 already names a nullable value dereferenced without `?.` or `??`. Three forms stay legal: a call narrowed by `if (f != nil)`, a call through `??` and a struct field called with `?.`, which gives `nil` when the field is `nil`. **A `?.` call through a nullable function field is nullable**, as a `?.` call on a nullable receiver is (D-402), so `x: int := bx?.op()` is E0104. **Rejected**: a runtime check in place of the compile-time refusal. Refuses programs that ran while the value was never `nil`. R-59 closed. Count unchanged at 122. |
+| D-449 | November 2026 | Compiler — type checker; Deferred Work Register | **A call through a nullable function value is E0101** (Chris), on a binding, a parameter, a struct field called with `.` and a call result, where it reached the VM and stopped with an internal error. No new code: E0101 already names a nullable value dereferenced without `?.` or `??`. Three forms stay legal: a call narrowed by `if (f != nil)`, a call through `??` and a struct field called with `?.`, which gives `nil` when the field is `nil`. **A `?.` call through a nullable function field is nullable**, as a `?.` call on a nullable receiver is (D-402), so `x: int := bx?.op()` is E0104. **Rejected**: a runtime check in place of the compile-time refusal. Refuses programs that ran while the value was never `nil`. R-59 closed. **R-60, R-61 and R-62 filed** (Chris): the array methods do not check their function argument; `(s) => "[" + s` crashes the compiler, fixed next; `fn(): void` is refused only as a struct field's type. Count unchanged at 122. |
 
 ---
 
@@ -18049,7 +18049,7 @@ failures).
 
 ---
 
-### D-449 — A call through a nullable function value is E0101 unless it is safe; a `?.` call through a nullable field is nullable; R-59 closed (November 2026)
+### D-449 — A call through a nullable function value is E0101 unless it is safe; a `?.` call through a nullable field is nullable; R-59 closed; R-60, R-61 and R-62 filed (November 2026)
 
 Area: Compiler — type checker; Deferred Work Register
 Supersedes: none
@@ -18097,9 +18097,17 @@ other dereference of a nullable value is refused at compile time.
 **Consequence.** Programs that called a nullable function value directly, and ran because
 the value was never `nil`, no longer compile. The fix in each is one of Decision 2's forms.
 
+**Decision 4 — R-60, R-61 and R-62 are filed.** Probing the fix found three defects outside
+R-59, measured at `e9e5dbc`, and on 22 November Chris had each recorded. The array methods
+`filter`, `select`, `sort` and `each` do not check that their argument is a function, so
+`xs.select(5)`, or `xs.select(f)` with a nullable `f`, stops in the VM (R-60). `f := (s) =>
+"[" + s` crashes the compiler with an unhandled exception, on `main` too (R-61); it is fixed
+next, on its own branch. `fn(): void` is accepted as a binding's or parameter's type and is
+E1001 as a struct field's (R-62).
+
 **Spec edits in this commit.** `grob-language-fundamentals.md` §21: calling a nullable
 function value. `docs/errors/examples/`: the `call-nullable-function-value` pair.
-`grob-open-questions.md`: R-59 closed.
+`grob-open-questions.md`: R-59 closed; R-60, R-61 and R-62 filed.
 
 Cites D-448 (R-59, Decision 6), D-400 (the `?.` call guard), D-402 (`?.` call results are
 nullable), D-420 (the register) and D-428 (the error-examples harness).
@@ -18337,7 +18345,9 @@ _(Full detail in `grob-vm-architecture.md`)_
 _This document is the authoritative decisions record for Grob._
 _November 2026 — D-449 added, with a source fix and spec edits. **A call through a nullable_
 _function value is E0101** unless a nil check narrows it, `??` unwraps it or `?.` calls it,_
-_and a `?.` call through a nullable function field is nullable. R-59 closed. Count unchanged at 122._
+_and a `?.` call through a nullable function field is nullable. R-59 closed. R-60, R-61 and R-62_
+_filed: unchecked array-method function arguments, a compiler crash on `"[" + s` and `fn(): void`_
+_in a struct field. Count unchanged at 122._
 _Previous: November 2026 — D-448 added, with a source fix and spec edits. **A call through a_
 _function-typed parameter calls the value**, not the enclosing function. A call through a_
 _function value refuses a named argument with E0011 and checks its arguments against its_
