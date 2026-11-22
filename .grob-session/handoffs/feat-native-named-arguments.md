@@ -2,9 +2,10 @@
 
 ## Where we are
 
-- Branch: `feat/native-named-arguments`, HEAD `d401715` (group 2)
+- Branch: `feat/native-named-arguments`, HEAD `b44a6c7` (fixes from the pre-push CodeRabbit review, after group 2)
 - Working tree: clean (scratch in gitignored `.grob-session/nna/`, including `newcov.py`, the new-code coverage script)
-- Commits on this branch: 12 (`git log --oneline origin/main..HEAD`). Change groups: 1 at `a2a50be`, 2 at `d401715`
+- Commits on this branch: 14 (`git log --oneline origin/main..HEAD`). Change groups: 1 at `a2a50be`, 2 at `d401715`, review fixes at `b44a6c7`
+- PR: draft #261. Push onto it and update its description through a REST PATCH; do not open a new PR.
 - Increment prompt: `docs/prompts/native-named-arguments.md`
 - Gate report: `D:\Code\grob-lang\gate-reports\native-named-arguments-gate-report.md`
 - Picked up from: this branch's own hand-off (session B, after group 1), overwritten here
@@ -12,7 +13,7 @@
 
 ## Green state
 
-- Tests: `dotnet test` on `d401715`: 5,659 passed, 0 failed (the validation scripts run inside `Grob.Compiler.Tests`)
+- Tests: `dotnet test` on `b44a6c7`: all eight projects passed, 0 failed (5,659 on `d401715` plus one new test) (the validation scripts run inside `Grob.Compiler.Tests`)
 - Coverage: new code in groups 1 and 2 (the `src/` diff against `origin/main`, Compiler and Integration cobertura unioned): 149/149 lines, 87/87 branches. Whole-solution figure not run this session
 - Benchmark gate: not run this session (a §5 deliverable; run it before the PR)
 - Pre-push gate: runs on this hand-off's push
@@ -39,6 +40,13 @@ New in session B (inside the plan Chris approved on 22 November; the group 2 com
 - **E0004 on a named native argument** is numbered by the argument's written position.
 - **`input`'s signature comes from the catalogue.** A catalogue with no `input` built-in throws `GrobInternalException` as a host misconfiguration, which `InputCall_CatalogueWithoutInput_IsAHostMisconfiguration` tests.
 - **A variadic native binds only for its diagnostics.** It gets no record and keeps positional emission.
+
+**A finding for the register** (D-420; group 7 files it with the landing entry): when the bound set leaves a required parameter unbound, E0003 counts the supplied arguments against the allowed range. `date.parse(pattern: "dd/MM/yyyy")` therefore reads "expects between 1 and 2 arguments, but 1 was supplied", and `value` is not named. Script functions say the same (`f(b: 1)` against `f(a, b = 1)`). The pre-push CodeRabbit verify run raised it on the native path only. It was not changed here: script-function wording is out of scope, and D-446's single convention rules out changing the native message alone. The fix is one change to both paths.
+
+## Local CodeRabbit review (pre-push, whole branch)
+
+- First run: 2 findings, both fixed in `b44a6c7`: widening recorded on the call's first line, and missing line and column in two negative tests.
+- Verify run: 1 finding, the E0003 wording above, recorded rather than fixed.
 
 ## Error codes and registry state
 
