@@ -380,8 +380,9 @@ public sealed partial class Compiler {
     /// </remarks>
     public override object? VisitBinary(BinaryExpr node) {
         int line = node.Range.Start.Line;
-        GrobType lt = GetExprType(node.Left);
-        GrobType rt = GetExprType(node.Right);
+        // D-450: with one operand of unknown type, the opcode comes from the known one,
+        // whichever side it is on; the checker has refused a known operand with no opcode.
+        (GrobType lt, GrobType rt) = WithKnownOperandType(GetExprType(node.Left), GetExprType(node.Right));
 
         switch (node.Operator) {
             case BinaryOperator.NilCoalesce:
@@ -520,8 +521,10 @@ public sealed partial class Compiler {
 
         bool leftNeedsCoerce = lt == GrobType.Int && rt == GrobType.Float;
         bool rightNeedsCoerce = rt == GrobType.Int && lt == GrobType.Float;
-        // resultType: Float if either operand is float; Unknown operands default to Int —
-        // the same optimistic convention used in ComparisonCategory. This is a documented
+        // resultType: Float if either operand is float. VisitBinary has already given a
+        // single Unknown operand the other operand's type (D-450), so Unknown reaches here
+        // only when both operands are; it defaults to Int, the same optimistic convention
+        // used in ComparisonCategory. This is a documented
         // permissive assumption for the residue GetExprType (below) cannot resolve
         // statically: an untyped lambda-parameter identifier, and an Unknown-receiver-field
         // MemberAccessExpr (D-360) — a VM-level type fault is the fallback if the runtime
@@ -792,8 +795,10 @@ public sealed partial class Compiler {
         // Named arguments, or a positional call that omits a defaulted parameter,
         // need reorder-and-fill so the callee receives a fully-bound positional list
         // in parameter declaration order. A pure positional call that supplies every
-        // parameter takes the fast path, emitting arguments in source order.
-        if (node.Callee is IdentifierExpr { Declaration: FnDecl fn } &&
+        // parameter takes the fast path, emitting arguments in source order. The checker's
+        // ResolvedFunction, not the callee's Declaration, says the call is to a declared
+        // function: a function-typed parameter's identifier carries its owning FnDecl too.
+        if (node.ResolvedFunction is { } fn &&
             (node.Arguments.Any(a => a.Name is not null) || node.Arguments.Count != fn.Parameters.Count)) {
             EmitReorderedArguments(node, fn);
             _chunk.WriteOpCode(OpCode.Call, line);
@@ -1337,9 +1342,20 @@ public sealed partial class Compiler {
         _ => GrobType.Unknown
     };
 
+    /// <summary>
+    /// Gives a single operand of unknown type the other operand's type (D-450), so the
+    /// opcode, and the result type a parent expression sees, come from the known operand
+    /// whichever side it is on. Two unknown operands are returned unchanged.
+    /// </summary>
+    private static (GrobType Left, GrobType Right) WithKnownOperandType(GrobType left, GrobType right) =>
+        (left, right) switch {
+            (GrobType.Unknown, GrobType known) => (known, known),
+            (GrobType known, GrobType.Unknown) => (known, known),
+            _ => (left, right),
+        };
+
     private static GrobType GetBinaryResultType(BinaryExpr node) {
-        GrobType lt = GetExprType(node.Left);
-        GrobType rt = GetExprType(node.Right);
+        (GrobType lt, GrobType rt) = WithKnownOperandType(GetExprType(node.Left), GetExprType(node.Right));
         return node.Operator switch {
             BinaryOperator.Add
                 or BinaryOperator.Subtract

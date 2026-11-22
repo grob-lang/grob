@@ -70,6 +70,7 @@ read by `grob --explain Exxxx`.
 | E0014 | throw operand is not a GrobError subtype             | Type              | pre-release           |
 | E0015 | catch type is not a GrobError subtype              | Type              | pre-release           |
 | E0016 | duplicate key in map literal                       | Type              | pre-release           |
+| E0017 | called value is not a function                     | Type              | pre-release           |
 | E0101 | nil dereference without `?.` or `??`               | Type              | pre-release           |
 | E0102 | nullable interpolation                             | Type              | pre-release           |
 | E0103 | non-nullable field requires initialiser            | Type              | pre-release           |
@@ -335,6 +336,16 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Description:** A `map<K, V>{ ... }` literal listed the same string-literal key more than once. Mirrors E2208 (duplicate field name in a `type` declaration) and E0010 (duplicate named argument) in shape — a distinct construction-site surface earns its own code rather than folding into either, since neither is a map-literal entry.
 - **Source decision:** D-376.
+
+---
+
+### E0017 — called value is not a function
+
+- **Category:** Type
+- **Introduced:** v1
+- **Status:** pre-release
+- **Description:** A call's callee has a known type that is not a function type: a parameter, binding, struct field or call result of type `int`, `string` or any other non-function type. Without this check the call would compile and fault in the VM. A callee of unknown type, such as an untyped lambda parameter, is not reported. A distinct failure from E0003 (wrong number of arguments), which assumes a function to count against, so it earns its own code (D-318 and D-330 are the precedents).
+- **Source decision:** D-448.
 
 ---
 
@@ -1405,11 +1416,13 @@ None as of v1.
 
 ---
 
-**Total: 121 codes across 7 categories.** This is the canonical current count;
+**Total: 122 codes across 7 categories.** This is the canonical current count;
 it is the live total in the summary index above and is asserted equal to
 `ErrorCatalog.All.Count` by the consistency drift gate (`Grob.Consistency.Tests`,
 D-316). The dated lines below are the historical record of how the count
 changed; this line is the single source for the present total.
+
+_Updated November 2026 — D-448 added one code: E0017 (called value is not a function), the next free entry in the E00xx sub-block of the Type category, bringing the total from 121 to 122. A callee of known non-function type, such as an `int` parameter, compiled and then faulted in the VM; it is now rejected at compile time. A callee of unknown type, such as an untyped lambda parameter, is still not checked. No existing code fits: E0003 counts arguments against a function and E1002 is a missing member, not a present one of the wrong type._
 
 _Updated November 2026 — D-433. E4101's source note no longer calls validation decorators a_
 _scope-cut candidate, and its description drops the clause conditioning runtime validation on_

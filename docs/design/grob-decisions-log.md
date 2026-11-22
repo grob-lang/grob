@@ -444,6 +444,10 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-445 | November 2026 | Standard library — `fs`, `File`; Platform support; Runtime — capability-injection seam; Deferred Work Register | **The `fs` surface is fixed for the 9C increment**, refining D-109, D-150, D-177 and D-436 on seven owner rulings. Verified at `7349f98`: the April sketch gives no listing order and no failure behaviour, and is written for Windows alone. **A `File` is a snapshot**: `rename`, `moveTo` and `copyTo` return the new `File` and leave the receiver unchanged, as the README's first sample already assumes. **A listing has one order on both platforms**: ordinal by name within a directory, each directory followed by its contents, links not descended into. **Four functions added**, to 18: `fs.find(dir, pattern)` with `*`, `?` and `**`, named and shaped for Grob's plain-word surface in place of `fs.glob`; `fs.info`; `fs.writeLines`; `fs.appendLine`. **Copy and move gain `ensureDir: bool = false`**. Deletes throw on a missing path; `copy` refuses a directory; the existence checks never throw. **Failing is not reading**: an `overwrite: false` copy is one seam member, not a check and a copy. **A path argument is normalised as `path.normalise` does** before it reaches `IFileSystem`, so `\` separates on Linux too, for `fs`, `json` and `csv`. R-52 to R-54 filed. No source change. |
 | D-446 | November 2026 | Type system — call binding; Compiler — argument emission; Standard library — signatures; Plugin SDK; Deferred Work Register | **Named arguments bind to natives**, refining D-113, D-318, D-358, D-426 Decision 4 and D-428 Decision 9 on six owner rulings. Verified at `9f7384d`: script functions bind D-113 in full and every native path refuses a named argument, so D-445's `fs` surface does not compile. **One convention**: D-113 applies unchanged to namespace functions, primitive methods, named-type methods and plugin functions; a required parameter stays positional only. **A defaulted parameter's name is contract** and is pinned to the reference by the drift check (R-55). Overloads resolve on positional arguments first. Natives inherit today's evaluation order, which no decision states: **OQ-028**. **Built by its own increment ahead of `fs`**, closing R-20, which is re-owned. `grob-language-fundamentals.md` gains §12.2, the section on calls it never had. No error code, opcode or grammar added. No source change. |
 | D-447 | November 2026 | Type system — call binding; Compiler — argument emission; Testing — probe corpus; Deferred Work Register | **Authorises the *native named arguments* increment**, refining D-446 and D-426 Decision 1; prompt at `docs/prompts/native-named-arguments.md`. Read at `a30cadf`, not run: array methods, map methods, `print`, `exit` and calls through a function value carry no signature and no code on those paths reads an argument's name, a set D-446 did not name. **A call with no signature refuses a named argument** with E0011, on PR #248's precedent, if the gate confirms it is accepted today; binding there waits on signatures (R-56). The `input` built-in has a signature, and the increment is to bind it with the other three paths. Named-type methods gain default fill. The probe masters change on D-428's first ground, line by line. The gate runs what the planning sessions read. No source change. |
+| D-448 | November 2026 | Compiler — type checker, argument emission; VM — calls; Deferred Work Register | **A call through a function-typed parameter calls the value**, not the enclosing function its symbol records; the gate's STOP S1, fixed on its own branch (Chris). The checker records a direct call's function on the call node and the compiler reads only that. **Rejected**: a declaration node for parameters. **A call through a function value refuses a named argument now**, with E0011, taking D-447 Decision 2's refusal ahead of the increment, and **checks its arguments against its function type**, E0003 and E0004, where the checker knows that type; the fix would otherwise have let a wrong call through a parameter compile. **Calling a value that is not a function is E0017**, a new code (Chris), where the call would otherwise fault in the VM. **A struct field declared with a function type keeps that type when read**, so it is compared by shape and a call through it is checked. **Compatible function shapes combine** (Chris): across a lambda's return paths and a ternary's, switch's or `??`'s arms, an inferred lambda's `Unknown` parameters take a concrete shape's types (an `Unknown` return stays `Unknown`) and a `nil` path makes the result a nullable function; conflicting concrete shapes still do not. **R-57 filed**: a declared function held in a binding, an anonymous struct's field and an array element are still unchecked, so `h(3, 100)` through `h := twice` prints `100`, and the VM does not compare a call's argument count with the callee's arity. **R-58 filed**: an `int` where a `float` is expected is not widened in a binding, a return, a struct field, a parameter default or an argument, so `x: float := 1` then `x / 2`, and `add(1, 2)`, stop with an internal error, on `main` too. **R-59 filed**: a call through a nullable function value is not checked for `nil` and reaches the VM (Chris: record it, fix it on its own branch). Count 121 -> 122. |
+| D-449 | November 2026 | Compiler — type checker; Deferred Work Register | **A call through a nullable function value is E0101** (Chris), on a binding, a parameter, a struct field called with `.` and a call result, where it reached the VM and stopped with an internal error. No new code: E0101 already names a nullable value dereferenced without `?.` or `??`. Three forms stay legal: a call narrowed by `if (f != nil)`, a call through `??` and a struct field called with `?.`, which gives `nil` when the field is `nil`. **A `?.` call through a nullable function field is nullable**, as a `?.` call on a nullable receiver is (D-402), so `x: int := bx?.op()` is E0104. **Rejected**: a runtime check in place of the compile-time refusal. Refuses programs that ran while the value was never `nil`. R-59 closed. **R-60, R-61 and R-62 filed** (Chris): the array methods do not check their function argument; an operator with one operand of unknown type takes its opcode from the wrong side, so `(s) => "[" + s` crashes the compiler and `(s) => s + "]"` miscompiles, fixed next; `fn(): void` is refused only as a struct field's type. Count unchanged at 122. |
+| D-450 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **With one operand of unknown type, a binary operator takes its opcode from the known operand**, whichever side it is on, so `(s) => "[" + s` and `names.select((n) => "Hi " + n)` concatenate where they crashed the compiler, and `(s) => s + "]"` and `(s) => s < "z"` no longer compile to `int` opcodes. **The known operand must suit the operator** (Chris): `+` an `int`, `float` or `string`; `-`, `*`, `/`, `%` an `int` or `float`; `<`, `<=`, `>`, `>=` an `int`, `float`, `string` or `date`; otherwise E0002 at that operand. An arithmetic result has the known operand's type, so an operator on it is checked; a comparison is `bool`. Refuses only expressions that crashed the compiler or could not run successfully. **Rejected**: a compiler-only fix, which leaves `true + s` crashing. R-61 closed. **R-63 filed**: an operand of unknown type compiles to an assumed type, so `(n) => n + 2.5` given `1` stops. Count unchanged at 122. |
+| D-451 | November 2026 | Process / Tooling — adversarial testing; CLI — internal-error reporting; Deferred Work Register | **Authorises the *crash oracle* increment** as the first slice of D-353's Pillar 1, brought forward before 9C; prompt at `docs/prompts/crash-oracle.md`. It checks D-353's contract on source text: no program makes Grob raise an internal error or throw a host exception. Built in `tooling/Grob.Torture` with a CI slice in `tests/Grob.Torture.Tests`; it departs from the strategy by mutating AST spans and generating well-typed programs, running in process and gating a fixed-seed slice in CI from the start. **The CLI reports an internal failure from any phase as E9001** with the bug-report line and no stack trace (Chris). The long mode is run by hand (Chris). Read at `639a21c`: the compile phase has no handler and E9001 is raised nowhere. **R-64 filed and folded in** (Chris): a compile error and a usage error both exit `1`; the increment makes them `2` and `3`, the documented set, and §8 gains the usage row. No source change. Count unchanged at 122. |
 
 ---
 
@@ -17877,6 +17881,416 @@ minted here) and D-420 (the register and the stopping rule).
 
 ---
 
+### D-448 — A call through a function-typed parameter calls the value, not the enclosing function; a call through a function value refuses named arguments and checks its arguments; calling a non-function is E0017; compatible function shapes combine; R-57, R-58 and R-59 filed (November 2026)
+
+Area: Compiler — type checker, argument emission; VM — calls; Error codes; Deferred Work Register
+Supersedes: none
+Superseded by: none
+
+**A bug fix, with spec edits, a new error code and a register row.** E0017 is minted, so
+the error-code count moves from 121 to 122. The
+*native named arguments* gate (D-447) stopped on this defect as S1; on 21 November Chris
+ruled that it is fixed on its own branch, ahead of the increment's group 5, and chose the
+fix below.
+
+**The defect.** A parameter has no declaration node of its own, so its symbol records the
+function that declares it. A call through a function-typed parameter therefore resolved to
+the enclosing function. Inside `fn apply(n: int, h: fn(int): int = …)`, the checker bound
+`h(n)` against `apply`'s parameters, and the compiler filled `apply`'s default for `h` and
+passed it to `h` as a second argument, with no diagnostic.
+
+**Decision 1 — a call binds against a declared function only when its callee names that
+function.** The symbol records that it is a parameter. The checker decides once whether a
+call is a direct call to a declared function and records that function on the call node;
+the compiler reorders arguments and fills defaults from that record alone. A call through a
+parameter is checked and emitted as a call through a lambda held in a binding is.
+**Rejected**: giving a parameter its own declaration node, which would also point
+go-to-definition at the parameter but grows the AST under `extending-the-grammar` for a bug
+fix.
+
+**Decision 2 — a call through a function value refuses a named argument now.** Before the
+fix, a named argument through a parameter was checked against the enclosing function's
+names. Moving the call to the function-value path would have dropped the names and passed
+the values in the order written, as that path already did for a lambda held in a binding.
+CodeRabbit found it on PR #262. The function-value path therefore takes D-447 Decision 2's
+refusal here, ahead of the increment: E0011 at each named argument, with the wording Chris
+agreed for it:
+
+> A function value does not accept named arguments; pass them positionally.
+
+The same path now also
+records the descriptor of a function type's function-typed return, so
+`g: fn(): int := make()` type-checks when `make` is a parameter of type `fn(): fn(): int`.
+The increment keeps the refusal for array methods, map methods, `print` and `exit`.
+
+**Decision 3 — a call through a function value checks its arguments against its function
+type.** At `74ee294` the checker read only the function type's return type, so neither the
+number nor the types of the arguments were checked. Before the fix a call through a
+parameter was checked against the enclosing function's signature: it could be rejected for
+the wrong reason, or pass and be miscompiled, as `h(n)` above was. After it, a wrong call through a
+parameter would have compiled and run on the wrong slots. CodeRabbit found that on PR #262.
+Where the checker knows the callee's function type — a parameter, a binding whose type is
+a function type, a grouped callee, a lambda called where it is written, a call's result, a
+struct field declared with a function type (Decision 6) — a wrong count is E0003 and an
+argument of the wrong type is E0004. A function type has no
+defaults, so the count must match exactly. An `Unknown` type on either side is permissive.
+A function type records each parameter's kind and the shape of a function-typed one, but
+not an array parameter's element type or a struct parameter's name, so an `int[]` against
+a `string[]` or one struct against another is not caught here (R-57).
+A lambda's parameter annotations are not read yet (R-47), so a lambda's parameters are
+`Unknown` and only the count of a call to one is checked. A lambda that returns a function
+carries that function's shape, so `() => () => 1` matches `fn(): fn(): int`; a block lambda
+carries it only when every `return` in it and its final value combine into one shape
+(Decision 7), so an early `return` of a conflicting shape matches no declared nested shape.
+Reassigning a function-typed binding, parameter or struct field (Decision 6) keeps its
+function type, as a declaration's initialiser must: `f = () => "s"` into `f: fn(int): int`
+is E0001, since a later `f(1)` is checked against that type. A function value whose shape is
+not tracked, such as an array element, is E0001 there too, as it already was in a
+declaration; accepting it would leave a later call trusting a shape nothing checked. A target
+with no tracked shape, such as an anonymous struct's field, compares the kind only. Both
+codes exist.
+
+**Decision 4 — R-57 and R-58 are filed.** Measured through `grob run`, at `74ee294` unless
+stated:
+
+- `g := (a: int, b: int) => a + b` then `g(5)` printed `10`. It is E0003 now.
+- With `h := twice`, where `twice` declares a local `y := x * 2` and returns it,
+  `h(3, 100)` prints `100`: the surplus argument sits in the slot the compiler gave `y`.
+  That path predates the fix. It is still unchecked after Decision 3, because a declared
+  function held in a binding has no function type the checker tracks; nor do an array
+  element or an anonymous struct's field. The VM's `Call` arm does not compare the argument count with
+  the callee's arity, for a closure or for a bytecode function. These are R-57.
+- `g("x", 2)` stops with an internal error, a `GrobValue` kind mismatch, and still does
+  until R-47 types a lambda's parameters.
+- `fn add(a: float, b: float): float` called as `add(1, 2)` stops with an internal error,
+  `expected Float, actual Int`, and so does `x: float := 1` followed by `x / 2`; both
+  measured on `main` at `67b268d` as well. The checker accepts an `int` wherever a `float`
+  is expected; the compiler widens it as an arithmetic or comparison operand and in a
+  ternary or switch arm that unifies to `float`, but nowhere else.
+  A `float` return, struct field, parameter default, native argument (`math.sqrt(4)`) and
+  a call through a function value fail the same way. Decision 3 lets a call through a
+  function-typed parameter reach that failure where the enclosing function's signature
+  could reject it; widening that one path would leave the rest. The class is R-58.
+
+**Decision 5 — calling a value that is not a function is E0017, a new code.** Before the
+fix, `n()` inside `fn run(n: int)` was rejected with E0003, checked against `run`'s
+signature for the wrong reason. Once the call took the function-value path it reached the
+VM and stopped with an internal error, `Call target is not a function (kind: Int)`;
+`x := 5` then `x()` already did so on `main`. The local CodeRabbit review found it on
+PR #262, and on 22 November Chris chose a new code over folding into an existing one. A callee
+whose type is known and is not a function type — a parameter, a binding, a struct field or
+a call's result — is E0017 at the callee, and the call is typed `Error`, so nothing that
+uses its result is reported again and a named argument is not reported as well. A callee
+already in error, such as an undefined name or the result of such a call, makes the call
+`Error` too, where it was `Unknown`, so `take(n()())` reports E0017 once. A callee of
+`Unknown` type, such as an untyped lambda parameter, is not reported, nor is a nullable
+function. No existing code fits: E0003 counts arguments against a function, and E1002 is a
+member that is missing, not one of the wrong type. It follows D-318 and D-330 in giving a
+distinct failure its own code. Registered in `grob-error-codes.md` with the gold-master pair
+`call-non-function-value`.
+
+> 'n' has type 'int', which is not a function, so it cannot be called.
+
+**Decision 6 — a struct field declared with a function type keeps that type when read.**
+Where Decision 3 compared only the kind for a struct field, `f = bx.op` with a field of type
+`fn(int): string` was accepted into `f: fn(int): int`. With a field of type `fn(int): int`,
+`g: fn(int): int := bx.op` was rejected with E0001 although the shapes matched, since a
+field's shape was not tracked. Both predate this PR. Reading a field of a named struct now
+carries the function type the field declares, so the field is compared by shape on
+declaration, reassignment and field assignment, and a call through it (`bx.op(1)`) checks its
+arguments and resolves its return type, as a call through a parameter does. A call through a
+non-function field is E0017. The call path reuses the property path's field lookup, which
+also raises its E1002 for a name that is not a field. An anonymous struct's field records no
+function type, so a call through one stays unchecked (R-57).
+A field of nullable function type is called without a check for `nil`: `bx.op()` on a `nil`
+field stops in the VM with `Call target is not a function (kind: Nil)`, as a call through a
+nullable binding or parameter already did on `main`. On 22 November Chris chose to record the
+class rather than refuse it here, because refusing it with E0101 stops programs compiling that
+run today; it is R-59, fixed on its own branch.
+
+**Decision 7 — function shapes that one value may take combine when they are compatible.**
+A lambda's return paths, and the arms of a ternary, a switch expression or `??`, can each
+yield a function. They were required to have equal shapes, so a lambda that returned `f`
+(`fn(int): int`) on one path and `(x) => 1` on another matched no declared nested shape, and
+`flag ? f : (x) => 1` was E0002, on `main` as well. Once Decision 3 held reassignment to the
+declaration rule, the same lambda assigned to a parameter of type `fn(): fn(int): int` was
+newly rejected, where `main` had compared only the kind. CodeRabbit found that on PR #262,
+and on 22 November Chris chose to settle the rule here rather than defer it. Two shapes now
+combine position by position: an `Unknown` parameter, as an inferred lambda carries, takes the
+other shape's type and nested shape, which only adds checks on the arguments; an `Unknown`
+return stays `Unknown`, since the lambda's body is not shown to produce the other shape's type
+and no typed opcode may be chosen from it, but the other shape's concrete return is kept as
+the combined return's bound; two concrete positions must be equal; two
+function-typed positions combine their nested shapes in turn; and the arities must match.
+Combining is not transitive, so every arm of a switch expression is folded into one shape
+rather than checked against its neighbour. A lambda path that returns `nil`, or a block whose
+last statement can let control past it (anything but a `return`, a `throw`, a block ending in
+one, an `if` and `else` that both do, or a `try` whose body and every `catch` do), makes the
+lambda's result a nullable function, so it matches
+`fn(): (fn(int): int)?` and not `fn(): fn(int): int`. Conflicting concrete shapes still do
+not combine: `flag ? f : (x) => "s"` is still E0002, and a lambda returning both stays E0001
+against a declared shape. The combined shape is what the value carries, so a call through it
+is checked against it: with `g := flag ? (x) => 1 : f`, `g("s")` is E0004. With
+`f: fn(int): string`, `flag ? f : (x) => x` carries `fn(int)` with an `Unknown` return, so a
+call through it is not typed `string`, although the lambda returns its argument. The bound
+is what an annotation and a further arm are checked against, so a branch's concrete return
+is never erased by combining it with an inferred one (CodeRabbit, PR #262): with
+`f: fn(int): int`, `g: fn(int): string := flag ? f : (x) => x` is E0001, where an earlier
+commit on the PR accepted it and the run stopped with an internal error, and a switch expression with arms `f`, `(x) => x` and a
+`fn(int): string` is E0002, as `f` and the last arm are directly. Checking an
+inferred lambda's body against a shape waits on R-47, which types its parameters.
+
+**Spec edits in this commit.** `grob-language-fundamentals.md` §12.2: a call through a
+function value refuses a named argument already. `grob-error-codes.md`: E0017 registered,
+count 122. `docs/errors/examples/`: the `call-non-function-value` pair.
+`grob-open-questions.md`: R-57, R-58 and R-59 filed.
+
+Cites D-447 (the gate and the refusal), D-326 (function types), D-443 (R-47), D-420 (the
+register), D-308 (the error catalogue) and D-318 and D-330 (dedicated codes for distinct
+failures).
+
+---
+
+### D-449 — A call through a nullable function value is E0101 unless it is safe; a `?.` call through a nullable field is nullable; R-59 closed; R-60, R-61 and R-62 filed (November 2026)
+
+Area: Compiler — type checker; Deferred Work Register
+Supersedes: none
+Superseded by: none
+
+**A bug fix that refuses programs which compile today, with spec edits and a gold-master
+pair.** No code is minted; the count stays at 122. D-448 filed the defect as R-59, and on
+22 November Chris ruled that it is fixed on its own branch, refusing the call with E0101.
+
+**The defect.** The checker accepted a call through a value of nullable function type, so a
+call on `nil` reached the VM and stopped with an internal error, `Call target is not a
+function (kind: Nil)`. Measured through `grob run` at `7aa371d`: a binding
+`f: (fn(): int)? := nil` then `f()`; a parameter `f: (fn(int): int)?` called as `f(1)` and
+given `nil`; a named struct's field `op: (fn(): int)?` called as `bx.op()`; and a call
+result, `mk()()` where `mk` returns `(fn(): int)?`. The binding and parameter cases predate
+D-448; its Decision 6 added the field case. A `?.` call through such a field already skipped
+the call on `nil`, but its result kept the function's return type, so `x: int := bx?.op()`
+compiled and `x + 1` stopped with `GrobValue kind mismatch: expected Int, actual Nil`.
+
+**Decision 1 — calling a nullable function value is E0101.** E0101 already names this
+failure: a nullable value dereferenced without `?.` or `??` where the checker cannot prove it
+non-nil. Calling a function value dereferences it, so no new code is needed. The diagnostic
+sits on the callee and names the remedy that fits it: a nil check for a binding or parameter,
+`?.` for a struct field, `??` for any value. The call is then typed `Error`, so a use of its
+result reports nothing further; its arguments are still checked against the function type,
+since they are independent of the callee's nullability.
+
+**Decision 2 — three forms stay legal.** A binding or parameter narrowed by `if (f != nil)`
+has a non-nullable function type in the guarded block, so its call is accepted unchanged.
+A call through `??` (`(f ?? g)()`) has the fallback's non-nullable type. A struct field
+called with `?.` (`bx?.op()`) compiles to a call guarded by a nil check on the function
+(D-400), so it is accepted and gives `nil` when the field holds `nil`. A struct field cannot
+be narrowed: narrowing applies to a bare name only.
+
+**Decision 3 — a `?.` call through a nullable function field is nullable.** Its result type
+is the nullable form of the function's return type, as a `?.` call on a nullable receiver
+already is (D-402), so `x: int := bx?.op()` is E0104. On a non-nullable receiver, a `?.`
+call through a field of non-nullable function type cannot give `nil` and keeps the return
+type; on a nullable receiver D-402 makes its result nullable as before.
+
+**Rejected: leaving the call legal and checking at run time.** The VM would raise a runtime
+error in place of the internal one, but the checker can see the nullable type, and every
+other dereference of a nullable value is refused at compile time.
+
+**Consequence.** Programs that called a nullable function value directly, and ran because
+the value was never `nil`, no longer compile. The fix in each is one of Decision 2's forms.
+
+**Decision 4 — R-60, R-61 and R-62 are filed.** Probing the fix found three defects outside
+R-59, measured at `e9e5dbc`, and on 22 November Chris had each recorded. The array methods
+`filter`, `select`, `sort` and `each` do not check that their argument is a function, so
+`xs.select(5)`, or `xs.select(f)` with a nullable `f`, stops in the VM (R-60). A binary
+operator with one operand of unknown type, such as a lambda's untyped parameter, takes its
+opcode from the wrong side: `(s) => "[" + s` crashes the compiler with an unhandled exception,
+on `main` too, and `(s) => s + "]"` compiles to `int` addition and fails when given a string
+(R-61); it is fixed next, on its own branch. `fn(): void` is accepted as a binding's or parameter's type and is
+E1001 as a struct field's (R-62).
+
+**Spec edits in this commit.** `grob-language-fundamentals.md` §21: calling a nullable
+function value. `docs/errors/examples/`: the `call-nullable-function-value` pair.
+`grob-open-questions.md`: R-59 closed; R-60, R-61 and R-62 filed.
+
+Cites D-448 (R-59, Decision 6), D-400 (the `?.` call guard), D-402 (`?.` call results are
+nullable), D-420 (the register) and D-428 (the error-examples harness).
+
+---
+
+### D-450 — With one operand of unknown type, a binary operator takes its opcode from the known operand, which must suit the operator; R-61 closed; R-63 filed (November 2026)
+
+Area: Compiler — type checker, bytecode emission; Deferred Work Register
+Supersedes: none
+Superseded by: none
+
+**A bug fix that refuses expressions which crash the compiler or cannot run successfully.** No code is minted;
+the count stays at 122. D-449 filed the defect as R-61, and on 22 November Chris ruled that
+it is fixed on its own branch, the type checker included.
+
+**The defect.** An operand's type is unknown when it is a lambda's untyped parameter,
+an array element whose element type is not tracked or a field of a receiver whose type is
+not known. With one such operand, the checker accepted the expression without looking at the
+other operand, and the compiler chose the opcode from the left operand, or assumed `int` when
+the left was the unknown one. Measured through `grob run` at `e9e5dbc`:
+
+- `(s) => "[" + s`, and `names.select((n) => "Hi " + n)`, crashed the compiler with an
+  unhandled `InvalidOperationException`, `Operator Add with result type String is not
+  supported in Sprint 2`; on `main` at `67b268d` too. So did `"a" - s`, `"a" * s`,
+  `true + s`, `[1] + s` and `nil + s`.
+- `(s) => s + "]"` and `(s) => s < "z"` compiled to `AddInt` and `LessInt`, so a call given a
+  `string` stopped with `GrobValue kind mismatch: expected Int, actual String`. `s + true` and
+  `true < s` compiled to `int` opcodes that no argument can satisfy.
+
+**Decision 1 — the compiler takes the opcode from the known operand.** With exactly one
+operand of unknown type, `VisitBinary` gives it the known operand's type before choosing an
+opcode, whichever side the known operand is on. `+` with a `string` emits `Concat`; a
+relational operator with a `string` emits the `string` comparison, `<=` and `>=` lowered to
+the strict comparison and `Not` as before; with a `date`, `LessDate` or `GreaterDate`; with
+an `int` or a `float`, the numeric opcode, as before. The result type a parent expression
+sees comes from the same rule, so in `(s) => s + "a" + s` the inner `s + "a"` is a `string`
+and the outer `+` concatenates too, and in `(n) => n - 1 + 2.5` the inner `int` is widened
+before `AddFloat`. CodeRabbit found the nested case before the PR. Two operands of unknown
+type still default to `int`. Either way the unknown operand's type is an assumption, and a
+call whose argument has another type stops with an internal error: `(n) => n + 2.5` given
+`1`, since nothing widens an operand only when it is an `int`, and `(a, b) => a + b` given two
+strings. That is filed as R-63, measured at `c2ea052`.
+
+**Decision 2 — the known operand must suit the operator.** The checker now refuses, with
+E0002 at the known operand, one the operator has no opcode for: `+` takes an `int`, a `float`
+or a `string`; `-`, `*`, `/` and `%` an `int` or a `float`; `<`, `<=`, `>` and `>=` an `int`,
+a `float`, a `string` or a `date`. These are the types the same operators accept when both
+operands are known. `==` and `!=` take any operand, as before. The message names the operator
+and the known operand's type, `Operator '-' cannot be applied to type 'string'.`, since the
+unknown operand adds nothing to it. A comparison's result is `bool`, as before. An arithmetic
+result has the known operand's type, as the compiler takes it, so an operator applied to it
+is checked against the type the compiler chooses its opcode from: `(s) => (s + "a") - 1` and `(n) => "a" + (n - 1)` are E0002 where the
+compiler would have had no opcode, and `(n) => (n - 1) + "a"` where it would have emitted
+`AddInt` for a `string`; a lambda returning `"[" + s` returns a `string` and one returning
+`n - 1` an `int`. The first draft typed only the `string` result, on the reasoning that
+`int` and `float` have every arithmetic opcode; CodeRabbit showed on PR #264 that a `string`
+parent defeats that. With two unknown operands the result stays unknown. Every expression this
+refuses crashed the compiler or compiled to code that fails whatever it is given when it runs;
+a program that builds such an expression and never evaluates it, which compiled before, is
+refused too.
+
+**Rejected: a compiler-only fix.** Choosing from the known operand alone fixes the `string`
+forms, but a known `bool`, array, `nil` or non-`date` struct has no opcode to choose, so
+`true + s` would still crash the compiler. Chris chose to add the checker rule.
+
+**Spec edits in this commit.** None to the language documents: the operators' types are
+unchanged, and the rule applies them where one operand's type is unknown.
+`grob-open-questions.md`: R-61 closed; R-63 filed.
+
+Cites D-449 (R-61), D-443 (R-47), D-354 (the `date` comparison opcodes) and D-420 (the
+register).
+
+---
+
+### D-451 — The *crash oracle* increment authorised, as the first slice of D-353's Pillar 1 brought forward before 9C; the CLI reports an internal failure as E9001 and exits with the documented codes; R-64 filed (November 2026)
+
+Area: Process / Tooling — adversarial testing; CLI — internal-error reporting; Deferred Work Register
+Supersedes: none
+Superseded by: none
+Refines: D-353
+
+**Decision-only, with spec edits. No source change.** Error-code count unchanged at 122.
+This entry authorises the *crash oracle* increment. Its prompt is committed with it at
+`docs/prompts/crash-oracle.md`. Probing near PR #262 and its two follow-ups found R-57 to
+R-63, most of them the checker accepting a program the compiler or the VM cannot run, and
+three of them on `main` before the PRs. On 22 November Chris chose a bounded harness that
+finds that class mechanically over reading the compiler end to end or finding defects as
+they come, and ruled on the three questions the draft prompt carried. Each ruling took
+the draft's recommendation.
+
+**Read at `639a21c`, not run.** `RunCommand` catches `GrobInternalException` around the VM
+only. The lexer, parser, checker and compiler run outside any handler, so R-61's crash
+printed a .NET stack trace, and neither phase catches any other host exception.
+`WriteInternalError` is excluded from coverage as unreachable, which R-58, R-59 and R-60
+disprove. Its comment cites D-039 for hiding the stack trace; D-039 is the two-mode error
+strategy and does not cover it. E9001, *internal compiler error — please report*, is
+registered and raised nowhere. `RunCommand` returns `1` for a compile-time diagnostic and
+for an unreadable file, where `grob-v1-requirements.md` §8 gives `2` for the first and
+D-353's strategy §1 gives `3` for the second.
+
+**Decision 1 — the increment is authorised, as D-353's Pillar 1 brought forward.** The
+property it checks is D-353's contract, applied to source text: no program, valid or not,
+makes Grob raise an internal error or throw a host exception. A program gets diagnostics
+with registered codes, or compiles and runs, with any failure a Grob runtime error. The
+increment builds the harness D-353's strategy names, `tooling/Grob.Torture`, with its CI
+slice in `tests/Grob.Torture.Tests`; a mutator; a type-directed generator of programs over
+the v1 surface; and a first campaign whose findings go to the register with minimised
+reproducers (D-420), not into fixes. It departs from the strategy in three ways, each
+recorded here so the strategy need not be rewritten:
+
+- **Semantic layers first.** The strategy's §3.1 and §3.2 mutate bytes and tokens and
+  generate pathological programs, aimed at the lexer and the parser. The defects found
+  were in the checker, so this increment's mutations edit AST node spans, its generator
+  writes programs meant to type-check, and the strategy's own layers stay with its
+  interlude.
+- **In process first.** The strategy makes the black-box CLI driver the primary mode and
+  reserves the in-process mode for SharpFuzz. The oracle runs in process, because only
+  there can it check the §3.1.1 invariant and supply fake capabilities. The gate decides
+  whether this increment also builds the black-box mode.
+- **A CI slice from the start.** The strategy graduates a subset to CI once campaigns
+  stabilise. Here a fixed-seed slice joins `dotnet test` with the oracle itself,
+  over the seed corpus and then, once the mutator lands, its mutants, adding no more than 30 seconds. It stays
+  green while a row is open through a known-signature list whose entries name a register
+  row and the programs they cover, since one signature can belong to two root causes.
+  Every run in the slice and the long mode is bounded, so a mutant whose loop never ends
+  fails as a finding and does not block the suite. The gate chooses the mechanism; none
+  adds a per-instruction check to the VM dispatch loop. `VirtualMachine.Run` already
+  takes a cancellation token.
+
+**Decision 2 — the CLI reports an internal failure as E9001.** An internal error or a host
+exception from any phase, in every command that runs the pipeline, is reported as E9001
+with the bug-report line and no host stack trace. A Grob runtime error and `exit(n)` keep
+their paths. This is the CLI half of D-353's contract, which no decision had applied
+to the compile phase, and the requirements' rule that no stack trace reaches an end user
+without `--verbose` (§1). The gate designs where the handler sits, what it prints, its exit
+code and how it is tested without an open defect's reproducer; `WriteInternalError` loses
+its coverage exclusion and `RunCommand`'s D-039 citation is corrected. **Rejected**:
+leaving the trace, which shows a user a .NET stack for a bug in Grob, and leaves E9001
+registered for nothing.
+
+**Decision 3 — before 9C.** The increment runs after PRs #262, #263 and #264 merge and
+before the 9C `fs` increment, so the oracle covers 9C's natives from their first day.
+D-353's strategy placed Pillar 1's first layers during and immediately after Sprint 9;
+this moves the harness skeleton ahead of 9C, the last Sprint 9 increment.
+
+**Decision 4 — the long mode is run by hand.** No scheduled CI workflow runs it, as the
+strategy's §10 has it for long campaigns. The Sprint 9/10 hardening interlude revisits
+that with its own campaigns.
+
+**Decision 5 — the CLI exits with the documented codes; R-64 filed and owned here.** The
+CLI's exit codes are not mapped as documented: a compile error and a usage error both exit
+`1`, where requirements §8 and D-353's strategy give `2` and `3`. Exit `1` is inside the
+`{0, 1, 2, 3}` that D-353's contract holds runtime exit codes to, so its P0 membership
+rule cannot catch the wrong mapping; only a test per code can. A script's own `exit(n)` is
+outside the membership rule: `n` passes through, and only an `n` outside `0..255` is a
+P1. Chris folded R-64 into the E9001 change
+group: a compile-time diagnostic exits `2` and a usage error `3`, the tests that assert
+the present codes change with it, and the landing entry closes R-64. Requirements §8's
+table gains the usage row D-353's strategy pinned, so the two documents state one set.
+**Rejected**: leaving R-64 for a later increment, which leaves automation unable to tell a
+script that does not compile from one that fails at run time, while the change group that
+rewrites the CLI's failure paths is open.
+
+**Not decided.** The strategy's remaining Pillar 1 layers, the parser depth guard its §3.2
+expects to force, Stryker.NET mutation testing of the C# suite and an adversarial review
+session belong to the Sprint 9/10 interlude; this entry authorises none of them.
+
+**Spec edits in this commit.** `grob-adversarial-testing-strategy.md` §11.1: the slice
+brought forward. `grob-v1-requirements.md` §8 and its CLI summary: exit code `3`, a
+usage error. `grob-open-questions.md`: R-64 filed, owned by this increment.
+`docs/prompts/crash-oracle.md`: the prompt, new.
+
+Cites D-353 (the adversarial strategy), D-039 (misattributed in `RunCommand`), D-311 (the
+§3.1.1 sentinels), D-335 (solution membership), D-420 (the register and the stopping
+rule), D-431 Decision 5 (the session table) and D-316 (no code is minted here).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -18106,7 +18520,31 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-447 added, with spec edits; no source change. **The *native named_
+_November 2026 — D-451 added, with spec edits; no source change. **The *crash oracle* increment is_
+_authorised**, its prompt committed with it, as the first slice of D-353's Pillar 1 brought_
+_forward before 9C: semantic mutation and type-directed generation, in process, with a CI_
+_slice. The CLI is to report an internal failure from any phase as E9001. The long mode is run_
+_by hand. R-64 filed and folded into the increment: a compile error and a usage error both exit_
+_`1`, and are to exit `2` and `3`. Count unchanged at 122._
+_Previous: November 2026 — D-450 added, with a source fix. **With one operand of unknown type, a binary_
+_operator takes its opcode from the known operand**, which must suit the operator or is E0002._
+_R-61 closed. R-63 filed: an operand of unknown type compiles to an assumed type. Count_
+_unchanged at 122._
+_Previous: November 2026 — D-449 added, with a source fix and spec edits. **A call through a nullable_
+_function value is E0101** unless a nil check narrows it, `??` unwraps it or `?.` calls it,_
+_and a `?.` call through a nullable function field is nullable. R-59 closed. R-60, R-61 and R-62_
+_filed: unchecked array-method function arguments, an operator's opcode taken from its unknown_
+_operand (a compiler crash on `"[" + s`) and `fn(): void` in a struct field. Count unchanged at 122._
+_Previous: November 2026 — D-448 added, with a source fix and spec edits. **A call through a_
+_function-typed parameter calls the value**, not the enclosing function. A call through a_
+_function value refuses a named argument with E0011 and checks its arguments against its_
+_function type where the checker knows it, including a struct field's declared type. Calling_
+_a value that is not a function is E0017, a new code. Compatible function shapes combine across_
+_a lambda's returns and a ternary's, switch's or `??`'s arms. R-57 filed: the function values it_
+_does not know, and the VM's missing arity check. R-58 filed: an `int` where a `float` is_
+_expected is not widened in a binding, a return, a struct field, a parameter default or an argument, on `main` too. R-59 filed: a call_
+_through a nullable function value is not checked for `nil`. Count 121 -> 122._
+_Previous: November 2026 — D-447 added, with spec edits; no source change. **The *native named_
 _arguments* increment is authorised**, its prompt committed with it. The increment is to make a_
 _call with no signature — an array or map method, `print`, `exit`, a call through a function_
 _value — refuse a named argument, where its gate confirms one is accepted today. `input` has a_

@@ -1,0 +1,8 @@
+error[E0017]: called value is not a function
+  --> call-non-function-value.grob:3:14
+   |
+ 3 |     count := retries()
+   |              ^^^^^^^
+   |
+   = note: 'retries' has type int, which is not a function
+   = help: remove the parentheses to use the value of 'retries'

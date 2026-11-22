@@ -1,0 +1,6 @@
+// E0101 — a nullable function parameter called without a nil check
+fn retry(backoff: (fn(int): int)?): int {
+    return backoff(1)
+}
+
+print(retry(nil))

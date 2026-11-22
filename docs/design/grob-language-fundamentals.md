@@ -1331,8 +1331,9 @@ that; until it lands `input` does not read an argument's name.
 **Callables with no signature (D-447).** Array methods, map methods, `print`, `exit`
 and a call through a function value record no parameter names, so there is
 nothing for a name to bind to. Their arguments are positional. D-447 has a named
-argument on one refused with E0011; the *native named arguments* increment builds that
-refusal, and until it lands the checker does not read an argument's name on these calls.
+argument on one refused with E0011. A call through a function value refuses one already
+(D-448); for the other four the *native named arguments* increment builds the refusal,
+and until it lands the checker does not read an argument's name on those calls.
 
 **`formatAs.table`.** Its `columns:` argument is the one exception. The compiler
 resolves it, not a signature (D-345): it is always written by name and cannot be
@@ -2131,10 +2132,32 @@ name := user?.address?.city    // nil if user is nil OR address is nil
 
 When any step in the chain evaluates to `nil`, the entire chain immediately
 evaluates to `nil` — no further member access or method calls are attempted.
-The result type of the chain is always nullable (`T?`).
+On a nullable receiver, the result type of the chain is nullable (`T?`) (D-402). A
+`?.` call through a field of non-nullable function type, on a non-nullable receiver,
+keeps the function's return type (D-449).
 
 `?.` may appear multiple times in a single chain. Each `?.` is an independent
 nil check. The chain short-circuits at the first `nil` encountered.
+
+### Calling a nullable function value
+
+A value of nullable function type may be `nil`, so calling it directly is E0101
+(D-449). A binding or parameter is called inside a nil check, which narrows it; a
+nullable struct field is called with `?.`, which gives `nil` when the field holds `nil`,
+so the call's result is nullable; any function value can be unwrapped with `??` first.
+
+```grob
+type Job {
+    describe: (fn(): string)?
+}
+
+fn report(job: Job, format: (fn(string): string)?): void {
+    text := job?.describe() ?? "no description"
+    if (format != nil) {
+        print(format(text))
+    }
+}
+```
 
 ---
 
@@ -2907,7 +2930,11 @@ without noise.
 
 ---
 
-_Document updated November 2026 — D-447: §12.2 names the callables that have no signature_
+_Document updated November 2026 — D-449: §21 says a call through a nullable function_
+_value needs a nil check, `?.` or `??`._
+_Previous: November 2026 — D-448: §12.2 says a call through a function value_
+_refuses a named argument already._
+_Previous: November 2026 — D-447: §12.2 names the callables that have no signature_
 _and so take no named argument._
 _Previous: November 2026 — D-446: §12.2 Calls and Named Arguments added. The_
 _convention D-113 set and D-318 gave codes to had no section here, though D-318 pointed_

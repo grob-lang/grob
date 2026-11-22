@@ -1091,7 +1091,7 @@ final polish.
 - Windows Terminal profile: name `Grob`, icon, denim blue colour scheme,
   `grob repl` startup command.
 - Quiet on success, clear on failure. Results to stdout, errors to stderr.
-- Exit codes: 0 success, 1 runtime error, 2 compile error.
+- Exit codes: 0 success, 1 runtime error, 2 compile error, 3 usage error (§8).
 - `--verbose` flag: shows `log.debug()` output and variable values in
   error messages.
 
@@ -1247,6 +1247,10 @@ and the confirmed decisions in `grob-decisions-log.md`.
 |0   |Success                            |
 |1   |Runtime error (unhandled exception)|
 |2   |Compile error (type/syntax error)  |
+|3   |Usage error (bad CLI arguments, missing file; D-353, D-451)|
+
+A script's `exit(n)` passes `n` through. The adversarial testing strategy's §1 holds the
+contract the harness asserts.
 
 -----
 

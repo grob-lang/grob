@@ -1,0 +1,8 @@
+error[E0101]: nil dereference without `?.` or `??`
+  --> call-nullable-function-value.grob:3:12
+   |
+ 3 |     return backoff(1)
+   |            ^^^^^^^
+   |
+   = note: 'backoff' has type (fn(int): int)?, so it may be nil
+   = help: call it inside a nil check, `if (backoff != nil) { return backoff(1) }`, and return a fallback after it

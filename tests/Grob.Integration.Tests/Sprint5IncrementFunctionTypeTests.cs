@@ -86,4 +86,135 @@ public sealed class Sprint5IncrementFunctionTypeTests {
 
         Assert.Equal($"1{NL}1{NL}2{NL}", stdout);
     }
+
+    // -----------------------------------------------------------------------
+    // Calls through a function-typed parameter — the higher-order shape. The call
+    // used to be checked and compiled against the enclosing function.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_RunsTheArgument() {
+        string stdout = Run("""
+            fn applyTo(f: fn(int): int, x: int): int {
+                return f(x)
+            }
+            fn combine(f: fn(int, int): int, a: int, b: int): int {
+                return f(a, b)
+            }
+            print(applyTo(n => n * 2, 21))
+            print(combine((p, q) => p - q, 10, 3))
+            """);
+
+        Assert.Equal($"42{NL}7{NL}", stdout);
+    }
+
+    [Fact]
+    public void CallThroughFunctionTypedParameter_WithDefaultedSibling_DoesNotEvaluateTheSiblingDefault() {
+        // 'h(n)' used to be compiled as a call to 'apply', so the body evaluated apply's
+        // default for h, 'identity()', as a second argument on every call. The VM accepts
+        // the surplus argument silently; the print in 'identity' is what makes it visible.
+        string stdout = Run("""
+            fn identity(): fn(int): int {
+                print("default made")
+                return v => v
+            }
+            fn apply(n: int, h: fn(int): int = identity()): int {
+                return h(n)
+            }
+            print(apply(21, v => v * 2))
+            print(apply(21))
+            """);
+
+        Assert.Equal($"42{NL}default made{NL}21{NL}", stdout);
+    }
+
+    [Fact]
+    public void CombinedFunctionShapes_LambdaReturnsAndSwitchArms_Run() {
+        // D-448 Decision 7: shapes that combine (an inferred lambda with a tracked function,
+        // a nil path with a function) type-check and the program runs every path.
+        string stdout = Run("""
+            fn choose(flag: bool, f: fn(int): int): fn(int): int {
+                t: fn(): fn(int): int := () => {
+                    if (flag) {
+                        return f
+                    }
+                    (x) => x + 100
+                }
+                return t()
+            }
+            fn maybe(flag: bool, f: fn(int): int): (fn(int): int)? {
+                t: fn(): (fn(int): int)? := () => {
+                    if (flag) {
+                        return nil
+                    }
+                    f
+                }
+                return t()
+            }
+            triple := (a: int) => a * 3
+            print(choose(true, triple)(2))
+            print(choose(false, triple)(2))
+            print(maybe(true, triple) == nil)
+            n := maybe(false, triple)
+            if (n != nil) {
+                print(n(5))
+            }
+            k := 2 switch { 1 => (x) => x - 1, _ => triple }
+            print(k(4))
+            """);
+
+        Assert.Equal($"6{NL}102{NL}true{NL}15{NL}12{NL}", stdout);
+    }
+
+    [Fact]
+    public void NullableFunctionValues_CalledSafely_Run() {
+        // D-449: a call through a nullable function value compiles only once it is safe —
+        // narrowed by a nil check, unwrapped with '??' or called with '?.' — and each form
+        // runs, '?.' giving nil when the field is nil.
+        string stdout = Run("""
+            type Box {
+                op: (fn(): int)?
+            }
+            fn runIfSet(f: (fn(int): int)?): void {
+                if (f != nil) {
+                    print(f(4))
+                }
+            }
+            runIfSet(nil)
+            runIfSet((x) => x * 10)
+            missing: (fn(): int)? := nil
+            fallback: fn(): int := () => 7
+            print((missing ?? fallback)())
+            empty := Box { op: nil }
+            full := Box { op: () => 3 }
+            print(empty?.op() ?? -1)
+            print(full?.op() ?? -1)
+            """);
+
+        Assert.Equal($"40{NL}7{NL}-1{NL}3{NL}", stdout);
+    }
+
+    [Fact]
+    public void UntypedLambdaParameter_StringOperators_Run() {
+        // D-450: with one operand of unknown type the opcode comes from the known operand,
+        // so a string on either side of '+' concatenates and a string comparison compares
+        // strings. Each crashed the compiler or compiled to an int opcode (R-61).
+        string stdout = Run("""
+            names := ["ada", "bob"]
+            for greeting in names.select((n) => "Hi " + n) {
+                print(greeting)
+            }
+            wrap := (s) => "[" + s + "]"
+            print(wrap("x"))
+            before := (s) => s < "m"
+            print(before("a"))
+            print(before("z"))
+            sandwich := (s) => s + "a" + s
+            print(sandwich("x"))
+            shifted := (n) => n - 1 + 2.5
+            print(shifted(3))
+            """);
+
+        Assert.Equal($"Hi ada{NL}Hi bob{NL}[x]{NL}true{NL}false{NL}xax{NL}4.5{NL}", stdout);
+    }
 }

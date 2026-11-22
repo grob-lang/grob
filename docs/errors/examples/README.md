@@ -269,7 +269,9 @@ than a fatal `error[Exxxx]:`.
 | E0010 | `duplicate-named-argument` | Type |
 | E0011 | `unknown-parameter-name` | Type |
 | E0016 | `duplicate-key-map-literal` | Type |
+| E0017 | `call-non-function-value` | Type |
 | E0101 | `nil-deref-method-call` | Type |
+| E0101 | `call-nullable-function-value` | Type |
 | E0102 | `nullable-interpolation` | Type |
 | E0201 | `const-reassignment` | Type |
 | E0202 | `readonly-reassignment` | Type |
@@ -333,6 +335,12 @@ than a fatal `error[Exxxx]:`.
 
 *Map-literal construction: 1 example (E0016, duplicate key in a map literal),*
 *July 2026. Source decision D-376.*
+
+*Called value is not a function: 1 example (E0017, an int parameter called),*
+*November 2026. Source decision D-448.*
+
+*Called nullable function value: 1 example (E0101, a nullable function*
+*parameter called without a nil check), November 2026. Source decision D-449.*
 
 *Error-examples harness: every pair checked statically and behaviourally on*
 *every build, with a strict quarantine manifest; eleven masters and eight*

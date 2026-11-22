@@ -193,9 +193,10 @@ public sealed partial class TypeChecker {
 
         // One or both operands are of unknown type (e.g. a lambda parameter whose type
         // is inferred at the call site, or a deferred member type).  Be permissive and
-        // propagate Unknown — the VM will validate types at runtime.  This mirrors the
-        // Unknown pass-through in ResolveComparison below.
-        if (left == GrobType.Unknown || right == GrobType.Unknown) return GrobType.Unknown;
+        // propagate Unknown — the VM will validate types at runtime — but only when the
+        // known operand suits the operator (D-450): the compiler takes the opcode from it,
+        // and no opcode exists for any other.
+        if (left == GrobType.Unknown || right == GrobType.Unknown) return ResolveUnknownArithmetic(node, left, right);
 
         // All other combinations are type errors — e.g. int + string.
         return EmitErrorAndReturn(ErrorCatalog.E0002,
@@ -238,12 +239,78 @@ public sealed partial class TypeChecker {
         return expr is CallExpr { IsVoidReturn: true };
     }
 
+    /// <summary>
+    /// Resolves arithmetic with an operand of unknown type (D-450). The known operand must
+    /// suit the operator, and the result has the known operand's type, as the compiler
+    /// takes it, so an operator applied to the result is checked against the type the
+    /// compiler chooses its opcode from. With two unknown operands the result stays
+    /// <see cref="GrobType.Unknown"/>.
+    /// </summary>
+    private GrobType ResolveUnknownArithmetic(BinaryExpr node, GrobType left, GrobType right) {
+        GrobType known = KnownOperandType(left, right);
+        return SuitsArithmetic(node.Operator, known) ? known : RejectKnownOperand(node, left, right);
+    }
+
+    /// <summary>
+    /// The type of the operand that is not <see cref="GrobType.Unknown"/>, or
+    /// <see cref="GrobType.Unknown"/> when both are.
+    /// </summary>
+    private static GrobType KnownOperandType(GrobType left, GrobType right) =>
+        left == GrobType.Unknown ? right : left;
+
+    /// <summary>
+    /// Whether an arithmetic operator has an opcode for <paramref name="known"/>, the type
+    /// of its one known operand (D-450): <c>+</c> for an <c>int</c>, a <c>float</c> or a
+    /// <c>string</c>, the other operators for an <c>int</c> or a <c>float</c>. Two unknown
+    /// operands leave nothing to check.
+    /// </summary>
+    private static bool SuitsArithmetic(BinaryOperator op, GrobType known) => known switch {
+        GrobType.Unknown or GrobType.Int or GrobType.Float => true,
+        GrobType.String => op == BinaryOperator.Add,
+        _ => false,
+    };
+
+    /// <summary>
+    /// Whether a relational operator has an opcode for the one known operand of
+    /// <paramref name="node"/> (D-450): an <c>int</c>, a <c>float</c>, a <c>string</c> or
+    /// a <c>date</c>, the types two known operands may be ordered by.
+    /// </summary>
+    private bool SuitsOrdering(BinaryExpr node, GrobType left, GrobType right) {
+        bool leftKnown = left != GrobType.Unknown;
+        return KnownOperandType(left, right) switch {
+            GrobType.Unknown or GrobType.Int or GrobType.Float or GrobType.String => true,
+            GrobType.Struct => GetStructTypeName(leftKnown ? node.Left : node.Right) == DateLayout.TypeName,
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// Reports E0002 at the known operand of <paramref name="node"/>, whose other operand
+    /// is of unknown type, when the operator has no opcode for it (D-450).
+    /// </summary>
+    private GrobType RejectKnownOperand(BinaryExpr node, GrobType left, GrobType right) {
+        bool leftKnown = left != GrobType.Unknown;
+        return EmitErrorAndReturn(ErrorCatalog.E0002,
+            $"Operator '{OperatorSymbol(node.Operator)}' cannot be applied to type '{TypeName(KnownOperandType(left, right))}'.",
+            (leftKnown ? node.Left : node.Right).Range);
+    }
+
+    /// <summary>
+    /// Resolves a comparison with an operand of unknown type: <c>==</c> and <c>!=</c> take
+    /// any other operand, and a relational operator one it has an opcode for (D-450).
+    /// </summary>
+    private GrobType ResolveUnknownComparison(BinaryExpr node, GrobType left, GrobType right) =>
+        node.Operator is BinaryOperator.Equal or BinaryOperator.NotEqual || SuitsOrdering(node, left, right)
+            ? GrobType.Bool
+            : RejectKnownOperand(node, left, right);
+
     private GrobType ResolveComparison(BinaryExpr node, GrobType left, GrobType right) {
         // An operand of unknown type (e.g. an array element, whose element type is
         // untracked until generics) is permissive: a comparison always yields bool.
-        // '==' / '!=' compile to the type-agnostic Equal/NotEqual; a relational
-        // operator falls to the int comparison, correct for the int element case.
-        if (left == GrobType.Unknown || right == GrobType.Unknown) return GrobType.Bool;
+        // '==' / '!=' compile to the type-agnostic Equal/NotEqual and take any operand; a
+        // relational operator takes its opcode from the known operand, so that operand
+        // must be one two known operands may be ordered by (D-450).
+        if (left == GrobType.Unknown || right == GrobType.Unknown) return ResolveUnknownComparison(node, left, right);
 
         // == and != accept same-type operands or mixed numeric operands.
         if (node.Operator == BinaryOperator.Equal || node.Operator == BinaryOperator.NotEqual) {
@@ -395,6 +462,12 @@ public sealed partial class TypeChecker {
     /// </para>
     /// </remarks>
     private string? MergeIdentityMismatch(IReadOnlyList<Expression> branches, GrobType elemType) {
+        // Combining function shapes is not transitive (D-448 Decision 7): two concrete arms
+        // can each combine with an inferred arm between them and still conflict, so every
+        // arm is folded into one shape rather than checked pair by pair.
+        if (elemType == GrobType.Function) {
+            return FunctionShapesCombine(branches) ? null : "function signatures do not match";
+        }
         for (int i = 0; i < branches.Count - 1; i++) {
             if (BranchPairIdentityMismatch(branches[i], branches[i + 1], elemType) is string mismatch) {
                 return mismatch;
@@ -416,8 +489,6 @@ public sealed partial class TypeChecker {
                 "map value types do not match",
             GrobType.Array when !ArrayElementAssignable(ArrayDescriptorOf(left), ArrayDescriptorOf(right)) =>
                 "array element types do not match",
-            GrobType.Function when !FunctionDescriptorsAgree(left, right) =>
-                "function signatures do not match",
             GrobType.Struct when !StructIdentitiesAgree(left, right) =>
                 "named types do not match",
             // PR #189 follow-up review: the anonymous twin of the arm above. An
@@ -431,14 +502,19 @@ public sealed partial class TypeChecker {
         };
 
     /// <summary>
-    /// True when both operands' function descriptors resolve to the same signature, or when
-    /// either side has no descriptor to compare — the permissive-on-missing shape
+    /// True when every branch's tracked function shape combines into one (D-448 Decision 7:
+    /// an inferred lambda's Unknown positions take another branch's types). A branch with no
+    /// tracked shape has nothing to compare and is skipped — the permissive-on-missing shape
     /// <see cref="ArrayElementAssignable"/> and <see cref="MapValueAssignable"/> already use.
     /// </summary>
-    private bool FunctionDescriptorsAgree(Expression left, Expression right) {
-        FunctionTypeDescriptor? leftDescriptor = ExpressionDescriptor(left);
-        FunctionTypeDescriptor? rightDescriptor = ExpressionDescriptor(right);
-        return leftDescriptor is null || rightDescriptor is null || leftDescriptor.Equals(rightDescriptor);
+    private bool FunctionShapesCombine(IReadOnlyList<Expression> branches) {
+        FunctionTypeDescriptor? combined = null;
+        foreach (Expression branch in branches) {
+            if (ExpressionDescriptor(branch) is not { } descriptor) continue;
+            combined = combined is null ? descriptor : FunctionTypeDescriptor.Merge(combined, descriptor);
+            if (combined is null) return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -494,7 +570,7 @@ public sealed partial class TypeChecker {
         // VisitIdentifier's print/exit-as-value rejection stays silent here — this method's
         // own checks below give the more specific arity/value-position diagnostic instead.
         _isCallCalleePosition = true;
-        Visit(node.Callee);
+        GrobType calleeType = Visit(node.Callee);
         _isCallCalleePosition = false;
         var callArgTypes = new GrobType[node.Arguments.Count];
         for (int i = 0; i < node.Arguments.Count; i++) {
@@ -517,19 +593,12 @@ public sealed partial class TypeChecker {
 
         // Only user-defined functions are checked positionally here — print/exit and
         // input are validated above, each with its own shape (D-381, Sprint 8 Increment
-        // C). A callee bound to a function-typed value (D-362) still resolves a return
-        // type — via its descriptor rather than a declared FnDecl signature — so
-        // GetExprType can pick the right typed opcode when the call is used as an
-        // arithmetic operand; no argument validation is added for this shape, that stays
-        // out of scope. Any other unresolved callee is permissive.
-        if (node.Callee is not IdentifierExpr { Declaration: FnDecl fn }) {
-            if (ExpressionDescriptor(node.Callee) is FunctionTypeDescriptor calleeDescriptor) {
-                node.ResolvedReturnType = calleeDescriptor.ReturnType;
-                return calleeDescriptor.ReturnType;
-            }
-            return GrobType.Unknown;
+        // C). Every other callee is a function value (CheckFunctionValueCall).
+        if (DirectCallee(node.Callee) is not FnDecl fn) {
+            return CheckFunctionValueCall(node, calleeType, callArgTypes);
         }
 
+        node.ResolvedFunction = fn;
         CheckCall(node, fn, callArgTypes);
         // Resolve the declared return type with its structural descriptor so a call that
         // returns a function type (makeCounter(): fn(): int) flows its descriptor to the
@@ -544,6 +613,156 @@ public sealed partial class TypeChecker {
         if (resultArrayDesc is not null) _callResultArrayDescriptors[node] = resultArrayDesc;
         node.ResolvedReturnType = resultKind;
         return resultKind;
+    }
+
+    /// <summary>
+    /// The function a call names directly, or <see langword="null"/> when its callee is
+    /// anything else. A parameter's identifier also resolves to the owning
+    /// <see cref="FnDecl"/> (a parameter has no declaration node of its own), so a callee
+    /// whose symbol is a parameter is a call through a function value, not a call to the
+    /// enclosing function.
+    /// </summary>
+    private FnDecl? DirectCallee(Expression callee) =>
+        callee is IdentifierExpr { Declaration: FnDecl fn } id && LookupSymbol(id.Name) is not { IsParameter: true }
+            ? fn
+            : null;
+
+    /// <summary>
+    /// Checks a call whose callee is a function value rather than a declared function. A
+    /// callee of known non-function type cannot be called (E0017, D-448) and would
+    /// otherwise fault in the VM. A callee already in error makes the call
+    /// <see cref="GrobType.Error"/>, so nothing that uses its result reports the same root
+    /// cause again. A callee of nullable function type may be nil, so a call through it is
+    /// E0101 unless it is a <c>?.</c> member access, whose result is then nullable too
+    /// (D-449). A function value names no parameters (D-326), so a named argument is
+    /// refused (D-447 Decision 2). A callee
+    /// whose function type the checker tracks (D-362), including a struct field declared
+    /// with one (D-448), has its arguments checked against that type and resolves its
+    /// return type, so GetExprType can pick the right typed opcode when the call is an
+    /// arithmetic operand. Any other callee, such as an array element, is unchecked (R-57)
+    /// and resolves to <see cref="GrobType.Unknown"/>.
+    /// </summary>
+    private GrobType CheckFunctionValueCall(CallExpr node, GrobType calleeType, GrobType[] argTypes) {
+        if (calleeType == GrobType.Error) {
+            return GrobType.Error;
+        }
+        if (calleeType is not (GrobType.Function or GrobType.NullableFunction or GrobType.Unknown)) {
+            return EmitErrorAndReturn(ErrorCatalog.E0017,
+                $"{NotCallableSubject(node.Callee)} has type '{TypeName(calleeType)}', which is not a function, so it cannot be called.",
+                node.Callee.Range);
+        }
+        bool mayBeNil = calleeType == GrobType.NullableFunction;
+        bool optionalCall = node.Callee is MemberAccessExpr { IsOptional: true };
+        if (mayBeNil && !optionalCall) {
+            EmitError(ErrorCatalog.E0101, MayBeNilMessage(node.Callee), node.Callee.Range);
+        }
+        bool namesRefused = RejectNamedFunctionValueArgs(node);
+        FunctionTypeDescriptor? calleeDescriptor = ExpressionDescriptor(node.Callee);
+        if (calleeDescriptor is not null && !namesRefused) {
+            CheckFunctionValueArguments(node, calleeDescriptor, argTypes);
+        }
+        if (mayBeNil && !optionalCall) {
+            return GrobType.Error;
+        }
+        if (calleeDescriptor is null) {
+            return GrobType.Unknown;
+        }
+        if (calleeDescriptor.ReturnDescriptor is { } returnDescriptor) {
+            _callResultDescriptors[node] = returnDescriptor;
+        }
+        // '?.' gives nil when the field holds nil, so the call's result may be nil too.
+        GrobType returnType = mayBeNil
+            ? GrobTypeHelpers.ToNullable(calleeDescriptor.ReturnType)
+            : calleeDescriptor.ReturnType;
+        node.ResolvedReturnType = returnType;
+        return returnType;
+    }
+
+    /// <summary>
+    /// The E0101 message for a call through a value of nullable function type (D-449),
+    /// naming the remedy that fits the callee: a binding or parameter can be narrowed by a
+    /// nil check, a struct field can be called with <c>?.</c> and any value can be
+    /// unwrapped with <c>??</c>.
+    /// </summary>
+    private static string MayBeNilMessage(Expression callee) => callee switch {
+        IdentifierExpr id =>
+            $"'{id.Name}' may be nil, so it cannot be called. Check it with 'if ({id.Name} != nil)' or unwrap it with '??' first.",
+        MemberAccessExpr member =>
+            $"Field '{member.Member}' may be nil, so it cannot be called. Call it with '?.' or unwrap it with '??' first.",
+        _ => "The called value may be nil, so it cannot be called. Unwrap it with '??' first.",
+    };
+
+    /// <summary>
+    /// The name a function-value callee goes by in a diagnostic: a binding's or
+    /// parameter's name, or a struct field's member name. <see langword="null"/> for any
+    /// other callee, such as a call result.
+    /// </summary>
+    private static string? FunctionValueName(Expression callee) => callee switch {
+        IdentifierExpr id => id.Name,
+        MemberAccessExpr member => member.Member,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The subject of an E0017 message: <c>'n'</c> for a binding or parameter,
+    /// <c>Field 'count'</c> for a struct field and <c>The called value</c> otherwise.
+    /// </summary>
+    private static string NotCallableSubject(Expression callee) => callee switch {
+        IdentifierExpr id => $"'{id.Name}'",
+        MemberAccessExpr member => $"Field '{member.Member}'",
+        _ => "The called value",
+    };
+
+    /// <summary>
+    /// Reports E0011 at each named argument of a call through a function value and
+    /// returns whether there was one. A function type carries no parameter names (D-326),
+    /// so a name has nothing to bind against and would otherwise be dropped, passing the
+    /// value in source order.
+    /// </summary>
+    private bool RejectNamedFunctionValueArgs(CallExpr node) {
+        bool rejected = false;
+        foreach (CallArgument arg in node.Arguments.Where(a => a.Name is not null)) {
+            EmitError(ErrorCatalog.E0011,
+                "A function value does not accept named arguments; pass them positionally.",
+                arg.Range);
+            rejected = true;
+        }
+        return rejected;
+    }
+
+    /// <summary>
+    /// Checks a function value's arguments against its function type: the count (E0003),
+    /// then each argument's type (E0004), descending into a function-typed parameter's
+    /// shape. A function type has no defaults, so the count must match exactly. An
+    /// <see cref="GrobType.Unknown"/> on either side is permissive, and an argument that
+    /// already errored is not reported again. A function type records an array
+    /// parameter's kind but not its element type, and a struct parameter not by name, so
+    /// neither is compared here (R-57).
+    /// </summary>
+    private void CheckFunctionValueArguments(CallExpr node, FunctionTypeDescriptor descriptor, GrobType[] argTypes) {
+        string? calleeName = FunctionValueName(node.Callee);
+        int paramCount = descriptor.ParameterTypes.Count;
+        if (argTypes.Length != paramCount) {
+            string subject = calleeName is null ? "The function value" : $"Function value '{calleeName}'";
+            string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
+            EmitError(ErrorCatalog.E0003,
+                $"{subject} expects {paramCount} {Plural(paramCount, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
+                node.Range);
+            return;
+        }
+        string callee = calleeName is null ? "the function value" : $"function value '{calleeName}'";
+        for (int i = 0; i < paramCount; i++) {
+            GrobType paramType = descriptor.ParameterTypes[i];
+            GrobType argType = argTypes[i];
+            if (paramType == GrobType.Unknown || argType is GrobType.Unknown or GrobType.Error) continue;
+
+            Expression argExpr = node.Arguments[i].Value;
+            if (!TypesAreAssignable(argType, paramType, InitialiserDescriptor(argExpr), descriptor.ParameterDescriptorAt(i))) {
+                EmitError(ErrorCatalog.E0004,
+                    $"Argument {i + 1} to {callee} has type '{TypeName(argType)}', which is not assignable to parameter type '{TypeName(paramType)}'.",
+                    argExpr.Range);
+            }
+        }
     }
 
     /// <summary>
@@ -767,46 +986,22 @@ public sealed partial class TypeChecker {
 
         // D-408: an ordinary user 'type' struct or an anonymous struct (#{ }) has no
         // method surface in v1 (D-043/D-080) — but a call through a genuinely declared
-        // field whose value happens to be callable (box.callback(), a function-typed
-        // field) must keep resolving permissively, exactly as it does today. Reusing
-        // ResolveStructFieldAccess's own field-lookup-by-name semantics (rather than a
-        // blanket "any call on a Struct/AnonStruct receiver is E1002") is what tells
-        // the two cases apart: a name that names a declared field, of any type, stays
-        // Unknown; a name that names no field at all is E1002 — mirroring the property
-        // path's unrecognised-field diagnostic instead of falling through to the
-        // generic Unknown fallback below and crashing the VM at emission.
+        // field whose value is callable (box.callback(), a function-typed field) is a
+        // call through a function value. Reusing ResolveStructFieldAccess's own
+        // field-lookup-by-name semantics (rather than a blanket "any call on a
+        // Struct/AnonStruct receiver is E1002") is what tells the two cases apart: a name
+        // that names no field at all is E1002 — mirroring the property path's
+        // unrecognised-field diagnostic instead of falling through to the generic Unknown
+        // fallback below and crashing the VM at emission.
         if (receiverType is GrobType.Struct or GrobType.AnonStruct) {
-            return ValidateStructMemberCall(memberAccess);
+            // A call that names a field is checked as a call through the field's value
+            // (D-448): a non-function field is E0017, a named argument has nothing to bind
+            // to (D-326, D-447 Decision 2) and a declared function type checks the
+            // arguments. A call that names no field has already failed with E1002 and is
+            // not reported twice.
+            return CheckFunctionValueCall(node, ResolveStructFieldAccess(memberAccess), argTypes);
         }
         return GrobType.Unknown;
-    }
-
-    /// <summary>
-    /// Validates a call whose receiver is an ordinary user <c>type</c> struct or an
-    /// anonymous struct (D-408, finding 2). Field-lookup-based, deliberately: v1 gives
-    /// structs no method surface, but a call through a declared field whose value is
-    /// callable (<c>box.callback()</c>) is a legitimate, currently-working pattern that
-    /// must not be rejected merely because the receiver is a struct. Returns
-    /// <see cref="GrobType.Unknown"/> when <paramref name="memberAccess"/>'s member
-    /// names a declared field (regardless of that field's own type — the same
-    /// permissive outcome this call already reached before this fix), and raises
-    /// <see cref="ErrorCatalog.E1002"/>, the same code and wording
-    /// <see cref="ResolveStructFieldAccess"/> already raises for an unrecognised field
-    /// on the property path, when it names no field at all.
-    /// </summary>
-    private GrobType ValidateStructMemberCall(MemberAccessExpr memberAccess) {
-        string? typeName = GetStructTypeName(memberAccess.Target);
-        if (typeName is null) return GrobType.Unknown;
-
-        UserTypeInfo? typeInfo = TryGetTypeInfo(typeName);
-        if (typeInfo is null) return GrobType.Unknown;
-
-        bool hasField = typeInfo.Fields.Any(f => f.Name == memberAccess.Member);
-        if (hasField) return GrobType.Unknown;
-
-        return EmitErrorAndReturn(ErrorCatalog.E1002,
-            $"Type '{typeName}' has no member '{memberAccess.Member}'.",
-            memberAccess.Range);
     }
 
     /// <summary>
@@ -2672,6 +2867,9 @@ public sealed partial class TypeChecker {
 
         node.ResolvedFieldType = field.Kind;
         node.ResolvedStructTypeName = field.NamedTypeName;
+        if (field.FunctionDescriptor is { } functionDescriptor) {
+            _memberAccessFunctionDescriptors[node] = functionDescriptor;
+        }
         return field.Kind;
     }
 
@@ -3311,6 +3509,8 @@ public sealed partial class TypeChecker {
         _controlFrameFloors.Push(_controlFrames.Count);
 
         // Infer the body type and store it for callers (e.g. ValidateArrayMethodCall).
+        var returns = new List<LambdaReturn>();
+        _lambdaReturns.Push(returns);
         GrobType bodyType = node.Body switch {
             LambdaExpressionBody exprBody => VisitStatementPositionExpression(exprBody.Expression),
             LambdaBlockBody blockBody => VisitLambdaBlock(blockBody),
@@ -3322,8 +3522,12 @@ public sealed partial class TypeChecker {
         _lambdaReturnTypes[node] = bodyType;
 
         // Build and store the structural descriptor for this lambda (D-326); arity is exact.
-        _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, bodyType);
+        // Read while the parameters are still in scope, so a returned lambda or function
+        // value resolves its own shape.
+        (GrobType resultType, FunctionTypeDescriptor? resultDescriptor) = LambdaResult(node.Body, bodyType, returns);
+        _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, resultType, [], resultDescriptor);
 
+        _lambdaReturns.Pop();
         _controlFrameFloors.Pop();
         _functionReturnTypes.Pop();
         _scopes.Pop();
@@ -3332,6 +3536,73 @@ public sealed partial class TypeChecker {
         // the body return type use _lambdaReturnTypes; callers that need the structural
         // descriptor use _lambdaDescriptors.
         return GrobType.Function;
+    }
+
+    /// <summary>
+    /// The result type and, when the result is a function, the function shape a lambda
+    /// returns: its expression body's, or for a block body the combination of every
+    /// <c>return</c> in it (<paramref name="returned"/>) and its final value (D-448
+    /// Decision 7). A block that can end without a value contributes <c>nil</c>.
+    /// </summary>
+    private (GrobType Type, FunctionTypeDescriptor? Descriptor) LambdaResult(
+            LambdaBody body, GrobType bodyType, List<LambdaReturn> returned) {
+        if (body is LambdaExpressionBody exprBody) {
+            return (bodyType, ExpressionDescriptor(exprBody.Expression));
+        }
+        var results = new List<LambdaReturn>(returned);
+        switch (body) {
+            case LambdaBlockBody { Block.Statements: [.., ExpressionStmt last] }:
+                results.Add(new LambdaReturn(bodyType, ExpressionDescriptor(last.Expression)));
+                break;
+            case LambdaBlockBody { Block.Statements: [.., AstNode last] } when AlwaysLeaves(last):
+                break;
+            default:
+                results.Add(new LambdaReturn(GrobType.Nil, null));
+                break;
+        }
+        return CombineFunctionResults(results) ?? (bodyType, null);
+    }
+
+    /// <summary>
+    /// Whether control cannot run past <paramref name="statement"/>: a <c>return</c> or
+    /// <c>throw</c>, a block whose last statement cannot, an <c>if</c> with an <c>else</c>
+    /// where neither branch can, or a <c>try</c> whose body and every <c>catch</c> cannot
+    /// (a <c>finally</c> cannot return, E2207, so it never decides). Any other statement may
+    /// fall through, so a block lambda ending in one can end without a value.
+    /// </summary>
+    private static bool AlwaysLeaves(AstNode statement) => statement switch {
+        ReturnStmt or ThrowStmt => true,
+        BlockStmt { Statements: [.., Statement last] } => AlwaysLeaves(last),
+        IfStmt { Else: { } elseBranch } ifStmt => AlwaysLeaves(ifStmt.Then) && AlwaysLeaves(elseBranch),
+        TryStmt tryStmt => AlwaysLeaves(tryStmt.Body) && tryStmt.Catches.All(c => AlwaysLeaves(c.Body)),
+        _ => false,
+    };
+
+    /// <summary>
+    /// Combines a block lambda's results when each is a function value of tracked shape or
+    /// <c>nil</c> and at least one is a function: the shapes merge
+    /// (<see cref="FunctionTypeDescriptor.Merge"/>), and a <c>nil</c> or nullable result
+    /// makes the result a nullable function. <see langword="null"/> when any result is
+    /// another kind, an untracked function or a shape that conflicts, so the lambda carries
+    /// no nested shape and matches no declared one.
+    /// </summary>
+    private static (GrobType Type, FunctionTypeDescriptor? Descriptor)? CombineFunctionResults(List<LambdaReturn> results) {
+        FunctionTypeDescriptor? combined = null;
+        bool nullable = false;
+        foreach (LambdaReturn result in results) {
+            if (result.Kind == GrobType.Nil) {
+                nullable = true;
+                continue;
+            }
+            if (result.Kind is not (GrobType.Function or GrobType.NullableFunction) || result.Descriptor is null) {
+                return null;
+            }
+            nullable |= result.Kind == GrobType.NullableFunction;
+            combined = combined is null ? result.Descriptor : FunctionTypeDescriptor.Merge(combined, result.Descriptor);
+            if (combined is null) return null;
+        }
+        if (combined is null) return null;
+        return (nullable ? GrobType.NullableFunction : GrobType.Function, combined);
     }
 
     /// <summary>

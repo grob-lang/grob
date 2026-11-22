@@ -40,7 +40,7 @@ public sealed class ErrorExampleMasterTests {
     }
 
     [Fact]
-    public void Corpus_HasFiftySevenPairs() {
-        Assert.Equal(57, ErrorExampleCorpus.Slugs().Count);
+    public void Corpus_HasFiftyNinePairs() {
+        Assert.Equal(59, ErrorExampleCorpus.Slugs().Count);
     }
 }
