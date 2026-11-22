@@ -7,8 +7,9 @@ namespace Grob.Compiler.Tests;
 /// <summary>
 /// D-448 Decision 7: <see cref="FunctionTypeDescriptor.Merge"/> combines two compatible
 /// function shapes. An <see cref="GrobType.Unknown"/> parameter, as an inferred lambda
-/// carries, takes the other shape's type; an Unknown return stays Unknown; two concrete
-/// positions must agree, and so must arity.
+/// carries, takes the other shape's type; an Unknown return stays Unknown, with the other
+/// shape's concrete return kept as its bound; two concrete positions must agree, and so
+/// must arity.
 /// </summary>
 public sealed class FunctionTypeDescriptorMergeTests {
     private static FunctionTypeDescriptor Fn(GrobType returnType, params GrobType[] parameters) =>
@@ -26,23 +27,94 @@ public sealed class FunctionTypeDescriptorMergeTests {
     /// <summary>
     /// An inferred lambda's Unknown return is not shown to be the other shape's type (its
     /// body may return anything, such as its own argument), so the merged return stays
-    /// Unknown and no typed opcode is chosen from it.
+    /// Unknown and no typed opcode is chosen from it. The concrete return is kept as the
+    /// return's bound, so an annotation that conflicts with it is still refused.
     /// </summary>
     [Fact]
-    public void Merge_UnknownReturn_StaysUnknown() {
+    public void Merge_UnknownReturn_StaysUnknownWithTheConcreteReturnAsItsBound() {
         FunctionTypeDescriptor? merged = FunctionTypeDescriptor.Merge(
             Fn(GrobType.String, GrobType.Int),
             Fn(GrobType.Unknown, GrobType.Unknown));
 
-        Assert.Equal(Fn(GrobType.Unknown, GrobType.Int), merged);
+        Assert.NotNull(merged);
+        Assert.Equal(GrobType.Unknown, merged.ReturnType);
+        Assert.Equal(GrobType.String, merged.ReturnBound);
+        Assert.Null(merged.ReturnBoundDescriptor);
+        Assert.Equal([GrobType.Int], merged.ParameterTypes);
     }
 
     [Fact]
-    public void Merge_UnknownReturnWithNestedShape_DropsTheNestedShape() {
+    public void Merge_TwoUnknownReturns_HaveNoBound() {
+        FunctionTypeDescriptor? merged = FunctionTypeDescriptor.Merge(
+            Fn(GrobType.Unknown, GrobType.Int),
+            Fn(GrobType.Unknown, GrobType.Unknown));
+
+        Assert.Equal(Fn(GrobType.Unknown, GrobType.Int), merged);
+        Assert.Null(merged!.ReturnBound);
+    }
+
+    [Fact]
+    public void Merge_UnknownReturnWithNestedShape_KeepsTheNestedShapeAsTheBound() {
         FunctionTypeDescriptor tracked = new([], GrobType.Function, [], Fn(GrobType.Int));
         FunctionTypeDescriptor inferred = new([], GrobType.Unknown, [], null);
 
-        Assert.Equal(new FunctionTypeDescriptor([], GrobType.Unknown), FunctionTypeDescriptor.Merge(inferred, tracked));
+        FunctionTypeDescriptor? merged = FunctionTypeDescriptor.Merge(inferred, tracked);
+
+        Assert.NotNull(merged);
+        Assert.Equal(GrobType.Unknown, merged.ReturnType);
+        Assert.Null(merged.ReturnDescriptor);
+        Assert.Equal(GrobType.Function, merged.ReturnBound);
+        Assert.Equal(Fn(GrobType.Int), merged.ReturnBoundDescriptor);
+    }
+
+    /// <summary>
+    /// Combining through an inferred shape does not lose a conflict: the bound left by the
+    /// first two shapes conflicts with the third's concrete return, as the first and third
+    /// would conflict if combined directly.
+    /// </summary>
+    [Fact]
+    public void Merge_BoundConflictingWithALaterConcreteReturn_IsNull() {
+        FunctionTypeDescriptor? bounded = FunctionTypeDescriptor.Merge(
+            Fn(GrobType.Int, GrobType.Int),
+            Fn(GrobType.Unknown, GrobType.Unknown));
+
+        Assert.NotNull(bounded);
+        Assert.Null(FunctionTypeDescriptor.Merge(bounded, Fn(GrobType.String, GrobType.Int)));
+        Assert.Null(FunctionTypeDescriptor.Merge(Fn(GrobType.String, GrobType.Int), bounded));
+    }
+
+    [Fact]
+    public void Merge_TwoBoundsThatAgree_KeepTheBound() {
+        FunctionTypeDescriptor? left = FunctionTypeDescriptor.Merge(
+            Fn(GrobType.Int, GrobType.Int), Fn(GrobType.Unknown, GrobType.Unknown));
+        FunctionTypeDescriptor? right = FunctionTypeDescriptor.Merge(
+            Fn(GrobType.Unknown, GrobType.Unknown), Fn(GrobType.Int, GrobType.Int));
+
+        FunctionTypeDescriptor? merged = FunctionTypeDescriptor.Merge(left!, right!);
+
+        Assert.NotNull(merged);
+        Assert.Equal(GrobType.Unknown, merged.ReturnType);
+        Assert.Equal(GrobType.Int, merged.ReturnBound);
+    }
+
+    [Fact]
+    public void Merge_TwoBoundsThatConflict_IsNull() {
+        FunctionTypeDescriptor? left = FunctionTypeDescriptor.Merge(
+            Fn(GrobType.Int, GrobType.Int), Fn(GrobType.Unknown, GrobType.Unknown));
+        FunctionTypeDescriptor? right = FunctionTypeDescriptor.Merge(
+            Fn(GrobType.String, GrobType.Int), Fn(GrobType.Unknown, GrobType.Unknown));
+
+        Assert.Null(FunctionTypeDescriptor.Merge(left!, right!));
+    }
+
+    [Fact]
+    public void Equals_DescriptorsThatDifferOnlyInBound_AreNotEqual() {
+        FunctionTypeDescriptor? bounded = FunctionTypeDescriptor.Merge(
+            Fn(GrobType.Int, GrobType.Int), Fn(GrobType.Unknown, GrobType.Unknown));
+        FunctionTypeDescriptor unbounded = Fn(GrobType.Unknown, GrobType.Int);
+
+        Assert.NotEqual(unbounded, bounded);
+        Assert.NotEqual(bounded, unbounded);
     }
 
     [Fact]
@@ -67,7 +139,12 @@ public sealed class FunctionTypeDescriptorMergeTests {
 
         FunctionTypeDescriptor? merged = FunctionTypeDescriptor.Merge(left, right);
 
-        Assert.Equal(new FunctionTypeDescriptor([], GrobType.Function, [], Fn(GrobType.Unknown, GrobType.Int)), merged);
+        Assert.NotNull(merged);
+        Assert.Equal(GrobType.Function, merged.ReturnType);
+        FunctionTypeDescriptor nested = Assert.IsType<FunctionTypeDescriptor>(merged.ReturnDescriptor);
+        Assert.Equal([GrobType.Int], nested.ParameterTypes);
+        Assert.Equal(GrobType.Unknown, nested.ReturnType);
+        Assert.Equal(GrobType.Int, nested.ReturnBound);
     }
 
     [Fact]
@@ -77,7 +154,13 @@ public sealed class FunctionTypeDescriptorMergeTests {
 
         FunctionTypeDescriptor? merged = FunctionTypeDescriptor.Merge(left, right);
 
-        Assert.Equal(new FunctionTypeDescriptor([GrobType.Function], GrobType.Int, [Fn(GrobType.Unknown, GrobType.Int)], null), merged);
+        Assert.NotNull(merged);
+        Assert.Equal([GrobType.Function], merged.ParameterTypes);
+        Assert.Equal(GrobType.Int, merged.ReturnType);
+        FunctionTypeDescriptor nested = Assert.IsType<FunctionTypeDescriptor>(merged.ParameterDescriptorAt(0));
+        Assert.Equal([GrobType.Int], nested.ParameterTypes);
+        Assert.Equal(GrobType.Unknown, nested.ReturnType);
+        Assert.Equal(GrobType.Int, nested.ReturnBound);
     }
 
     [Fact]

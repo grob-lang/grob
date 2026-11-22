@@ -18016,7 +18016,8 @@ and on 22 November Chris chose to settle the rule here rather than defer it. Two
 combine position by position: an `Unknown` parameter, as an inferred lambda carries, takes the
 other shape's type and nested shape, which only adds checks on the arguments; an `Unknown`
 return stays `Unknown`, since the lambda's body is not shown to produce the other shape's type
-and no typed opcode may be chosen from it; two concrete positions must be equal; two
+and no typed opcode may be chosen from it, but the other shape's concrete return is kept as
+the combined return's bound; two concrete positions must be equal; two
 function-typed positions combine their nested shapes in turn; and the arities must match.
 Combining is not transitive, so every arm of a switch expression is folded into one shape
 rather than checked against its neighbour. A lambda path that returns `nil`, or a block whose
@@ -18028,7 +18029,12 @@ not combine: `flag ? f : (x) => "s"` is still E0002, and a lambda returning both
 against a declared shape. The combined shape is what the value carries, so a call through it
 is checked against it: with `g := flag ? (x) => 1 : f`, `g("s")` is E0004. With
 `f: fn(int): string`, `flag ? f : (x) => x` carries `fn(int)` with an `Unknown` return, so a
-call through it is not typed `string`, although the lambda returns its argument. Checking an
+call through it is not typed `string`, although the lambda returns its argument. The bound
+is what an annotation and a further arm are checked against, so a branch's concrete return
+is never erased by combining it with an inferred one (CodeRabbit, PR #262): with
+`f: fn(int): int`, `g: fn(int): string := flag ? f : (x) => x` is E0001, where an earlier
+commit on the PR accepted it and the run stopped with an internal error, and a switch expression with arms `f`, `(x) => x` and a
+`fn(int): string` is E0002, as `f` and the last arm are directly. Checking an
 inferred lambda's body against a shape waits on R-47, which types its parameters.
 
 **Spec edits in this commit.** `grob-language-fundamentals.md` §12.2: a call through a

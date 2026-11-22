@@ -1425,6 +1425,84 @@ public sealed class TypeCheckerFunctionTypeTests {
         Assert.Equal(10, d.Range.Start.Column);
     }
 
+    /// <summary>
+    /// The same holds for returns: an inferred middle arm's Unknown return keeps the first
+    /// arm's <c>int</c> as its bound, which conflicts with the last arm's <c>string</c>.
+    /// </summary>
+    [Fact]
+    public void SwitchExpression_ReturnsCombinePairwiseButNotOverall_IsE0002() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn pick(n: int, f: fn(int): int, s: fn(int): string): void {
+                g := n switch { 1 => f, 2 => (x) => x, _ => s }
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0002", d.Code);
+        Assert.Equal("Switch arms must produce the same type: function signatures do not match.", d.Message);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(10, d.Range.Start.Column);
+    }
+
+    // An arm's concrete return stays a bound on the combined shape (PR #262 review): the
+    // inferred arm's Unknown return does not let an annotation that conflicts with the
+    // concrete arm through, at a binding, an argument or a block lambda's result.
+
+    [Fact]
+    public void Ternary_InferredArmWithUnknownReturn_BindsToMatchingDeclaredShape() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn pick(flag: bool, f: fn(int): int): void {
+                h: fn(int): int := flag ? f : (x) => x
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void Ternary_InferredArmWithUnknownReturn_ConflictingDeclaredReturn_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn pick(flag: bool, f: fn(int): int): void {
+                g: fn(int): string := flag ? f : (x) => x
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(2, d.Range.Start.Line);
+        Assert.Equal(27, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void Ternary_InferredArmWithUnknownReturn_ConflictingParameterReturn_IsE0004() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn take(h: fn(int): string): void { print(h(1)) }
+            fn pick(flag: bool, f: fn(int): int): void {
+                take(flag ? f : (x) => x)
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0004", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(10, d.Range.Start.Column);
+    }
+
+    [Fact]
+    public void LambdaBinding_TrackedReturnAndUnknownReturnTail_ConflictingDeclaredShape_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            flag := true
+            fn outer(f: fn(int): int): void {
+                t: fn(): fn(int): string := () => {
+                    if (flag) {
+                        return f
+                    }
+                    (x) => x
+                }
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(33, d.Range.Start.Column);
+    }
+
     [Fact]
     public void LambdaBinding_IfElseReturnsOnBothPaths_MatchesNonNullableFunctionResult() {
         (_, DiagnosticBag bag) = TypeCheckSource("""

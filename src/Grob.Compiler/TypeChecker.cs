@@ -967,6 +967,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// permissive — this is what lets an inferred lambda (whose parameter and body types
     /// are <see cref="GrobType.Unknown"/> in v1) bind to a concrete <c>fn(int): int</c>
     /// annotation, while two fully-concrete descriptors are still compared invariantly.
+    /// An Unknown return that carries a <see cref="FunctionTypeDescriptor.ReturnBound"/>,
+    /// as a combined shape does where one branch returns a concrete type (D-448 Decision
+    /// 7), is checked through its bound, so that branch's return must still fit.
     /// </summary>
     private static bool DescriptorsAreAssignable(FunctionTypeDescriptor from, FunctionTypeDescriptor to) {
         if (from.ParameterTypes.Count != to.ParameterTypes.Count) return false;
@@ -979,7 +982,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             }
         }
 
-        return PositionAssignable(from.ReturnType, to.ReturnType, from.ReturnDescriptor, to.ReturnDescriptor);
+        return from.ReturnBound is { } bound
+            ? PositionAssignable(bound, to.ReturnType, from.ReturnBoundDescriptor, to.ReturnDescriptor)
+            : PositionAssignable(from.ReturnType, to.ReturnType, from.ReturnDescriptor, to.ReturnDescriptor);
     }
 
     private static FunctionTypeDescriptor? DescriptorAt(IReadOnlyList<FunctionTypeDescriptor?> list, int index) =>
