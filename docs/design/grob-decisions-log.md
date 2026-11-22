@@ -18086,8 +18086,9 @@ be narrowed: narrowing applies to a bare name only.
 
 **Decision 3 — a `?.` call through a nullable function field is nullable.** Its result type
 is the nullable form of the function's return type, as a `?.` call on a nullable receiver
-already is (D-402), so `x: int := bx?.op()` is E0104. A `?.` call through a field of
-non-nullable function type cannot give `nil` for the field and keeps the return type.
+already is (D-402), so `x: int := bx?.op()` is E0104. On a non-nullable receiver, a `?.`
+call through a field of non-nullable function type cannot give `nil` and keeps the return
+type; on a nullable receiver D-402 makes its result nullable as before.
 
 **Rejected: leaving the call legal and checking at run time.** The VM would raise a runtime
 error in place of the internal one, but the checker can see the nullable type, and every
