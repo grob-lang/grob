@@ -101,6 +101,16 @@ public sealed class CompilerNativeNamedArgumentTests {
             """);
 
     [Fact]
+    public void MultiLineCall_Widening_RecordsTheArgumentsLine() {
+        // The conversion belongs to the argument, as a binary operand's does, so a runtime
+        // fault in it points at the argument's line, not the line the call opens on.
+        Chunk chunk = ChunkRendering.CompileChecked("x := math.sqrt(\n    4)");
+
+        (int offset, _, _) = Assert.Single(ChunkRendering.Instructions(chunk), i => i.Op == OpCode.IntToFloat);
+        Assert.Equal(2, chunk.GetLine(offset));
+    }
+
+    [Fact]
     public void ScriptCall_IntArgumentToFloatParameter_IsWidenedToFloat() =>
         ChunkRendering.AssertEmits("""
             fn half(v: float): float {

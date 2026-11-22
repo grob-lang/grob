@@ -907,8 +907,10 @@ public sealed partial class Compiler {
         for (int p = 0; p < binding.Slots.Count; p++) {
             BoundSlot slot = binding.Slots[p];
             if (!slot.IsDefault) {
-                Visit(node.Arguments[slot.ArgumentIndex].Value);
-                if (slot.WidenToFloat) _chunk.WriteOpCode(OpCode.IntToFloat, line);
+                Expression argument = node.Arguments[slot.ArgumentIndex].Value;
+                Visit(argument);
+                // On the argument's own line, as a binary operand's widening is.
+                if (slot.WidenToFloat) _chunk.WriteOpCode(OpCode.IntToFloat, argument.Range.Start.Line);
             } else if (slot.NativeDefault is { } constant) {
                 EmitConstant(constant, line);
             } else {

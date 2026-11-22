@@ -36,12 +36,20 @@ internal static class ChunkRendering {
     }
 
     /// <summary>Renders every instruction of <paramref name="chunk"/>, one per line.</summary>
-    public static string Render(Chunk chunk) {
-        var text = new StringBuilder();
+    public static string Render(Chunk chunk) =>
+        string.Concat(Instructions(chunk).Select(i => i.Text + "\n"));
+
+    /// <summary>
+    /// Every instruction of <paramref name="chunk"/>: its offset, opcode and rendered text,
+    /// so a test can read the line table at an instruction's offset.
+    /// </summary>
+    public static IReadOnlyList<(int Offset, OpCode Op, string Text)> Instructions(Chunk chunk) {
+        var result = new List<(int, OpCode, string)>();
         int offset = 0;
         while (offset < chunk.Count) {
+            int start = offset;
             var op = (OpCode)chunk.ReadByte(offset++);
-            text.Append(op.ToString());
+            var text = new StringBuilder(op.ToString());
             switch (op) {
                 case OpCode.Jump:
                 case OpCode.JumpIfFalse:
@@ -75,9 +83,9 @@ internal static class ChunkRendering {
                 default:
                     break;
             }
-            text.Append('\n');
+            result.Add((start, op, text.ToString()));
         }
-        return text.ToString();
+        return result;
     }
 
     /// <summary>Asserts that <paramref name="source"/> compiles to exactly <paramref name="expected"/>.</summary>

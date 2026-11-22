@@ -69,7 +69,10 @@ public sealed class TypeCheckerBoundArgumentListTests {
     public void ScriptCall_BindingError_SetsNoRecord() {
         CallExpr call = CheckLastCall(ScriptFn + "f(1, z: 2)", out DiagnosticBag bag);
 
-        Assert.Equal("E0011", Assert.Single(bag.Errors).Code);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0011", diag.Code);
+        Assert.Equal(4, diag.Range.Start.Line);
+        Assert.Equal(6, diag.Range.Start.Column);
         Assert.Null(call.ResolvedBinding);
     }
 
@@ -77,7 +80,10 @@ public sealed class TypeCheckerBoundArgumentListTests {
     public void ScriptCall_ArityError_SetsNoRecord() {
         CallExpr call = CheckLastCall(ScriptFn + "f()", out DiagnosticBag bag);
 
-        Assert.Equal("E0003", Assert.Single(bag.Errors).Code);
+        Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal("E0003", diag.Code);
+        Assert.Equal(4, diag.Range.Start.Line);
+        Assert.Equal(1, diag.Range.Start.Column);
         Assert.Null(call.ResolvedBinding);
     }
 }
