@@ -454,6 +454,11 @@ created.daysUntil(date.today())   // positive if today is later
 date.today().daysSince(created)   // same result, different direction
 ```
 
+**`date.parse(value: string, pattern: string = ""): date`** parses `value`. `pattern` has
+a default (D-358), so it may be omitted, passed positionally or named
+(`date.parse(s, pattern: "dd/MM/yyyy")`); its name is a contract and does not change.
+`value` is required and is documentation only.
+
 **Timezone conventions:**
 
 - `date.now()` and `date.today()` return local time.
@@ -1055,6 +1060,24 @@ functions, `regex.compile`, `@pattern` — a single-backtick raw string is canon
 String literals are never implicitly patterns (D-095).
 
 See D-089, D-095 and D-432.
+
+-----
+
+## `input()` — Built-in Function
+
+**`input(prompt: string = ""): string`** writes `prompt` to stdout with no trailing
+newline, reads one line from stdin and returns it with the newline stripped. It
+throws `IoError` if stdin is closed before a line is read.
+
+```grob
+name := input("Name: ")
+line := input()
+line := input(prompt: "Name: ")
+```
+
+`input()` is not a module function. It has no namespace and is always available, in
+the same category as `print()` and `exit()`. `prompt` has a default, so it may be named
+(D-446); its name is a contract and does not change.
 
 -----
 

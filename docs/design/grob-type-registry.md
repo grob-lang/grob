@@ -334,7 +334,7 @@ signatures.
 
 | Member                                                  | Signature  | Notes                                                                                        |
 | ------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------- |
-| `strings.join(parts: string[], separator: string = "")` | `→ string` | Joins array with separator. Receiver is an array — cannot be an instance method on `string`. The `= ""` default is documented but not built: the registered signature requires both arguments (R-22). |
+| `strings.join(parts: string[], separator: string)` | `→ string` | Joins array with separator. Receiver is an array — cannot be an instance method on `string`. Both arguments are required; `strings.join(arr)` is E0003. |
 
 ---
 
