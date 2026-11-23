@@ -4,18 +4,20 @@ using Xunit;
 using Xunit.Abstractions;
 
 using Grob.Integration.Tests.ErrorExamples;
+using Grob.Torture.Mutation;
 
 namespace Grob.Torture.Tests;
 
 /// <summary>
-/// The CI slice (prompt §2 group 2): the unmutated seed corpus through the oracle at the CI
-/// budget, after a warm-up pass. It fails on any finding the known-findings list does not name
-/// by program, on a stale entry and on an entry whose register row is missing or closed.
+/// The CI slice (prompt §2 groups 2 and 4): the seed corpus and a fixed sample of its mutants
+/// through the oracle at the CI budget, after a warm-up pass. It fails on any finding the
+/// known-findings list does not name by program, on a stale entry and on an entry whose register
+/// row is missing or closed.
 /// </summary>
 public sealed class CorpusSliceTests(SliceFixture slice, ITestOutputHelper output) : IClassFixture<SliceFixture> {
     [Fact]
-    public void Slice_SeedCorpus_HasNoUntriagedFinding() {
-        output.WriteLine($"{slice.Results.Count} programs in {slice.Elapsed.TotalSeconds:F1} s");
+    public void Slice_CorpusAndMutants_HaveNoUntriagedFinding() {
+        output.WriteLine($"{slice.Seeds.Count} seeds and {slice.Programs.Count - slice.Seeds.Count} mutants: {slice.Results.Count} programs in {slice.Elapsed.TotalSeconds:F1} s");
         foreach (IGrouping<OutcomeKind, ProgramResult> group in slice.Results.GroupBy(r => r.Outcome).OrderBy(g => g.Key)) {
             output.WriteLine($"  {group.Key}: {group.Count()}");
         }
@@ -44,13 +46,33 @@ public sealed class CorpusSliceTests(SliceFixture slice, ITestOutputHelper outpu
     }
 
     [Fact]
+    public void Slice_Mutants_ComeFromEveryOperator() {
+        IEnumerable<string> operators = slice.Programs.Skip(slice.Seeds.Count).Select(p => p.Id.Split('/')[^2]);
+
+        Assert.Equal([.. Mutator.Operators.Select(o => o.Name).Order(StringComparer.Ordinal)], [.. operators.Distinct().Order(StringComparer.Ordinal)]);
+    }
+
+    [Fact]
+    public void Slice_Mutants_AreAFixedSample() {
+        IReadOnlyList<Seed> again = CorpusSlice.Programs(slice.Seeds);
+
+        Assert.Equal(slice.Programs.Select(p => (p.Id, p.Source)), again.Select(p => (p.Id, p.Source)));
+        Assert.InRange(slice.Programs.Count - slice.Seeds.Count, 300, 1500);
+    }
+
+    [Fact]
     public void Slice_SecondRun_RunsTheSameProgramsWithTheSameFindings() {
         Assert.False(CorpusSlice.TimedOut(slice.Results), "the first pass timed out, so no second pass may start beside it");
 
-        IReadOnlyList<ProgramResult> again = CorpusSlice.Run(slice.Seeds, new Oracle(OracleBudget.Ci));
+        // The second pass runs every program that made a finding and every tenth of the rest: a whole
+        // second pass would double the slice's time to show the same thing.
+        HashSet<string> withFindings = [.. slice.Results.Where(r => r.Findings.Count > 0).Select(r => r.ProgramId)];
+        List<Seed> rerun = [.. slice.Programs.Where((p, i) => i % 10 == 0 || withFindings.Contains(p.Id))];
+        IReadOnlyList<ProgramResult> again = CorpusSlice.Run(rerun, new Oracle(OracleBudget.Ci));
 
-        Assert.Equal(slice.Results.Select(r => r.ProgramId), again.Select(r => r.ProgramId));
-        Assert.Equal(FindingKeys(slice.Results), FindingKeys(again));
+        HashSet<string> rerunIds = [.. rerun.Select(p => p.Id)];
+        Assert.Equal(rerun.Select(p => p.Id), again.Select(r => r.ProgramId));
+        Assert.Equal(FindingKeys([.. slice.Results.Where(r => rerunIds.Contains(r.ProgramId))]), FindingKeys(again));
     }
 
     [Fact]
@@ -83,6 +105,7 @@ public sealed class SliceFixture {
     public SliceFixture() {
         Root = SeedCorpus.LocateRepositoryRoot(AppContext.BaseDirectory);
         Seeds = SeedCorpus.Load(Root);
+        Programs = CorpusSlice.Programs(Seeds);
         Known = KnownFindings.Parse(File.ReadAllText(Path.Join(Root, CorpusSlice.KnownFindingsPath)));
 
         // Warm the JIT over every tenth seed at a generous bound, so the measured pass meets the
@@ -98,13 +121,15 @@ public sealed class SliceFixture {
         }
 
         var clock = Stopwatch.StartNew();
-        Results = CorpusSlice.Run(Seeds, new Oracle(OracleBudget.Ci));
+        Results = CorpusSlice.Run(Programs, new Oracle(OracleBudget.Ci));
         Elapsed = clock.Elapsed;
     }
 
     internal string Root { get; }
 
     internal IReadOnlyList<Seed> Seeds { get; }
+
+    internal IReadOnlyList<Seed> Programs { get; }
 
     internal KnownFindings Known { get; }
 

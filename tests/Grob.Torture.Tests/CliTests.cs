@@ -16,7 +16,7 @@ public sealed class CliTests : IDisposable {
         return path;
     }
 
-    private int Run(params string[] args) => Cli.Run(args, _out, _error, _directory);
+    private int Run(params string[] args) => Cli.Run(args, _out, _error, _directory, new Oracle(OracleBudget.Ci), seeds => seeds);
 
     [Fact]
     public void Check_CleanFile_PrintsOutcomeAndExitsZero() {
@@ -85,7 +85,7 @@ public sealed class CliTests : IDisposable {
         new Oracle(OracleBudget.Ci).Run("print(0)\n");
 
         try {
-            int exit = Cli.Run(["corpus", _directory], _out, _error, _directory, StallingOracle(release));
+            int exit = Cli.Run(["corpus", _directory], _out, _error, _directory, StallingOracle(release), seeds => seeds);
 
             Assert.Equal(1, exit);
             string text = _out.ToString().ReplaceLineEndings("\n");
@@ -200,8 +200,22 @@ public sealed class CliTests : IDisposable {
         MakeRepository($$"""{ "row": "R-73", "signature": "Run|ExitRange|above-255", "programs": ["{{RangeProgram}}"] }""");
         Directory.CreateDirectory(Path.Join(_directory, "sub"));
 
-        int exit = Cli.Run(["corpus"], _out, _error, Path.Join(_directory, "sub"));
+        int exit = Cli.Run(["corpus"], _out, _error, Path.Join(_directory, "sub"), new Oracle(OracleBudget.Ci), seeds => seeds);
 
         Assert.Equal(0, exit);
+    }
+
+    [Fact]
+    public void Corpus_ByDefault_RunsASampleOfMutantsBesideTheSeeds() {
+        MakeRepository("");
+        for (int i = 0; i < 60; i++) {
+            Write(Path.Join("tests", "fixtures", $"seed{i}.grob"), $"fn f{i}(a: int): int {{\n    return a + {i}\n}}\nx := f{i}(1)\nprint(x)\n");
+        }
+
+        Cli.Run(["corpus", _directory], _out, _error, _directory);
+
+        string header = _out.ToString().ReplaceLineEndings("\n").Split('\n')[0];
+        int programs = int.Parse(header[..header.IndexOf(' ', StringComparison.Ordinal)], System.Globalization.CultureInfo.InvariantCulture);
+        Assert.True(programs > 62, $"expected the 62 seeds and some mutants, got: {header}");
     }
 }
