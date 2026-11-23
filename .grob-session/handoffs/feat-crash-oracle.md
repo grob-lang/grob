@@ -2,31 +2,46 @@
 
 ## Where we are
 
-- Branch: `feat/crash-oracle`, HEAD `c161f0a` before this commit
+- Branch: `feat/crash-oracle`, rebased onto `main` at `4800385` (#267), HEAD `7aef72e` before this commit
 - Working tree: clean (scratch in gitignored `.grob-session/`)
-- Commits on this branch: 4 (`git log --oneline origin/main..HEAD`): three hand-offs and group 1
+- Commits on this branch: see `git log --oneline origin/main..HEAD`. The code commits are:
+  - group 1 `a0915a7`, the oracle;
+  - group 2 `9b3c762`, the CI slice;
+  - `476c730`, the local CodeRabbit review fixes;
+  - `7aef72e`, the relock after #267's SonarAnalyzer bump.
 - Increment prompt: `docs/prompts/crash-oracle.md` (D-451)
 - Picked up from: this branch's own previous hand-off, which this file overwrites. No other path is pending retirement
-- Phase reached: **session B, change group 1 committed (`c161f0a`).** Group 2, the CI slice, is next in this same session. The gate report is at `D:\Code\grob-lang\gate-reports\crash-oracle-gate-report.md`, outside the working tree
+- Phase reached: **session B complete.** Change groups 1 and 2 are committed, and a draft PR is open. The gate report is at `D:\Code\grob-lang\gate-reports\crash-oracle-gate-report.md`, outside the working tree
 
 ## Green state
 
-- Tests: full `dotnet test Grob.slnx` green at `c161f0a`, 5,855 passed (5,776 before, plus 79 in `Grob.Torture.Tests`)
-- Coverage: `Grob.Torture`'s hand-written code is 99.6% line and 93.1% branch. Regex-generated code under `obj/` is excluded from that figure. The one partial branch left is the post-compile `HasErrors` check in `OracleRun`, which is unreachable because the compiler adds no diagnostics today
+- Tests: full `dotnet test Grob.slnx` green after the rebase, 5,901 passed. `Grob.Torture.Tests` has 125.
+- Coverage: the new `tooling/Grob.Torture/` files are at 99.8% line and 94.9% branch. That measure excludes generated regex code and the four linked Integration files, which are not new code. One branch is left partial: the post-compile `HasErrors` check in `OracleRun`, unreachable because the compiler adds no diagnostics today.
+- CI slice runtime here: the measured pass of 1,318 programs takes 4.0 s. The slice adds about 9 s to `dotnet test` with the warm-up and determinism passes. The CI figure is still to read from the PR's first CI run.
 - Pre-push gate: runs on this hand-off's push
+- Mutation-verify, each predicted exactly before it ran:
+  - 1 (a compiler host exception classified as a finding): the test host crashed with `InvalidOperationException: no`;
+  - 2 (fake file system isolation): only the `path.resolve` test failed, actual `<bin dir>\a`;
+  - 3 (the known list's row check): exactly two failures, `Problems_EntryWithoutARow_IsReported` and the corpus CLI problem line.
+
+  Number 4 is group 3's.
 
 ## Decisions taken, not yet logged
 
-Chris's Q1 to Q5 rulings from the previous hand-off still stand. Their text is in the gate report's §0. All of them belong in the landing entry. Session B's plan was approved on 23 November with four more departures from the gate report. Each one also belongs in the landing entry:
+Every item below belongs in the landing entry as a divergence or correction (prompt §5).
 
-- **A. The first stack frame is not part of a signature.** Tiered JIT inlining changes the frames between early and late programs in one process, and between Debug and Release builds. A known entry could then match locally and fail in CI. The frame is kept on `Finding.FirstFrame` for triage. This departs from the gate report's §4.7 recommendation.
-- **B. Four files are linked from `Grob.Integration.Tests` in group 2, not three:** `SampleExtractor`, `SampleBlock`, `ErrorExampleMaster` and `DeferredWorkRegister`.
-  - `SampleExtractor` needs `ErrorExampleMaster.SplitLines`.
-  - `DeferredWorkRegister` is reused for the known-list row check.
-  - `InfoString` is not needed.
-  - The linked files keep their test-project namespace. That is a namespaces-follow-folders exception, to be surfaced in the PR.
-- **C. The findings record store moves to group 4.** The gate report's `findings/<sig>/<id>.json` is written with CreateNew. Its first users are the minimiser and the campaign, so it moves to group 4 under the YAGNI rule. §4's "two programs leave two records" test moves with it.
-- **D. A runtime error must carry a registered code.** This is an added check. The oracle reports an unregistered runtime code as an `Unregistered` finding.
+- **Q1 to Q5**, Chris's rulings of 23 November. Their text is in the gate report's §0.
+- **A. The first stack frame is not part of a signature.** Tiered JIT inlining makes it unstable between early and late programs, and between Debug and Release builds. It is kept on `Finding.FirstFrame` instead.
+- **B. Four files are linked from `Grob.Integration.Tests`:** `SampleExtractor`, `SampleBlock`, `ErrorExampleMaster` and `DeferredWorkRegister`. They keep their test-project namespace, a namespaces-follow-folders exception.
+- **C. The findings record store and §4's two-records test move to group 4.**
+- **D. A runtime error with an unregistered code is a finding.**
+- **E. Correction to the gate report's §1.1: the sentinel rule is one-directional.**
+  - `UnresolvedDecl` implies `ResolvedType == Error`, per D-311.
+  - The converse is false: a name resolved to an `Error`-typed declaration keeps that declaration. That is cascade suppression (§29.3).
+  - The "exactly when" rule flagged 11 correct programs in the corpus.
+- **F. The slice warms up on every tenth seed**, not a full pass. A full pass doubled the time and added no warmth.
+- **G. A stale known entry fails the slice.** An entry is stale when its program no longer makes the finding or is no longer in the corpus. The prompt asked only for an entry whose row is closed to fail it.
+- **H. `check` and `corpus` stop after a watchdog timeout**, since the worker cannot be killed. `Cli` takes the oracle through an internal seam for this.
 
 ## Error codes and registry state
 
@@ -34,9 +49,11 @@ None allocated. The count is 122.
 
 ## Tried and rejected
 
-- **A 250 ms watchdog in the timeout test without a warm-up run.** A cold catalogue build plus JIT outlasted it, and the finding came out as `Catalogue|Timeout`. The test now runs one warm program first. The CI slice needs the same warm-up pass (gate report §4.4).
-- **A platform branch for the fake current directory** (`Z:\…` against `/…`). It left one branch uncoverable on any single platform. `Path.GetFullPath("/grob-torture")` is used instead.
-- **A visited set and a null-constructor guard in `AstPath`.** The path search follows only constructor-parameter properties, so the tree has no cycles. The guards were removed as unreachable.
+- A short watchdog without a warm-up run: a cold catalogue build outlasts it.
+- A platform branch for the fake current directory: it left one branch uncoverable. `Path.GetFullPath("/grob-torture")` is used instead.
+- Guards in `AstPath` for a visited set, a null constructor and indexers: unreachable, and removed.
+- Changing `Environment.CurrentDirectory` in a CLI test: process-global state in a parallel run. `Cli.Run` takes the working directory as a parameter instead.
+- `for` with the loop variable updated in its body (Sonar S127): replaced by a `while`.
 
 ## Quarantined or skipped tests
 
@@ -44,16 +61,18 @@ None.
 
 ## Why this session stopped
 
-It has not stopped. This hand-off is the per-group checkpoint the prompt requires after group 1.
+Session B's row (groups 1 and 2) is done. Under the prompt, a session may not cover groups from two rows.
 
 ## Next session, first action
 
-If this session ends before group 2 is committed, run the prompt's session-start check for session B and build group 2. It covers the seed corpus, `known-findings.json`, the slice tests and register rows R-68 onward for F-1 to F-7. Recheck the R- tail on `origin/main` before pushing.
+Run the prompt's session-start check for session C (change groups 3 and 4, Sonnet, high), reading this file and the draft PR.
 
 ## Open for the maintainer
 
-- `ErrorStmt` was not reached by the sentinel walker in tests. A top-level `try … finally … catch` source did not produce one where the walker visits. It is a two-line override, noted rather than chased.
-- Carried from the previous hand-offs:
+- **Platform risk in R-69's known entry.** Its signature carries a BCL message, `The time zone ID '…' was not found on the local computer.`. If .NET words it differently on Linux, the slice fails in CI. Check the draft PR's first run.
+- **Register rows R-68 to R-74** were filed for F-1 to F-7. R-66 gained a sentence on the slice's seven seeds, including the property read `s?.length`.
+- `ErrorStmt` was never reached by the sentinel walker in tests. It is a two-line override, noted rather than chased.
+- Carried from earlier hand-offs:
   - the benchmark workflow for #261 is still to dispatch;
-  - `.grob-session/handoffs/feat-stdlib-regex-replace-fn.md` on `main` is still unretired;
-  - the fake-capability test covers only `env`, `path.resolve`, the clock and the streams until 9C (gate report §4.2).
+  - `.grob-session/handoffs/feat-stdlib-regex-replace-fn.md` on `main` is unretired;
+  - the fake-capability test covers `env`, `path.resolve`, the clock and the streams until 9C (gate report §4.2).
