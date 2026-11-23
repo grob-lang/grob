@@ -80,8 +80,12 @@ public sealed class TypeCheckerNoSignatureNamedArgumentTests {
         AssertRefusals(CheckCall("xs.filter(p: x => 1)"), Refusal("filter"), 3, 11);
 
     [Fact]
-    public void ArrayFilter_PositionalNonBoolPredicate_StillReportsE0004() =>
-        Assert.Equal("E0004", Assert.Single(CheckCall("xs.filter(x => 1)").Errors).Code);
+    public void ArrayFilter_PositionalNonBoolPredicate_StillReportsE0004() {
+        Diagnostic diag = Assert.Single(CheckCall("xs.filter(x => 1)").Errors);
+        Assert.Equal("E0004", diag.Code);
+        Assert.Equal(3, diag.Range.Start.Line);
+        Assert.Equal(11, diag.Range.Start.Column);
+    }
 
     [Fact]
     public void ArraySelect_NamedArgument_IsRefused() =>

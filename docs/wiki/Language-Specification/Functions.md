@@ -50,7 +50,8 @@ errors. A call that leaves out a required parameter is a compile error that name
 
 The same convention holds for calls into the standard library and plugins:
 `regex.compile(pattern, timeout: 2)` passes the third parameter and leaves the second
-at its default. Array and map methods, `print` and `exit` take no named arguments.
+at its default. Array and map methods, `print` and `exit` take no named arguments, with one
+exception: an array's `sort` takes `descending` by name, as in `xs.sort(x => x, descending: true)`.
 
 Named parameters exist to selectively override defaults — not as an alternative
 to positional syntax for required arguments.

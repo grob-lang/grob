@@ -222,12 +222,20 @@ public static partial class ConsistencyChecks {
             char c = text[i];
             if (c == '"') quoted = !quoted;
             if (quoted) continue;
-            if (c is '(' or '[' or '<') depth++;
-            else if (c is ')' or ']' or '>') depth--;
-            else if (c == '=' && depth == 0 && (i + 1 >= text.Length || text[i + 1] != '>')) return i;
+            depth += DepthChange(text, i);
+            if (c == '=' && depth == 0 && (i + 1 >= text.Length || text[i + 1] != '>')) return i;
         }
         return -1;
     }
+
+    // How the character at index changes bracket depth. The '>' of a lambda arrow '=>'
+    // closes nothing, so a function type such as '(int) => int' leaves depth as it was.
+    private static int DepthChange(string text, int index) => text[index] switch {
+        '(' or '[' or '<' => 1,
+        '>' when index > 0 && text[index - 1] == '=' => 0,
+        ')' or ']' or '>' => -1,
+        _ => 0,
+    };
 
     private static IEnumerable<string> SplitTopLevel(string list) {
         int depth = 0;
@@ -237,9 +245,8 @@ public static partial class ConsistencyChecks {
             char c = list[i];
             if (c == '"') quoted = !quoted;
             if (quoted) continue;
-            if (c is '(' or '[' or '<') depth++;
-            else if (c is ')' or ']' or '>') depth--;
-            else if (c == ',' && depth == 0) {
+            depth += DepthChange(list, i);
+            if (c == ',' && depth == 0) {
                 yield return list[start..i];
                 start = i + 1;
             }

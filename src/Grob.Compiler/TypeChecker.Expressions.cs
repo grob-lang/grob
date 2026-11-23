@@ -2300,15 +2300,20 @@ public sealed partial class TypeChecker {
             var returnType = (SignatureType.Concrete)signature.ReturnType;
             memberAccess.ResolvedFieldType = returnType.Type;
             node.ResolvedReturnType = returnType.Type;
-            CheckNativeCall(node, namespaceName, memberAccess.Member, signature, argTypes);
+            bool bound = CheckNativeCall(node, namespaceName, memberAccess.Member, signature, argTypes);
             // Sprint 8 Increment D: mirrors the user-fn struct-return threading a few
             // lines up in VisitCall — a `:=`-inferred binding from a struct-returning
             // native call (id := guid.newV4()) resolves field/instance-member access the
             // same way a direct struct-construction initialiser already does.
             if (returnType.NamedTypeName is not null) _callResultStructNames[node] = returnType.NamedTypeName;
             if (NativeArrayDescriptor(returnType) is { } descriptor) _callResultArrayDescriptors[node] = descriptor;
-            CheckGuidParseLiteral(node, namespaceName, memberAccess.Member);
-            CheckRegexPatternArgument(node, namespaceName, memberAccess.Member);
+            // The literal checks read the first written argument as the first parameter,
+            // which holds only for a call that bound cleanly; a refused or mis-counted call
+            // has already reported its one root cause.
+            if (bound) {
+                CheckGuidParseLiteral(node, namespaceName, memberAccess.Member);
+                CheckRegexPatternArgument(node, namespaceName, memberAccess.Member);
+            }
             return returnType.Type;
         }
 
@@ -2708,22 +2713,24 @@ public sealed partial class TypeChecker {
     /// binds only to check its arguments: its tail has no default and cannot be named, so
     /// every argument of a clean call is positional and it keeps positional emission. An
     /// already-errored argument is suppressed to keep one diagnostic per root cause.
+    /// Returns <see langword="false"/> when the call failed to bind or its arity is wrong,
+    /// so the caller skips any check that reads an argument by its written position.
     /// </summary>
-    private void CheckNativeCall(CallExpr node, string namespaceName, string memberName,
+    private bool CheckNativeCall(CallExpr node, string namespaceName, string memberName,
             FunctionSignature signature, GrobType[] argTypes) {
         var parameters = new SignatureParameters(signature);
         ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
         BindingWording callee = BindingWording.ForNative($"{namespaceName}.{memberName}");
-        if (ReportBindingProblems(node, binding, callee)) return;
+        if (ReportBindingProblems(node, binding, callee)) return false;
 
         if (signature.IsVariadic) {
             CheckVariadicNativeCall(node, namespaceName, memberName, signature, argTypes);
-            return;
+            return true;
         }
 
         if (binding.MissingRequired) {
             EmitMissingRequiredError(node, callee, parameters, binding);
-            return;
+            return false;
         }
 
         if (binding.TooManyPositionals) {
@@ -2736,7 +2743,7 @@ public sealed partial class TypeChecker {
             EmitError(ErrorCatalog.E0003,
                 $"'{namespaceName}.{memberName}' expects {expectedPhrase}, but {argTypes.Length} {suppliedVerb} supplied.",
                 node.Range);
-            return;
+            return false;
         }
 
         // E0004 numbers an argument by its written position, which is where its range
@@ -2751,6 +2758,7 @@ public sealed partial class TypeChecker {
         }
 
         node.ResolvedBinding = BoundArguments(binding, widen, signature);
+        return true;
     }
 
     /// <summary>

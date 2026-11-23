@@ -18346,7 +18346,10 @@ did before, pinned by `CompilerCallEmissionCharacterisationTests`. The one pin t
 `ns?.padLeft(5)`, which now fills its default (gate report §1.4). A variadic native binds
 for its diagnostics only and keeps positional emission. `input`'s signature comes from the
 catalogue, and a catalogue without it is a host misconfiguration (`GrobInternalException`).
-E0004 numbers a named argument by its written position. **R-58's argument positions fold
+E0004 numbers a named argument by its written position. The compile-time literal checks,
+`guid.parse`'s E0601 and a regex pattern, run only on a call that bound cleanly: they read
+the first written argument as the first parameter, so `regex.compile(flags: "(")` read its
+flags as a pattern beside the E0003. **R-58's argument positions fold
 in**: an `int` bound to a `float` parameter of a native or a script function is widened.
 Default slots are never widened. The rest of R-58 stays open. Skip and fill on a primitive
 method is proven on a hand-built call, since the primitive registrar is internal and stays

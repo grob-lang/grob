@@ -186,6 +186,33 @@ public sealed class TypeCheckerNativeNamedArgumentTests {
             34);
     }
 
+    // A literal argument is validated only on a clean binding: a refused or unbound call
+    // has already reported its one root cause, and its first written argument may not be
+    // the parameter the literal check reads.
+
+    [Fact]
+    public void GuidParse_UnknownNameWithMalformedLiteral_ReportsOnlyE0011() {
+        (_, DiagnosticBag bag) = CheckFirstCall("""d := guid.parse(bogus: "not-a-guid")""");
+
+        AssertSingleError(bag, "E0011", "'guid.parse' has no parameter named 'bogus'.", 17);
+    }
+
+    [Fact]
+    public void RegexCompile_UnknownNameWithMalformedPattern_ReportsOnlyE0011() {
+        (_, DiagnosticBag bag) = CheckFirstCall("""r := regex.compile(bogus: "(")""");
+
+        AssertSingleError(bag, "E0011", "'regex.compile' has no parameter named 'bogus'.", 20);
+    }
+
+    [Fact]
+    public void RegexCompile_NamedFlagsWithoutPattern_ReportsOnlyE0003() {
+        // The first written argument is flags, not the pattern: it must not be read as one.
+        (_, DiagnosticBag bag) = CheckFirstCall("""r := regex.compile(flags: "(")""");
+
+        AssertSingleError(bag, "E0003",
+            "'regex.compile' expects an argument for required parameter 'pattern', but none was supplied.", 6);
+    }
+
     // -----------------------------------------------------------------------
     // input: one defaulted parameter (D-447 Decision 1).
     // -----------------------------------------------------------------------

@@ -292,6 +292,8 @@ public sealed class CompilerCallEmissionCharacterisationTests {
     // guarded call now emits the bound argument list, so the omitted default is filled
     // (Constant " ", Call 2) where the source-order emission supplied one argument to a
     // native of two. The complete call below is the form that must stay byte-identical.
+    // These bytes characterise, they do not endorse: GetProperty has no string arm, so a
+    // non-nil receiver faults the VM. That is R-66, filed by D-452; its fix changes this pin.
     [Fact]
     public void OptionalChainCall_PrimitivePadLeft_EmitsPinnedBytes() =>
         AssertEmits("""

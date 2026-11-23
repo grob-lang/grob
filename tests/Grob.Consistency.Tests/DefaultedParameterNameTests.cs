@@ -195,6 +195,22 @@ public sealed class DefaultedParameterNameTests {
     }
 
     [Fact]
+    public void ParseDocumentedSignatures_LambdaArrowInAType_IsNotAClosingDelimiter() {
+        // The '>' of '=>' must not close a bracket: depth would go negative and the next
+        // top-level comma would be ignored, losing 'limit' and its default.
+        var path = TempFile("`each(callback: (int) => int, limit: int = 5)`\n");
+        try {
+            var signature = Assert.Single(ConsistencyChecks.ParseDocumentedSignatures(path));
+
+            Assert.Equal(["callback", "limit"], signature.Parameters.Select(p => p.Name).ToArray());
+            Assert.Null(signature.Parameters[0].Default);
+            Assert.Equal("5", signature.Parameters[1].Default);
+        } finally {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void ParseDocumentedSignatures_CommaInsideParenthesisedType_KeepsOneParameter() {
         var path = TempFile("`each(callback: fn(a: int, b: int): bool, limit: int = 3)`\n");
         try {

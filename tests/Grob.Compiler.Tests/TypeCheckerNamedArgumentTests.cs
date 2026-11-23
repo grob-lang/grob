@@ -301,6 +301,7 @@ public sealed class TypeCheckerNamedArgumentTests {
             f()
             """);
         Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
         Assert.Equal("Function 'f' expects arguments for required parameters 'a', 'b' and 'c', but none were supplied.", diag.Message);
         Assert.Equal(4, diag.Range.Start.Line);
         Assert.Equal(1, diag.Range.Start.Column);
@@ -315,6 +316,7 @@ public sealed class TypeCheckerNamedArgumentTests {
             f(1)
             """);
         Diagnostic diag = Assert.Single(bag.Errors);
+        Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
         Assert.Equal("Function 'f' expects an argument for required parameter 'b', but none was supplied.", diag.Message);
         Assert.Equal(4, diag.Range.Start.Line);
         Assert.Equal(1, diag.Range.Start.Column);
