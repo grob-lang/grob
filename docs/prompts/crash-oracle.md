@@ -10,8 +10,8 @@ and R-57 to R-64 in the register in `docs/design/grob-open-questions.md`, and E9
 in `docs/design/grob-error-codes.md`. Where prompt and decision differ, the decision wins
 and the difference is a finding to report.
 
-**When it runs.** After PRs #262, #263 and #264 merge, and before the 9C `fs` increment
-(D-451 Decision 3).
+**When it runs.** After PRs #261 (native named arguments), #262, #263 and #264 merge, and
+before the 9C `fs` increment (D-451 Decision 3, D-452).
 
 **Where it sits.** D-353 authorises `grob-adversarial-testing-strategy.md`, a pre-alpha
 adversarial suite in seven pillars. This increment is the first slice of its Pillar 1,

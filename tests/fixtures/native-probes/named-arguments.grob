@@ -1,8 +1,8 @@
-// Native-call probe corpus: named arguments to natives (D-426 Decision 4). Captured
-// against b202509 before any signature work. Named-argument binding to natives stays
-// unsupported: every call here produces exactly the diagnostic it did at capture, bar the
-// named-type method calls, which R-20 changed from none to E0011 deliberately. Do not
-// regenerate the expected file to match new output.
+// Native-call probe corpus: named arguments to natives. First captured against b202509,
+// when natives refused every name. Natives now bind on the script-function convention
+// (D-113): a required parameter named is E0009, an unknown name E0011 and a call leaving
+// a required parameter unbound E0003, naming it. Lines 17 and 26 bind cleanly. Change
+// the expected file only for a deliberate change in behaviour, never to match new output.
 f := 2.0
 i := 3
 s := "abc"
@@ -10,7 +10,7 @@ arr := ["a", "b"]
 d := date.now()
 g := guid.newV4()
 
-// namespace natives: E0011 today
+// namespace natives
 math.sqrt(x: 2.0)
 math.sqrt(n: f)
 math.pow(base: f, exp: f)
@@ -21,14 +21,14 @@ guid.newV5(g, name: s)
 int.min(a: i, b: i)
 path.join(parts: s)
 
-// primitive instance members: E0011 today
+// primitive instance members
 s.padLeft(width: i)
 s.padLeft(i, char: s)
 s.replace(from: s, to: s)
 i.format(pattern: s)
 f.roundTo(decimals: i)
 
-// named-type instance members: E0011 since R-20 (accepted without a diagnostic before it)
+// named-type instance members (accepted without a diagnostic before R-20)
 d.addDays(days: i)
 d.format(pattern: s)
 d.isBefore(other: d)

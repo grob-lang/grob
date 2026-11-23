@@ -448,6 +448,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-449 | November 2026 | Compiler — type checker; Deferred Work Register | **A call through a nullable function value is E0101** (Chris), on a binding, a parameter, a struct field called with `.` and a call result, where it reached the VM and stopped with an internal error. No new code: E0101 already names a nullable value dereferenced without `?.` or `??`. Three forms stay legal: a call narrowed by `if (f != nil)`, a call through `??` and a struct field called with `?.`, which gives `nil` when the field is `nil`. **A `?.` call through a nullable function field is nullable**, as a `?.` call on a nullable receiver is (D-402), so `x: int := bx?.op()` is E0104. **Rejected**: a runtime check in place of the compile-time refusal. Refuses programs that ran while the value was never `nil`. R-59 closed. **R-60, R-61 and R-62 filed** (Chris): the array methods do not check their function argument; an operator with one operand of unknown type takes its opcode from the wrong side, so `(s) => "[" + s` crashes the compiler and `(s) => s + "]"` miscompiles, fixed next; `fn(): void` is refused only as a struct field's type. Count unchanged at 122. |
 | D-450 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **With one operand of unknown type, a binary operator takes its opcode from the known operand**, whichever side it is on, so `(s) => "[" + s` and `names.select((n) => "Hi " + n)` concatenate where they crashed the compiler, and `(s) => s + "]"` and `(s) => s < "z"` no longer compile to `int` opcodes. **The known operand must suit the operator** (Chris): `+` an `int`, `float` or `string`; `-`, `*`, `/`, `%` an `int` or `float`; `<`, `<=`, `>`, `>=` an `int`, `float`, `string` or `date`; otherwise E0002 at that operand. An arithmetic result has the known operand's type, so an operator on it is checked; a comparison is `bool`. Refuses only expressions that crashed the compiler or could not run successfully. **Rejected**: a compiler-only fix, which leaves `true + s` crashing. R-61 closed. **R-63 filed**: an operand of unknown type compiles to an assumed type, so `(n) => n + 2.5` given `1` stops. Count unchanged at 122. |
 | D-451 | November 2026 | Process / Tooling — adversarial testing; CLI — internal-error reporting; Deferred Work Register | **Authorises the *crash oracle* increment** as the first slice of D-353's Pillar 1, brought forward before 9C; prompt at `docs/prompts/crash-oracle.md`. It checks D-353's contract on source text: no program makes Grob raise an internal error or throw a host exception. Built in `tooling/Grob.Torture` with a CI slice in `tests/Grob.Torture.Tests`; it departs from the strategy by mutating AST spans and generating well-typed programs, running in process and gating a fixed-seed slice in CI from the start. **The CLI reports an internal failure from any phase as E9001** with the bug-report line and no stack trace (Chris). The long mode is run by hand (Chris). Read at `639a21c`: the compile phase has no handler and E9001 is raised nowhere. **R-64 filed and folded in** (Chris): a compile error and a usage error both exit `1`; the increment makes them `2` and `3`, the documented set, and §8 gains the usage row. No source change. Count unchanged at 122. |
+| D-452 | November 2026 | Compiler — type checker, bytecode emission; Tooling — drift check; Deferred Work Register | **Natives bind named arguments**: the *native named arguments* increment lands (PR #261). A named argument to a namespace function, a primitive method, a named-type method or a plugin's native binds by D-113 on one shared binder; a skipped default is filled from its signature constant; a call with no signature refuses with E0011, bar `sort`'s `descending`, which binds. **E0003 names a missing required parameter** on every binding path (Chris), overriding the prompt's out-of-scope line on script-function wording. `Grob.DriftCheck` gains references to `Grob.Runtime`, `Grob.Compiler` and `Grob.Stdlib` and pins defaulted parameter names and defaults to the references. R-20, R-22 and R-55 closed; R-58 narrowed; R-65 to R-67 filed. Count unchanged at 122. |
 
 ---
 
@@ -18291,6 +18292,104 @@ rule), D-431 Decision 5 (the session table) and D-316 (no code is minted here).
 
 ---
 
+### D-452 — Natives bind named arguments: the *native named arguments* increment lands; E0003 names a missing required parameter; R-20, R-22 and R-55 closed (November 2026)
+
+Area: Compiler — type checker, bytecode emission; Tooling — drift check; Deferred Work Register
+Supersedes: none
+Superseded by: none
+Refines: D-446, D-447, D-451
+
+**Landing entry for the increment D-447 authorised**, PR #261, prompt at
+`docs/prompts/native-named-arguments.md`. Error-code count unchanged at 122. No code,
+opcode, token, AST node or grammar production is added. A named argument on a call to a
+namespace function, a primitive method, a named-type method or a plugin's native binds by
+D-113 exactly as on a script function, on one shared binder (D-446 Decisions 1 to 4). A call
+with no signature refuses a named argument with E0011 (D-447 Decision 2). Seven change
+groups: the shared binder (`a2a50be`); namespace natives and `input` (`d401715`); primitive
+methods (`4f31cf1`); named-type methods, with default fill (`f467d50`); the refusal
+(`5938a67`); the parameter-name drift check (`17f3685`); and the record, in `9c5ff8d` and
+this commit.
+
+**Decision 1 — E0003 names a missing required parameter (Chris).** When a call's binding
+leaves a parameter with no default unbound, E0003 names it, in the frame every E0003 message
+shares: `Function 'f' expects an argument for required parameter 'a', but none was
+supplied.`, and for several, `'date.of' expects arguments for required parameters 'year',
+'month' and 'day', but none were supplied.` It applies on every path that binds: script
+functions, namespace natives, primitive methods, named-type methods and `sort`. Too many
+positionals keeps the count wording, as do `input`, calls through a function value and
+array and map methods, which have no parameter names to give (R-56). Session B found the
+gap: `date.parse(pattern: s)` read "expects between 1 and 2 arguments, but 1 was supplied".
+Chris ruled it into this increment on 22 November and chose the sentence on 23 November.
+**Divergence**: the prompt put script-function diagnostic wording out of scope, and D-446's
+one convention ruled out changing the native message alone. 107 lines in 17 probe masters
+change, each an E0003 line reworded in place. Ten are in `date-members.errors.expected.txt`,
+which gate report §1.6 and ruling S4 kept byte-identical through group 6, as it stayed.
+`named-arguments.expected.txt` matches §1.6's table on every location line, and on every
+message line but line 18's, which carries this wording. No error-example master changes:
+`wrong-argument-count-too-few` names the parameter in its note already. **Rejected**:
+naming only the first missing parameter, which leaves a second round trip to find the next.
+
+**Decision 2 — `sort` binds `descending`; every other call with no signature refuses
+(Chris, S2).** `sort` binds from a one-entry view, `Binding/ArraySortParameters`, on the
+shared binder and gets no bound record: `descending` can only follow a positional `fn`, so a
+clean call is already in parameter order. This narrows D-447 Decision 2. **Behaviour
+change**: `sort()`, `sort(descending: true)` and a third argument are E0003; they compiled
+before and faulted the VM or ignored the argument. **S3** extends the refusal to a member call
+on any receiver with no checked member surface, not only `Unknown`. The function-value
+refusal and its wording were built by #262 (D-448). `RejectNamedNativeArgs` and
+`RejectNamedMemberArgs` are deleted, and `RefuseNamedArguments` is the one refusal.
+
+**Decision 3 — emission.** Every checked call goes through `CallExpr.ResolvedBinding`:
+script functions, non-variadic namespace natives, `input` and primitive and named-type
+methods, complete positional calls included. A complete positional call emits the bytes it
+did before, pinned by `CompilerCallEmissionCharacterisationTests`. The one pin that moved is
+`ns?.padLeft(5)`, which now fills its default (gate report §1.4). A variadic native binds
+for its diagnostics only and keeps positional emission. `input`'s signature comes from the
+catalogue, and a catalogue without it is a host misconfiguration (`GrobInternalException`).
+E0004 numbers a named argument by its written position. **R-58's argument positions fold
+in**: an `int` bound to a `float` parameter of a native or a script function is widened.
+Default slots are never widened. The rest of R-58 stays open. Skip and fill on a primitive
+method is proven on a hand-built call, since the primitive registrar is internal and stays
+sealed (D-426 Decision 3). Named-type default fill is proven in bytecode on a type the tests
+register through the public registrar.
+
+**Decision 4 — the drift check (R-55).** `tooling/Grob.DriftCheck` reads every registered
+core signature live and fails when a defaulted parameter's name or default is not shown in
+`grob-stdlib-reference.md` or `grob-type-registry.md`, or a document defaults a parameter
+the code requires. The forward rule accepts a parameter when any documented signature of
+that callable agrees: a named-argument call example parses as a signature with no defaults.
+It covers eight defaults, gate report §1.3's seven plus `sort`'s `descending`. **New
+project references**: `Grob.DriftCheck` was Core-only (D-316). It now references
+`Grob.Runtime`, `Grob.Compiler` and `Grob.Stdlib` to read signatures. It is tooling outside
+the `src/` DAG and nothing in `src/` references it; this entry is the record `src/CLAUDE.md`
+requires. `Grob.Compiler` gains one public type, `Binding/ArrayMethodParameterNames`, so the
+check reads the binder's own `sort` view. **Rejected**: hard-coding `descending` in the
+check, a pin that drifts silently; and failing when any one documented signature disagrees.
+
+**Decision 5 — documents.** `strings.join` is fixed in the document, not the code (Chris,
+session A): `grob-type-registry.md` shows `separator: string` with no default. The stdlib
+reference gains `date.parse(value: string, pattern: string = ""): date` with the code's
+name `value`, where D-358 wrote `input`, and an `input(prompt: string = ""): string`
+section. The wiki's *Functions* page and the `adding-a-stdlib-function` skill describe
+native binding. The `crash-oracle` prompt runs after this increment (D-451 Decision 3).
+
+**Register (D-420).** R-20, R-55 and R-22 closed: R-22's criterion, "the documented default
+is removed by a decision", is met by Decision 5, and Chris closed it with the two the prompt
+named. R-58 narrowed. R-56 stays open. Filed: **R-65**, a nullable named-type parameter
+refuses `nil`, owned by the `fs` increment, where `File` first registers one; **R-66**,
+`ns?.padLeft(5)` faults the VM; **R-67**, a member call on a function value reports no
+E1002 and faults the VM.
+
+**Benchmarks.** Run locally at `6a329d0`, after group 5; groups 6 and 7 touch no hot path.
+The canonical-runner job is Chris's to dispatch. Compile allocation is within 0.5% of
+`main`'s (`Compile_TenPrints` 18,176 against 18,256 bytes per operation), so R-24's red
+gate is not moved. No baseline updated.
+
+Cites D-113 (the convention), D-318 (arity on the bound set), D-358 (signature constants),
+D-426, D-428 (master changes), D-448 (the function-value refusal), D-420 and D-316.
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -18520,7 +18619,12 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-451 added, with spec edits; no source change. **The *crash oracle* increment is_
+_November 2026 — D-452 added, with a source change and spec edits. **Natives bind named arguments**:_
+_the *native named arguments* increment lands in seven change groups, on one binder shared with_
+_script functions. **E0003 names a missing required parameter.** The drift check pins defaulted_
+_parameter names and defaults to the references. R-20, R-22 and R-55 closed; R-58 narrowed; R-65_
+_to R-67 filed. Count unchanged at 122._
+_Previous: November 2026 — D-451 added, with spec edits; no source change. **The *crash oracle* increment is_
 _authorised**, its prompt committed with it, as the first slice of D-353's Pillar 1 brought_
 _forward before 9C: semantic mutation and type-directed generation, in process, with a CI_
 _slice. The CLI is to report an internal failure from any phase as E9001. The long mode is run_
