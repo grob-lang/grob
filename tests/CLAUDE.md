@@ -4,7 +4,7 @@ These rules apply to `tests/**/*.cs`. Tests are not optional and are never added
 retroactively. Every change ships with tests for the behaviour it adds. These rules
 sit on top of the C# host-code rules in `src/CLAUDE.md`.
 
-## The seven projects and what each owns
+## The eight projects and what each owns
 
 | Project                  | Tests                                                          | Style       |
 | ------------------------ | -------------------------------------------------------------- | ----------- |
@@ -15,6 +15,7 @@ sit on top of the C# host-code rules in `src/CLAUDE.md`.
 | `Grob.Stdlib.Tests`      | Build a catalogue from a plugin, run a VM over it → assert output | Unit        |
 | `Grob.Integration.Tests` | `.grob` source → assert stdout, stderr and exit code; the error-examples harness and the public samples gate | Integration |
 | `Grob.Consistency.Tests` | The corpus against the code: error-code count, decisions-log lockstep, catalogue guards, solution membership (via `tooling/Grob.DriftCheck`) | Consistency |
+| `Grob.Torture.Tests`     | The crash oracle (`tooling/Grob.Torture`, D-451): each finding class and allowed outcome, the fakes, and the CI slice over the seed corpus | Oracle |
 
 Put a test in the project that owns the layer under test. A type-checker bug is a
 `Grob.Compiler.Tests` case, not an integration test. Reach for integration tests to

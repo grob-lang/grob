@@ -1,0 +1,147 @@
+using System.Diagnostics;
+
+using Grob.Compiler;
+using Grob.Compiler.Ast;
+using Grob.Core;
+using Grob.Runtime;
+using Grob.Stdlib;
+using Grob.Torture.Fakes;
+using Grob.Vm;
+
+using GrobCompiler = Grob.Compiler.Compiler;
+
+namespace Grob.Torture;
+
+/// <summary>
+/// One run of one source through the pipeline, on the oracle's worker thread. It records the
+/// phase it is in, so the watchdog can name the phase a stalled run is stuck in, and
+/// classifies how the run ended (gate report §1.1).
+/// </summary>
+internal sealed class OracleRun {
+    private static readonly string[] GrobNamespaces = ["Grob.Compiler", "Grob.Vm", "Grob.Stdlib"];
+
+    private readonly string _source;
+    private readonly string _fileName;
+    private readonly OracleBudget _budget;
+    private readonly HostFakes _fakes;
+    private readonly Action<PipelinePhase>? _phaseHook;
+    private readonly List<Finding> _findings = [];
+    private readonly DiagnosticBag _bag = new();
+    private CancellationTokenSource? _vmCancellation;
+    private int _audited;
+    private volatile PipelinePhase _phase;
+
+    /// <summary>Prepares a run; nothing happens until <see cref="Execute"/>.</summary>
+    public OracleRun(string source, string fileName, OracleBudget budget, HostFakes fakes, Action<PipelinePhase>? phaseHook) {
+        _source = source;
+        _fileName = fileName;
+        _budget = budget;
+        _fakes = fakes;
+        _phaseHook = phaseHook;
+    }
+
+    /// <summary>The phase the run is in, or ended in.</summary>
+    public PipelinePhase Phase => _phase;
+
+    /// <summary>How the run ended; <see langword="null"/> until <see cref="Execute"/> returns.</summary>
+    public OracleResult? Result { get; private set; }
+
+    /// <summary>
+    /// Runs the pipeline and classifies the result. This is the oracle's outermost frame for the
+    /// run, so it catches every exception: classifying them is its whole purpose. A
+    /// <see cref="StackOverflowException"/> cannot be caught and ends the process (F-3).
+    /// </summary>
+    public void Execute() {
+        try {
+            Result = RunPipeline();
+        } catch (GrobExitException exit) {
+            Result = ClassifyExit(exit.Code);
+        } catch (GrobRuntimeException runtime) {
+            Result = ClassifyRuntimeError(runtime);
+        } catch (OperationCanceledException) when (_phase == PipelinePhase.Run && _vmCancellation?.IsCancellationRequested == true) {
+            Result = Conclude(OutcomeKind.Bounded);
+        } catch (Exception exception) {
+            _findings.Add(new Finding(
+                new Signature(_phase, FindingClass.Exception, $"{exception.GetType().Name}: {MessageNormaliser.Normalise(exception.Message)}"),
+                exception.Message,
+                FirstGrobFrame(exception)));
+            Result = Conclude(OutcomeKind.Finding);
+        } finally {
+            _vmCancellation?.Dispose();
+        }
+    }
+
+    private OracleResult RunPipeline() {
+        Enter(PipelinePhase.Catalogue);
+        NativeCatalogue catalogue = StdlibCatalogue.Build(
+            _fakes.RandomSource, _fakes.Environment, _fakes.Streams, _fakes.Clock, _fakes.FileSystem, verbose: false);
+
+        Enter(PipelinePhase.Lex);
+        IReadOnlyList<Token> tokens = Lexer.Scan(_source, _bag, _fileName);
+        AuditNewDiagnostics(PipelinePhase.Lex);
+
+        Enter(PipelinePhase.Parse);
+        CompilationUnit unit = Parser.Parse(tokens, _bag);
+        AuditNewDiagnostics(PipelinePhase.Parse);
+
+        Enter(PipelinePhase.Check);
+        new TypeChecker(_bag, catalogue).Check(unit);
+        AuditNewDiagnostics(PipelinePhase.Check);
+        _findings.AddRange(SentinelAudit.Audit(unit, _bag.Diagnostics.Select(d => d.Code)));
+        if (_bag.HasErrors) return Conclude(OutcomeKind.Diagnostics);
+
+        Enter(PipelinePhase.Compile);
+        Chunk chunk = GrobCompiler.Compile(unit, _bag);
+        AuditNewDiagnostics(PipelinePhase.Compile);
+        if (_bag.HasErrors) return Conclude(OutcomeKind.Diagnostics);
+
+        Enter(PipelinePhase.Run);
+        var vm = new VirtualMachine(_fakes.Streams, catalogue);
+        _vmCancellation = new CancellationTokenSource(_budget.Vm);
+        vm.Run(chunk, _vmCancellation.Token);
+        return Conclude(OutcomeKind.Clean);
+    }
+
+    private void Enter(PipelinePhase phase) {
+        _phase = phase;
+        _phaseHook?.Invoke(phase);
+    }
+
+    // Each phase's new diagnostics are audited under that phase, so a location finding names
+    // the phase that reported the diagnostic.
+    private void AuditNewDiagnostics(PipelinePhase phase) {
+        IReadOnlyList<Diagnostic> all = _bag.Diagnostics;
+        for (; _audited < all.Count; _audited++) {
+            _findings.AddRange(DiagnosticAudit.Audit(all[_audited], phase, _source, _fileName));
+        }
+    }
+
+    private OracleResult ClassifyExit(int code) {
+        if (code is < 0 or > 255) {
+            string bucket = code < 0 ? "negative" : "above-255";
+            _findings.Add(new Finding(new Signature(PipelinePhase.Run, FindingClass.ExitRange, bucket), $"exit({code})"));
+        }
+        return Conclude(OutcomeKind.Exit, code);
+    }
+
+    private OracleResult ClassifyRuntimeError(GrobRuntimeException runtime) {
+        if (!DiagnosticAudit.IsRegistered(runtime.Code)) {
+            _findings.Add(new Finding(new Signature(_phase, FindingClass.Unregistered, runtime.Code), runtime.Message));
+        }
+        return Conclude(OutcomeKind.RuntimeError);
+    }
+
+    private OracleResult Conclude(OutcomeKind outcome, int? exitCode = null) =>
+        new(_findings.Count > 0 ? OutcomeKind.Finding : outcome, [.. _findings], exitCode);
+
+    private static string? FirstGrobFrame(Exception exception) {
+        foreach (StackFrame frame in new StackTrace(exception, fNeedFileInfo: false).GetFrames()) {
+            if (frame.GetMethod() is { DeclaringType: { } type } method && IsGrobPipeline(type.Namespace ?? "")) {
+                return $"{type.FullName}.{method.Name}";
+            }
+        }
+        return null;
+    }
+
+    private static bool IsGrobPipeline(string ns) => GrobNamespaces.Any(g => ns.StartsWith(g, StringComparison.Ordinal));
+}

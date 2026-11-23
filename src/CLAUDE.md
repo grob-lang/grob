@@ -54,10 +54,10 @@ Hard rules, restated so they are unmissable:
 If a change requires a new project reference, that is a signal to stop and check: it
 is almost always wrong, and where it is right it needs a decisions-log entry.
 
-## The seven test projects
+## The eight test projects
 
-Five unit-test projects follow production projects, plus an integration project and a
-consistency project:
+Five unit-test projects follow production projects, plus an integration project, a
+consistency project and the crash oracle's project:
 
 ```
 Grob.Core.Tests          <- references Grob.Core
@@ -67,7 +67,11 @@ Grob.Vm.Tests            <- references Grob.Vm
 Grob.Stdlib.Tests        <- references Grob.Stdlib, Grob.Vm, Grob.Runtime and Grob.Core
 Grob.Integration.Tests   <- references Grob.Cli
 Grob.Consistency.Tests   <- references tooling/Grob.DriftCheck
+Grob.Torture.Tests       <- references tooling/Grob.Torture
 ```
+
+`tooling/Grob.BenchCheck.Tests` sits beside its tool, outside `tests/`, and is not
+counted here.
 
 `Grob.Cli`, `Grob.Lsp` and the plugins have no test project of their own; the CLI is
 tested through `Grob.Integration.Tests`. A new production reference from a test
@@ -351,7 +355,7 @@ added may become invalid as surrounding code changes.
 
 ## Tests
 
-Seven xUnit projects (listed above). Every change ships tests. **`Grob.Compiler.Tests`
+Eight xUnit projects under `tests/` (listed above). Every change ships tests. **`Grob.Compiler.Tests`
 is the highest-priority surface** — given source, assert emitted bytecode; that is
 where bugs live (confirmed by the SharpBASIC retrospective). The full testing
 discipline — project routing, the diagnostic-assertion contract, guard-test

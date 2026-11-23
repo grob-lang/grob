@@ -30,7 +30,7 @@ failure mode in propose-before-code workflows.
 **2. The DAG.** `Grob.Compiler` and `Grob.Vm` must never reference each other.
 `Grob.Core` references nothing outside the BCL. `Grob.Lsp` does not reference
 `Grob.Vm`. Check every `using` directive and project reference in files that changed.
-Test projects' references are listed in `src/CLAUDE.md` (_The seven test projects_) —
+Test projects' references are listed in `src/CLAUDE.md` (_The eight test projects_) —
 flag any new production reference from a test project that the list does not show.
 
 **3. Day-one constraints.** For any AST work:
