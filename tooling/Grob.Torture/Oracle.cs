@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using Grob.Torture.Fakes;
 
 namespace Grob.Torture;
@@ -10,7 +12,8 @@ namespace Grob.Torture;
 /// <remarks>
 /// Every run is on its own worker thread, so a phase the VM's cancellation token does not reach
 /// is still bounded: the oracle waits for the thread up to the budget's watchdog, and a run past
-/// it is a timeout finding. A .NET thread cannot be killed, so a stalled worker is abandoned as a
+/// it is a timeout finding. The waiting thread also cancels the VM's token once the VM has run
+/// for its budget. A .NET thread cannot be killed, so a stalled worker is abandoned as a
 /// background thread; a caller that sees a timeout should stop, not run on beside it. The worker
 /// has a 1 MB stack, the CLI's main-thread stack on Windows, so a deep program overflows here
 /// where it would overflow for a user (F-3), and is not hidden by a larger stack.
@@ -27,6 +30,8 @@ internal sealed class Oracle(OracleBudget budget, Func<HostFakes>? fakes = null,
 
     private const int WorkerStackSize = 1024 * 1024;
 
+    private static readonly TimeSpan SupervisionStep = TimeSpan.FromMilliseconds(10);
+
     private readonly Func<HostFakes> _fakes = fakes ?? HostFakes.Create;
 
     /// <summary>Runs <paramref name="source"/> and classifies the result.</summary>
@@ -34,15 +39,29 @@ internal sealed class Oracle(OracleBudget budget, Func<HostFakes>? fakes = null,
     /// <param name="fileName">The file name diagnostics must carry.</param>
     public OracleResult Run(string source, string fileName = DefaultFileName) {
         ArgumentNullException.ThrowIfNull(source);
-        var run = new OracleRun(source, fileName, budget, _fakes(), phaseHook);
+        var run = new OracleRun(source, fileName, _fakes(), phaseHook);
         var worker = new Thread(run.Execute, WorkerStackSize) { IsBackground = true, Name = "grob-torture-oracle" };
         worker.Start();
-        if (worker.Join(budget.Watchdog)) {
+        if (Supervise(run, worker)) {
+            run.Dispose();
             return run.Result!;
         }
+        // The worker is abandoned still holding the run, so the run is not disposed.
         return new OracleResult(OutcomeKind.Finding, [
             new Finding(new Signature(run.Phase, FindingClass.Timeout, "watchdog"),
                 $"the run did not end within {budget.Watchdog.TotalMilliseconds} ms"),
         ]);
+    }
+
+    // Waits for the worker in short steps, cancelling the VM once it has run for its budget and
+    // giving up at the watchdog. A worker that finishes returns from Join at once, so a fast
+    // program never waits a step.
+    private bool Supervise(OracleRun run, Thread worker) {
+        long started = Stopwatch.GetTimestamp();
+        while (!worker.Join(SupervisionStep)) {
+            if (run.VmElapsed >= budget.Vm) run.CancelVm();
+            if (Stopwatch.GetElapsedTime(started) >= budget.Watchdog) return false;
+        }
+        return true;
     }
 }

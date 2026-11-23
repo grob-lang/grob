@@ -14,35 +14,55 @@ namespace Grob.Torture;
 
 /// <summary>
 /// One run of one source through the pipeline, on the oracle's worker thread. It records the
-/// phase it is in, so the watchdog can name the phase a stalled run is stuck in, and
-/// classifies how the run ended (gate report §1.1).
+/// phase it is in, so the watchdog can name the phase a stalled run is stuck in, and when the
+/// VM started, so the oracle's waiting thread can cancel the VM at its bound. It classifies how
+/// the run ended (gate report §1.1).
 /// </summary>
-internal sealed class OracleRun {
+/// <remarks>
+/// The VM's token is cancelled by the waiting thread through <see cref="CancelVm"/>, not by a
+/// timed <see cref="CancellationTokenSource"/>. A timed source cancels from a thread-pool timer,
+/// and on a loaded two-core CI runner that callback was starved past the watchdog, so a VM that
+/// honours its token within 256 steps was reported as stalled.
+/// </remarks>
+internal sealed class OracleRun : IDisposable {
     private static readonly string[] GrobNamespaces = ["Grob.Compiler", "Grob.Vm", "Grob.Stdlib"];
 
     private readonly string _source;
     private readonly string _fileName;
-    private readonly OracleBudget _budget;
     private readonly HostFakes _fakes;
     private readonly Action<PipelinePhase>? _phaseHook;
     private readonly List<Finding> _findings = [];
     private readonly DiagnosticBag _bag = new();
-    private CancellationTokenSource? _vmCancellation;
+    private readonly CancellationTokenSource _vmCancellation = new();
     private int _audited;
     private int[]? _lineLengths;
+    private long _vmStarted;
     private volatile PipelinePhase _phase;
 
     /// <summary>Prepares a run; nothing happens until <see cref="Execute"/>.</summary>
-    public OracleRun(string source, string fileName, OracleBudget budget, HostFakes fakes, Action<PipelinePhase>? phaseHook) {
+    public OracleRun(string source, string fileName, HostFakes fakes, Action<PipelinePhase>? phaseHook) {
         _source = source;
         _fileName = fileName;
-        _budget = budget;
         _fakes = fakes;
         _phaseHook = phaseHook;
     }
 
     /// <summary>The phase the run is in, or ended in.</summary>
     public PipelinePhase Phase => _phase;
+
+    /// <summary>How long the VM has been running; zero before it starts.</summary>
+    public TimeSpan VmElapsed {
+        get {
+            long started = Interlocked.Read(ref _vmStarted);
+            return started == 0 ? TimeSpan.Zero : Stopwatch.GetElapsedTime(started);
+        }
+    }
+
+    /// <summary>Cancels the VM's token; the VM stops at its next budget check (D-319).</summary>
+    public void CancelVm() => _vmCancellation.Cancel();
+
+    /// <summary>Releases the token source. Call only once the worker has finished.</summary>
+    public void Dispose() => _vmCancellation.Dispose();
 
     /// <summary>How the run ended; <see langword="null"/> until <see cref="Execute"/> returns.</summary>
     public OracleResult? Result { get; private set; }
@@ -59,7 +79,7 @@ internal sealed class OracleRun {
             Result = ClassifyExit(exit.Code);
         } catch (GrobRuntimeException runtime) {
             Result = ClassifyRuntimeError(runtime);
-        } catch (OperationCanceledException) when (_phase == PipelinePhase.Run && _vmCancellation?.IsCancellationRequested == true) {
+        } catch (OperationCanceledException) when (_phase == PipelinePhase.Run && _vmCancellation.IsCancellationRequested) {
             Result = Conclude(OutcomeKind.Bounded);
         } catch (Exception exception) {
             _findings.Add(new Finding(
@@ -67,8 +87,6 @@ internal sealed class OracleRun {
                 exception.Message,
                 FirstGrobFrame(exception)));
             Result = Conclude(OutcomeKind.Finding);
-        } finally {
-            _vmCancellation?.Dispose();
         }
     }
 
@@ -98,7 +116,7 @@ internal sealed class OracleRun {
 
         Enter(PipelinePhase.Run);
         var vm = new VirtualMachine(_fakes.Streams, catalogue);
-        _vmCancellation = new CancellationTokenSource(_budget.Vm);
+        Interlocked.Exchange(ref _vmStarted, Stopwatch.GetTimestamp());
         vm.Run(chunk, _vmCancellation.Token);
         return Conclude(OutcomeKind.Clean);
     }
