@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using Grob.Compiler.Ast;
 using Grob.Core;
 using Grob.Runtime;
@@ -21,7 +20,7 @@ namespace Grob.Compiler.Tests;
 /// instructions that follow, so the rendering still covers every byte: a change in any
 /// byte changes the text.
 /// </remarks>
-internal static partial class ChunkRendering {
+internal static class ChunkRendering {
     /// <summary>Lexes, parses, checks and compiles <paramref name="source"/>, asserting no diagnostic.</summary>
     public static Chunk CompileChecked(string source, NativeCatalogue? catalogue = null) {
         DiagnosticBag bag = new();
@@ -44,7 +43,14 @@ internal static partial class ChunkRendering {
     /// Every instruction of <paramref name="chunk"/>: its offset, opcode and rendered text,
     /// so a test can read the line table at an instruction's offset.
     /// </summary>
-    public static IReadOnlyList<(int Offset, OpCode Op, string Text)> Instructions(Chunk chunk) {
+    public static IReadOnlyList<(int Offset, OpCode Op, string Text)> Instructions(Chunk chunk) =>
+        Decode(chunk, poolIndices: null);
+
+    /// <summary>
+    /// Decodes <paramref name="chunk"/>, adding every constant-pool index an operand names
+    /// to <paramref name="poolIndices"/> when it is given.
+    /// </summary>
+    private static List<(int Offset, OpCode Op, string Text)> Decode(Chunk chunk, HashSet<int>? poolIndices) {
         var result = new List<(int, OpCode, string)>();
         int offset = 0;
         while (offset < chunk.Count) {
@@ -60,7 +66,7 @@ internal static partial class ChunkRendering {
                     offset += 2;
                     break;
                 case OpCode.ConstantLong:
-                    text.Append(' ').Append(Constant(chunk, (chunk.ReadByte(offset) << 8) | chunk.ReadByte(offset + 1)));
+                    text.Append(' ').Append(Constant(chunk, (chunk.ReadByte(offset) << 8) | chunk.ReadByte(offset + 1), poolIndices));
                     offset += 2;
                     break;
                 case OpCode.Constant:
@@ -68,7 +74,7 @@ internal static partial class ChunkRendering {
                 case OpCode.GetGlobal:
                 case OpCode.SetGlobal:
                 case OpCode.GetProperty:
-                    text.Append(' ').Append(Constant(chunk, chunk.ReadByte(offset++)));
+                    text.Append(' ').Append(Constant(chunk, chunk.ReadByte(offset++), poolIndices));
                     break;
                 case OpCode.GetLocal:
                 case OpCode.SetLocal:
@@ -79,7 +85,7 @@ internal static partial class ChunkRendering {
                     text.Append(' ').Append(chunk.ReadByte(offset++));
                     break;
                 case OpCode.Closure:
-                    offset = RenderClosure(chunk, offset, text);
+                    offset = RenderClosure(chunk, offset, text, poolIndices);
                     break;
                 default:
                     break;
@@ -91,24 +97,22 @@ internal static partial class ChunkRendering {
 
     /// <summary>
     /// Asserts that <paramref name="source"/> compiles to exactly <paramref name="expected"/>,
-    /// and that the constant pool holds nothing the rendering does not name. The rendering
-    /// shows each referenced entry's index, kind and value, so together the two pin the
-    /// whole pool: an entry no instruction names would otherwise pass unseen.
+    /// and that the constant pool holds nothing the instructions' operands do not name. The
+    /// rendering shows each named entry's index, kind and value, so together the two pin the
+    /// whole pool: an entry no instruction names would otherwise pass unseen. The indices
+    /// come from the decoded operands, never from a rendered value's text.
     /// </summary>
     public static void AssertEmits(string source, string expected, NativeCatalogue? catalogue = null) {
         Chunk chunk = CompileChecked(source, catalogue);
-        string rendered = Render(chunk);
+        var poolIndices = new HashSet<int>();
+        string rendered = string.Concat(Decode(chunk, poolIndices).Select(i => i.Text + "\n"));
         Assert.Equal(expected.ReplaceLineEndings("\n").TrimEnd('\n') + "\n", rendered);
-        int[] named = [.. PoolIndexRegex().Matches(rendered).Select(m => int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture)).Distinct().Order()];
-        Assert.Equal(Enumerable.Range(0, chunk.ConstantCount), named);
+        Assert.Equal(Enumerable.Range(0, chunk.ConstantCount), poolIndices.Order());
     }
 
-    [GeneratedRegex(@"\[(\d+)\] ")]
-    private static partial Regex PoolIndexRegex();
-
-    private static int RenderClosure(Chunk chunk, int offset, StringBuilder text) {
+    private static int RenderClosure(Chunk chunk, int offset, StringBuilder text, HashSet<int>? poolIndices) {
         int fnIndex = chunk.ReadByte(offset++);
-        text.Append(' ').Append(Constant(chunk, fnIndex));
+        text.Append(' ').Append(Constant(chunk, fnIndex, poolIndices));
         if (chunk.ReadConstant(fnIndex).TryAsFunction(out GrobFunction? gf) && gf is BytecodeFunction closure) {
             for (int u = 0; u < closure.UpvalueCount; u++) {
                 text.Append(' ').Append(chunk.ReadByte(offset)).Append(':').Append(chunk.ReadByte(offset + 1));
@@ -118,7 +122,8 @@ internal static partial class ChunkRendering {
         return offset;
     }
 
-    private static string Constant(Chunk chunk, int index) {
+    private static string Constant(Chunk chunk, int index, HashSet<int>? poolIndices) {
+        poolIndices?.Add(index);
         GrobValue value = chunk.ReadConstant(index);
         string shown = value.Kind switch {
             GrobValueKind.String => $"\"{value.AsString()}\"",
