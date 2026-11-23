@@ -17,7 +17,13 @@
 
 ## Decisions taken, not yet logged
 
-None taken. The gate report's §0 holds five proposals that need Chris's ruling before session B: Q1 (a VM-phase timeout is *bounded*, not a finding), Q2 (D-077 against printing a host exception's message), Q3 (the REPL's `exit(n)`), Q4 (the per-iteration REPL handler against `src/CLAUDE.md`'s outermost-catch rule) and Q5 (file F-1 to F-7 as register rows in group 2). Once ruled, they belong in the landing entry, or in their own entry if Chris prefers.
+Chris ruled on the gate report's §0 on 23 November. Each ruling took the report's recommendation. All five belong in the landing entry (prompt §5), as divergences from the prompt:
+
+- **Q1.** A VM-phase run past its bound is the outcome *bounded*. It is counted, but it is not a finding, because the VM honoured the cancellation. A timeout in the lexer, parser, checker or compiler stays a finding. The prompt's §1.1 and §4 list every run past the budget as a finding.
+- **Q2.** E9001 prints a `GrobInternalException`'s message. For any other exception it prints only the type name, and the message and stack trace appear only under `--verbose`. This follows D-077 and requirements §1. The prompt said to print "the exception's message".
+- **Q3.** In the REPL, `exit(n)` ends the session and `ReplCommand.Run` returns `n`, as D-110 has `exit(n)` end a script. This closes F-5 in group 3.
+- **Q4.** The REPL's E9001 handler wraps each entry: one loop iteration, from `ReadEntry` through `ProcessEntry`. The session continues after an internal error. This is the sanctioned reading of `src/CLAUDE.md`'s outermost-catch rule for the REPL.
+- **Q5.** F-1 to F-7 are filed as register rows in group 2's commit, so the known-signature list can name them.
 
 ## Error codes and registry state
 
@@ -42,11 +48,10 @@ Session A's work is the gate only (prompt §1, session table). It is finished, a
 
 ## Next session, first action
 
-Get Chris's rulings on Q1 to Q5 in the gate report's §0, then run the prompt's session-start check for session B.
+Run the prompt's session-start check for session B (change groups 1 and 2, Opus, high).
 
 ## Open for the maintainer
 
-- **Q1 to Q5** in the gate report's §0.
-- **Seven pre-campaign findings, F-1 to F-7** (report §1). Two are hit by the unmutated corpus, so the CI slice needs their rows in group 2: F-2 (`toZone("abc")` escapes the CLI as an unhandled host exception) and F-4 (E0206 leaves an identifier without a `Declaration`). F-1 (`const x := 1 / 0` crashes the compile phase) and F-3 (the parser overflows the stack below 500 nesting levels) are P0s under the strategy.
+- **Seven pre-campaign findings, F-1 to F-7** (report §1), to be filed in group 2 under Q5. Two are hit by the unmutated corpus: F-2 (`toZone("abc")` escapes the CLI as an unhandled host exception) and F-4 (E0206 leaves an identifier without a `Declaration`). F-1 (`const x := 1 / 0` crashes the compile phase) and F-3 (the parser overflows the stack below 500 nesting levels) are P0s under the strategy.
 - **The prompt's fake-capability test** ("a seed that writes, deletes and runs a process") cannot be written yet: no native writes a file or runs a process before 9C. The report §4.2 proposes the test that can be written now.
 - Carried from the previous hand-off: the benchmark workflow for #261 is still to dispatch; `.grob-session/handoffs/feat-stdlib-regex-replace-fn.md` on `main` is still unretired.
