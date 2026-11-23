@@ -1,43 +1,40 @@
-# Session hand-off — 22 November 2026
+# Session hand-off — 23 November 2026
 
 ## Where we are
 
-- Branch: `feat/native-named-arguments`, HEAD is the hand-off commit on top of `6a329d0` (`git log -1`)
-- Working tree: clean (scratch in gitignored `.grob-session/nna/`, including `newcov.py`, `commit-g3.txt` to `commit-g5.txt` and the CodeRabbit output `coderabbit-sessionC.ndjson`)
-- Commits on this branch: `git log --oneline origin/main..HEAD`. Change groups: 1 at `a2a50be`, 2 at `d401715`, 3 at `4f31cf1`, 4 at `f467d50`, 5 at `5938a67`. After them: `0dfa925` (two cascade tests for group 3), `a2436fd` (review fix: `filter` stops after a refused name) and `6a329d0` (allocation fix, below)
-- PR: draft #261. Push onto it and update its description through a REST PATCH; do not open a new PR.
+- Branch: `feat/native-named-arguments`, HEAD is the hand-off commit on top of `17f3685` (`git log -1`)
+- Working tree: clean (scratch in gitignored `.grob-session/`, including `cov_new.py`, `rename_tests.py`, `commit-g6.txt` and the Cobertura reports under `cov-d/`)
+- Commits on this branch: 25 before this hand-off (`git log --oneline origin/main..HEAD`). Change groups: 1 at `a2a50be`, 2 at `d401715`, 3 at `4f31cf1`, 4 at `f467d50`, 5 at `5938a67`, **6 at `17f3685`**
+- PR: draft #261. Push onto it and update its description through a REST PATCH; do not open a new PR. **The description does not yet list group 6 or its SHA.**
 - Increment prompt: `docs/prompts/native-named-arguments.md`
 - Gate report: `D:\Code\grob-lang\gate-reports\native-named-arguments-gate-report.md`
-- Picked up from: this branch's own hand-off (session B, after the review fixes), overwritten here
-- Phase reached: session C complete. Groups 3, 4 and 5 are committed and green. Session D is groups 6 and 7 (Sonnet, medium).
+- Picked up from: this branch's own hand-off (session C, as left by `3f43a87`), overwritten here
+- Phase reached: session D, group 6 complete and committed. Group 7 (the record) is not started.
 
 ## Green state
 
-- Tests: `dotnet test`, whole solution, on `6a329d0`: all eight projects passed, 0 failed, 5,740 (Core 345, Consistency 55, BenchCheck 76, Runtime 378, Compiler 2,793, Vm 473, Stdlib 672, Integration 948). `dotnet format --verify-no-changes` clean
-- Coverage: new code, the `src/` diff against `origin/main` (groups 1 to 5), Compiler and Integration cobertura unioned by `.grob-session/nna/newcov.py`: 258/258 lines, 171/171 branches, measured on `0dfa925`. `a2436fd` and `6a329d0` add a few lines (the `filter` early return, `HasNamedArgument`) with tests for the first, and the figure was not re-measured. Only `Grob.Compiler` changed under `src/`. Whole-solution figure not run
-- Benchmark gate: run locally on all benchmarks (the canonical-runner `workflow_dispatch` job was not run, so the timing thresholds are unchecked: `BenchCheck` fails the runner guard locally by design, and that run is Chris's to trigger). Allocation, compile benchmarks, bytes per operation on this machine: `origin/main` 10,552 (`Compile_TwoExpressions`) and 18,256 (`Compile_TenPrints`); the branch before `6a329d0` 10,984 and 20,416; the branch at `6a329d0` 10,536 and 18,176. The eager refusal string in group 5 was the whole of the rise (216 bytes per `print`), now fixed, so the increment does not move R-24's red gate: the committed rolling baseline (9,216 and 15,896) is +14.3% on both, as it was on main. The VM benchmarks allocate exactly the baseline and the attribution ones 0.3% to 6.1% below it. No baseline updated
+- Tests: `dotnet test Grob.slnx`, whole solution, on `17f3685`: all eight projects passed, 0 failed, 5,764 (Core 345, Consistency 77, BenchCheck 76, Runtime 378, Compiler 2,795, Vm 473, Stdlib 672, Integration 948). `dotnet build`: 0 warnings. `dotnet format --verify-no-changes` clean
+- Coverage: new code in group 6, from the Cobertura reports of that run, by `.grob-session/cov_new.py`: 166/166 lines, 120/123 branch conditions (97.6%). Files: `ConsistencyChecks.DefaultedParameters.cs` (149/149 lines, 116/119 branches), `ArrayMethodParameterNames.cs` (10/10, 4/4) and three one-record files. Whole-solution figure not run
+- Benchmarks: not run this session. Group 6 touches no hot path; the only `src/` change is one new public type in `Grob.Compiler` that nothing in the VM or checker calls
 - Pre-push gate: runs on this hand-off's push
 
 ## Decisions taken, not yet logged
 
 All go into the landing entry (group 7). Take its D-number from the live tail.
 
-Carried from sessions A and B (unchanged; the previous hand-off's list stands, in `git show 49e8f3d:.grob-session/handoffs/feat-native-named-arguments.md`): S1 to S4, the `strings.join` ruling, the function-value wording, R-58's native widening folded in, the crash-oracle line change and session B's five (script-function widening, every checked call through `ResolvedBinding`, E0004 numbered by written position, `input`'s signature from the catalogue, variadics bind for diagnostics only).
+Carried, unchanged:
 
-New in session C (inside the plan Chris approved on 22 November):
+- Sessions A and B: the list in `git show 49e8f3d:.grob-session/handoffs/feat-native-named-arguments.md` (S1 to S4, the `strings.join` ruling, the function-value wording, R-58's native widening, the crash-oracle line change, and session B's five).
+- Session C and Chris's rulings after its CodeRabbit review: the list in `git show 3f43a87:.grob-session/handoffs/feat-native-named-arguments.md`, section *Decisions taken, not yet logged*. It includes the **E0003 wording change** (name the missing required parameter), whose sentence is **not yet chosen**, and the nullable named-type parameter going to the `fs` increment.
 
-- **`sort` binds for its diagnostics and gets no `ResolvedBinding`.** `descending` can only follow a positional `fn`, so a clean call is already in parameter order and its bytes do not change. The view is `Binding/ArraySortParameters.cs` (`fn` required, `descending` defaulted), on the one shared binder.
-- **`sort()`, `sort(descending: true)` and a third argument are now E0003** ("'sort' expects between 1 and 2 arguments, but N were supplied"). They compiled before and faulted the VM or ignored the extra argument. Chris approved folding this in. The landing entry records it as a behaviour change beyond the refusal.
-- **The S3 refusal reaches any receiver `DispatchMemberAccessCall` has no surface for**, not only `Unknown` (`bool`, for example). Approved. That path also reports no E1002 for an unknown member, which predates this increment: **a finding for the register** (D-420), with the VM fault on `ns?.padLeft(5)`.
-- **`ns?.padLeft(5)` emits different bytes** (default filled: `Constant " "`, `Call 2`) because the guarded call now uses the bound list, which gate report §1.4 requires. `OptionalChainCall_PrimitivePadLeft_EmitsPinnedBytes` was updated for it (the one characterisation pin changed in this session) and `OptionalChainCall_PrimitivePadLeftComplete_EmitsPinnedBytes` pins the complete call, byte-identical to the base form. The landing entry says so.
-- **Skip and fill on a primitive method is proven by a hand-built call, not a registered member.** No first-party primitive has two defaults and the registrar is internal, sealed by `InternalsVisibleTo_NamesExactlyTheThreeFirstPartyAssemblies` (D-426 Decision 3), which was left alone. Widening on a primitive method is not tested for the same reason (no primitive has a float parameter); the line is shared with the named-type and namespace paths. Named-type default fill is proven in bytecode on `box`, a type the tests register through the public registrar (`MemberNamedArgumentFixtures`), not at run time: no first-party named-type method has a default, and the VM passes the argument array as given.
-- **`RejectNamedMemberArgs` is deleted (group 4) and `RefuseNamedArguments` is new (group 5)**: one refusal, with the function-value check calling it too. `MemberArgCountMatches`, now array and map only, refuses first and counts after, so a refusal never has an arity error beside it. `MemberArgCountInRange` is folded into it and `EmitMemberArityError` is the one E0003 wording for a member call.
-- **Group 7's fixture header** in `named-arguments.grob` is still stale (it says binding "stays unsupported"). Rewrite it without moving a line.
+New in session D (Chris approved the two recommendations on 22 November, before the code):
 
-Chris's rulings after session C's CodeRabbit review (22 November, after the push):
-
-- **E0003 names the missing required parameter, folded into group 7.** When the bound set leaves a required parameter unbound (`MissingRequired`), E0003 reports that parameter, not an arity range. This is session B's register finding, now fixed in this increment instead. It is one change to every path: script functions (`EmitArityError`), namespace natives (`CheckNativeCall`), `input` keeps its own "0 or 1" wording, primitive and named-type methods (`CheckPrimitiveMemberArgs`, `CheckNamedTypeMethodArgs`) and `sort` (`ValidateArraySortCall`), through `EmitMemberArityError` where it is shared. The count wording stays for too many positionals. **It overrides the prompt's "wording of any script-function diagnostic" out-of-scope line**, so the landing entry records a divergence, and the error code and the count of 122 are unchanged (wording only). **The new sentence is not yet chosen**: session D proposes it to Chris against `house-style` before editing, and a design question of that kind is a §6 stop for an Opus session. Pins that will move, to be found by running the suite: `TypeCheckerNativeNamedArgumentTests.NamespaceCall_NamedDefaultWithRequiredMissing_ReportsE0003AtTheCall`, the primitive, named-type and `sort` equivalents in the files session C added, `TypeCheckerDateTests` and `TypeCheckerNamedArgumentTests` where they assert a range for a missing required parameter, and `named-arguments.expected.txt` line 18 (`date.parse(pattern: s)`). Check that none of the four named-argument error examples under `docs/errors/examples/` pins it; a master changes only on D-428's grounds, so name the ground in the commit.
-- **A nullable named-type parameter rejecting `nil` and a nullable value** (`CheckNamedTypeArgumentType`) is fixed in the `fs` increment, where `File` first registers one, not here. The landing entry files it in the register with that owner.
+- **`Grob.DriftCheck` references `Grob.Runtime`, `Grob.Compiler` and `Grob.Stdlib`.** It was Core-only. The live read of registered signatures needs them. It is tooling outside the `src/` DAG and nothing in `src/` references it. D-316's text and the csproj comment described it as Core-only; the csproj comment is updated, the landing entry records the change. `src/CLAUDE.md` says a new project reference needs a decisions-log entry, so this is that entry's reason.
+- **`Grob.Compiler` gains one public type, `Binding/ArrayMethodParameterNames`** (`SortDefaulted()`), reading the binder's own `ArraySortParameters` view so the check holds no second copy. Chosen over hard-coding `descending` in the check. It is the only public surface group 6 adds to `src/`.
+- **The check's forward rule is "any documented signature of that callable agrees".** A named-argument call example in a document (`input(prompt: "Name: ")`) parses as a signature with no defaults, so requiring every signature to agree would fail on it. The reverse rule (a document defaults a parameter the code requires, for a callable the code registers) is what catches `strings.join`. A documented default on a callable the core catalogue does not register (`auth.apiKey`) is ignored.
+- **`strings.join` is fixed in the document, as ruled in session A.** `grob-type-registry.md:337` now shows `separator: string` with no default and says `strings.join(arr)` is E0003. **R-22's criterion ("the documented default is removed by a decision; reference and code agree") is now met, so the landing entry should move R-22 to Closed Items with the other two.** The prompt names only R-20 and R-55 for that; Chris to confirm.
+- **`date.parse(value: string, pattern: string = ""): date`** is added to the stdlib reference with the code's required name `value` (D-358 wrote `input`; the name is documentation only). **`input(prompt: string = ""): string`** gets its own *Built-in Function* section there, placed before `exit()`.
+- **Group 6 pins eight defaults, not seven**: gate report 1.3's seven plus `sort`'s `descending`, as S2 requires. The live read reproduces the seven on six callables, which matches D-447.
 
 ## Error codes and registry state
 
@@ -45,10 +42,9 @@ None allocated. The live count is 122.
 
 ## Tried and rejected
 
-- `fn:` as a named argument in a test: it does not parse, because `fn` is a keyword. So `xs.filter(fn: …)` and `sort(fn: …)` cannot be written, and sort's key can never hit E0009 from source. The refusal tests name the lambda `p:`.
-- Adding `Grob.Compiler.Tests` to `Grob.Runtime`'s `InternalsVisibleTo`, to register a two-default primitive method in a test: a guard test pins the grantees to the three first-party assemblies. Reverted; the hand-built call replaced it.
-- Mutation checks that leave the diagnostic call in place and drop only the early `return` are weak: they fail only the tests that assert suppression. Both of this session's first attempts did that and the failure counts did not match the predictions. The group 3 one stands as run (predicted wrongly, recorded in its commit body); the group 5 one was redone properly and matched (12 checker tests and two integration cases).
-- Do not hand-edit the characterisation expectations except the one named above. They were captured from the base.
+- Hard-coding `descending` in the check's code-side table: a pin, not a live read, so it drifts silently if the view changes. Replaced by `ArrayMethodParameterNames`.
+- `dotnet restore --force-evaluate` across the solution rewrites every `packages.lock.json` with line-ending-only changes. Only `tests/Grob.Consistency.Tests` and `tooling/Grob.DriftCheck` change for real (the new project references). Reverted the rest with `git checkout`. The `mixed-line-ending` hook then fixed CRLF in those two lock files and the DriftCheck csproj, and rejected the first commit attempt; re-staging and committing again passed.
+- A forward rule that fails when any one documented signature disagrees: rejected, see above.
 
 ## Quarantined or skipped tests
 
@@ -56,16 +52,16 @@ None.
 
 ## Why this session stopped
 
-Session C's rows are done. Groups 6 and 7 belong to session D (Sonnet, medium), and the prompt forbids one session covering groups from two rows.
+Group 6 is committed. Group 7 opens with a design question the prompt makes an Opus and Chris decision: the E0003 sentence for a missing required parameter. Session D's table row (Sonnet, medium) may not take it (§6, and the previous hand-off says so).
 
 ## Next session, first action
 
-Run the prompt's session-start check for session D, then read `git show 4f31cf1 f467d50 5938a67 --stat --format=%B` before building group 6's drift check, which must pin `descending` on `sort` as well as the seven signature defaults. Group 7 carries the E0003 wording change above: take its sentence to Chris first.
+Take the E0003 wording proposal to Chris against `house-style`, in a session that can settle it, before editing any diagnostic text in group 7.
 
 ## Open for the maintainer
 
-Nothing blocking. For awareness:
-
-- The pre-push CodeRabbit review of the whole branch (`coderabbit review --agent --deep --fresh --base main -c .coderabbit.yaml`) ran once: four findings and one unverified. Two fixed in `a2436fd`: `filter` judged a refused name as its predicate, and an E1001 assertion lacked its location. Chris ruled on the other two (see *Decisions taken*): the E0003 wording is folded into group 7 and the nullable named-type parameter goes to the `fs` increment.
-- The unverified finding asks for the benchmark workflow to run on the canonical runner, which checks the timing thresholds a local run cannot. It is Chris's to dispatch.
-- The landing entry files these in the register (D-420): the nullable named-type parameter (owner: the `fs` increment), the VM fault on `ns?.padLeft(5)` and the missing E1002 for an unknown member on a receiver with no surface.
+- **The E0003 sentence.** Group 7 changes one wording across script functions (`EmitArityError`), namespace natives (`CheckNativeCall`), primitive and named-type methods, and `sort`; `input` keeps its own "0 or 1" wording; the count wording stays for too many positionals. The pins that will move are listed in the session C hand-off (`git show 3f43a87:...`, *Chris's rulings*). Check that none of the four named-argument error examples under `docs/errors/examples/` pins it; a master changes only on D-428's grounds.
+- **R-22** closing with R-20 and R-55 (see *Decisions taken*).
+- **The benchmark workflow** on the canonical runner is still Chris's to dispatch (the timing thresholds a local run cannot check).
+- **PR #261's description** needs group 6 and its SHA added by REST PATCH; the next session does it with group 7, or Chris can ask for it earlier.
+- The landing entry still files these in the register (D-420): the nullable named-type parameter (owner: the `fs` increment), the VM fault on `ns?.padLeft(5)` and the missing E1002 for an unknown member on a receiver with no surface.
