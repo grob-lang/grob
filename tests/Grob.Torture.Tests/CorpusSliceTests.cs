@@ -45,6 +45,8 @@ public sealed class CorpusSliceTests(SliceFixture slice, ITestOutputHelper outpu
 
     [Fact]
     public void Slice_SecondRun_RunsTheSameProgramsWithTheSameFindings() {
+        Assert.False(CorpusSlice.TimedOut(slice.Results), "the first pass timed out, so no second pass may start beside it");
+
         IReadOnlyList<ProgramResult> again = CorpusSlice.Run(slice.Seeds, new Oracle(OracleBudget.Ci));
 
         Assert.Equal(slice.Results.Select(r => r.ProgramId), again.Select(r => r.ProgramId));
@@ -86,8 +88,14 @@ public sealed class SliceFixture {
         // Warm the JIT over every tenth seed at a generous bound, so the measured pass meets the
         // CI budget of a warm process (gate report §4.4). A tenth reaches every phase and most
         // of the stdlib; the rest of the corpus adds time, not warmth.
-        CorpusSlice.Run([.. Seeds.Where((_, i) => i % 10 == 0)],
+        // A timeout leaves a worker that cannot be stopped, so a warm-up that ends in one becomes
+        // the slice's result and no measured pass starts beside it.
+        IReadOnlyList<ProgramResult> warmUp = CorpusSlice.Run([.. Seeds.Where((_, i) => i % 10 == 0)],
             new Oracle(new OracleBudget(TimeSpan.FromMilliseconds(250), TimeSpan.FromSeconds(10))));
+        if (CorpusSlice.TimedOut(warmUp)) {
+            Results = warmUp;
+            return;
+        }
 
         var clock = Stopwatch.StartNew();
         Results = CorpusSlice.Run(Seeds, new Oracle(OracleBudget.Ci));

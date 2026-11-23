@@ -27,10 +27,20 @@ internal sealed class SplitMixRandomSource : IRandomSource {
     public double NextDouble() => (NextBits() >> 11) * (1.0 / (1UL << 53));
 
     /// <inheritdoc/>
-    /// <remarks>Both bounds are inclusive, as the CLI's source has them.</remarks>
+    /// <remarks>
+    /// Both bounds are inclusive, as the CLI's source has them. Draws below the threshold are
+    /// rejected, so every value in the range is equally likely: a plain modulo would favour the
+    /// low end of a range that does not divide 2^64.
+    /// </remarks>
     public long NextInt(long min, long max) {
         ulong span = unchecked((ulong)(max - min) + 1UL);
-        return span == 0 ? unchecked((long)NextBits()) : unchecked(min + (long)(NextBits() % span));
+        if (span == 0) return unchecked((long)NextBits());
+        ulong threshold = unchecked(0UL - span) % span;
+        ulong bits = NextBits();
+        while (bits < threshold) {
+            bits = NextBits();
+        }
+        return unchecked(min + (long)(bits % span));
     }
 
     /// <inheritdoc/>

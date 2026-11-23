@@ -46,9 +46,54 @@ public sealed class CliTests : IDisposable {
     public void Check_FindingWithAFrame_PrintsTheFrame() {
         string path = Write("r60.grob", "xs := [1, 2]\nprint(xs.filter(5))\n");
 
-        Run("check", path);
+        int exit = Run("check", path);
 
+        Assert.Equal(1, exit);
         Assert.Contains("    at Grob.Vm.", _out.ToString(), StringComparison.Ordinal);
+    }
+
+    // The oracle's hook stalls the checker, so the first run passes its watchdog.
+    private static Oracle StallingOracle(ManualResetEventSlim release) =>
+        new(new OracleBudget(TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(500)), phaseHook: p => {
+            if (p == PipelinePhase.Check) release.Wait();
+        });
+
+    [Fact]
+    public void Check_RunPastItsWatchdog_StopsBeforeTheNextFile() {
+        string first = Write("first.grob", "print(1)\n");
+        string second = Write("second.grob", "print(2)\n");
+        using var release = new ManualResetEventSlim();
+        new Oracle(OracleBudget.Ci).Run("print(0)\n");
+
+        try {
+            int exit = Cli.Run(["check", first, second], _out, _error, _directory, StallingOracle(release));
+
+            Assert.Equal(1, exit);
+            Assert.Equal(
+                $"{first}: Finding\n  Check|Timeout|watchdog  the run did not end within 550 ms\n" +
+                "stopped: the last run did not end, and its worker cannot be stopped\n",
+                _out.ToString().ReplaceLineEndings("\n"));
+        } finally {
+            release.Set();
+        }
+    }
+
+    [Fact]
+    public void Corpus_RunPastItsWatchdog_SaysTheSliceStopped() {
+        MakeRepository("");
+        using var release = new ManualResetEventSlim();
+        new Oracle(OracleBudget.Ci).Run("print(0)\n");
+
+        try {
+            int exit = Cli.Run(["corpus", _directory], _out, _error, _directory, StallingOracle(release));
+
+            Assert.Equal(1, exit);
+            string text = _out.ToString().ReplaceLineEndings("\n");
+            Assert.StartsWith("1 programs: Finding 1\n", text, StringComparison.Ordinal);
+            Assert.Contains("stopped: the last run did not end, and its worker cannot be stopped\n", text, StringComparison.Ordinal);
+        } finally {
+            release.Set();
+        }
     }
 
     [Fact]

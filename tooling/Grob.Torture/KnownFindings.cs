@@ -24,8 +24,17 @@ internal sealed class KnownFindings(IReadOnlyList<KnownEntry> entries) {
 
     /// <summary>Reads the list from its JSON form, <c>{ "entries": [ { "row", "signature", "programs" } ] }</c>.</summary>
     /// <exception cref="JsonException">The text is not a well-formed list.</exception>
-    public static KnownFindings Parse(string json) =>
-        new(JsonSerializer.Deserialize<Document>(json, Options)!.Entries);
+    /// <remarks>
+    /// <see cref="JsonSerializerOptions.RespectNullableAnnotations"/> checks properties, not a
+    /// null root or a null array element, so both are refused here.
+    /// </remarks>
+    public static KnownFindings Parse(string json) {
+        Document? document = JsonSerializer.Deserialize<Document>(json, Options);
+        if (document is null || document.Entries.Any(e => e is null)) {
+            throw new JsonException("the known-findings list must be an object whose entries are all objects");
+        }
+        return new KnownFindings(document.Entries);
+    }
 
     /// <summary>The register row that covers <paramref name="program"/>'s finding, or <see langword="null"/>.</summary>
     public string? RowFor(string program, Signature signature) =>

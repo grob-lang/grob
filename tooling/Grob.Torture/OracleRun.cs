@@ -29,6 +29,7 @@ internal sealed class OracleRun {
     private readonly DiagnosticBag _bag = new();
     private CancellationTokenSource? _vmCancellation;
     private int _audited;
+    private int[]? _lineLengths;
     private volatile PipelinePhase _phase;
 
     /// <summary>Prepares a run; nothing happens until <see cref="Execute"/>.</summary>
@@ -112,7 +113,8 @@ internal sealed class OracleRun {
     private void AuditNewDiagnostics(PipelinePhase phase) {
         IReadOnlyList<Diagnostic> all = _bag.Diagnostics;
         for (; _audited < all.Count; _audited++) {
-            _findings.AddRange(DiagnosticAudit.Audit(all[_audited], phase, _source, _fileName));
+            _lineLengths ??= DiagnosticAudit.LineLengths(_source);
+            _findings.AddRange(DiagnosticAudit.Audit(all[_audited], phase, _lineLengths, _fileName));
         }
     }
 

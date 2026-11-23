@@ -9,7 +9,7 @@ namespace Grob.Torture;
 /// is not R-60's <c>kind Int is not callable</c>.
 /// </summary>
 internal static partial class MessageNormaliser {
-    [GeneratedRegex(@"[A-Za-z]:\\[^\s'""]*|(?<![\w.])/(?:[\w.-]+/)+[\w.-]*")]
+    [GeneratedRegex(@"[A-Za-z]:[\\/][^\s'""]*|(?<![\w.])/[\w.-]+(?:/[\w.-]+)*/?")]
     private static partial Regex PathPattern();
 
     [GeneratedRegex(@"'[^']*'")]

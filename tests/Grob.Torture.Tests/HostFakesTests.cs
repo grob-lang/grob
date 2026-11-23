@@ -109,11 +109,24 @@ public sealed class HostFakesTests {
         }
     }
 
+    // A span of 3 * 2^62 leaves 2^62 bit patterns over, a quarter of all draws, so the
+    // rejection loop runs within a few draws.
     [Fact]
-    public void SplitMix_NextIntFullRange_DoesNotThrow() {
-        var source = new SplitMixRandomSource(11);
+    public void SplitMix_NextIntRangeThatDoesNotDivide_StaysInsideBounds() {
+        var source = new SplitMixRandomSource(5);
+        const long max = (1L << 62) - 1;
 
-        source.NextInt(long.MinValue, long.MaxValue);
+        for (int i = 0; i < 50; i++) {
+            Assert.InRange(source.NextInt(long.MinValue, max), long.MinValue, max);
+        }
+    }
+
+    [Fact]
+    public void SplitMix_NextIntFullRange_ReturnsTheRawDraw() {
+        var source = new SplitMixRandomSource(11);
+        var twin = new SplitMixRandomSource(11);
+
+        Assert.Equal(unchecked((long)twin.NextBits()), source.NextInt(long.MinValue, long.MaxValue));
     }
 
     [Fact]

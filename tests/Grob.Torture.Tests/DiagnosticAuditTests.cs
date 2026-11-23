@@ -13,6 +13,9 @@ public sealed class DiagnosticAuditTests {
     private const string File = "program.grob";
     private const string Source = "x := 1\nyy := 22\n";
 
+    private static IReadOnlyList<Finding> Audit(Diagnostic diagnostic, PipelinePhase phase, string source = Source) =>
+        DiagnosticAudit.Audit(diagnostic, phase, DiagnosticAudit.LineLengths(source), File);
+
     private static Diagnostic At(string code, SourceLocation start, SourceLocation end) =>
         new(code, "message", new SourceRange(start, end), Severity.Error);
 
@@ -24,7 +27,7 @@ public sealed class DiagnosticAuditTests {
     [InlineData(2, 9)]
     [InlineData(3, 1)]
     public void Audit_StartInsideTheSource_FindsNothing(int line, int column) {
-        Assert.Empty(DiagnosticAudit.Audit(At(ErrorCatalog.E0002.Code, line, column), PipelinePhase.Check, Source, File));
+        Assert.Empty(Audit(At(ErrorCatalog.E0002.Code, line, column), PipelinePhase.Check));
     }
 
     [Theory]
@@ -34,7 +37,7 @@ public sealed class DiagnosticAuditTests {
     [InlineData(3, 2, "column")]
     public void Audit_StartOutsideTheSource_IsLocationFinding(int line, int column, string check) {
         Finding finding = Assert.Single(
-            DiagnosticAudit.Audit(At(ErrorCatalog.E0002.Code, line, column), PipelinePhase.Check, Source, File));
+            Audit(At(ErrorCatalog.E0002.Code, line, column), PipelinePhase.Check));
 
         Assert.Equal(new Signature(PipelinePhase.Check, FindingClass.Location, $"{ErrorCatalog.E0002.Code}|{check}"), finding.Signature);
     }
@@ -46,7 +49,7 @@ public sealed class DiagnosticAuditTests {
     public void Audit_ZeroLineOrColumn_IsLocationFinding(int line, int column, string check) {
         SourceLocation start = new SourceLocation(File, 1, 1) with { Line = line, Column = column };
 
-        Finding finding = Assert.Single(DiagnosticAudit.Audit(At(ErrorCatalog.E0002.Code, start, start), PipelinePhase.Check, Source, File));
+        Finding finding = Assert.Single(Audit(At(ErrorCatalog.E0002.Code, start, start), PipelinePhase.Check));
 
         Assert.Equal(new Signature(PipelinePhase.Check, FindingClass.Location, $"{ErrorCatalog.E0002.Code}|{check}"), finding.Signature);
     }
@@ -55,7 +58,7 @@ public sealed class DiagnosticAuditTests {
     public void Audit_UnknownLocation_IsFileFinding() {
         Diagnostic diagnostic = new(ErrorCatalog.E0002.Code, "message", SourceRange.Unknown, Severity.Error);
 
-        Finding finding = Assert.Single(DiagnosticAudit.Audit(diagnostic, PipelinePhase.Parse, Source, File));
+        Finding finding = Assert.Single(Audit(diagnostic, PipelinePhase.Parse));
 
         Assert.Equal(new Signature(PipelinePhase.Parse, FindingClass.Location, $"{ErrorCatalog.E0002.Code}|file"), finding.Signature);
     }
@@ -64,7 +67,7 @@ public sealed class DiagnosticAuditTests {
     public void Audit_EndPastEndOfFile_IsEndFinding() {
         Diagnostic diagnostic = At(ErrorCatalog.E0002.Code, new SourceLocation(File, 2, 1), new SourceLocation(File, 3, 5));
 
-        Finding finding = Assert.Single(DiagnosticAudit.Audit(diagnostic, PipelinePhase.Check, Source, File));
+        Finding finding = Assert.Single(Audit(diagnostic, PipelinePhase.Check));
 
         Assert.Equal(new Signature(PipelinePhase.Check, FindingClass.Location, $"{ErrorCatalog.E0002.Code}|end"), finding.Signature);
     }
@@ -73,12 +76,12 @@ public sealed class DiagnosticAuditTests {
     public void Audit_EndOnTheNextTokensStart_FindsNothing() {
         Diagnostic diagnostic = At(ErrorCatalog.E0002.Code, new SourceLocation(File, 1, 1), new SourceLocation(File, 2, 1));
 
-        Assert.Empty(DiagnosticAudit.Audit(diagnostic, PipelinePhase.Check, Source, File));
+        Assert.Empty(Audit(diagnostic, PipelinePhase.Check));
     }
 
     [Fact]
     public void Audit_UnregisteredCode_IsUnregisteredFinding() {
-        Finding finding = Assert.Single(DiagnosticAudit.Audit(At("X0001", 1, 1), PipelinePhase.Compile, Source, File));
+        Finding finding = Assert.Single(Audit(At("X0001", 1, 1), PipelinePhase.Compile));
 
         Assert.Equal(new Signature(PipelinePhase.Compile, FindingClass.Unregistered, "X0001"), finding.Signature);
     }
@@ -87,7 +90,7 @@ public sealed class DiagnosticAuditTests {
     public void Audit_CarriageReturnLineEndings_CountColumnsWithoutTheReturn() {
         const string crlf = "x := 1\r\nyy := 22\r\n";
 
-        Assert.Empty(DiagnosticAudit.Audit(At(ErrorCatalog.E0002.Code, 1, 7), PipelinePhase.Check, crlf, File));
-        Assert.Single(DiagnosticAudit.Audit(At(ErrorCatalog.E0002.Code, 1, 8), PipelinePhase.Check, crlf, File));
+        Assert.Empty(Audit(At(ErrorCatalog.E0002.Code, 1, 7), PipelinePhase.Check, crlf));
+        Assert.Single(Audit(At(ErrorCatalog.E0002.Code, 1, 8), PipelinePhase.Check, crlf));
     }
 }

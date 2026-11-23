@@ -14,17 +14,24 @@ namespace Grob.Torture;
 internal static class Cli {
     private const string Usage = "usage: grob-torture check <file>... | corpus [<root>]";
 
+    // A run past its watchdog leaves a worker that cannot be stopped, so nothing more is run.
+    private const string StoppedAfterTimeout = "stopped: the last run did not end, and its worker cannot be stopped";
+
     /// <summary>Runs one command and returns the process exit code.</summary>
     /// <param name="args">The command and its arguments.</param>
     /// <param name="stdout">Where the report goes.</param>
     /// <param name="stderr">Where usage and read errors go.</param>
     /// <param name="workingDirectory">The directory <c>corpus</c> searches upward from when no root is given.</param>
-    public static int Run(IReadOnlyList<string> args, TextWriter stdout, TextWriter stderr, string workingDirectory) {
+    public static int Run(IReadOnlyList<string> args, TextWriter stdout, TextWriter stderr, string workingDirectory) =>
+        Run(args, stdout, stderr, workingDirectory, new Oracle(OracleBudget.Ci));
+
+    /// <summary>As the public overload, over a given oracle: the seam the tests use to make a run stall.</summary>
+    internal static int Run(IReadOnlyList<string> args, TextWriter stdout, TextWriter stderr, string workingDirectory, Oracle oracle) {
         try {
             return args switch {
-                ["check", _, ..] => Check(args.Skip(1), stdout),
-                ["corpus"] => Corpus(SeedCorpus.LocateRepositoryRoot(workingDirectory), stdout),
-                ["corpus", string root] => Corpus(root, stdout),
+                ["check", _, ..] => Check(args.Skip(1), stdout, oracle),
+                ["corpus"] => Corpus(SeedCorpus.LocateRepositoryRoot(workingDirectory), stdout, oracle),
+                ["corpus", string root] => Corpus(root, stdout, oracle),
                 _ => UsageError(stderr),
             };
         } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
@@ -38,8 +45,7 @@ internal static class Cli {
         return 3;
     }
 
-    private static int Check(IEnumerable<string> paths, TextWriter stdout) {
-        var oracle = new Oracle(OracleBudget.Ci);
+    private static int Check(IEnumerable<string> paths, TextWriter stdout, Oracle oracle) {
         bool found = false;
         foreach (string path in paths) {
             string source = ReadFile(path);
@@ -49,17 +55,21 @@ internal static class Cli {
                 stdout.WriteLine($"  {finding.Signature.Key}  {finding.Message}");
                 WriteFrame(finding, stdout);
             }
+            if (result.TimedOut) {
+                stdout.WriteLine(StoppedAfterTimeout);
+                return 1;
+            }
             found |= result.Outcome == OutcomeKind.Finding;
         }
         return found ? 1 : 0;
     }
 
-    private static int Corpus(string root, TextWriter stdout) {
+    private static int Corpus(string root, TextWriter stdout, Oracle oracle) {
         IReadOnlyList<Seed> seeds = SeedCorpus.Load(root);
         KnownFindings known = KnownFindings.Parse(ReadFile(Path.Join(root, CorpusSlice.KnownFindingsPath)));
         DeferredWorkRegister register = DeferredWorkRegister.Parse(ReadFile(Path.Join(root, CorpusSlice.RegisterPath)));
 
-        IReadOnlyList<ProgramResult> results = CorpusSlice.Run(seeds, new Oracle(OracleBudget.Ci));
+        IReadOnlyList<ProgramResult> results = CorpusSlice.Run(seeds, oracle);
         SliceVerdict verdict = CorpusSlice.Judge(results, known);
         IReadOnlyList<string> problems = known.Problems(register);
 
@@ -70,6 +80,7 @@ internal static class Cli {
                 WriteFinding(result.ProgramId, finding, known.RowFor(result.ProgramId, finding.Signature), stdout);
             }
         }
+        if (CorpusSlice.TimedOut(results)) stdout.WriteLine(StoppedAfterTimeout);
         foreach (string stale in verdict.Stale) stdout.WriteLine($"stale    {stale}");
         foreach (string problem in problems) stdout.WriteLine($"problem  {problem}");
 

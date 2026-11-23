@@ -14,6 +14,10 @@ public sealed class MessageNormaliserTests {
     [InlineData("zone \"abc\" not found", "zone \"…\" not found")]
     [InlineData(@"cannot read C:\work\a.grob now", "cannot read <path> now")]
     [InlineData("cannot read /home/u/a.grob now", "cannot read <path> now")]
+    [InlineData("cannot read /a.grob now", "cannot read <path> now")]
+    [InlineData("cannot read C:/work/a.grob now", "cannot read <path> now")]
+    [InlineData("in /tmp/dir/ now", "in <path> now")]
+    [InlineData("a / b and either/or", "a / b and either/or")]
     [InlineData("GrobValue kind mismatch: expected Float, actual Int.", "GrobValue kind mismatch: expected Float, actual Int.")]
     [InlineData("slot12 and E0101", "slot12 and E0101")]
     public void Normalise_RemovesValuesAndKeepsShape(string message, string expected) {

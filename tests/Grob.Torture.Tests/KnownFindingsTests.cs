@@ -97,4 +97,13 @@ public sealed class KnownFindingsTests {
     public void Parse_EmptyList_HasNoEntries() {
         Assert.Empty(KnownFindings.Parse("""{ "entries": [] }""").Entries);
     }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("""{ "entries": [null] }""")]
+    [InlineData("""{ "entries": [ { "row": "R-70", "signature": "s" } ] }""")]
+    [InlineData("""{ "entries": [ { "row": null, "signature": "s", "programs": [] } ] }""")]
+    public void Parse_MalformedList_Throws(string json) {
+        Assert.ThrowsAny<System.Text.Json.JsonException>(() => KnownFindings.Parse(json));
+    }
 }

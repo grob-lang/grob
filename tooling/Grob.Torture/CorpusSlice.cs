@@ -22,10 +22,14 @@ internal static class CorpusSlice {
         foreach (Seed seed in seeds) {
             OracleResult result = oracle.Run(seed.Source, seed.Origin);
             results.Add(new ProgramResult(seed.Id, result.Outcome, result.Findings));
-            if (result.Findings.Any(f => f.Signature.Class == FindingClass.Timeout)) break;
+            if (result.TimedOut) break;
         }
         return results;
     }
+
+    /// <summary>Whether a run ended at a timeout, after which no further pass should start.</summary>
+    public static bool TimedOut(IReadOnlyList<ProgramResult> results) =>
+        results.Count > 0 && results[^1].Findings.Any(f => f.Signature.Class == FindingClass.Timeout);
 
     /// <summary>Every finding the list does not cover, and every entry that no longer holds.</summary>
     public static SliceVerdict Judge(IReadOnlyList<ProgramResult> results, KnownFindings known) {

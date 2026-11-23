@@ -21,14 +21,14 @@ internal static class DiagnosticAudit {
     /// <summary>The findings <paramref name="diagnostic"/> makes, at most one of each class.</summary>
     /// <param name="diagnostic">The diagnostic to check.</param>
     /// <param name="phase">The phase that reported it.</param>
-    /// <param name="source">The run's source text.</param>
+    /// <param name="lineLengths">The run's source as <see cref="LineLengths"/> measures it, computed once per run.</param>
     /// <param name="fileName">The file name the run gave the lexer.</param>
-    public static IReadOnlyList<Finding> Audit(Diagnostic diagnostic, PipelinePhase phase, string source, string fileName) {
+    public static IReadOnlyList<Finding> Audit(Diagnostic diagnostic, PipelinePhase phase, int[] lineLengths, string fileName) {
         var findings = new List<Finding>(2);
         if (!IsRegistered(diagnostic.Code)) {
             findings.Add(new Finding(new Signature(phase, FindingClass.Unregistered, diagnostic.Code), diagnostic.ToString()));
         }
-        if (FailedLocationCheck(diagnostic.Range, LineLengths(source), fileName) is { } check) {
+        if (FailedLocationCheck(diagnostic.Range, lineLengths, fileName) is { } check) {
             findings.Add(new Finding(
                 new Signature(phase, FindingClass.Location, $"{diagnostic.Code}|{check}"), diagnostic.ToString()));
         }
@@ -46,8 +46,11 @@ internal static class DiagnosticAudit {
     private static bool IsPastEndOfFile(SourceLocation end, int[] lengths) =>
         end.Line > lengths.Length || (end.Line == lengths.Length && end.Column > lengths[^1] + 1);
 
-    // One entry per line, the trailing '\r' of a CRLF ending not counted. A source ending in a
-    // newline has an empty last line, so end of file is the start of that line.
-    private static int[] LineLengths(string source) =>
+    /// <summary>
+    /// The length of each line of <paramref name="source"/>, a CRLF ending's <c>'\r'</c> not
+    /// counted. A source ending in a newline has an empty last line, so end of file is the start
+    /// of that line.
+    /// </summary>
+    public static int[] LineLengths(string source) =>
         [.. source.Split('\n').Select(line => line.EndsWith('\r') ? line.Length - 1 : line.Length)];
 }

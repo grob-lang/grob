@@ -48,6 +48,13 @@ public sealed class RawLiteralExtractorTests {
     }
 
     [Fact]
+    public void Extract_QuotesInALineComment_AreNotAnOpener() {
+        string cs = $"// ends with {Q}\nconst string source = {Q}\n    print(1)\n    {Q};\n";
+
+        Assert.Equal(["print(1)"], RawLiteralExtractor.Extract(cs));
+    }
+
+    [Fact]
     public void Extract_CarriageReturnLineEndings_AreNormalised() {
         string cs = $"var s = {Q}\r\n    x := 1\r\n    {Q};\r\n";
 

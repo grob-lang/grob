@@ -19,15 +19,16 @@ internal static partial class RawLiteralExtractor {
     public static IReadOnlyList<string> Extract(string csharp) {
         string[] lines = csharp.ReplaceLineEndings("\n").Split('\n');
         var literals = new List<string>();
-        for (int i = 0; i < lines.Length; i++) {
-            i = ExtractAt(lines, i, literals);
+        int i = 0;
+        while (i < lines.Length) {
+            i = ExtractAt(lines, i, literals) + 1;
         }
         return literals;
     }
 
     // Returns the last line consumed: the closer when a literal opens here, else the line itself.
     private static int ExtractAt(string[] lines, int i, List<string> literals) {
-        if (OpenerPattern().Match(lines[i]) is not { Success: true } open) return i;
+        if (OpenerPattern().Match(lines[i]) is not { Success: true } open || IsInLineComment(lines[i], open.Index)) return i;
 
         string quotes = open.Groups["quotes"].Value;
         int close = FindCloser(lines, i + 1, quotes);
@@ -36,6 +37,13 @@ internal static partial class RawLiteralExtractor {
             literals.Add(Body(lines, i + 1, close));
         }
         return close;
+    }
+
+    // Quotes after a '//' are comment text, not an opener. A '//' inside an ordinary string
+    // before the quotes would hide a real opener; no test literal is written so.
+    private static bool IsInLineComment(string line, int index) {
+        int comment = line.IndexOf("//", StringComparison.Ordinal);
+        return comment >= 0 && comment < index;
     }
 
     private static int FindCloser(string[] lines, int from, string quotes) {
