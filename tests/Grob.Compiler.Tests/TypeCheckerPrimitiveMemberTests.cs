@@ -266,10 +266,10 @@ public sealed class TypeCheckerPrimitiveMemberTests {
     }
 
     [Theory]
-    [InlineData("padLeft")]
-    [InlineData("padRight")]
-    [InlineData("truncate")]
-    public void DefaultParameterMethod_NoArguments_ReportsSingleE0003WithRangePhrasing(string method) {
+    [InlineData("padLeft", "width")]
+    [InlineData("padRight", "width")]
+    [InlineData("truncate", "maxLength")]
+    public void DefaultParameterMethod_NoArguments_ReportsSingleE0003NamingTheRequiredParameter(string method, string required) {
         DiagnosticBag bag = Check($$"""
             s := "abc"
             readonly v := s.{{method}}()
@@ -277,7 +277,7 @@ public sealed class TypeCheckerPrimitiveMemberTests {
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
-        Assert.Contains("between 1 and 2 arguments", diag.Message, StringComparison.Ordinal);
+        Assert.Equal($"'{method}' expects an argument for required parameter '{required}', but none was supplied.", diag.Message);
         Assert.Equal(2, diag.Range.Start.Line);
         Assert.Equal(15, diag.Range.Start.Column);
     }

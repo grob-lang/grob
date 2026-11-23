@@ -87,11 +87,29 @@ internal static class ArgumentBinder {
         return -1;
     }
 
-    private static bool LeavesRequiredUnbound<TParameters>(TParameters parameters, int[] slots)
+    private static bool LeavesRequiredUnbound<TParameters>(TParameters parameters, IReadOnlyList<int> slots)
             where TParameters : IBindableParameters {
-        for (int i = 0; i < slots.Length; i++) {
-            if (slots[i] == Unbound && !parameters.HasDefaultAt(i)) return true;
+        for (int i = 0; i < slots.Count; i++) {
+            if (IsRequiredAndUnbound(parameters, slots, i)) return true;
         }
         return false;
     }
+
+    /// <summary>
+    /// The names of the parameters with no default that <paramref name="binding"/> left
+    /// unbound, in parameter order. Empty unless <see cref="ArgumentBinding.MissingRequired"/>
+    /// is set. E0003 names them.
+    /// </summary>
+    public static IReadOnlyList<string> UnboundRequiredNames<TParameters>(TParameters parameters, ArgumentBinding binding)
+            where TParameters : IBindableParameters {
+        var names = new List<string>();
+        for (int i = 0; i < binding.SlotArgument.Count; i++) {
+            if (IsRequiredAndUnbound(parameters, binding.SlotArgument, i)) names.Add(parameters.NameAt(i));
+        }
+        return names;
+    }
+
+    private static bool IsRequiredAndUnbound<TParameters>(TParameters parameters, IReadOnlyList<int> slots, int index)
+            where TParameters : IBindableParameters =>
+        slots[index] == Unbound && !parameters.HasDefaultAt(index);
 }

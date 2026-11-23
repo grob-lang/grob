@@ -258,12 +258,12 @@ public sealed class TypeCheckerNoSignatureNamedArgumentTests {
     [Fact]
     public void ArraySort_DescendingWithoutKey_ReportsE0003AtTheCall() =>
         AssertSingleError(CheckCall("xs.sort(descending: true)"),
-            "E0003", "'sort' expects between 1 and 2 arguments, but 1 was supplied.", 3, 1);
+            "E0003", "'sort' expects an argument for required parameter 'fn', but none was supplied.", 3, 1);
 
     [Fact]
     public void ArraySort_NoArguments_ReportsE0003() =>
         AssertSingleError(CheckCall("xs.sort()"),
-            "E0003", "'sort' expects between 1 and 2 arguments, but 0 were supplied.", 3, 1);
+            "E0003", "'sort' expects an argument for required parameter 'fn', but none was supplied.", 3, 1);
 
     [Fact]
     public void ArraySort_TooManyArguments_ReportsE0003() =>

@@ -70,6 +70,34 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
+    /// Reports E0003 for a call whose binding left a parameter with no default unbound,
+    /// naming each such parameter in parameter order at the call. The callee opens the
+    /// message as <see cref="BindingWording.Subject"/> does, so a script function reads
+    /// <c>Function 'f' expects ...</c> and a native <c>'date.parse' expects ...</c>, the
+    /// frame every E0003 message shares. Too many positionals keeps the count wording.
+    /// </summary>
+    private void EmitMissingRequiredError<TParameters>(
+            CallExpr node, BindingWording callee, TParameters parameters, ArgumentBinding binding)
+            where TParameters : IBindableParameters {
+        IReadOnlyList<string> names = ArgumentBinder.UnboundRequiredNames(parameters, binding);
+        string listed = QuotedList(names);
+        string message = names.Count == 1
+            ? $"{callee.Subject} expects an argument for required parameter {listed}, but none was supplied."
+            : $"{callee.Subject} expects arguments for required parameters {listed}, but none were supplied.";
+        EmitError(ErrorCatalog.E0003, message, node.Range);
+    }
+
+    /// <summary>
+    /// Renders <paramref name="names"/> quoted, comma-separated with "and" before the last
+    /// and no comma before it: <c>'a'</c>, <c>'a' and 'b'</c>, <c>'a', 'b' and 'c'</c>.
+    /// </summary>
+    private static string QuotedList(IReadOnlyList<string> names) {
+        if (names.Count == 1) return $"'{names[0]}'";
+        string head = string.Join(", ", names.Take(names.Count - 1).Select(n => $"'{n}'"));
+        return $"{head} and '{names[^1]}'";
+    }
+
+    /// <summary>
     /// The record a clean call hands the compiler: each slot the argument bound to it,
     /// marked where it widens (<paramref name="widen"/>, one entry per parameter), or the
     /// parameter's default. A native's default is its signature constant

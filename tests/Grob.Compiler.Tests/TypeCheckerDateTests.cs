@@ -155,11 +155,11 @@ public sealed class TypeCheckerDateTests {
     }
 
     [Fact]
-    public void Parse_ZeroArguments_ReportsSingleE0003WithRangeMessage() {
+    public void Parse_ZeroArguments_ReportsSingleE0003NamingTheMissingParameter() {
         DiagnosticBag bag = Check("readonly x := date.parse()");
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
-        Assert.Equal("'date.parse' expects between 1 and 2 arguments, but 0 were supplied.", diag.Message);
+        Assert.Equal("'date.parse' expects an argument for required parameter 'value', but none was supplied.", diag.Message);
         Assert.Equal(1, diag.Range.Start.Line);
         Assert.Equal(15, diag.Range.Start.Column);
     }
@@ -207,7 +207,7 @@ public sealed class TypeCheckerDateTests {
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
         Assert.Equal(
-            "'date.parse' expects between 1 and 2 arguments, but 1 was supplied.",
+            "'date.parse' expects an argument for required parameter 'value', but none was supplied.",
             diag.Message);
         Assert.Equal(1, diag.Range.Start.Line);
         Assert.Equal(15, diag.Range.Start.Column);

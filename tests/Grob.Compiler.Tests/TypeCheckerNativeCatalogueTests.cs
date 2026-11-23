@@ -97,7 +97,7 @@ public sealed class TypeCheckerNativeCatalogueTests {
         (_, DiagnosticBag bag) = Check("acme.twice()", Acme);
         Diagnostic error = Assert.Single(bag.Errors);
         Assert.Equal("E0003", error.Code);
-        Assert.Equal("'acme.twice' expects 1 argument, but 0 were supplied.", error.Message);
+        Assert.Equal("'acme.twice' expects an argument for required parameter 'value', but none was supplied.", error.Message);
         Assert.Equal(1, error.Range.Start.Line);
         Assert.Equal(1, error.Range.Start.Column);
     }

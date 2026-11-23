@@ -22,7 +22,7 @@ error[E0001]: Cannot assign value of type 'array' to binding of type 'string'.
   --> match-members.errors.grob:31:20-31:22
 error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
   --> match-members.errors.grob:32:20-32:30
-error[E0003]: 'group' expects 1 argument, but 0 were supplied.
+error[E0003]: 'group' expects an argument for required parameter 'name', but none was supplied.
   --> match-members.errors.grob:35:1-35:9
 error[E0003]: 'group' expects 1 argument, but 2 were supplied.
   --> match-members.errors.grob:36:1-36:13

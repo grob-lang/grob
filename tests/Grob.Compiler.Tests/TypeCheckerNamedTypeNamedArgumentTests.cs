@@ -143,7 +143,7 @@ public sealed class TypeCheckerNamedTypeNamedArgumentTests {
     public void NamedTypeCall_NamedDefaultWithRequiredMissing_ReportsE0003AtTheCall() {
         (_, DiagnosticBag bag) = CheckCall("""b.fit(left: "<")""");
 
-        AssertSingleError(bag, "E0003", "'fit' expects between 1 and 3 arguments, but 1 was supplied.", 6);
+        AssertSingleError(bag, "E0003", "'fit' expects an argument for required parameter 'width', but none was supplied.", 6);
     }
 
     [Fact]

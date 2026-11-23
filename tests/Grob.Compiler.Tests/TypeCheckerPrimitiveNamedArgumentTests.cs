@@ -135,7 +135,7 @@ public sealed class TypeCheckerPrimitiveNamedArgumentTests {
     public void PrimitiveCall_NamedDefaultWithRequiredMissing_ReportsE0003AtTheCall() {
         (_, DiagnosticBag bag) = CheckCall("""s.padLeft(char: "*")""");
 
-        AssertSingleError(bag, "E0003", "'padLeft' expects between 1 and 2 arguments, but 1 was supplied.", 6);
+        AssertSingleError(bag, "E0003", "'padLeft' expects an argument for required parameter 'width', but none was supplied.", 6);
     }
 
     [Fact]

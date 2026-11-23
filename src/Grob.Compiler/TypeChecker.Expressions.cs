@@ -1112,9 +1112,15 @@ public sealed partial class TypeChecker {
     /// no <see cref="CallExpr.ResolvedBinding"/>, and its bytes are what they were.
     /// </summary>
     private GrobType ValidateArraySortCall(CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
-        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, new ArraySortParameters());
-        if (ReportBindingProblems(node, binding, BindingWording.ForNative(memberAccess.Member))) return GrobType.Array;
-        if (binding.TooManyPositionals || binding.MissingRequired) {
+        var parameters = new ArraySortParameters();
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
+        BindingWording callee = BindingWording.ForNative(memberAccess.Member);
+        if (ReportBindingProblems(node, binding, callee)) return GrobType.Array;
+        if (binding.MissingRequired) {
+            EmitMissingRequiredError(node, callee, parameters, binding);
+            return GrobType.Array;
+        }
+        if (binding.TooManyPositionals) {
             EmitMemberArityError(node, memberAccess, argTypes.Length, requiredCount: 1, fullArity: 2);
             return GrobType.Array;
         }
@@ -1502,9 +1508,15 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckNamedTypeMethodArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, FunctionSignature signature) {
-        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, new SignatureParameters(signature));
-        if (ReportBindingProblems(node, binding, BindingWording.ForNative(memberAccess.Member))) return;
-        if (binding.TooManyPositionals || binding.MissingRequired) {
+        var parameters = new SignatureParameters(signature);
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
+        BindingWording callee = BindingWording.ForNative(memberAccess.Member);
+        if (ReportBindingProblems(node, binding, callee)) return;
+        if (binding.MissingRequired) {
+            EmitMissingRequiredError(node, callee, parameters, binding);
+            return;
+        }
+        if (binding.TooManyPositionals) {
             EmitMemberArityError(node, memberAccess, argTypes.Length, signature.RequiredArgumentCount, signature.Parameters.Count);
             return;
         }
@@ -1699,9 +1711,15 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckPrimitiveMemberArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, FunctionSignature signature) {
-        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, new SignatureParameters(signature));
-        if (ReportBindingProblems(node, binding, BindingWording.ForNative(memberAccess.Member))) return;
-        if (binding.TooManyPositionals || binding.MissingRequired) {
+        var parameters = new SignatureParameters(signature);
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
+        BindingWording callee = BindingWording.ForNative(memberAccess.Member);
+        if (ReportBindingProblems(node, binding, callee)) return;
+        if (binding.MissingRequired) {
+            EmitMissingRequiredError(node, callee, parameters, binding);
+            return;
+        }
+        if (binding.TooManyPositionals) {
             EmitMemberArityError(node, memberAccess, argTypes.Length, signature.RequiredArgumentCount, signature.Parameters.Count);
             return;
         }
@@ -1774,12 +1792,18 @@ public sealed partial class TypeChecker {
     /// handed to the compiler on <see cref="CallExpr.ResolvedBinding"/>.
     /// </summary>
     private void CheckCall(CallExpr node, FnDecl fn, GrobType[] argTypes) {
-        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, new ScriptParameters(fn));
-        if (ReportBindingProblems(node, binding, BindingWording.ForScriptFunction(fn.Name))) return;
+        var parameters = new ScriptParameters(fn);
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
+        BindingWording callee = BindingWording.ForScriptFunction(fn.Name);
+        if (ReportBindingProblems(node, binding, callee)) return;
 
-        // Arity (E0003) on the bound set: too many positionals, or a required
-        // (defaultless) parameter left unbound.
-        if (binding.TooManyPositionals || binding.MissingRequired) {
+        // Arity (E0003) on the bound set: a required (defaultless) parameter left
+        // unbound is named; too many positionals is counted.
+        if (binding.MissingRequired) {
+            EmitMissingRequiredError(node, callee, parameters, binding);
+            return;
+        }
+        if (binding.TooManyPositionals) {
             EmitArityError(node, fn);
             return;
         }
@@ -2687,15 +2711,22 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckNativeCall(CallExpr node, string namespaceName, string memberName,
             FunctionSignature signature, GrobType[] argTypes) {
-        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, new SignatureParameters(signature));
-        if (ReportBindingProblems(node, binding, BindingWording.ForNative($"{namespaceName}.{memberName}"))) return;
+        var parameters = new SignatureParameters(signature);
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
+        BindingWording callee = BindingWording.ForNative($"{namespaceName}.{memberName}");
+        if (ReportBindingProblems(node, binding, callee)) return;
 
         if (signature.IsVariadic) {
             CheckVariadicNativeCall(node, namespaceName, memberName, signature, argTypes);
             return;
         }
 
-        if (binding.TooManyPositionals || binding.MissingRequired) {
+        if (binding.MissingRequired) {
+            EmitMissingRequiredError(node, callee, parameters, binding);
+            return;
+        }
+
+        if (binding.TooManyPositionals) {
             int fullArity = signature.Parameters.Count;
             int requiredCount = signature.RequiredArgumentCount;
             string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
