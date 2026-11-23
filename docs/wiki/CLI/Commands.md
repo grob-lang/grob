@@ -46,6 +46,11 @@ grob run report.grob --dev-plugin C:\dev\Grob.Http.dll
 grob run report.grob --verbose
 ```
 
+Exit codes: `0` for a clean run, `1` for a runtime error, `2` for a type or
+syntax error, `3` for a usage error (an unknown command, a missing path or a
+file that cannot be read), and `n` when the script calls `exit(n)`. See
+[Error Handling](../Language-Specification/Error-Handling.md#exit-codes).
+
 ## `grob repl`
 
 Start an interactive session.

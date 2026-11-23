@@ -213,7 +213,7 @@ public sealed class Sprint9IncrementBTests {
             print(d == "not-a-date")
             """);
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E0002", stderr);
     }
@@ -225,7 +225,7 @@ public sealed class Sprint9IncrementBTests {
             print(d < 5)
             """);
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E0002", stderr);
     }

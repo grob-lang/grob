@@ -85,6 +85,6 @@ internal class CommandLineRunner {
     private int UsageError(string message, string usage) {
         _stderr.WriteLine(message);
         _stderr.WriteLine(usage);
-        return 1;
+        return ExitCodes.UsageError;
     }
 }

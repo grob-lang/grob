@@ -199,7 +199,7 @@ public sealed class Sprint9CRegexTests {
             /a/.replace("a", m => m.index)
             """);
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E0004", stderr);
         Assert.Contains(":2:18", stderr);
@@ -239,7 +239,7 @@ public sealed class Sprint9CRegexTests {
             r := /a(/
             """);
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E0602", stderr);
         Assert.Contains(":2:9", stderr);
@@ -298,7 +298,7 @@ public sealed class Sprint9CRegexTests {
             r.pattern = "b"
             """);
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E0204", stderr);
         Assert.DoesNotContain("internal error", stderr);

@@ -52,8 +52,8 @@ internal static partial class CliDiagnosticReader {
 
     /// <summary>
     /// The exit code agrees with what the CLI reported: non-zero exactly when an error-severity
-    /// diagnostic was written. Non-zero rather than 1, since the compile-error exit code is
-    /// Sprint 12's to fix.
+    /// diagnostic was written. Non-zero rather than a fixed code, since a compile-time diagnostic
+    /// exits 2 and a runtime error exits 1 (R-64, D-451 Decision 5) and the examples mix both.
     /// </summary>
     public static string? CheckExitCode(int exitCode, IReadOnlyList<ExampleDiagnostic> diagnostics) {
         bool reportedError = diagnostics.Any(d => d.Severity == "error");

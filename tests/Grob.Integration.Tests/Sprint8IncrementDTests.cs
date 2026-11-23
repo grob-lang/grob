@@ -145,7 +145,7 @@ public sealed class Sprint8IncrementDTests {
             print(id == "not-a-guid")
             """);
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E0002", stderr);
     }
@@ -159,7 +159,7 @@ public sealed class Sprint8IncrementDTests {
         (string stdout, string stderr, int exitCode) = RunSource(
             """readonly id := guid.parse("not-a-guid")""" + "\n");
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E0601", stderr);
     }
