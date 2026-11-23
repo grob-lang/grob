@@ -58,7 +58,7 @@ public sealed class SentinelAuditTests {
     }
 
     [Fact]
-    public void Audit_ErrorTypeWithARealDeclaration_IsDisagreeFinding() {
+    public void Audit_ErrorTypeWithARealDeclaration_IsCascadeSuppressionNotAFinding() {
         CompilationUnit unit = ParseOnly("print(x)\n");
         foreach (IdentifierExpr id in Identifiers(unit)) {
             id.Declaration = UnresolvedDecl.Instance;
@@ -66,9 +66,14 @@ public sealed class SentinelAuditTests {
         }
         Identifiers(unit).Single(i => i.Name == "x").Declaration = unit;
 
-        Finding finding = Assert.Single(SentinelAudit.Audit(unit, []));
+        Assert.Empty(SentinelAudit.Audit(unit, []));
+    }
 
-        Assert.Equal("disagree|CallExpr.Arguments/CallArgument.Value|", finding.Signature.Detail);
+    [Fact]
+    public void Run_UseOfABindingWithAnErrorType_IsNotAFinding() {
+        OracleResult result = new Oracle(OracleBudget.Ci).Run("x: int := \"a\"\nprint(x)\n");
+
+        Assert.Equal(OutcomeKind.Diagnostics, result.Outcome);
     }
 
     [Theory]

@@ -22,6 +22,16 @@
     <ProjectReference Include="..\..\src\Grob.Stdlib\Grob.Stdlib.csproj" />
   </ItemGroup>
 
+  <!-- One extractor, not two (prompt §1.3): the public samples gate's block extractor and the
+       register reader are linked from Grob.Integration.Tests, which this project must not
+       reference. They keep their own namespaces, an exception to namespaces-follow-folders. -->
+  <ItemGroup>
+    <Compile Include="..\..\tests\Grob.Integration.Tests\PublicSamples\SampleExtractor.cs" Link="Linked\SampleExtractor.cs" />
+    <Compile Include="..\..\tests\Grob.Integration.Tests\PublicSamples\SampleBlock.cs" Link="Linked\SampleBlock.cs" />
+    <Compile Include="..\..\tests\Grob.Integration.Tests\ErrorExamples\ErrorExampleMaster.cs" Link="Linked\ErrorExampleMaster.cs" />
+    <Compile Include="..\..\tests\Grob.Integration.Tests\ErrorExamples\DeferredWorkRegister.cs" Link="Linked\DeferredWorkRegister.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Grob.Torture.Tests</_Parameter1>

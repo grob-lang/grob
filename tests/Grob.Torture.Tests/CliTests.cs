@@ -16,7 +16,7 @@ public sealed class CliTests : IDisposable {
         return path;
     }
 
-    private int Run(params string[] args) => Cli.Run(args, _out, _error);
+    private int Run(params string[] args) => Cli.Run(args, _out, _error, _directory);
 
     [Fact]
     public void Check_CleanFile_PrintsOutcomeAndExitsZero() {
@@ -73,10 +73,69 @@ public sealed class CliTests : IDisposable {
     [InlineData]
     [InlineData("check")]
     [InlineData("frobnicate", "a.grob")]
+    [InlineData("corpus", "a", "b")]
     public void Run_BadArguments_PrintsUsageAndExitsThree(params string[] args) {
         int exit = Run(args);
 
         Assert.Equal(3, exit);
-        Assert.StartsWith("usage: grob-torture check <file>...", _error.ToString(), StringComparison.Ordinal);
+        Assert.StartsWith("usage: grob-torture check <file>... | corpus [<root>]", _error.ToString(), StringComparison.Ordinal);
+    }
+
+    private void MakeRepository(string knownEntries) {
+        Write("Grob.slnx", "<Solution />");
+        Directory.CreateDirectory(Path.Join(_directory, "tests", "fixtures"));
+        Directory.CreateDirectory(Path.Join(_directory, "tests", "Grob.Torture.Tests"));
+        Directory.CreateDirectory(Path.Join(_directory, "docs", "design"));
+        Write(Path.Join("tests", "fixtures", "clean.grob"), "print(1)\n");
+        Write(Path.Join("tests", "fixtures", "range.grob"), "exit(300)\n");
+        Write(Path.Join("docs", "design", "grob-open-questions.md"),
+            "### Open items\n\n| # | Item | Raised by | Owner | Done when |\n|---|---|---|---|---|\n| R-73 | **x** | D-451 | `unowned` | y |\n\n### Closed items\n");
+        Write(Path.Join("tests", "Grob.Torture.Tests", "known-findings.json"), $$"""{ "entries": [{{knownEntries}}] }""");
+    }
+
+    private static string RangeProgram => $"tests/fixtures/range.grob@{SeedCorpus.Fnv1a64("exit(300)\n"):x16}";
+
+    [Fact]
+    public void Corpus_UntriagedFinding_IsListedAsNewAndExitsOne() {
+        MakeRepository("");
+
+        int exit = Run("corpus", _directory);
+
+        Assert.Equal(1, exit);
+        string text = _out.ToString().ReplaceLineEndings("\n");
+        Assert.StartsWith("2 programs: Clean 1, Finding 1\n", text, StringComparison.Ordinal);
+        Assert.Contains($"new      {RangeProgram}  Run|ExitRange|above-255  exit(300)\n", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Corpus_EveryFindingKnown_ListsThemAndExitsZero() {
+        MakeRepository($$"""{ "row": "R-73", "signature": "Run|ExitRange|above-255", "programs": ["{{RangeProgram}}"] }""");
+
+        int exit = Run("corpus", _directory);
+
+        Assert.Equal(0, exit);
+        Assert.Contains($"known    R-73  {RangeProgram}  Run|ExitRange|above-255\n", _out.ToString().ReplaceLineEndings("\n"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Corpus_StaleEntryAndClosedRow_AreListedAndExitOne() {
+        MakeRepository("""{ "row": "R-12", "signature": "Run|ExitRange|negative", "programs": ["gone@0"] }""");
+
+        int exit = Run("corpus", _directory);
+
+        Assert.Equal(1, exit);
+        string text = _out.ToString().ReplaceLineEndings("\n");
+        Assert.Contains("stale    R-12 gone@0 Run|ExitRange|negative: not in the corpus\n", text, StringComparison.Ordinal);
+        Assert.Contains("problem  known finding row R-12 is not in the register\n", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Corpus_NoRootGiven_FindsTheRepositoryFromTheWorkingDirectory() {
+        MakeRepository($$"""{ "row": "R-73", "signature": "Run|ExitRange|above-255", "programs": ["{{RangeProgram}}"] }""");
+        Directory.CreateDirectory(Path.Join(_directory, "sub"));
+
+        int exit = Cli.Run(["corpus"], _out, _error, Path.Join(_directory, "sub"));
+
+        Assert.Equal(0, exit);
     }
 }

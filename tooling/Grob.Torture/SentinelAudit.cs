@@ -8,9 +8,12 @@ namespace Grob.Torture;
 
 /// <summary>
 /// The §3.1.1 invariant as the oracle can check it (D-311; gate report §1.1, corrections). After
-/// checking, every identifier has a non-null <c>Declaration</c>, and its two sentinels agree:
-/// <c>Declaration</c> is <see cref="UnresolvedDecl.Instance"/> exactly when <c>ResolvedType</c>
-/// is <see cref="GrobType.Error"/>.
+/// checking, every identifier has a non-null <c>Declaration</c>, and an identifier whose
+/// <c>Declaration</c> is <see cref="UnresolvedDecl.Instance"/> has <c>ResolvedType</c>
+/// <see cref="GrobType.Error"/>. The converse does not hold: a name that resolves to a
+/// declaration whose own type is <see cref="GrobType.Error"/> carries that real declaration
+/// and the <see cref="GrobType.Error"/> type, which is cascade suppression (§29.3), not a
+/// violation.
 /// </summary>
 /// <remarks>
 /// <c>ResolvedType</c> cannot be checked on its own: it is an enum that defaults to
@@ -54,7 +57,7 @@ internal static class SentinelAudit {
         public override Unit VisitIdentifier(IdentifierExpr node) {
             if (node.Declaration is null) {
                 Violations.Add((node, NoDeclaration));
-            } else if (ReferenceEquals(node.Declaration, UnresolvedDecl.Instance) != (node.ResolvedType == GrobType.Error)) {
+            } else if (ReferenceEquals(node.Declaration, UnresolvedDecl.Instance) && node.ResolvedType != GrobType.Error) {
                 Violations.Add((node, Disagree));
             }
             return default;
