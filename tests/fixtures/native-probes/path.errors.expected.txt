@@ -6,7 +6,7 @@ error[E1003]: Namespace 'path' has no member 'separator'.
   --> path.errors.grob:15:1-15:6
 error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
   --> path.errors.grob:16:14-16:19
-error[E0003]: 'path.join' expects at least 1 argument, but 0 were supplied.
+error[E0003]: 'path.join' expects an argument for required parameter 'parts', but none was supplied.
   --> path.errors.grob:19:1-19:11
 error[E0004]: Argument 1 to 'path.join' has type 'int', which is not assignable to parameter of type 'string'.
   --> path.errors.grob:20:11

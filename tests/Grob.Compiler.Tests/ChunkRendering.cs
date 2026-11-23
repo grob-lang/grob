@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Grob.Compiler.Ast;
 using Grob.Core;
 using Grob.Runtime;
@@ -20,7 +21,7 @@ namespace Grob.Compiler.Tests;
 /// instructions that follow, so the rendering still covers every byte: a change in any
 /// byte changes the text.
 /// </remarks>
-internal static class ChunkRendering {
+internal static partial class ChunkRendering {
     /// <summary>Lexes, parses, checks and compiles <paramref name="source"/>, asserting no diagnostic.</summary>
     public static Chunk CompileChecked(string source, NativeCatalogue? catalogue = null) {
         DiagnosticBag bag = new();
@@ -88,9 +89,22 @@ internal static class ChunkRendering {
         return result;
     }
 
-    /// <summary>Asserts that <paramref name="source"/> compiles to exactly <paramref name="expected"/>.</summary>
-    public static void AssertEmits(string source, string expected, NativeCatalogue? catalogue = null) =>
-        Assert.Equal(expected.ReplaceLineEndings("\n").TrimEnd('\n') + "\n", Render(CompileChecked(source, catalogue)));
+    /// <summary>
+    /// Asserts that <paramref name="source"/> compiles to exactly <paramref name="expected"/>,
+    /// and that the constant pool holds nothing the rendering does not name. The rendering
+    /// shows each referenced entry's index, kind and value, so together the two pin the
+    /// whole pool: an entry no instruction names would otherwise pass unseen.
+    /// </summary>
+    public static void AssertEmits(string source, string expected, NativeCatalogue? catalogue = null) {
+        Chunk chunk = CompileChecked(source, catalogue);
+        string rendered = Render(chunk);
+        Assert.Equal(expected.ReplaceLineEndings("\n").TrimEnd('\n') + "\n", rendered);
+        int[] named = [.. PoolIndexRegex().Matches(rendered).Select(m => int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture)).Distinct().Order()];
+        Assert.Equal(Enumerable.Range(0, chunk.ConstantCount), named);
+    }
+
+    [GeneratedRegex(@"\[(\d+)\] ")]
+    private static partial Regex PoolIndexRegex();
 
     private static int RenderClosure(Chunk chunk, int offset, StringBuilder text) {
         int fnIndex = chunk.ReadByte(offset++);

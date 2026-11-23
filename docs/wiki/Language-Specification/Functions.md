@@ -46,7 +46,8 @@ Named arguments are unordered relative to each other. Only parameters with
 default values may be named — required parameters (no default) are
 positional-only. Providing a named argument before a positional, naming a
 required parameter, duplicate names or unknown parameter names are all compile
-errors. A call that leaves out a required parameter is a compile error that names it.
+errors. A call that leaves out a required parameter is a compile error that names it,
+wherever the callee declares parameter names.
 
 The same convention holds for calls into the standard library and plugins:
 `regex.compile(pattern, timeout: 2)` passes the third parameter and leaves the second

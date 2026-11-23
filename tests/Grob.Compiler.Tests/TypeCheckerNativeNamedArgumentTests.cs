@@ -213,6 +213,26 @@ public sealed class TypeCheckerNativeNamedArgumentTests {
             "'regex.compile' expects an argument for required parameter 'pattern', but none was supplied.", 6);
     }
 
+    // A variadic native binds for its diagnostics too, so a missing required parameter is
+    // named on that path as on every other. The tail requires at least one argument
+    // (gate report F9), which is the binder's "no default" for it.
+
+    [Fact]
+    public void VariadicCall_NoArguments_NamesEveryMissingParameter() {
+        (_, DiagnosticBag bag) = CheckFirstCall("g := guid.newV5()");
+
+        AssertSingleError(bag, "E0003",
+            "'guid.newV5' expects arguments for required parameters 'namespace' and 'name', but none were supplied.", 6);
+    }
+
+    [Fact]
+    public void VariadicCall_EmptyTail_NamesTheVariadicParameter() {
+        (_, DiagnosticBag bag) = CheckFirstCall("p := path.join()");
+
+        AssertSingleError(bag, "E0003",
+            "'path.join' expects an argument for required parameter 'parts', but none was supplied.", 6);
+    }
+
     // -----------------------------------------------------------------------
     // input: one defaulted parameter (D-447 Decision 1).
     // -----------------------------------------------------------------------

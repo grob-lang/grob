@@ -163,9 +163,11 @@ public static partial class ConsistencyChecks {
 
     // A signature: an optional namespace, a name, an optional generic list, then a
     // one-line parenthesised parameter list. The inner alternation is disjoint (a
-    // non-parenthesis character, or one balanced pair), so it is linear.
+    // character that is neither a parenthesis nor a quote, a quoted string, or one
+    // balanced pair), so it is linear, and a ')' inside a quoted default such as
+    // suffix: string = ")" does not end the list.
     [GeneratedRegex(
-        @"(?<![\w.])((?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*)(?:<[^>\n]*>)?\(((?:[^()\n]|\([^()\n]*\))*)\)",
+        @"(?<![\w.])((?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*)(?:<[^>\n]*>)?\(((?:[^()""\n]|""[^""\n]*""|\([^()\n]*\))*)\)",
         RegexOptions.None, RegexTimeoutMs)]
     private static partial Regex SignatureRegex();
 

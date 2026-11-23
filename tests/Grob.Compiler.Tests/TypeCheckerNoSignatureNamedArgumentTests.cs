@@ -80,6 +80,21 @@ public sealed class TypeCheckerNoSignatureNamedArgumentTests {
         AssertRefusals(CheckCall("xs.filter(p: x => 1)"), Refusal("filter"), 3, 11);
 
     [Fact]
+    public void ArrayFilter_PositionalNonBoolPredicateAndARefusedName_ReportsBoth() {
+        // Two root causes: the refused name, and a positional predicate that returns int.
+        Diagnostic[] errors = [.. CheckCall("xs.filter(x => 1, extra: true)").Errors];
+
+        Assert.Equal(2, errors.Length);
+        Assert.Equal("E0011", errors[0].Code);
+        Assert.Equal(Refusal("filter"), errors[0].Message);
+        Assert.Equal(3, errors[0].Range.Start.Line);
+        Assert.Equal(19, errors[0].Range.Start.Column);
+        Assert.Equal("E0004", errors[1].Code);
+        Assert.Equal(3, errors[1].Range.Start.Line);
+        Assert.Equal(11, errors[1].Range.Start.Column);
+    }
+
+    [Fact]
     public void ArrayFilter_PositionalNonBoolPredicate_StillReportsE0004() {
         Diagnostic diag = Assert.Single(CheckCall("xs.filter(x => 1)").Errors);
         Assert.Equal("E0004", diag.Code);

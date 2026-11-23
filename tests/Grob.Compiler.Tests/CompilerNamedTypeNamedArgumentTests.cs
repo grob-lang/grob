@@ -86,10 +86,19 @@ public sealed class CompilerNamedTypeNamedArgumentTests {
     }
 
     [Fact]
-    public void Pick_LambdaSecond_EmitsTheFunctionOverloadsArguments() {
-        // The overload is chosen on positional arguments; the call emits as any other.
-        string lambda = Render(Prefix + """b.pick("x", s => s)""");
-
-        Assert.Contains("Call 2", lambda, StringComparison.Ordinal);
-    }
+    public void Pick_LambdaSecond_EmitsTheFunctionOverloadsArguments() =>
+        // The overload is chosen on positional arguments; the call emits as any other,
+        // the string then the lambda, in parameter order.
+        ChunkRendering.AssertEmits(Prefix + """b.pick("x", s => s)""", """
+            GetGlobal [0] String "acmebox.make"
+            Call 0
+            DefineGlobal [1] String "b"
+            GetGlobal [1] String "b"
+            GetProperty [2] String "pick"
+            Constant [3] String "x"
+            Constant [4] Function fn <lambda>
+            Call 2
+            DefineGlobal [5] String "v"
+            Return
+            """, MemberNamedArgumentFixtures.NamedType);
 }

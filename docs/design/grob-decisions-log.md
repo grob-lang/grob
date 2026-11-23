@@ -18316,8 +18316,11 @@ shares: `Function 'f' expects an argument for required parameter 'a', but none w
 supplied.`, and for several, `'date.of' expects arguments for required parameters 'year',
 'month' and 'day', but none were supplied.` It applies on every path that binds: script
 functions, namespace natives, primitive methods, named-type methods and `sort`. Too many
-positionals keeps the count wording, as do `input`, calls through a function value and
-array and map methods, which have no parameter names to give (R-56). Session B found the
+positionals keeps the count wording, and so does `input`, whose one parameter has a
+default, so it can only be given too many. Calls through a function value and array and
+map methods keep it too: they have no parameter names to give (R-56). A variadic native's
+tail requires one argument and has no default, so it is named like any other required
+parameter. Session B found the
 gap: `date.parse(pattern: s)` read "expects between 1 and 2 arguments, but 1 was supplied".
 Chris ruled it into this increment on 22 November and chose the sentence on 23 November.
 **Divergence**: the prompt put script-function diagnostic wording out of scope, and D-446's
@@ -18337,7 +18340,9 @@ change**: `sort()`, `sort(descending: true)` and a third argument are E0003; the
 before and faulted the VM or ignored the argument. **S3** extends the refusal to a member call
 on any receiver with no checked member surface, not only `Unknown`. The function-value
 refusal and its wording were built by #262 (D-448). `RejectNamedNativeArgs` and
-`RejectNamedMemberArgs` are deleted, and `RefuseNamedArguments` is the one refusal.
+`RejectNamedMemberArgs` are deleted, and `RefuseNamedArguments` is the one refusal. A
+refused name does not hide an independent check on a positional argument:
+`xs.filter(x => 1, extra: true)` reports the refusal and the predicate's E0004.
 
 **Decision 3 — emission.** Every checked call goes through `CallExpr.ResolvedBinding`:
 script functions, non-variadic namespace natives, `input` and primitive and named-type

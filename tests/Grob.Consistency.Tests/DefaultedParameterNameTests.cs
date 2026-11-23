@@ -195,6 +195,19 @@ public sealed class DefaultedParameterNameTests {
     }
 
     [Fact]
+    public void ParseDocumentedSignatures_ParenthesisInsideAQuotedDefault_DoesNotEndTheList() {
+        var path = TempFile("`truncate(maxLength: int, suffix: string = \")\")`\n");
+        try {
+            var signature = Assert.Single(ConsistencyChecks.ParseDocumentedSignatures(path));
+
+            Assert.Equal(["maxLength", "suffix"], signature.Parameters.Select(p => p.Name).ToArray());
+            Assert.Equal("\")\"", signature.Parameters[1].Default);
+        } finally {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void ParseDocumentedSignatures_LambdaArrowInAType_IsNotAClosingDelimiter() {
         // The '>' of '=>' must not close a bracket: depth would go negative and the next
         // top-level comma would be ignored, losing 'limit' and its default.

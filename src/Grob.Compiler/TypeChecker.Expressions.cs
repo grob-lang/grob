@@ -1059,12 +1059,13 @@ public sealed partial class TypeChecker {
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
         switch (memberAccess.Member) {
             case "filter": {
-                    // A refused name bound to nothing, so the predicate check below would
-                    // judge an argument that bound to no parameter. Independent errors in
-                    // the lambda itself were reported when the argument was visited.
-                    if (RefuseNamedArgumentsTo(node, memberAccess.Member)) return GrobType.Array;
-                    // First argument must be a predicate returning bool.
+                    // A refused name binds to nothing, so a named first argument is not
+                    // judged as the predicate. A positional one still is: its return type
+                    // is a second root cause, independent of the refused name.
+                    RefuseNamedArgumentsTo(node, memberAccess.Member);
+                    // First argument, when positional, must be a predicate returning bool.
                     if (node.Arguments.Count >= 1 &&
+                        node.Arguments[0].Name is null &&
                         node.Arguments[0].Value is LambdaExpr lambdaPred &&
                         _lambdaReturnTypes.TryGetValue(lambdaPred, out GrobType bodyType) &&
                         bodyType != GrobType.Unknown && bodyType != GrobType.Error &&
@@ -2725,14 +2726,16 @@ public sealed partial class TypeChecker {
         BindingWording callee = BindingWording.ForNative($"{namespaceName}.{memberName}");
         if (ReportBindingProblems(node, binding, callee)) return false;
 
-        if (signature.IsVariadic) {
-            CheckVariadicNativeCall(node, namespaceName, memberName, signature, argTypes);
-            return true;
-        }
-
+        // A variadic tail has no default, so a call short of its minimum leaves it (or a
+        // fixed parameter before it) unbound: named here, on every path alike.
         if (binding.MissingRequired) {
             EmitMissingRequiredError(node, callee, parameters, binding);
             return false;
+        }
+
+        if (signature.IsVariadic) {
+            CheckVariadicNativeCall(node, namespaceName, memberName, signature, argTypes);
+            return true;
         }
 
         if (binding.TooManyPositionals) {
@@ -2786,22 +2789,14 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Validates a native member call whose tail is variadic (<c>path.join</c>,
     /// <c>guid.newV5</c>): the fixed prefix is checked exactly as
-    /// <see cref="CheckNativeCall"/> does, then at least one further argument is required
-    /// (gate report F9) and every one of them is checked against the variadic
-    /// parameter's element type instead of a fixed per-slot type.
+    /// <see cref="CheckNativeCall"/> does, then every further argument is checked against
+    /// the variadic parameter's element type instead of a fixed per-slot type. The tail's
+    /// minimum of one argument (gate report F9) is enforced before this, by the binder's
+    /// missing-required check: the tail has no default.
     /// </summary>
     private void CheckVariadicNativeCall(CallExpr node, string namespaceName, string memberName,
             FunctionSignature signature, GrobType[] argTypes) {
         int fixedCount = signature.Parameters.Count - 1;
-        int minimum = fixedCount + 1;
-        if (argTypes.Length < minimum) {
-            string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
-            EmitError(ErrorCatalog.E0003,
-                $"'{namespaceName}.{memberName}' expects at least {minimum} {Plural(minimum, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
-                node.Range);
-            return;
-        }
-
         for (int i = 0; i < fixedCount; i++) {
             CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, ParameterTypeAt(signature, i));
         }
