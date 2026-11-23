@@ -187,11 +187,12 @@ public static partial class ConsistencyChecks {
             int lineNo = 0;
             foreach (string line in File.ReadLines(path)) {
                 lineNo++;
-                IEnumerable<Match> named = SignatureRegex().Matches(line)
-                    .Where(m => NamedParameterRegex().IsMatch(m.Groups[2].Value));
-                foreach (Match match in named) {
+                IEnumerable<GroupCollection> named = SignatureRegex().Matches(line)
+                    .Select(match => match.Groups)
+                    .Where(groups => NamedParameterRegex().IsMatch(groups[2].Value));
+                foreach (GroupCollection groups in named) {
                     signatures.Add(new DocumentedSignature(
-                        document, lineNo, match.Groups[1].Value, ParseParameters(match.Groups[2].Value)));
+                        document, lineNo, groups[1].Value, ParseParameters(groups[2].Value)));
                 }
             }
         }

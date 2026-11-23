@@ -1508,18 +1508,7 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckNamedTypeMethodArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, FunctionSignature signature) {
-        var parameters = new SignatureParameters(signature);
-        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
-        BindingWording callee = BindingWording.ForNative(memberAccess.Member);
-        if (ReportBindingProblems(node, binding, callee)) return;
-        if (binding.MissingRequired) {
-            EmitMissingRequiredError(node, callee, parameters, binding);
-            return;
-        }
-        if (binding.TooManyPositionals) {
-            EmitMemberArityError(node, memberAccess, argTypes.Length, signature.RequiredArgumentCount, signature.Parameters.Count);
-            return;
-        }
+        if (BindMemberCall(node, memberAccess, argTypes.Length, signature) is not { } binding) return;
 
         var widen = new bool[binding.SlotArgument.Count];
         for (int p = 0; p < widen.Length; p++) {
@@ -1700,6 +1689,30 @@ public sealed partial class TypeChecker {
             : null;
 
     /// <summary>
+    /// Binds a primitive or named-type method call against <paramref name="signature"/> on
+    /// the shared <see cref="ArgumentBinder"/> and reports its one root cause, if any: a
+    /// binding problem (E0008 to E0011), a required parameter left unbound (E0003, naming
+    /// it) or too many positionals (E0003, counted). Returns the binding when it is clean,
+    /// otherwise <see langword="null"/>.
+    /// </summary>
+    private ArgumentBinding? BindMemberCall(
+            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, FunctionSignature signature) {
+        var parameters = new SignatureParameters(signature);
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
+        BindingWording callee = BindingWording.ForNative(memberAccess.Member);
+        if (ReportBindingProblems(node, binding, callee)) return null;
+        if (binding.MissingRequired) {
+            EmitMissingRequiredError(node, callee, parameters, binding);
+            return null;
+        }
+        if (binding.TooManyPositionals) {
+            EmitMemberArityError(node, memberAccess, suppliedCount, signature.RequiredArgumentCount, signature.Parameters.Count);
+            return null;
+        }
+        return binding;
+    }
+
+    /// <summary>
     /// Checks a primitive-member method call's argument list against
     /// <paramref name="signature"/> — a required-to-full arity range (<see
     /// cref="ErrorCatalog.E0003"/>, D-365 generalising the previous exact-match check the
@@ -1711,18 +1724,7 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckPrimitiveMemberArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, FunctionSignature signature) {
-        var parameters = new SignatureParameters(signature);
-        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
-        BindingWording callee = BindingWording.ForNative(memberAccess.Member);
-        if (ReportBindingProblems(node, binding, callee)) return;
-        if (binding.MissingRequired) {
-            EmitMissingRequiredError(node, callee, parameters, binding);
-            return;
-        }
-        if (binding.TooManyPositionals) {
-            EmitMemberArityError(node, memberAccess, argTypes.Length, signature.RequiredArgumentCount, signature.Parameters.Count);
-            return;
-        }
+        if (BindMemberCall(node, memberAccess, argTypes.Length, signature) is not { } binding) return;
 
         var widen = new bool[binding.SlotArgument.Count];
         for (int p = 0; p < widen.Length; p++) {
