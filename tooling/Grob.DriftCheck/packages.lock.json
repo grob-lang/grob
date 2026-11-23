@@ -14,8 +14,28 @@
         "resolved": "10.36.0.15337",
         "contentHash": "jGLAZUjheSURfe0T/dJYGUrMOrLt1fxaInpChq75YJvrywsxFoUKK/EM6PSfTjkt4pbaq2ywIQjgQzhrmmj5Ow=="
       },
+      "grob.compiler": {
+        "type": "Project",
+        "dependencies": {
+          "Grob.Core": "[1.0.0, )",
+          "Grob.Runtime": "[1.0.0, )"
+        }
+      },
       "grob.core": {
         "type": "Project"
+      },
+      "grob.runtime": {
+        "type": "Project",
+        "dependencies": {
+          "Grob.Core": "[1.0.0, )"
+        }
+      },
+      "grob.stdlib": {
+        "type": "Project",
+        "dependencies": {
+          "Grob.Core": "[1.0.0, )",
+          "Grob.Runtime": "[1.0.0, )"
+        }
       }
     }
   }

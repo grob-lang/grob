@@ -99,13 +99,36 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "grob.compiler": {
+        "type": "Project",
+        "dependencies": {
+          "Grob.Core": "[1.0.0, )",
+          "Grob.Runtime": "[1.0.0, )"
+        }
+      },
       "grob.core": {
         "type": "Project"
       },
       "grob.driftcheck": {
         "type": "Project",
         "dependencies": {
+          "Grob.Compiler": "[1.0.0, )",
+          "Grob.Core": "[1.0.0, )",
+          "Grob.Runtime": "[1.0.0, )",
+          "Grob.Stdlib": "[1.0.0, )"
+        }
+      },
+      "grob.runtime": {
+        "type": "Project",
+        "dependencies": {
           "Grob.Core": "[1.0.0, )"
+        }
+      },
+      "grob.stdlib": {
+        "type": "Project",
+        "dependencies": {
+          "Grob.Core": "[1.0.0, )",
+          "Grob.Runtime": "[1.0.0, )"
         }
       }
     }

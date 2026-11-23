@@ -22,9 +22,9 @@ error[E0003]: 'guid.newV7' expects 0 arguments, but 1 was supplied.
   --> guid-namespace.errors.grob:28:1-28:13
 error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
   --> guid-namespace.errors.grob:29:19-29:30
-error[E0003]: 'guid.newV5' expects at least 2 arguments, but 0 were supplied.
+error[E0003]: 'guid.newV5' expects arguments for required parameters 'namespace' and 'name', but none were supplied.
   --> guid-namespace.errors.grob:32:1-32:12
-error[E0003]: 'guid.newV5' expects at least 2 arguments, but 1 was supplied.
+error[E0003]: 'guid.newV5' expects an argument for required parameter 'name', but none was supplied.
   --> guid-namespace.errors.grob:33:1-33:13
 error[E0004]: Argument 1 to 'guid.newV5' has type 'string', which is not assignable to parameter of type 'struct'.
   --> guid-namespace.errors.grob:34:12
@@ -40,7 +40,7 @@ error[E0004]: Argument 2 to 'guid.newV5' has type 'string?', which is not assign
   --> guid-namespace.errors.grob:39:15
 error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
   --> guid-namespace.errors.grob:40:19-40:34
-error[E0003]: 'guid.parse' expects 1 argument, but 0 were supplied.
+error[E0003]: 'guid.parse' expects an argument for required parameter 'value', but none was supplied.
   --> guid-namespace.errors.grob:43:1-43:12
 error[E0003]: 'guid.parse' expects 1 argument, but 2 were supplied.
   --> guid-namespace.errors.grob:44:1-44:16
@@ -52,7 +52,7 @@ error[E0601]: 'not-a-guid' is not a valid guid literal.
   --> guid-namespace.errors.grob:47:12-47:23
 error[E0001]: Cannot assign value of type 'struct' to binding of type 'string'.
   --> guid-namespace.errors.grob:48:19-48:31
-error[E0003]: 'guid.tryParse' expects 1 argument, but 0 were supplied.
+error[E0003]: 'guid.tryParse' expects an argument for required parameter 'value', but none was supplied.
   --> guid-namespace.errors.grob:51:1-51:15
 error[E0003]: 'guid.tryParse' expects 1 argument, but 2 were supplied.
   --> guid-namespace.errors.grob:52:1-52:19

@@ -45,8 +45,14 @@ connect("localhost", port: 443, timeout: 60)  // override both
 Named arguments are unordered relative to each other. Only parameters with
 default values may be named — required parameters (no default) are
 positional-only. Providing a named argument before a positional, naming a
-required parameter, duplicate names, or unknown parameter names are all compile
-errors.
+required parameter, duplicate names or unknown parameter names are all compile
+errors. A call that leaves out a required parameter is a compile error that names it,
+wherever the callee declares parameter names.
+
+The same convention holds for calls into the standard library and plugins:
+`regex.compile(pattern, timeout: 2)` passes the third parameter and leaves the second
+at its default. Array and map methods, `print` and `exit` take no named arguments, with one
+exception: an array's `sort` takes `descending` by name, as in `xs.sort(x => x, descending: true)`.
 
 Named parameters exist to selectively override defaults — not as an alternative
 to positional syntax for required arguments.

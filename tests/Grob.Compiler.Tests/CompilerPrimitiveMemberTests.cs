@@ -252,7 +252,7 @@ public sealed class CompilerPrimitiveMemberTests {
 
     // -----------------------------------------------------------------------
     // padLeft/padRight/truncate omitted-optional-argument form (D-365) — the
-    // NativeDefaultArgumentFill synthesised constant must land after the supplied
+    // bound list's default constant must land after the supplied
     // argument and before Call, and Call's operand must be the full declared arity
     // (receiver included), not the source call's own argument count.
     // -----------------------------------------------------------------------

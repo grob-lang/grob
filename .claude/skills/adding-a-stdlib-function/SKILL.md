@@ -48,15 +48,16 @@ In the module's plugin `Register` method, register the function with
 `FunctionSignature` — a qualified name (`strings.join`), typed `SignatureParameter`s and
 a return type — so an untyped registration does not compile. `Grob.Stdlib/Signatures.cs`
 holds the shared types and the `Signature`/`Param`/`Optional`/`Variadic` shorthand the
-plugins import with `using static`. Parameter names are part of the public API even
-though a native cannot be called with them yet: named-argument binding to natives is
-unsupported (D-426 Decision 4), so a named argument on a namespace-native or
-primitive-member call reports E0011. A named-type method call does not check argument
-names yet: a named argument there is accepted and bound by position (R-20). Every
-native call is positional today. The names are recorded for
-the binding that comes later, where optional and boolean parameters are idiomatically
-called by name (`recursive: true`, `overwrite: true`), so choose them for that. Take them from `grob-stdlib-reference.md`; if it names none, choose deliberately
-and list the name for the reference to adopt.
+plugins import with `using static`. Parameter names are part of the public API. Native
+calls bind on the script-function convention (D-113, D-446): a defaulted parameter can
+be passed by name, in any order, and a skipped default is filled from the signature's
+constant. Naming a required parameter is E0009 and an unknown name is E0011. So a
+defaulted parameter's name is contract the moment it ships, and optional and boolean
+parameters are idiomatically called by name (`recursive: true`, `overwrite: true`):
+choose them for that. A required parameter's name appears in E0003 when a call leaves it
+out. Take names from `grob-stdlib-reference.md`; if it names none, choose deliberately
+and list the name for the reference to adopt. The drift check (R-55) fails when a
+defaulted parameter's name or default disagrees with the reference.
 
 Where you register depends on the receiver:
 

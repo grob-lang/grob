@@ -745,5 +745,9 @@ public static partial class ConsistencyChecks {
                 .Select(a => a.Text)
                 .ToHashSet(StringComparer.Ordinal)),
         CheckErrorCatalogGuardPresent(RepoPaths.RepoRoot()),
+        CheckDefaultedParameterNames(
+            ActualDefaultedParameters(),
+            ActualRegisteredCallables(),
+            ParseDocumentedSignatures(RepoPaths.StdlibReference, RepoPaths.TypeRegistry)),
     ];
 }

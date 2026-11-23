@@ -2,9 +2,9 @@ error[E1003]: Namespace 'strings' has no member 'nope'.
   --> strings.errors.grob:11:1-11:9
 error[E1003]: Namespace 'strings' has no member 'nope'.
   --> strings.errors.grob:12:1-12:9
-error[E0003]: 'strings.join' expects 2 arguments, but 0 were supplied.
+error[E0003]: 'strings.join' expects arguments for required parameters 'parts' and 'separator', but none were supplied.
   --> strings.errors.grob:15:1-15:14
-error[E0003]: 'strings.join' expects 2 arguments, but 1 was supplied.
+error[E0003]: 'strings.join' expects an argument for required parameter 'separator', but none was supplied.
   --> strings.errors.grob:16:1-16:17
 error[E0003]: 'strings.join' expects 2 arguments, but 3 were supplied.
   --> strings.errors.grob:17:1-17:23

@@ -759,50 +759,19 @@ public sealed partial class Compiler {
             return null;
         }
 
-        // D-358: a namespace-native call (date.parse) that omits trailing optional
-        // arguments — generalises the input() one-off arm below via
-        // NativeDefaultArgumentFill, the same "inject a synthesised constant argument"
-        // shape D-345's formatAs column injection also uses. The runtime native keeps a
-        // fixed arity regardless of how many trailing defaults the source call omitted.
-        if (node.Callee is MemberAccessExpr { Target: IdentifierExpr { Declaration: NamespaceDecl } } &&
-                node.ResolvedNativeParameterDefaults is { } defaults &&
-                node.Arguments.Count < defaults.Count) {
-            foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
-            foreach (GrobValue value in NativeDefaultArgumentFill.Resolve(node.Arguments.Count, defaults.Count, defaults)) {
-                EmitConstant(value, line);
-            }
+        // A call the checker bound (a declared function, a namespace native or input)
+        // emits the checker's bound argument list, so the callee receives a fully bound
+        // positional list in parameter order: named arguments reordered, skipped and
+        // omitted defaults filled (D-113, D-358, D-446). A native keeps its fixed arity
+        // whatever the source call omitted. A complete positional call binds each slot to
+        // the argument in the same position, so it emits exactly what the source-order
+        // loop below would. Only the checker sets ResolvedBinding, and only on a call it
+        // bound: a call through a function-typed parameter, whose identifier carries its
+        // owning FnDecl too, has none.
+        if (node.ResolvedBinding is { } binding) {
+            EmitBoundArguments(node, binding, node.ResolvedFunction, line);
             _chunk.WriteOpCode(OpCode.Call, line);
-            _chunk.WriteByte(ToByteOperand(defaults.Count, CallArgumentCountOperand), line);
-            return null;
-        }
-
-        // Sprint 8 Increment C: input() is the one no-namespace native needing a
-        // default-argument fill (D-342) — the runtime native's own arity is always 1
-        // (Grob.Stdlib.IoPlugin), so a 0-argument script-level call has its missing
-        // prompt filled with the constant "" here, at the call site, before the ordinary
-        // GetGlobal-then-Call shape below. A 1-argument call needs no special handling —
-        // it already takes the plain positional path unchanged. Deliberately a one-off
-        // arm, not a general defaulted-native mechanism: input() is the only case that
-        // needs it in v1.
-        if (node.Callee is IdentifierExpr { Name: "input", Declaration: BuiltinDecl } &&
-                node.Arguments.Count == 0) {
-            EmitConstant(GrobValue.FromString(string.Empty), line);
-            _chunk.WriteOpCode(OpCode.Call, line);
-            _chunk.WriteByte(1, line);
-            return null;
-        }
-
-        // Named arguments, or a positional call that omits a defaulted parameter,
-        // need reorder-and-fill so the callee receives a fully-bound positional list
-        // in parameter declaration order. A pure positional call that supplies every
-        // parameter takes the fast path, emitting arguments in source order. The checker's
-        // ResolvedFunction, not the callee's Declaration, says the call is to a declared
-        // function: a function-typed parameter's identifier carries its owning FnDecl too.
-        if (node.ResolvedFunction is { } fn &&
-            (node.Arguments.Any(a => a.Name is not null) || node.Arguments.Count != fn.Parameters.Count)) {
-            EmitReorderedArguments(node, fn);
-            _chunk.WriteOpCode(OpCode.Call, line);
-            _chunk.WriteByte(ToByteOperand(fn.Parameters.Count, CallArgumentCountOperand), line);
+            _chunk.WriteByte(ToByteOperand(binding.Slots.Count, CallArgumentCountOperand), line);
             return null;
         }
 
@@ -832,9 +801,18 @@ public sealed partial class Compiler {
         int nilSite = EmitJump(OpCode.JumpIfTrue, line);
 
         _chunk.WriteOpCode(OpCode.Pop, line);          // pop false
-        foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
+        int argumentCount = node.Arguments.Count;
+        if (node.ResolvedBinding is { } binding) {
+            // A method the checker bound (a primitive or named-type member, D-446) takes
+            // its arguments in parameter order with its defaults filled, as the plain
+            // call does; the argument expressions are still only evaluated here.
+            EmitBoundArguments(node, binding, node.ResolvedFunction, line);
+            argumentCount = binding.Slots.Count;
+        } else {
+            foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
+        }
         _chunk.WriteOpCode(OpCode.Call, line);
-        _chunk.WriteByte(ToByteOperand(node.Arguments.Count, CallArgumentCountOperand), line);
+        _chunk.WriteByte(ToByteOperand(argumentCount, CallArgumentCountOperand), line);
         int skipSite = EmitJump(OpCode.Jump, line);
 
         PatchJump(nilSite);
@@ -876,13 +854,10 @@ public sealed partial class Compiler {
     /// Emits a primitive instance-method call (D-066, <c>string</c> first): <c>GetGlobal
     /// "&lt;qualified native&gt;"</c> (the callee, pushed first — the same shape every
     /// namespace-qualified native call already uses), the receiver
-    /// (<paramref name="callee"/>'s target), then the call's own arguments in source
-    /// order. When <see cref="CallExpr.ResolvedPrimitiveParameterDefaults"/> is set and the
-    /// call under-supplies (<c>padLeft</c>/<c>padRight</c>/<c>truncate</c>, D-365), the
-    /// trailing defaults <see cref="NativeDefaultArgumentFill.Resolve"/> returns are emitted
-    /// as further <c>Constant</c>s before <see cref="OpCode.Call"/> — the same "inject a
-    /// synthesised constant argument" shape the namespace-native arm above uses for
-    /// <c>date.parse</c> (D-364). <see cref="OpCode.Call"/>'s operand is therefore the full
+    /// (<paramref name="callee"/>'s target), then the call's arguments from the checker's
+    /// bound list (<see cref="EmitBoundArguments"/>): in parameter order, with a skipped or
+    /// omitted default (<c>padLeft</c>/<c>padRight</c>/<c>truncate</c>, D-365) as its
+    /// constant (D-358, D-446). <see cref="OpCode.Call"/>'s operand is therefore the full
     /// declared arity plus the receiver, not the source call's own argument count — a no-op
     /// change in shape for every method with no declared defaults, where full arity always
     /// equals the supplied count. No <see cref="OpCode.GetProperty"/> is emitted — a
@@ -895,16 +870,13 @@ public sealed partial class Compiler {
         _chunk.WriteByte(ToByteOperand(qualifiedIdx, "primitive-member native name"), line);
 
         Visit(callee.Target);
-        foreach (CallArgument arg in node.Arguments) Visit(arg.Value);
-
-        int fullArity = node.ResolvedPrimitiveParameterDefaults?.Count ?? node.Arguments.Count;
-        foreach (GrobValue value in NativeDefaultArgumentFill.Resolve(
-                node.Arguments.Count, fullArity, node.ResolvedPrimitiveParameterDefaults)) {
-            EmitConstant(value, line);
-        }
+        // The checker binds every primitive call it resolves to a native, and a call that
+        // failed to bind never reaches the compiler.
+        BoundArgumentList binding = node.ResolvedBinding!;
+        EmitBoundArguments(node, binding, fn: null, line);
 
         _chunk.WriteOpCode(OpCode.Call, line);
-        _chunk.WriteByte(ToByteOperand(fullArity + 1, CallArgumentCountOperand), line);
+        _chunk.WriteByte(ToByteOperand(binding.Slots.Count + 1, CallArgumentCountOperand), line);
     }
 
     /// <summary>
@@ -924,41 +896,32 @@ public sealed partial class Compiler {
     }
 
     /// <summary>
-    /// Emits the arguments of <paramref name="node"/> in parameter declaration order:
-    /// positionals into the leading slots, named arguments into their parameters, and
-    /// omitted defaults materialised into the remaining slots. The default expression
-    /// compiles at the call site. The type checker has already validated the binding,
-    /// so every slot resolves to a positional or a default here.
+    /// Emits <paramref name="node"/>'s arguments from the checker's
+    /// <paramref name="binding"/>, one slot per parameter in parameter order: the
+    /// argument bound to the slot, followed by <see cref="OpCode.IntToFloat"/> where an
+    /// <c>int</c> is bound to a <c>float</c> parameter (R-58); a native default as one
+    /// constant (D-358); or a script function's default expression from
+    /// <paramref name="fn"/>, compiled at the call site. The compiler does not bind the
+    /// call again: it reads the one binding the checker made, so the order checked is the
+    /// order emitted (R-20). Evaluation therefore follows parameter order, not source
+    /// order, for script functions and natives alike (OQ-028).
     /// </summary>
-    private void EmitReorderedArguments(CallExpr node, FnDecl fn) {
-        var boundExprs = new Expression?[fn.Parameters.Count];
-
-        int positional = 0;
-        foreach (CallArgument arg in node.Arguments) {
-            if (arg.Name is null) {
-                if (positional < boundExprs.Length) boundExprs[positional] = arg.Value;
-                positional++;
+    private void EmitBoundArguments(CallExpr node, BoundArgumentList binding, FnDecl? fn, int line) {
+        for (int p = 0; p < binding.Slots.Count; p++) {
+            BoundSlot slot = binding.Slots[p];
+            if (!slot.IsDefault) {
+                Expression argument = node.Arguments[slot.ArgumentIndex].Value;
+                Visit(argument);
+                // On the argument's own line, as a binary operand's widening is.
+                if (slot.WidenToFloat) _chunk.WriteOpCode(OpCode.IntToFloat, argument.Range.Start.Line);
+            } else if (slot.NativeDefault is { } constant) {
+                EmitConstant(constant, line);
             } else {
-                int p = ParameterIndex(fn, arg.Name);
-                if (p >= 0) boundExprs[p] = arg.Value;
+                // A default slot with no constant is a script function's: only CheckCall
+                // builds one, and it sets ResolvedFunction alongside.
+                Visit(fn!.Parameters[p].DefaultValue!);
             }
         }
-
-        for (int i = 0; i < boundExprs.Length; i++) {
-            Expression value = boundExprs[i] ?? fn.Parameters[i].DefaultValue!;
-            Visit(value);
-        }
-    }
-
-    /// <summary>
-    /// Returns the index of the parameter named <paramref name="name"/> in
-    /// <paramref name="fn"/>, or <c>-1</c> when no parameter has that name.
-    /// </summary>
-    private static int ParameterIndex(FnDecl fn, string name) {
-        for (int i = 0; i < fn.Parameters.Count; i++) {
-            if (fn.Parameters[i].Name == name) return i;
-        }
-        return -1;
     }
 
     // -----------------------------------------------------------------------
@@ -1090,7 +1053,7 @@ public sealed partial class Compiler {
     /// <remarks>
     /// Emits field values in declaration order (supplied values or default expressions),
     /// then <see cref="OpCode.NewStruct"/> with the type-table index. Mirrors the
-    /// Sprint 5B call-site default pattern (<see cref="EmitReorderedArguments"/>).
+    /// Sprint 5B call-site default pattern (<see cref="EmitBoundArguments"/>).
     /// </remarks>
     public override object? VisitStructConstruction(StructConstructionExpr node) {
         int line = node.Range.Start.Line;

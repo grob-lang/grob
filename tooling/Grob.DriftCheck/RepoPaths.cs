@@ -42,6 +42,12 @@ public static class RepoPaths {
     /// <summary>The v1 requirements file (holds §3.3 opcode and §3.4 token listings).</summary>
     public static string Requirements => Path.Join(DesignDir, "grob-v1-requirements.md");
 
+    /// <summary>The stdlib reference, which shows the core modules' signatures.</summary>
+    public static string StdlibReference => Path.Join(DesignDir, "grob-stdlib-reference.md");
+
+    /// <summary>The type registry, which shows the primitive and array members' signatures.</summary>
+    public static string TypeRegistry => Path.Join(DesignDir, "grob-type-registry.md");
+
     /// <summary>
     /// The array higher-order method natives source — the live registry of
     /// dotted method names (<c>filter</c>, <c>select</c>, <c>sort</c>, <c>each</c>)

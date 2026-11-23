@@ -6,7 +6,7 @@ error[E1003]: Namespace 'path' has no member 'separator'.
   --> path.errors.grob:15:1-15:6
 error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
   --> path.errors.grob:16:14-16:19
-error[E0003]: 'path.join' expects at least 1 argument, but 0 were supplied.
+error[E0003]: 'path.join' expects an argument for required parameter 'parts', but none was supplied.
   --> path.errors.grob:19:1-19:11
 error[E0004]: Argument 1 to 'path.join' has type 'int', which is not assignable to parameter of type 'string'.
   --> path.errors.grob:20:11
@@ -18,7 +18,7 @@ error[E0004]: Argument 2 to 'path.join' has type 'string?', which is not assigna
   --> path.errors.grob:23:14
 error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
   --> path.errors.grob:24:15-24:26
-error[E0003]: 'path.joinAll' expects 1 argument, but 0 were supplied.
+error[E0003]: 'path.joinAll' expects an argument for required parameter 'parts', but none was supplied.
   --> path.errors.grob:27:1-27:14
 error[E0003]: 'path.joinAll' expects 1 argument, but 2 were supplied.
   --> path.errors.grob:28:1-28:22
@@ -28,7 +28,7 @@ error[E0004]: Argument 1 to 'path.joinAll' has type 'array?', which is not assig
   --> path.errors.grob:30:14
 error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
   --> path.errors.grob:31:18-31:34
-error[E0003]: 'path.extension' expects 1 argument, but 0 were supplied.
+error[E0003]: 'path.extension' expects an argument for required parameter 'p', but none was supplied.
   --> path.errors.grob:34:1-34:16
 error[E0003]: 'path.extension' expects 1 argument, but 2 were supplied.
   --> path.errors.grob:35:1-35:20
@@ -38,7 +38,7 @@ error[E0004]: Argument 1 to 'path.extension' has type 'string?', which is not as
   --> path.errors.grob:37:16
 error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
   --> path.errors.grob:38:20-38:36
-error[E0003]: 'path.filename' expects 1 argument, but 0 were supplied.
+error[E0003]: 'path.filename' expects an argument for required parameter 'p', but none was supplied.
   --> path.errors.grob:41:1-41:15
 error[E0003]: 'path.filename' expects 1 argument, but 2 were supplied.
   --> path.errors.grob:42:1-42:19
@@ -48,7 +48,7 @@ error[E0004]: Argument 1 to 'path.filename' has type 'string?', which is not ass
   --> path.errors.grob:44:15
 error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
   --> path.errors.grob:45:19-45:34
-error[E0003]: 'path.stem' expects 1 argument, but 0 were supplied.
+error[E0003]: 'path.stem' expects an argument for required parameter 'p', but none was supplied.
   --> path.errors.grob:48:1-48:11
 error[E0003]: 'path.stem' expects 1 argument, but 2 were supplied.
   --> path.errors.grob:49:1-49:15
@@ -58,7 +58,7 @@ error[E0004]: Argument 1 to 'path.stem' has type 'string?', which is not assigna
   --> path.errors.grob:51:11
 error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
   --> path.errors.grob:52:15-52:26
-error[E0003]: 'path.directory' expects 1 argument, but 0 were supplied.
+error[E0003]: 'path.directory' expects an argument for required parameter 'p', but none was supplied.
   --> path.errors.grob:55:1-55:16
 error[E0003]: 'path.directory' expects 1 argument, but 2 were supplied.
   --> path.errors.grob:56:1-56:20
@@ -68,7 +68,7 @@ error[E0004]: Argument 1 to 'path.directory' has type 'string?', which is not as
   --> path.errors.grob:58:16
 error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
   --> path.errors.grob:59:20-59:36
-error[E0003]: 'path.resolve' expects 1 argument, but 0 were supplied.
+error[E0003]: 'path.resolve' expects an argument for required parameter 'p', but none was supplied.
   --> path.errors.grob:62:1-62:14
 error[E0003]: 'path.resolve' expects 1 argument, but 2 were supplied.
   --> path.errors.grob:63:1-63:18
@@ -78,7 +78,7 @@ error[E0004]: Argument 1 to 'path.resolve' has type 'string?', which is not assi
   --> path.errors.grob:65:14
 error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
   --> path.errors.grob:66:18-66:32
-error[E0003]: 'path.normalise' expects 1 argument, but 0 were supplied.
+error[E0003]: 'path.normalise' expects an argument for required parameter 'p', but none was supplied.
   --> path.errors.grob:69:1-69:16
 error[E0003]: 'path.normalise' expects 1 argument, but 2 were supplied.
   --> path.errors.grob:70:1-70:20
@@ -88,7 +88,7 @@ error[E0004]: Argument 1 to 'path.normalise' has type 'string?', which is not as
   --> path.errors.grob:72:16
 error[E0001]: Cannot assign value of type 'string' to binding of type 'int'.
   --> path.errors.grob:73:20-73:36
-error[E0003]: 'path.isAbsolute' expects 1 argument, but 0 were supplied.
+error[E0003]: 'path.isAbsolute' expects an argument for required parameter 'p', but none was supplied.
   --> path.errors.grob:76:1-76:17
 error[E0003]: 'path.isAbsolute' expects 1 argument, but 2 were supplied.
   --> path.errors.grob:77:1-77:21
@@ -98,7 +98,7 @@ error[E0004]: Argument 1 to 'path.isAbsolute' has type 'string?', which is not a
   --> path.errors.grob:79:17
 error[E0001]: Cannot assign value of type 'bool' to binding of type 'string'.
   --> path.errors.grob:80:24-80:41
-error[E0003]: 'path.isRelative' expects 1 argument, but 0 were supplied.
+error[E0003]: 'path.isRelative' expects an argument for required parameter 'p', but none was supplied.
   --> path.errors.grob:83:1-83:17
 error[E0003]: 'path.isRelative' expects 1 argument, but 2 were supplied.
   --> path.errors.grob:84:1-84:21
@@ -108,9 +108,9 @@ error[E0004]: Argument 1 to 'path.isRelative' has type 'string?', which is not a
   --> path.errors.grob:86:17
 error[E0001]: Cannot assign value of type 'bool' to binding of type 'string'.
   --> path.errors.grob:87:24-87:41
-error[E0003]: 'path.changeExtension' expects 2 arguments, but 0 were supplied.
+error[E0003]: 'path.changeExtension' expects arguments for required parameters 'p' and 'ext', but none were supplied.
   --> path.errors.grob:90:1-90:22
-error[E0003]: 'path.changeExtension' expects 2 arguments, but 1 was supplied.
+error[E0003]: 'path.changeExtension' expects an argument for required parameter 'ext', but none was supplied.
   --> path.errors.grob:91:1-91:23
 error[E0003]: 'path.changeExtension' expects 2 arguments, but 3 were supplied.
   --> path.errors.grob:92:1-92:29

@@ -270,12 +270,15 @@ public sealed class NamespaceEmissionTests {
         // branch (Compiler.Expressions.cs VisitCall) must synthesise the declared ""
         // default as a second Constant, after the supplied argument and before Call,
         // so the runtime native (Grob.Stdlib.DatePlugin, arity 2) always receives both.
-        // The type checker records the native's per-parameter defaults; the compiler
-        // fills from that annotation, not a registry (gate report F1).
+        // The type checker records the bound argument list, the default carried as its
+        // constant; the compiler fills from that annotation, not a registry (gate report
+        // F1). The annotation is the native named arguments increment's ResolvedBinding,
+        // which replaced ResolvedNativeParameterDefaults; the bytecode asserted is unchanged.
         var callee = new MemberAccessExpr(SourceRange.Unknown, NamespaceIdent("date"), "parse");
         var call = new CallExpr(SourceRange.Unknown, callee,
             [new CallArgument(SourceRange.Unknown, null, new StringLiteralExpr(SourceRange.Unknown, "2026-04-05"))]) {
-            ResolvedNativeParameterDefaults = [null, GrobValue.FromString("")],
+            ResolvedBinding = new BoundArgumentList(
+                [new BoundSlot(0, null), new BoundSlot(BoundSlot.DefaultArgument, GrobValue.FromString(""))]),
         };
         var unit = new CompilationUnit(SourceRange.Unknown,
             [new ExpressionStmt(SourceRange.Unknown, call)]);

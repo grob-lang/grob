@@ -20,7 +20,7 @@ error[E0101]: Member access via '.' on nullable type 'float?' may dereference ni
   --> float-members.errors.grob:27:1-27:4
 error[E0001]: Cannot assign value of type 'int' to binding of type 'string'.
   --> float-members.errors.grob:28:19-28:27
-error[E0003]: 'roundTo' expects 1 argument, but 0 were supplied.
+error[E0003]: 'roundTo' expects an argument for required parameter 'decimals', but none was supplied.
   --> float-members.errors.grob:31:1-31:11
 error[E0003]: 'roundTo' expects 1 argument, but 2 were supplied.
   --> float-members.errors.grob:32:1-32:15
@@ -52,7 +52,7 @@ error[E0101]: Member access via '.' on nullable type 'float?' may dereference ni
   --> float-members.errors.grob:51:1-51:4
 error[E0001]: Cannot assign value of type 'float' to binding of type 'string'.
   --> float-members.errors.grob:52:17-52:23
-error[E0003]: 'format' expects 1 argument, but 0 were supplied.
+error[E0003]: 'format' expects an argument for required parameter 'pattern', but none was supplied.
   --> float-members.errors.grob:55:1-55:10
 error[E0003]: 'format' expects 1 argument, but 2 were supplied.
   --> float-members.errors.grob:56:1-56:14

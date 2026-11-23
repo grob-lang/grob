@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Grob.Compiler.Ast;
+using Grob.Compiler.Binding;
 using Grob.Core;
 using Grob.Runtime;
 
@@ -719,15 +720,43 @@ public sealed partial class TypeChecker {
     /// so a name has nothing to bind against and would otherwise be dropped, passing the
     /// value in source order.
     /// </summary>
-    private bool RejectNamedFunctionValueArgs(CallExpr node) {
-        bool rejected = false;
+    private bool RejectNamedFunctionValueArgs(CallExpr node) =>
+        RefuseNamedArguments(node, "A function value does not accept named arguments; pass them positionally.");
+
+    /// <summary>
+    /// Refuses named arguments on a callee that records no parameter names (D-447 Decision
+    /// 2): <see cref="ErrorCatalog.E0011"/> with <paramref name="message"/> at each named
+    /// argument. A name would otherwise be dropped and its value passed in source order, so
+    /// a reordered pair such as <c>xs.insert(value: 9, index: 0)</c> would compile and run
+    /// swapped (R-20). Returns <see langword="true"/> when there was one, so the caller
+    /// suppresses the arity and type checks (one diagnostic per root cause).
+    /// </summary>
+    private bool RefuseNamedArguments(CallExpr node, string message) {
+        bool refused = false;
         foreach (CallArgument arg in node.Arguments.Where(a => a.Name is not null)) {
-            EmitError(ErrorCatalog.E0011,
-                "A function value does not accept named arguments; pass them positionally.",
-                arg.Range);
-            rejected = true;
+            EmitError(ErrorCatalog.E0011, message, arg.Range);
+            refused = true;
         }
-        return rejected;
+        return refused;
+    }
+
+    /// <summary>
+    /// <see cref="RefuseNamedArguments"/> for a callee known by a bare name: an array or map
+    /// method, <c>print</c>, <c>exit</c> or a member of a receiver with nothing to bind
+    /// against.
+    /// </summary>
+    private bool RefuseNamedArgumentsTo(CallExpr node, string callee) =>
+        // The common call has no name, and this runs for every print and array method call:
+        // build the message only for the call that needs it, so compiling allocates nothing
+        // extra for one that does not (R-24's compile allocation gate).
+        HasNamedArgument(node) &&
+        RefuseNamedArguments(node, $"'{callee}' does not accept named arguments; pass them positionally.");
+
+    private static bool HasNamedArgument(CallExpr node) {
+        for (int i = 0; i < node.Arguments.Count; i++) {
+            if (node.Arguments[i].Name is not null) return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -817,8 +846,12 @@ public sealed partial class TypeChecker {
         // argument's own mistake is a separate root cause and must still surface.
         IReadOnlyList<FunctionSignature>? namedMethodSignatures = NamedMethodSignatures(memberAccess, receiverType);
         var argTypes = new GrobType[node.Arguments.Count];
-        for (int i = 0; i < node.Arguments.Count; i++)
-            argTypes[i] = VisitMethodArgument(node.Arguments[i].Value, namedMethodSignatures, argTypes, i);
+        for (int i = 0; i < node.Arguments.Count; i++) {
+            // A lambda passed by name can never bind to a function-shaped parameter, which
+            // cannot carry a default and so cannot be named (D-113): it takes no shape.
+            IReadOnlyList<FunctionSignature>? shapes = node.Arguments[i].Name is null ? namedMethodSignatures : null;
+            argTypes[i] = VisitMethodArgument(node.Arguments[i].Value, shapes, argTypes, i);
+        }
 
         // D-408: cascade suppression mirroring VisitMemberAccess's identical Error
         // arm — if the receiver already errored (an undefined identifier, a broken
@@ -1001,6 +1034,10 @@ public sealed partial class TypeChecker {
             // not reported twice.
             return CheckFunctionValueCall(node, ResolveStructFieldAccess(memberAccess), argTypes);
         }
+
+        // A receiver with no checked member surface, such as a lambda parameter with no
+        // shape, has no signature to bind a name against: refuse it (Chris's ruling S3).
+        RefuseNamedArgumentsTo(node, memberAccess.Member);
         return GrobType.Unknown;
     }
 
@@ -1022,8 +1059,13 @@ public sealed partial class TypeChecker {
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
         switch (memberAccess.Member) {
             case "filter": {
-                    // First argument must be a predicate returning bool.
+                    // A refused name binds to nothing, so a named first argument is not
+                    // judged as the predicate. A positional one still is: its return type
+                    // is a second root cause, independent of the refused name.
+                    RefuseNamedArgumentsTo(node, memberAccess.Member);
+                    // First argument, when positional, must be a predicate returning bool.
                     if (node.Arguments.Count >= 1 &&
+                        node.Arguments[0].Name is null &&
                         node.Arguments[0].Value is LambdaExpr lambdaPred &&
                         _lambdaReturnTypes.TryGetValue(lambdaPred, out GrobType bodyType) &&
                         bodyType != GrobType.Unknown && bodyType != GrobType.Error &&
@@ -1035,18 +1077,12 @@ public sealed partial class TypeChecker {
                     return GrobType.Array;
                 }
             case "select":
+                RefuseNamedArgumentsTo(node, memberAccess.Member);
                 return GrobType.Array;
             case "sort":
-                // Optional second arg must be bool (the 'descending' flag).
-                if (node.Arguments.Count >= 2 &&
-                    argTypes[1] != GrobType.Bool && argTypes[1] != GrobType.Unknown &&
-                    argTypes[1] != GrobType.Error) {
-                    EmitError(ErrorCatalog.E0004,
-                        $"'sort' second argument ('descending') must be 'bool'; found '{TypeName(argTypes[1])}'.",
-                        node.Arguments[1].Value.Range);
-                }
-                return GrobType.Array;
+                return ValidateArraySortCall(node, memberAccess, argTypes);
             case "each":
+                RefuseNamedArgumentsTo(node, memberAccess.Member);
                 node.IsVoidReturn = true;
                 return GrobType.Unknown; // void
             case "first":
@@ -1063,6 +1099,40 @@ public sealed partial class TypeChecker {
                 return EmitErrorAndReturn(ErrorCatalog.E1002,
                     $"Type 'T[]' has no member '{memberAccess.Member}'.", memberAccess.Range);
         }
+    }
+
+    /// <summary>
+    /// Validates a <c>sort(fn, descending = false)</c> call, the one array method that binds
+    /// a name (Chris's ruling S2): <c>descending</c> is bound on the shared
+    /// <see cref="ArgumentBinder"/> through <see cref="ArraySortParameters"/>, so naming it,
+    /// naming it twice, an unknown name and a positional after a named one are E0008 to
+    /// E0011 as for any callee. <c>fn</c> is required, so a call that leaves it unbound or
+    /// passes more than two arguments is E0003, and a supplied <c>descending</c> must be
+    /// <c>bool</c> (E0004). The flag can only follow a positional <c>fn</c>, so a clean
+    /// call is already in parameter order: <c>sort</c> binds for its diagnostics and gets
+    /// no <see cref="CallExpr.ResolvedBinding"/>, and its bytes are what they were.
+    /// </summary>
+    private GrobType ValidateArraySortCall(CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
+        var parameters = new ArraySortParameters();
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
+        BindingWording callee = BindingWording.ForNative(memberAccess.Member);
+        if (ReportBindingProblems(node, binding, callee)) return GrobType.Array;
+        if (binding.MissingRequired) {
+            EmitMissingRequiredError(node, callee, parameters, binding);
+            return GrobType.Array;
+        }
+        if (binding.TooManyPositionals) {
+            EmitMemberArityError(node, memberAccess, argTypes.Length, requiredCount: 1, fullArity: 2);
+            return GrobType.Array;
+        }
+
+        int descending = binding.SlotArgument[1];
+        if (descending != ArgumentBinder.Unbound && argTypes[descending] is not (GrobType.Bool or GrobType.Unknown or GrobType.Error)) {
+            EmitError(ErrorCatalog.E0004,
+                $"'sort' second argument ('descending') must be 'bool'; found '{TypeName(argTypes[descending])}'.",
+                node.Arguments[descending].Value.Range);
+        }
+        return GrobType.Array;
     }
 
     /// <summary>
@@ -1411,11 +1481,12 @@ public sealed partial class TypeChecker {
                 $"Type '{namedType.Definition.Name}' has no member '{memberAccess.Member}'.",
                 memberAccess.Range);
         }
-        FunctionSignature signature = SelectOverload(method, argTypes);
+        // Overloads are chosen on the positional arguments alone (D-443, D-447): a required
+        // parameter cannot be named (D-113), so the position an overload differs at is
+        // always positional in a valid call, and a name binds against the one chosen.
+        FunctionSignature signature = SelectOverload(method, argTypes[..PositionalArgumentCount(node)]);
         RequireNonGeneric(signature);
-        if (!RejectNamedMemberArgs(node, memberAccess)) {
-            CheckNamedTypeMethodArgs(node, memberAccess, argTypes, signature);
-        }
+        CheckNamedTypeMethodArgs(node, memberAccess, argTypes, signature);
         var returnType = (SignatureType.Concrete)signature.ReturnType;
         if (returnType.NamedTypeName is not null) {
             _callResultStructNames[node] = returnType.NamedTypeName;
@@ -1427,35 +1498,65 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Checks a named-type instance-method call's argument list against
-    /// <paramref name="signature"/> — arity (<see cref="ErrorCatalog.E0003"/>) then
-    /// per-argument type (<see cref="ErrorCatalog.E0004"/>). A parameter whose concrete
-    /// type names a nominal struct (<c>date.isBefore</c>'s <c>other: date</c>) means "must
-    /// be exactly that type" (nominal, not the flat <see cref="GrobType.Struct"/> tag every
-    /// struct shares), and the diagnostic names the nominal type. The wording differs from
-    /// <see cref="CheckNativeArgumentType"/>'s (no argument index) and the probe corpus
-    /// pins it. Cascade suppression for an already-errored argument.
+    /// <paramref name="signature"/> on the shared <see cref="ArgumentBinder"/> (D-446): the
+    /// binding diagnostics (E0008 to E0011, member wording), then arity
+    /// (<see cref="ErrorCatalog.E0003"/>) and per-argument type
+    /// (<see cref="ErrorCatalog.E0004"/>) on the bound set. A clean binding is handed to the
+    /// compiler on <see cref="CallExpr.ResolvedBinding"/>, each skipped or omitted default
+    /// carried as its signature constant, so the method always receives its full arity in
+    /// parameter order. A binding problem suppresses the arity and type checks (one
+    /// diagnostic per root cause).
     /// </summary>
     private void CheckNamedTypeMethodArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, FunctionSignature signature) {
-        if (!MemberArgCountMatches(node, memberAccess, argTypes.Length, signature.Parameters.Count)) return;
-        for (int i = 0; i < argTypes.Length; i++) {
-            if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
-            Expression argExpr = node.Arguments[i].Value;
-            if (signature.Parameters[i].Type is SignatureType.FunctionShape shape) {
-                CheckFunctionArgument(memberAccess.Member, signature.Parameters[i].Name, argExpr, argTypes[i], shape);
-                continue;
-            }
-            SignatureType.Concrete expected = ParameterTypeAt(signature, i);
-            bool compatible = expected.NamedTypeName is string nominalName
-                ? argTypes[i] == GrobType.Struct && GetStructTypeName(argExpr) == nominalName
-                : TypesAreAssignable(argTypes[i], expected.Type);
-            if (!compatible) {
-                EmitError(ErrorCatalog.E0004,
-                    $"Argument to '{memberAccess.Member}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{expected.NamedTypeName ?? TypeName(expected.Type)}'.",
-                    argExpr.Range);
-            }
+        if (BindMemberCall(node, memberAccess, argTypes.Length, signature) is not { } binding) return;
+
+        var widen = new bool[binding.SlotArgument.Count];
+        for (int p = 0; p < widen.Length; p++) {
+            int a = binding.SlotArgument[p];
+            if (a == ArgumentBinder.Unbound) continue;
+            CheckNamedTypeArgumentType(memberAccess, argTypes[a], node.Arguments[a].Value, signature, p);
+            widen[p] = signature.Parameters[p].Type is SignatureType.Concrete concrete && Widens(argTypes[a], concrete.Type);
+        }
+        node.ResolvedBinding = BoundArguments(binding, widen, signature);
+    }
+
+    /// <summary>
+    /// Checks one named-type method argument against parameter <paramref name="index"/> of
+    /// <paramref name="signature"/>: a function shape takes <see cref="CheckFunctionArgument"/>,
+    /// a parameter whose concrete type names a nominal struct (<c>date.isBefore</c>'s
+    /// <c>other: date</c>) means "must be exactly that type" (nominal, not the flat
+    /// <see cref="GrobType.Struct"/> tag every struct shares), and anything else is
+    /// assignability (E0004, at the argument). The wording differs from
+    /// <see cref="CheckNativeArgumentType"/>'s (no argument index) and the probe corpus pins
+    /// it. An argument that already errored or is <see cref="GrobType.Unknown"/> is not
+    /// reported again.
+    /// </summary>
+    private void CheckNamedTypeArgumentType(
+            MemberAccessExpr memberAccess, GrobType argType, Expression argExpr, FunctionSignature signature, int index) {
+        if (argType is GrobType.Error or GrobType.Unknown) return;
+        if (signature.Parameters[index].Type is SignatureType.FunctionShape shape) {
+            CheckFunctionArgument(memberAccess.Member, signature.Parameters[index].Name, argExpr, argType, shape);
+            return;
+        }
+        SignatureType.Concrete expected = ParameterTypeAt(signature, index);
+        bool compatible = expected.NamedTypeName is string nominalName
+            ? argType == GrobType.Struct && GetStructTypeName(argExpr) == nominalName
+            : TypesAreAssignable(argType, expected.Type);
+        if (!compatible) {
+            EmitError(ErrorCatalog.E0004,
+                $"Argument to '{memberAccess.Member}' has type '{TypeName(argType)}', which is not assignable to parameter of type '{expected.NamedTypeName ?? TypeName(expected.Type)}'.",
+                argExpr.Range);
         }
     }
+
+    /// <summary>
+    /// How many of <paramref name="node"/>'s arguments are positional: those before the first
+    /// named one. A positional argument after a named one is a binding error (E0008) and
+    /// takes no part in choosing an overload.
+    /// </summary>
+    private static int PositionalArgumentCount(CallExpr node) =>
+        node.Arguments.TakeWhile(a => a.Name is null).Count();
 
     /// <summary>
     /// The signature of <paramref name="method"/> a call matches (D-443): the first whose
@@ -1573,9 +1674,6 @@ public sealed partial class TypeChecker {
         var returnType = (SignatureType.Concrete)signature.ReturnType;
         node.ResolvedReturnType = returnType.Type;
         node.ResolvedPrimitiveNativeName = method.QualifiedNativeName;
-        if (signature.RequiredArgumentCount < signature.Parameters.Count) {
-            node.ResolvedPrimitiveParameterDefaults = [.. signature.Parameters.Select(p => p.Default)];
-        }
         if (NativeArrayDescriptor(returnType) is { } descriptor) _callResultArrayDescriptors[node] = descriptor;
         return returnType.Type;
     }
@@ -1592,6 +1690,30 @@ public sealed partial class TypeChecker {
             : null;
 
     /// <summary>
+    /// Binds a primitive or named-type method call against <paramref name="signature"/> on
+    /// the shared <see cref="ArgumentBinder"/> and reports its one root cause, if any: a
+    /// binding problem (E0008 to E0011), a required parameter left unbound (E0003, naming
+    /// it) or too many positionals (E0003, counted). Returns the binding when it is clean,
+    /// otherwise <see langword="null"/>.
+    /// </summary>
+    private ArgumentBinding? BindMemberCall(
+            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, FunctionSignature signature) {
+        var parameters = new SignatureParameters(signature);
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
+        BindingWording callee = BindingWording.ForNative(memberAccess.Member);
+        if (ReportBindingProblems(node, binding, callee)) return null;
+        if (binding.MissingRequired) {
+            EmitMissingRequiredError(node, callee, parameters, binding);
+            return null;
+        }
+        if (binding.TooManyPositionals) {
+            EmitMemberArityError(node, memberAccess, suppliedCount, signature.RequiredArgumentCount, signature.Parameters.Count);
+            return null;
+        }
+        return binding;
+    }
+
+    /// <summary>
     /// Checks a primitive-member method call's argument list against
     /// <paramref name="signature"/> — a required-to-full arity range (<see
     /// cref="ErrorCatalog.E0003"/>, D-365 generalising the previous exact-match check the
@@ -1603,190 +1725,105 @@ public sealed partial class TypeChecker {
     /// </summary>
     private void CheckPrimitiveMemberArgs(
             CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes, FunctionSignature signature) {
-        if (RejectNamedMemberArgs(node, memberAccess)) return;
-        int fullArity = signature.Parameters.Count;
-        if (!MemberArgCountInRange(node, memberAccess, argTypes.Length, signature.RequiredArgumentCount, fullArity)) return;
-        for (int i = 0; i < argTypes.Length; i++) {
-            if (argTypes[i] == GrobType.Error || argTypes[i] == GrobType.Unknown) continue;
-            Expression argExpr = node.Arguments[i].Value;
-            GrobType expected = ParameterTypeAt(signature, i).Type;
-            if (!TypesAreAssignable(argTypes[i], expected)) {
-                EmitError(ErrorCatalog.E0004,
-                    $"Argument to '{memberAccess.Member}' has type '{TypeName(argTypes[i])}', which is not assignable to parameter of type '{TypeName(expected)}'.",
-                    argExpr.Range);
-            }
+        if (BindMemberCall(node, memberAccess, argTypes.Length, signature) is not { } binding) return;
+
+        var widen = new bool[binding.SlotArgument.Count];
+        for (int p = 0; p < widen.Length; p++) {
+            int a = binding.SlotArgument[p];
+            if (a == ArgumentBinder.Unbound) continue;
+            GrobType expected = ParameterTypeAt(signature, p).Type;
+            CheckPrimitiveArgumentType(memberAccess, argTypes[a], node.Arguments[a].Value, expected);
+            widen[p] = Widens(argTypes[a], expected);
         }
+        node.ResolvedBinding = BoundArguments(binding, widen, signature);
     }
 
     /// <summary>
-    /// Shared exact-arity guard for a member-call argument list — the named-type (D-356)
-    /// path, which declares no defaults today. A thin wrapper over
-    /// <see cref="MemberArgCountInRange"/> with <c>required == full == expectedCount</c>,
-    /// so its message and behaviour are unchanged from before D-365.
+    /// Checks one primitive-member argument against its parameter's type (E0004, at the
+    /// argument). An argument that already errored or is <see cref="GrobType.Unknown"/> is
+    /// not reported again.
+    /// </summary>
+    private void CheckPrimitiveArgumentType(MemberAccessExpr memberAccess, GrobType argType, Expression argExpr, GrobType expected) {
+        if (argType is GrobType.Error or GrobType.Unknown || TypesAreAssignable(argType, expected)) return;
+        EmitError(ErrorCatalog.E0004,
+            $"Argument to '{memberAccess.Member}' has type '{TypeName(argType)}', which is not assignable to parameter of type '{TypeName(expected)}'.",
+            argExpr.Range);
+    }
+
+    /// <summary>
+    /// Guard for an array or map member call, which records no signature to bind against
+    /// (R-56): a named argument is refused (<see cref="RefuseNamedArguments(CallExpr, string)"/>,
+    /// E0011), otherwise the supplied count must be <paramref name="expectedCount"/>
+    /// (<see cref="ErrorCatalog.E0003"/>). Returns <c>true</c> when it is and per-argument
+    /// checking should proceed.
     /// </summary>
     private bool MemberArgCountMatches(
-            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int expectedCount) =>
-        MemberArgCountInRange(node, memberAccess, suppliedCount, expectedCount, expectedCount);
-
-    /// <summary>
-    /// Shared required-to-full arity guard for a member-call argument list (<see
-    /// cref="ErrorCatalog.E0003"/>) — the named-type (D-356) and primitive (D-066/D-365)
-    /// receivers share this shape, mirroring <see cref="CheckNativeCall"/>'s namespace-native
-    /// range check and its "between X and Y arguments" phrasing when the range is not a
-    /// single value. Returns <c>true</c> when the supplied count falls within range and
-    /// per-argument checking should proceed.
-    /// </summary>
-    private bool MemberArgCountInRange(
-            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int requiredCount, int fullArity) {
-        if (suppliedCount < requiredCount || suppliedCount > fullArity) {
-            string suppliedVerb = suppliedCount == 1 ? "was" : "were";
-            string expectedPhrase = requiredCount == fullArity
-                ? $"{fullArity} {Plural(fullArity, ArgumentNoun)}"
-                : $"between {requiredCount} and {fullArity} {ArgumentNoun}s";
-            EmitError(ErrorCatalog.E0003,
-                $"'{memberAccess.Member}' expects {expectedPhrase}, but {suppliedCount} {suppliedVerb} supplied.",
-                node.Range);
-            return false;
-        }
-        return true;
+            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int expectedCount) {
+        // A name has nothing to bind to (R-56): refuse it, and skip the arity check that
+        // would count it as the root cause too.
+        if (RefuseNamedArgumentsTo(node, memberAccess.Member)) return false;
+        if (suppliedCount == expectedCount) return true;
+        EmitMemberArityError(node, memberAccess, suppliedCount, expectedCount, expectedCount);
+        return false;
     }
 
     /// <summary>
-    /// Rejects named arguments on a primitive-member or named-type-method call with
-    /// <see cref="ErrorCatalog.E0011"/>. Named-argument binding to natives is unsupported
-    /// even though a signature names its parameters (D-426 Decision 4), so a named
-    /// argument cannot bind — and emission preserves source
-    /// order, which would otherwise let a swapped pair (e.g. <c>s.replace(to: "b",
-    /// from: "a")</c>) pass the type checks yet call the native with mis-ordered
-    /// arguments. Instance members are positional-only until D-358 adds parameter-name
-    /// binding; named-type methods joined the rule under R-20. Returns <c>true</c> when at
-    /// least one named argument was found, so the caller suppresses the downstream
-    /// arity/type checks (one diagnostic per root cause).
+    /// Reports E0003 for a member call whose argument list does not satisfy a signature
+    /// of <paramref name="requiredCount"/> to <paramref name="fullArity"/> parameters,
+    /// worded as native arity messages are: the bare member name, a single number or a
+    /// "between" range, and the count the call supplied.
     /// </summary>
-    private bool RejectNamedMemberArgs(CallExpr node, MemberAccessExpr memberAccess) {
-        bool rejected = false;
-        foreach (CallArgument arg in node.Arguments.Where(a => a.Name is not null)) {
-            EmitError(ErrorCatalog.E0011,
-                $"'{memberAccess.Member}' does not accept named arguments; pass them positionally.",
-                arg.Range);
-            rejected = true;
-        }
-        return rejected;
+    private void EmitMemberArityError(
+            CallExpr node, MemberAccessExpr memberAccess, int suppliedCount, int requiredCount, int fullArity) {
+        string suppliedVerb = suppliedCount == 1 ? "was" : "were";
+        string expectedPhrase = requiredCount == fullArity
+            ? $"{fullArity} {Plural(fullArity, ArgumentNoun)}"
+            : $"between {requiredCount} and {fullArity} {ArgumentNoun}s";
+        EmitError(ErrorCatalog.E0003,
+            $"'{memberAccess.Member}' expects {expectedPhrase}, but {suppliedCount} {suppliedVerb} supplied.",
+            node.Range);
     }
 
     /// <summary>
     /// Validates a call against a resolved <paramref name="fn"/> under the D-113
     /// calling convention: positional arguments first, then named arguments, with
-    /// only defaulted parameters eligible to be named. Binding runs in three phases —
-    /// positionals into the leading slots, named arguments into the remaining
-    /// defaulted slots, then defaults fill the rest — and detects the four call-site
-    /// diagnostics (E0008 named-before-positional, E0009 naming a required parameter,
-    /// E0010 duplicate, E0011 unknown name) during binding. Arity (E0003) and per
-    /// argument type (E0004) are checked on the bound set, and a binding error
-    /// suppresses them to keep one diagnostic per root cause.
+    /// only defaulted parameters eligible to be named. The shared
+    /// <see cref="ArgumentBinder"/> binds the call; its problems become the four
+    /// call-site diagnostics (E0008 to E0011) with the script-function wording. Arity
+    /// (E0003) and per-argument type (E0004) are checked on the bound set, and a binding
+    /// error suppresses them to keep one diagnostic per root cause. A clean binding is
+    /// handed to the compiler on <see cref="CallExpr.ResolvedBinding"/>.
     /// </summary>
     private void CheckCall(CallExpr node, FnDecl fn, GrobType[] argTypes) {
-        int paramCount = fn.Parameters.Count;
-        var boundType = new GrobType?[paramCount];
-        var boundRange = new SourceRange?[paramCount];
-        // The bound argument expression per slot, so a function-typed parameter can be
-        // checked against the argument's structural descriptor (D-326; Fix J).
-        var boundExpr = new Expression?[paramCount];
+        var parameters = new ScriptParameters(fn);
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
+        BindingWording callee = BindingWording.ForScriptFunction(fn.Name);
+        if (ReportBindingProblems(node, binding, callee)) return;
 
-        // Binding errors (E0008–E0011) are all collected, then suppress the
-        // downstream arity/type checks to keep one diagnostic per root cause.
-        if (!BindArguments(node, fn, argTypes, boundType, boundRange, boundExpr, out int positionalCount)) {
+        // Arity (E0003) on the bound set: a required (defaultless) parameter left
+        // unbound is named; too many positionals is counted.
+        if (binding.MissingRequired) {
+            EmitMissingRequiredError(node, callee, parameters, binding);
             return;
         }
-
-        // Arity (E0003) on the bound set — too many positionals, or a required
-        // (defaultless) parameter left unbound.
-        if (positionalCount > paramCount || HasUnboundRequired(fn, boundType)) {
+        if (binding.TooManyPositionals) {
             EmitArityError(node, fn);
             return;
         }
 
-        // Type (E0004) on each caller-supplied argument. Default-filled slots were
-        // checked at the declaration site.
-        for (int i = 0; i < paramCount; i++) {
-            if (boundRange[i] is SourceRange range && boundType[i] is GrobType argType) {
-                CheckBoundArgumentType(fn, i, argType, range, boundExpr[i]);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Binds the arguments of <paramref name="node"/> to the parameters of
-    /// <paramref name="fn"/>: positionals into the leading slots, named arguments
-    /// into their parameters. Emits the call-site binding diagnostics (E0008 named
-    /// before positional, E0009/E0010/E0011 via <see cref="TryBindNamed"/>) and
-    /// collects every independent one. Returns <see langword="true"/> when binding
-    /// was clean, <see langword="false"/> when any binding error was emitted.
-    /// </summary>
-    private bool BindArguments(CallExpr node, FnDecl fn, GrobType[] argTypes,
-            GrobType?[] boundType, SourceRange?[] boundRange, Expression?[] boundExpr, out int positionalCount) {
-        bool ok = true;
-        bool seenNamed = false;
-        positionalCount = 0;
-
-        for (int i = 0; i < node.Arguments.Count; i++) {
-            CallArgument arg = node.Arguments[i];
-            if (arg.Name is not null) {
-                seenNamed = true;
-                if (!TryBindNamed(fn, arg, argTypes[i], boundType, boundRange, boundExpr)) ok = false;
-                continue;
-            }
-
-            // A positional argument after a named one breaks the convention. Keep
-            // scanning so independent later errors still surface.
-            if (seenNamed) {
-                EmitError(ErrorCatalog.E0008,
-                    $"In the call to '{fn.Name}', a positional argument follows a named argument. Move all named arguments after the positional ones.",
-                    arg.Value.Range);
-                ok = false;
-                continue;
-            }
-            if (positionalCount < boundType.Length) {
-                boundType[positionalCount] = argTypes[i];
-                boundRange[positionalCount] = arg.Value.Range;
-                boundExpr[positionalCount] = arg.Value;
-            }
-            positionalCount++;
+        // Type (E0004) on each caller-supplied argument, in parameter order. Default-filled
+        // slots were checked at the declaration site, and are not widened (R-58 keeps
+        // parameter defaults on its own branch).
+        var widen = new bool[binding.SlotArgument.Count];
+        for (int p = 0; p < binding.SlotArgument.Count; p++) {
+            int a = binding.SlotArgument[p];
+            if (a == ArgumentBinder.Unbound) continue;
+            Expression value = node.Arguments[a].Value;
+            GrobType parameterType = CheckBoundArgumentType(fn, p, argTypes[a], value.Range, value);
+            widen[p] = Widens(argTypes[a], parameterType);
         }
 
-        return ok;
-    }
-
-    /// <summary>
-    /// Binds one named argument to its parameter, emitting E0011 (unknown name),
-    /// E0009 (names a required parameter) or E0010 (already supplied) when it cannot.
-    /// Returns <see langword="true"/> when the argument bound cleanly.
-    /// </summary>
-    private bool TryBindNamed(FnDecl fn, CallArgument arg, GrobType argType,
-            GrobType?[] boundType, SourceRange?[] boundRange, Expression?[] boundExpr) {
-        int p = ParameterIndex(fn, arg.Name!);
-        if (p < 0) {
-            EmitError(ErrorCatalog.E0011,
-                $"Function '{fn.Name}' has no parameter named '{arg.Name}'.",
-                arg.Range);
-            return false;
-        }
-        if (fn.Parameters[p].DefaultValue is null) {
-            EmitError(ErrorCatalog.E0009,
-                $"Parameter '{arg.Name}' of '{fn.Name}' is required and has no default, so it cannot be passed by name. Pass it positionally.",
-                arg.Range);
-            return false;
-        }
-        if (boundType[p] is not null) {
-            EmitError(ErrorCatalog.E0010,
-                $"Parameter '{arg.Name}' of '{fn.Name}' is already supplied.",
-                arg.Range);
-            return false;
-        }
-        boundType[p] = argType;
-        boundRange[p] = arg.Value.Range;
-        boundExpr[p] = arg.Value;
-        return true;
+        node.ResolvedBinding = BoundArguments(binding, widen, signature: null);
     }
 
     /// <summary>
@@ -1816,33 +1853,12 @@ public sealed partial class TypeChecker {
     private const string ArgumentNoun = "argument";
 
     /// <summary>
-    /// Returns the index of the parameter named <paramref name="name"/> in
-    /// <paramref name="fn"/>, or <c>-1</c> when no parameter has that name.
-    /// </summary>
-    private static int ParameterIndex(FnDecl fn, string name) {
-        for (int i = 0; i < fn.Parameters.Count; i++) {
-            if (fn.Parameters[i].Name == name) return i;
-        }
-        return -1;
-    }
-
-    /// <summary>
-    /// Returns <see langword="true"/> when a required (defaultless) parameter has no
-    /// bound argument after the positional and named binding passes.
-    /// </summary>
-    private static bool HasUnboundRequired(FnDecl fn, GrobType?[] boundType) {
-        for (int i = 0; i < fn.Parameters.Count; i++) {
-            if (fn.Parameters[i].DefaultValue is null && boundType[i] is null) return true;
-        }
-        return false;
-    }
-
-    /// <summary>
     /// Checks one bound argument's type against its parameter (E0004). An Unknown
     /// parameter type (a deferred type) is permissive, and cascade suppression
-    /// covers an argument that already errored.
+    /// covers an argument that already errored. Returns the parameter's resolved type,
+    /// which the caller reads to decide whether the argument widens (R-58).
     /// </summary>
-    private void CheckBoundArgumentType(
+    private GrobType CheckBoundArgumentType(
             FnDecl fn, int paramIndex, GrobType argType, SourceRange valueRange, Expression? argExpr) {
         // Resolve the parameter with its structural descriptor so a function-typed
         // parameter is checked against the argument's descriptor, not merely fn-to-fn
@@ -1883,6 +1899,7 @@ public sealed partial class TypeChecker {
                 $"Argument to '{fn.Name}' has type '{TypeName(argType)}', which is not assignable to parameter '{fn.Parameters[paramIndex].Name}' of type '{TypeName(paramType)}'.",
                 valueRange);
         }
+        return paramType;
     }
 
     /// <summary>
@@ -2286,15 +2303,20 @@ public sealed partial class TypeChecker {
             var returnType = (SignatureType.Concrete)signature.ReturnType;
             memberAccess.ResolvedFieldType = returnType.Type;
             node.ResolvedReturnType = returnType.Type;
-            CheckNativeCall(node, namespaceName, memberAccess.Member, signature, argTypes);
+            bool bound = CheckNativeCall(node, namespaceName, memberAccess.Member, signature, argTypes);
             // Sprint 8 Increment D: mirrors the user-fn struct-return threading a few
             // lines up in VisitCall — a `:=`-inferred binding from a struct-returning
             // native call (id := guid.newV4()) resolves field/instance-member access the
             // same way a direct struct-construction initialiser already does.
             if (returnType.NamedTypeName is not null) _callResultStructNames[node] = returnType.NamedTypeName;
             if (NativeArrayDescriptor(returnType) is { } descriptor) _callResultArrayDescriptors[node] = descriptor;
-            CheckGuidParseLiteral(node, namespaceName, memberAccess.Member);
-            CheckRegexPatternArgument(node, namespaceName, memberAccess.Member);
+            // The literal checks read the first written argument as the first parameter,
+            // which holds only for a call that bound cleanly; a refused or mis-counted call
+            // has already reported its one root cause.
+            if (bound) {
+                CheckGuidParseLiteral(node, namespaceName, memberAccess.Member);
+                CheckRegexPatternArgument(node, namespaceName, memberAccess.Member);
+            }
             return returnType.Type;
         }
 
@@ -2606,8 +2628,11 @@ public sealed partial class TypeChecker {
     private GrobType CheckPrintExitCall(
             CallExpr node, IdentifierExpr callee, GrobType[] argTypes, bool isStatementPositionCall) {
         string name = callee.Name;
+        // print and exit record no parameter names (D-447 Decision 2): a name is refused
+        // and replaces the arity diagnostic, which would count it as a second root cause.
+        bool namesRefused = RefuseNamedArgumentsTo(node, name);
         bool arityOk = name == "print" ? argTypes.Length == 1 : argTypes.Length <= 1;
-        if (!arityOk) {
+        if (!namesRefused && !arityOk) {
             string expected = name == "print" ? "1 argument" : "0 or 1 arguments";
             EmitError(ErrorCatalog.E0003,
                 $"'{name}' expects {expected}, but {argTypes.Length} were supplied.",
@@ -2630,61 +2655,92 @@ public sealed partial class TypeChecker {
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Validates an <c>input()</c> call: 0 or 1 arguments (E0003 outside that range), and
-    /// when supplied, the single argument must be (or widen to) <c>string</c> (E0004).
-    /// Reuses the same two codes <see cref="CheckNativeCall"/> uses for namespaced natives
-    /// rather than allocating dedicated ones for this single bare-name call site. Always
-    /// resolves to <c>string</c> — the runtime native's own return type — even on an
-    /// arity/type mismatch, so a caller's own annotation mismatch is not double-reported.
+    /// Validates an <c>input()</c> call, the one built-in with a signature (D-447
+    /// Decision 1): its one parameter, <c>prompt</c>, has the default <c>""</c>, so it
+    /// binds by name on the same <see cref="ArgumentBinder"/> as every native (E0008,
+    /// E0010 and E0011, native wording), then takes 0 or 1 arguments (E0003 outside that
+    /// range), and a supplied prompt must be (or widen to) <c>string</c> (E0004). The
+    /// signature is read from the catalogue's registration (<c>IoPlugin</c>), so the
+    /// parameter's name and default have one source. A clean binding is handed to the
+    /// compiler on <see cref="CallExpr.ResolvedBinding"/>, so an omitted prompt is the
+    /// ordinary default fill (D-344). Always resolves to <c>string</c>, the runtime
+    /// native's own return type, even on an error, so a caller's own annotation mismatch
+    /// is not double-reported.
     /// </summary>
     private GrobType CheckInputCall(CallExpr node, GrobType[] argTypes) {
         // input() always resolves to string — persist it for GetExprType (D-362) on both
-        // the arity-error and success returns below, so `input() + "x"` selects Concat
-        // rather than falling to the Unknown→Int arithmetic default.
+        // the error and success returns below, so `input() + "x"` selects Concat rather
+        // than falling to the Unknown→Int arithmetic default.
         node.ResolvedReturnType = GrobType.String;
-        if (argTypes.Length > 1) {
+        FunctionSignature signature = InputSignature();
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, new SignatureParameters(signature));
+        if (ReportBindingProblems(node, binding, BindingWording.ForNative("input"))) return GrobType.String;
+
+        if (binding.TooManyPositionals) {
             EmitError(ErrorCatalog.E0003,
                 $"'input' expects 0 or 1 arguments, but {argTypes.Length} were supplied.",
                 node.Range);
             return GrobType.String;
         }
 
-        if (argTypes.Length == 1 && argTypes[0] != GrobType.Error &&
-                !TypesAreAssignable(argTypes[0], GrobType.String)) {
+        int a = binding.SlotArgument[0];
+        if (a != ArgumentBinder.Unbound && argTypes[a] != GrobType.Error &&
+                !TypesAreAssignable(argTypes[a], GrobType.String)) {
             EmitError(ErrorCatalog.E0004,
-                $"Argument 1 to 'input' has type '{TypeName(argTypes[0])}', which is not assignable to parameter of type 'string'.",
-                node.Arguments[0].Value.Range);
+                $"Argument {a + 1} to 'input' has type '{TypeName(argTypes[a])}', which is not assignable to parameter of type 'string'.",
+                node.Arguments[a].Value.Range);
         }
 
+        node.ResolvedBinding = BoundArguments(binding, new bool[1], signature);
         return GrobType.String;
     }
 
     /// <summary>
-    /// Validates a native member call positionally: arity (E0003) then per-argument
-    /// assignability (E0004, at the argument's location). Most natives have no defaulted
-    /// parameters, so <paramref name="signature"/>'s required count equals its full arity
-    /// and the check is an exact-count match; a native declaring trailing defaults (D-358)
-    /// accepts any count in the required-to-full range — only the arguments actually
-    /// supplied are type-checked, since the compiler synthesises the rest from the
-    /// declared constants, which this method hands it through
-    /// <see cref="CallExpr.ResolvedNativeParameterDefaults"/> (gate report F1). An
-    /// already-errored argument is suppressed to keep one diagnostic per root cause.
+    /// <c>input</c>'s registered signature. The checker registers <c>input</c> as a
+    /// built-in name unconditionally, so a catalogue without the <c>io</c> plugin that
+    /// registers it is a host misconfiguration, not a user error.
     /// </summary>
-    private void CheckNativeCall(CallExpr node, string namespaceName, string memberName,
+    private FunctionSignature InputSignature() =>
+        _catalogue.TryGetBuiltin("input", out NativeEntry? entry)
+            ? entry.Signature
+            : throw new GrobInternalException("The native catalogue registers no 'input' built-in; the io plugin supplies its signature.");
+
+    /// <summary>
+    /// Validates a namespace-native call under the D-113 calling convention, on the same
+    /// <see cref="ArgumentBinder"/> as a script function (D-446 Decisions 1 and 2): the
+    /// binding diagnostics (E0008 to E0011, native wording), then arity (E0003) and
+    /// per-argument assignability (E0004, at the argument's location) on the bound set. A
+    /// clean binding is handed to the compiler on <see cref="CallExpr.ResolvedBinding"/>,
+    /// each skipped or omitted default carried as its signature constant (D-358), so the
+    /// native always receives its full fixed arity in parameter order. A variadic native
+    /// binds only to check its arguments: its tail has no default and cannot be named, so
+    /// every argument of a clean call is positional and it keeps positional emission. An
+    /// already-errored argument is suppressed to keep one diagnostic per root cause.
+    /// Returns <see langword="false"/> when the call failed to bind or its arity is wrong,
+    /// so the caller skips any check that reads an argument by its written position.
+    /// </summary>
+    private bool CheckNativeCall(CallExpr node, string namespaceName, string memberName,
             FunctionSignature signature, GrobType[] argTypes) {
-        if (RejectNamedNativeArgs(node, namespaceName, memberName)) return;
+        var parameters = new SignatureParameters(signature);
+        ArgumentBinding binding = ArgumentBinder.Bind(node.Arguments, parameters);
+        BindingWording callee = BindingWording.ForNative($"{namespaceName}.{memberName}");
+        if (ReportBindingProblems(node, binding, callee)) return false;
+
+        // A variadic tail has no default, so a call short of its minimum leaves it (or a
+        // fixed parameter before it) unbound: named here, on every path alike.
+        if (binding.MissingRequired) {
+            EmitMissingRequiredError(node, callee, parameters, binding);
+            return false;
+        }
 
         if (signature.IsVariadic) {
             CheckVariadicNativeCall(node, namespaceName, memberName, signature, argTypes);
-            return;
+            return true;
         }
 
-        int fullArity = signature.Parameters.Count;
-        int requiredCount = signature.RequiredArgumentCount;
-        if (requiredCount < fullArity) {
-            node.ResolvedNativeParameterDefaults = [.. signature.Parameters.Select(p => p.Default)];
-        }
-        if (argTypes.Length < requiredCount || argTypes.Length > fullArity) {
+        if (binding.TooManyPositionals) {
+            int fullArity = signature.Parameters.Count;
+            int requiredCount = signature.RequiredArgumentCount;
             string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
             string expectedPhrase = requiredCount == fullArity
                 ? $"{fullArity} {Plural(fullArity, ArgumentNoun)}"
@@ -2692,35 +2748,22 @@ public sealed partial class TypeChecker {
             EmitError(ErrorCatalog.E0003,
                 $"'{namespaceName}.{memberName}' expects {expectedPhrase}, but {argTypes.Length} {suppliedVerb} supplied.",
                 node.Range);
-            return;
+            return false;
         }
 
-        for (int i = 0; i < argTypes.Length; i++) {
-            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, ParameterTypeAt(signature, i));
+        // E0004 numbers an argument by its written position, which is where its range
+        // points; for an all-positional call that is also its parameter position.
+        var widen = new bool[binding.SlotArgument.Count];
+        for (int p = 0; p < binding.SlotArgument.Count; p++) {
+            int a = binding.SlotArgument[p];
+            if (a == ArgumentBinder.Unbound) continue;
+            SignatureType.Concrete parameterType = ParameterTypeAt(signature, p);
+            CheckNativeArgumentType(node, namespaceName, memberName, argTypes, a, parameterType);
+            widen[p] = Widens(argTypes[a], parameterType.Type);
         }
-    }
 
-    /// <summary>
-    /// Rejects named arguments on a namespace-native call with
-    /// <see cref="ErrorCatalog.E0011"/>. Named-argument binding to natives is unsupported
-    /// even though a <see cref="FunctionSignature"/> names its parameters (D-426 Decision 4),
-    /// and emission preserves source order, so a named argument cannot bind — it would otherwise let <c>date.parse(pattern: "dd/MM/yyyy")</c> slot the
-    /// pattern into the <c>input</c> parameter and take the empty default (D-358). The
-    /// namespace-native counterpart of <see cref="RejectNamedMemberArgs"/>. Returns
-    /// <c>true</c> when at least one named argument was found, so the caller suppresses the
-    /// downstream arity/type checks (one diagnostic per root cause).
-    /// </summary>
-    private bool RejectNamedNativeArgs(CallExpr node, string namespaceName, string memberName) {
-        bool rejected = false;
-        foreach (CallArgument arg in node.Arguments) {
-            if (arg.Name is not null) {
-                EmitError(ErrorCatalog.E0011,
-                    $"'{namespaceName}.{memberName}' does not accept named arguments; pass them positionally.",
-                    arg.Range);
-                rejected = true;
-            }
-        }
-        return rejected;
+        node.ResolvedBinding = BoundArguments(binding, widen, signature);
+        return true;
     }
 
     /// <summary>
@@ -2746,22 +2789,14 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Validates a native member call whose tail is variadic (<c>path.join</c>,
     /// <c>guid.newV5</c>): the fixed prefix is checked exactly as
-    /// <see cref="CheckNativeCall"/> does, then at least one further argument is required
-    /// (gate report F9) and every one of them is checked against the variadic
-    /// parameter's element type instead of a fixed per-slot type.
+    /// <see cref="CheckNativeCall"/> does, then every further argument is checked against
+    /// the variadic parameter's element type instead of a fixed per-slot type. The tail's
+    /// minimum of one argument (gate report F9) is enforced before this, by the binder's
+    /// missing-required check: the tail has no default.
     /// </summary>
     private void CheckVariadicNativeCall(CallExpr node, string namespaceName, string memberName,
             FunctionSignature signature, GrobType[] argTypes) {
         int fixedCount = signature.Parameters.Count - 1;
-        int minimum = fixedCount + 1;
-        if (argTypes.Length < minimum) {
-            string suppliedVerb = argTypes.Length == 1 ? "was" : "were";
-            EmitError(ErrorCatalog.E0003,
-                $"'{namespaceName}.{memberName}' expects at least {minimum} {Plural(minimum, ArgumentNoun)}, but {argTypes.Length} {suppliedVerb} supplied.",
-                node.Range);
-            return;
-        }
-
         for (int i = 0; i < fixedCount; i++) {
             CheckNativeArgumentType(node, namespaceName, memberName, argTypes, i, ParameterTypeAt(signature, i));
         }

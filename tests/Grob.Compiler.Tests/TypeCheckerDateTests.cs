@@ -155,11 +155,11 @@ public sealed class TypeCheckerDateTests {
     }
 
     [Fact]
-    public void Parse_ZeroArguments_ReportsSingleE0003WithRangeMessage() {
+    public void Parse_ZeroArguments_ReportsSingleE0003NamingTheMissingParameter() {
         DiagnosticBag bag = Check("readonly x := date.parse()");
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
-        Assert.Equal("'date.parse' expects between 1 and 2 arguments, but 0 were supplied.", diag.Message);
+        Assert.Equal("'date.parse' expects an argument for required parameter 'value', but none was supplied.", diag.Message);
         Assert.Equal(1, diag.Range.Start.Line);
         Assert.Equal(15, diag.Range.Start.Column);
     }
@@ -197,33 +197,35 @@ public sealed class TypeCheckerDateTests {
     }
 
     [Fact]
-    public void Parse_NamedArgument_ReportsSingleE0011() {
-        // NativeMember carries no parameter names and emission preserves source order, so a
-        // named argument cannot bind — it would otherwise slot "dd/MM/yyyy" into the input
-        // parameter and let the pattern take its "" default (CodeRabbit review, PR #154).
-        // Reject with E0011 (positional-only), matching RejectNamedMemberArgs.
+    public void Parse_NamedPatternWithoutValue_ReportsSingleE0003() {
+        // D-446 Decision 2: a named argument binds to a native, so pattern: binds to the
+        // pattern parameter and the required value is left unbound. Arity is checked on
+        // the bound set (D-318), at the call, as for a script function. Before D-446 this
+        // call was refused with E0011, because a named argument could not bind and source-
+        // order emission would have slotted the pattern into the value parameter.
         DiagnosticBag bag = Check("""readonly x := date.parse(pattern: "dd/MM/yyyy")""");
         Diagnostic diag = Assert.Single(bag.Errors);
-        Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
+        Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
         Assert.Equal(
-            "'date.parse' does not accept named arguments; pass them positionally.",
+            "'date.parse' expects an argument for required parameter 'value', but none was supplied.",
             diag.Message);
         Assert.Equal(1, diag.Range.Start.Line);
-        Assert.Equal(26, diag.Range.Start.Column);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
-    public void AddDays_NamedArgument_ReportsSingleE0011() {
-        // R-20: a named-type method call took a named argument silently, where namespace and
-        // primitive calls report E0011. Emission keeps source order, so it would miscompile
-        // once a named-type method takes two parameters.
+    public void AddDays_NamedRequiredArgument_ReportsSingleE0009() {
+        // D-446 Decision 2 (replacing R-20's E0011 refusal): a named-type method binds like
+        // any callee, and addDays's days is required, so it cannot be named (D-113).
         DiagnosticBag bag = Check("""
             d := date.now()
             readonly x := d.addDays(days: 1)
             """);
         Diagnostic diag = Assert.Single(bag.Errors);
-        Assert.Equal(ErrorCatalog.E0011.Code, diag.Code);
-        Assert.Equal("'addDays' does not accept named arguments; pass them positionally.", diag.Message);
+        Assert.Equal(ErrorCatalog.E0009.Code, diag.Code);
+        Assert.Equal(
+            "Parameter 'days' of 'addDays' is required and has no default, so it cannot be passed by name. Pass it positionally.",
+            diag.Message);
         Assert.Equal(2, diag.Range.Start.Line);
         Assert.Equal(25, diag.Range.Start.Column);
     }

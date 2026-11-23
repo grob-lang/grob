@@ -39,12 +39,16 @@ public sealed class TypeCheckerVariadicNativeTests {
     }
 
     [Fact]
-    public void PathJoin_ZeroArguments_ReportsSingleE0003_AtLeastOneWording() {
+    public void PathJoin_ZeroArguments_ReportsSingleE0003NamingTheVariadicParameter() {
+        // The tail's minimum of one (gate report F9) is the binder's "no default": the
+        // missing parameter is named, as on every binding path (D-452 Decision 1).
         DiagnosticBag bag = Check("readonly x := path.join()");
 
         Diagnostic diag = Assert.Single(bag.Errors);
         Assert.Equal(ErrorCatalog.E0003.Code, diag.Code);
-        Assert.Contains("at least 1", diag.Message);
+        Assert.Equal("'path.join' expects an argument for required parameter 'parts', but none was supplied.", diag.Message);
+        Assert.Equal(1, diag.Range.Start.Line);
+        Assert.Equal(15, diag.Range.Start.Column);
     }
 
     [Fact]
