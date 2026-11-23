@@ -17,7 +17,8 @@
 
 - Tests: full `dotnet test Grob.slnx` green after the rebase, 5,901 passed. `Grob.Torture.Tests` has 125.
 - Coverage: the new `tooling/Grob.Torture/` files are at 99.8% line and 94.9% branch. That measure excludes generated regex code and the four linked Integration files, which are not new code. One branch is left partial: the post-compile `HasErrors` check in `OracleRun`, unreachable because the compiler adds no diagnostics today.
-- CI slice runtime here: the measured pass of 1,318 programs takes 4.0 s. The slice adds about 9 s to `dotnet test` with the warm-up and determinism passes. The CI figure is still to read from the PR's first CI run.
+- CI slice runtime here: the measured pass of 1,318 programs takes 4.0 s. The slice adds about 9 s to `dotnet test` with the warm-up and determinism passes.
+- CI slice runtime in CI, on PR #268 at `8c48f01`, from log timestamps: the fixture and its first assertion finish about 13 s after the Torture test run starts on Ubuntu, and about 6 s after on Windows. All 12 checks are green. SonarCloud reports 0 issues on new code. R-69's message matches on Linux.
 - Pre-push gate: runs on this hand-off's push
 - Mutation-verify, each predicted exactly before it ran:
   - 1 (a compiler host exception classified as a finding): the test host crashed with `InvalidOperationException: no`;
@@ -42,6 +43,10 @@ Every item below belongs in the landing entry as a divergence or correction (pro
 - **F. The slice warms up on every tenth seed**, not a full pass. A full pass doubled the time and added no warmth.
 - **G. A stale known entry fails the slice.** An entry is stale when its program no longer makes the finding or is no longer in the corpus. The prompt asked only for an entry whose row is closed to fail it.
 - **H. `check` and `corpus` stop after a watchdog timeout**, since the worker cannot be killed. `Cli` takes the oracle through an internal seam for this.
+- **I. The VM's token is cancelled by the oracle's waiting thread** (`8c48f01`), not by a timed `CancellationTokenSource`.
+  - The gate report's §4.4 proposed the timed source.
+  - Its thread-pool timer was starved on the Windows CI runner, so the `CompilerFinallyTests` finally-loop seed showed as `Run|Timeout`.
+  - The waiting thread now polls in 10 ms steps and cancels at the VM budget. The VM is unchanged.
 
 ## Error codes and registry state
 
@@ -69,7 +74,8 @@ Run the prompt's session-start check for session C (change groups 3 and 4, Sonne
 
 ## Open for the maintainer
 
-- **Platform risk in R-69's known entry.** Its signature carries a BCL message, `The time zone ID '…' was not found on the local computer.`. If .NET words it differently on Linux, the slice fails in CI. Check the draft PR's first run.
+- Draft PR #268 is open. Session C adds groups 3 and 4 to it.
+- One extra commit, `9424a17`, restores the final newline that Dependabot's #266 and #267 dropped from 14 files. Without it, the end-of-file pre-push hook blocks any push that carries those commits. Dependabot will drop the newline again on its next bump unless its output is normalised.
 - **Register rows R-68 to R-74** were filed for F-1 to F-7. R-66 gained a sentence on the slice's seven seeds, including the property read `s?.length`.
 - `ErrorStmt` was never reached by the sentinel walker in tests. It is a two-line override, noted rather than chased.
 - Carried from earlier hand-offs:
