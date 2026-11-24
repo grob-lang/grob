@@ -9,15 +9,15 @@ using Grob.Torture.Mutation;
 namespace Grob.Torture.Tests;
 
 /// <summary>
-/// The CI slice (prompt §2 groups 2 and 4): the seed corpus and a fixed sample of its mutants
-/// through the oracle at the CI budget, after a warm-up pass. It fails on any finding the
+/// The CI slice (prompt §2 groups 2, 4 and 6): the seed corpus, a fixed sample of its mutants and
+/// a fixed sample of generated programs through the oracle at the CI budget, after a warm-up pass. It fails on any finding the
 /// known-findings list does not name by program, on a stale entry and on an entry whose register
 /// row is missing or closed.
 /// </summary>
 public sealed class CorpusSliceTests(SliceFixture slice, ITestOutputHelper output) : IClassFixture<SliceFixture> {
     [Fact]
     public void Slice_CorpusAndMutants_HaveNoUntriagedFinding() {
-        output.WriteLine($"{slice.Seeds.Count} seeds and {slice.Programs.Count - slice.Seeds.Count} mutants: {slice.Results.Count} programs in {slice.Elapsed.TotalSeconds:F1} s");
+        output.WriteLine($"{slice.Seeds.Count} seeds, {Mutants.Count()} mutants and {CorpusSlice.GeneratedPrograms} generated programs: {slice.Results.Count} programs in {slice.Elapsed.TotalSeconds:F1} s");
         foreach (IGrouping<OutcomeKind, ProgramResult> group in slice.Results.GroupBy(r => r.Outcome).OrderBy(g => g.Key)) {
             output.WriteLine($"  {group.Key}: {group.Count()}");
         }
@@ -38,7 +38,7 @@ public sealed class CorpusSliceTests(SliceFixture slice, ITestOutputHelper outpu
 
     [Fact]
     public void Slice_SeedCorpus_DrawsOnEveryLocation() {
-        // A generated program is not read from the repository, and the slice does not run any yet.
+        // A generated program is not read from the repository, so the corpus holds none.
         foreach (SeedKind kind in Enum.GetValues<SeedKind>().Where(k => k != SeedKind.Generated)) {
             int count = slice.Seeds.Count(s => s.Kind == kind);
             output.WriteLine($"{kind}: {count}");
@@ -46,9 +46,11 @@ public sealed class CorpusSliceTests(SliceFixture slice, ITestOutputHelper outpu
         }
     }
 
+    private IEnumerable<Seed> Mutants => slice.Programs.Skip(slice.Seeds.Count).Where(p => p.Kind != SeedKind.Generated);
+
     [Fact]
     public void Slice_Mutants_ComeFromEveryOperator() {
-        IEnumerable<string> operators = slice.Programs.Skip(slice.Seeds.Count).Select(p => p.Id.Split('/')[^2]);
+        IEnumerable<string> operators = Mutants.Select(p => p.Id.Split('/')[^2]);
 
         Assert.Equal([.. Mutator.Operators.Select(o => o.Name).Order(StringComparer.Ordinal)], [.. operators.Distinct().Order(StringComparer.Ordinal)]);
     }
@@ -58,7 +60,18 @@ public sealed class CorpusSliceTests(SliceFixture slice, ITestOutputHelper outpu
         IReadOnlyList<Seed> again = CorpusSlice.Programs(slice.Seeds);
 
         Assert.Equal(slice.Programs.Select(p => (p.Id, p.Source)), again.Select(p => (p.Id, p.Source)));
-        Assert.InRange(slice.Programs.Count - slice.Seeds.Count, 300, 1500);
+        Assert.InRange(Mutants.Count(), 300, 1500);
+    }
+
+    [Fact]
+    public void Slice_GeneratedPrograms_AreTheGeneratorsFirstAtTheSlicesCampaignSeed() {
+        List<Seed> generated = [.. slice.Programs.Where(p => p.Kind == SeedKind.Generated)];
+
+        Assert.Equal(CorpusSlice.GeneratedPrograms, generated.Count);
+        Assert.Equal(
+            Enumerable.Range(0, CorpusSlice.GeneratedPrograms).Select(i => Generation.ProgramGenerator.Generate(CorpusSlice.CampaignSeed, i).Id),
+            generated.Select(p => p.Id));
+        Assert.Equal(slice.Programs.TakeLast(CorpusSlice.GeneratedPrograms), generated);
     }
 
     [Fact]

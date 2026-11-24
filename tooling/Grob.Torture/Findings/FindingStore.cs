@@ -41,6 +41,14 @@ internal sealed class FindingStore(string root) {
             .Select(f => JsonSerializer.Deserialize<FindingRecord>(File.ReadAllText(f), Options)!)];
     }
 
+    /// <summary>Every record under every signature, in path order.</summary>
+    public IReadOnlyList<FindingRecord> All() {
+        if (!Directory.Exists(root)) return [];
+        return [.. Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
+            .Order(StringComparer.Ordinal)
+            .Select(f => JsonSerializer.Deserialize<FindingRecord>(File.ReadAllText(f), Options)!)];
+    }
+
     /// <summary>The path of the record for a program under a signature.</summary>
     public string PathFor(string signature, string programId) => Path.Join(root, Hash(signature), Hash(programId) + ".json");
 

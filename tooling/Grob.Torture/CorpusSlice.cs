@@ -1,10 +1,12 @@
+using Grob.Torture.Generation;
 using Grob.Torture.Mutation;
 
 namespace Grob.Torture;
 
 /// <summary>
-/// The CI slice (prompt §2 groups 2 and 4): a deterministic run of the seed corpus and a fixed
-/// sample of its mutants, judged against the known-findings list. Its programs are fixed by the
+/// The CI slice (prompt §2 groups 2, 4 and 6): a deterministic run of the seed corpus, a fixed
+/// sample of its mutants and a fixed sample of generated programs, judged against the
+/// known-findings list. Its programs are fixed by the
 /// repository's contents, so two runs over one tree run the same programs (prompt §3, seeds stay
 /// fixed).
 /// </summary>
@@ -22,10 +24,23 @@ internal static class CorpusSlice {
     public const ulong CampaignSeed = 20261123UL;
 
     /// <summary>
-    /// What the slice runs: the seeds themselves, then the fixed sample of their mutants
-    /// (<see cref="MutantSample"/>). Both are judged against one known-findings list.
+    /// How many generated programs the slice runs, the first of the generator's at
+    /// <see cref="CampaignSeed"/> (decision AA, D1: group 6 sets what the slice carries). They keep
+    /// the generator checked against later changes to the checker, the compiler and the VM; a
+    /// change to the generator itself changes them, and their known entries must be triaged again.
     /// </summary>
-    public static IReadOnlyList<Seed> Programs(IReadOnlyList<Seed> seeds) => [.. seeds, .. MutantSample.Create(seeds, CampaignSeed)];
+    public const int GeneratedPrograms = 200;
+
+    /// <summary>
+    /// What the slice runs: the seeds themselves, then the fixed sample of their mutants
+    /// (<see cref="MutantSample"/>), then the first <see cref="GeneratedPrograms"/> generated
+    /// programs. All are judged against one known-findings list.
+    /// </summary>
+    public static IReadOnlyList<Seed> Programs(IReadOnlyList<Seed> seeds) => [
+        .. seeds,
+        .. MutantSample.Create(seeds, CampaignSeed),
+        .. Enumerable.Range(0, GeneratedPrograms).Select(i => ProgramGenerator.Generate(CampaignSeed, i)),
+    ];
 
     /// <summary>
     /// Runs each seed through <paramref name="oracle"/>, in order. A timeout ends the slice at

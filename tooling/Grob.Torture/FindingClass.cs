@@ -19,4 +19,10 @@ internal enum FindingClass {
 
     /// <summary>A run that did not end within its watchdog: a phase that ignored its bound.</summary>
     Timeout,
+
+    /// <summary>
+    /// A campaign worker died while running the program, as a stack overflow (R-70) or an
+    /// out-of-memory ends a process; its journal names the program and the phase (gate report §4.4).
+    /// </summary>
+    ProcessDeath,
 }

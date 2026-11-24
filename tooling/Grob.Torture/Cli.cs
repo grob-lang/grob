@@ -1,4 +1,5 @@
 using Grob.Integration.Tests.ErrorExamples;
+using Grob.Torture.Campaign;
 
 namespace Grob.Torture;
 
@@ -9,10 +10,16 @@ namespace Grob.Torture;
 /// <list type="bullet">
 ///   <item><description><c>check &lt;file&gt;...</c> runs each file through the oracle at the CI budget and prints its outcome and findings.</description></item>
 ///   <item><description><c>corpus [&lt;root&gt;]</c> runs the CI slice by hand, the seeds and their sample of mutants, and lists every finding as known or new, every stale entry and every problem with the known-findings list. The root defaults to the repository holding the working directory.</description></item>
+///   <item><description><c>campaign --out &lt;dir&gt; --programs &lt;n&gt; --seed &lt;n&gt; [--workers &lt;n&gt;] [--grob &lt;path&gt;] [--root &lt;dir&gt;]</c> runs the long mode by hand (D-451 Decision 4): a plan of generated programs and mutants across worker processes, each finding minimised and recorded, and a report. Run again over the same directory, it resumes.</description></item>
+///   <item><description><c>campaign-worker --out &lt;dir&gt; --shard &lt;k&gt; [--root &lt;dir&gt;]</c> is one of those workers, started by <c>campaign</c>.</description></item>
 /// </list>
 /// </summary>
 internal static class Cli {
-    private const string Usage = "usage: grob-torture check <file>... | corpus [<root>]";
+    private const string Usage = "usage: grob-torture check <file>... | corpus [<root>]"
+        + " | campaign --out <dir> --programs <n> --seed <n> [--workers <n>] [--grob <path>] [--root <dir>]"
+        + " | campaign-worker --out <dir> --shard <k> [--root <dir>]";
+
+    private static readonly CampaignServices ProcessServices = new(root => new ProcessWorkerLauncher(root), path => new ProcessGrobRunner(path));
 
     // A run past its watchdog leaves a worker that cannot be stopped, so nothing more is run.
     private const string StoppedAfterTimeout = "stopped: the last run did not end, and its worker cannot be stopped";
@@ -35,14 +42,19 @@ internal static class Cli {
     /// <param name="workingDirectory">The directory <c>corpus</c> searches upward from when no root is given.</param>
     /// <param name="oracle">Runs each program.</param>
     /// <param name="programs">The programs <c>corpus</c> runs from the seeds; <see cref="CorpusSlice.Programs"/> when omitted.</param>
+    /// <param name="services">The processes <c>campaign</c> starts; child processes and the real CLI when omitted.</param>
     internal static int Run(IReadOnlyList<string> args, TextWriter stdout, TextWriter stderr, string workingDirectory, Oracle oracle,
-            Func<IReadOnlyList<Seed>, IReadOnlyList<Seed>>? programs = null) {
+            Func<IReadOnlyList<Seed>, IReadOnlyList<Seed>>? programs = null, CampaignServices? services = null) {
         programs ??= CorpusSlice.Programs;
         try {
             return args switch {
                 ["check", _, ..] => Check(args.Skip(1), stdout, oracle),
                 ["corpus"] => Corpus(SeedCorpus.LocateRepositoryRoot(workingDirectory), stdout, oracle, programs),
                 ["corpus", string root] => Corpus(root, stdout, oracle, programs),
+                ["campaign", ..] when CampaignOptions.TryParse(args, out CampaignOptions? options) =>
+                    Campaign(options, stdout, stderr, workingDirectory, services ?? ProcessServices),
+                ["campaign-worker", ..] when WorkerOptions.TryParse(args, out WorkerOptions? options) =>
+                    Worker(options, stderr, workingDirectory),
                 _ => UsageError(stderr),
             };
         } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
@@ -98,6 +110,45 @@ internal static class Cli {
         // A slice stopped at a timeout, known or not, left programs unrun and unjudged.
         bool stopped = CorpusSlice.TimedOut(results);
         return verdict.Unknown.Count + verdict.Stale.Count + problems.Count == 0 && !stopped ? 0 : 1;
+    }
+
+    private static int Campaign(CampaignOptions options, TextWriter stdout, TextWriter stderr, string workingDirectory, CampaignServices services) {
+        // The runner starts the CLI in each script's own directory, so a relative path would not resolve.
+        string? grob = options.Grob is null ? null : Path.GetFullPath(options.Grob, workingDirectory);
+        if (grob is not null && !File.Exists(grob)) {
+            stderr.WriteLine($"error: cannot find {grob}");
+            return 3;
+        }
+
+        string root = options.Root ?? SeedCorpus.LocateRepositoryRoot(workingDirectory);
+        string knownPath = Path.Join(root, CorpusSlice.KnownFindingsPath);
+        KnownFindings? known = File.Exists(knownPath) ? KnownFindings.Parse(ReadFile(knownPath)) : null;
+        var supervisor = new CampaignSupervisor(
+            services.Launcher(root),
+            () => SeedCorpus.Load(root),
+            grob is null ? null : services.Grob(grob),
+            known, stdout, stderr);
+        return supervisor.Run(Path.GetFullPath(options.Out, workingDirectory), new CampaignSettings(options.Seed, options.Programs, options.Workers));
+    }
+
+    private static int Worker(WorkerOptions options, TextWriter stderr, string workingDirectory) {
+        var directory = new CampaignDirectory(Path.GetFullPath(options.Out, workingDirectory));
+        CampaignSettings? settings = directory.ReadSettings();
+        if (settings is null) {
+            stderr.WriteLine($"error: {options.Out} holds no campaign");
+            return 3;
+        }
+        if (options.Shard >= settings.Workers) {
+            stderr.WriteLine($"error: shard {options.Shard} is outside a campaign of {settings.Workers} workers");
+            return 3;
+        }
+
+        // The corpus is loaded only when the shard reaches its first mutant.
+        string root = options.Root ?? SeedCorpus.LocateRepositoryRoot(workingDirectory);
+        var corpus = new Lazy<IReadOnlyDictionary<string, Seed>>(() => SeedCorpus.Load(root).ToDictionary(s => s.Id, StringComparer.Ordinal));
+        string Write(PlannedProgram program) => CampaignPlan.Write(program, settings.Seed,
+            program.Kind == CampaignPlan.GeneratedKind ? new Dictionary<string, Seed>() : corpus.Value);
+        return new CampaignWorker(directory, options.Shard, Write, OracleBudget.Long, OracleBudget.Minimise).Run();
     }
 
     private static void WriteFinding(string program, Finding finding, string? row, TextWriter stdout) {

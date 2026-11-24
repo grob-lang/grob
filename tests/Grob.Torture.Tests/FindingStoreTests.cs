@@ -78,6 +78,25 @@ public sealed class FindingStoreTests : IDisposable {
     }
 
     [Fact]
+    public void All_RecordsUnderEverySignature_AreReturnedInPathOrder() {
+        var store = new FindingStore(_root);
+        store.Add(Record("p@1/x/0", signature: "Run|Exception|A"));
+        store.Add(Record("p@2/x/0", signature: "Run|Exception|A"));
+        store.Add(Record("p@1/x/0", signature: "Run|Exception|B"));
+
+        IReadOnlyList<FindingRecord> all = store.All();
+
+        Assert.Equal(3, all.Count);
+        Assert.Equal(2, all.Count(r => r.Signature == "Run|Exception|A"));
+        Assert.Equal(all, new FindingStore(_root).All());
+    }
+
+    [Fact]
+    public void All_NoRecordsYet_IsEmpty() {
+        Assert.Empty(new FindingStore(_root).All());
+    }
+
+    [Fact]
     public void Records_UnknownSignature_IsEmpty() {
         Assert.Empty(new FindingStore(_root).Records("Run|Exception|none"));
     }
