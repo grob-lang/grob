@@ -91,6 +91,28 @@ public sealed class FindingStoreTests : IDisposable {
         Assert.ThrowsAny<Exception>(() => store.Add(Record("p@1/x/0")));
     }
 
+    // A record is written beside its path and moved into place, so a duplicate leaves nothing
+    // behind and a leftover temporary file is never read as a record.
+    [Fact]
+    public void Add_NewAndDuplicateRecords_LeaveOnlyCompleteRecordFiles() {
+        var store = new FindingStore(_root);
+
+        store.Add(Record("p@1/x/0"));
+        store.Add(Record("p@1/x/0", reproducer: "second\n"));
+
+        string only = Assert.Single(Directory.GetFiles(_root, "*", SearchOption.AllDirectories));
+        Assert.Equal(store.PathFor(Signature, "p@1/x/0"), only);
+    }
+
+    [Fact]
+    public void Records_ALeftoverTemporaryFile_IsNotRead() {
+        var store = new FindingStore(_root);
+        store.Add(Record("p@1/x/0"));
+        File.WriteAllText(store.PathFor(Signature, "p@2/x/0") + ".tmp", "{ \"programId\": \"cut");
+
+        Assert.Single(store.Records(Signature));
+    }
+
     [Fact]
     public void Triage_EachFinding_IsMinimisedAndStoredWithItsOriginal() {
         var store = new FindingStore(_root);

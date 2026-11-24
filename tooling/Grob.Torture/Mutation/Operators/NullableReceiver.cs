@@ -42,12 +42,12 @@ internal sealed class NullableReceiver : IMutationOperator {
 
     // The tree has no scopes, so the receiver's own declaration cannot be told from another of the
     // same name. A type is given only when every declaration of the name gives it; a declaration
-    // that gives none, such as a loop variable, or two that disagree leave the receiver alone.
+    // that gives none, such as a loop variable, or two that disagree leave the receiver alone. A
+    // lambda's parameter gives none: the binding goes before the statement, outside its scope.
     private static string? DeclaredType(MutationContext context, string name) {
         string? found = null;
-        foreach (AstEntry entry in context.Nodes) {
-            if (!Declares(entry.Node, name)) continue;
-            string? type = TypeOf(context, entry.Node);
+        foreach (object node in context.Nodes.Select(entry => entry.Node).Where(node => Declares(node, name))) {
+            string? type = TypeOf(context, node);
             if (type is null || (found is not null && found != type)) return null;
             found = type;
         }
@@ -67,7 +67,7 @@ internal sealed class NullableReceiver : IMutationOperator {
 
     private static string? TypeOf(MutationContext context, object declaration) => declaration switch {
         VarDeclStmt v => v.AnnotatedType is { IsNullable: false } annotated ? TypeText(context, annotated) : LiteralType(v.Initializer),
-        Parameter { Type: { IsNullable: false } annotated } => TypeText(context, annotated),
+        Parameter { Type: { IsNullable: false } annotated } p when context.ParentOf(p) is not LambdaExpr => TypeText(context, annotated),
         _ => null,
     };
 

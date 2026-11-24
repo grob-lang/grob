@@ -90,15 +90,28 @@ internal sealed class MutationContext {
     // a binary ends before its operator, which sits before the right operand's start, which the
     // parser records exactly; the right operand ends where the binary does; anything else runs to
     // the next newline, comma or closing bracket at its own nesting, and stops before the block of
-    // the statement that holds it, since a loop's iterable has no closing bracket to stop at.
-    private int LastToken(Expression expression, int first) {
-        if (ParentOf(expression) is not BinaryExpr parent) return Math.Min(Tokens.ExpressionLast(first), LastBeforeBlock(expression));
+    // the statement that holds it, since a loop's iterable has no closing bracket to stop at. A
+    // range's bounds end as a binary's operands do, before the '..' or 'step' that follows them.
+    private int LastToken(Expression expression, int first) => ParentOf(expression) switch {
+        BinaryExpr parent => OperandLast(parent, expression),
+        NumericRangeExpr range => RangePartLast(range, expression),
+        _ => Math.Min(Tokens.ExpressionLast(first), LastBeforeBlock(expression)),
+    };
+
+    private int OperandLast(BinaryExpr parent, Expression expression) {
         if (!ReferenceEquals(parent.Left, expression)) {
             int parentFirst = FirstToken(parent);
             return parentFirst < 0 ? -1 : LastToken(parent, parentFirst);
         }
         int rightFirst = FirstToken(parent.Right);
         return rightFirst - 2;
+    }
+
+    private int RangePartLast(NumericRangeExpr range, Expression expression) {
+        if (ReferenceEquals(range.Start, expression)) return FirstToken(range.End) - 2;
+        if (ReferenceEquals(range.End, expression) && range.Step is not null) return FirstToken(range.Step) - 2;
+        int rangeFirst = FirstToken(range);
+        return rangeFirst < 0 ? -1 : LastToken(range, rangeFirst);
     }
 
     // The token before the block that follows an expression in its statement, or int.MaxValue

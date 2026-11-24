@@ -139,6 +139,29 @@ public sealed class MutationOperatorTests {
         Assert.Equal(["x := (2 - 3) - 1\n", "x := 1 - (3 - 2)\n"], Mutants(new SwapOperands(), "x := 1 - (2 - 3)\n"));
     }
 
+    // A range's bounds are its own children, not a binary's, so a binary bound ends before the
+    // range's '..' or 'step' and the swap leaves the range as it was.
+    [Fact]
+    public void SwapOperands_BinaryRangeStart_EndsBeforeTheRangeOperator() {
+        Assert.Equal(
+            ["for i in 2 + 1..4 {\n    print(i)\n}\n"],
+            Mutants(new SwapOperands(), "for i in 1 + 2..4 {\n    print(i)\n}\n"));
+    }
+
+    [Fact]
+    public void SwapOperands_BinaryRangeEndBeforeAStep_EndsBeforeTheStep() {
+        Assert.Equal(
+            ["for i in 0..2 + 1 step 3 {\n    print(i)\n}\n"],
+            Mutants(new SwapOperands(), "for i in 0..1 + 2 step 3 {\n    print(i)\n}\n"));
+    }
+
+    [Fact]
+    public void SwapOperands_BinaryRangeStep_RunsToTheEndOfTheRange() {
+        Assert.Equal(
+            ["for i in 0..9 step 2 + 1 {\n    print(i)\n}\n"],
+            Mutants(new SwapOperands(), "for i in 0..9 step 1 + 2 {\n    print(i)\n}\n"));
+    }
+
     [Fact]
     public void SwapOperands_LoopIterable_StopsBeforeTheLoopBody() {
         Assert.Equal(
@@ -319,6 +342,14 @@ public sealed class MutationOperatorTests {
     [InlineData("try {\n    g()\n} catch (s: IoError) {\n    g()\n}\n")]
     public void NullableReceiver_NameAlsoDeclaredWithNoTypeToRead_HasNoCandidate(string otherDeclaration) {
         Assert.Empty(Mutants(new NullableReceiver(), otherDeclaration + "s := \"ab\"\nprint(s.upper())\n"));
+    }
+
+    // The binding goes before the statement, where a lambda's parameter is not in scope, so a
+    // name a lambda declares is never given a type, even beside an outer binding of that type.
+    [Fact]
+    public void NullableReceiver_NameALambdaParameterDeclares_HasNoCandidate() {
+        Assert.Empty(Mutants(new NullableReceiver(),
+            "s := \"ab\"\nf := (s: string) => s.upper()\nprint(s.upper())\n"));
     }
 
     [Fact]
