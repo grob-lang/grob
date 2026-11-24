@@ -8,6 +8,7 @@ namespace Grob.Torture.Tests;
 /// </summary>
 public sealed class RawLiteralExtractorTests {
     private const string Q = "\"\"\"";
+    private const string Q4 = "\"\"\"\"";
 
     [Fact]
     public void Extract_IndentedLiteral_StripsTheClosersIndentation() {
@@ -32,6 +33,22 @@ public sealed class RawLiteralExtractorTests {
         string cs = $"AssertEmits({Q}x := 1{Q}, {Q}\n    Constant 1\n    {Q});\n";
 
         Assert.Equal(["Constant 1"], RawLiteralExtractor.Extract(cs));
+    }
+
+    // A four-quote literal may hold a run of three quotes, which is its content and neither
+    // closes it nor opens another, so the runs are matched by width, not counted.
+    [Fact]
+    public void Extract_FourQuoteOneLineLiteralHoldingThreeQuotesAndClosingTheLine_IsNotAnOpener() {
+        string cs = $"Console.WriteLine({Q4}a{Q}b{Q4}\n);\nconst string source = {Q4}\n    print(1)\n    {Q4};\n";
+
+        Assert.Equal(["print(1)"], RawLiteralExtractor.Extract(cs));
+    }
+
+    [Fact]
+    public void Extract_OpenerAfterAFourQuoteLiteralHoldingThreeQuotes_IsStillAnOpener() {
+        string cs = $"AssertEmits({Q4}a {Q} b{Q4}, {Q}\n    print(1)\n    {Q});\n";
+
+        Assert.Equal(["print(1)"], RawLiteralExtractor.Extract(cs));
     }
 
     [Fact]
