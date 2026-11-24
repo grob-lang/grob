@@ -52,6 +52,11 @@ public sealed class ReplCommand {
     private readonly TextReader _input;
     private readonly TextWriter _stdout;
     private readonly TextWriter _stderr;
+    private readonly bool _verbose;
+    private readonly Action<PipelinePhase>? _phaseHook;
+
+    // True while the session prompts for and reads a line, so a failure there ends the session.
+    private bool _reading;
 
     // The VM is persistent across entries so that globals accumulate.
     // Stack.Reset() is called by vm.Run() at the start of each chunk.
@@ -97,23 +102,44 @@ public sealed class ReplCommand {
     /// Selects <c>log.*</c>'s initial threshold (<c>--verbose</c> on the CLI): <c>true</c>
     /// starts at <c>LogLevel.Debug</c>, <c>false</c> (the default) at <c>LogLevel.Info</c>.
     /// </param>
-    public ReplCommand(TextReader input, TextWriter stdout, TextWriter stderr, bool verbose = false) {
+    public ReplCommand(TextReader input, TextWriter stdout, TextWriter stderr, bool verbose = false)
+        : this(input, stdout, stderr, verbose, HostCapabilities.System) { }
+
+    /// <summary>
+    /// The capabilities seam, as <see cref="RunCommand"/> has one (D-428 Decision 3): the session's
+    /// catalogue is built over the capabilities <paramref name="capabilities"/> returns, called once.
+    /// </summary>
+    /// <param name="input">Source of user input.</param>
+    /// <param name="stdout">Writer for programme output and auto-printed values.</param>
+    /// <param name="stderr">Writer for diagnostics and error messages.</param>
+    /// <param name="verbose">Selects <c>log.*</c>'s initial threshold, and adds an exception's full text to an E9001 report.</param>
+    /// <param name="capabilities">Builds the random source, environment and clock for the session.</param>
+    /// <param name="phaseHook">
+    /// Called as each phase of an entry starts (gate report §2.5). A test seam: a hook that throws
+    /// makes that phase fail on demand. <see langword="null"/> in production.
+    /// </param>
+    internal ReplCommand(TextReader input, TextWriter stdout, TextWriter stderr, bool verbose,
+            Func<HostCapabilities> capabilities, Action<PipelinePhase>? phaseHook = null) {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(stdout);
         ArgumentNullException.ThrowIfNull(stderr);
+        ArgumentNullException.ThrowIfNull(capabilities);
         _input = input;
         _stdout = stdout;
         _stderr = stderr;
+        _verbose = verbose;
+        _phaseHook = phaseHook;
         var streams = new TwoWriterStreams(stdout, stderr, input);
-        _catalogue = PluginRegistration.BuildCatalogue(streams, verbose);
+        _catalogue = PluginRegistration.BuildCatalogue(streams, verbose, capabilities());
         _vm = new VirtualMachine(streams, _catalogue);
         _stdlibGlobalNames = [.. _catalogue.Globals.Keys];
     }
 
     /// <summary>
-    /// Runs the REPL loop until <c>exit</c> is typed or EOF is reached.
+    /// Runs the REPL loop until <c>exit</c> is typed, EOF is reached or a script calls
+    /// <c>exit(n)</c>.
     /// </summary>
-    /// <returns>Always returns <c>0</c>.</returns>
+    /// <returns><c>0</c>, or <c>n</c> when an entry called <c>exit(n)</c>.</returns>
     public int Run() {
         string version = ParseVersion(typeof(ReplCommand).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
@@ -122,21 +148,59 @@ public sealed class ReplCommand {
         _stdout.WriteLine();
 
         while (true) {
+            int? exitCode = ReadAndProcessEntry();
+            if (exitCode is not null) return exitCode.Value;
+        }
+    }
+
+    /// <summary>
+    /// Reads and runs one entry. This is the REPL's outermost frame for an entry, and the one
+    /// place it catches every exception: an internal error in one entry is reported as E9001 and
+    /// the session carries on, since a REPL that dies on one bad entry loses the user's session
+    /// (ruling Q4; the one sanctioned reading of the "outermost CLI entry point" rule in
+    /// <c>src/CLAUDE.md</c>). A script's exit and a Grob runtime error keep their own paths and
+    /// are caught first. A failure to write the prompt or read the input is reported once and ends
+    /// the session.
+    /// </summary>
+    /// <returns><see langword="null"/> to read the next entry, or the session's exit code.</returns>
+    private int? ReadAndProcessEntry() {
+        var phase = new PhaseTracker(_phaseHook, PipelinePhase.Lexing);
+        try {
             string? entry = ReadEntry();
-            if (entry is null) break;   // EOF
+            if (entry is null) return ExitCodes.Success;   // EOF
 
             string trimmed = entry.Trim();
-            if (trimmed.Length == 0) continue;
-            if (trimmed == "exit") break;
+            if (trimmed.Length == 0) return null;
+            if (trimmed == "exit") return ExitCodes.Success;
             if (trimmed == "help") {
                 PrintHelp();
-                continue;
+                return null;
             }
 
-            ProcessEntry(entry);
+            ProcessEntry(entry, phase);
+            return null;
+        } catch (GrobExitException exitEx) {
+            return exitEx.Code;
+        } catch (GrobRuntimeException runtimeEx) {
+            DiagnosticFormatter.WriteRuntime(runtimeEx, ReplSource, _stderr);
+            return null;     // report and continue — the REPL session is not over
+        } catch (Exception ex) {
+            InternalErrorReport.Write(_stderr, ReplSource, phase.Current, ex, _verbose);
+            // A failed prompt or read would fail again on the same streams, so the session ends; a
+            // failure inside an entry that was read leaves the session for the next one.
+            return _reading ? InternalErrorReport.ExitCodeFor(phase.Current) : null;
         }
+    }
 
-        return 0;
+    // Writes the prompt and reads one physical line, noting while it does, so that a failure of the
+    // session's own streams is told apart from a failure in the entry it was reading.
+    private string? ReadLine(string prompt) {
+        _reading = true;
+        _stdout.Write(prompt);
+        _stdout.Flush();
+        string? line = _input.ReadLine();
+        _reading = false;
+        return line;
     }
 
     // -----------------------------------------------------------------------
@@ -149,19 +213,14 @@ public sealed class ReplCommand {
     /// Returns <c>null</c> on EOF.
     /// </summary>
     private string? ReadEntry() {
-        _stdout.Write("G> ");
-        _stdout.Flush();
-
-        string? first = _input.ReadLine();
+        string? first = ReadLine("G> ");
         if (first is null) return null;
 
         var sb = new StringBuilder(first);
 
         // Continue reading as long as the accumulated source has unbalanced brackets.
         while (IsIncompleteSource(sb.ToString())) {
-            _stdout.Write("..> ");
-            _stdout.Flush();
-            string? more = _input.ReadLine();
+            string? more = ReadLine("..> ");
             if (more is null) break;    // EOF mid-block — let the compiler diagnose it
             sb.Append('\n');
             sb.Append(more);
@@ -215,7 +274,7 @@ public sealed class ReplCommand {
     /// Compiles and executes one REPL entry against the persistent session scope,
     /// auto-printing the result when the entry is a bare expression.
     /// </summary>
-    private void ProcessEntry(string entrySrc) {
+    private void ProcessEntry(string entrySrc, PhaseTracker phase) {
         // 1. Detect bare-expression before building the combined source so the
         //    detection sees only the user's entry, not the synthesised preamble.
         bool autoPrint = IsBareExpression(entrySrc);
@@ -229,8 +288,11 @@ public sealed class ReplCommand {
 
         // 3. Full pipeline.
         var bag = new DiagnosticBag();
+        phase.Enter(PipelinePhase.Lexing);
         IReadOnlyList<Token> tokens = Lexer.Scan(fullSrc, bag, ReplSource);
+        phase.Enter(PipelinePhase.Parsing);
         CompilationUnit unit = Parser.Parse(tokens, bag);
+        phase.Enter(PipelinePhase.TypeChecking);
         new TypeChecker(bag, _catalogue).Check(unit);
 
         if (bag.HasErrors) {
@@ -238,6 +300,7 @@ public sealed class ReplCommand {
             return;
         }
 
+        phase.Enter(PipelinePhase.Compiling);
         Chunk chunk = GrobCompiler.Compile(unit, bag);
 
         if (bag.HasErrors) {
@@ -255,13 +318,11 @@ public sealed class ReplCommand {
             chunk.PatchByte(chunk.Count - 2, (byte)OpCode.Print);
         }
 
-        // 5. Execute against the persistent VM.
-        try {
-            _vm.Run(chunk);
-        } catch (GrobRuntimeException runtimeEx) {
-            DiagnosticFormatter.WriteRuntime(runtimeEx, ReplSource, _stderr);
-            return;     // report and continue — the REPL session is not over
-        }
+        // 5. Execute against the persistent VM. A runtime error, a script's exit and an internal
+        //    error propagate to ReadAndProcessEntry, which reports each its own way; none reaches
+        //    step 6, so a failed entry registers no declarations.
+        phase.Enter(PipelinePhase.Running);
+        _vm.Run(chunk);
 
         // 6. Register newly declared globals so the preamble for the next
         //    entry carries the right type annotations (especially for nil-

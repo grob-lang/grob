@@ -75,7 +75,7 @@ public sealed class Sprint8IncrementATests {
     public void NamespaceUsedAsValue_BindingTarget_IsCompileErrorE1004() {
         (string stdout, string stderr, int exitCode) = RunSource("result := math\nprint(result)\n");
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E1004", stderr);
     }
@@ -84,7 +84,7 @@ public sealed class Sprint8IncrementATests {
     public void NamespaceUsedAsValue_CallArgument_IsCompileErrorE1004() {
         (string stdout, string stderr, int exitCode) = RunSource("print(math)\n");
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E1004", stderr);
     }
@@ -93,7 +93,7 @@ public sealed class Sprint8IncrementATests {
     public void UnknownNamespaceMember_IsCompileErrorE1003() {
         (string stdout, string stderr, int exitCode) = RunSource("print(math.nope())\n");
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Contains("E1003", stderr);
     }

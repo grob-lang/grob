@@ -57,20 +57,20 @@ public sealed class CommandLineRunnerTests {
     }
 
     [Fact]
-    public void Run_WithoutAPath_ReportsMissingPath_ExitsOne() {
+    public void Run_WithoutAPath_ReportsMissingPath_ExitsThree() {
         (string stdout, string stderr, int exitCode) = Run(["run"]);
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(3, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Equal(
             "error: missing file path" + NL + "usage: grob run <file> [--verbose]" + NL, stderr);
     }
 
     [Fact]
-    public void UnknownCommand_ReportsUsage_ExitsOne() {
+    public void UnknownCommand_ReportsUsage_ExitsThree() {
         (string stdout, string stderr, int exitCode) = Run(["frobnicate"]);
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(3, exitCode);
         Assert.Equal(string.Empty, stdout);
         Assert.Equal("error: unknown command" + NL + "usage: grob run <file>" + NL, stderr);
     }

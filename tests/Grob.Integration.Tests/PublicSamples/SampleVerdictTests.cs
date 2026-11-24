@@ -43,8 +43,8 @@ public sealed class SampleVerdictTests {
     public void Bare_ReportsAnInternalError_Fails() {
         string? failure = Check(Bare, InternalErrorSource);
 
-        Assert.NotNull(failure);
-        Assert.Contains("internal error", failure);
+        // The CLI reports it as E9001 (D-451 Decision 2), which the verdict reads as a diagnostic.
+        Assert.Equal("writes E9001", failure);
     }
 
     [Fact]

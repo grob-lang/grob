@@ -1,0 +1,49 @@
+{
+  "entries": [
+    {
+      "row": "R-66",
+      "signature": "Run|Exception|GrobInternalException: opcode GetProperty '…' on receiver of kind String not yet implemented.",
+      "programs": [
+        "tests/Grob.Compiler.Tests/CompilerCallEmissionCharacterisationTests.cs@2d84c7e9f6010d9e",
+        "tests/Grob.Compiler.Tests/CompilerCallEmissionCharacterisationTests.cs@b154e16df9df1f1a",
+        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@daa3a397b6beffed",
+        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@293ffe5312eace62"
+      ]
+    },
+    {
+      "row": "R-66",
+      "signature": "Run|Exception|GrobInternalException: opcode GetProperty '…' on receiver of kind Int not yet implemented.",
+      "programs": [
+        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@ceb7feae79ac9828"
+      ]
+    },
+    {
+      "row": "R-66",
+      "signature": "Run|Exception|GrobInternalException: opcode GetProperty '…' on receiver of kind Float not yet implemented.",
+      "programs": [
+        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@78da76698845584e"
+      ]
+    },
+    {
+      "row": "R-66",
+      "signature": "Run|Exception|GrobInternalException: opcode GetProperty '…' on receiver of kind Bool not yet implemented.",
+      "programs": [
+        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@2000b56d861dc4da"
+      ]
+    },
+    {
+      "row": "R-69",
+      "signature": "Run|Exception|TimeZoneNotFoundException: The time zone ID '…' was not found on the local computer.",
+      "programs": [
+        "tests/fixtures/native-probes/date-members.clean.grob@65b6ac40335c6a12"
+      ]
+    },
+    {
+      "row": "R-71",
+      "signature": "Check|Sentinel|no-declaration|AssignmentStmt.Target/MemberAccessExpr.Target|E0206",
+      "programs": [
+        "tests/Grob.Compiler.Tests/CompilerFieldAccessTests.cs@6137ef83a21b1136"
+      ]
+    }
+  ]
+}

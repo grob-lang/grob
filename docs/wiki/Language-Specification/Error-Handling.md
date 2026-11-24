@@ -79,7 +79,13 @@ IoError on line 7:
 | Normal script completion | `0` |
 | `exit()` with no argument | `0` |
 | `exit(n)` | `n` |
-| Unhandled `GrobError` | `1` |
+| Unhandled `GrobError`, or any other runtime error | `1` |
+| Type error or syntax error: the script did not run | `2` |
+| Usage error: an unknown command, a missing path or a file that cannot be read | `3` |
+
+An internal error in Grob itself is reported as `E9001` with a request to report
+the bug, and no host stack trace. It exits `2` if it happened before the script
+ran and `1` if the script was running. `--verbose` adds the exception's full text.
 
 See also: [Functions](Functions.md), [Expressions](Expressions.md),
 [Error Messages](../CLI/Error-Messages.md)

@@ -22,10 +22,13 @@ namespace Grob.Cli;
 /// </list>
 /// </para>
 /// <para>
-/// Exit-code conventions:
+/// Exit-code conventions (<see cref="ExitCodes"/>; requirements §8):
 /// <list type="bullet">
 ///   <item><description><c>0</c> — clean run.</description></item>
-///   <item><description>Non-zero — compile-time or runtime error; or <c>exit(n)</c> from the script.</description></item>
+///   <item><description><c>1</c> — a Grob runtime error, or an internal error while the script was running.</description></item>
+///   <item><description><c>2</c> — a compile-time diagnostic, or an internal error before the script ran.</description></item>
+///   <item><description><c>3</c> — a usage error, including a file that cannot be read.</description></item>
+///   <item><description><c>n</c> — the code the script passed to <c>exit(n)</c>.</description></item>
 /// </list>
 /// </para>
 /// </remarks>
@@ -35,6 +38,7 @@ public sealed class RunCommand {
     private readonly TextReader _stdin;
     private readonly bool _verbose;
     private readonly Func<HostCapabilities> _capabilities;
+    private readonly Action<PipelinePhase>? _phaseHook;
 
     /// <summary>
     /// Initialises a <see cref="RunCommand"/> that writes program output to
@@ -67,8 +71,13 @@ public sealed class RunCommand {
     /// <param name="stdin">Source for <c>input()</c>; <see langword="null"/> means a closed stream.</param>
     /// <param name="verbose">Selects <c>log.*</c>'s initial threshold.</param>
     /// <param name="capabilities">Builds the random source, environment and clock for one run.</param>
+    /// <param name="phaseHook">
+    /// Called as each phase of a run starts (gate report §2.5). A test seam: a hook that throws
+    /// makes that phase fail on demand, so the E9001 report is tested without an open defect's
+    /// reproducer. <see langword="null"/> in production.
+    /// </param>
     internal RunCommand(TextWriter stdout, TextWriter stderr, TextReader? stdin, bool verbose,
-            Func<HostCapabilities> capabilities) {
+            Func<HostCapabilities> capabilities, Action<PipelinePhase>? phaseHook = null) {
         ArgumentNullException.ThrowIfNull(stdout);
         ArgumentNullException.ThrowIfNull(stderr);
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -77,91 +86,94 @@ public sealed class RunCommand {
         _stdin = stdin ?? TextReader.Null;
         _verbose = verbose;
         _capabilities = capabilities;
+        _phaseHook = phaseHook;
     }
 
     /// <summary>
     /// Compiles and executes the <c>.grob</c> file at <paramref name="filePath"/>.
     /// </summary>
     /// <param name="filePath">Absolute or relative path to the script file.</param>
-    /// <returns>
-    /// Process exit code: <c>0</c> on success; non-zero on any error; or the
-    /// code passed to <c>exit(n)</c> by the script.
-    /// </returns>
+    /// <returns>The process exit code, as the class remarks list.</returns>
     public int Run(string filePath) {
         ArgumentNullException.ThrowIfNull(filePath);
 
-        string source;
+        if (!TryReadSource(filePath, out string source)) {
+            return ExitCodes.UsageError;
+        }
+
+        // The one place that wraps the whole pipeline, from the catalogue build to the end of the
+        // run: the first frame that owns every phase, and the only one that knows which phase
+        // failed. src/CLAUDE.md allows catching Exception only at the outermost CLI entry point,
+        // and this is it for `grob run`. A script's exit and a Grob runtime error keep their own
+        // paths and are caught first, so the general clause cannot swallow either.
+        var phase = new PhaseTracker(_phaseHook);
         try {
-            source = File.ReadAllText(filePath);
-        } catch (FileNotFoundException) {
-            _stderr.WriteLine($"error: file not found: {filePath}");
-            return 1;
-        } catch (DirectoryNotFoundException) {
-            _stderr.WriteLine($"error: file not found: {filePath}");
-            return 1;
-        } catch (UnauthorizedAccessException) {
-            _stderr.WriteLine($"error: cannot read file (access denied): {filePath}");
-            return 1;
-        } catch (IOException ex) {
-            _stderr.WriteLine($"error: cannot read file: {ex.Message}");
-            return 1;
-        }
-
-        // One catalogue per run, shared by the type checker and the VM (D-426 Decision 2).
-        // Building it before the check is safe: no plugin touches a capability at
-        // registration (gate report §1.3), so a script that fails to type-check costs no
-        // clock read, environment read or random draw.
-        var streams = new TwoWriterStreams(_stdout, _stderr, _stdin);
-        NativeCatalogue catalogue = PluginRegistration.BuildCatalogue(streams, _verbose, _capabilities());
-
-        var bag = new DiagnosticBag();
-        IReadOnlyList<Token> tokens = Lexer.Scan(source, bag, filePath);
-        CompilationUnit unit = Parser.Parse(tokens, bag);
-        new TypeChecker(bag, catalogue).Check(unit);
-
-        if (bag.HasErrors) {
-            DiagnosticFormatter.Write(bag, _stderr);
-            return 1;
-        }
-
-        Chunk chunk = GrobCompiler.Compile(unit, bag);
-
-        if (bag.HasErrors) {
-            DiagnosticFormatter.Write(bag, _stderr);
-            return 1;
-        }
-
-        try {
-            var vm = new VirtualMachine(streams, catalogue);
-            vm.Run(chunk);
-            return 0;
+            return Execute(filePath, source, phase);
         } catch (GrobExitException exitEx) {
             return exitEx.Code;
         } catch (GrobRuntimeException runtimeEx) {
             DiagnosticFormatter.WriteRuntime(runtimeEx, filePath, _stderr);
-            return 1;
-        } catch (GrobInternalException internalEx) {
-            // Internal errors indicate a compiler or VM invariant violation.
-            // Report as a user-facing message without exposing the host stack
-            // trace (D-039). Include the message for diagnostics.
-            WriteInternalError(internalEx);
-            return 1;
+            return ExitCodes.RuntimeError;
+        } catch (Exception ex) {
+            InternalErrorReport.Write(_stderr, filePath, phase.Current, ex, _verbose);
+            return InternalErrorReport.ExitCodeFor(phase.Current);
         }
     }
 
-    /// <summary>
-    /// Writes a user-facing message for an internal invariant violation.
-    /// </summary>
-    /// <remarks>
-    /// This path is unreachable under correct compiler and VM operation —
-    /// all reachable invariant violations are prevented by the type checker
-    /// before this point. Excluded from coverage measurement.
-    /// </remarks>
-    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(
-        Justification = "Defensive handler for unreachable invariant violations.")]
-    private void WriteInternalError(GrobInternalException ex) {
-        _stderr.WriteLine($"error: internal error: {ex.Message}");
-        _stderr.WriteLine("Please report this as a bug at https://github.com/grob-lang/grob/issues");
+    // A file that cannot be read is a usage error: the caller named a path the CLI cannot use,
+    // and nothing was compiled.
+    private bool TryReadSource(string filePath, out string source) {
+        source = string.Empty;
+        try {
+            source = File.ReadAllText(filePath);
+            return true;
+        } catch (FileNotFoundException) {
+            _stderr.WriteLine($"error: file not found: {filePath}");
+        } catch (DirectoryNotFoundException) {
+            _stderr.WriteLine($"error: file not found: {filePath}");
+        } catch (UnauthorizedAccessException) {
+            _stderr.WriteLine($"error: cannot read file (access denied): {filePath}");
+        } catch (IOException ex) {
+            _stderr.WriteLine($"error: cannot read file: {ex.Message}");
+        } catch (ArgumentException) {
+            // A path the file system refuses outright, such as one holding a null character.
+            _stderr.WriteLine($"error: invalid file path: {filePath}");
+        }
+        return false;
     }
 
+    private int Execute(string filePath, string source, PhaseTracker phase) {
+        // One catalogue per run, shared by the type checker and the VM (D-426 Decision 2).
+        // Building it before the check is safe: no plugin touches a capability at
+        // registration (gate report §1.3), so a script that fails to type-check costs no
+        // clock read, environment read or random draw.
+        phase.Enter(PipelinePhase.LoadingStandardLibrary);
+        var streams = new TwoWriterStreams(_stdout, _stderr, _stdin);
+        NativeCatalogue catalogue = PluginRegistration.BuildCatalogue(streams, _verbose, _capabilities());
+
+        var bag = new DiagnosticBag();
+        phase.Enter(PipelinePhase.Lexing);
+        IReadOnlyList<Token> tokens = Lexer.Scan(source, bag, filePath);
+        phase.Enter(PipelinePhase.Parsing);
+        CompilationUnit unit = Parser.Parse(tokens, bag);
+        phase.Enter(PipelinePhase.TypeChecking);
+        new TypeChecker(bag, catalogue).Check(unit);
+
+        if (bag.HasErrors) {
+            DiagnosticFormatter.Write(bag, _stderr);
+            return ExitCodes.CompileError;
+        }
+
+        phase.Enter(PipelinePhase.Compiling);
+        Chunk chunk = GrobCompiler.Compile(unit, bag);
+
+        if (bag.HasErrors) {
+            DiagnosticFormatter.Write(bag, _stderr);
+            return ExitCodes.CompileError;
+        }
+
+        phase.Enter(PipelinePhase.Running);
+        new VirtualMachine(streams, catalogue).Run(chunk);
+        return ExitCodes.Success;
+    }
 }
