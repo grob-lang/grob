@@ -4,7 +4,8 @@ namespace Grob.Torture;
 
 /// <summary>
 /// Extracts the multi-line C# raw string literals from a C# source file, for use as seeds (gate
-/// report §1.3). An opener is three or more quotes at the end of a line; its closer is the first
+/// report §1.3). An opener is three or more quotes at the end of a line that do not close a
+/// one-line literal opened earlier on it; its closer is the first
 /// later line whose first non-blank characters are the same number of quotes and no more. The
 /// closer's indentation is removed from every line, which is C#'s own rule. Interpolated
 /// literals (<c>$"""</c>) are skipped, since their holes are C# values, not Grob. Roslyn would be
@@ -26,9 +27,16 @@ internal static partial class RawLiteralExtractor {
         return literals;
     }
 
+    [GeneratedRegex(@"""{3,}")]
+    private static partial Regex QuoteRun();
+
     // Returns the last line consumed: the closer when a literal opens here, else the line itself.
     private static int ExtractAt(string[] lines, int i, List<string> literals) {
-        if (OpenerPattern().Match(lines[i]) is not { Success: true } open || IsInLineComment(lines[i], open.Index)) return i;
+        if (OpenerPattern().Match(lines[i]) is not { Success: true } open
+                || IsInLineComment(lines[i], open.Index)
+                || ClosesALiteralOnItsLine(lines[i], open.Index)) {
+            return i;
+        }
 
         string quotes = open.Groups["quotes"].Value;
         int close = FindCloser(lines, i + 1, quotes);
@@ -45,6 +53,11 @@ internal static partial class RawLiteralExtractor {
         int comment = line.IndexOf("//", StringComparison.Ordinal);
         return comment >= 0 && comment < index;
     }
+
+    // A one-line raw literal can end a line, its statement going on below, and then its closing
+    // quotes match the opener pattern. Runs of three or more quotes before them on the line pair
+    // off as openers and closers, so an odd number of runs means these quotes close one.
+    private static bool ClosesALiteralOnItsLine(string line, int index) => QuoteRun().Count(line[..index]) % 2 == 1;
 
     private static int FindCloser(string[] lines, int from, string quotes) {
         for (int j = from; j < lines.Length; j++) {

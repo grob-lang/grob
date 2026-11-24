@@ -47,10 +47,10 @@ internal static class DiagnosticAudit {
         end.Line > lengths.Length || (end.Line == lengths.Length && end.Column > lengths[^1] + 1);
 
     /// <summary>
-    /// The length of each line of <paramref name="source"/>, a CRLF ending's <c>'\r'</c> not
-    /// counted. A source ending in a newline has an empty last line, so end of file is the start
-    /// of that line.
+    /// The length of each line of <paramref name="source"/>, measured as the lexer counts columns:
+    /// a <c>'\r'</c> is whitespace that takes a column, so a CRLF line's newline token sits one
+    /// column after it. A source ending in a newline has an empty last line, so end of file is the
+    /// start of that line.
     /// </summary>
-    public static int[] LineLengths(string source) =>
-        [.. source.Split('\n').Select(line => line.EndsWith('\r') ? line.Length - 1 : line.Length)];
+    public static int[] LineLengths(string source) => [.. source.Split('\n').Select(line => line.Length)];
 }

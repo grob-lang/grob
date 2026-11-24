@@ -60,7 +60,8 @@ internal class CommandLineRunner {
     }
 
     private int RunScript(string[] positional, bool verbose) {
-        if (positional.Length < 2) {
+        // An empty path names no file, so it is a missing one, not a path to try to read.
+        if (positional.Length < 2 || string.IsNullOrWhiteSpace(positional[1])) {
             return UsageError("error: missing file path", "usage: grob run <file> [--verbose]");
         }
         return new RunCommand(_stdout, _stderr, _stdin, verbose).Run(positional[1]);

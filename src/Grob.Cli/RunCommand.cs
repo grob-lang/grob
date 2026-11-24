@@ -135,6 +135,9 @@ public sealed class RunCommand {
             _stderr.WriteLine($"error: cannot read file (access denied): {filePath}");
         } catch (IOException ex) {
             _stderr.WriteLine($"error: cannot read file: {ex.Message}");
+        } catch (ArgumentException) {
+            // A path the file system refuses outright, such as one holding a null character.
+            _stderr.WriteLine($"error: invalid file path: {filePath}");
         }
         return false;
     }

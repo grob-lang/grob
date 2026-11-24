@@ -96,6 +96,27 @@ public sealed class CliTests : IDisposable {
         }
     }
 
+    // A known timeout still stops the slice, and the programs after it are neither run nor judged,
+    // so the run is not a success even though every finding it made is known.
+    [Fact]
+    public void Corpus_RunStoppedAtAKnownTimeout_ExitsOne() {
+        string cleanProgram = $"tests/fixtures/clean.grob@{SeedCorpus.Fnv1a64("print(1)\n"):x16}";
+        MakeRepository($$"""{ "row": "R-73", "signature": "Check|Timeout|watchdog", "programs": ["{{cleanProgram}}"] }""");
+        using var release = new ManualResetEventSlim();
+        new Oracle(OracleBudget.Ci).Run("print(0)\n");
+
+        try {
+            int exit = Cli.Run(["corpus", _directory], _out, _error, _directory, StallingOracle(release));
+
+            Assert.Equal(1, exit);
+            string text = _out.ToString().ReplaceLineEndings("\n");
+            Assert.Contains($"known    R-73  {cleanProgram}  Check|Timeout|watchdog\n", text, StringComparison.Ordinal);
+            Assert.Contains("stopped: the last run did not end, and its worker cannot be stopped\n", text, StringComparison.Ordinal);
+        } finally {
+            release.Set();
+        }
+    }
+
     [Fact]
     public void Check_MissingFile_IsUsageErrorExitThree() {
         string path = Path.Join(_directory, "absent.grob");

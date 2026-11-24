@@ -84,7 +84,9 @@ internal static class Cli {
         foreach (string stale in verdict.Stale) stdout.WriteLine($"stale    {stale}");
         foreach (string problem in problems) stdout.WriteLine($"problem  {problem}");
 
-        return verdict.Unknown.Count + verdict.Stale.Count + problems.Count == 0 ? 0 : 1;
+        // A slice stopped at a timeout, known or not, left programs unrun and unjudged.
+        bool stopped = CorpusSlice.TimedOut(results);
+        return verdict.Unknown.Count + verdict.Stale.Count + problems.Count == 0 && !stopped ? 0 : 1;
     }
 
     private static void WriteFinding(string program, Finding finding, string? row, TextWriter stdout) {

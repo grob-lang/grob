@@ -55,6 +55,9 @@ public sealed class ReplCommand {
     private readonly bool _verbose;
     private readonly Action<PipelinePhase>? _phaseHook;
 
+    // True while a line is being read from the input, so a failure there ends the session.
+    private bool _reading;
+
     // The VM is persistent across entries so that globals accumulate.
     // Stack.Reset() is called by vm.Run() at the start of each chunk.
     private readonly VirtualMachine _vm;
@@ -156,7 +159,7 @@ public sealed class ReplCommand {
     /// the session carries on, since a REPL that dies on one bad entry loses the user's session
     /// (ruling Q4; the one sanctioned reading of the "outermost CLI entry point" rule in
     /// <c>src/CLAUDE.md</c>). A script's exit and a Grob runtime error keep their own paths and
-    /// are caught first.
+    /// are caught first. A failure of the input itself is reported once and ends the session.
     /// </summary>
     /// <returns><see langword="null"/> to read the next entry, or the session's exit code.</returns>
     private int? ReadAndProcessEntry() {
@@ -182,8 +185,19 @@ public sealed class ReplCommand {
             return null;     // report and continue — the REPL session is not over
         } catch (Exception ex) {
             InternalErrorReport.Write(_stderr, ReplSource, phase.Current, ex, _verbose);
-            return null;
+            // A failed read would fail again on the same reader, so the session ends; a failure
+            // inside an entry that was read leaves the session for the next one.
+            return _reading ? InternalErrorReport.ExitCodeFor(phase.Current) : null;
         }
+    }
+
+    // Reads one physical line, noting while it reads, so that a failure of the input itself is
+    // told apart from a failure in the entry it was reading.
+    private string? ReadLine() {
+        _reading = true;
+        string? line = _input.ReadLine();
+        _reading = false;
+        return line;
     }
 
     // -----------------------------------------------------------------------
@@ -199,7 +213,7 @@ public sealed class ReplCommand {
         _stdout.Write("G> ");
         _stdout.Flush();
 
-        string? first = _input.ReadLine();
+        string? first = ReadLine();
         if (first is null) return null;
 
         var sb = new StringBuilder(first);
@@ -208,7 +222,7 @@ public sealed class ReplCommand {
         while (IsIncompleteSource(sb.ToString())) {
             _stdout.Write("..> ");
             _stdout.Flush();
-            string? more = _input.ReadLine();
+            string? more = ReadLine();
             if (more is null) break;    // EOF mid-block — let the compiler diagnose it
             sb.Append('\n');
             sb.Append(more);

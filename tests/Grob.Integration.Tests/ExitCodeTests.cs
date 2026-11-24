@@ -41,7 +41,7 @@ public sealed class ExitCodeTests {
         (_, string stderr, int exitCode) = RunScript("a := 1\nb := 0\nprint(a / b)\n");
 
         Assert.Equal(1, exitCode);
-        Assert.StartsWith("error[E5", stderr, StringComparison.Ordinal);
+        Assert.StartsWith("error[E5002]", stderr, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -84,6 +84,26 @@ public sealed class ExitCodeTests {
         (_, _, int exitCode) = Run(["run"]);
 
         Assert.Equal(3, exitCode);
+    }
+
+    // An empty path is no path: File.ReadAllText refuses it with an ArgumentException, which must
+    // not escape as a crash.
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void RunWithAnEmptyPath_ExitsThreeAsAMissingPath(string path) {
+        (_, string stderr, int exitCode) = Run(["run", path]);
+
+        Assert.Equal(3, exitCode);
+        Assert.StartsWith($"error: missing file path{Environment.NewLine}", stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RunOfAPathTheFileSystemRefuses_ExitsThree() {
+        (_, string stderr, int exitCode) = Run(["run", "bad\0name.grob"]);
+
+        Assert.Equal(3, exitCode);
+        Assert.StartsWith("error: invalid file path: ", stderr, StringComparison.Ordinal);
     }
 
     [Fact]

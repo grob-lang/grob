@@ -16,6 +16,24 @@ public sealed class RawLiteralExtractorTests {
         Assert.Equal(["x := 1\n  print(x)"], RawLiteralExtractor.Extract(cs));
     }
 
+    // A one-line raw literal may end a line, its statement going on below; its closing quotes are
+    // then at the end of the line and must not read as an opener.
+    [Fact]
+    public void Extract_OneLineLiteralClosingAtTheEndOfALine_IsNotAnOpener() {
+        string cs = $"Console.WriteLine({Q}ignored{Q}\n);\nconst string source = {Q}\n    print(1)\n    {Q};\n";
+
+        Assert.Equal(["print(1)"], RawLiteralExtractor.Extract(cs));
+    }
+
+    // An opener after a one-line literal on the same line, as AssertEmits("""x""", """ writes it,
+    // is still an opener: an even number of quote runs precedes it.
+    [Fact]
+    public void Extract_OpenerAfterAOneLineLiteralOnItsLine_IsStillAnOpener() {
+        string cs = $"AssertEmits({Q}x := 1{Q}, {Q}\n    Constant 1\n    {Q});\n";
+
+        Assert.Equal(["Constant 1"], RawLiteralExtractor.Extract(cs));
+    }
+
     [Fact]
     public void Extract_InterpolatedLiteral_IsSkipped() {
         string cs = $"var s = ${Q}\n    x := {{n}}\n    {Q};\nvar t = $${Q}\n    y\n    {Q};\n";

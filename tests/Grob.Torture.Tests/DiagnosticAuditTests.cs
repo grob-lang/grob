@@ -86,11 +86,31 @@ public sealed class DiagnosticAuditTests {
         Assert.Equal(new Signature(PipelinePhase.Compile, FindingClass.Unregistered, "X0001"), finding.Signature);
     }
 
+    // The lexer advances its column past a '\r', so a CRLF line's newline token sits one column
+    // after the '\r', and the line is measured with it.
     [Fact]
-    public void Audit_CarriageReturnLineEndings_CountColumnsWithoutTheReturn() {
+    public void Audit_CarriageReturnLineEndings_CountTheReturnAsTheLexerDoes() {
         const string crlf = "x := 1\r\nyy := 22\r\n";
 
-        Assert.Empty(Audit(At(ErrorCatalog.E0002.Code, 1, 7), PipelinePhase.Check, crlf));
-        Assert.Single(Audit(At(ErrorCatalog.E0002.Code, 1, 8), PipelinePhase.Check, crlf));
+        Assert.Empty(Audit(At(ErrorCatalog.E0002.Code, 1, 8), PipelinePhase.Check, crlf));
+        Assert.Single(Audit(At(ErrorCatalog.E0002.Code, 1, 9), PipelinePhase.Check, crlf));
+    }
+
+    [Fact]
+    public void Audit_ALoneCarriageReturnAtEndOfFile_IsCountedToo() {
+        const string source = "x := 1\r";
+
+        Assert.Empty(Audit(At(ErrorCatalog.E0002.Code, 1, 8), PipelinePhase.Check, source));
+        Assert.Single(Audit(At(ErrorCatalog.E0002.Code, 1, 9), PipelinePhase.Check, source));
+    }
+
+    // Through the whole pipeline: a diagnostic the parser reports at a CRLF newline is inside
+    // the source, so the run has diagnostics and no finding.
+    [Fact]
+    public void Oracle_DiagnosticAtACarriageReturnNewline_IsNotALocationFinding() {
+        OracleResult result = new Oracle(OracleBudget.Ci).Run("fn\r\n");
+
+        Assert.Equal(OutcomeKind.Diagnostics, result.Outcome);
+        Assert.Empty(result.Findings);
     }
 }

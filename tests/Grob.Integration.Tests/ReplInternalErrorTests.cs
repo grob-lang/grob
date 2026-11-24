@@ -76,6 +76,39 @@ public sealed class ReplInternalErrorTests {
         Assert.Contains("42", stdout);
     }
 
+    /// <summary>
+    /// A reader that fails, as a broken console stream does. It gives up after three reads, at end
+    /// of input, so a session that reads again after a failure ends rather than hangs the suite.
+    /// </summary>
+    private sealed class FailingReader : TextReader {
+        public int Reads { get; private set; }
+
+        public override string? ReadLine() {
+            if (++Reads > 3) return null;
+            throw new IOException("the handle is invalid");
+        }
+    }
+
+    // A read that fails would fail again on the same reader, so the session reports it once and
+    // ends; it does not report it and read again for ever.
+    [Fact]
+    public void InputThatCannotBeRead_IsReportedOnce_AndEndsTheSession() {
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var input = new FailingReader();
+
+        int exitCode = new ReplCommand(input, stdout, stderr, verbose: false, HostCapabilities.System).Run();
+
+        Assert.Equal(ExitCodes.CompileError, exitCode);
+        Assert.Equal(1, input.Reads);
+        Assert.Equal(
+            $"error[E9001]: {ErrorCatalog.E9001.Title}{NL}" +
+            $"  --> <repl> (while lexing){NL}" +
+            $"  = IOException{NL}" +
+            $"  = this is a bug in Grob, not in your script; please report it with the script at https://github.com/grob-lang/grob/issues{NL}",
+            stderr.ToString());
+    }
+
     [Fact]
     public void ScriptExit_EndsTheSession_AndReturnsItsCode() {
         (string stdout, string stderr, int exitCode) = RunRepl($"exit(7){NL}print(\"not reached\"){NL}");
