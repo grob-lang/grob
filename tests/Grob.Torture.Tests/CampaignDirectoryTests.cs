@@ -79,11 +79,24 @@ public sealed class CampaignDirectoryTests : IDisposable {
     public void Unminimised_RoundTripInOrder() {
         var directory = new CampaignDirectory(_root);
 
-        directory.AppendUnminimised("p@1/x/0", "the worker died while minimising, exit 0xC00000FD");
-        directory.AppendUnminimised("p@2/x/0", "a candidate passed its watchdog");
+        directory.AppendUnminimised(0, "p@1/x/0", "the worker died while minimising, exit 0xC00000FD");
+        directory.AppendUnminimised(0, "p@2/x/0", "a candidate passed its watchdog");
 
         Assert.Equal(["p@1/x/0\tthe worker died while minimising, exit 0xC00000FD", "p@2/x/0\ta candidate passed its watchdog"],
             directory.ReadUnminimised());
+    }
+
+    // Each shard's worker writes its own file, so two processes never append to one file at once.
+    [Fact]
+    public void Unminimised_FromSeveralShards_AreReadInShardOrderFromFilesOfTheirOwn() {
+        var directory = new CampaignDirectory(_root);
+
+        directory.AppendUnminimised(2, "p@2/x/0", "two");
+        directory.AppendUnminimised(0, "p@0/x/0", "zero");
+        directory.AppendUnminimised(10, "p@10/x/0", "ten");
+
+        Assert.Equal(["p@0/x/0\tzero", "p@2/x/0\ttwo", "p@10/x/0\tten"], directory.ReadUnminimised());
+        Assert.Equal(3, Directory.GetFiles(Path.Join(_root, "unminimised")).Length);
     }
 
     [Fact]
@@ -121,6 +134,16 @@ public sealed class CampaignDirectoryTests : IDisposable {
         journal.Write("p@1/x/0", Journal.Minimising);
 
         Assert.Equal(("p@1/x/0", Journal.Minimising), Journal.Read(path));
+    }
+
+    [Fact]
+    public void JournalTake_ReadsTheEntryThenRemovesIt() {
+        string path = new CampaignDirectory(_root).JournalPath(0);
+        using (var journal = new Journal(path)) journal.Write("p@1/x/0", "Run");
+
+        Assert.Equal(("p@1/x/0", "Run"), Journal.Take(path));
+        Assert.False(File.Exists(path));
+        Assert.Null(Journal.Take(path));
     }
 
     [Fact]

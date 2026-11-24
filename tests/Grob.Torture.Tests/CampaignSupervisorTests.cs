@@ -160,6 +160,61 @@ public sealed class CampaignSupervisorTests : IDisposable {
     }
 
     [Fact]
+    public void Run_AWorkerThatDiesAfterRunningAProgram_StoresItsFindingsUnminimisedAndRecordsNoDeath() {
+        PlannedProgram? victim = null;
+        var finding = new Finding(new Signature(PipelinePhase.Run, FindingClass.Exception, "GrobInternalException: boom"), "boom");
+        var launcher = new Launcher((d, s, attempt) => {
+            if (attempt > 1) return InProcess(d, s).Run();
+            victim = FirstOfShard(0, 1);
+            Directory_.AppendResult(0, new ProgramResult(victim.Id, OutcomeKind.Finding, [finding]));
+            LeaveJournal(0, victim.Id, "Run");
+            return StackOverflow;
+        });
+
+        int exit = Supervisor(launcher).Run(_root, new CampaignSettings(Seed, 6, 1));
+
+        Assert.Equal(1, exit);
+        ProgramResult only = Assert.Single(AllResults(1), r => r.ProgramId == victim!.Id);
+        Assert.Equal(finding, Assert.Single(only.Findings));
+        FindingRecord record = Assert.Single(new FindingStore(Directory_.FindingsPath).Records(finding.Signature.Key));
+        Assert.Equal(WriteProgram(victim!), record.Original);
+        Assert.Contains($"{victim!.Id}\tthe worker died after running it, exit 0xC00000FD", Directory_.ReadUnminimised());
+    }
+
+    [Fact]
+    public void Run_AJournalAnEarlierDeathNamed_IsNotReadForALaterDeath() {
+        var launcher = new Launcher((_, _, attempt) => {
+            if (attempt == 1) LeaveJournal(0, FirstOfShard(0, 1).Id, "Parse");
+            return StackOverflow;
+        });
+
+        int exit = Supervisor(launcher).Run(_root, new CampaignSettings(Seed, 6, 1));
+
+        Assert.Equal(1, exit);
+        Assert.Equal(1 + CampaignSupervisor.MaxSilentDeaths, launcher.Launches(0));
+        Assert.Single(AllResults(1), r => r.Findings.Any(f => f.Signature.Class == FindingClass.ProcessDeath));
+    }
+
+    [Fact]
+    public void Run_AFindingResultWithNoRecord_GetsAnUnminimisedRecordAndTheRunFails() {
+        PlannedProgram? orphan = null;
+        var finding = new Finding(new Signature(PipelinePhase.Run, FindingClass.Exception, "GrobInternalException: boom"), "boom");
+        var launcher = new Launcher((_, _, _) => {
+            orphan = FirstOfShard(0, 1);
+            Directory_.AppendResult(0, new ProgramResult(orphan.Id, OutcomeKind.Finding, [finding]));
+            return 0;
+        });
+
+        int exit = Supervisor(launcher).Run(_root, new CampaignSettings(Seed, 6, 1));
+
+        Assert.Equal(1, exit);
+        FindingRecord record = Assert.Single(new FindingStore(Directory_.FindingsPath).All());
+        Assert.Equal(orphan!.Id, record.ProgramId);
+        Assert.Equal(WriteProgram(orphan), record.Reproducer);
+        Assert.Contains($"{orphan.Id}\tits record was missing when the report was written", Directory_.ReadUnminimised());
+    }
+
+    [Fact]
     public void Run_AWorkerThatAsksToBeRestarted_IsRestartedWithNoDeathRecorded() {
         var launcher = new Launcher((d, s, attempt) => attempt == 1 ? CampaignWorker.RestartExitCode : InProcess(d, s).Run());
 

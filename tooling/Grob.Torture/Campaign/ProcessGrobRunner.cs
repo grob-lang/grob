@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 
 namespace Grob.Torture.Campaign;
 
@@ -24,16 +25,21 @@ internal sealed class ProcessGrobRunner(string grobPath) : IGrobRunner {
         start.ArgumentList.Add("run");
         start.ArgumentList.Add(scriptPath);
 
+        // stdout is drained and dropped, so a reproducer that prints without end neither blocks on
+        // a full pipe nor fills the supervisor's memory; stderr is what the check reads.
+        var stderr = new StringBuilder();
         using Process process = Process.Start(start) ?? throw new InvalidOperationException($"{grobPath} did not start");
+        process.OutputDataReceived += (_, _) => { };
+        process.ErrorDataReceived += (_, e) => {
+            if (e.Data is not null) lock (stderr) stderr.Append(e.Data).Append('\n');
+        };
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
         process.StandardInput.Close();
-        Task<string> stderr = process.StandardError.ReadToEndAsync();
-        Task<string> stdout = process.StandardOutput.ReadToEndAsync();
-        if (!process.WaitForExit(Timeout)) {
-            process.Kill(entireProcessTree: true);
-            process.WaitForExit();
-            return new GrobOutput(-1, stderr.Result, TimedOut: true);
-        }
-        _ = stdout.Result;
-        return new GrobOutput(process.ExitCode, stderr.Result, TimedOut: false);
+
+        bool ended = process.WaitForExit(Timeout);
+        if (!ended) process.Kill(entireProcessTree: true);
+        process.WaitForExit(); // waits for the redirected streams to drain
+        lock (stderr) return new GrobOutput(ended ? process.ExitCode : -1, stderr.ToString(), TimedOut: !ended);
     }
 }

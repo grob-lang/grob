@@ -36,14 +36,14 @@ that, not as a VM bug.
 
 ## The three commands
 
-Build once, in Release, then run the tool from the repository root:
+Run the tool from the repository root, in Release:
 
 ```bash
-dotnet build tooling/Grob.Torture -c Release
-tooling/Grob.Torture/bin/Release/net10.0/Grob.Torture.exe <command>
+dotnet run -c Release --project tooling/Grob.Torture -- <command>
 ```
 
-`dotnet run -c Release --project tooling/Grob.Torture -- <command>` works too.
+The build's own executable, `tooling/Grob.Torture/bin/Release/net10.0/Grob.Torture` (with
+`.exe` on Windows), takes the same commands.
 
 | Command | What it does | Exit code |
 |---|---|---|
@@ -56,10 +56,14 @@ A usage error, including a file or directory that cannot be read, exits `3`.
 ## Running a campaign
 
 ```bash
-tooling/Grob.Torture/bin/Release/net10.0/Grob.Torture.exe campaign \
+dotnet build src/Grob.Cli -c Release
+dotnet run -c Release --project tooling/Grob.Torture -- campaign \
     --out .grob-session/torture/<date> --programs 200000 --seed <n> \
-    --grob src/Grob.Cli/bin/Release/net10.0/grob.exe
+    --grob src/Grob.Cli/bin/Release/net10.0/grob
 ```
+
+`--grob` names the CLI the black-box check runs; on Windows it is `grob.exe`. Leave it out to
+skip the check.
 
 - **The plan.** Half the programs are written by the generator and half are mutants of the
   seed corpus, alternating, with no source planned twice. The plan depends on the seed alone,
@@ -87,7 +91,7 @@ The directory holds:
 | `campaign.json`, `plan.txt` | The settings and the plan |
 | `results/shard-<k>.jsonl` | One line per program a worker ran: its id, outcome and findings |
 | `findings/<signature-hash>/<program-hash>.json` | One record per failing program and signature |
-| `unminimised.txt` | Programs whose records keep the whole program, and why |
+| `unminimised/shard-<k>.txt` | Programs whose records keep the whole program, and why |
 | `blackbox/` | The reproducers the black-box check ran |
 | `report.md` | The report |
 

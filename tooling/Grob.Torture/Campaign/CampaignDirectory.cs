@@ -10,7 +10,7 @@ namespace Grob.Torture.Campaign;
 ///   <item><description><c>campaign.json</c>, its settings, and <c>plan.txt</c>, one planned program a line;</description></item>
 ///   <item><description><c>results/shard-&lt;k&gt;.jsonl</c>, one line per program a worker ran;</description></item>
 ///   <item><description><c>journal/shard-&lt;k&gt;.txt</c>, the program and phase a worker is in (<see cref="Journal"/>);</description></item>
-///   <item><description><c>findings/</c>, the records (<see cref="Findings.FindingStore"/>), and <c>unminimised.txt</c>, the programs whose records were not minimised;</description></item>
+///   <item><description><c>findings/</c>, the records (<see cref="Findings.FindingStore"/>), and <c>unminimised/shard-&lt;k&gt;.txt</c>, the programs whose records were not minimised;</description></item>
 ///   <item><description><c>report.md</c>, the report.</description></item>
 /// </list>
 /// </summary>
@@ -39,7 +39,7 @@ internal sealed class CampaignDirectory(string root) {
 
     private string PlanPath => Path.Join(root, "plan.txt");
 
-    private string UnminimisedPath => Path.Join(root, "unminimised.txt");
+    private string UnminimisedPath => Path.Join(root, "unminimised");
 
     /// <summary>A shard's journal.</summary>
     public string JournalPath(int shard) => Path.Join(root, "journal", $"shard-{shard}.txt");
@@ -78,11 +78,26 @@ internal sealed class CampaignDirectory(string root) {
     public void AppendResult(int shard, ProgramResult result) =>
         AppendLine(ResultsPath(shard), JsonSerializer.Serialize(result, Options));
 
-    /// <summary>The programs whose records were not minimised, as <c>&lt;program&gt;\t&lt;reason&gt;</c>, in order.</summary>
-    public IReadOnlyList<string> ReadUnminimised() => File.Exists(UnminimisedPath) ? [.. File.ReadLines(UnminimisedPath)] : [];
+    /// <summary>
+    /// The programs whose records were not minimised, as <c>&lt;program&gt;\t&lt;reason&gt;</c>, by
+    /// shard and then in the order each shard recorded them.
+    /// </summary>
+    public IReadOnlyList<string> ReadUnminimised() {
+        if (!Directory.Exists(UnminimisedPath)) return [];
+        return [.. Directory.EnumerateFiles(UnminimisedPath, "shard-*.txt")
+            .OrderBy(ShardNumber)
+            .SelectMany(File.ReadLines)];
+    }
 
-    /// <summary>Records that a program's record was not minimised, and why.</summary>
-    public void AppendUnminimised(string programId, string reason) => AppendLine(UnminimisedPath, $"{programId}\t{reason}");
+    /// <summary>
+    /// Records that a program's record was not minimised, and why, in the shard's own file: a
+    /// shard's worker and the supervisor never write at once, where two workers could.
+    /// </summary>
+    public void AppendUnminimised(int shard, string programId, string reason) =>
+        AppendLine(Path.Join(UnminimisedPath, $"shard-{shard}.txt"), $"{programId}\t{reason}");
+
+    private static int ShardNumber(string path) =>
+        int.Parse(Path.GetFileNameWithoutExtension(path)["shard-".Length..], System.Globalization.CultureInfo.InvariantCulture);
 
     private static ProgramResult? TryParse(string line) {
         try {

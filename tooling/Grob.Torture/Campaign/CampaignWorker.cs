@@ -73,7 +73,7 @@ internal sealed class CampaignWorker(
         if (result.Findings.Count == 0) return false;
 
         if (result.TimedOut) {
-            StoreUnminimised(directory, store, program.Id, source, result.Findings, "the run passed its watchdog, so it was not minimised");
+            StoreUnminimised(directory, shard, store, program.Id, source, result.Findings, "the run passed its watchdog, so it was not minimised");
             return true;
         }
 
@@ -92,20 +92,21 @@ internal sealed class CampaignWorker(
         }
 
         new Triager(Run, store).Triage(programId, source, findings);
-        if (stalled) directory.AppendUnminimised(programId, "a minimising candidate passed its watchdog");
+        if (stalled) directory.AppendUnminimised(shard, programId, "a minimising candidate passed its watchdog");
         return stalled;
     }
 
     /// <summary>
     /// Stores a record for each finding with the program as its own reproducer, and records why it
-    /// was not minimised: the worker's path after a stall, and the supervisor's after a death.
+    /// was not minimised: the worker's path after a stall, and the supervisor's after a death or for
+    /// a result that has no record. A record that already exists is kept as it is.
     /// </summary>
-    public static void StoreUnminimised(CampaignDirectory directory, FindingStore store, string programId, string source,
+    public static void StoreUnminimised(CampaignDirectory directory, int shard, FindingStore store, string programId, string source,
             IReadOnlyList<Finding> findings, string reason) {
         foreach (Finding finding in findings) {
             store.Add(new FindingRecord(programId, finding.Signature.Key, finding.Message, finding.FirstFrame, source, source, false));
         }
-        directory.AppendUnminimised(programId, reason);
+        directory.AppendUnminimised(shard, programId, reason);
     }
 
     private void Record(string programId, string state) {

@@ -274,6 +274,20 @@ public sealed class CliTests : IDisposable {
     }
 
     [Fact]
+    public void Campaign_RelativeRoot_IsResolvedAgainstTheWorkingDirectory() {
+        MakeRepository("");
+        List<string> roots = [];
+        var services = new Campaign.CampaignServices(
+            root => { roots.Add(root); return new CliLauncher(root, TextWriter.Null); },
+            _ => new NoRunner());
+
+        Cli.Run(["campaign", "--out", CampaignDirectory, "--programs", "2", "--seed", "3", "--root", "."],
+            _out, _error, _directory, new Oracle(OracleBudget.Ci), seeds => seeds, services);
+
+        Assert.Equal([Path.GetFullPath(_directory)], roots);
+    }
+
+    [Fact]
     public void CampaignWorker_DirectoryWithNoCampaign_IsAUsageError() {
         int exit = RunCampaign(null, "campaign-worker", "--out", CampaignDirectory, "--shard", "0", "--root", _directory);
 

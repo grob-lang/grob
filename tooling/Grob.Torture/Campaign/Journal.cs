@@ -44,6 +44,17 @@ internal sealed class Journal : IDisposable {
         return parts.Length == 2 ? (parts[0], parts[1]) : null;
     }
 
+    /// <summary>
+    /// Reads the journal at <paramref name="path"/> as <see cref="Read"/> does, then deletes it: the
+    /// supervisor's read after a worker's death, so that a later death is never named by this one's
+    /// entry.
+    /// </summary>
+    public static (string ProgramId, string State)? Take(string path) {
+        (string, string)? entry = Read(path);
+        if (File.Exists(path)) File.Delete(path);
+        return entry;
+    }
+
     private void Replace(byte[] bytes) {
         _stream.Position = 0;
         _stream.Write(bytes);

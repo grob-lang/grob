@@ -64,13 +64,14 @@ internal sealed class CampaignSupervisor(
         }
         Elapsed("plan", ref started);
 
-        Task<bool>[] shards = [.. Enumerable.Range(0, settings.Workers).Select(shard => Task.Run(() => RunShard(directory, settings, shard)))];
-        Task.WaitAll(shards);
+        bool[] finished = new bool[settings.Workers];
+        Parallel.For(0, settings.Workers, new ParallelOptions { MaxDegreeOfParallelism = settings.Workers },
+            shard => finished[shard] = RunShard(directory, settings, shard));
         Elapsed("workers", ref started);
 
         bool found = Report(directory, settings);
         Elapsed("report", ref started);
-        return found || shards.Any(s => !s.Result) ? 1 : 0;
+        return found || finished.Contains(false) ? 1 : 0;
     }
 
     private void Elapsed(string step, ref long started) {
@@ -86,7 +87,8 @@ internal sealed class CampaignSupervisor(
             int exit = launcher.Run(directory.Root, shard);
             if (exit == 0) return true;
 
-            (string ProgramId, string State)? entry = Journal.Read(directory.JournalPath(shard));
+            // The entry is consumed once read, so a later death cannot be named by this one's.
+            (string ProgramId, string State)? entry = Journal.Take(directory.JournalPath(shard));
             if (exit == CampaignWorker.RestartExitCode || directory.ReadResults(shard).Count > before) silent = 0;
             if (exit == CampaignWorker.RestartExitCode) continue;
 
@@ -100,19 +102,22 @@ internal sealed class CampaignSupervisor(
         }
     }
 
+    // A program with a result already ran to its end, so the worker died after it: while
+    // minimising, or before it could journal that or store every record. Its findings are stored
+    // unminimised. A program with no result died running, and the death is its finding.
     private void RecordDeath(CampaignDirectory directory, CampaignSettings settings, int shard, string programId, string state, int exit) {
         string code = $"0x{exit:X8}";
         var store = new FindingStore(directory.FindingsPath);
-        if (state == Journal.Minimising) {
-            IReadOnlyList<Finding> findings = directory.ReadResults(shard).Last(r => r.ProgramId == programId).Findings;
-            CampaignWorker.StoreUnminimised(directory, store, programId, Source(directory, settings, programId), findings,
-                $"the worker died while minimising it, exit {code}");
+        if (directory.ReadResults(shard).LastOrDefault(r => r.ProgramId == programId) is { } result) {
+            string when = state == Journal.Minimising ? "while minimising it" : "after running it";
+            CampaignWorker.StoreUnminimised(directory, shard, store, programId, Source(directory, settings, programId), result.Findings,
+                $"the worker died {when}, exit {code}");
             return;
         }
 
         var death = new Finding(new Signature(Enum.Parse<PipelinePhase>(state), FindingClass.ProcessDeath, code), $"the worker died with exit code {code}");
         directory.AppendResult(shard, new ProgramResult(programId, OutcomeKind.Finding, [death]));
-        CampaignWorker.StoreUnminimised(directory, store, programId, Source(directory, settings, programId), [death],
+        CampaignWorker.StoreUnminimised(directory, shard, store, programId, Source(directory, settings, programId), [death],
             $"the worker died running it, exit {code}");
     }
 
@@ -122,7 +127,9 @@ internal sealed class CampaignSupervisor(
     // Writes the report and the summary; returns whether anything was found.
     private bool Report(CampaignDirectory directory, CampaignSettings settings) {
         IReadOnlyList<ProgramResult> results = [.. Enumerable.Range(0, settings.Workers).SelectMany(directory.ReadResults)];
-        IReadOnlyList<FindingRecord> records = new FindingStore(directory.FindingsPath).All();
+        var store = new FindingStore(directory.FindingsPath);
+        StoreMissingRecords(directory, settings, store, results);
+        IReadOnlyList<FindingRecord> records = store.All();
         IReadOnlyList<BlackBoxResult> blackBox = grob is null ? [] : CheckReproducers(directory, records, grob, settings.Workers);
 
         File.WriteAllText(directory.ReportPath, CampaignReport.Build(settings, results, records, directory.ReadUnminimised(), known, blackBox));
@@ -132,7 +139,17 @@ internal sealed class CampaignSupervisor(
         stdout.WriteLine($"{results.Count} programs: " + string.Join(", ",
             results.GroupBy(r => r.Outcome).OrderBy(g => g.Key).Select(g => $"{g.Key} {g.Count()}")));
         stdout.WriteLine($"{signatures} signatures, {records.Count} records; report at {directory.ReportPath}");
-        return records.Count > 0;
+        return records.Count > 0 || results.Any(r => r.Findings.Count > 0);
+    }
+
+    // A process stopped between writing a result and storing its records leaves findings with no
+    // record, and the result keeps a resumed worker from running the program again; so every such
+    // finding is stored unminimised before the report is written.
+    private void StoreMissingRecords(CampaignDirectory directory, CampaignSettings settings, FindingStore store, IReadOnlyList<ProgramResult> results) {
+        foreach (ProgramResult result in results.Where(r => r.Findings.Any(f => !File.Exists(store.PathFor(f.Signature.Key, r.ProgramId))))) {
+            CampaignWorker.StoreUnminimised(directory, CampaignPlan.ShardOf(result.ProgramId, settings.Workers), store, result.ProgramId,
+                Source(directory, settings, result.ProgramId), result.Findings, "its record was missing when the report was written");
+        }
     }
 
     // Each distinct reproducer is run once, however many signatures and programs share it.

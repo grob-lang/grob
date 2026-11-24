@@ -120,7 +120,7 @@ internal static class Cli {
             return 3;
         }
 
-        string root = options.Root ?? SeedCorpus.LocateRepositoryRoot(workingDirectory);
+        string root = RootOf(options.Root, workingDirectory);
         string knownPath = Path.Join(root, CorpusSlice.KnownFindingsPath);
         KnownFindings? known = File.Exists(knownPath) ? KnownFindings.Parse(ReadFile(knownPath)) : null;
         var supervisor = new CampaignSupervisor(
@@ -144,12 +144,17 @@ internal static class Cli {
         }
 
         // The corpus is loaded only when the shard reaches its first mutant.
-        string root = options.Root ?? SeedCorpus.LocateRepositoryRoot(workingDirectory);
+        string root = RootOf(options.Root, workingDirectory);
         var corpus = new Lazy<IReadOnlyDictionary<string, Seed>>(() => SeedCorpus.Load(root).ToDictionary(s => s.Id, StringComparer.Ordinal));
         string Write(PlannedProgram program) => CampaignPlan.Write(program, settings.Seed,
             program.Kind == CampaignPlan.GeneratedKind ? new Dictionary<string, Seed>() : corpus.Value);
         return new CampaignWorker(directory, options.Shard, Write, OracleBudget.Long, OracleBudget.Minimise).Run();
     }
+
+    // A root given on the command line resolves against the working directory, as --out and
+    // --grob do; with none, the repository holding the working directory is the root.
+    private static string RootOf(string? root, string workingDirectory) =>
+        root is null ? SeedCorpus.LocateRepositoryRoot(workingDirectory) : Path.GetFullPath(root, workingDirectory);
 
     private static void WriteFinding(string program, Finding finding, string? row, TextWriter stdout) {
         stdout.WriteLine(row is null

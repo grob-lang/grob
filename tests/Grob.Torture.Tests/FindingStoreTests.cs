@@ -77,6 +77,28 @@ public sealed class FindingStoreTests : IDisposable {
         Assert.Equal(written, Assert.Single(store.Records(Signature)));
     }
 
+    // A record is written beside its path and moved into place, so a process that dies mid-write
+    // leaves no partial record for All() to fail on, and a duplicate leaves nothing behind.
+    [Fact]
+    public void Add_NewAndDuplicateRecords_LeaveOnlyCompleteRecordFiles() {
+        var store = new FindingStore(_root);
+
+        store.Add(Record("p@1/x/0"));
+        store.Add(Record("p@1/x/0", reproducer: "second\n"));
+
+        string only = Assert.Single(Directory.GetFiles(_root, "*", SearchOption.AllDirectories));
+        Assert.Equal(store.PathFor(Signature, "p@1/x/0"), only);
+    }
+
+    [Fact]
+    public void All_ALeftoverTemporaryFile_IsNotRead() {
+        var store = new FindingStore(_root);
+        store.Add(Record("p@1/x/0"));
+        File.WriteAllText(store.PathFor(Signature, "p@2/x/0") + ".tmp", "{ \"programId\": \"cut");
+
+        Assert.Single(store.All());
+    }
+
     [Fact]
     public void All_RecordsUnderEverySignature_AreReturnedInPathOrder() {
         var store = new FindingStore(_root);
