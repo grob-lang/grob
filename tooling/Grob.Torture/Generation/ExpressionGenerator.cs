@@ -306,7 +306,7 @@ internal sealed class ExpressionGenerator(GenContext context) {
         int count = Random.Between(1, 3);
         IEnumerable<string> patterns = onInt
             ? Enumerable.Range(0, count).Select(i => (i * 3).ToString(System.Globalization.CultureInfo.InvariantCulture))
-            : Words.Skip(Random.Next(Words.Length - count)).Take(count).Select(w => $"\"{w}\"");
+            : Words.Skip(Random.Next(Words.Length - count + 1)).Take(count).Select(w => $"\"{w}\"");
         List<string> arms = [.. patterns.Select(p => $"{p} => {Expr(type, depth + 1, scope)}")];
         if (onInt && Random.Chance(40)) arms.Add($">= {count * 3} => {Expr(type, depth + 1, scope)}");
         arms.Add($"_ => {Expr(type, depth + 1, scope)}");

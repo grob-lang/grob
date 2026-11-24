@@ -72,6 +72,9 @@ public sealed class GeneratedProgramsTests {
 
     [Fact]
     public void Sample_EveryProgram_EndsWithoutReachingItsBound() {
+        // Termination only. A run's findings are not asserted: they are defects in Grob, which the
+        // campaign triages (prompt §2 group 6), and generated programs are kept out of the CI slice
+        // until then (plan decision D1).
         var oracle = new Oracle(OracleBudget.Ci);
         var unbounded = new List<string>();
         foreach (Seed program in Sample.Value) {
@@ -84,6 +87,18 @@ public sealed class GeneratedProgramsTests {
 
         Assert.True(unbounded.Count == 0, "programs that ran to the VM's bound: " + string.Join(", ", unbounded));
     }
+
+    // A string method no array or map shares a name with, so an array's call cannot stand in for one.
+    private static readonly HashSet<string> StringOnlyMethods = [.. MemberTable.Stdlib.Natives
+        .Where(n => n.Owner == GenType.String && !n.IsProperty)
+        .Select(n => n.Name)
+        .Except(["contains", "toString"])];
+
+    // The generator names a struct's fields f0, f1, … and an anonymous struct's m0, m1, …, and its
+    // loop variables by kind (e for an element, ix for an index, key for a map's key), so the
+    // census reads what a node is from its names without running the checker.
+    private static bool IsFieldName(string member) =>
+        member.Length > 1 && member[0] is 'f' or 'm' && member[1..].All(char.IsAsciiDigit);
 
     // One predicate per construct the prompt names, and the shapes beside them the generator
     // owes the checker: a construct missing from every program in the sample fails its case.
@@ -103,14 +118,14 @@ public sealed class GeneratedProgramsTests {
         ["ternary"] = n => n is TernaryExpr,
         ["float literal"] = n => n is FloatLiteralExpr,
         ["interpolated string"] = n => n is InterpolatedStringExpr,
-        ["string method"] = n => n is CallExpr { Callee: MemberAccessExpr },
+        ["string method"] = n => n is CallExpr { Callee: MemberAccessExpr { Member: var member } } && StringOnlyMethods.Contains(member),
         ["array literal"] = n => n is ArrayLiteralExpr,
         ["index"] = n => n is IndexExpr,
         ["map literal"] = n => n is MapLiteralExpr,
         ["struct type"] = n => n is TypeDecl,
         ["struct construction"] = n => n is StructConstructionExpr,
         ["anonymous struct"] = n => n is AnonStructExpr,
-        ["field read"] = n => n is MemberAccessExpr { IsOptional: false },
+        ["field read"] = n => n is MemberAccessExpr { IsOptional: false, Member: var member } && IsFieldName(member),
         ["function"] = n => n is FnDecl,
         ["return"] = n => n is ReturnStmt,
         ["function type"] = n => n is FunctionTypeRef,
@@ -126,8 +141,9 @@ public sealed class GeneratedProgramsTests {
         ["break"] = n => n is BreakStmt,
         ["continue"] = n => n is ContinueStmt,
         ["for over a range"] = n => n is ForInStmt { Iterable: NumericRangeExpr },
-        ["for over an array"] = n => n is ForInStmt { Variables.Count: 2, Iterable: not NumericRangeExpr },
-        ["for over a map"] = n => n is ForInStmt { Variables.Count: 2, Iterable: IdentifierExpr },
+        ["for over an array"] = n => n is ForInStmt { Variables: [var element] } && element.StartsWith('e'),
+        ["for over an array with its index"] = n => n is ForInStmt { Variables: [var index, _] } && index.StartsWith("ix", StringComparison.Ordinal),
+        ["for over a map"] = n => n is ForInStmt { Variables: [var key, _] } && key.StartsWith("key", StringComparison.Ordinal),
         ["select"] = n => n is SelectStmt,
         ["select default"] = n => n is SelectStmt { Default: not null },
         ["switch expression"] = n => n is SwitchExprNode,

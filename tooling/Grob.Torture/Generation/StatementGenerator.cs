@@ -298,7 +298,7 @@ internal sealed class StatementGenerator(GenContext context, ExpressionGenerator
         scope.Pop();
         bool catchAll = Random.Chance(50);
         int typed = catchAll ? Random.Between(0, 2) : Random.Between(1, 2);
-        foreach (string error in ThrownErrors.Skip(Random.Next(ThrownErrors.Length - typed)).Take(typed)) {
+        foreach (string error in ThrownErrors.Skip(Random.Next(ThrownErrors.Length - typed + 1)).Take(typed)) {
             Catch(writer, scope, depth, error);
         }
         if (catchAll) Catch(writer, scope, depth, null);
