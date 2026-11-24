@@ -89,15 +89,29 @@ internal sealed class MutationContext {
     // token, and a literal's range is a point. So the end comes from the tokens. The left operand of
     // a binary ends before its operator, which sits before the right operand's start, which the
     // parser records exactly; the right operand ends where the binary does; anything else runs to
-    // the next newline, comma or closing bracket at its own nesting.
+    // the next newline, comma or closing bracket at its own nesting, and stops before the block of
+    // the statement that holds it, since a loop's iterable has no closing bracket to stop at.
     private int LastToken(Expression expression, int first) {
-        if (ParentOf(expression) is not BinaryExpr parent) return Tokens.ExpressionLast(first);
+        if (ParentOf(expression) is not BinaryExpr parent) return Math.Min(Tokens.ExpressionLast(first), LastBeforeBlock(expression));
         if (!ReferenceEquals(parent.Left, expression)) {
             int parentFirst = FirstToken(parent);
             return parentFirst < 0 ? -1 : LastToken(parent, parentFirst);
         }
         int rightFirst = FirstToken(parent.Right);
         return rightFirst - 2;
+    }
+
+    // The token before the block that follows an expression in its statement, or int.MaxValue
+    // when no block follows it. An expression inside that block has a nearer statement of its own.
+    private int LastBeforeBlock(Expression expression) {
+        BlockStmt? block = EnclosingStatement(expression) switch {
+            ForInStmt f => f.Body,
+            IfStmt i => i.Then,
+            WhileStmt w => w.Body,
+            _ => null,
+        };
+        int open = block is null ? -1 : FirstToken(block);
+        return open < 0 ? int.MaxValue : open - 1;
     }
 
     /// <summary>The source offsets <c>[start, end)</c> of an expression's extent.</summary>
