@@ -109,6 +109,36 @@ public sealed class ReplInternalErrorTests {
             stderr.ToString());
     }
 
+    // Accepts the banner, then fails every flush of a prompt, giving up after three so that a
+    // session that retries shows as three reports rather than a hung test.
+    private sealed class PromptRejectingWriter : StringWriter {
+        public int Flushes { get; private set; }
+
+        public override void Flush() {
+            if (++Flushes > 3) return;
+            throw new IOException("the pipe is being closed");
+        }
+    }
+
+    // A prompt that cannot be written would fail again on the same writer, so the session ends
+    // as it does on a failed read.
+    [Fact]
+    public void PromptThatCannotBeWritten_IsReportedOnce_AndEndsTheSession() {
+        using var stdout = new PromptRejectingWriter();
+        using var stderr = new StringWriter();
+
+        int exitCode = new ReplCommand(new StringReader($"1 + 1{NL}"), stdout, stderr, verbose: false, HostCapabilities.System).Run();
+
+        Assert.Equal(ExitCodes.CompileError, exitCode);
+        Assert.Equal(1, stdout.Flushes);
+        Assert.Equal(
+            $"error[E9001]: {ErrorCatalog.E9001.Title}{NL}" +
+            $"  --> <repl> (while lexing){NL}" +
+            $"  = IOException{NL}" +
+            $"  = this is a bug in Grob, not in your script; please report it with the script at https://github.com/grob-lang/grob/issues{NL}",
+            stderr.ToString());
+    }
+
     [Fact]
     public void ScriptExit_EndsTheSession_AndReturnsItsCode() {
         (string stdout, string stderr, int exitCode) = RunRepl($"exit(7){NL}print(\"not reached\"){NL}");
