@@ -2,23 +2,23 @@
 
 ## Where we are
 
-- Branch: `feat/crash-oracle-campaign`, cut from `feat/crash-oracle-generator` at `3dd32fb`. A **stacked branch** four deep: its PR's base is `feat/crash-oracle-generator` (PR #270), whose base is `feat/crash-oracle-mutator` (PR #269), whose base is `feat/crash-oracle` (PR #268)
+- Branch: `feat/crash-oracle-campaign`, cut from `feat/crash-oracle-generator` at `3dd32fb` and rebased onto `b722150` after #268's review fix `9a9ab28`. A **stacked branch** four deep: its PR's base is `feat/crash-oracle-generator` (PR #270), whose base is `feat/crash-oracle-mutator` (PR #269), whose base is `feat/crash-oracle` (PR #268)
 - Working tree: clean (scratch, campaign output and probes are in gitignored `.grob-session/`)
-- Commits on this branch beyond its parent: `32f575b` group 6, the first campaign and triage; `ca03caa` group 7, the record; `a3ee252`, the local review's fixes; then this hand-off
+- Commits on this branch beyond its parent: `8a18a90` group 6, the first campaign and triage; `b71b3c3` group 7, the record; `9d3a520`, the local review's fixes; then this hand-off
 - Increment prompt: `docs/prompts/crash-oracle.md` (D-451). Landing entry: **D-453**
 - Gate report: `D:\Code\grob-lang\gate-reports\crash-oracle-gate-report.md`, outside the working tree
-- Picked up from: `.grob-session/handoffs/feat-crash-oracle-generator.md`, retired here by `git rm` in `32f575b`. It stays on PR #270's branch until that merges, and the two older hand-offs stay on #268 and #269 likewise
+- Picked up from: `.grob-session/handoffs/feat-crash-oracle-generator.md`, retired here by `git rm` in `8a18a90`. It stays on PR #270's branch until that merges, and the two older hand-offs stay on #268 and #269 likewise
 - Phase reached: **session E complete; the increment is complete.** All seven change groups are committed across the four PRs
 
 ## Green state
 
-- Tests: full `dotnet test Grob.slnx` green after `a3ee252`. Torture 471, Integration 990, Compiler 2,805, Vm 473, Stdlib 672, Runtime 378, Core 345, Consistency 79, BenchCheck 76. `dotnet format Grob.slnx --verify-no-changes` clean.
+- Tests: full `dotnet test Grob.slnx` green after the rebase onto `9a9ab28`. Torture 476, Integration 994, Compiler 2,805, Vm 473, Stdlib 672, Runtime 378, Core 345, Consistency 79, BenchCheck 76. `dotnet format Grob.slnx --verify-no-changes` clean.
 - Coverage on the lines this branch adds under `tooling/Grob.Torture`: 1,010 of 1,014 lines, 99.6%, and 408 of 424 branches, 96.2%, from the Torture project's cobertura report against `3dd32fb`. The process bindings, `ProcessWorkerLauncher` and `ProcessGrobRunner`, are excluded with justifications.
 - CI slice, measured here: 1,318 seeds, 536 mutants and 200 generated programs in 5.9 s.
 - Error-code count unchanged at 122; the D-316 gate is green.
 - TDD: group 6's 64 tests were written against stubs and seen failing first; the review fixes' tests were seen failing first, one of them as the very hang it guards against. One coverage test (`Write_MutantItsSeedNoLongerGives_Throws`) and two store tests passed at once: they guard code that already existed.
 - Mutation-verify: removing the worker's `minimise` journal write, predicted to fail exactly `Run_TheJournal_NamesTheProgramAndPhaseThenTheMinimisingThenIsCleared`; that one test failed, as predicted. Restored.
-- Local CodeRabbit, `--base origin/feat/crash-oracle-generator`: twelve findings, all fixed in `a3ee252`. A 200-program campaign through real worker processes gave the same record set before and after the fixes.
+- Local CodeRabbit, `--base origin/feat/crash-oracle-generator`: twelve findings, all fixed in `9d3a520`. A 200-program campaign through real worker processes gave the same record set before and after the fixes.
 
 ## The campaign
 
@@ -44,6 +44,8 @@ None.
 ## Next action
 
 Chris merges in order: #268, #269, #270, then this PR. Before each merge, retarget the child PR to `main` and rebase it, and do not delete a parent's branch first, or the child closes (as #263 did). Each PR, once its base is `main`, gets CI and SonarCloud for the first time: read the new-code issues and coverage then, before it merges.
+
+CodeRabbit reviewed #268, and its six findings are fixed in `9a9ab28`. The stack is rebased onto that fix and force-pushed. #269's CodeRabbit review was requested and has not been triaged yet: run `/review-pr-comments 269` once it is posted, then rebase #270 and this branch onto any fix commit it adds.
 
 ## Open for the maintainer
 

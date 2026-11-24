@@ -18411,8 +18411,8 @@ the prompt at `docs/prompts/crash-oracle.md`. Error-code count unchanged at 122.
 opcode, token, AST node or grammar production is added, and nothing under `src/` references
 the harness. Seven change groups: the oracle (`a0915a7`); the CI slice (`9b3c762`); the CLI's
 E9001 report and exit codes (`c5cf812`); the mutator, the minimiser and the finding store
-(`592c679`); the generator (`84d901c`, `7db0eb7`); the first campaign and its triage
-(`32f575b`); and the record, in this commit. `docs/dev/crash-oracle.md` covers running the
+(`4f4109b`); the generator (`b1d9e06`, `e5810d2`); the first campaign and its triage
+(`8a18a90`); and the record, in this commit. `docs/dev/crash-oracle.md` covers running the
 oracle by hand, reading a finding and adding a known entry.
 
 **What it is.** `tooling/Grob.Torture` runs a source through the lexer, parser, checker,
