@@ -38,7 +38,8 @@ public sealed class CorpusSliceTests(SliceFixture slice, ITestOutputHelper outpu
 
     [Fact]
     public void Slice_SeedCorpus_DrawsOnEveryLocation() {
-        foreach (SeedKind kind in Enum.GetValues<SeedKind>()) {
+        // A generated program is not read from the repository, and the slice does not run any yet.
+        foreach (SeedKind kind in Enum.GetValues<SeedKind>().Where(k => k != SeedKind.Generated)) {
             int count = slice.Seeds.Count(s => s.Kind == kind);
             output.WriteLine($"{kind}: {count}");
             Assert.True(count > 0, $"no seeds of kind {kind}");
