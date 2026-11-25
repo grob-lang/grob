@@ -205,6 +205,182 @@ public sealed class CliTests : IDisposable {
         Assert.Equal(0, exit);
     }
 
+    // ---- campaign ---------------------------------------------------------------------------
+
+    private string CampaignDirectory => Path.Join(_directory, "campaign");
+
+    /// <summary>Runs each worker in process, through the CLI's own <c>campaign-worker</c> command.</summary>
+    private sealed class CliLauncher(string root, TextWriter output) : Campaign.IWorkerLauncher {
+        public int Run(string directory, int shard) =>
+            Cli.Run(["campaign-worker", "--out", directory, "--shard", shard.ToString(System.Globalization.CultureInfo.InvariantCulture), "--root", root],
+                output, output, root);
+    }
+
+    private sealed class NoRunner : Campaign.IGrobRunner {
+        public Campaign.GrobOutput Run(string scriptPath) => new(0, "", false);
+    }
+
+    private int RunCampaign(List<string>? grobPaths, params string[] args) {
+        var services = new Campaign.CampaignServices(
+            root => new CliLauncher(root, TextWriter.Null),
+            path => { grobPaths?.Add(path); return new NoRunner(); });
+        return Cli.Run(args, _out, _error, _directory, new Oracle(OracleBudget.Ci), seeds => seeds, services);
+    }
+
+    [Fact]
+    public void Campaign_SmallRun_RunsEveryProgramThroughItsWorkersAndWritesTheReport() {
+        MakeRepository("");
+
+        int exit = RunCampaign(null, "campaign", "--out", CampaignDirectory, "--programs", "6", "--seed", "3", "--workers", "2", "--root", _directory);
+
+        var directory = new Campaign.CampaignDirectory(CampaignDirectory);
+        List<ProgramResult> results = [.. Enumerable.Range(0, 2).SelectMany(directory.ReadResults)];
+        Assert.Equal(6, results.Count);
+        Assert.Equal(results.Any(r => r.Outcome == OutcomeKind.Finding) ? 1 : 0, exit);
+        Assert.True(File.Exists(directory.ReportPath));
+        Assert.Contains("6 programs", _out.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Campaign_WithGrob_GivesTheRunnerItsFullPath() {
+        MakeRepository("");
+        Write("grob.exe", "");
+        List<string> paths = [];
+
+        RunCampaign(paths, "campaign", "--out", CampaignDirectory, "--programs", "2", "--seed", "3", "--root", _directory, "--grob", "grob.exe");
+
+        Assert.Equal([Path.Join(_directory, "grob.exe")], paths);
+    }
+
+    [Fact]
+    public void Campaign_GrobThatDoesNotExist_IsAUsageErrorAndRunsNothing() {
+        MakeRepository("");
+
+        int exit = RunCampaign(null, "campaign", "--out", CampaignDirectory, "--programs", "2", "--seed", "3", "--root", _directory, "--grob", "absent.exe");
+
+        Assert.Equal(3, exit);
+        Assert.Equal($"error: cannot find {Path.Join(_directory, "absent.exe")}\n", _error.ToString().ReplaceLineEndings("\n"));
+        Assert.False(Directory.Exists(CampaignDirectory));
+    }
+
+    /// <summary>A CLI that exists but cannot be started, as a file without execute permission is.</summary>
+    private sealed class UnstartableRunner : Campaign.IGrobRunner {
+        public Campaign.GrobOutput Run(string scriptPath) => throw new System.ComponentModel.Win32Exception(13, "Permission denied");
+    }
+
+    // The black-box check runs as the report is written, over the stored records. A finished
+    // campaign given one record and resumed reaches it at once, whatever its programs found.
+    [Fact]
+    public void Campaign_GrobThatCannotStart_IsAnErrorThatKeepsTheResultsForAResume() {
+        MakeRepository("");
+        Write("grob.exe", "");
+        string[] args = ["campaign", "--out", CampaignDirectory, "--programs", "2", "--seed", "3", "--workers", "1", "--root", _directory];
+        RunCampaign(null, args);
+        var directory = new Campaign.CampaignDirectory(CampaignDirectory);
+        File.Delete(directory.ReportPath);
+        new Findings.FindingStore(directory.FindingsPath).Add(new Findings.FindingRecord("p", "Run|Exception|boom", "boom", null, "x()\n", "x()\n", false));
+        var unstartable = new Campaign.CampaignServices(root => new CliLauncher(root, TextWriter.Null), _ => new UnstartableRunner());
+
+        int exit = Cli.Run([.. args, "--grob", "grob.exe"], _out, _error, _directory, new Oracle(OracleBudget.Ci), seeds => seeds, unstartable);
+
+        Assert.Equal(3, exit);
+        Assert.Equal("error: Permission denied\n", _error.ToString().ReplaceLineEndings("\n"));
+        Assert.Equal(2, directory.ReadResults(0).Count);
+        Assert.False(File.Exists(directory.ReportPath));
+
+        int resumed = RunCampaign(null, [.. args, "--grob", "grob.exe"]);
+
+        Assert.Equal(1, resumed);
+        Assert.Equal(2, directory.ReadResults(0).Count);
+        Assert.True(File.Exists(directory.ReportPath));
+    }
+
+    private sealed class FaultyRunner : Campaign.IGrobRunner {
+        public Campaign.GrobOutput Run(string scriptPath) => throw new InvalidOperationException("a harness bug");
+    }
+
+    [Fact]
+    public void Campaign_RunnerThatFaults_IsNotReportedAsACommandError() {
+        MakeRepository("");
+        Write("grob.exe", "");
+        string[] args = ["campaign", "--out", CampaignDirectory, "--programs", "2", "--seed", "3", "--workers", "1", "--root", _directory];
+        RunCampaign(null, args);
+        new Findings.FindingStore(new Campaign.CampaignDirectory(CampaignDirectory).FindingsPath)
+            .Add(new Findings.FindingRecord("p", "Run|Exception|boom", "boom", null, "x()\n", "x()\n", false));
+        var faulty = new Campaign.CampaignServices(root => new CliLauncher(root, TextWriter.Null), _ => new FaultyRunner());
+
+        var thrown = Assert.Throws<AggregateException>(() =>
+            Cli.Run([.. args, "--grob", "grob.exe"], _out, _error, _directory, new Oracle(OracleBudget.Ci), seeds => seeds, faulty));
+
+        Assert.IsType<InvalidOperationException>(Assert.Single(thrown.InnerExceptions));
+        Assert.Empty(_error.ToString());
+    }
+
+    [Fact]
+    public void Campaign_NoRootGiven_FindsTheRepositoryFromTheWorkingDirectory() {
+        MakeRepository("");
+
+        int exit = RunCampaign(null, "campaign", "--out", CampaignDirectory, "--programs", "2", "--seed", "3");
+
+        Assert.InRange(exit, 0, 1);
+        Assert.Equal(2, new Campaign.CampaignDirectory(CampaignDirectory).ReadPlan().Count);
+    }
+
+    [Fact]
+    public void Campaign_RelativeRoot_IsResolvedAgainstTheWorkingDirectory() {
+        MakeRepository("");
+        List<string> roots = [];
+        var services = new Campaign.CampaignServices(
+            root => { roots.Add(root); return new CliLauncher(root, TextWriter.Null); },
+            _ => new NoRunner());
+
+        Cli.Run(["campaign", "--out", CampaignDirectory, "--programs", "2", "--seed", "3", "--root", "."],
+            _out, _error, _directory, new Oracle(OracleBudget.Ci), seeds => seeds, services);
+
+        Assert.Equal([Path.GetFullPath(_directory)], roots);
+    }
+
+    [Fact]
+    public void CampaignWorker_DirectoryWithNoCampaign_IsAUsageError() {
+        int exit = RunCampaign(null, "campaign-worker", "--out", CampaignDirectory, "--shard", "0", "--root", _directory);
+
+        Assert.Equal(3, exit);
+        Assert.Equal($"error: {CampaignDirectory} holds no campaign\n", _error.ToString().ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
+    public void CampaignWorker_ShardOutsideTheCampaign_IsAUsageError() {
+        new Campaign.CampaignDirectory(CampaignDirectory).WriteSettings(new Campaign.CampaignSettings(3, 2, 2));
+
+        int exit = RunCampaign(null, "campaign-worker", "--out", CampaignDirectory, "--shard", "2", "--root", _directory);
+
+        Assert.Equal(3, exit);
+        Assert.Equal("error: shard 2 is outside a campaign of 2 workers\n", _error.ToString().ReplaceLineEndings("\n"));
+    }
+
+    [Theory]
+    [InlineData("campaign")]
+    [InlineData("campaign", "--out")]
+    [InlineData("campaign", "--out", "d", "--seed", "1")]
+    [InlineData("campaign", "--out", "d", "--programs", "4")]
+    [InlineData("campaign", "--programs", "4", "--seed", "1")]
+    [InlineData("campaign", "--out", "d", "--programs", "x", "--seed", "1")]
+    [InlineData("campaign", "--out", "d", "--programs", "0", "--seed", "1")]
+    [InlineData("campaign", "--out", "d", "--programs", "4", "--seed", "-1")]
+    [InlineData("campaign", "--out", "d", "--programs", "4", "--seed", "1", "--workers", "0")]
+    [InlineData("campaign", "--out", "d", "--programs", "4", "--seed", "1", "--bogus", "1")]
+    [InlineData("campaign", "--out", "d", "--out", "e", "--programs", "4", "--seed", "1")]
+    [InlineData("campaign-worker", "--out", "d")]
+    [InlineData("campaign-worker", "--shard", "0")]
+    [InlineData("campaign-worker", "--out", "d", "--shard", "-1")]
+    [InlineData("campaign-worker", "--out", "d", "--shard", "0", "--seed", "1")]
+    public void Campaign_BadArguments_PrintsUsageAndExitsThree(params string[] args) {
+        int exit = RunCampaign(null, args);
+
+        Assert.Equal(3, exit);
+        Assert.StartsWith("usage: grob-torture", _error.ToString(), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Corpus_ByDefault_RunsASampleOfMutantsBesideTheSeeds() {
         MakeRepository("");

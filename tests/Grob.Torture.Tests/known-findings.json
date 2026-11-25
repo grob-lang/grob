@@ -89,6 +89,42 @@
       "programs": [
         "tests/Grob.Integration.Tests/Sprint5IncrementCTests.cs@f32839db3e17d8b3/replace-value/1"
       ]
+    },
+    {
+      "row": "R-77",
+      "signature": "Run|Exception|GrobInternalException: GrobValue kind mismatch: expected String, actual Bool.",
+      "programs": [
+        "generated/0000000001352903/27"
+      ]
+    },
+    {
+      "row": "R-77",
+      "signature": "Run|Exception|GrobInternalException: Call target is not a function (kind: Int). The type checker should have rejected this source.",
+      "programs": [
+        "generated/0000000001352903/62"
+      ]
+    },
+    {
+      "row": "R-77",
+      "signature": "Run|Exception|GrobInternalException: GrobValue kind mismatch: expected String, actual Float.",
+      "programs": [
+        "generated/0000000001352903/90",
+        "generated/0000000001352903/107"
+      ]
+    },
+    {
+      "row": "R-69",
+      "signature": "Run|Exception|ArgumentException: The value cannot be an empty string. (Parameter '…')",
+      "programs": [
+        "generated/0000000001352903/116"
+      ]
+    },
+    {
+      "row": "R-78",
+      "signature": "Run|Exception|GrobInternalException: GrobValue kind mismatch: expected Float, actual Int.",
+      "programs": [
+        "generated/0000000001352903/146"
+      ]
     }
   ]
 }

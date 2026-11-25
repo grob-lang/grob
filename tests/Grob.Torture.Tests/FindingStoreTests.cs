@@ -92,7 +92,7 @@ public sealed class FindingStoreTests : IDisposable {
     }
 
     // A record is written beside its path and moved into place, so a duplicate leaves nothing
-    // behind and a leftover temporary file is never read as a record.
+    // behind and a leftover temporary file is never read as a record by Records or All.
     [Fact]
     public void Add_NewAndDuplicateRecords_LeaveOnlyCompleteRecordFiles() {
         var store = new FindingStore(_root);
@@ -111,6 +111,34 @@ public sealed class FindingStoreTests : IDisposable {
         File.WriteAllText(store.PathFor(Signature, "p@2/x/0") + ".tmp", "{ \"programId\": \"cut");
 
         Assert.Single(store.Records(Signature));
+    }
+
+    [Fact]
+    public void All_ALeftoverTemporaryFile_IsNotRead() {
+        var store = new FindingStore(_root);
+        store.Add(Record("p@1/x/0"));
+        File.WriteAllText(store.PathFor(Signature, "p@2/x/0") + ".tmp", "{ \"programId\": \"cut");
+
+        Assert.Single(store.All());
+    }
+
+    [Fact]
+    public void All_RecordsUnderEverySignature_AreReturnedInPathOrder() {
+        var store = new FindingStore(_root);
+        store.Add(Record("p@1/x/0", signature: "Run|Exception|A"));
+        store.Add(Record("p@2/x/0", signature: "Run|Exception|A"));
+        store.Add(Record("p@1/x/0", signature: "Run|Exception|B"));
+
+        IReadOnlyList<FindingRecord> all = store.All();
+
+        Assert.Equal(3, all.Count);
+        Assert.Equal(2, all.Count(r => r.Signature == "Run|Exception|A"));
+        Assert.Equal(all, new FindingStore(_root).All());
+    }
+
+    [Fact]
+    public void All_NoRecordsYet_IsEmpty() {
+        Assert.Empty(new FindingStore(_root).All());
     }
 
     [Fact]

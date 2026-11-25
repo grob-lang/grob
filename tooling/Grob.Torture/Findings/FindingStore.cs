@@ -22,8 +22,9 @@ internal sealed class FindingStore(string root) {
     /// </summary>
     /// <remarks>
     /// The record is written to a temporary file beside its path and moved into place, so a
-    /// process that dies or fails mid-write leaves no partial record for <see cref="Records"/> to
-    /// read, and a failed write throws rather than reading as a record already there.
+    /// process that dies or fails mid-write, such as a campaign worker, leaves no partial record
+    /// for <see cref="Records"/> or <see cref="All"/> to read, and a failed write throws rather
+    /// than reading as a record already there.
     /// </remarks>
     public bool Add(FindingRecord record) {
         string path = PathFor(record.Signature, record.ProgramId);
@@ -46,6 +47,14 @@ internal sealed class FindingStore(string root) {
         string directory = Path.Join(root, Hash(signature));
         if (!Directory.Exists(directory)) return [];
         return [.. Directory.EnumerateFiles(directory, "*.json")
+            .Order(StringComparer.Ordinal)
+            .Select(f => JsonSerializer.Deserialize<FindingRecord>(File.ReadAllText(f), Options)!)];
+    }
+
+    /// <summary>Every record under every signature, in path order.</summary>
+    public IReadOnlyList<FindingRecord> All() {
+        if (!Directory.Exists(root)) return [];
+        return [.. Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
             .Order(StringComparer.Ordinal)
             .Select(f => JsonSerializer.Deserialize<FindingRecord>(File.ReadAllText(f), Options)!)];
     }
