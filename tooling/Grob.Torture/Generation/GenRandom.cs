@@ -28,9 +28,11 @@ internal sealed class GenRandom(ulong seed) {
         if (total <= 0) throw new InvalidOperationException("the weights sum to zero");
         // A draw below the total falls within some weight, so the walk always returns.
         int draw = Next(total);
-        for (int i = 0; ; i++) {
-            if (draw < choices[i].Weight) return choices[i].Value;
+        int i = 0;
+        while (draw >= choices[i].Weight) {
             draw -= choices[i].Weight;
+            i++;
         }
+        return choices[i].Value;
     }
 }

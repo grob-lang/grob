@@ -103,17 +103,21 @@ internal sealed class TokenSpans {
         int last = first - 1;
         for (int i = first; i < _tokens.Count; i++) {
             TokenKind kind = _tokens[i].Kind;
-            if (kind == TokenKind.Eof) break;
-            if (nest == 0 && EndsAtTopLevel(kind, typeMode)) break;
-            if (Opens(kind) || (typeMode && kind == TokenKind.Less)) {
-                nest++;
-            } else if (Closes(kind) || (typeMode && kind == TokenKind.Greater)) {
-                if (nest == 0) break;
-                nest--;
-            }
+            if (kind == TokenKind.Eof || (nest == 0 && EndsAtTopLevel(kind, typeMode))) break;
+            int change = NestChange(kind, typeMode);
+            if (change < 0 && nest == 0) break;
+            nest += change;
             last = i;
         }
         return last;
+    }
+
+    // +1 for a token that opens a nesting, -1 for one that closes it and 0 otherwise; a type's
+    // angle brackets nest too.
+    private static int NestChange(TokenKind kind, bool typeMode) {
+        if (Opens(kind) || (typeMode && kind == TokenKind.Less)) return 1;
+        if (Closes(kind) || (typeMode && kind == TokenKind.Greater)) return -1;
+        return 0;
     }
 
     private static bool EndsAtTopLevel(TokenKind kind, bool typeMode) => kind switch {

@@ -122,6 +122,53 @@ public sealed class MutationOperatorTests {
         Assert.Equal(["s := \"b\" + \"a\"\n"], Mutants(new SwapOperands(), "s := \"a\" + \"b\"\n"));
     }
 
+    // A binary operand keeps its grouping when it moves, so the swap exchanges the operands and
+    // nothing else; the inner binary is swapped as a candidate of its own.
+    [Fact]
+    public void SwapOperands_BinaryLeftOperand_IsParenthesised() {
+        Assert.Equal(["x := 3 - (1 - 2)\n", "x := 2 - 1 - 3\n"], Mutants(new SwapOperands(), "x := 1 - 2 - 3\n"));
+    }
+
+    [Fact]
+    public void SwapOperands_BinaryRightOperand_IsParenthesised() {
+        Assert.Equal(["x := (2 * 3) - 1\n", "x := 1 - 3 * 2\n"], Mutants(new SwapOperands(), "x := 1 - 2 * 3\n"));
+    }
+
+    [Fact]
+    public void SwapOperands_GroupedOperand_IsNotParenthesisedAgain() {
+        Assert.Equal(["x := (2 - 3) - 1\n", "x := 1 - (3 - 2)\n"], Mutants(new SwapOperands(), "x := 1 - (2 - 3)\n"));
+    }
+
+    // A range's bounds are its own children, not a binary's, so a binary bound ends before the
+    // range's '..' or 'step' and the swap leaves the range as it was.
+    [Fact]
+    public void SwapOperands_BinaryRangeStart_EndsBeforeTheRangeOperator() {
+        Assert.Equal(
+            ["for i in 2 + 1..4 {\n    print(i)\n}\n"],
+            Mutants(new SwapOperands(), "for i in 1 + 2..4 {\n    print(i)\n}\n"));
+    }
+
+    [Fact]
+    public void SwapOperands_BinaryRangeEndBeforeAStep_EndsBeforeTheStep() {
+        Assert.Equal(
+            ["for i in 0..2 + 1 step 3 {\n    print(i)\n}\n"],
+            Mutants(new SwapOperands(), "for i in 0..1 + 2 step 3 {\n    print(i)\n}\n"));
+    }
+
+    [Fact]
+    public void SwapOperands_BinaryRangeStep_RunsToTheEndOfTheRange() {
+        Assert.Equal(
+            ["for i in 0..9 step 2 + 1 {\n    print(i)\n}\n"],
+            Mutants(new SwapOperands(), "for i in 0..9 step 1 + 2 {\n    print(i)\n}\n"));
+    }
+
+    [Fact]
+    public void SwapOperands_LoopIterable_StopsBeforeTheLoopBody() {
+        Assert.Equal(
+            ["for x in b + a {\n    print(x)\n}\n"],
+            Mutants(new SwapOperands(), "for x in a + b {\n    print(x)\n}\n"));
+    }
+
     // ---- 6. replace an identifier with another in scope -------------------------------------
 
     [Fact]
@@ -269,6 +316,46 @@ public sealed class MutationOperatorTests {
     [Fact]
     public void NullableReceiver_AlreadyOptional_HasNoCandidate() {
         Assert.Empty(Mutants(new NullableReceiver(), "s := \"ab\"\nprint(s?.upper())\n"));
+    }
+
+    // The tree is the parser's, with no scopes, so a name declared more than once is resolved only
+    // when every declaration of it gives the same type.
+    [Fact]
+    public void NullableReceiver_NameDeclaredWithTwoTypes_HasNoCandidate() {
+        Assert.Empty(Mutants(new NullableReceiver(),
+            "fn f(x: int): string {\n    return x.toString()\n}\nfn g(x: string): string {\n    return x.upper()\n}\n"));
+    }
+
+    [Fact]
+    public void NullableReceiver_NameDeclaredTwiceWithOneType_IsStillACandidate() {
+        List<string> mutants = Mutants(new NullableReceiver(),
+            "fn f(x: int): string {\n    return x.toString()\n}\nfn g(x: int): string {\n    return x.toString()\n}\n");
+
+        Assert.Equal(2, mutants.Count);
+        Assert.All(mutants, m => Assert.Contains("mn: int? := x\n", m, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("const s := \"cd\"\n")]
+    [InlineData("readonly s := \"cd\"\n")]
+    [InlineData("fn s(): int {\n    return 1\n}\n")]
+    [InlineData("try {\n    g()\n} catch (s: IoError) {\n    g()\n}\n")]
+    public void NullableReceiver_NameAlsoDeclaredWithNoTypeToRead_HasNoCandidate(string otherDeclaration) {
+        Assert.Empty(Mutants(new NullableReceiver(), otherDeclaration + "s := \"ab\"\nprint(s.upper())\n"));
+    }
+
+    // The binding goes before the statement, where a lambda's parameter is not in scope, so a
+    // name a lambda declares is never given a type, even beside an outer binding of that type.
+    [Fact]
+    public void NullableReceiver_NameALambdaParameterDeclares_HasNoCandidate() {
+        Assert.Empty(Mutants(new NullableReceiver(),
+            "s := \"ab\"\nf := (s: string) => s.upper()\nprint(s.upper())\n"));
+    }
+
+    [Fact]
+    public void NullableReceiver_NameAlsoALoopVariable_HasNoCandidate() {
+        Assert.Empty(Mutants(new NullableReceiver(),
+            "n: int := 1\nfor n in [\"a\"] {\n    print(n.upper())\n}\nprint(n.toString())\n"));
     }
 
     // ---- all operators ----------------------------------------------------------------------

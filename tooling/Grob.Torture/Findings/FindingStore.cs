@@ -22,7 +22,9 @@ internal sealed class FindingStore(string root) {
     /// </summary>
     /// <remarks>
     /// The record is written to a temporary file beside its path and moved into place, so a
-    /// campaign worker that dies mid-write leaves no partial record for <see cref="All"/> to read.
+    /// process that dies or fails mid-write, such as a campaign worker, leaves no partial record
+    /// for <see cref="Records"/> or <see cref="All"/> to read, and a failed write throws rather
+    /// than reading as a record already there.
     /// </remarks>
     public bool Add(FindingRecord record) {
         string path = PathFor(record.Signature, record.ProgramId);

@@ -335,8 +335,9 @@ public sealed class CliTests : IDisposable {
             Write(Path.Join("tests", "fixtures", $"seed{i}.grob"), $"fn f{i}(a: int): int {{\n    return a + {i}\n}}\nx := f{i}(1)\nprint(x)\n");
         }
 
-        Cli.Run(["corpus", _directory], _out, _error, _directory);
+        int exit = Cli.Run(["corpus", _directory], _out, _error, _directory);
 
+        Assert.Equal(1, exit);
         string header = _out.ToString().ReplaceLineEndings("\n").Split('\n')[0];
         int programs = int.Parse(header[..header.IndexOf(' ', StringComparison.Ordinal)], System.Globalization.CultureInfo.InvariantCulture);
         Assert.True(programs > 62, $"expected the 62 seeds and some mutants, got: {header}");
