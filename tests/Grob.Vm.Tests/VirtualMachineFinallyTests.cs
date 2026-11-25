@@ -73,7 +73,7 @@ public sealed class VirtualMachineFinallyTests {
         script.WriteOpCode(OpCode.TryEnd, 4);
         script.WriteOpCode(OpCode.Return, 4);
 
-        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset));
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset, BaseSlot: 0));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -114,7 +114,7 @@ public sealed class VirtualMachineFinallyTests {
         script.WriteOpCode(OpCode.Return, 4);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["IoError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset));
+            [new CatchHandler(["IoError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset, BaseSlot: 0));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -156,7 +156,7 @@ public sealed class VirtualMachineFinallyTests {
         script.WriteOpCode(OpCode.Return, 4);
 
         // No handlers — nothing matches, so the throw is unhandled.
-        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset));
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset, BaseSlot: 0));
 
         var (vm, output) = NewVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
@@ -208,8 +208,8 @@ public sealed class VirtualMachineFinallyTests {
 
         // Neither region has a catch — the throw is unhandled and unwinds
         // through both, each finally running exactly once, inner then outer.
-        script.SetTryRegion(innerRegionIndex, new TryRegion(innerStart, innerEnd, [], innerFinallyOffset));
-        script.SetTryRegion(outerRegionIndex, new TryRegion(outerStart, outerEnd, [], outerFinallyOffset));
+        script.SetTryRegion(innerRegionIndex, new TryRegion(innerStart, innerEnd, [], innerFinallyOffset, BaseSlot: 0));
+        script.SetTryRegion(outerRegionIndex, new TryRegion(outerStart, outerEnd, [], outerFinallyOffset, BaseSlot: 0));
 
         var (vm, _) = NewVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
@@ -262,7 +262,7 @@ public sealed class VirtualMachineFinallyTests {
         script.WriteOpCode(OpCode.Return, 4);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["IoError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset));
+            [new CatchHandler(["IoError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset, BaseSlot: 0));
 
         var (vm, _) = NewVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
@@ -324,9 +324,9 @@ public sealed class VirtualMachineFinallyTests {
         script.WriteOpCode(OpCode.TryEnd, 6);
         script.WriteOpCode(OpCode.Return, 6);
 
-        script.SetTryRegion(innerRegionIndex, new TryRegion(innerStart, innerEnd, [], innerFinallyOffset));
+        script.SetTryRegion(innerRegionIndex, new TryRegion(innerStart, innerEnd, [], innerFinallyOffset, BaseSlot: 0));
         script.SetTryRegion(outerRegionIndex, new TryRegion(outerStart, outerEnd,
-            [new CatchHandler([], IsCatchAll: true, outerHandlerOffset, BindingSlot: 0)]));
+            [new CatchHandler([], IsCatchAll: true, outerHandlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -394,7 +394,8 @@ public sealed class VirtualMachineFinallyTests {
         script.WriteOpCode(OpCode.Pop, 1);
         script.WriteOpCode(OpCode.Return, 1);
 
-        throwerChunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset));
+        // The captured local (999) holds slot 0 below the try, so the region's base is 1.
+        throwerChunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset, BaseSlot: 1));
 
         var (vm, _) = NewVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
@@ -441,7 +442,7 @@ public sealed class VirtualMachineFinallyTests {
         script.WriteOpCode(OpCode.TryEnd, 4);
         script.WriteOpCode(OpCode.Return, 4);
 
-        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset));
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset, BaseSlot: 0));
 
         var (vm, _) = NewVm();
         GrobExitException ex = Assert.Throws<GrobExitException>(() => vm.Run(script));
@@ -477,10 +478,207 @@ public sealed class VirtualMachineFinallyTests {
         script.WriteOpCode(OpCode.TryEnd, 2);
         script.WriteOpCode(OpCode.Return, 2);
 
-        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset));
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset, BaseSlot: 0));
 
         var (vm, _) = NewVm();
         Exception? ex = Record.Exception(() => vm.Run(script));
         Assert.IsType<GrobRuntimeException>(ex);
+    }
+
+    // -----------------------------------------------------------------------
+    // R-79 (D-455): a finally that a throw runs finds the stack trimmed to its
+    // region's BaseSlot, as the normal path leaves it, so its first local sits
+    // where the compiler put it — whatever the throw left above that slot.
+    // -----------------------------------------------------------------------
+
+    private static void EmitConstant(Chunk chunk, GrobValue value, int line) {
+        int index = chunk.AddConstant(value);
+        chunk.WriteOpCode(OpCode.Constant, line); chunk.WriteByte((byte)index, line);
+    }
+
+    private static void EmitThrowIoError(Chunk chunk, byte typeIdx, string message, int line) {
+        EmitConstant(chunk, GrobValue.FromString(message), line);
+        chunk.WriteOpCode(OpCode.NewStruct, line); chunk.WriteByte(typeIdx, line);
+        chunk.WriteOpCode(OpCode.Throw, line);
+    }
+
+    private static int SeedGlobal(Chunk chunk, string name) {
+        int nameIdx = chunk.AddConstant(GrobValue.FromString(name));
+        chunk.WriteOpCode(OpCode.Nil, 1);
+        chunk.WriteOpCode(OpCode.DefineGlobal, 1); chunk.WriteByte((byte)nameIdx, 1);
+        return nameIdx;
+    }
+
+    private static void EmitLocalToGlobal(Chunk chunk, int slot, int nameIdx, int line) {
+        chunk.WriteOpCode(OpCode.GetLocal, line); chunk.WriteByte((byte)slot, line);
+        chunk.WriteOpCode(OpCode.SetGlobal, line); chunk.WriteByte((byte)nameIdx, line);
+    }
+
+    [Fact]
+    public void FinallyOnThrow_LocalDeclaredInTryBody_FinallyReadsItsOwnLocal() {
+        // try { a := true; throw } finally { b := 1; out = b + 1 }
+        var script = new Chunk();
+        byte typeIdx = script.AddStructType(new StructTypeDescriptor("IoError", ["message"]));
+        int outName = SeedGlobal(script, "out");
+
+        int regionIndex = script.AddTryRegion();
+        script.WriteOpCode(OpCode.TryBegin, 2); script.WriteByte((byte)regionIndex, 2);
+        int startOffset = script.Count;
+        EmitConstant(script, GrobValue.FromBool(true), 3); // a, slot 0
+        EmitThrowIoError(script, typeIdx, "boom", 4);
+        int endOffset = script.Count;
+
+        int finallyOffset = script.Count;
+        EmitConstant(script, GrobValue.FromInt(1), 6);     // b, slot 0
+        script.WriteOpCode(OpCode.GetLocal, 7); script.WriteByte(0, 7);
+        EmitConstant(script, GrobValue.FromInt(1), 7);
+        script.WriteOpCode(OpCode.AddInt, 7);
+        script.WriteOpCode(OpCode.SetGlobal, 7); script.WriteByte((byte)outName, 7);
+        script.WriteOpCode(OpCode.Pop, 8);
+        script.WriteOpCode(OpCode.TryEnd, 8);
+        script.WriteOpCode(OpCode.Return, 8);
+
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset, BaseSlot: 0));
+
+        var (vm, _) = NewVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
+
+        Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
+        Assert.Equal(4, ex.Line);
+        Assert.Equal(0, ex.Column);
+        Assert.Equal(2L, vm.Globals["out"].AsInt());
+    }
+
+    [Fact]
+    public void FinallyOnThrow_LocalDeclaredInCatchBodyThatThrows_FinallyReadsItsOwnLocal() {
+        // try { throw } catch e { c := "c"; throw } finally { b := "f"; out = b }
+        var script = new Chunk();
+        byte typeIdx = script.AddStructType(new StructTypeDescriptor("IoError", ["message"]));
+        int outName = SeedGlobal(script, "out");
+
+        int regionIndex = script.AddTryRegion();
+        script.WriteOpCode(OpCode.TryBegin, 2); script.WriteByte((byte)regionIndex, 2);
+        int startOffset = script.Count;
+        EmitThrowIoError(script, typeIdx, "first", 3);
+        int endOffset = script.Count;
+
+        script.WriteOpCode(OpCode.Jump, 3);
+        int jumpSite = script.Count;
+        script.WriteByte(0xFF, 3); script.WriteByte(0xFF, 3);
+
+        int handlerOffset = script.Count;                   // e, slot 0
+        EmitConstant(script, GrobValue.FromString("c"), 5); // c, slot 1
+        EmitThrowIoError(script, typeIdx, "second", 6);
+
+        PatchJump16(script, jumpSite);
+        int finallyOffset = script.Count;
+        EmitConstant(script, GrobValue.FromString("f"), 8); // b, slot 0
+        EmitLocalToGlobal(script, 0, outName, 9);
+        script.WriteOpCode(OpCode.Pop, 10);
+        script.WriteOpCode(OpCode.TryEnd, 10);
+        script.WriteOpCode(OpCode.Return, 10);
+
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
+            [new CatchHandler([], IsCatchAll: true, handlerOffset, BindingSlot: 0)], finallyOffset, BaseSlot: 0));
+
+        var (vm, _) = NewVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
+
+        Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
+        Assert.Equal(6, ex.Line);
+        Assert.Equal(0, ex.Column);
+        Assert.Equal("f", vm.Globals["out"].AsString());
+    }
+
+    [Fact]
+    public void FinallyOnThrow_NestedTry_EachFinallyTrimsToItsOwnBase() {
+        // try { x := 10; try { y := 20; throw } finally { z := 30; inner = z; seenX = x } }
+        // finally { w := 40; outer = w }
+        var script = new Chunk();
+        byte typeIdx = script.AddStructType(new StructTypeDescriptor("IoError", ["message"]));
+        int innerName = SeedGlobal(script, "inner");
+        int seenXName = SeedGlobal(script, "seenX");
+        int outerName = SeedGlobal(script, "outer");
+
+        int outerIndex = script.AddTryRegion();
+        script.WriteOpCode(OpCode.TryBegin, 2); script.WriteByte((byte)outerIndex, 2);
+        int outerStart = script.Count;
+        EmitConstant(script, GrobValue.FromInt(10), 3);     // x, slot 0
+
+        int innerIndex = script.AddTryRegion();
+        script.WriteOpCode(OpCode.TryBegin, 4); script.WriteByte((byte)innerIndex, 4);
+        int innerStart = script.Count;
+        EmitConstant(script, GrobValue.FromInt(20), 5);     // y, slot 1
+        EmitThrowIoError(script, typeIdx, "boom", 6);
+        int innerEnd = script.Count;
+
+        int innerFinally = script.Count;
+        EmitConstant(script, GrobValue.FromInt(30), 8);     // z, slot 1
+        EmitLocalToGlobal(script, 1, innerName, 9);
+        EmitLocalToGlobal(script, 0, seenXName, 9);
+        script.WriteOpCode(OpCode.Pop, 10);
+        script.WriteOpCode(OpCode.TryEnd, 10);
+
+        script.WriteOpCode(OpCode.Pop, 11);                 // x's normal-path cleanup
+        int outerEnd = script.Count;
+
+        int outerFinally = script.Count;
+        EmitConstant(script, GrobValue.FromInt(40), 13);    // w, slot 0
+        EmitLocalToGlobal(script, 0, outerName, 14);
+        script.WriteOpCode(OpCode.Pop, 15);
+        script.WriteOpCode(OpCode.TryEnd, 15);
+        script.WriteOpCode(OpCode.Return, 15);
+
+        script.SetTryRegion(innerIndex, new TryRegion(innerStart, innerEnd, [], innerFinally, BaseSlot: 1));
+        script.SetTryRegion(outerIndex, new TryRegion(outerStart, outerEnd, [], outerFinally, BaseSlot: 0));
+
+        var (vm, _) = NewVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
+
+        Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
+        Assert.Equal(6, ex.Line);
+        Assert.Equal(0, ex.Column);
+        Assert.Equal(30L, vm.Globals["inner"].AsInt());
+        Assert.Equal(10L, vm.Globals["seenX"].AsInt());
+        Assert.Equal(40L, vm.Globals["outer"].AsInt());
+    }
+
+    [Fact]
+    public void FinallyOnThrow_ThrowFromCalleeFrame_FinallyReadsItsOwnLocal() {
+        // fn f() { c := 7; throw }   try { f() } finally { b := 5; out = b }
+        var fChunk = new Chunk();
+        byte fTypeIdx = fChunk.AddStructType(new StructTypeDescriptor("IoError", ["message"]));
+        EmitConstant(fChunk, GrobValue.FromInt(7), 1);      // c, the callee's slot 0
+        EmitThrowIoError(fChunk, fTypeIdx, "boom", 2);
+        fChunk.WriteOpCode(OpCode.Nil, 3);
+        fChunk.WriteOpCode(OpCode.Return, 3);
+        var fFn = new BytecodeFunction("f", 0, fChunk);
+
+        var script = new Chunk();
+        int outName = SeedGlobal(script, "out");
+        int regionIndex = script.AddTryRegion();
+        script.WriteOpCode(OpCode.TryBegin, 5); script.WriteByte((byte)regionIndex, 5);
+        int startOffset = script.Count;
+        EmitConstant(script, GrobValue.FromFunction(fFn), 6);
+        script.WriteOpCode(OpCode.Call, 6); script.WriteByte(0, 6);
+        script.WriteOpCode(OpCode.Pop, 6);
+        int endOffset = script.Count;
+
+        int finallyOffset = script.Count;
+        EmitConstant(script, GrobValue.FromInt(5), 8);      // b, slot 0
+        EmitLocalToGlobal(script, 0, outName, 9);
+        script.WriteOpCode(OpCode.Pop, 10);
+        script.WriteOpCode(OpCode.TryEnd, 10);
+        script.WriteOpCode(OpCode.Return, 10);
+
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset, BaseSlot: 0));
+
+        var (vm, _) = NewVm();
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
+
+        Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
+        Assert.Equal(2, ex.Line);
+        Assert.Equal(0, ex.Column);
+        Assert.Equal(5L, vm.Globals["out"].AsInt());
     }
 }

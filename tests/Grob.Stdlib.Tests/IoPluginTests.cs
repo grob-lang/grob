@@ -119,7 +119,7 @@ public sealed class IoPluginTests {
         script.WriteOpCode(OpCode.Return, 3);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["IoError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)]));
+            [new CatchHandler(["IoError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
 
         var streams = new FakeStandardStreams(input: TextReader.Null);
         var vm = new VirtualMachine(streams, Catalogue(new IoPlugin(streams)));

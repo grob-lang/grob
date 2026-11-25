@@ -572,6 +572,10 @@ public sealed partial class Compiler {
     /// </remarks>
     public override object? VisitTry(TryStmt node) {
         int line = node.Range.Start.Line;
+        // A try is a statement, so the slots live here are exactly the stack's height
+        // above the frame base: the VM trims to it before a finally runs on the throw
+        // path (D-455), as a catch binding already lands on it.
+        int baseSlot = _nextSlot;
 
         int regionIndex = _chunk.AddTryRegion();
         _chunk.WriteOpCode(OpCode.TryBegin, line);
@@ -616,7 +620,7 @@ public sealed partial class Compiler {
 
         _chunk.WriteOpCode(OpCode.TryEnd, node.Range.End.Line);
 
-        _chunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, handlers, finallyOffset));
+        _chunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, handlers, finallyOffset, baseSlot));
         return null;
     }
 

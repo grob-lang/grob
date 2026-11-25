@@ -169,6 +169,87 @@ public sealed class CompilerFinallyTests {
         Assert.All(jumps, j => Assert.Equal(region.FinallyOffset, JumpTarget(j)));
     }
 
+    // -----------------------------------------------------------------------
+    // TryRegion.BaseSlot (R-79, D-455): the slot count live when the try
+    // begins, which the VM trims to before a finally runs on the throw path.
+    // It is the slot a catch binding takes, so where a catch is present the
+    // two must agree.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void BaseSlot_TopLevelTryWithNoLocalsBelow_IsZero() {
+        Chunk chunk = CompileSource("try { x := 1 } finally { y := 2 }\n");
+
+        TryRegion region = chunk.GetTryRegion(Decode(chunk).Single(i => i.Op == OpCode.TryBegin).Arg);
+
+        Assert.Equal(0, region.BaseSlot);
+    }
+
+    [Fact]
+    public void BaseSlot_TryAfterTwoBlockLocals_IsTwoAndMatchesTheCatchBinding() {
+        Chunk chunk = CompileSource("""
+            {
+                a := 1
+                b := 2
+                try { x := 1 } catch e { y := 2 } finally { z := 3 }
+            }
+            """);
+
+        TryRegion region = chunk.GetTryRegion(Decode(chunk).Single(i => i.Op == OpCode.TryBegin).Arg);
+
+        Assert.Equal(2, region.BaseSlot);
+        Assert.Equal(region.Handlers[0].BindingSlot, region.BaseSlot);
+    }
+
+    [Fact]
+    public void BaseSlot_TryInAFunctionAfterParametersAndALocal_CountsThemAll() {
+        Chunk topLevel = CompileSource("""
+            fn f(p: int, q: int): int {
+                r := p + q
+                try { s := r } catch e { t := 1 } finally { u := 2 }
+                return r
+            }
+            """);
+        Chunk fnChunk = NamedFunctionChunk(topLevel, Decode(topLevel), "f");
+
+        TryRegion region = fnChunk.GetTryRegion(Decode(fnChunk).Single(i => i.Op == OpCode.TryBegin).Arg);
+
+        Assert.Equal(3, region.BaseSlot);
+        Assert.Equal(region.Handlers[0].BindingSlot, region.BaseSlot);
+    }
+
+    [Fact]
+    public void BaseSlot_NestedTry_InnerBaseCountsTheOuterBodysLocals() {
+        Chunk chunk = CompileSource("""
+            try {
+                x := 1
+                y := 2
+                try { z := 3 } finally { w := 4 }
+            } finally { v := 5 }
+            """);
+
+        List<Instr> tryBegins = Decode(chunk).Where(i => i.Op == OpCode.TryBegin).ToList();
+        TryRegion outer = chunk.GetTryRegion(tryBegins[0].Arg);
+        TryRegion inner = chunk.GetTryRegion(tryBegins[1].Arg);
+
+        Assert.Equal(0, outer.BaseSlot);
+        Assert.Equal(2, inner.BaseSlot);
+    }
+
+    [Fact]
+    public void BaseSlot_TryInsideForIn_CountsTheLoopsHiddenLocalsLikeTheCatchBinding() {
+        Chunk chunk = CompileSource("""
+            for i in 1..3 {
+                try { x := i } catch e { y := 1 } finally { z := 2 }
+            }
+            """);
+
+        TryRegion region = chunk.GetTryRegion(Decode(chunk).Single(i => i.Op == OpCode.TryBegin).Arg);
+
+        Assert.Equal(2, region.BaseSlot); // the loop's counter and bound hold slots 0 and 1
+        Assert.Equal(region.Handlers[0].BindingSlot, region.BaseSlot);
+    }
+
     /// <summary>
     /// Locates a top-level named function's own compiled <see cref="Chunk"/> — the
     /// <see cref="OpCode.Constant"/>/<see cref="OpCode.ConstantLong"/> instruction

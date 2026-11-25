@@ -88,7 +88,7 @@ public sealed class MathPluginTests {
         script.WriteOpCode(OpCode.Return, 3);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)]));
+            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
 
         var vm = NewRegisteredVm();
         vm.Run(script);
