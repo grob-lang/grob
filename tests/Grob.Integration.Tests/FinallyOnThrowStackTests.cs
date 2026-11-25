@@ -38,11 +38,21 @@ public sealed class FinallyOnThrowStackTests {
         Assert.Equal(expected, Lines(stdout));
     }
 
-    private static void AssertFailsAfterPrinting(string source, string expectedCode, params string[] expected) {
+    /// <summary>
+    /// Asserts the program prints <paramref name="expected"/>, then fails with
+    /// <paramref name="expectedCode"/> located at the original failure's line, not at a line
+    /// of the finally that ran after it. A runtime diagnostic carries <c>file:line</c> only
+    /// (D-322), so the location ends at the line, with no column after it.
+    /// </summary>
+    private static void AssertFailsAfterPrinting(
+            string source, string expectedCode, int expectedLine, params string[] expected) {
         (string stdout, string stderr, int exitCode) = RunSource(source);
+        string[] errorLines = Lines(stderr);
 
         Assert.Equal(1, exitCode);
-        Assert.StartsWith($"error[{expectedCode}]", stderr, StringComparison.Ordinal);
+        Assert.StartsWith($"error[{expectedCode}]", errorLines[0], StringComparison.Ordinal);
+        Assert.StartsWith("  --> ", errorLines[1], StringComparison.Ordinal);
+        Assert.EndsWith($".grob:{expectedLine}", errorLines[1], StringComparison.Ordinal);
         Assert.Equal(expected, Lines(stdout));
     }
 
@@ -56,7 +66,7 @@ public sealed class FinallyOnThrowStackTests {
                 b := 1
                 print(b + 1)
             }
-            """, "E5904", "2");
+            """, "E5904", 3, "2");
 
     [Fact]
     public void Throw_FromACatchBodyWithALocal_FinallyReadsItsOwnLocal() =>
@@ -89,7 +99,7 @@ public sealed class FinallyOnThrowStackTests {
                 b := 1
                 print(b + 1)
             }
-            """, "E5904", "2");
+            """, "E5904", 3, "2");
 
     [Fact]
     public void RuntimeErrorInTheTryBody_FinallyReadsItsOwnLocal() =>
@@ -101,7 +111,7 @@ public sealed class FinallyOnThrowStackTests {
                 b := "s"
                 print(b + "!")
             }
-            """, "E5002", "s!");
+            """, "E5002", 3, "s!");
 
     [Fact]
     public void ErrorANativeRaisesInTheTryBody_FinallyReadsItsOwnLocal() =>
@@ -113,7 +123,7 @@ public sealed class FinallyOnThrowStackTests {
                 b := "s"
                 print(b + "!")
             }
-            """, "E5702", "s!");
+            """, "E5702", 3, "s!");
 
     [Fact]
     public void NestedTry_EachFinallyReadsItsOwnLocalsAndTheOnesBelow() =>

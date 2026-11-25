@@ -545,6 +545,7 @@ public sealed class VirtualMachineFinallyTests {
 
         Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
         Assert.Equal(4, ex.Line);
+        Assert.Equal(0, ex.Column);
         Assert.Equal(2L, vm.Globals["out"].AsInt());
     }
 
@@ -585,6 +586,7 @@ public sealed class VirtualMachineFinallyTests {
 
         Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
         Assert.Equal(6, ex.Line);
+        Assert.Equal(0, ex.Column);
         Assert.Equal("f", vm.Globals["out"].AsString());
     }
 
@@ -635,6 +637,7 @@ public sealed class VirtualMachineFinallyTests {
 
         Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
         Assert.Equal(6, ex.Line);
+        Assert.Equal(0, ex.Column);
         Assert.Equal(30L, vm.Globals["inner"].AsInt());
         Assert.Equal(10L, vm.Globals["seenX"].AsInt());
         Assert.Equal(40L, vm.Globals["outer"].AsInt());
@@ -675,6 +678,7 @@ public sealed class VirtualMachineFinallyTests {
 
         Assert.Equal(ErrorCatalog.E5904.Code, ex.Code);
         Assert.Equal(2, ex.Line);
+        Assert.Equal(0, ex.Column);
         Assert.Equal(5L, vm.Globals["out"].AsInt());
     }
 }

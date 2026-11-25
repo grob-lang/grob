@@ -246,7 +246,7 @@ public sealed class CompilerFinallyTests {
 
         TryRegion region = chunk.GetTryRegion(Decode(chunk).Single(i => i.Op == OpCode.TryBegin).Arg);
 
-        Assert.True(region.BaseSlot > 0, "the loop's counter and bound hold slots below the try");
+        Assert.Equal(2, region.BaseSlot); // the loop's counter and bound hold slots 0 and 1
         Assert.Equal(region.Handlers[0].BindingSlot, region.BaseSlot);
     }
 
