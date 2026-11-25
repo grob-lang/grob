@@ -1,4 +1,7 @@
+using Grob.Runtime;
+using Grob.Stdlib;
 using Grob.Torture.Campaign;
+using Grob.Torture.Fakes;
 
 using Xunit;
 
@@ -9,6 +12,26 @@ namespace Grob.Torture.Tests;
 /// and no stack trace, or the strategy's §1 failure, a .NET frame or the unhandled-exception banner.
 /// </summary>
 public sealed class BlackBoxTests {
+    // The black-box check runs mutated reproducers through the real CLI, with the machine's own
+    // capabilities and no isolation (R-95). That is safe only while nothing the CLI registers can
+    // write or delete a file, start a process or reach the network. Each namespace and named type
+    // listed here was judged to have no effect outside the child process: env.set changes the
+    // child's own environment. A new one fails this test until it is judged the same way; one that
+    // touches the machine, such as 9C's fs, needs R-95 closed first.
+    private static readonly string[] NamespacesWithoutHostEffects =
+        ["date", "env", "float", "formatAs", "guid", "int", "log", "math", "path", "regex", "strings"];
+
+    private static readonly string[] NamedTypesWithoutHostEffects = ["Match", "Regex", "date", "guid"];
+
+    [Fact]
+    public void RealCatalogue_RegistersOnlyWhatTheBlackBoxCheckMayRunUnisolated() {
+        HostFakes fakes = HostFakes.Create();
+        NativeCatalogue catalogue = StdlibCatalogue.Build(fakes.RandomSource, fakes.Environment, fakes.Streams, fakes.Clock, fakes.FileSystem, verbose: false);
+
+        Assert.Equal(NamespacesWithoutHostEffects.Order(StringComparer.Ordinal), catalogue.NamespaceNames.Order(StringComparer.Ordinal));
+        Assert.Equal(NamedTypesWithoutHostEffects.Order(StringComparer.Ordinal), catalogue.NamedTypeNames.Order(StringComparer.Ordinal));
+    }
+
     [Fact]
     public void Classify_E9001WithNoFrame_IsReported() {
         var output = new GrobOutput(1,

@@ -25,21 +25,22 @@ internal sealed class ProcessGrobRunner(string grobPath) : IGrobRunner {
         start.ArgumentList.Add("run");
         start.ArgumentList.Add(scriptPath);
 
-        // stdout is drained and dropped, so a reproducer that prints without end neither blocks on
-        // a full pipe nor fills the supervisor's memory; stderr is what the check reads.
+        // stdout is drained in fixed-size chunks and dropped, so a reproducer that prints without
+        // end, with or without a newline, neither blocks on a full pipe nor fills the supervisor's
+        // memory; a line reader would hold an unfinished line whole. stderr is what the check reads.
         var stderr = new StringBuilder();
         using Process process = Process.Start(start) ?? throw new InvalidOperationException($"{grobPath} did not start");
-        process.OutputDataReceived += (_, _) => { };
+        Task stdout = process.StandardOutput.BaseStream.CopyToAsync(Stream.Null);
         process.ErrorDataReceived += (_, e) => {
             if (e.Data is not null) lock (stderr) stderr.Append(e.Data).Append('\n');
         };
-        process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         process.StandardInput.Close();
 
         bool ended = process.WaitForExit(Timeout);
         if (!ended) process.Kill(entireProcessTree: true);
-        process.WaitForExit(); // waits for the redirected streams to drain
+        process.WaitForExit(); // waits for stderr to drain
+        stdout.GetAwaiter().GetResult();
         lock (stderr) return new GrobOutput(ended ? process.ExitCode : -1, stderr.ToString(), TimedOut: !ended);
     }
 }

@@ -158,7 +158,19 @@ internal static class CampaignReport {
         int count = reproducer.Count();
         string first = reproducer.Select(r => r.ProgramId).Order(StringComparer.Ordinal).First();
         string source = reproducer.Key.EndsWith('\n') ? reproducer.Key : reproducer.Key + "\n";
-        text.Append(CultureInfo.InvariantCulture, $"{count} {(count == 1 ? "program" : "programs")}, first `{first}`:\n\n```grob\n{source}```\n\n");
+        string fence = Fence(source);
+        text.Append(CultureInfo.InvariantCulture, $"{count} {(count == 1 ? "program" : "programs")}, first `{first}`:\n\n{fence}grob\n{source}{fence}\n\n");
+    }
+
+    // A fence longer than every run of backticks in the source, which a run inside it cannot close.
+    private static string Fence(string source) {
+        int longest = 0;
+        int run = 0;
+        foreach (char c in source) {
+            run = c == '`' ? run + 1 : 0;
+            longest = Math.Max(longest, run);
+        }
+        return new string('`', Math.Max(3, longest + 1));
     }
 
     private static string? FirstFrame(string signature, List<FindingRecord> records, IReadOnlyList<ProgramResult> results) =>

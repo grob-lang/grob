@@ -86,6 +86,17 @@ public sealed class CampaignReportTests {
         Assert.Contains("First frame: `Grob.Compiler.Compiler.Emit`.", report, StringComparison.Ordinal);
     }
 
+    // A reproducer can hold a run of backticks, in a string or as a raw string's delimiter, so its
+    // fence must be longer than any run in the source or the block ends early.
+    [Fact]
+    public void Build_ReproducerHoldingABacktickRun_IsFencedByALongerOne() {
+        FindingRecord[] fenced = [new("p", Boom, "m", null, "o\n", "s := \"\n```\n````\n\"\n", false)];
+
+        string report = CampaignReport.Build(Settings, Results, fenced, [], null, []).ReplaceLineEndings("\n");
+
+        Assert.Contains("1 program, first `p`:\n\n`````grob\ns := \"\n```\n````\n\"\n`````\n", report, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Build_ManyReproducers_ListsTheShortestFewAndCountsTheRest() {
         FindingRecord[] many = [.. Enumerable.Range(0, CampaignReport.ReproducersShown + 2)

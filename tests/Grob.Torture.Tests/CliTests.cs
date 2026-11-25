@@ -263,6 +263,59 @@ public sealed class CliTests : IDisposable {
         Assert.False(Directory.Exists(CampaignDirectory));
     }
 
+    /// <summary>A CLI that exists but cannot be started, as a file without execute permission is.</summary>
+    private sealed class UnstartableRunner : Campaign.IGrobRunner {
+        public Campaign.GrobOutput Run(string scriptPath) => throw new System.ComponentModel.Win32Exception(13, "Permission denied");
+    }
+
+    // The black-box check runs as the report is written, over the stored records. A finished
+    // campaign given one record and resumed reaches it at once, whatever its programs found.
+    [Fact]
+    public void Campaign_GrobThatCannotStart_IsAnErrorThatKeepsTheResultsForAResume() {
+        MakeRepository("");
+        Write("grob.exe", "");
+        string[] args = ["campaign", "--out", CampaignDirectory, "--programs", "2", "--seed", "3", "--workers", "1", "--root", _directory];
+        RunCampaign(null, args);
+        var directory = new Campaign.CampaignDirectory(CampaignDirectory);
+        File.Delete(directory.ReportPath);
+        new Findings.FindingStore(directory.FindingsPath).Add(new Findings.FindingRecord("p", "Run|Exception|boom", "boom", null, "x()\n", "x()\n", false));
+        var unstartable = new Campaign.CampaignServices(root => new CliLauncher(root, TextWriter.Null), _ => new UnstartableRunner());
+
+        int exit = Cli.Run([.. args, "--grob", "grob.exe"], _out, _error, _directory, new Oracle(OracleBudget.Ci), seeds => seeds, unstartable);
+
+        Assert.Equal(3, exit);
+        Assert.Equal("error: Permission denied\n", _error.ToString().ReplaceLineEndings("\n"));
+        Assert.Equal(2, directory.ReadResults(0).Count);
+        Assert.False(File.Exists(directory.ReportPath));
+
+        int resumed = RunCampaign(null, [.. args, "--grob", "grob.exe"]);
+
+        Assert.Equal(1, resumed);
+        Assert.Equal(2, directory.ReadResults(0).Count);
+        Assert.True(File.Exists(directory.ReportPath));
+    }
+
+    private sealed class FaultyRunner : Campaign.IGrobRunner {
+        public Campaign.GrobOutput Run(string scriptPath) => throw new InvalidOperationException("a harness bug");
+    }
+
+    [Fact]
+    public void Campaign_RunnerThatFaults_IsNotReportedAsACommandError() {
+        MakeRepository("");
+        Write("grob.exe", "");
+        string[] args = ["campaign", "--out", CampaignDirectory, "--programs", "2", "--seed", "3", "--workers", "1", "--root", _directory];
+        RunCampaign(null, args);
+        new Findings.FindingStore(new Campaign.CampaignDirectory(CampaignDirectory).FindingsPath)
+            .Add(new Findings.FindingRecord("p", "Run|Exception|boom", "boom", null, "x()\n", "x()\n", false));
+        var faulty = new Campaign.CampaignServices(root => new CliLauncher(root, TextWriter.Null), _ => new FaultyRunner());
+
+        var thrown = Assert.Throws<AggregateException>(() =>
+            Cli.Run([.. args, "--grob", "grob.exe"], _out, _error, _directory, new Oracle(OracleBudget.Ci), seeds => seeds, faulty));
+
+        Assert.IsType<InvalidOperationException>(Assert.Single(thrown.InnerExceptions));
+        Assert.Empty(_error.ToString());
+    }
+
     [Fact]
     public void Campaign_NoRootGiven_FindsTheRepositoryFromTheWorkingDirectory() {
         MakeRepository("");

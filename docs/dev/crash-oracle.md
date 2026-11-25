@@ -63,12 +63,18 @@ dotnet run -c Release --project tooling/Grob.Torture -- campaign \
 ```
 
 `--grob` names the CLI the black-box check runs; on Windows it is `grob.exe`. Leave it out to
-skip the check.
+skip the check. **The check is not isolated**: it runs each reproducer with the machine's own
+capabilities, not the oracle's fakes. That is safe only while no native the CLI registers
+writes or deletes a file, starts a process or reaches the network; `BlackBoxTests` fails when
+the CLI gains a namespace or named type nobody has judged, and R-95 owns the isolation that
+must come before `fs` can write.
 
 - **The plan.** Half the programs are written by the generator and half are mutants of the
-  seed corpus, alternating, with no source planned twice. The plan depends on the seed alone,
-  and a smaller plan of one seed is a prefix of a larger one, so a pilot of 10,000 is the start
-  of the full run.
+  seed corpus, alternating, with no source planned twice. The plan depends on the campaign seed
+  and the seed corpus: a seed's id holds a hash of its text, so editing a fixture, an error
+  example, a public sample or a raw literal changes the mutants planned. Reproducing a campaign
+  takes the same campaign seed over the same commit. A smaller plan of one campaign seed over
+  one corpus is a prefix of a larger one, so a pilot of 10,000 is the start of the full run.
 - **The workers.** `--workers` child processes, four by default, each run their share of the
   plan. A stack overflow kills a worker, not the campaign: the worker keeps a journal of the
   program and phase it is in, and the supervisor records a death as a finding for that program
@@ -160,4 +166,9 @@ The list is `tests/Grob.Torture.Tests/known-findings.json`:
 A seed's id holds a hash of its text, so editing a fixture, an error example, a public sample
 or a raw string literal in a test changes the ids of the seed and its mutants. An entry that
 names the old id then goes stale, and the new program must be triaged again. Changing the
-generator or the mutator does the same to the programs it writes.
+generator or the mutator does the same to the programs it writes. **Replacing an id**, after
+such a change:
+
+1. Triage the program under its new id, and add the new id to its entry as above.
+2. Remove the old id from the entry, and the entry itself if no program is left in it.
+3. Run `corpus` again and confirm it reports no `new` and no `stale` line.

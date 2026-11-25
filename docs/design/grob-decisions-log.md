@@ -449,7 +449,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-450 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **With one operand of unknown type, a binary operator takes its opcode from the known operand**, whichever side it is on, so `(s) => "[" + s` and `names.select((n) => "Hi " + n)` concatenate where they crashed the compiler, and `(s) => s + "]"` and `(s) => s < "z"` no longer compile to `int` opcodes. **The known operand must suit the operator** (Chris): `+` an `int`, `float` or `string`; `-`, `*`, `/`, `%` an `int` or `float`; `<`, `<=`, `>`, `>=` an `int`, `float`, `string` or `date`; otherwise E0002 at that operand. An arithmetic result has the known operand's type, so an operator on it is checked; a comparison is `bool`. Refuses only expressions that crashed the compiler or could not run successfully. **Rejected**: a compiler-only fix, which leaves `true + s` crashing. R-61 closed. **R-63 filed**: an operand of unknown type compiles to an assumed type, so `(n) => n + 2.5` given `1` stops. Count unchanged at 122. |
 | D-451 | November 2026 | Process / Tooling — adversarial testing; CLI — internal-error reporting; Deferred Work Register | **Authorises the *crash oracle* increment** as the first slice of D-353's Pillar 1, brought forward before 9C; prompt at `docs/prompts/crash-oracle.md`. It checks D-353's contract on source text: no program makes Grob raise an internal error or throw a host exception. Built in `tooling/Grob.Torture` with a CI slice in `tests/Grob.Torture.Tests`; it departs from the strategy by mutating AST spans and generating well-typed programs, running in process and gating a fixed-seed slice in CI from the start. **The CLI reports an internal failure from any phase as E9001** with the bug-report line and no stack trace (Chris). The long mode is run by hand (Chris). Read at `639a21c`: the compile phase has no handler and E9001 is raised nowhere. **R-64 filed and folded in** (Chris): a compile error and a usage error both exit `1`; the increment makes them `2` and `3`, the documented set, and §8 gains the usage row. No source change. Count unchanged at 122. |
 | D-452 | November 2026 | Compiler — type checker, bytecode emission; Tooling — drift check; Deferred Work Register | **Natives bind named arguments**: the *native named arguments* increment lands (PR #261). A named argument to a namespace function, a primitive method, a named-type method or a plugin's native binds by D-113 on one shared binder; a skipped default is filled from its signature constant; a call with no signature refuses with E0011, bar `sort`'s `descending`, which binds. **E0003 names a missing required parameter** on every binding path (Chris), overriding the prompt's out-of-scope line on script-function wording. `Grob.DriftCheck` gains references to `Grob.Runtime`, `Grob.Compiler` and `Grob.Stdlib` and pins defaulted parameter names and defaults to the references. R-20, R-22 and R-55 closed; R-58 narrowed; R-65 to R-67 filed. Count unchanged at 122. |
-| D-453 | November 2026 | Process / Tooling — adversarial testing; CLI — internal-error reporting, exit codes; Deferred Work Register | **The crash oracle lands** (PRs #268 to #271): `tooling/Grob.Torture` runs any source through the pipeline in process against fake capabilities and classifies the run; a CI slice of 1,318 seeds, 536 mutants and 200 generated programs gates on a known-findings list; twelve semantic mutation operators, a minimiser and a type-directed generator feed a hand-run campaign of worker processes with a black-box check through the CLI. **The CLI reports an internal failure from any phase as E9001** and exits `2` for a compile error and `3` for a usage error. **The first campaign** ran 200,000 programs and found 10,174 failing under 86 signatures; Chris lifted the prompt's twenty-signature stop. R-64 and R-72 closed; R-68 to R-94 filed; seven rows extended. Count unchanged at 122. |
+| D-453 | November 2026 | Process / Tooling — adversarial testing; CLI — internal-error reporting, exit codes; Deferred Work Register | **The crash oracle lands** (PRs #268 to #271): `tooling/Grob.Torture` runs any source through the pipeline in process against fake capabilities and classifies the run; a CI slice of 1,318 seeds, 536 mutants and 200 generated programs gates on a known-findings list; twelve semantic mutation operators, a minimiser and a type-directed generator feed a hand-run campaign of worker processes with a black-box check through the CLI. **The CLI reports an internal failure from any phase as E9001** and exits `2` for a compile error and `3` for a usage error. **The first campaign** ran 200,000 programs and found 10,174 failing under 86 signatures; Chris lifted the prompt's twenty-signature stop. R-64 and R-72 closed; R-68 to R-95 filed; seven rows extended. Count unchanged at 122. |
 
 ---
 
@@ -18399,7 +18399,7 @@ D-426, D-428 (master changes), D-448 (the function-value refusal), D-420 and D-3
 
 ---
 
-### D-453 — The crash oracle lands: an in-process oracle with a CI slice, a mutator, a generator and a first campaign; the CLI reports an internal failure as E9001 and exits with the documented codes; R-64 and R-72 closed; R-68 to R-94 filed (November 2026)
+### D-453 — The crash oracle lands: an in-process oracle with a CI slice, a mutator, a generator and a first campaign; the CLI reports an internal failure as E9001 and exits with the documented codes; R-64 and R-72 closed; R-68 to R-95 filed (November 2026)
 
 Area: Process / Tooling — adversarial testing; CLI — internal-error reporting, exit codes; Deferred Work Register
 Supersedes: none
@@ -18502,7 +18502,12 @@ worker finish the program and exit `75` for a restart, not `Environment.FailFast
 candidates run with 25 ms of VM time (`OracleBudget.Minimise`), which made minimising four
 times faster over 200 programs for byte-identical records. The black-box confirmation (§4.3)
 runs each distinct reproducer through the real CLI at the end; the bulk black-box mode is not
-built.
+built. **Chris's ruling of 25 November**, on #271's review: the check runs reproducers with the
+machine's own capabilities and no isolation, which is safe only while nothing the CLI registers
+writes or deletes a file, starts a process or reaches the network. `BlackBoxTests` pins the
+namespaces and named types the CLI registers, each judged free of such effects, so a new one
+fails it until it is judged; R-95 owns isolating or restricting the check before one that does
+lands.
 
 **The campaign.** Seed `20261124`, 200,000 programs, four workers on a six-core machine, over
 the pipeline at `3dd32fb`: planning took 37 s, the workers 58 minutes, and the report with the
@@ -18523,14 +18528,16 @@ the mutator finding R-58 and R-60 from their seeds (prompt §3).
 evidence, and **R-72**, by the REPL's handler, with `ReplInternalErrorTests` and
 `InternalErrorReportTests`. Filed, `unowned`: R-68 to R-74 in group 2, the gate's findings;
 R-75 and R-76 in group 4; and R-77 to R-94 in group 6, eighteen root causes, each reproduced and
-measured through `grob run`. Extended with the shapes the campaign found: R-57, R-60, R-63,
+measured through `grob run`. Filed, owned by the 9C `fs` increment: R-95, the black-box check's
+isolation. Extended with the shapes the campaign found: R-57, R-60, R-63,
 R-69, R-71, R-75 and R-76; R-67 was extended and R-74 corrected in group 4. Findings of R-58,
 R-66, R-67 and R-68 were matched by reproducer and not refiled. R-73 stays open: D-451 recorded
 the out-of-range `exit(n)` without choosing.
 
 **Hand-on to 9C.** No native writes, deletes or runs a process yet, so the fake-capability test
 covers `env`, `path.resolve`, the clock and the streams (gate report §4.2). The `fs` increment
-extends the fake file system and the test as it grows `IFileSystem`.
+extends the fake file system and the test as it grows `IFileSystem`, and closes R-95 before its
+first writing native lands.
 
 **Not measured.** The slice's time in CI was measured at `40ae287` only, before the mutants:
 13.5 s on Windows and 14.9 s on Ubuntu for the Torture project. CI, SonarCloud and CodeQL run on
@@ -18785,7 +18792,7 @@ _November 2026 — D-453 added, with source, tooling and register changes. **The
 _**lands** in seven change groups over four stacked PRs: the in-process oracle and its CI slice,_
 _the CLI's E9001 report and documented exit codes, the mutator and minimiser, the generator,_
 _and a first campaign of 200,000 programs with 10,174 findings under 86 signatures. R-64 and_
-_R-72 closed; R-68 to R-94 filed; R-57, R-60, R-63, R-69, R-71, R-75 and R-76 extended. Count_
+_R-72 closed; R-68 to R-95 filed; R-57, R-60, R-63, R-69, R-71, R-75 and R-76 extended. Count_
 _unchanged at 122._
 _Previous: November 2026 — D-452 added, with a source change and spec edits. **Natives bind named arguments**:_
 _the *native named arguments* increment lands in seven change groups, on one binder shared with_

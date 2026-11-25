@@ -51,10 +51,16 @@ internal sealed class CampaignDirectory(string root) {
     public CampaignSettings? ReadSettings() =>
         File.Exists(SettingsPath) ? JsonSerializer.Deserialize<CampaignSettings>(File.ReadAllText(SettingsPath), Options) : null;
 
-    /// <summary>Records the campaign's settings.</summary>
+    /// <summary>
+    /// Records the campaign's settings. They mark the plan as whole, so they are written to a
+    /// temporary file beside their path and moved into place: a process stopped mid-write leaves
+    /// no cut-short <c>campaign.json</c> for <see cref="ReadSettings"/> to fail on.
+    /// </summary>
     public void WriteSettings(CampaignSettings settings) {
         Directory.CreateDirectory(root);
-        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, Options));
+        string temporary = $"{SettingsPath}.{Guid.NewGuid():N}.tmp";
+        File.WriteAllText(temporary, JsonSerializer.Serialize(settings, Options));
+        File.Move(temporary, SettingsPath, overwrite: true);
     }
 
     /// <summary>The plan, in order.</summary>

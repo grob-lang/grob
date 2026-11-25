@@ -28,6 +28,23 @@ public sealed class CampaignDirectoryTests : IDisposable {
         Assert.Equal(settings, new CampaignDirectory(_root).ReadSettings());
     }
 
+    // The settings mark the plan as whole, so they are written beside their path and moved into
+    // place: a supervisor stopped mid-write leaves a temporary file, never a cut-short campaign.json.
+    [Fact]
+    public void WriteSettings_LeavesOnlyTheSettingsFile() {
+        new CampaignDirectory(_root).WriteSettings(new CampaignSettings(1, 2, 3));
+
+        Assert.Equal(["campaign.json"], Directory.GetFiles(_root).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public void ReadSettings_ALeftoverTemporaryFile_IsNotRead() {
+        Directory.CreateDirectory(_root);
+        File.WriteAllText(Path.Join(_root, "campaign.json.0123.tmp"), "{ \"seed\": ");
+
+        Assert.Null(new CampaignDirectory(_root).ReadSettings());
+    }
+
     [Fact]
     public void ReadSettings_NewDirectory_IsNull() {
         Assert.Null(new CampaignDirectory(_root).ReadSettings());

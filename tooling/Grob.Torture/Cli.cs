@@ -57,11 +57,22 @@ internal static class Cli {
                     Worker(options, stderr, workingDirectory),
                 _ => UsageError(stderr),
             };
-        } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
-            stderr.WriteLine($"error: {ex.Message}");
+        } catch (Exception ex) when (CommandError(ex) is { } error) {
+            stderr.WriteLine($"error: {error.Message}");
             return 3;
         }
     }
+
+    // A file that cannot be read or written, or a CLI that cannot be started: errors in the
+    // command's arguments or the machine, not in the harness. A campaign's results are stored
+    // as they are made, so after one the same command resumes. Parallel work wraps the error,
+    // so a wrapper holding only such errors is reported as its first.
+    private static Exception? CommandError(Exception ex) => ex switch {
+        IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception => ex,
+        AggregateException aggregate when aggregate.InnerExceptions.All(inner => CommandError(inner) is not null) =>
+            CommandError(aggregate.InnerExceptions[0]),
+        _ => null,
+    };
 
     private static int UsageError(TextWriter stderr) {
         stderr.WriteLine(Usage);

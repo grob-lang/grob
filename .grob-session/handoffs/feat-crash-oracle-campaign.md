@@ -12,7 +12,7 @@
 
 ## Green state
 
-- Tests: full `dotnet test Grob.slnx` green after the merge with `main` at `c245dbf`, which brought #269's and #270's review fixes here: the CI slice still passes against the known list with #269's changed mutants. Torture 501, Integration 995, Compiler 2,805, Vm 473, Stdlib 672, Runtime 378, Core 345, Consistency 79, BenchCheck 76. `dotnet format Grob.slnx --verify-no-changes` clean.
+- Tests: full `dotnet test Grob.slnx` green after the merge with `main` at `c245dbf`, which brought #269's and #270's review fixes here: the CI slice still passes against the known list with #269's changed mutants. After the review fixes, Torture 507, Integration 995, Compiler 2,805, Vm 473, Stdlib 672, Runtime 378, Core 345, Consistency 79, BenchCheck 76. `dotnet format Grob.slnx --verify-no-changes` clean.
 - Coverage on the lines this branch adds under `tooling/Grob.Torture`: 1,010 of 1,014 lines, 99.6%, and 408 of 424 branches, 96.2%, from the Torture project's cobertura report against `3dd32fb`. The process bindings, `ProcessWorkerLauncher` and `ProcessGrobRunner`, are excluded with justifications.
 - CI slice, measured here: 1,318 seeds, 536 mutants and 200 generated programs in 5.9 s.
 - Error-code count unchanged at 122; the D-316 gate is green.
@@ -42,7 +42,7 @@ None.
 
 ## Next action
 
-This PR is the last of the four. Its base is `main`, so CI, SonarCloud and CodeRabbit run on it for the first time: triage their findings with `/review-pr-comments 271`, then Chris merges. The stack's review fixes after the rebase came down by merge, not rebase: #269's in `53ac2d6` and `fc83574`, #270's in `ed90e1e`. `fc83574` brought this branch's atomic `FindingStore.Add` down to #269, since `Triager` calls it there, so this branch adds only `All` and its tests on top.
+This PR is the last of the four. Its first CI, SonarCloud and CodeRabbit pass, on `a04dbe3`, gave one Sonar issue and eight CodeRabbit findings, all fixed in `ab6cba6` and the review-fix commit after it. One was Chris's to rule on: the black-box check runs reproducers unisolated, so `BlackBoxTests` now pins the CLI's namespaces and named types and R-95, owned by 9C, records the isolation `fs` writes need (D-453). Next: read the bots' pass on the fix commit, then Chris merges. The stack's review fixes after the rebase came down by merge, not rebase: #269's in `53ac2d6` and `fc83574`, #270's in `ed90e1e`. `fc83574` brought this branch's atomic `FindingStore.Add` down to #269, since `Triager` calls it there, so this branch adds only `All` and its tests on top.
 
 ## Open for the maintainer
 
