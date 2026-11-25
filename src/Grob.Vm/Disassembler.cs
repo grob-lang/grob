@@ -64,6 +64,7 @@ public static class Disassembler {
             OpCode.True => SimpleInstruction(opCode, offset, writer),
             OpCode.False => SimpleInstruction(opCode, offset, writer),
             OpCode.Pop => SimpleInstruction(opCode, offset, writer),
+            OpCode.Dup => SimpleInstruction(opCode, offset, writer),
             OpCode.Equal => SimpleInstruction(opCode, offset, writer),
             OpCode.NotEqual => SimpleInstruction(opCode, offset, writer),
             OpCode.AddInt => SimpleInstruction(opCode, offset, writer),

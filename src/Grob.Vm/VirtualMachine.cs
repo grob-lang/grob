@@ -399,6 +399,7 @@ public sealed class VirtualMachine : IVmCallHost {
                             for (int i = 0; i < count; i++) _stack.Pop();
                             break;
                         }
+                    case OpCode.Dup: _stack.Push(_stack.Peek(), line); break;
 
                     // --- Globals ---
                     case OpCode.DefineGlobal: {

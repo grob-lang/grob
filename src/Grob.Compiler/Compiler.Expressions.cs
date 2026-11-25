@@ -602,14 +602,17 @@ public sealed partial class Compiler {
     // -----------------------------------------------------------------------
     // Switch expression
     //
-    // Jump-based, value-leaving: the subject is evaluated once into a synthetic
-    // local; each non-final arm re-loads it, applies the pattern test and
-    // JumpIfFalse skips to the next arm; a matched arm evaluates its result and
-    // stores it back into the subject slot with SetLocal — leaving exactly one
-    // value on the stack — then Jumps to the end. The final arm is the untested
-    // fall-through tail (exhaustiveness, proven by the type checker, guarantees it
-    // matches). Unlike select, no trailing PopN: the result value is the
-    // expression's value and stays on the stack.
+    // Jump-based, value-leaving: the subject is evaluated once and stays on the
+    // operand stack. Each tested arm copies it with Dup, applies the pattern test
+    // and JumpIfFalse skips to the next arm with the subject still in place; a
+    // matched arm pops the subject, evaluates its result and Jumps to the end. The
+    // final arm is the untested fall-through tail (exhaustiveness, proven by the
+    // type checker, guarantees it matches), which pops the subject too. Every path
+    // leaves exactly the result on the stack, the expression's value.
+    //
+    // The subject never takes a local slot (D-454): a slot counted from the
+    // declared locals is wrong when the switch is an operand with values already
+    // on the stack below it, and each arm's store overwrote one of them (R-77).
     // -----------------------------------------------------------------------
 
     /// <inheritdoc/>
@@ -618,10 +621,7 @@ public sealed partial class Compiler {
         GrobType subjectType = GetExprType(node.Subject);
         GrobType resultType = GetSwitchExprResultType(node);
 
-        _localScopes.Push([]);
-        int scopeBase = _nextSlot;
         Visit(node.Subject);
-        int subjectSlot = DeclareLocalSlot("$subject");
 
         var endJumps = new List<int>();
         int armCount = node.Arms.Count;
@@ -633,14 +633,14 @@ public sealed partial class Compiler {
 
             int nextArmJump = -1;
             if (tested) {
-                EmitGetLocal(subjectSlot, line);
+                _chunk.WriteOpCode(OpCode.Dup, line);
                 EmitPatternTest(arm.Pattern, subjectType, line);
                 nextArmJump = EmitJump(OpCode.JumpIfFalse, line);
             }
 
+            _chunk.WriteOpCode(OpCode.Pop, line); // this arm is taken: discard the subject
             Visit(arm.Result);
             CoerceArmToFloat(arm.Result, resultType);
-            EmitSetLocal(subjectSlot, line); // store result into the subject slot
 
             if (!isTail) {
                 endJumps.Add(EmitJump(OpCode.Jump, line));
@@ -651,9 +651,6 @@ public sealed partial class Compiler {
         }
 
         foreach (int site in endJumps) PatchJump(site);
-
-        _localScopes.Pop();
-        _nextSlot = scopeBase; // the result is an unnamed operand-stack temporary at scopeBase
         return null;
     }
 

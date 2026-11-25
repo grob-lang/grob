@@ -454,6 +454,41 @@ public sealed class VirtualMachineTests {
     }
 
     [Fact]
+    public void Dup_PushesACopyOfTheTopValue() {
+        var chunk = new Chunk();
+        byte ia = ConstByte(chunk, GrobValue.FromInt(1));
+        byte ib = ConstByte(chunk, GrobValue.FromInt(2));
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(ia, 1);
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(ib, 1);
+        chunk.WriteOpCode(OpCode.Dup, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        Assert.Equal(3, vm.Stack.Count);
+        Assert.Equal(2L, vm.Stack.Peek(0).AsInt());
+        Assert.Equal(2L, vm.Stack.Peek(1).AsInt());
+        Assert.Equal(1L, vm.Stack.Peek(2).AsInt());
+    }
+
+    [Fact]
+    public void Dup_ThenPop_LeavesTheStackAsItWas() {
+        var chunk = new Chunk();
+        byte ia = ConstByte(chunk, GrobValue.FromString("s"));
+        chunk.WriteOpCode(OpCode.Constant, 1); chunk.WriteByte(ia, 1);
+        chunk.WriteOpCode(OpCode.Dup, 1);
+        chunk.WriteOpCode(OpCode.Pop, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+
+        var (vm, _) = NewVm();
+        vm.Run(chunk);
+
+        Assert.Equal(1, vm.Stack.Count);
+        Assert.Equal("s", vm.Stack.Peek().AsString());
+    }
+
+    [Fact]
     public void PopN_DiscardsCountValues() {
         var chunk = new Chunk();
         for (int i = 0; i < 4; i++) {

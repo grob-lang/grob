@@ -450,6 +450,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-451 | November 2026 | Process / Tooling — adversarial testing; CLI — internal-error reporting; Deferred Work Register | **Authorises the *crash oracle* increment** as the first slice of D-353's Pillar 1, brought forward before 9C; prompt at `docs/prompts/crash-oracle.md`. It checks D-353's contract on source text: no program makes Grob raise an internal error or throw a host exception. Built in `tooling/Grob.Torture` with a CI slice in `tests/Grob.Torture.Tests`; it departs from the strategy by mutating AST spans and generating well-typed programs, running in process and gating a fixed-seed slice in CI from the start. **The CLI reports an internal failure from any phase as E9001** with the bug-report line and no stack trace (Chris). The long mode is run by hand (Chris). Read at `639a21c`: the compile phase has no handler and E9001 is raised nowhere. **R-64 filed and folded in** (Chris): a compile error and a usage error both exit `1`; the increment makes them `2` and `3`, the documented set, and §8 gains the usage row. No source change. Count unchanged at 122. |
 | D-452 | November 2026 | Compiler — type checker, bytecode emission; Tooling — drift check; Deferred Work Register | **Natives bind named arguments**: the *native named arguments* increment lands (PR #261). A named argument to a namespace function, a primitive method, a named-type method or a plugin's native binds by D-113 on one shared binder; a skipped default is filled from its signature constant; a call with no signature refuses with E0011, bar `sort`'s `descending`, which binds. **E0003 names a missing required parameter** on every binding path (Chris), overriding the prompt's out-of-scope line on script-function wording. `Grob.DriftCheck` gains references to `Grob.Runtime`, `Grob.Compiler` and `Grob.Stdlib` and pins defaulted parameter names and defaults to the references. R-20, R-22 and R-55 closed; R-58 narrowed; R-65 to R-67 filed. Count unchanged at 122. |
 | D-453 | November 2026 | Process / Tooling — adversarial testing; CLI — internal-error reporting, exit codes; Deferred Work Register | **The crash oracle lands** (PRs #268 to #271): `tooling/Grob.Torture` runs any source through the pipeline in process against fake capabilities and classifies the run; a CI slice of 1,318 seeds, 536 mutants and 200 generated programs gates on a known-findings list; twelve semantic mutation operators, a minimiser and a type-directed generator feed a hand-run campaign of worker processes with a black-box check through the CLI. **The CLI reports an internal failure from any phase as E9001** and exits `2` for a compile error and `3` for a usage error. **The first campaign** ran 200,000 programs and found 10,174 failing under 86 signatures; Chris lifted the prompt's twenty-signature stop. R-64 and R-72 closed; R-68 to R-95 filed; seven rows extended. Count unchanged at 122. |
+| D-454 | November 2026 | Bytecode — instruction set (ADR-0013); Compiler — bytecode emission; Deferred Work Register | **`Dup` joins the instruction set**: it pushes a copy of the top-of-stack value. **A switch expression keeps its subject on the operand stack**, copying it with `Dup` for each tested arm and popping it when an arm is taken, instead of holding it in a local slot counted from the declared locals, which named an operand below the subject when the switch was itself an operand, so `1 + (5 switch { 0 => 1, _ => 2 })` printed `7`. Rejected: tracking the operand-stack depth in the compiler, which every emitter would have to keep. R-77 closed. Count unchanged at 122. |
 
 ---
 
@@ -18559,6 +18560,67 @@ membership), D-353, D-420, D-428, D-430, D-450 and D-451.
 
 ---
 
+### D-454 — `Dup` joins the instruction set; a switch expression keeps its subject on the operand stack, not in a local slot; R-77 closed (November 2026)
+
+Area: Bytecode — instruction set (ADR-0013); Compiler — bytecode emission; Deferred Work Register
+Supersedes: none
+Superseded by: none
+
+**A bug fix that adds one opcode.** No code is minted; the count stays at 122. D-453 filed the
+defect as R-77, and on 25 November Chris chose it as the first of the crash oracle's findings
+to fix on its own branch and approved the opcode.
+
+**The defect.** `VisitSwitchExpr` held the subject in a synthetic local, `$subject`, declared
+at `_nextSlot`. That counter counts declared locals, not the operands an enclosing expression
+has already pushed, so where the switch was an operand the slot named a value below the
+subject, and each arm's `SetLocal` wrote its result over that value. Measured through
+`grob run` at `697792c`: `y := 1 + (5 switch { 0 => 1, _ => 2 })` printed `7`; a switch as an
+anonymous struct's field, a native's argument, a method's receiver, an index assignment's
+value or a field assignment's value stopped with an internal error. A compound index
+assignment, `xs[1] += (3 switch { 3 => 5, _ => 0 })`, pushes four operands above its two
+temporary locals before its value runs, and failed the same way. A switch that is a binding's
+whole value was right, since nothing is below it. The switch expression was the only
+expression that declared a slot; every other `DeclareLocalSlot` call runs at statement level,
+where the stack holds locals alone.
+
+**Decision 1 — `Dup` is added.** `OpCode.Dup` pushes a copy of the top-of-stack value and takes
+no operand. It sits in the Values group after `PopN`. Inserting it there renumbers every later
+opcode, which ADR-0013 allows while no `.grobc` file has shipped; the format is not built and
+no test pins an ordinal. The disassembler prints it as a simple instruction.
+
+**Decision 2 — the subject stays on the operand stack.** Each tested arm emits `Dup`, the
+pattern test and `JumpIfFalse` to the next arm, which leaves the subject in place; a taken arm
+emits `Pop`, its result and any widening the arm needs, then `Jump` to the end; the untested tail
+arm emits `Pop` and its result. Every path leaves the result alone where the subject was, so
+the switch is correct whatever lies below it. The switch no longer pushes a scope or declares
+a local. Each tested arm is two bytes shorter and the tail arm one, and no arm stores. The `select` statement's
+`$subject` is unchanged: it is declared at statement level.
+
+**Rejected: tracking the operand-stack depth in the compiler.** Counting the operands pushed
+above the declared locals would let `$subject` take the right slot without a new opcode, but
+every emitter that leaves an operand on the stack while it compiles a sibling would have to
+keep the count: binary operators, calls, method calls, index reads and writes, field writes,
+struct, array and map literals, interpolation, `??`, `print`, `exit` and the compound
+assignment's temporaries. Missing one would bring R-77 back at that site, silently. `Dup`
+confines the fix to the switch.
+
+**Tests.** `SwitchExprEmissionTests` asserts the emitted sequence for a switch alone and as
+the right operand of `+`, and asserts no `GetLocal` or `SetLocal` for a switch as a native's
+argument, a method's receiver, an anonymous struct's field, an interpolated part, an index
+assignment's value and a compound index assignment's value. `VirtualMachineTests` runs `Dup`
+over a hand-built chunk, and the disassembler's every-opcode theory covers its line.
+`SwitchExprOperandStackTests` runs each of R-77's reproducers and their siblings through the
+CLI, a function's frame among them. R-77's three entries leave the crash oracle's known list
+and the slice passes without them.
+
+**Spec edits in this commit.** `grob-v1-requirements.md` §3.3 lists `Dup`.
+`grob-open-questions.md`: R-77 closed.
+
+Cites D-453 (R-77), D-350 (the compound index assignment's temporaries), ADR-0013 and D-354
+(the opcode set's deliberate growth).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -18788,7 +18850,10 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-453 added, with source, tooling and register changes. **The crash oracle**_
+_November 2026 — D-454 added, with a source change and a spec edit. **`Dup` joins the_
+_instruction set**, and a switch expression keeps its subject on the operand stack, so it_
+_gives its value where operands are already below it. R-77 closed. Count unchanged at 122._
+_Previous: November 2026 — D-453 added, with source, tooling and register changes. **The crash oracle**_
 _**lands** in seven change groups over four stacked PRs: the in-process oracle and its CI slice,_
 _the CLI's E9001 report and documented exit codes, the mutator and minimiser, the generator,_
 _and a first campaign of 200,000 programs with 10,174 findings under 86 signatures. R-64 and_
