@@ -55,9 +55,17 @@ internal static partial class RawLiteralExtractor {
     }
 
     // A one-line raw literal can end a line, its statement going on below, and then its closing
-    // quotes match the opener pattern. Runs of three or more quotes before them on the line pair
-    // off as openers and closers, so an odd number of runs means these quotes close one.
-    private static bool ClosesALiteralOnItsLine(string line, int index) => QuoteRun().Count(line[..index]) % 2 == 1;
+    // quotes match the opener pattern. So the runs of three or more quotes before them are walked
+    // in order: one opens a literal of its own width, a shorter run inside it is its content and a
+    // run as wide closes it. These quotes close a literal when one is still open where they stand.
+    private static bool ClosesALiteralOnItsLine(string line, int index) {
+        int open = 0;
+        foreach (int width in QuoteRun().Matches(line[..index]).Select(run => run.Length)) {
+            if (open == 0) open = width;
+            else if (width >= open) open = 0;
+        }
+        return open > 0;
+    }
 
     private static int FindCloser(string[] lines, int from, string quotes) {
         for (int j = from; j < lines.Length; j++) {

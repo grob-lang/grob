@@ -15,8 +15,8 @@ internal sealed class MakeNullable : IMutationOperator {
     /// <inheritdoc/>
     public IReadOnlyList<IReadOnlyList<SourceEdit>> Candidates(MutationContext context) {
         var candidates = new List<IReadOnlyList<SourceEdit>>();
-        foreach (AstEntry entry in context.Nodes) {
-            TypeRef? type = entry.Node is FnDecl fn ? fn.ReturnType : RemoveAnnotation.AnnotationOf(entry.Node);
+        foreach (object node in context.Nodes.Select(entry => entry.Node)) {
+            TypeRef? type = node is FnDecl fn ? fn.ReturnType : RemoveAnnotation.AnnotationOf(node);
             if (type is null || type.IsNullable) continue;
 
             int first = context.FirstToken(type);

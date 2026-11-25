@@ -20,14 +20,23 @@ internal sealed class FindingStore(string root) {
     /// Writes <paramref name="record"/>. Returns <see langword="false"/> and changes nothing when a
     /// record for the program already exists under the signature.
     /// </summary>
+    /// <remarks>
+    /// The record is written to a temporary file beside its path and moved into place, so a
+    /// process that dies or fails mid-write leaves no partial record for <see cref="Records"/> to
+    /// read, and a failed write throws rather than reading as a record already there.
+    /// </remarks>
     public bool Add(FindingRecord record) {
         string path = PathFor(record.Signature, record.ProgramId);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        try {
-            using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write);
+        string temporary = $"{path}.{Guid.NewGuid():N}.tmp";
+        using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write)) {
             JsonSerializer.Serialize(stream, record, Options);
+        }
+        try {
+            File.Move(temporary, path, overwrite: false);
             return true;
         } catch (IOException) when (File.Exists(path)) {
+            File.Delete(temporary);
             return false;
         }
     }

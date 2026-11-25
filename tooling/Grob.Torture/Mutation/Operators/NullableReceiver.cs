@@ -1,4 +1,5 @@
 using Grob.Compiler.Ast;
+using Grob.Compiler.Ast.Declarations;
 using Grob.Compiler.Ast.Expressions;
 using Grob.Compiler.Ast.Statements;
 using Grob.Core;
@@ -10,7 +11,7 @@ namespace Grob.Torture.Mutation.Operators;
 /// <c>mn: T? := x</c> before the statement and <c>mn?.m()</c> in it (R-66 beyond strings, and the
 /// natives a <c>?.</c> call reaches). The receiver's type <c>T</c> is read from its declaration's
 /// own syntax, an annotation or a literal initialiser, so a receiver whose declaration says
-/// neither is left alone.
+/// neither is left alone, and so is one whose name has declarations that disagree.
 /// </summary>
 internal sealed class NullableReceiver : IMutationOperator {
     private const string BindingName = "mn";
@@ -39,19 +40,36 @@ internal sealed class NullableReceiver : IMutationOperator {
         return candidates;
     }
 
+    // The tree has no scopes, so the receiver's own declaration cannot be told from another of the
+    // same name. A type is given only when every declaration of the name gives it; a declaration
+    // that gives none, such as a loop variable, or two that disagree leave the receiver alone. A
+    // lambda's parameter gives none: the binding goes before the statement, outside its scope.
     private static string? DeclaredType(MutationContext context, string name) {
-        foreach (AstEntry entry in context.Nodes) {
-            string? type = entry.Node switch {
-                VarDeclStmt v when v.Name == name => v.AnnotatedType is { IsNullable: false } annotated
-                    ? TypeText(context, annotated)
-                    : LiteralType(v.Initializer),
-                Parameter { Type: { IsNullable: false } annotated } p when p.Name == name => TypeText(context, annotated),
-                _ => null,
-            };
-            if (type is not null) return type;
+        string? found = null;
+        foreach (object node in context.Nodes.Select(entry => entry.Node).Where(node => Declares(node, name))) {
+            string? type = TypeOf(context, node);
+            if (type is null || (found is not null && found != type)) return null;
+            found = type;
         }
-        return null;
+        return found;
     }
+
+    private static bool Declares(object node, string name) => node switch {
+        VarDeclStmt v => v.Name == name,
+        ConstDecl c => c.Name == name,
+        ReadonlyDecl r => r.Name == name,
+        Parameter p => p.Name == name,
+        FnDecl f => f.Name == name,
+        ForInStmt f => f.Variables.Contains(name),
+        CatchClause c => c.ExceptionVariable == name,
+        _ => false,
+    };
+
+    private static string? TypeOf(MutationContext context, object declaration) => declaration switch {
+        VarDeclStmt v => v.AnnotatedType is { IsNullable: false } annotated ? TypeText(context, annotated) : LiteralType(v.Initializer),
+        Parameter { Type: { IsNullable: false } annotated } p when context.ParentOf(p) is not LambdaExpr => TypeText(context, annotated),
+        _ => null,
+    };
 
     private static string? TypeText(MutationContext context, TypeRef type) {
         int first = context.FirstToken(type);

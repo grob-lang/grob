@@ -1,4 +1,6 @@
+using Grob.Compiler.Ast;
 using Grob.Compiler.Ast.Expressions;
+using Grob.Compiler.Ast.Statements;
 using Grob.Core;
 using Grob.Torture.Mutation;
 
@@ -68,5 +70,26 @@ public sealed class MutationRangeTests {
         SourceRange range = AstNodes.RangeOf(context.Nodes.First(e => e.Node is BinaryExpr or CallExpr).Node)!.Value;
 
         Assert.Equal((startLine, startColumn, endLine, endColumn), (range.Start.Line, range.Start.Column, range.End.Line, range.End.Column));
+    }
+
+    // An expression that a statement's block follows ends before the block: a loop's iterable has
+    // no closing bracket to stop at, and a condition's closing parenthesis must still stop it.
+    [Theory]
+    [InlineData("for x in a + b {\n    g()\n}\n", "a + b")]
+    [InlineData("for i in 0..n {\n    g()\n}\n", "0..n")]
+    [InlineData("if (a == b) {\n    g()\n}\n", "a == b")]
+    [InlineData("while (a < b) {\n    g()\n}\n", "a < b")]
+    public void ExpressionSpan_ExpressionBeforeAStatementBlock_EndsBeforeTheBlock(string source, string expected) {
+        MutationContext context = MutationContext.TryCreate(source)!;
+        Expression expression = context.Nodes.Select(e => e.Node switch {
+            ForInStmt f => f.Iterable,
+            IfStmt i => i.Condition,
+            WhileStmt w => w.Condition,
+            _ => null,
+        }).OfType<Expression>().First();
+
+        (int start, int end) = context.ExpressionSpan(expression)!.Value;
+
+        Assert.Equal(expected, context.Source[start..end]);
     }
 }

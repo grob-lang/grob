@@ -55,7 +55,7 @@ public sealed class ReplCommand {
     private readonly bool _verbose;
     private readonly Action<PipelinePhase>? _phaseHook;
 
-    // True while a line is being read from the input, so a failure there ends the session.
+    // True while the session prompts for and reads a line, so a failure there ends the session.
     private bool _reading;
 
     // The VM is persistent across entries so that globals accumulate.
@@ -159,7 +159,8 @@ public sealed class ReplCommand {
     /// the session carries on, since a REPL that dies on one bad entry loses the user's session
     /// (ruling Q4; the one sanctioned reading of the "outermost CLI entry point" rule in
     /// <c>src/CLAUDE.md</c>). A script's exit and a Grob runtime error keep their own paths and
-    /// are caught first. A failure of the input itself is reported once and ends the session.
+    /// are caught first. A failure to write the prompt or read the input is reported once and ends
+    /// the session.
     /// </summary>
     /// <returns><see langword="null"/> to read the next entry, or the session's exit code.</returns>
     private int? ReadAndProcessEntry() {
@@ -185,16 +186,18 @@ public sealed class ReplCommand {
             return null;     // report and continue — the REPL session is not over
         } catch (Exception ex) {
             InternalErrorReport.Write(_stderr, ReplSource, phase.Current, ex, _verbose);
-            // A failed read would fail again on the same reader, so the session ends; a failure
-            // inside an entry that was read leaves the session for the next one.
+            // A failed prompt or read would fail again on the same streams, so the session ends; a
+            // failure inside an entry that was read leaves the session for the next one.
             return _reading ? InternalErrorReport.ExitCodeFor(phase.Current) : null;
         }
     }
 
-    // Reads one physical line, noting while it reads, so that a failure of the input itself is
-    // told apart from a failure in the entry it was reading.
-    private string? ReadLine() {
+    // Writes the prompt and reads one physical line, noting while it does, so that a failure of the
+    // session's own streams is told apart from a failure in the entry it was reading.
+    private string? ReadLine(string prompt) {
         _reading = true;
+        _stdout.Write(prompt);
+        _stdout.Flush();
         string? line = _input.ReadLine();
         _reading = false;
         return line;
@@ -210,19 +213,14 @@ public sealed class ReplCommand {
     /// Returns <c>null</c> on EOF.
     /// </summary>
     private string? ReadEntry() {
-        _stdout.Write("G> ");
-        _stdout.Flush();
-
-        string? first = ReadLine();
+        string? first = ReadLine("G> ");
         if (first is null) return null;
 
         var sb = new StringBuilder(first);
 
         // Continue reading as long as the accumulated source has unbalanced brackets.
         while (IsIncompleteSource(sb.ToString())) {
-            _stdout.Write("..> ");
-            _stdout.Flush();
-            string? more = ReadLine();
+            string? more = ReadLine("..> ");
             if (more is null) break;    // EOF mid-block — let the compiler diagnose it
             sb.Append('\n');
             sb.Append(more);
