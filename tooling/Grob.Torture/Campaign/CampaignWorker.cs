@@ -82,18 +82,23 @@ internal sealed class CampaignWorker(
     }
 
     private bool Minimise(FindingStore store, string programId, string source, IReadOnlyList<Finding> findings) {
-        bool stalled = false;
-        var candidates = new Oracle(minimiseBudget, phaseHook: _hooks.Minimise);
-        IReadOnlyList<Finding> Run(string candidate) {
-            if (stalled) return [];
-            OracleResult result = candidates.Run(candidate);
-            stalled = result.TimedOut;
-            return stalled ? [] : result.Findings;
-        }
+        var candidates = new CandidateRunner(new Oracle(minimiseBudget, phaseHook: _hooks.Minimise));
+        new Triager(candidates.Run, store).Triage(programId, source, findings);
+        if (candidates.Stalled) directory.AppendUnminimised(shard, programId, "a minimising candidate passed its watchdog");
+        return candidates.Stalled;
+    }
 
-        new Triager(Run, store).Triage(programId, source, findings);
-        if (stalled) directory.AppendUnminimised(shard, programId, "a minimising candidate passed its watchdog");
-        return stalled;
+    // Runs the minimiser's candidates. Once one passes its watchdog its worker is abandoned, so
+    // every later candidate reads as finding nothing and the minimiser ends at once.
+    private sealed class CandidateRunner(Oracle oracle) {
+        public bool Stalled { get; private set; }
+
+        public IReadOnlyList<Finding> Run(string candidate) {
+            if (Stalled) return [];
+            OracleResult result = oracle.Run(candidate);
+            Stalled = result.TimedOut;
+            return Stalled ? [] : result.Findings;
+        }
     }
 
     /// <summary>
