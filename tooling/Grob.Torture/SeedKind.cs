@@ -1,6 +1,6 @@
 namespace Grob.Torture;
 
-/// <summary>Where a seed came from (gate report §1.3), in the order the corpus loads them.</summary>
+/// <summary>Where a seed came from: the corpus's locations (gate report §1.3), in the order the corpus loads them, then the generator.</summary>
 internal enum SeedKind {
     /// <summary>A <c>.grob</c> file under <c>tests/fixtures/</c>: native probes, validation scripts and sprint fixtures.</summary>
     Fixture,
@@ -16,4 +16,7 @@ internal enum SeedKind {
 
     /// <summary>A multi-line C# raw string literal in a test project.</summary>
     RawLiteral,
+
+    /// <summary>A program the generator wrote (prompt §2 group 5), not read from the repository.</summary>
+    Generated,
 }
