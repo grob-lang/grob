@@ -77,8 +77,22 @@ public sealed class FindingStoreTests : IDisposable {
         Assert.Equal(written, Assert.Single(store.Records(Signature)));
     }
 
-    // A record is written beside its path and moved into place, so a process that dies mid-write
-    // leaves no partial record for Records or All to fail on, and a duplicate leaves nothing behind.
+    [Fact]
+    public void Records_UnknownSignature_IsEmpty() {
+        Assert.Empty(new FindingStore(_root).Records("Run|Exception|none"));
+    }
+
+    [Fact]
+    public void Add_ARecordThatCannotBeWritten_ThrowsAndIsNotReportedAsExisting() {
+        var store = new FindingStore(_root);
+        string path = store.PathFor(Signature, "p@1/x/0");
+        Directory.CreateDirectory(path);   // a directory where the file should go
+
+        Assert.ThrowsAny<Exception>(() => store.Add(Record("p@1/x/0")));
+    }
+
+    // A record is written beside its path and moved into place, so a duplicate leaves nothing
+    // behind and a leftover temporary file is never read as a record by Records or All.
     [Fact]
     public void Add_NewAndDuplicateRecords_LeaveOnlyCompleteRecordFiles() {
         var store = new FindingStore(_root);
@@ -88,6 +102,15 @@ public sealed class FindingStoreTests : IDisposable {
 
         string only = Assert.Single(Directory.GetFiles(_root, "*", SearchOption.AllDirectories));
         Assert.Equal(store.PathFor(Signature, "p@1/x/0"), only);
+    }
+
+    [Fact]
+    public void Records_ALeftoverTemporaryFile_IsNotRead() {
+        var store = new FindingStore(_root);
+        store.Add(Record("p@1/x/0"));
+        File.WriteAllText(store.PathFor(Signature, "p@2/x/0") + ".tmp", "{ \"programId\": \"cut");
+
+        Assert.Single(store.Records(Signature));
     }
 
     [Fact]
@@ -116,29 +139,6 @@ public sealed class FindingStoreTests : IDisposable {
     [Fact]
     public void All_NoRecordsYet_IsEmpty() {
         Assert.Empty(new FindingStore(_root).All());
-    }
-
-    [Fact]
-    public void Records_UnknownSignature_IsEmpty() {
-        Assert.Empty(new FindingStore(_root).Records("Run|Exception|none"));
-    }
-
-    [Fact]
-    public void Add_ARecordThatCannotBeWritten_ThrowsAndIsNotReportedAsExisting() {
-        var store = new FindingStore(_root);
-        string path = store.PathFor(Signature, "p@1/x/0");
-        Directory.CreateDirectory(path);   // a directory where the file should go
-
-        Assert.ThrowsAny<Exception>(() => store.Add(Record("p@1/x/0")));
-    }
-
-    [Fact]
-    public void Records_ALeftoverTemporaryFile_IsNotRead() {
-        var store = new FindingStore(_root);
-        store.Add(Record("p@1/x/0"));
-        File.WriteAllText(store.PathFor(Signature, "p@2/x/0") + ".tmp", "{ \"programId\": \"cut");
-
-        Assert.Single(store.Records(Signature));
     }
 
     [Fact]

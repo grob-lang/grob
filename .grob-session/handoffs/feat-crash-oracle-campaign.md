@@ -2,17 +2,17 @@
 
 ## Where we are
 
-- Branch: `feat/crash-oracle-campaign`, cut from `feat/crash-oracle-generator` at `3dd32fb` and rebased onto `b722150` after #268's review fix `9a9ab28`. A **stacked branch** four deep: its PR's base is `feat/crash-oracle-generator` (PR #270), whose base is `feat/crash-oracle-mutator` (PR #269), whose base is `feat/crash-oracle` (PR #268)
+- Branch: `feat/crash-oracle-campaign`, cut from `feat/crash-oracle-generator` at `3dd32fb` and rebased onto `b722150` after #268's review fix `9a9ab28`. #268, #269 and #270 have merged (`c119923`, `bdb1cc7`, `c245dbf`), and PR #271's base is now `main`. The branch took #270's head `ed90e1e` by merge, then `main` with `-s ours`, since `main`'s tree equals `ed90e1e`'s
 - Working tree: clean (scratch, campaign output and probes are in gitignored `.grob-session/`)
 - Commits on this branch beyond its parent: `8a18a90` group 6, the first campaign and triage; `b71b3c3` group 7, the record; `9d3a520`, the local review's fixes; then this hand-off
 - Increment prompt: `docs/prompts/crash-oracle.md` (D-451). Landing entry: **D-453**
 - Gate report: `D:\Code\grob-lang\gate-reports\crash-oracle-gate-report.md`, outside the working tree
-- Picked up from: `.grob-session/handoffs/feat-crash-oracle-generator.md`, retired here by `git rm` in `8a18a90`. It stays on PR #270's branch until that merges, and the two older hand-offs stay on #268 and #269 likewise
+- Picked up from: `.grob-session/handoffs/feat-crash-oracle-generator.md`, retired here by `git rm` in `8a18a90`. It reached `main` with #270 and leaves it when this PR merges
 - Phase reached: **session E complete; the increment is complete.** All seven change groups are committed across the four PRs
 
 ## Green state
 
-- Tests: full `dotnet test Grob.slnx` green after the rebase onto `9a9ab28`. Torture 476, Integration 994, Compiler 2,805, Vm 473, Stdlib 672, Runtime 378, Core 345, Consistency 79, BenchCheck 76. `dotnet format Grob.slnx --verify-no-changes` clean.
+- Tests: full `dotnet test Grob.slnx` green after the merge with `main` at `c245dbf`, which brought #269's and #270's review fixes here: the CI slice still passes against the known list with #269's changed mutants. Torture 501, Integration 995, Compiler 2,805, Vm 473, Stdlib 672, Runtime 378, Core 345, Consistency 79, BenchCheck 76. `dotnet format Grob.slnx --verify-no-changes` clean.
 - Coverage on the lines this branch adds under `tooling/Grob.Torture`: 1,010 of 1,014 lines, 99.6%, and 408 of 424 branches, 96.2%, from the Torture project's cobertura report against `3dd32fb`. The process bindings, `ProcessWorkerLauncher` and `ProcessGrobRunner`, are excluded with justifications.
 - CI slice, measured here: 1,318 seeds, 536 mutants and 200 generated programs in 5.9 s.
 - Error-code count unchanged at 122; the D-316 gate is green.
@@ -38,14 +38,11 @@ None.
 
 ## Not done, and why
 
-- **The slice's time in CI.** CI, SonarCloud and CodeQL run only on pull requests into `main`, so PRs #269, #270 and this one have never run them. Their first CI, Sonar and CodeQL results come when each is retargeted to `main`.
 - **The canonical benchmark run.** The stability loop drives `RunCommand`, which group 3 changed. Run locally it fails on `main` and on the branch alike (447,872 and 409,456 bytes against a 190,456-byte baseline), so the local run says nothing. The canonical job is Chris's to dispatch. No baseline updated.
 
 ## Next action
 
-Chris merges in order: #268, #269, #270, then this PR. Before each merge, retarget the child PR to `main` and rebase it, and do not delete a parent's branch first, or the child closes (as #263 did). Each PR, once its base is `main`, gets CI and SonarCloud for the first time: read the new-code issues and coverage then, before it merges.
-
-CodeRabbit reviewed #268, and its six findings are fixed in `9a9ab28`. The stack is rebased onto that fix and force-pushed. #269's CodeRabbit review was requested and has not been triaged yet: run `/review-pr-comments 269` once it is posted, then rebase #270 and this branch onto any fix commit it adds.
+This PR is the last of the four. Its base is `main`, so CI, SonarCloud and CodeRabbit run on it for the first time: triage their findings with `/review-pr-comments 271`, then Chris merges. The stack's review fixes after the rebase came down by merge, not rebase: #269's in `53ac2d6` and `fc83574`, #270's in `ed90e1e`. `fc83574` brought this branch's atomic `FindingStore.Add` down to #269, since `Triager` calls it there, so this branch adds only `All` and its tests on top.
 
 ## Open for the maintainer
 
