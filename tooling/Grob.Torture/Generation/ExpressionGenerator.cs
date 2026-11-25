@@ -200,10 +200,12 @@ internal sealed class ExpressionGenerator(GenContext context) {
     private void AddFloatForms(List<Func<string>> forms, int depth, GenScope scope) {
         foreach (string op in new[] { "+", "-", "*", "/" }) {
             forms.Add(() => Random.Chance(50)
-                ? Binary(op, GenType.Float, Random.Chance(50) ? GenType.Int : GenType.Float, depth, scope)
+                ? Binary(op, GenType.Float, IntOrFloat(), depth, scope)
                 : Binary(op, GenType.Int, GenType.Float, depth, scope));
         }
     }
+
+    private GenType IntOrFloat() => Random.Chance(50) ? GenType.Int : GenType.Float;
 
     private void AddStringForms(List<Func<string>> forms, int depth, GenScope scope) {
         forms.Add(() => Binary("+", GenType.String, GenType.String, depth, scope));
@@ -315,10 +317,13 @@ internal sealed class ExpressionGenerator(GenContext context) {
 
     private string Comparison(int depth, GenScope scope) {
         GenType operand = Random.Pick(Scalars);
-        string[] operators = operand == GenType.Bool ? ["==", "!="]
-            : operand == GenType.String ? ["==", "!=", "<", ">"]
-            : ["<", "<=", ">", ">=", "==", "!="];
-        return Binary(Random.Pick(operators), operand, operand, depth, scope);
+        return Binary(Random.Pick(ComparisonOperators(operand)), operand, operand, depth, scope);
+    }
+
+    private static string[] ComparisonOperators(GenType operand) {
+        if (operand == GenType.Bool) return ["==", "!="];
+        if (operand == GenType.String) return ["==", "!=", "<", ">"];
+        return ["<", "<=", ">", ">=", "==", "!="];
     }
 
     private string Binary(string op, GenType left, GenType right, int depth, GenScope scope) =>

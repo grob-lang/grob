@@ -78,9 +78,15 @@ internal sealed class StatementGenerator(GenContext context, ExpressionGenerator
     public GenType PickScalar() => Random.Weighted<GenType>([(4, GenType.Int), (2, GenType.Float), (3, GenType.String), (1, GenType.Bool)]);
 
     private void Statement(CodeWriter writer, GenScope scope, int depth) {
-        bool nest = depth + 1 <= MaxStatementDepth;
+        Action write = Random.Weighted<Action>([.. FlatStatements(writer, scope, depth), .. NestedStatements(writer, scope, depth)]);
+        write();
+    }
+
+    // The two lists are one weighted choice, split only to keep each readable; their order is
+    // part of what a seed fixes, so neither is reordered.
+    private List<(int Weight, Action Write)> FlatStatements(CodeWriter writer, GenScope scope, int depth) {
         List<GenVariable> assignable = [.. scope.Assignable];
-        Action write = Random.Weighted<Action>([
+        return [
             (30, () => Binding(writer, scope, depth)),
             (15, () => Print(writer, scope, depth)),
             (assignable.Count > 0 ? 10 : 0, () => Assignment(writer, scope, depth, assignable)),
@@ -89,6 +95,12 @@ internal sealed class StatementGenerator(GenContext context, ExpressionGenerator
             (4, () => FunctionBinding(writer, scope, depth)),
             (3, () => AnonymousBinding(writer, scope, depth)),
             (!scope.InLoop && scope.Assignable.Any(v => v.Type is GenType.ArrayOf) ? 3 : 0, () => Append(writer, scope, depth)),
+        ];
+    }
+
+    private List<(int Weight, Action Write)> NestedStatements(CodeWriter writer, GenScope scope, int depth) {
+        bool nest = depth + 1 <= MaxStatementDepth;
+        return [
             (nest ? 8 : 0, () => If(writer, scope, depth)),
             (nest ? 4 : 0, () => While(writer, scope, depth)),
             (nest ? 4 : 0, () => ForRange(writer, scope, depth)),
@@ -98,8 +110,7 @@ internal sealed class StatementGenerator(GenContext context, ExpressionGenerator
             (nest && !scope.InLambda ? 4 : 0, () => Try(writer, scope, depth)),
             (nest && scope.DirectlyInLoop ? 4 : 0, () => LoopExit(writer, scope, depth)),
             (nest && scope.ReturnType is not null && !scope.InLambda && !scope.InFinally ? 2 : 0, () => EarlyReturn(writer, scope, depth)),
-        ]);
-        write();
+        ];
     }
 
     /// <summary>

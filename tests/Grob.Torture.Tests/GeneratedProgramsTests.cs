@@ -71,21 +71,93 @@ public sealed class GeneratedProgramsTests {
     }
 
     [Fact]
-    public void Sample_EveryProgram_EndsWithoutReachingItsBound() {
-        // Termination only. A run's findings are not asserted: they are defects in Grob, which the
-        // campaign triages (prompt §2 group 6), and generated programs are kept out of the CI slice
-        // until then (plan decision D1).
+    public void Sample_EveryProgram_RunsWithoutStallingItsWorker() {
+        // The watchdog only, a safety limit. Whether a program ends is read from its text by the
+        // three tests below, not from the VM's time budget, which a slow runner can spend on a
+        // program that does end (gate report §4.4). A run's findings are not asserted: they are
+        // defects in Grob, which the campaign triages (prompt §2 group 6), and generated programs
+        // are kept out of the CI slice until then (plan decision D1).
         var oracle = new Oracle(OracleBudget.Ci);
-        var unbounded = new List<string>();
         foreach (Seed program in Sample.Value) {
-            OracleResult result = oracle.Run(program.Source, program.Origin);
-            if (result.TimedOut) {
+            if (oracle.Run(program.Source, program.Origin).TimedOut) {
                 Assert.Fail($"{program.Id} stalled its worker:\n{program.Source}");
             }
-            if (result.Outcome == OutcomeKind.Bounded) unbounded.Add(program.Id);
+        }
+    }
+
+    // The generator's termination argument (StatementGenerator's summary), checked in every
+    // program's text: a while loop counts up to a literal from a counter only its first statement
+    // bumps, a function calls no function declared at or after it, and no loop body grows an array.
+
+    [Fact]
+    public void Sample_EveryWhile_CountsUpFromACounterOnlyItsFirstStatementBumps() {
+        var failures = new List<string>();
+        foreach (Seed program in Sample.Value) {
+            List<object> nodes = [.. AstNodes.Enumerate(Parse(program.Source)).Select(e => e.Node)];
+            failures.AddRange(nodes.OfType<WhileStmt>()
+                .Where(loop => !CountsUp(loop, nodes))
+                .Select(loop => $"{program.Id} line {loop.Range.Start.Line}"));
         }
 
-        Assert.True(unbounded.Count == 0, "programs that ran to the VM's bound: " + string.Join(", ", unbounded));
+        Assert.True(failures.Count == 0, "while loops their counter does not bound: " + string.Join(", ", failures));
+    }
+
+    [Fact]
+    public void Sample_EveryFunction_CallsOnlyFunctionsDeclaredBeforeIt() {
+        var failures = new List<string>();
+        foreach (Seed program in Sample.Value) {
+            List<FnDecl> functions = [.. AstNodes.Enumerate(Parse(program.Source)).Select(e => e.Node).OfType<FnDecl>()
+                .OrderBy(f => f.Range.Start.Line)];
+            for (int i = 0; i < functions.Count; i++) {
+                HashSet<string> notYetCallable = [.. functions.Skip(i).Select(f => f.Name)];
+                failures.AddRange(AstNodes.Enumerate(functions[i].Body).Select(e => e.Node).OfType<CallExpr>()
+                    .Where(call => call.Callee is IdentifierExpr { Name: var callee } && notYetCallable.Contains(callee))
+                    .Select(call => $"{program.Id}: {functions[i].Name} calls {((IdentifierExpr)call.Callee).Name} on line {call.Range.Start.Line}"));
+            }
+        }
+
+        Assert.True(failures.Count == 0, "calls that could recurse: " + string.Join(", ", failures));
+    }
+
+    [Fact]
+    public void Sample_NoLoopBody_AppendsToAnArray() {
+        var failures = new List<string>();
+        foreach (Seed program in Sample.Value) {
+            IReadOnlyList<AstEntry> entries = AstNodes.Enumerate(Parse(program.Source));
+            Dictionary<object, object?> parents = entries.ToDictionary(e => e.Node, e => e.Parent, ReferenceEqualityComparer.Instance);
+            failures.AddRange(entries.Select(e => e.Node).OfType<CallExpr>()
+                .Where(call => call.Callee is MemberAccessExpr { Member: "append" } && InsideALoop(call, parents))
+                .Select(call => $"{program.Id} line {call.Range.Start.Line}"));
+        }
+
+        Assert.True(failures.Count == 0, "appends inside a loop: " + string.Join(", ", failures));
+    }
+
+    private static bool CountsUp(WhileStmt loop, List<object> nodes) {
+        if (Unwrapped(loop.Condition) is not BinaryExpr { Operator: BinaryOperator.Less, Left: IdentifierExpr { Name: var counter }, Right: IntLiteralExpr }) {
+            return false;
+        }
+        if (loop.Body.Statements is not [IncrementStmt { Kind: IncrementKind.Increment, Target: IdentifierExpr { Name: var bumped } } first, ..] || bumped != counter) {
+            return false;
+        }
+        return nodes.TrueForAll(node => ReferenceEquals(node, first) || WrittenName(node) != counter);
+    }
+
+    private static Expression Unwrapped(Expression expression) =>
+        expression is GroupingExpr grouping ? Unwrapped(grouping.Inner) : expression;
+
+    private static string? WrittenName(object node) => node switch {
+        AssignmentStmt { Target: IdentifierExpr target } => target.Name,
+        CompoundAssignmentStmt { Target: IdentifierExpr target } => target.Name,
+        IncrementStmt { Target: IdentifierExpr target } => target.Name,
+        _ => null,
+    };
+
+    private static bool InsideALoop(object node, Dictionary<object, object?> parents) {
+        for (object? current = parents[node]; current is not null; current = parents[current]) {
+            if (current is WhileStmt or ForInStmt) return true;
+        }
+        return false;
     }
 
     // A string method no array or map shares a name with, so an array's call cannot stand in for one.
