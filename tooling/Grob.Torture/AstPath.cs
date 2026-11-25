@@ -44,10 +44,10 @@ internal static class AstPath {
         _ => false,
     };
 
-    private static bool IsAstObject(object value) =>
+    internal static bool IsAstObject(object value) =>
         value.GetType().Namespace?.StartsWith(AstNamespace, StringComparison.Ordinal) == true;
 
-    private static IEnumerable<PropertyInfo> SyntacticChildren(Type type) {
+    internal static IEnumerable<PropertyInfo> SyntacticChildren(Type type) {
         var names = type.GetConstructors()
             .SelectMany(c => c.GetParameters())
             .Select(p => p.Name)

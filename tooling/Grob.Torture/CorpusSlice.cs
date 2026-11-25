@@ -1,9 +1,12 @@
+using Grob.Torture.Mutation;
+
 namespace Grob.Torture;
 
 /// <summary>
-/// The CI slice (prompt §2 group 2): a deterministic run of the seed corpus, judged against the
-/// known-findings list. Its programs are fixed by the repository's contents, so two runs over
-/// one tree run the same programs (prompt §3, seeds stay fixed).
+/// The CI slice (prompt §2 groups 2 and 4): a deterministic run of the seed corpus and a fixed
+/// sample of its mutants, judged against the known-findings list. Its programs are fixed by the
+/// repository's contents, so two runs over one tree run the same programs (prompt §3, seeds stay
+/// fixed).
 /// </summary>
 internal static class CorpusSlice {
     /// <summary>The known-findings list, repository-relative.</summary>
@@ -11,6 +14,18 @@ internal static class CorpusSlice {
 
     /// <summary>The document holding the Deferred Work Register, repository-relative.</summary>
     public const string RegisterPath = "docs/design/grob-open-questions.md";
+
+    /// <summary>
+    /// The campaign seed of the CI slice's mutants. A constant, since the slice may not change its
+    /// programs between runs (prompt §3); a long run draws its own.
+    /// </summary>
+    public const ulong CampaignSeed = 20261123UL;
+
+    /// <summary>
+    /// What the slice runs: the seeds themselves, then the fixed sample of their mutants
+    /// (<see cref="MutantSample"/>). Both are judged against one known-findings list.
+    /// </summary>
+    public static IReadOnlyList<Seed> Programs(IReadOnlyList<Seed> seeds) => [.. seeds, .. MutantSample.Create(seeds, CampaignSeed)];
 
     /// <summary>
     /// Runs each seed through <paramref name="oracle"/>, in order. A timeout ends the slice at

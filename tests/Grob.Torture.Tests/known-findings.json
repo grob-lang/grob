@@ -7,42 +7,87 @@
         "tests/Grob.Compiler.Tests/CompilerCallEmissionCharacterisationTests.cs@2d84c7e9f6010d9e",
         "tests/Grob.Compiler.Tests/CompilerCallEmissionCharacterisationTests.cs@b154e16df9df1f1a",
         "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@daa3a397b6beffed",
-        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@293ffe5312eace62"
+        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@293ffe5312eace62",
+        "docs/wiki/Type-Registry/string.md@6cfd8d900d015c13/nullable-receiver/1",
+        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@daa3a397b6beffed/route-value/1"
       ]
     },
     {
       "row": "R-66",
       "signature": "Run|Exception|GrobInternalException: opcode GetProperty '…' on receiver of kind Int not yet implemented.",
       "programs": [
-        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@ceb7feae79ac9828"
+        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@ceb7feae79ac9828",
+        "tests/Grob.Integration.Tests/Sprint9IncrementA1aTests.cs@d3c14b9ca6341978/nullable-receiver/0"
       ]
     },
     {
       "row": "R-66",
       "signature": "Run|Exception|GrobInternalException: opcode GetProperty '…' on receiver of kind Float not yet implemented.",
       "programs": [
-        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@78da76698845584e"
+        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@78da76698845584e",
+        "docs/wiki/Type-Registry/float.md@cddd7ef0f75d567f/nullable-receiver/0",
+        "tests/Grob.Integration.Tests/Sprint9IncrementA1aTests.cs@fe6fbed5394c8c3c/nullable-receiver/1",
+        "tests/Grob.Integration.Tests/Sprint9IncrementA1aTests.cs@f2662cfe520570a6/nullable-receiver/0"
       ]
     },
     {
       "row": "R-66",
       "signature": "Run|Exception|GrobInternalException: opcode GetProperty '…' on receiver of kind Bool not yet implemented.",
       "programs": [
-        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@2000b56d861dc4da"
+        "tests/Grob.Compiler.Tests/TypeCheckerPrimitiveMemberTests.cs@2000b56d861dc4da",
+        "docs/wiki/Type-Registry/bool.md@317a39ce9cebf30b/nullable-receiver/1"
       ]
     },
     {
       "row": "R-69",
       "signature": "Run|Exception|TimeZoneNotFoundException: The time zone ID '…' was not found on the local computer.",
       "programs": [
-        "tests/fixtures/native-probes/date-members.clean.grob@65b6ac40335c6a12"
+        "tests/fixtures/native-probes/date-members.clean.grob@65b6ac40335c6a12",
+        "tests/fixtures/native-probes/date-members.clean.grob@65b6ac40335c6a12/remove-annotation/0"
       ]
     },
     {
       "row": "R-71",
       "signature": "Check|Sentinel|no-declaration|AssignmentStmt.Target/MemberAccessExpr.Target|E0206",
       "programs": [
-        "tests/Grob.Compiler.Tests/CompilerFieldAccessTests.cs@6137ef83a21b1136"
+        "tests/Grob.Compiler.Tests/CompilerFieldAccessTests.cs@6137ef83a21b1136",
+        "tests/Grob.Compiler.Tests/TypeCheckerFunctionTypeTests.cs@d163a20eb074a305/change-optional-chain/1"
+      ]
+    },
+    {
+      "row": "R-63",
+      "signature": "Run|Exception|GrobInternalException: GrobValue kind mismatch: expected String, actual Int.",
+      "programs": [
+        "tests/fixtures/sprint-3b/type-error.grob@ba0c3c8d88cc67a4/lambda-operand/1"
+      ]
+    },
+    {
+      "row": "R-60",
+      "signature": "Run|Exception|GrobInternalException: InvokeCallable: value of kind Bool is not callable. The type checker should have rejected the call site.",
+      "programs": [
+        "tests/Grob.Compiler.Tests/CompilerLambdaTests.cs@eb9b55bfe78dfae8/replace-value/1",
+        "tests/Grob.Compiler.Tests/TypeCheckerLambdaTests.cs@8bac8420dc5f46ce/edit-argument/1"
+      ]
+    },
+    {
+      "row": "R-76",
+      "signature": "Run|Exception|GrobInternalException: GetProperty: guid has no member '…'. Type checker should have rejected this before emission.",
+      "programs": [
+        "tests/Grob.Compiler.Tests/TypeCheckerGuidTests.cs@66978b0f3fedeffc/route-value/0"
+      ]
+    },
+    {
+      "row": "R-60",
+      "signature": "Run|Exception|GrobInternalException: InvokeCallable: value of kind Int is not callable. The type checker should have rejected the call site.",
+      "programs": [
+        "tests/Grob.Compiler.Tests/TypeCheckerLambdaTests.cs@c165d6caa32a5cd3/replace-value/0"
+      ]
+    },
+    {
+      "row": "R-60",
+      "signature": "Run|Exception|GrobInternalException: InvokeCallable: value of kind Float is not callable. The type checker should have rejected the call site.",
+      "programs": [
+        "tests/Grob.Integration.Tests/Sprint5IncrementCTests.cs@f32839db3e17d8b3/replace-value/1"
       ]
     }
   ]
