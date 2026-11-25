@@ -323,6 +323,7 @@ public enum OpCode : byte
     False,              // push false
     Pop,                // discard top of stack
     PopN,               // discard N values from stack (1-byte operand)
+    Dup,                // push a copy of the top of stack (D-454)
 
     // --- Arithmetic (typed) ---
     AddInt,             // int + int → int
@@ -1710,3 +1711,5 @@ Grob v1 is ready for public release when:
 *to 18.*
 *Updated November 2026 — D-446: the named-argument convention binds calls to natives,*
 *built by its own increment ahead of the Sprint 9C `fs` increment.*
+*Updated November 2026 — D-454: §3.3's Values group gains `Dup`, which a switch expression*
+*uses to keep its subject on the operand stack.*

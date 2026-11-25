@@ -91,28 +91,6 @@
       ]
     },
     {
-      "row": "R-77",
-      "signature": "Run|Exception|GrobInternalException: GrobValue kind mismatch: expected String, actual Bool.",
-      "programs": [
-        "generated/0000000001352903/27"
-      ]
-    },
-    {
-      "row": "R-77",
-      "signature": "Run|Exception|GrobInternalException: Call target is not a function (kind: Int). The type checker should have rejected this source.",
-      "programs": [
-        "generated/0000000001352903/62"
-      ]
-    },
-    {
-      "row": "R-77",
-      "signature": "Run|Exception|GrobInternalException: GrobValue kind mismatch: expected String, actual Float.",
-      "programs": [
-        "generated/0000000001352903/90",
-        "generated/0000000001352903/107"
-      ]
-    },
-    {
       "row": "R-69",
       "signature": "Run|Exception|ArgumentException: The value cannot be an empty string. (Parameter '…')",
       "programs": [

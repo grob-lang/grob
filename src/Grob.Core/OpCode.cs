@@ -42,6 +42,14 @@ public enum OpCode : byte {
     /// <summary>Discard N values from the stack (1-byte operand: count).</summary>
     PopN,
 
+    /// <summary>
+    /// Push a copy of the top-of-stack value (no operand). Lets an expression that tests
+    /// one value several times, the switch expression's subject, keep that value on the
+    /// stack instead of in a local slot, which would be wrong with operands already
+    /// below it (D-454).
+    /// </summary>
+    Dup,
+
     // -------------------------------------------------------------------------
     // Arithmetic - typed (compiler selects based on type-checker annotations)
     // -------------------------------------------------------------------------
