@@ -1315,6 +1315,10 @@ public sealed partial class Compiler {
         };
 
     private static GrobType GetBinaryResultType(BinaryExpr node) {
+        // A ?? takes the type the checker gave it (D-456): its operands' types alone do
+        // not give it, since nil ?? T is T and T? ?? T is T.
+        if (node.Operator == BinaryOperator.NilCoalesce) return node.NilCoalesceType;
+
         (GrobType lt, GrobType rt) = WithKnownOperandType(GetExprType(node.Left), GetExprType(node.Right));
         return node.Operator switch {
             BinaryOperator.Add

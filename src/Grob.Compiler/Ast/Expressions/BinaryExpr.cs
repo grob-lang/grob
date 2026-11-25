@@ -30,6 +30,16 @@ public sealed record BinaryExpr(
     /// </summary>
     public bool IsDateEquality { get; set; }
 
+    /// <summary>
+    /// Set by the type checker (D-456) when <see cref="Operator"/> is
+    /// <see cref="BinaryOperator.NilCoalesce"/>: the type it gave the <c>??</c> expression.
+    /// The compiler reads it as the expression's type when the <c>??</c> is an operand, so
+    /// an enclosing operator widens it and chooses its opcode by that type, not by the
+    /// other operand's. <see cref="GrobType.Unknown"/> for every other operator and for a
+    /// tree the checker has not visited.
+    /// </summary>
+    public GrobType NilCoalesceType { get; set; } = GrobType.Unknown;
+
     /// <inheritdoc/>
     public override T Accept<T>(AstVisitor<T> visitor) => visitor.VisitBinary(this);
 }
