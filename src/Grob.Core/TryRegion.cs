@@ -20,5 +20,12 @@ namespace Grob.Core;
 /// established "absent" sentinel for a small-int table field (see
 /// <c>Compiler.FindLocalSlot</c>/<c>ResolveUpvalue</c>).
 /// </param>
+/// <param name="BaseSlot">
+/// The number of stack slots, relative to the frame's stack base, live when the <c>try</c>
+/// begins: the slot its first local, a catch binding or the finally's first local takes.
+/// On the exceptional path the VM trims the stack to it before running the finally, so
+/// the finally finds the stack as the normal path leaves it (D-455). Required, with no
+/// default, since a wrong base silently misplaces the finally's locals.
+/// </param>
 public sealed record TryRegion(
-    int StartOffset, int EndOffset, IReadOnlyList<CatchHandler> Handlers, int FinallyOffset = -1);
+    int StartOffset, int EndOffset, IReadOnlyList<CatchHandler> Handlers, int FinallyOffset, int BaseSlot);

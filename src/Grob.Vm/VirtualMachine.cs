@@ -1798,6 +1798,14 @@ public sealed class VirtualMachine : IVmCallHost {
     /// </summary>
     private void RunFinallyExceptional(
             TryRegion region, ref GrobValue exceptionValue, ref GrobStruct exceptionStruct) {
+        // The throw may have left the try body's locals, a catch binding and its locals or
+        // a callee frame's values above the slot the try began at. The finally was compiled
+        // to find its first local there, so trim to it, closing any upvalue over a value
+        // being discarded, as a catch handler's entry does with its binding slot (D-455).
+        int baseHeight = _stackBase + region.BaseSlot;
+        CloseUpvaluesFrom(baseHeight);
+        _stack.TrimToCount(baseHeight);
+
         int savedIp = _ip;
         Chunk savedChunk = _activeChunk;
         int floor = _frameCount;

@@ -451,6 +451,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-452 | November 2026 | Compiler — type checker, bytecode emission; Tooling — drift check; Deferred Work Register | **Natives bind named arguments**: the *native named arguments* increment lands (PR #261). A named argument to a namespace function, a primitive method, a named-type method or a plugin's native binds by D-113 on one shared binder; a skipped default is filled from its signature constant; a call with no signature refuses with E0011, bar `sort`'s `descending`, which binds. **E0003 names a missing required parameter** on every binding path (Chris), overriding the prompt's out-of-scope line on script-function wording. `Grob.DriftCheck` gains references to `Grob.Runtime`, `Grob.Compiler` and `Grob.Stdlib` and pins defaulted parameter names and defaults to the references. R-20, R-22 and R-55 closed; R-58 narrowed; R-65 to R-67 filed. Count unchanged at 122. |
 | D-453 | November 2026 | Process / Tooling — adversarial testing; CLI — internal-error reporting, exit codes; Deferred Work Register | **The crash oracle lands** (PRs #268 to #271): `tooling/Grob.Torture` runs any source through the pipeline in process against fake capabilities and classifies the run; a CI slice of 1,318 seeds, 536 mutants and 200 generated programs gates on a known-findings list; twelve semantic mutation operators, a minimiser and a type-directed generator feed a hand-run campaign of worker processes with a black-box check through the CLI. **The CLI reports an internal failure from any phase as E9001** and exits `2` for a compile error and `3` for a usage error. **The first campaign** ran 200,000 programs and found 10,174 failing under 86 signatures; Chris lifted the prompt's twenty-signature stop. R-64 and R-72 closed; R-68 to R-95 filed; seven rows extended. Count unchanged at 122. |
 | D-454 | November 2026 | Bytecode — instruction set (ADR-0013); Compiler — bytecode emission; Deferred Work Register | **`Dup` joins the instruction set**: it pushes a copy of the top-of-stack value. **A switch expression keeps its subject on the operand stack**, copying it with `Dup` for each tested arm and popping it when an arm is taken, instead of holding it in a local slot counted from the declared locals, which named an operand below the subject when the switch was itself an operand, so `1 + (5 switch { 0 => 1, _ => 2 })` printed `7`. Rejected: tracking the operand-stack depth in the compiler, which every emitter would have to keep. R-77 closed. Count unchanged at 122. |
+| D-455 | November 2026 | VM — exceptional unwind; Compiler — bytecode emission; Deferred Work Register | **A `finally` that a throw runs finds the stack as the normal path leaves it.** `TryRegion` gains a required `BaseSlot`, the slots live when the `try` begins, which the compiler sets from `_nextSlot` and which a catch binding already takes; before running a finally on the throw path the VM closes upvalues from that height and trims to it, so a local the `try` or a `catch` declared, or a callee frame's values, no longer sit where the finally's first local belongs. `FinallyOffset` is required too. Rejected: an optional base defaulting to `0`, silently wrong with locals below the `try`. R-79 closed. Count unchanged at 122. |
 
 ---
 
@@ -18621,6 +18622,72 @@ Cites D-453 (R-77), D-350 (the compound index assignment's temporaries), ADR-001
 
 ---
 
+### D-455 — A `finally` that a throw runs finds the stack as the normal path leaves it: `TryRegion` records the slot its `try` began at; R-79 closed (November 2026)
+
+Area: VM — exceptional unwind; Compiler — bytecode emission; Deferred Work Register
+Supersedes: none
+Superseded by: none
+
+**A bug fix with no opcode and no code minted**; the count stays at 122. D-453 filed the
+defect as R-79, and on 25 November Chris chose it as the next of the crash oracle's findings
+to fix on its own branch, with the new field required.
+
+**The defect.** On the exceptional path `RunFinallyExceptional` ran a region's finally at
+whatever stack height the throw left, but the finally was compiled to find its first local at
+the slot its `try` began at. A local the `try` body declared, a catch binding and the locals
+of a catch body that threw, and a callee's frame were all still on the stack there:
+`PropagateThrow` resets `_stackBase` as it unwinds a frame but leaves the frame's values. So the
+finally's first local was read from the wrong slot. Measured through `grob run` at `1311227`:
+a `try` declaring `a := true` and throwing, with a `finally` declaring `b := 1` and printing
+`b + 1`, stopped with an internal error, `GrobValue kind mismatch: expected Int, actual Bool`; a
+`catch` that declared a local and threw, `expected String, actual Struct`; a throw from a
+called function, `expected Int, actual Function`; and `10 / 0` in the `try` body, `expected
+String, actual Int`. A `catch` was right, since the VM trims to its binding's slot first, and
+so was the normal path, which pops the body's locals before the finally runs.
+
+**Decision 1 — `TryRegion` records its base slot.** `TryRegion` gains `BaseSlot`, the number of
+slots live above the frame's base when the `try` begins. The compiler sets it from `_nextSlot`
+at `VisitTry`: a `try` is a statement, so that count is the stack's real height, and it is the
+slot a catch binding already takes. `BaseSlot` is required and so is `FinallyOffset`, which had
+defaulted to `-1`: a default base would be silently wrong for any region with locals below it,
+and requiring both means no existing four-argument construction can be read as a base.
+
+**Decision 2 — the VM trims before the finally runs.** `RunFinallyExceptional` closes any
+upvalue at or above `_stackBase + BaseSlot` and trims the stack to that height before it runs
+the finally body, as a catch handler's entry does with its binding slot. Whatever the throw
+left above the base is dead on this path, and an outer handler or finally trims to its own,
+lower base in turn.
+
+**Evidence the base is the real height.** A temporary check at `TryBegin`, run over the whole
+suite, compared each region's `BaseSlot` with the stack's height above the frame base. It held
+for every region the compiler emitted, in the compiler, integration, stdlib and crash-oracle
+tests. It failed in one hand-built VM test, whose `leaf` is declared with no parameters but
+re-entered by `each` with one; that region has no finally, so nothing trims to its base. The
+check was removed.
+
+**Rejected: an optional `BaseSlot` defaulting to `0`.** It would have left 40 hand-built test
+regions unchanged, but a default that is wrong whenever locals sit below the `try` would hide
+exactly this defect in the next hand-built test. Chris chose the required field.
+
+**Tests.** `VirtualMachineFinallyTests` runs a finally on the throw path with a local declared
+in the `try` body, in a catch body that throws and in a nested `try`, whose finallys each trim
+to their own base and leave the outer body's local intact, and with a throw from a callee's
+frame. `ClosureCapturedBeforeThrow_ReadAfterFinallyRuns_NoUnderflow` now gives its region the
+base its captured local implies. `CompilerFinallyTests` asserts `BaseSlot` for a top-level
+`try`, a `try` after two block locals, one in a function after its parameters and a local, a
+nested `try` and one in a `for...in` loop, and that it equals the catch binding's slot.
+`FinallyOnThrowStackTests` runs R-79's reproducers through the CLI, with a runtime error the VM
+raises, one a native raises (`date.parse("nope")`), a nested `try` and a `try` in a function
+with locals below it. R-79 had no entry in the crash oracle's known list.
+R-80's and R-91's reproducers still underflow after this change, so their causes are their own.
+
+**Spec edits in this commit.** None. `grob-open-questions.md`: R-79 closed.
+
+Cites D-453 (R-79), D-274 (the catch binding), D-275 (`finally` on every exit) and D-325
+(upvalues closed by stack location).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -18850,7 +18917,10 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-454 added, with a source change and a spec edit. **`Dup` joins the_
+_November 2026 — D-455 added, with a source change. **A `finally` that a throw runs finds the_
+_stack as the normal path leaves it**: `TryRegion` records the slot its `try` began at and the_
+_VM trims to it before the finally runs. R-79 closed. Count unchanged at 122._
+_Previous: November 2026 — D-454 added, with a source change and a spec edit. **`Dup` joins the_
 _instruction set**, and a switch expression keeps its subject on the operand stack, so it_
 _gives its value where operands are already below it. R-77 closed. Count unchanged at 122._
 _Previous: November 2026 — D-453 added, with source, tooling and register changes. **The crash oracle**_
