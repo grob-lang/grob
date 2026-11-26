@@ -185,14 +185,14 @@ public sealed class DatePlugin : IGrobPlugin {
     /// read, is the script's bad input, a <c>ParseError</c> (E5702) as an unparseable date string
     /// is (R-69, D-459), not the host exception <see cref="TimeZoneInfo.FindSystemTimeZoneById"/>
     /// throws. An id the host refuses outright, an empty one or one with a null character, is
-    /// refused the same way. The message names the id as <c>date.parse</c>'s names its input.
+    /// refused the same way. The message names the function and the problem, never the id (D-077).
     /// </summary>
     private static TimeZoneInfo FindZone(string id) {
         try {
             return TimeZoneInfo.FindSystemTimeZoneById(id);
         } catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException or ArgumentException) {
             throw new NativeFaultException(
-                "ParseError", ErrorCatalog.E5702.Code, $"date.toZone: '{id}' is not a known time zone.");
+                "ParseError", ErrorCatalog.E5702.Code, "date.toZone: the zone is not a known time zone.");
         }
     }
 

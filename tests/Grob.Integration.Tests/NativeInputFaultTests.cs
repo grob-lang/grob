@@ -59,7 +59,8 @@ public sealed class NativeInputFaultTests {
     // toZone
     // -----------------------------------------------------------------------
 
-    private const string UnknownZoneMessage = "date.toZone: 'abc' is not a known time zone.";
+    // D-077: the message names the function and the problem, never the zone the script passed.
+    private const string UnknownZoneMessage = "date.toZone: the zone is not a known time zone.";
 
     [Fact]
     public void ToZone_UnknownZone_CaughtAsParseError() =>
@@ -71,6 +72,28 @@ public sealed class NativeInputFaultTests {
             }
             print("after")
             """, $"caught {UnknownZoneMessage}", "after");
+
+    [Fact]
+    public void ToZone_UnknownZone_KeepsTheZoneOutOfTheMessage() {
+        (string stdout, string stderr, int exitCode) = RunSource("""
+            try {
+                print(date.now().toZone("Secret/Zone").toIso())
+            } catch (e: ParseError) {
+                print(e.message)
+            }
+            d := date.now()
+            print(d.toZone("Secret/Zone").toIso())
+            """);
+
+        string[] errorLines = Lines(stderr);
+        Assert.Equal(1, exitCode);
+        Assert.Equal(UnknownZoneMessage, Assert.Single(Lines(stdout)));
+        Assert.Equal($"error[E5702]: {UnknownZoneMessage}", errorLines[0]);
+        Assert.EndsWith(".grob:7", errorLines[1], StringComparison.Ordinal);
+        Assert.Equal(2, errorLines.Length);
+        Assert.DoesNotContain("Secret", stdout, StringComparison.Ordinal);
+        Assert.DoesNotContain("Secret", stderr, StringComparison.Ordinal);
+    }
 
     [Fact]
     public void ToZone_UnknownZone_UncaughtIsE5702AtTheCall() =>

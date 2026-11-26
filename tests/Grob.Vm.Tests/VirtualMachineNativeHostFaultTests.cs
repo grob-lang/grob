@@ -293,6 +293,60 @@ public sealed class VirtualMachineNativeHostFaultTests {
     }
 
     [Fact]
+    public void HostException_FromNative_SkipsAnEnclosingFinally() {
+        // D-459, a second exception to D-275 beside exit(): a host fault is a defect the VM's state
+        // cannot be trusted past, so no more script code runs, a finally's included.
+        var output = new StringWriter();
+        var vm = new VirtualMachine(output);
+        var original = new InvalidOperationException("boom");
+
+        GrobInternalException ex = RunExpectingInternal(
+            BuildFinallyAroundCallScript(Throwing("faulty", original)), vm);
+
+        AssertNamesNativeAndCallSite(ex, "faulty", nameof(InvalidOperationException), original);
+        Assert.Equal(string.Empty, output.ToString());
+    }
+
+    [Fact]
+    public void InternalError_FromNative_SkipsAnEnclosingFinally() {
+        // A GrobInternalException a native throws is not rewrapped and is not walked either.
+        var output = new StringWriter();
+        var vm = new VirtualMachine(output);
+
+        Assert.Throws<GrobInternalException>(() => vm.Run(
+            BuildFinallyAroundCallScript(Throwing("faulty", new GrobInternalException("internal")))));
+
+        Assert.Equal(string.Empty, output.ToString());
+    }
+
+    [Fact]
+    public void InternalError_FromTheVmItself_SkipsAnEnclosingFinally() {
+        // The general rule for an internal error: a Pop on an empty value stack (a compiler defect)
+        // throws GrobInternalException, which the try-region unwind never sees.
+        var script = new Chunk();
+        int regionIndex = script.AddTryRegion();
+        script.WriteOpCode(OpCode.TryBegin, 2); script.WriteByte((byte)regionIndex, 2);
+        int startOffset = script.Count;
+        script.WriteOpCode(OpCode.Pop, CallLine);
+        int endOffset = script.Count;
+        int finallyOffset = script.Count;
+        script.WriteOpCode(OpCode.Constant, 6); script.WriteByte(ConstByte(script, GrobValue.FromString("done")), 6);
+        script.WriteOpCode(OpCode.Print, 6);
+        int tryEndOffset = script.Count;
+        script.WriteOpCode(OpCode.TryEnd, 7);
+        script.WriteOpCode(OpCode.Return, 7);
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset,
+            BaseSlot: 0, TryEndOffset: tryEndOffset));
+        var output = new StringWriter();
+        var vm = new VirtualMachine(output);
+
+        GrobInternalException ex = RunExpectingInternal(script, vm);
+
+        Assert.Contains("underflow", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(string.Empty, output.ToString());
+    }
+
+    [Fact]
     public void OverflowException_FromNative_IsStillIntegerOverflow() {
         // NumericMethodsPlugin's checked arithmetic relies on the dispatch's own catch (D-382).
         var vm = new VirtualMachine(new StringWriter());

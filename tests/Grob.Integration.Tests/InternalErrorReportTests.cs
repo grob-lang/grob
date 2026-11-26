@@ -154,6 +154,24 @@ public sealed class InternalErrorReportTests {
     }
 
     [Fact]
+    public void HostException_FromANativeInATryFinally_SkipsTheFinally() {
+        // D-459 beside D-275: an internal error ends the run at once, so the finally does not run.
+        // The test above pins the same with a catch beside the finally; this is the finally alone.
+        (string stdout, string stderr, int exitCode, string path) = RunWithHook(_ => { }, """
+            try {
+                print(date.now())
+            } finally {
+                print("finally")
+            }
+            print("after")
+            """, capabilities: ThrowingClockCapabilities());
+
+        Assert.Equal(ExitCodes.RuntimeError, exitCode);
+        Assert.Equal(string.Empty, stdout);
+        Assert.Equal(NativeReport(path, 2), stderr);
+    }
+
+    [Fact]
     public void HostException_FromANativeInACallback_IsReportedAsE9001AtTheNativesLine() {
         (string stdout, string stderr, int exitCode, string path) = RunWithHook(_ => { }, """
             try {
@@ -170,9 +188,10 @@ public sealed class InternalErrorReportTests {
 
     [Fact]
     public void HostException_FromANativeWithVerbose_AddsTheHostExceptionAsTheInnerOne() {
-        (_, string stderr, _, _) = RunWithHook(_ => { }, "print(date.now())\n", verbose: true,
+        (_, string stderr, int exitCode, _) = RunWithHook(_ => { }, "print(date.now())\n", verbose: true,
             capabilities: ThrowingClockCapabilities());
 
+        Assert.Equal(ExitCodes.RuntimeError, exitCode);
         Assert.Contains("GrobInternalException: native date.now threw InvalidOperationException", stderr);
         Assert.Contains("InvalidOperationException: clock failed", stderr);
     }

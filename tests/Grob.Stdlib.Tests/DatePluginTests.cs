@@ -501,18 +501,21 @@ public sealed class DatePluginTests {
     }
 
     [Fact]
-    public void ToZone_UnknownZone_NamesTheMethodAndTheZone() {
+    public void ToZone_UnknownZone_NamesTheMethodAndKeepsTheZoneOutOfTheMessage() {
+        // D-077: an error message names the function and the problem, never the script's value.
         var vm = NewRegisteredVm();
 
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
             vm.Run(BuildMethodCallOnCallChunk(
                 "date.parse", "toZone",
-                [GrobValue.FromString("2026-04-05T12:00:00Z"), GrobValue.FromString("")], GrobValue.FromString("abc"))));
+                [GrobValue.FromString("2026-04-05T12:00:00Z"), GrobValue.FromString("")],
+                GrobValue.FromString("Secret/Zone"))));
 
         Assert.Equal(ErrorCatalog.E5702.Code, ex.Code);
         Assert.Equal(1, ex.Line);
         Assert.Equal(0, ex.Column); // the chunk builder writes no columns
-        Assert.Equal("date.toZone: 'abc' is not a known time zone.", ex.Message);
+        Assert.Equal("date.toZone: the zone is not a known time zone.", ex.Message);
+        Assert.DoesNotContain("Secret", ex.Message, StringComparison.Ordinal);
     }
 
     // -----------------------------------------------------------------------
