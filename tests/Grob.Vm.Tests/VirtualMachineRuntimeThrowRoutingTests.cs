@@ -90,13 +90,14 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         int handlerOffset = script.Count; // empty catch body — binds at slot 0
 
         PatchJump16(script, jumpSite);
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 3);
         script.WriteOpCode(OpCode.True, 4);
         script.WriteOpCode(OpCode.DefineGlobal, 4); script.WriteByte((byte)reachedName, 4);
         script.WriteOpCode(OpCode.Return, 4);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler([leafName], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler([leafName], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -220,11 +221,12 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         int finallyOffset = script.Count;
         EmitIncrementGlobalCounter(script, counterName, 4);
 
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 5);
         script.WriteOpCode(OpCode.Return, 5);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["IndexError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset, BaseSlot: 0));
+            [new CatchHandler(["IndexError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -301,11 +303,12 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         int finallyOffset = script.Count;
         EmitIncrementGlobalCounter(script, counterName, 4);
 
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 5);
         script.WriteOpCode(OpCode.Return, 5);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["IndexError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset, BaseSlot: 0));
+            [new CatchHandler(["IndexError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -380,12 +383,13 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         fnChunk.WriteOpCode(OpCode.DefineGlobal, 1); fnChunk.WriteByte((byte)caughtName, 1);
 
         PatchJump16(fnChunk, jumpSite);
+        int tryEndOffset = fnChunk.Count;
         fnChunk.WriteOpCode(OpCode.TryEnd, 1);
         fnChunk.WriteOpCode(OpCode.Nil, 1);
         fnChunk.WriteOpCode(OpCode.Return, 1);
 
         fnChunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["RuntimeError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["RuntimeError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var fn = new BytecodeFunction("rec", 0, fnChunk);
 
@@ -438,12 +442,13 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         leafChunk.WriteOpCode(OpCode.DefineGlobal, 1); leafChunk.WriteByte((byte)caughtName, 1);
 
         PatchJump16(leafChunk, jumpSite);
+        int tryEndOffset = leafChunk.Count;
         leafChunk.WriteOpCode(OpCode.TryEnd, 1);
         leafChunk.WriteOpCode(OpCode.Nil, 1);
         leafChunk.WriteOpCode(OpCode.Return, 1);
 
         leafChunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["RuntimeError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["RuntimeError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var leafFn = new BytecodeFunction("leaf", 0, leafChunk);
 
@@ -507,11 +512,12 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         int finallyOffset = script.Count;
         EmitIncrementGlobalCounter(script, counterName, 4);
 
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 5);
         script.WriteOpCode(OpCode.Return, 5);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset, BaseSlot: 0));
+            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], finallyOffset, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -541,11 +547,12 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         int finallyOffset = script.Count;
         EmitIncrementGlobalCounter(script, counterName, 4);
 
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 5);
         script.WriteOpCode(OpCode.Return, 5);
 
         // No handlers — nothing matches, so the routed error is unhandled.
-        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset, BaseSlot: 0));
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [], finallyOffset, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         GrobArithmeticException ex = Assert.Throws<GrobArithmeticException>(() => vm.Run(script));
@@ -596,6 +603,7 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         script.WriteOpCode(OpCode.Constant, 3); script.WriteByte((byte)ten, 3);
         script.WriteOpCode(OpCode.Constant, 3); script.WriteByte((byte)zero, 3);
         script.WriteOpCode(OpCode.DivideInt, 3);
+        int innerTryEnd = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 3);
 
         int outerEnd = script.Count;
@@ -608,14 +616,16 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         script.WriteOpCode(OpCode.DefineGlobal, 4); script.WriteByte((byte)caughtName, 4);
 
         PatchJump16(script, jumpSite);
+        int outerTryEnd = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 5);
         script.WriteOpCode(OpCode.True, 6);
         script.WriteOpCode(OpCode.DefineGlobal, 6); script.WriteByte((byte)afterName, 6);
         script.WriteOpCode(OpCode.Return, 6);
 
-        script.SetTryRegion(innerRegion, new TryRegion(innerStart, innerEnd, [], innerFinally, BaseSlot: 0));
+        script.SetTryRegion(innerRegion, new TryRegion(innerStart, innerEnd, [], innerFinally, BaseSlot: 0, TryEndOffset: innerTryEnd));
         script.SetTryRegion(outerRegion, new TryRegion(outerStart, outerEnd,
-            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, outerCatch, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, outerCatch, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0,
+            TryEndOffset: outerTryEnd));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -656,13 +666,14 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         int handlerOffset = script.Count;
 
         PatchJump16(script, jumpSite);
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 3);
         script.WriteOpCode(OpCode.Return, 3);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [
             new CatchHandler(["NetworkError"], IsCatchAll: false, handlerOffset, BindingSlot: 0),
             new CatchHandler([], IsCatchAll: true, handlerOffset, BindingSlot: 0),
-        ], FinallyOffset: -1, BaseSlot: 0));
+        ], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -693,6 +704,7 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         int handlerOffset = script.Count;
 
         PatchJump16(script, jumpSite);
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 3);
         script.WriteOpCode(OpCode.Return, 3);
 
@@ -702,7 +714,7 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
             new CatchHandler(["GrobError", "IoError", "NetworkError", "JsonError", "ProcessError",
                 "NilError", "ArithmeticError", "IndexError", "ParseError", "LookupError", "RuntimeError"],
                 IsCatchAll: false, handlerOffset, BindingSlot: 0),
-        ], FinallyOffset: -1, BaseSlot: 0));
+        ], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -752,11 +764,12 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         int finallyOffset = script.Count;
         EmitIncrementGlobalCounter(script, counterName, 5);
 
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 6);
         script.WriteOpCode(OpCode.Return, 6);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler([], IsCatchAll: true, handlerOffset, BindingSlot: 0)], finallyOffset, BaseSlot: 0));
+            [new CatchHandler([], IsCatchAll: true, handlerOffset, BindingSlot: 0)], finallyOffset, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         GrobExitException ex = Assert.Throws<GrobExitException>(() => vm.Run(script));

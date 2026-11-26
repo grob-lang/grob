@@ -21,7 +21,8 @@ public class ChunkTryRegionTests {
         int index = chunk.AddTryRegion();
 
         CatchHandler handler = new(["IoError"], IsCatchAll: false, HandlerOffset: 42, BindingSlot: 3);
-        TryRegion region = new(StartOffset: 5, EndOffset: 20, Handlers: [handler], FinallyOffset: 30, BaseSlot: 3);
+        TryRegion region = new(StartOffset: 5, EndOffset: 20, Handlers: [handler], FinallyOffset: 30, BaseSlot: 3,
+            TryEndOffset: 41);
         chunk.SetTryRegion(index, region);
 
         TryRegion roundtripped = chunk.GetTryRegion(index);
@@ -29,6 +30,7 @@ public class ChunkTryRegionTests {
         Assert.Equal(20, roundtripped.EndOffset);
         Assert.Equal(30, roundtripped.FinallyOffset);
         Assert.Equal(3, roundtripped.BaseSlot);
+        Assert.Equal(41, roundtripped.TryEndOffset);
         CatchHandler h = Assert.Single(roundtripped.Handlers);
         Assert.Equal(["IoError"], h.MatchTypeNames);
         Assert.False(h.IsCatchAll);

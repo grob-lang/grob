@@ -618,9 +618,12 @@ public sealed partial class Compiler {
             Visit(node.Finally);
         }
 
+        // A finally that a throw runs ends here, in its own frame (D-457).
+        int tryEndOffset = _chunk.Count;
         _chunk.WriteOpCode(OpCode.TryEnd, node.Range.End.Line);
 
-        _chunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, handlers, finallyOffset, baseSlot));
+        _chunk.SetTryRegion(regionIndex,
+            new TryRegion(startOffset, endOffset, handlers, finallyOffset, baseSlot, tryEndOffset));
         return null;
     }
 

@@ -250,6 +250,50 @@ public sealed class CompilerFinallyTests {
         Assert.Equal(region.Handlers[0].BindingSlot, region.BaseSlot);
     }
 
+    // -----------------------------------------------------------------------
+    // TryRegion.TryEndOffset (R-80, D-457): the offset of the region's own
+    // closing TryEnd, where the VM ends a finally that a throw runs.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void TryEndOffset_TryWithCatchesAndNoFinally_IsItsTryEnd() {
+        Chunk chunk = CompileSource("""
+            try { x := 1 } catch (e: IoError) { y := 2 } catch f { z := 3 }
+            """);
+
+        List<Instr> instrs = Decode(chunk);
+        TryRegion region = chunk.GetTryRegion(instrs.Single(i => i.Op == OpCode.TryBegin).Arg);
+
+        Assert.Equal(instrs.Single(i => i.Op == OpCode.TryEnd).Offset, region.TryEndOffset);
+    }
+
+    [Fact]
+    public void TryEndOffset_TriesNestedInAFinally_EachIsItsOwnTryEndAfterItsFinally() {
+        Chunk chunk = CompileSource("""
+            try {
+                a := 1
+            } finally {
+                try {
+                    try { b := 2 } catch (x: IoError) { c := 3 }
+                } catch y { d := 4 } finally { e := 5 }
+            }
+            """);
+
+        List<Instr> instrs = Decode(chunk);
+        List<Instr> tryBegins = instrs.Where(i => i.Op == OpCode.TryBegin).ToList();
+        List<int> tryEnds = instrs.Where(i => i.Op == OpCode.TryEnd).Select(i => i.Offset).ToList();
+        TryRegion outer = chunk.GetTryRegion(tryBegins[0].Arg);
+        TryRegion middle = chunk.GetTryRegion(tryBegins[1].Arg);
+        TryRegion inner = chunk.GetTryRegion(tryBegins[2].Arg);
+
+        // The TryEnds are nested as the regions are: innermost first, the outer one last.
+        Assert.Equal([inner.TryEndOffset, middle.TryEndOffset, outer.TryEndOffset], tryEnds);
+        Assert.True(outer.FinallyOffset < middle.TryEndOffset,
+            "a try nested in the finally ends inside it");
+        Assert.True(middle.FinallyOffset < middle.TryEndOffset,
+            "a region's TryEnd follows its own finally");
+    }
+
     /// <summary>
     /// Locates a top-level named function's own compiled <see cref="Chunk"/> — the
     /// <see cref="OpCode.Constant"/>/<see cref="OpCode.ConstantLong"/> instruction

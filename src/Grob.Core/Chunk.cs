@@ -128,7 +128,7 @@ public sealed class Chunk {
     public int AddTryRegion() {
         if (_tryRegions.Count >= 256)
             throw new InvalidOperationException("Try region table overflow: a single chunk may hold at most 256 try regions.");
-        _tryRegions.Add(new TryRegion(0, 0, [], FinallyOffset: -1, BaseSlot: 0));
+        _tryRegions.Add(new TryRegion(0, 0, [], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: 0));
         return _tryRegions.Count - 1;
     }
 
