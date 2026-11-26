@@ -835,6 +835,22 @@ public sealed class TypeCheckerFunctionTypeIdentityTests {
             })
             """);
 
+    /// <summary>
+    /// A lambda returning an annotated binding takes the binding's identity only for the
+    /// kind it has, so it combines with a function type of the same return.
+    /// </summary>
+    [Theory]
+    [InlineData("int[]", "[1]")]
+    [InlineData("int", "1")]
+    [InlineData("map<string, int>", "map<string, int>{}")]
+    public void TernaryOfLambdaReturningAnnotatedBindingAndTypedFunction_IsAccepted(string type, string value) =>
+        AssertNoErrors($$"""
+            fn use(g: fn(): {{type}}, c: bool): void {
+                xs: {{type}} := {{value}}
+                k := c ? (() => xs) : g
+            }
+            """);
+
     [Fact]
     public void LambdaReturningTheArray_IsAccepted() =>
         AssertNoErrors("""

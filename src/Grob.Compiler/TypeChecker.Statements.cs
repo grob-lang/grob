@@ -93,7 +93,7 @@ public sealed partial class TypeChecker {
         // A value already in error is not recorded, so its lambda is not rejected again.
         if (actual != GrobType.Error && _lambdaReturns.TryPeek(out List<LambdaReturn>? lambdaReturns)) {
             lambdaReturns.Add(node.Value is not null
-                ? new LambdaReturn(actual, ExpressionDescriptor(node.Value), ResultIdentity(node.Value))
+                ? new LambdaReturn(actual, ExpressionDescriptor(node.Value), ResultIdentity(node.Value, actual))
                 : new LambdaReturn(actual, null));
         }
 

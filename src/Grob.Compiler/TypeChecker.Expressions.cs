@@ -1185,9 +1185,10 @@ public sealed partial class TypeChecker {
     /// they are not the shape to copy). A receiver whose descriptor is unavailable (an
     /// untyped or externally-sourced array) stays permissive at
     /// <see cref="GrobType.Unknown"/>, matching every other missing-descriptor
-    /// fallback in this file. When the element itself is a named struct or a nested
-    /// array, its name/nested descriptor is threaded through <c>_callResultStructNames</c>/
-    /// <c>_callResultArrayDescriptors</c> — the same side channels
+    /// fallback in this file. When the element itself is a named struct, a nested array or
+    /// a function (D-463), its name, nested descriptor or shape is threaded through
+    /// <c>_callResultStructNames</c>/<c>_callResultArrayDescriptors</c>/<c>_callResultDescriptors</c>
+    /// — the same side channels
     /// <see cref="ValidatePrimitiveMemberCall"/> already populates for <c>split()</c> —
     /// so a chained access on the result (<c>arr.first()?.year</c>) resolves further
     /// rather than regressing to <see cref="GrobType.Unknown"/>.
@@ -1365,7 +1366,8 @@ public sealed partial class TypeChecker {
     /// value-membership, D-371) — a deliberate asymmetry, not an oversight. Both take a
     /// single <c>K</c> (<c>string</c>, fixed in v1) argument, checked by
     /// <see cref="CheckMapKeyArgument"/>; a mismatch is <see cref="ErrorCatalog.E0004"/>,
-    /// never a new code.
+    /// never a new code. <c>get</c>'s result carries the value's struct name, array
+    /// descriptor or function shape (D-463), as <c>m[k]</c> does.
     /// </summary>
     private GrobType ValidateMapMethodCall(CallExpr node, MemberAccessExpr memberAccess, GrobType[] argTypes) {
         MapTypeDescriptor? descriptor = MapDescriptorOf(memberAccess.Target);
@@ -3633,7 +3635,7 @@ public sealed partial class TypeChecker {
         (GrobType resultType, FunctionTypeDescriptor? resultDescriptor) = LambdaResult(node.Body, bodyType, returns);
         _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, resultType, [], resultDescriptor) {
             ReturnIsInferred = true,
-            ReturnIdentity = LambdaResultIdentity(node.Body, returns),
+            ReturnIdentity = LambdaResultIdentity(node.Body, bodyType, returns),
         };
 
         _lambdaReturns.Pop();
@@ -3673,11 +3675,19 @@ public sealed partial class TypeChecker {
     }
 
     /// <summary>
-    /// The identity of a value (D-463): the struct it constructs or names, or the element or
-    /// value descriptor of the array or map it is, or <see langword="null"/> for none.
+    /// The identity of a value of kind <paramref name="kind"/> (D-463): the struct it
+    /// constructs or names, or the element or value descriptor of the array or map it is, or
+    /// <see langword="null"/> for none. Only the channel the kind has is read:
+    /// <see cref="GetStructTypeName"/> gives an annotated binding its annotation's name
+    /// whatever its kind, which is no struct identity for an <c>int</c> or an array.
     /// </summary>
-    private PositionIdentity? ResultIdentity(Expression value) =>
-        PositionIdentity.Of(GetStructTypeName(value), ArrayDescriptorOf(value), MapDescriptorOf(value));
+    private PositionIdentity? ResultIdentity(Expression value, GrobType kind) => kind switch {
+        GrobType.Struct or GrobType.NullableStruct or GrobType.AnonStruct or GrobType.NullableAnonStruct =>
+            PositionIdentity.Of(GetStructTypeName(value), null, null),
+        GrobType.Array or GrobType.NullableArray => PositionIdentity.Of(null, ArrayDescriptorOf(value), null),
+        GrobType.Map or GrobType.NullableMap => PositionIdentity.Of(null, null, MapDescriptorOf(value)),
+        _ => null,
+    };
 
     /// <summary>
     /// The identity of a lambda's result (D-463), so the result is checked against a declared
@@ -3686,11 +3696,11 @@ public sealed partial class TypeChecker {
     /// A <c>nil</c> result adds nothing, as it fits any nullable return. Results that do
     /// not agree, or one with no identity, leave the result with none, which is permissive.
     /// </summary>
-    private PositionIdentity? LambdaResultIdentity(LambdaBody body, List<LambdaReturn> returned) {
-        if (body is LambdaExpressionBody exprBody) return ResultIdentity(exprBody.Expression);
+    private PositionIdentity? LambdaResultIdentity(LambdaBody body, GrobType bodyType, List<LambdaReturn> returned) {
+        if (body is LambdaExpressionBody exprBody) return ResultIdentity(exprBody.Expression, bodyType);
         List<PositionIdentity?> identities = [.. returned.Where(r => r.Kind != GrobType.Nil).Select(r => r.Identity)];
         if (body is LambdaBlockBody { Block.Statements: [.., ExpressionStmt last] }) {
-            identities.Add(ResultIdentity(last.Expression));
+            identities.Add(ResultIdentity(last.Expression, bodyType));
         }
         return identities is [{ } first, ..] && identities.TrueForAll(first.Equals) ? first : null;
     }
