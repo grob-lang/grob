@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Grob.Core;
 using Grob.Runtime;
@@ -134,6 +135,25 @@ public sealed class VirtualMachine : IVmCallHost {
     /// switch arm.
     /// </summary>
     private CancellationToken _cancellationToken;
+
+    /// <summary>
+    /// The frame count the innermost active re-entrant dispatch was entered at, its floor,
+    /// or −1 when no native is running a callback (D-458). <see cref="InvokeCallable"/> sets
+    /// it around its <see cref="RunDispatch"/> and restores the enclosing value after;
+    /// <see cref="PropagateThrow"/> reads it so an error the callback does not catch stops at
+    /// the callback's frame instead of unwinding into frames the enclosing dispatch owns.
+    /// A field for the same reason <see cref="_cancellationToken"/> is one: every routed
+    /// fault site reaches <see cref="PropagateThrow"/>, and none of them should carry it.
+    /// </summary>
+    private int _reentrantFloor = -1;
+
+    /// <summary>
+    /// The error <see cref="PropagateThrow"/> has carried out of a callback's frame to the
+    /// native's call site, set between that walk returning and the fault site's diagnostic
+    /// reaching <see cref="InvokeCallable"/>, which wraps both in a
+    /// <see cref="CallbackEscapeException"/> (D-458). Null at every other time.
+    /// </summary>
+    private GrobStruct? _escapingError;
 
     /// <summary>
     /// Writer for the per-instruction trace hook. Only read inside
@@ -290,6 +310,8 @@ public sealed class VirtualMachine : IVmCallHost {
         _stack.Reset();
         _frameCount = 0;
         _openUpvalues.Clear();
+        _reentrantFloor = -1;
+        _escapingError = null;
 
         // Top-level initialisation state machine (§19.1, D-294): tag every
         // top-level binding the chunk defines as Uninitialised, and re-arm the
@@ -309,7 +331,15 @@ public sealed class VirtualMachine : IVmCallHost {
         // _steps is intentionally NOT reset — the step budget is VM-instance-lifetime
         // so it spans re-entrant InvokeCallable calls (D-319).
 
-        RunDispatch(floorFrameCount: 0, isReentrant: false);
+        try {
+            RunDispatch(floorFrameCount: 0, isReentrant: false);
+        } catch (CallbackEscapeException escaped) {
+            // An error raised in a callback that nothing caught: the walk from the
+            // outermost native call site found no handler either. Raise the diagnostic
+            // the fault site would have raised, outside the dispatch's own catch clauses
+            // so an E5903 is not routed a second time (D-458).
+            throw escaped.UnhandledDiagnostic();
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1054,6 +1084,20 @@ public sealed class VirtualMachine : IVmCallHost {
                                             boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                                         throw new GrobRuntimeException(fault.Code, line, column, fault.Message);
                                     break;
+                                } catch (CallbackEscapeException escaped) {
+                                    // An error the native's callback did not catch (D-458): its
+                                    // dispatch has unwound to this call site, so the walk goes on
+                                    // from here, in this dispatch, as for a native's own fault.
+                                    GrobValue escapedValue = escaped.Value;
+                                    GrobStruct escapedStruct = escaped.ExceptionStruct;
+                                    if (!RouteThrow(ref escapedValue, ref escapedStruct, line,
+                                            boundedFinally, finallyBoundaryFloor, finallyBoundaryStart)) {
+                                        // Not caught in this dispatch either: carry the error,
+                                        // as the walk left it, out of this dispatch too.
+                                        _escapingError = null;
+                                        throw new CallbackEscapeException(escapedValue, escapedStruct, escaped.Diagnostic);
+                                    }
+                                    break;
                                 }
                                 _stack.Push(nativeResult, line);
                                 break;
@@ -1308,16 +1352,11 @@ public sealed class VirtualMachine : IVmCallHost {
                             // the boundary confines the walk so an uncaught throw escapes to
                             // the enclosing driver instead of propagating past the finally.
                             GrobStruct thrown = exceptionStruct;
-                            bool handled = boundedFinally
-                                ? PropagateThrow(ref exceptionValue, ref thrown, line, finallyBoundaryFloor, finallyBoundaryStart)
-                                : PropagateThrow(ref exceptionValue, ref thrown, line, -1, -1);
-                            if (handled) break;
+                            if (RouteThrow(ref exceptionValue, ref thrown, line,
+                                    boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+                                break;
 
-                            string messageText = thrown.TryGetField("message", out GrobValue msgValue) && msgValue.IsString
-                                ? msgValue.AsString()
-                                : "<no message>";
-                            throw new GrobRuntimeException(ErrorCatalog.E5904.Code, line, column,
-                                $"{thrown.TypeName}: {messageText}");
+                            throw UncaughtThrowDiagnostic(thrown, line, column);
                         }
 
                     default:
@@ -1472,7 +1511,21 @@ public sealed class VirtualMachine : IVmCallHost {
 
         // Run the callee to completion.  On the callee's Return back to the floor,
         // RunDispatch restores _activeChunk/_ip/_stackBase from the frame and returns.
-        RunDispatch(floorFrameCount, isReentrant: true);
+        // An error the callee does not catch ends the run at the same floor (D-458):
+        // PropagateThrow unwinds the callee's frame, records the error and reports it
+        // unhandled, and the fault site's diagnostic arrives here to be carried, with the
+        // error, out through the native to the Call arm that ran it.
+        int enclosingFloor = _reentrantFloor;
+        _reentrantFloor = floorFrameCount;
+        try {
+            RunDispatch(floorFrameCount, isReentrant: true);
+        } catch (GrobRuntimeException diagnostic) when (_escapingError is not null) {
+            GrobStruct escaping = _escapingError;
+            _escapingError = null;
+            throw new CallbackEscapeException(GrobValue.FromStruct(escaping), escaping, diagnostic);
+        } finally {
+            _reentrantFloor = enclosingFloor;
+        }
 
         // The Return arm already pushed the result and restored caller state.
         return _stack.Pop();
@@ -1701,9 +1754,32 @@ public sealed class VirtualMachine : IVmCallHost {
         errStruct.SetField("location", GrobValue.FromString($"<unknown>:{line}"));
         GrobValue exceptionValue = GrobValue.FromStruct(errStruct);
         GrobStruct thrown = errStruct;
-        return boundedFinally
-            ? PropagateThrow(ref exceptionValue, ref thrown, line, finallyBoundaryFloor, finallyBoundaryStart)
-            : PropagateThrow(ref exceptionValue, ref thrown, line, -1, -1);
+        return RouteThrow(ref exceptionValue, ref thrown, line,
+            boundedFinally, finallyBoundaryFloor, finallyBoundaryStart);
+    }
+
+    /// <summary>
+    /// Drives <see cref="PropagateThrow"/> for a fault site in a <see cref="RunDispatch"/>
+    /// invocation, passing the bounded-finally confinement through only when that invocation
+    /// runs a <c>finally</c> body (D-275). The last three parameters are the fault site's own
+    /// <see cref="RunDispatch"/> parameters, as <see cref="TryRaiseRuntimeGrobError"/> documents them.
+    /// </summary>
+    private bool RouteThrow(
+            ref GrobValue exceptionValue, ref GrobStruct exceptionStruct, int line,
+            bool boundedFinally, int finallyBoundaryFloor, int finallyBoundaryStart) =>
+        boundedFinally
+            ? PropagateThrow(ref exceptionValue, ref exceptionStruct, line, finallyBoundaryFloor, finallyBoundaryStart)
+            : PropagateThrow(ref exceptionValue, ref exceptionStruct, line, -1, -1);
+
+    /// <summary>
+    /// The E5904 diagnostic for a thrown error nothing caught, naming its type and message.
+    /// </summary>
+    private static GrobRuntimeException UncaughtThrowDiagnostic(GrobStruct thrown, int line, int column) {
+        string messageText = thrown.TryGetField("message", out GrobValue msgValue) && msgValue.IsString
+            ? msgValue.AsString()
+            : "<no message>";
+        return new GrobRuntimeException(ErrorCatalog.E5904.Code, line, column,
+            $"{thrown.TypeName}: {messageText}");
     }
 
     /// <summary>
@@ -1725,7 +1801,10 @@ public sealed class VirtualMachine : IVmCallHost {
     /// <para>
     /// Returns <see langword="true"/> when a matching handler is found (<see cref="_ip"/> and the
     /// value stack are set to enter it) and <see langword="false"/> when every frame is exhausted
-    /// (the caller raises E5904). When <paramref name="boundaryFloor"/> ≥ 0 the walk is confined
+    /// (the caller raises E5904) or, inside a native's callback, when the callback's own frame has
+    /// none: the walk then unwinds that frame and leaves the rest to the dispatch that called the
+    /// native (D-458, <see cref="LeaveCallbackFrame"/>). When <paramref name="boundaryFloor"/> ≥ 0
+    /// the walk is confined
     /// to a bounded finally body: at that frame only regions inside the body
     /// (start ≥ <paramref name="boundaryStart"/>) are eligible, and an uncaught throw raises
     /// <see cref="FinallyEscapeException"/> so the enclosing driver replaces its in-flight exception.
@@ -1772,6 +1851,13 @@ public sealed class VirtualMachine : IVmCallHost {
             if (boundaryFloor >= 0 && _frameCount == boundaryFloor)
                 throw new FinallyEscapeException(exceptionValue, exceptionStruct);
 
+            // No handler in a callback's own frame: the frames below belong to the dispatch
+            // that called the native, which must run any handler there itself (D-458).
+            if (_reentrantFloor >= 0 && _frameCount == _reentrantFloor + 1) {
+                LeaveCallbackFrame(exceptionStruct);
+                return false;
+            }
+
             if (_frameCount == 0) return false;
 
             // Unwind one frame (closing its upvalues, D-325) and continue in the caller.
@@ -1782,6 +1868,23 @@ public sealed class VirtualMachine : IVmCallHost {
             _stackBase = frame.ReturnStackBase;
             ip = _ip;
         }
+    }
+
+    /// <summary>
+    /// Unwinds the frame of a callback a native runs, whose error it did not catch, back to
+    /// the native's call site, as the callback's <c>Return</c> would have done, and records
+    /// <paramref name="exceptionStruct"/> for <see cref="InvokeCallable"/> to carry out
+    /// through the native (D-458). The callable and its arguments, which
+    /// <see cref="InvokeCallable"/> pushed below the frame's base, go with it.
+    /// </summary>
+    private void LeaveCallbackFrame(GrobStruct exceptionStruct) {
+        CloseUpvaluesFrom(_stackBase);
+        _stack.TrimToCount(_stackBase - 1);
+        CallFrame frame = _frames[--_frameCount];
+        _activeChunk = frame.ReturnChunk;
+        _ip = frame.ReturnInstructionPointer;
+        _stackBase = frame.ReturnStackBase;
+        _escapingError = exceptionStruct;
     }
 
     /// <summary>
@@ -1875,6 +1978,43 @@ public sealed class VirtualMachine : IVmCallHost {
     /// same-class-only pattern as <see cref="FinallyEscapeException"/>.
     /// </summary>
     private sealed class RoutedThrowHandledException : Exception;
+
+    /// <summary>
+    /// Internal control-flow signal carrying an error a native's callback did not catch out
+    /// of the callback's re-entrant dispatch (D-458). <see cref="InvokeCallable"/> raises it
+    /// once <see cref="PropagateThrow"/> has unwound the callback's frame to the native's call
+    /// site; it passes through the native to the <see cref="OpCode.Call"/> arm that ran the
+    /// native, which goes on with the walk from there. <see cref="Diagnostic"/> is what the
+    /// fault site raised for want of a handler, raised by <see cref="Run"/> when no dispatch
+    /// catches the error. The same same-class-only pattern as
+    /// <see cref="FinallyEscapeException"/>, which carries an error out of a bounded
+    /// <c>finally</c> run.
+    /// </summary>
+    [SuppressMessage("Major Code Smell", "S3871:Exception types should be public",
+        Justification = "A control-flow signal between two members of this class, never caught "
+            + "or seen outside it; public, it would invite callers to catch an implementation detail.")]
+    private sealed class CallbackEscapeException : Exception {
+        public GrobValue Value { get; }
+        public GrobStruct ExceptionStruct { get; }
+        public GrobRuntimeException Diagnostic { get; }
+
+        public CallbackEscapeException(GrobValue value, GrobStruct exceptionStruct, GrobRuntimeException diagnostic) {
+            Value = value;
+            ExceptionStruct = exceptionStruct;
+            Diagnostic = diagnostic;
+        }
+
+        /// <summary>
+        /// The diagnostic for the error going unhandled. A thrown error is reported as E5904
+        /// naming the error the walk ended with, since a <c>finally</c> that throws replaces
+        /// it (D-275), exactly as <see cref="OpCode.Throw"/> reports one; a fault the VM or a
+        /// native raised keeps its own code, as it does without a callback between.
+        /// </summary>
+        public GrobRuntimeException UnhandledDiagnostic() =>
+            Diagnostic.Code == ErrorCatalog.E5904.Code
+                ? UncaughtThrowDiagnostic(ExceptionStruct, Diagnostic.Line, Diagnostic.Column)
+                : Diagnostic;
+    }
 
     /// <summary>
     /// Returns the upvalue array of the closure currently executing in the topmost
