@@ -1030,6 +1030,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// and reads a result as the target's types, and the value behind it reads and writes
     /// its own; a widened position would hand the value a <c>float</c> where it reads an
     /// <c>int</c>. A function-typed position is then compared through its nested shapes.
+    /// An array, struct or map position is compared by its flat kind only, as the
+    /// descriptor carries no element, field or value type for it (R-98).
     /// <see cref="GrobType.Unknown"/> on either side is permissive, as an inferred lambda's
     /// positions are, and <see cref="GrobType.Error"/> is universal so a failure already
     /// reported does not cascade.
