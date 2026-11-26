@@ -459,7 +459,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-460 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **An `int` the checker accepts for a `float` is widened with `IntToFloat` wherever the compiler can see the target type, not only in operands, ternary and switch arms and arguments.** A binding, a `readonly`, a return, a struct field and its default, a parameter default, an assignment to an identifier, a struct field or an array element, a map literal's value, a switch's value pattern and an array literal's elements beside a `float` emit it through one helper, `VisitWidened`, which asks `GetExprType` for the value as a ternary arm does; a `const` folds the value instead, since it emits no code. The target is the declaration's own annotation or the type the checker already put on the assignment target, so the compiler copies no rule. A call through a function value and a call to an array or map method take their widening from the checker on `CallExpr.ResolvedBinding`. Found beyond R-58's list: the array and map literals, the two collections' methods and the switch pattern, where `2.0 switch { 2 => … }` matched nothing. Not done: a lambda's result (R-96), function types compared with `int` assignable to `float`, against D-326's invariance (R-97), a named function held in a binding (R-82), a `param`'s default (R-15). Rejected: a check at run time. R-58 closed. Count unchanged at 122. |
 | D-461 | November 2026 | Compiler — type checker; Deferred Work Register | **Two function types are compared invariantly at every parameter and return position that holds a scalar or a function type, as D-326 says.** `PositionAssignable` required only that each position be assignable as a value is, so `fn(int): int` was accepted for `fn(float): float` and the call through it stopped with an internal error; it now requires the same type, `int` for `float`, `T` for `T?` and `nil` for `T?` included, and compares a function-typed position through its nested shape, so `fn(fn(int): int): void` is refused for `fn(fn(float): float): void` at any depth. E0001, E0004 or E0005 as the position gives, no new code. `Unknown` stays permissive and a lambda's body stays a value: `FunctionTypeDescriptor.ReturnIsInferred` marks a return read from a lambda body, which keeps the value rules, so `() => nil` is still a `fn(): int?`; R-96's widening is unchanged. One program in 12,021 changed verdict, the reproducer, and none tracked in the repository. Not compared: an array, struct or map in a function type's position and a function held in an array or map, which carry no shape, filed as R-98. Rejected: invariance for a lambda's body, which refuses `() => nil` for `fn(): int?`. R-97 closed. Count unchanged at 122. |
 | D-462 | November 2026 | VM — exception unwinding; Deferred Work Register | **A `finally`'s `throw` that replaces a fault nothing catches is what the run reports, as E5904 naming the replacement at the fault's line and column.** D-275 makes a `throw` from a `finally` replace the error in flight. A fault the VM or a native raised went through the handler walk with only a yes or no back, so when a `finally` replaced it and nothing caught the replacement, the fault site raised its own diagnostic and the replacement was lost; an outer `catch` already received it. `TryRaiseRuntimeGrobError` now raises E5904 itself when the walk ends with another error, and the `Call` arm does the same for a callback's error it routes on (D-458). The position is the fault's, as a replaced `throw` is reported at the first `throw` (D-458 Decision 2). A `finally` that does not throw leaves the fault its own code, and an internal error still skips every `finally` (D-459 Decision 6). No new opcode or code. Rejected: the replacement's own `throw` line, which would move a replaced `throw` too. R-99 filed and closed. Count unchanged at 122. |
-| D-463 | November 2026 | Compiler — type checker; Deferred Work Register | **A struct in a function type's parameter or return is compared by its declared name, and an array or a map there, the element of an array of functions and the value of a map of functions by their element and value types.** `FunctionTypeDescriptor` carries a `PositionIdentity` for each position, a struct's declared name, an array's element descriptor or a map's value descriptor, compared invariantly beside the kinds D-461 compares, and `ArrayTypeDescriptor` and `MapTypeDescriptor` carry a function element's or value's shape. A function type's positions resolve as a signature's do, so a struct position is a struct, not `unknown`. The shape follows an element out of the array or map through `fs[0]`, `m[k]`, `for…in`, `first`, `last`, `get`, `values` and a call's result; an array literal combines its elements' shapes, and `append`, `insert`, `set` and an index assignment compare the shape. A call through a function value compares an array argument's element type and a struct argument's name, as a direct call does (R-57 in part). A lambda's result keeps the value rules, its struct, array or map identity included. E0001, E0004 or E0005 as the position gives, no new code. Not done, and filed or extended: a map literal's type arguments, R-100; assignment and a map argument, R-101; a block lambda's earlier returns, R-102; a struct field's array, R-89; an aliased array of inferred lambdas, R-96. R-98 closed. Count unchanged at 122. |
+| D-463 | November 2026 | Compiler — type checker; Deferred Work Register | **A struct in a function type's parameter or return is compared by its declared name, and an array or a map there, the element of an array of functions and the value of a map of functions by their element and value types.** `FunctionTypeDescriptor` carries a `PositionIdentity` for each position, a struct's declared name, an array's element descriptor or a map's value descriptor, compared invariantly beside the kinds D-461 compares, and `ArrayTypeDescriptor` and `MapTypeDescriptor` carry a function element's or value's shape. A function type's positions resolve as a signature's do, so a struct position is a struct, not `unknown`. The shape follows an element out of the array or map through `fs[0]`, `m[k]`, `for…in`, `first`, `last`, `get`, `values` and a call's result; an array literal combines its elements' shapes, and `append`, `insert`, `set` and an index assignment compare the shape. A call through a function value compares an array argument's element type and a struct argument's name, as a direct call does (R-57 in part). A lambda's result keeps the value rules, its struct, array or map identity included. E0001, E0004 or E0005 as the position gives, no new code. Not done, and filed or extended: a map literal's type arguments, R-100; assignment and a map argument, R-101; a block lambda's earlier returns, R-102; a struct field's array, R-89; an aliased array of inferred lambdas, R-96; a lambda element given a widened argument, R-63. R-98 closed. Count unchanged at 122. |
 
 ---
 
@@ -19497,8 +19497,10 @@ through `fs[0]`, `m[k]`, `for…in`, `first`, `last`, a map's `get` and `values`
 function type that returns such an array keeps it too. An array literal combines
 its elements' shapes as a ternary's arms do (D-448 Decision 7), so `[g, h]` of two shapes is E0001
 and an inferred lambda beside `g` takes its types; a function element with no tracked shape, an
-anonymous struct's field, leaves the array with none, since it was never checked against the others. `append`, `insert`, `contains`, `set` and an
-index assignment take a function only of the collection's shape. With the shape, a call through
+anonymous struct's field, leaves the array with none, since it was never checked against the others.
+`append`, `insert`, `contains`, `set` and an index assignment take a function only of the
+collection's shape where the value's shape is tracked; a native held as a value or an anonymous
+struct's field is stored by its flat kind, as a literal of it is and as it was before. With the shape, a call through
 `fs[0]` is checked for its count and argument types, widens an `int` argument (D-460) and gives its
 declared return, so `fs[0](3.0) / 4` divides as floats where the unknown result took the `int`
 operand's opcode. A call through a function value compares an array argument's element type and a
@@ -19535,7 +19537,13 @@ so `#{ v: [g] }.v` binds to `(fn(float): float)[]`, R-89, extended. An array of 
 keeps their inferred results: `fs: (fn(): float)[] := [() => 1]` is accepted, as `() => 1` is for
 `fn(): float`, and so is `ys: (fn(): float)[] := xs` after `xs := [() => 1]`, where both bindings
 hold one array and widening the lambda cannot help; R-96, extended with that shape. A block lambda's
-result takes no account of its earlier returns' kinds, R-102.
+result takes no account of its earlier returns' kinds, R-102. A call's map result carries no value
+descriptor, so `use(make())` with mismatched map values passes, R-101. **One program that ran now
+stops.** `fs: (fn(float): float)[] := [n => n + 1]` then `fs[0](3)` printed `4`: the call was
+unchecked and passed an `int`. With the element's shape, the `3` is widened to `float`, as D-460
+widens it through a typed binding, and the lambda, whose parameter is `unknown`, adds with `AddInt`
+and stops with `expected Int, actual Float`. That is R-63's defect, which D-460 met the same way
+through `k: fn(float): float := a => a / 2`, and R-63 is extended with it.
 
 **Blast radius.** Every `.grob` file the repository holds was run through the crash oracle's `check`
 before and after on one machine: 12,065 programs gave a verdict both times, the 165 tracked in the
@@ -19575,7 +19583,8 @@ array of functions, an array of functions as a function type's return, a paramet
 and a ternary; a map of functions' index, `get`, `for k, v in m`, `values`, `set`, index assignment
 and position; a map argument through a function value; a lambda's result in each form, a block
 ending in an `if` and `else` among them. Beside them what passes: each matched shape, an empty
-literal, an inferred lambda element, an untracked element beside a typed one in either order,
+literal, an inferred lambda element, an untracked element beside a typed one in either order, a
+native or an anonymous struct's field stored into an array or map of functions,
 `filter`'s result, bare `array` and `map` positions, a lambda returning an annotated binding beside
 a typed function and the call results that resolve. `FunctionTypeDescriptorIdentityTests` covers
 `PositionIdentity`, the descriptors' equality and hash and `Merge`. `IntToFloatWideningTests` asserts
@@ -19587,8 +19596,8 @@ a function of it is accepted where it was refused, and one of another shape is r
 their code, line, column and exit code `2`, and the matched shapes to their results.
 
 **Spec edits in this commit.** None to a spec document: D-326 states the invariance and D-351 the
-element identity. `grob-open-questions.md`: R-98 closed; R-100, R-101 and R-102 filed; R-57, R-89
-and R-96 extended.
+element identity. `grob-open-questions.md`: R-98 closed; R-100, R-101 and R-102 filed; R-57, R-63,
+R-89 and R-96 extended.
 
 Cites D-326 (function types and their invariance, read in full before this change), D-351 (array
 element identity), D-461 (the comparison this extends and a lambda's body as a value), D-448
@@ -19830,7 +19839,7 @@ _November 2026 — D-463 added, with a source change. **A struct in a function t
 _declared name, and an array or a map there, the element of an array of functions and the value of a map of functions_
 _by their element and value types**: `fn(int[]): int` is refused for `fn(float[]): int`, `fn(A): int` for `fn(B): int` and_
 _`(fn(int): int)[]` for `(fn(float): float)[]`, and `fs[0]` carries its element's function type. R-98 closed;_
-_R-100, R-101 and R-102 filed; R-57, R-89 and R-96 extended. Count unchanged at 122._
+_R-100, R-101 and R-102 filed; R-57, R-63, R-89 and R-96 extended. Count unchanged at 122._
 _Previous: November 2026 — D-462 added, with a source change. **A `finally`'s `throw` that replaces a fault nothing_
 _catches is what the run reports**: E5904 naming the replacement, at the fault's line and column, as a replaced_
 _`throw` is reported at its first `throw` (D-458). R-99 filed and closed. Count unchanged at 122._
