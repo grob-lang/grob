@@ -457,6 +457,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-458 | November 2026 | VM — exceptional unwind, re-entrant call-back bridge; Deferred Work Register | **An error a native's callback does not catch leaves the callback's dispatch at its floor and is routed on from the native's call site.** `InvokeCallable` records its dispatch's floor; when `PropagateThrow` finds no handler in the callback's frame it unwinds that frame and reports the error unhandled, and `InvokeCallable` carries the error and the fault site's diagnostic out through the native in an internal `CallbackEscapeException`, which the `Call` arm routes on from its own frame with its own `finally` bounds, beside a native's `NativeFaultException`. The walk had gone on to the script's handler and the callback's dispatch ran the handler and the rest of the script itself, then popped an empty stack. Unhandled, the fault site's own diagnostic is raised at its line. Rejected: unwinding to the owning dispatch after the full walk, which runs outer finallies mid-native and unbounded. R-91 closed. Count unchanged at 122. |
 | D-459 | November 2026 | VM — native-call boundary; Stdlib — `date`, `string`, `guid`; Deferred Work Register | **A native's host exception is an internal error, E9001, that names the native; `toZone`, `replace` and `guid.newV5` raise a catchable error for their bad input.** `RunNative` runs every native, from the `Call` arm and from `InvokeCallable`, and an exception that is not a `NativeFaultException`, a Grob error, an `OverflowException`, an exit, a cancellation or the VM's own control signal leaves it as a `GrobInternalException` naming the native, the exception's type and the call's line, with the host exception inside and its message left out (D-077); no `catch` handles it and the oracle still counts it a finding. `toZone` with an unknown zone raises `ParseError` E5702, `replace` with an empty search text and `guid.newV5` with a namespace that is not a `guid` raise `RuntimeError` E5903, each through `NativeFaultException`. A native's own E5903 is no longer walked twice, which ran a script's `finally` twice. D-344's seam, landed with no entry, is stated. An internal error skips an enclosing `finally`, as `exit()` does, a second exception to D-275 (Decision 6; D-275 amended in part). `toZone`'s message omits the zone (D-077). Rejected: a catchable error for any host exception, which hides a defect. R-69 closed. Count unchanged at 122. |
 | D-460 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **An `int` the checker accepts for a `float` is widened with `IntToFloat` wherever the compiler can see the target type, not only in operands, ternary and switch arms and arguments.** A binding, a `readonly`, a return, a struct field and its default, a parameter default, an assignment to an identifier, a struct field or an array element, a map literal's value, a switch's value pattern and an array literal's elements beside a `float` emit it through one helper, `VisitWidened`, which asks `GetExprType` for the value as a ternary arm does; a `const` folds the value instead, since it emits no code. The target is the declaration's own annotation or the type the checker already put on the assignment target, so the compiler copies no rule. A call through a function value and a call to an array or map method take their widening from the checker on `CallExpr.ResolvedBinding`. Found beyond R-58's list: the array and map literals, the two collections' methods and the switch pattern, where `2.0 switch { 2 => … }` matched nothing. Not done: a lambda's result (R-96), function types compared with `int` assignable to `float`, against D-326's invariance (R-97), a named function held in a binding (R-82), a `param`'s default (R-15). Rejected: a check at run time. R-58 closed. Count unchanged at 122. |
+| D-461 | November 2026 | Compiler — type checker; Deferred Work Register | **Two function types are compared invariantly at every parameter and return position, as D-326 says.** `PositionAssignable` required only that each position be assignable as a value is, so `fn(int): int` was accepted for `fn(float): float` and the call through it stopped with an internal error; it now requires the same type, `int` for `float`, `T` for `T?` and `nil` for `T?` included, and compares a function-typed position through its nested shape, so `fn(fn(int): int): void` is refused for `fn(fn(float): float): void` at any depth. E0001, E0004 or E0005 as the position gives, no new code. `Unknown` stays permissive and a lambda's body stays a value: `FunctionTypeDescriptor.ReturnIsInferred` marks a return read from a lambda body, which keeps the value rules, so `() => nil` is still a `fn(): int?`; R-96's widening is unchanged. One program in 12,021 changed verdict, the reproducer, and none tracked in the repository. Not compared: an array, struct or map in a function type's position and a function held in an array or map, which carry no shape, filed as R-98. Rejected: invariance for a lambda's body, which refuses `() => nil` for `fn(): int?`. R-97 closed. Count unchanged at 122. |
 
 ---
 
@@ -19220,6 +19221,121 @@ hand-off to the compiler, and the rejection of copying a rule), D-450 (the known
 
 ---
 
+### D-461 — Function types are compared invariantly at every parameter and return position; R-97 closed; R-98 filed (November 2026)
+
+Area: Compiler — type checker; Deferred Work Register
+Supersedes: none
+Superseded by: none
+Refines: D-326, D-460
+
+**A bug fix with no opcode, no code, no token, no AST node and no grammar production**; the
+count stays at 122. D-460 found the defect and filed it as R-97 without changing what the checker
+accepts. This entry changes it, the fifth of the stacked fixes to the crash oracle's findings,
+after D-457, D-458, D-459 and D-460.
+
+**The defect.** D-326 makes assignability of function types invariant: "`fn(int): int` is
+assignable only to `fn(int): int`", with "nullable widening still applies as for any type"
+for the slot and "invariance governs the param/return structure only". `PositionAssignable`,
+which compares one parameter or return of two function types, called `TypesAreAssignable`,
+the rule a value gets, so an `int` passed for a `float`, a `T` for a `T?` and `nil` for a `T?`.
+`fn use(g: fn(int): int): void { h: fn(float): float := g }` type-checked, and `h(2.5)` passed a
+`float` to a function that reads an `int` and stopped with an internal error, `GrobValue kind
+mismatch: expected Int, actual Float`. Measured through `grob run` at `ef62498`, the revision this
+branch starts from. The reverse, `fn(float): float` for `fn(int): int`, was accepted the same
+way and hands the value a `float` it cannot read as an `int`.
+
+**Decision 1 — a position is the same type or it is refused.** `PositionAssignable` now requires
+the two kinds to be equal, and compares a function-typed position through its nested shapes in
+turn, so `fn(fn(int): int): void` is refused for `fn(fn(float): float): void` at any depth. No
+conversion applies inside a function type: not `int` to `float`, not `T` to `T?`, not `nil` to
+`T?`. D-326's sentence on nullable widening is about the slot, `(fn(): int)?` taking a
+`fn(): int`, and that still holds; `fn(int): int` for `fn(int?): int` or `fn(int): int?` is a
+different type and is refused, by the same sentence that refuses `float`. Arity was already
+exact. `Unknown` on either side stays permissive, as an inferred lambda's parameters are
+(R-47, R-63) and a named function's type is (R-82): it is no variance question, there is no type
+to compare. `Error` stays universal, as the plain rule treats it, so a failure already
+reported adds no second diagnostic. (An undefined type name in an annotation resolves to `Unknown`,
+not `Error`, today, which is R-31's.)
+
+Each place the checker holds the descriptors of two function types compares them through
+`DescriptorsAreAssignable`, and so through this rule: a binding, a `readonly`, an assignment to a
+binding or a struct field, an argument to a script function or a function value, a return, a
+parameter default, a struct field in construction and a function type inside another's parameter
+or return. The code each reports is the one its position already gave: E0001 for a binding, an
+assignment and a struct field, E0004 for an argument and a parameter default, E0005 for a return,
+with the message the checker already words for a function-type mismatch. A function held in an
+array or a map has no descriptor to compare (Decision 3).
+
+**Decision 2 — a lambda's body is a value, not a declared type.** The descriptor of a lambda
+literal carries the type its body has, which is a concrete `int` for `() => 1` and `nil` for `() =>
+nil`. Compared invariantly, `g: fn(): int? := () => nil` and `g: fn(): int? := () => 1` would be
+refused, programs D-326 accepts and that run correctly, since the lambda produces a value the
+slot reads as `int?`. `FunctionTypeDescriptor.ReturnIsInferred` marks a return read from a lambda
+body, set where `VisitLambda` builds the descriptor; `DescriptorsAreAssignable` then compares
+that return with the value rules it was compared by before, in `InferredReturnAssignable`, and
+every parameter and every declared return invariantly. `Merge` marks its result inferred only
+when both shapes are, so a declared return makes it a declared type again. The mark is
+provenance, not part of the type, and is left out of `Equals` and `GetHashCode`. A lambda's
+parameters are `Unknown` unless a method's function shape types them (D-443), and a shape is not a
+function type the checker compares, so the flag needs no parameter side. This keeps the one
+defect D-460 filed for a lambda's result, R-96, where it was: `k: fn(): float := () => 1` is
+accepted and stops at run time, and R-96's widening is what makes it run. It is not a decision to
+leave it: R-96's exit criterion states that program is accepted and widened.
+
+**Decision 3 — what is not compared, and why it stops here.** A function type's parameter or
+return that is an array, a struct or a map is compared by its flat kind, so `fn(int[]): int` is
+accepted for `fn(float[]): int` and `fn(A): int` for `fn(B): int`, and the element type of
+`(fn(int): int)[]` and the value type of `map<string, fn(int): int>` carry no function shape at
+all, so `fs: (fn(float): float)[] := [g]` with `g: fn(int): int` is accepted and `fs[0](2.5)`
+stops with the same internal error. `FunctionTypeDescriptor` records a nested shape only for a
+function-typed position, and `ArrayTypeDescriptor` and `MapTypeDescriptor` record none for a
+function-typed element. Comparing them needs the descriptors to carry what they lack, which
+reaches the array literal, indexing, the collections' methods and the map literal: a change of its
+own, not a tightening of a rule. Filed as R-98 with the measured programs.
+
+**Blast radius.** Every `.grob` file the repository holds was run through the crash oracle's `check`
+before and after on one machine: 12,021 programs gave a verdict, the 165 tracked in the repository,
+among them the error examples, the native-probe fixtures, the validation scripts and the benchmark
+fixtures, and 11,856 from the oracle's scratch corpora, its pilot and campaign programs and the
+sessions' probes, 19 others holding no function type. One program changed its verdict: the R-97
+reproducer, written with an inferred lambda, which was a finding and is now a diagnostic. No tracked
+program changed. The oracle's generator gives a function-typed slot a value of the same
+`GenType.Function`, a record equal by its parameter and return types, so it does not draw a
+function type for another; its CI slice passes unchanged and no known entry names R-97. The whole suite passes. **Not measured**: the
+benchmark gate, which is Chris's; the change adds a kind comparison per position in place of a
+call, and a flag read per comparison.
+
+**Rejected.** Comparing every descriptor invariantly, a lambda's body included, which refuses
+`() => nil` for `fn(): int?` and so a well-typed program. Making a lambda's descriptor
+`Unknown` in its return, which loses the diagnostic for `fn(): int := () => "s"`. Accepting `T`
+for `T?` and `nil` for `T?` inside a position, which D-326's "assignable only to" refuses and
+which would change the invariance rule for the slot's own nullability. Carrying array element and
+struct identity in `FunctionTypeDescriptor` here, which is R-98's change.
+
+**Tests.** `TypeCheckerFunctionTypeInvarianceTests` in `Grob.Compiler.Tests` asserts the code,
+line and column of each refusal: a binding, a `readonly`, an assignment, a struct field's
+construction and assignment, an argument to a script function and to a function value, a
+return and a parameter default, each for `int` to `float` and `float` to `int`; the parameter and
+the return alone; a second parameter; a nested function type at two and three levels, in a
+parameter and in a return; and the nullable cases, a function for a nullable function of another
+shape, `int` for `int?` in a parameter and in a return, and `int?` for `int` in a parameter.
+Beside them what is still accepted: an exact match, with nested and nullable positions, a function
+for the same nullable function, an inferred lambda for a concrete function type, a lambda literal
+returning `nil` or a value for a nullable return, a lambda returning a lambda (and the same with a
+wrong body still refused), and a call with an `int` through `fn(float): float` that still widens.
+`FunctionTypeInvarianceTests` in `Grob.Integration.Tests` runs the reproducer, its reverse and an
+argument through the CLI to the diagnostic, its code, line and column and exit code `2`, and an exact
+match and `h(3)` through `fn(float): float` to their results.
+
+**Spec edits in this commit.** None to a spec document: D-326 already states the rule.
+`grob-open-questions.md`: R-97 closed; R-98 filed; R-96 extended.
+
+Cites D-326 (function types and their invariance, read in full before this change), D-460
+(R-58, which filed R-97), D-443 (a method's function shape), D-448 (the combined shape and its return
+bound), D-451 and D-453 (the oracle), D-420 (the register) and D-308 (no new code).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -19449,7 +19565,11 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-460 added, with a source change. **An `int` the checker accepts for a `float` is_
+_November 2026 — D-461 added, with a source change. **Two function types are compared invariantly at_
+_every parameter and return position**, as D-326 says: `fn(int): int` is refused for_
+_`fn(float): float` and the reverse, nested positions included, while a lambda's body stays a value._
+_R-97 closed; R-98 filed. Count unchanged at 122._
+_Previous: November 2026 — D-460 added, with a source change. **An `int` the checker accepts for a `float` is_
 _widened with `IntToFloat` wherever the compiler can see the target type**: a binding, a return, a struct field, a parameter_
 _default, an assignment, the array and map literals, the two collections' methods, a call through a_
 _function value and a switch's value pattern. R-58 closed; R-96 and R-97 filed. Count unchanged at 122._
