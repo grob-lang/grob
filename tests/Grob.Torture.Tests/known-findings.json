@@ -96,13 +96,6 @@
       "programs": [
         "generated/0000000001352903/116"
       ]
-    },
-    {
-      "row": "R-78",
-      "signature": "Run|Exception|GrobInternalException: GrobValue kind mismatch: expected Float, actual Int.",
-      "programs": [
-        "generated/0000000001352903/146"
-      ]
     }
   ]
 }

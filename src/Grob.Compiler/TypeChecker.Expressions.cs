@@ -161,7 +161,11 @@ public sealed partial class TypeChecker {
 
         if (IsComparisonOperator(node.Operator)) return ResolveComparison(node, left, right);
         if (node.Operator == BinaryOperator.And || node.Operator == BinaryOperator.Or) return ResolveLogical(node, left, right);
-        if (node.Operator == BinaryOperator.NilCoalesce) return ResolveNilCoalesce(node, left, right);
+        if (node.Operator == BinaryOperator.NilCoalesce) {
+            // Recorded for the compiler, which reads it when the ?? is an operand (D-456).
+            node.NilCoalesceType = ResolveNilCoalesce(node, left, right);
+            return node.NilCoalesceType;
+        }
 
         return ResolveArithmetic(node, left, right);
     }

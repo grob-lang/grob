@@ -452,6 +452,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-453 | November 2026 | Process / Tooling — adversarial testing; CLI — internal-error reporting, exit codes; Deferred Work Register | **The crash oracle lands** (PRs #268 to #271): `tooling/Grob.Torture` runs any source through the pipeline in process against fake capabilities and classifies the run; a CI slice of 1,318 seeds, 536 mutants and 200 generated programs gates on a known-findings list; twelve semantic mutation operators, a minimiser and a type-directed generator feed a hand-run campaign of worker processes with a black-box check through the CLI. **The CLI reports an internal failure from any phase as E9001** and exits `2` for a compile error and `3` for a usage error. **The first campaign** ran 200,000 programs and found 10,174 failing under 86 signatures; Chris lifted the prompt's twenty-signature stop. R-64 and R-72 closed; R-68 to R-95 filed; seven rows extended. Count unchanged at 122. |
 | D-454 | November 2026 | Bytecode — instruction set (ADR-0013); Compiler — bytecode emission; Deferred Work Register | **`Dup` joins the instruction set**: it pushes a copy of the top-of-stack value. **A switch expression keeps its subject on the operand stack**, copying it with `Dup` for each tested arm and popping it when an arm is taken, instead of holding it in a local slot counted from the declared locals, which named an operand below the subject when the switch was itself an operand, so `1 + (5 switch { 0 => 1, _ => 2 })` printed `7`. Rejected: tracking the operand-stack depth in the compiler, which every emitter would have to keep. R-77 closed. Count unchanged at 122. |
 | D-455 | November 2026 | VM — exceptional unwind; Compiler — bytecode emission; Deferred Work Register | **A `finally` that a throw runs finds the stack as the normal path leaves it.** `TryRegion` gains a required `BaseSlot`, the slots live when the `try` begins, which the compiler sets from `_nextSlot` and which a catch binding already takes; before running a finally on the throw path the VM closes upvalues from that height and trims to it, so a local the `try` or a `catch` declared, or a callee frame's values, no longer sit where the finally's first local belongs. `FinallyOffset` is required too. Rejected: an optional base defaulting to `0`, silently wrong with locals below the `try`. R-79 closed. Count unchanged at 122. |
+| D-456 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **A `??` operand is widened, and chooses its enclosing operator's opcode, by the type the checker gave it.** `BinaryExpr` gains `NilCoalesceType`, which the checker sets from `ResolveNilCoalesce` and `GetBinaryResultType` returns for a `??`, where it had read the `??` as unknown and taken the other operand's type, so `2.25 - (n ?? 3)` left the `int` unwidened and `(nil ?? 10.0) / 4` chose integer division. Rejected: copying the checker's rule into the compiler. The regex hand-off's `(s ?? "") + ":"` bug was already fixed by D-450. R-78 closed. Count unchanged at 122. |
 
 ---
 
@@ -18688,6 +18689,61 @@ Cites D-453 (R-79), D-274 (the catch binding), D-275 (`finally` on every exit) a
 
 ---
 
+### D-456 — A `??` operand is widened, and chooses its enclosing operator's opcode, by the type the checker gave it; R-78 closed (November 2026)
+
+Area: Compiler — type checker, bytecode emission; Deferred Work Register
+Supersedes: none
+Superseded by: none
+
+**A bug fix with no opcode and no code minted**; the count stays at 122. D-453 filed the
+defect as R-78, and on 25 November Chris chose it as the next of the crash oracle's findings
+to fix on its own branch.
+
+**The defect.** The checker typed a `??` expression in `ResolveNilCoalesce`: `nil ?? T` is `T`,
+`T? ?? T` is `T` and `T? ?? T?` is `T?`. The compiler derives an operand's type again in
+`GetExprType`, and `GetBinaryResultType` had no arm for `??`, so a `??` operand read as unknown
+and D-450's rule gave it the other operand's type. Measured through `grob run` at `5b6967c`:
+`n: int? := 7` then `x := 2.25 - (n ?? 3)` stopped with an internal error, `GrobValue kind
+mismatch: expected Float, actual Int`, since the `int` was not widened; `x := (nil ?? 10.0) / 4`
+with `expected Int, actual Float`, since an integer division was chosen; and `(n ?? 3) < 2.5`
+as the first. As a binding's whole value, `x := n ?? 3` was right.
+
+**Decision 1 — the checker records the type on the node.** `BinaryExpr` gains
+`NilCoalesceType`, which the checker sets to `ResolveNilCoalesce`'s result for a `??` and which
+stays `Unknown` for every other operator and for a tree the checker has not visited. This is the
+checker-to-compiler hand-off `IsDateEquality` already makes on the same node (D-357), not a
+grammar change: no production or node is added.
+
+**Decision 2 — the compiler reads it.** `GetBinaryResultType` returns `NilCoalesceType` for a
+`??`, so the binary emission widens an `int` result beside a `float` with `IntToFloat` and
+chooses the `float` opcode, and every other reader of `GetExprType` sees the same type: a
+ternary's and a switch expression's arm widening, and a compound assignment's value. No VM
+change is needed: the checker already refuses `int? ?? float` with E0002, so a `??` never mixes
+`int` and `float` operands that would need widening inside it.
+
+**Rejected: copying `ResolveNilCoalesce`'s rule into the compiler.** It would derive the same
+type twice, in two places to keep in step by hand, where R-78's criterion asks for the type the
+checker gave.
+
+**Tests.** `NilCoalesceOperandTypeTests` asserts that the checker records `int`, `float`, `int?`
+and `string` for four `??` shapes and leaves another operator's `Unknown`, and asserts the
+emitted opcodes for an `int?` left operand beside a `float` (`IntToFloat`, `SubtractFloat`), a
+`nil` left operand (`DivideFloat`), a comparison (`LessFloat`), a ternary arm and a compound
+assignment's value. `NilCoalesceOperandTests` runs those shapes through the CLI. R-78's entry
+leaves the crash oracle's known list and the slice passes without it.
+
+**A hand-off bug that is already fixed.** The regex increment's hand-off of 20 November left
+three bugs to their own branches; the first, `s: string? := nil` then `print((s ?? "") + ":")`
+or `print("a" + (s ?? "b"))`, prints `:` and `ab` at `5b6967c`, since D-450's known-operand
+rule already chose `Concat` for it. It gets a regression test here and no register row.
+
+**Spec edits in this commit.** None. `grob-open-questions.md`: R-78 closed.
+
+Cites D-453 (R-78), D-450 (the known-operand rule), D-357 (the node's existing hand-off) and
+D-271 (`??`'s precedence).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -18917,7 +18973,10 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-455 added, with a source change. **A `finally` that a throw runs finds the_
+_November 2026 — D-456 added, with a source change. **A `??` operand is widened, and chooses_
+_its enclosing operator's opcode, by the type the checker gave it**, which `BinaryExpr` now_
+_carries to the compiler. R-78 closed. Count unchanged at 122._
+_Previous: November 2026 — D-455 added, with a source change. **A `finally` that a throw runs finds the_
 _stack as the normal path leaves it**: `TryRegion` records the slot its `try` began at and the_
 _VM trims to it before the finally runs. R-79 closed. Count unchanged at 122._
 _Previous: November 2026 — D-454 added, with a source change and a spec edit. **`Dup` joins the_
