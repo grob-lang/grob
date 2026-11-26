@@ -418,6 +418,38 @@ public sealed class TypeCheckerFunctionTypeIdentityTests {
             fs.insert(0, g)
             """, "E0004", 3, 14);
 
+    /// <summary>
+    /// A value whose function shape is not tracked, a native held as a value or an
+    /// anonymous struct's field, is stored by its flat kind, as it was before arrays of
+    /// functions carried a shape and as a literal of it is.
+    /// </summary>
+    [Fact]
+    public void ArrayOfFunctions_StoringAnUntrackedFunction_ComparesTheFlatKind() =>
+        AssertNoErrors("""
+            box := #{ op: (n) => n + 1.0 }
+            fs: (fn(float): float)[] := []
+            fs.append(math.sqrt)
+            fs.insert(0, box.op)
+            fs[0] = math.sqrt
+            print(fs.contains(box.op))
+            """);
+
+    [Fact]
+    public void MapOfFunctions_StoringAnUntrackedFunction_ComparesTheFlatKind() =>
+        AssertNoErrors("""
+            fn use(m: map<string, fn(float): float>): void {
+                m.set("k", math.sqrt)
+                m["j"] = math.sqrt
+            }
+            """);
+
+    [Fact]
+    public void ArrayOfFunctions_StoringANonFunction_IsE0004() =>
+        AssertSingleError("""
+            fs: (fn(float): float)[] := []
+            fs.append(1)
+            """, "E0004", 2, 11);
+
     [Fact]
     public void ArrayOfFunctions_ContainsOfMismatchedFunction_IsE0004() =>
         AssertSingleError("""
@@ -855,8 +887,13 @@ public sealed class TypeCheckerFunctionTypeIdentityTests {
             }
             """, "E0001", 3, 25);
 
+    /// <summary>
+    /// Pins today's permissive outcome, which R-102 records and leaves undecided: returns of
+    /// two struct types give the result no identity. When R-102 is decided this test changes
+    /// with the checker, to the diagnostic or the combined type the decision gives.
+    /// </summary>
     [Fact]
-    public void BlockLambdaWhoseResultsDisagree_CarriesNoIdentity() =>
+    public void BlockLambdaWhoseResultsDisagree_IsPermissiveUntilR102IsDecided() =>
         AssertNoErrors(Structs + """
             fn use(c: bool): void {
                 g: fn(): A := () => {

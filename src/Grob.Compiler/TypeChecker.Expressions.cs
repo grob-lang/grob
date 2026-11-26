@@ -1264,8 +1264,9 @@ public sealed partial class TypeChecker {
         if (descriptor is null || argType == GrobType.Error || argType == GrobType.Unknown) {
             return;
         }
-        // A function element takes only a function of the shape the array records (D-463).
-        bool compatible = IsAssignableToFunctionShape(argType, argExpr, descriptor.ElementKind, descriptor.ElementFunctionDescriptor);
+        // A function element takes only a function of the shape the array records, where
+        // both shapes are tracked (D-463).
+        bool compatible = IsAssignableToElementShape(argType, argExpr, descriptor.ElementKind, descriptor.ElementFunctionDescriptor);
         // Nested-array element identity (D-351): the flat GrobType.Array tag does not
         // distinguish int[][] from string[][], so int[][].contains(string[]) must be
         // rejected — mirroring the typed-function array-argument check (CheckArgument).
@@ -1512,8 +1513,9 @@ public sealed partial class TypeChecker {
         if (argType is GrobType.Error or GrobType.Unknown) {
             return true;
         }
-        // A function value takes only a function of the shape the map records (D-463).
-        bool compatible = IsAssignableToFunctionShape(argType, valueExpr, descriptor.ValueKind, descriptor.ValueFunctionDescriptor);
+        // A function value takes only a function of the shape the map records, where both
+        // shapes are tracked (D-463).
+        bool compatible = IsAssignableToElementShape(argType, valueExpr, descriptor.ValueKind, descriptor.ValueFunctionDescriptor);
         if (compatible && descriptor.ValueKind is GrobType.Array or GrobType.NullableArray &&
                 !ArrayElementAssignable(ArrayDescriptorOf(valueExpr), descriptor.ValueArrayDescriptor)) {
             compatible = false;

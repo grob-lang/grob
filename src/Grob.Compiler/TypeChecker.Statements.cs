@@ -262,15 +262,29 @@ public sealed partial class TypeChecker {
     /// parameter or struct field of <paramref name="targetType"/>. A target whose function
     /// type is known keeps it: the value's shape must match, as a declaration's initialiser
     /// must (D-326, D-448), since a later call through the target is checked against that
-    /// type. A function value whose shape is not tracked, such as an array element, cannot
-    /// be shown to match and is rejected. A target with no tracked shape compares the flat
-    /// kind only.
+    /// type. A function value whose shape is not tracked, such as an anonymous struct's
+    /// field, cannot be shown to match and is rejected. A target with no tracked shape
+    /// compares the flat kind only.
     /// </summary>
     private bool IsAssignableToFunctionShape(
             GrobType valueType, Expression value, GrobType targetType, FunctionTypeDescriptor? targetDescriptor) =>
         targetDescriptor is not null
             ? TypesAreAssignable(valueType, targetType, InitialiserDescriptor(value), targetDescriptor)
             : TypesAreAssignable(valueType, targetType);
+
+    /// <summary>
+    /// Whether a value may be stored as an element of an array, or a value of a map, whose
+    /// element kind is <paramref name="elementKind"/> and whose function shape, for a
+    /// collection of functions, is <paramref name="elementShape"/> (D-463). Two tracked shapes
+    /// are compared as two function types are; a value whose shape is not tracked, a native
+    /// held as a value or an anonymous struct's field, compares the flat kind, as a
+    /// collection with no element descriptor does (D-351) and as such a store did before.
+    /// </summary>
+    private bool IsAssignableToElementShape(
+            GrobType valueType, Expression value, GrobType elementKind, FunctionTypeDescriptor? elementShape) =>
+        elementShape is not null && InitialiserDescriptor(value) is { } valueShape
+            ? TypesAreAssignable(valueType, elementKind, valueShape, elementShape)
+            : TypesAreAssignable(valueType, elementKind);
 
     /// <inheritdoc/>
     /// <remarks>
@@ -616,11 +630,11 @@ public sealed partial class TypeChecker {
         // array target is never a map target), so the fallback never masks an array descriptor.
         MapTypeDescriptor? receiverMapDescriptor = MapDescriptorOf(indexTarget.Target);
         // D-463: an element of an array of functions, or a value of a map of functions,
-        // takes only a function of the shape the collection records, as a binding of that
-        // function type does; a collection with no tracked shape compares the flat kind.
+        // takes only a function of the shape the collection records; a collection or a value
+        // with no tracked shape compares the flat kind.
         FunctionTypeDescriptor? expectedShape =
             receiverElementDescriptor?.ElementFunctionDescriptor ?? receiverMapDescriptor?.ValueFunctionDescriptor;
-        bool compatible = IsAssignableToFunctionShape(valueType, valueExpr, elementType, expectedShape);
+        bool compatible = IsAssignableToElementShape(valueType, valueExpr, elementType, expectedShape);
         if (compatible && elementType is GrobType.Array or GrobType.NullableArray) {
             ArrayTypeDescriptor? expectedArrayDescriptor =
                 receiverElementDescriptor?.ElementArrayDescriptor ?? receiverMapDescriptor?.ValueArrayDescriptor;
