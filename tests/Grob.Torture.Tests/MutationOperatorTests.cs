@@ -57,7 +57,7 @@ public sealed class MutationOperatorTests {
 
     [Fact]
     public void ReplaceValue_ExpressionInitialiser_IsReplacedWhole() {
-        // R-58 reaches the VM through the expression form: a float binding's expression becomes an int.
+        // R-58 reached the VM through the expression form: a float binding's expression became an int.
         Assert.Contains("f := -2.5\nrabs: float := 1\n", Mutants(new ReplaceValue(), "f := -2.5\nrabs: float := f.abs()\n"));
     }
 

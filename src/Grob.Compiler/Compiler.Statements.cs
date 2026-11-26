@@ -34,7 +34,7 @@ public sealed partial class Compiler {
     /// <inheritdoc/>
     public override object? VisitVarDecl(VarDeclStmt node) {
         int line = node.Range.Start.Line;
-        Visit(node.Initializer);   // value is now on top of stack
+        VisitWidened(node.Initializer, IsFloatAnnotation(node.AnnotatedType));   // value is now on top of stack
 
         if (IsGlobalScope) {
             int nameIdx = GetOrCreateGlobalNameIndex(node.Name);
@@ -58,7 +58,7 @@ public sealed partial class Compiler {
         // Block-level readonly is deferred: Declaration does not extend Statement,
         // so ReadonlyDecl cannot appear inside a BlockStmt in the current design.
         int line = node.Range.Start.Line;
-        Visit(node.Value);
+        VisitWidened(node.Value, IsFloatAnnotation(node.AnnotatedType));
         int nameIdx = GetOrCreateGlobalNameIndex(node.Name);
         _chunk.WriteOpCode(OpCode.DefineGlobal, line);
         _chunk.WriteByte(ToByteOperand(nameIdx, GlobalNameLabel), line);
@@ -70,7 +70,7 @@ public sealed partial class Compiler {
         // Evaluate the RHS to a compile-time constant and cache it (D-289, D-293).
         // No bytecode is emitted for the declaration itself; every reference site
         // inlines the value via EmitConstant instead of GetGlobal/GetLocal.
-        _constValues[node] = EvalConstantExpr(node.Value);
+        _constValues[node] = WidenConstant(EvalConstantExpr(node.Value), node.AnnotatedType);
         return null;
     }
 
@@ -105,7 +105,9 @@ public sealed partial class Compiler {
     /// (all-paths-return analysis is not a v1 rule — the spec is silent).
     /// </summary>
     private BytecodeFunction CompileFunction(FnDecl node) {
-        var sub = new Compiler(_constValues);
+        var sub = new Compiler(_constValues) {
+            _returnsFloat = IsFloatAnnotation(node.ReturnType),
+        };
 
         // Parameters live in the function's outermost scope; the body opens its own
         // nested scope (VisitBlock), so a body local may shadow a parameter.
@@ -178,7 +180,7 @@ public sealed partial class Compiler {
     public override object? VisitReturn(ReturnStmt node) {
         int line = node.Range.Start.Line;
         if (node.Value is not null)
-            Visit(node.Value);
+            VisitWidened(node.Value, _returnsFloat);
         else
             _chunk.WriteOpCode(OpCode.Nil, line);
 
@@ -264,7 +266,7 @@ public sealed partial class Compiler {
             if (memberTarget.IsOptional) return null;
             int line = node.Range.Start.Line;
             Visit(memberTarget.Target);
-            Visit(node.Value);
+            VisitWidened(node.Value, memberTarget.ResolvedFieldType);
             int nameIdx = _chunk.AddConstant(GrobValue.FromString(memberTarget.Member));
             _chunk.WriteOpCode(OpCode.SetProperty, line);
             _chunk.WriteByte(ToByteOperand(nameIdx, "property name"), line);
@@ -282,7 +284,7 @@ public sealed partial class Compiler {
             int indexAssignLine = node.Range.Start.Line;
             Visit(indexTarget.Target);
             Visit(indexTarget.Index);
-            Visit(node.Value);
+            VisitWidened(node.Value, indexTarget.ElementType);
             _chunk.WriteOpCode(OpCode.SetIndex, indexAssignLine);
             return null;
         }
@@ -293,7 +295,7 @@ public sealed partial class Compiler {
         }
 
         int assignLine = node.Range.Start.Line;
-        Visit(node.Value);
+        VisitWidened(node.Value, target.ResolvedType);
         EmitStore(target.Name, assignLine);
         return null;
     }

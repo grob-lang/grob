@@ -36,6 +36,39 @@ public sealed partial class TypeChecker {
         argumentType == GrobType.Int && parameterType == GrobType.Float;
 
     /// <summary>
+    /// Records, on a call to a callee that has no signature to bind against, which of its
+    /// arguments widen (<paramref name="widen"/>, one entry per argument, in source order): a
+    /// function value, whose type names its parameters' types but no names (D-326), and an
+    /// array or map method, whose parameter is the receiver's element or value type. The
+    /// record is a <see cref="BoundArgumentList"/> that binds every argument to the slot in its
+    /// own position, so the compiler emits it with the one routine that emits every other bound
+    /// call. A call that widens nothing, <paramref name="widen"/> being <see langword="null"/>
+    /// until an argument does, keeps no record, and its bytes are what they were.
+    /// </summary>
+    private static void RecordArgumentWidening(CallExpr node, bool[]? widen) {
+        if (widen is null) return;
+        var slots = new BoundSlot[widen.Length];
+        for (int a = 0; a < slots.Length; a++) {
+            slots[a] = new BoundSlot(a, NativeDefault: null, WidenToFloat: widen[a]);
+        }
+        node.ResolvedBinding = new BoundArgumentList(slots);
+    }
+
+    /// <summary>
+    /// <see cref="RecordArgumentWidening"/> for a call whose one widening argument is at
+    /// <paramref name="argumentIndex"/>, bound to <paramref name="targetType"/>: the element
+    /// type of an array method's receiver or the value type of a map method's. A receiver whose
+    /// type the checker does not know (<paramref name="targetType"/> is <see langword="null"/>)
+    /// records nothing.
+    /// </summary>
+    private static void RecordWideningAt(CallExpr node, int argumentIndex, GrobType argType, GrobType? targetType) {
+        if (targetType is not { } target || !Widens(argType, target)) return;
+        var widen = new bool[node.Arguments.Count];
+        widen[argumentIndex] = true;
+        RecordArgumentWidening(node, widen);
+    }
+
+    /// <summary>
     /// Reports each of <paramref name="binding"/>'s problems at the argument it names,
     /// in argument order. Returns <see langword="true"/> when there was any, so the
     /// caller skips the arity and type checks (one diagnostic per root cause).

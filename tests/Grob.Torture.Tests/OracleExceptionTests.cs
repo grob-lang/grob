@@ -9,7 +9,7 @@ namespace Grob.Torture.Tests;
 /// <summary>
 /// An exception from any phase is a finding named by its phase, and a Grob runtime error or
 /// <c>exit(n)</c> is not (prompt §1.1 and §4). The phase hook makes a phase throw on demand, so
-/// these tests do not depend on an open defect; R-58 and R-60 are pinned from their own
+/// these tests do not depend on an open defect; R-63, R-96 and R-60 are pinned from their own
 /// reproducers as well.
 /// </summary>
 public sealed class OracleExceptionTests {
@@ -89,19 +89,21 @@ public sealed class OracleExceptionTests {
     }
 
     [Fact]
-    public void Run_R58FloatBindingGivenInt_IsKindMismatchFinding() {
-        OracleResult result = new Oracle(Budget).Run("x: float := 1\nprint(x / 2)\n");
+    public void Run_R63LambdaOperandGivenInt_IsKindMismatchFinding() {
+        // R-58 pinned this signature until D-460 closed it. R-63's lambda operand makes the same one.
+        OracleResult result = new Oracle(Budget).Run("f := (n) => n + 2.5\nprint(f(1))\n");
 
         Finding finding = Assert.Single(result.Findings);
-        Assert.Equal(R58Signature, finding.Signature);
+        Assert.Equal(KindMismatchSignature, finding.Signature);
     }
 
     [Fact]
-    public void Run_R58FloatReturnGivenInt_SharesTheBindingsSignature() {
-        OracleResult result = new Oracle(Budget).Run("fn f(): float {\n    return 1\n}\nprint(f() / 2)\n");
+    public void Run_R96LambdaReturnGivenIntForAFloatShape_SharesTheSignature() {
+        // R-96, filed by D-460: a lambda assigned to `fn(): float` returns its int unwidened.
+        OracleResult result = new Oracle(Budget).Run("k: fn(): float := () => 1\nprint(k() / 2)\n");
 
         Finding finding = Assert.Single(result.Findings);
-        Assert.Equal(R58Signature, finding.Signature);
+        Assert.Equal(KindMismatchSignature, finding.Signature);
     }
 
     [Fact]
@@ -114,7 +116,7 @@ public sealed class OracleExceptionTests {
             finding.Signature);
     }
 
-    private static Signature R58Signature { get; } = new(PipelinePhase.Run, FindingClass.Exception,
+    private static Signature KindMismatchSignature { get; } = new(PipelinePhase.Run, FindingClass.Exception,
         "GrobInternalException: GrobValue kind mismatch: expected Float, actual Int.");
 
     private sealed class ThrowingClock : IClock {

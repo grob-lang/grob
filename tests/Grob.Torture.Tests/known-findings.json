@@ -54,6 +54,14 @@
       ]
     },
     {
+      "row": "R-63",
+      "signature": "Run|Exception|GrobInternalException: GrobValue kind mismatch: expected Int, actual Float.",
+      "programs": [
+        "tests/Grob.Integration.Tests/IntToFloatWideningTests.cs@f7df16b2a94637f5/lambda-operand/1",
+        "tests/Grob.Integration.Tests/IntToFloatWideningTests.cs@af792ba03fb56511/lambda-operand/1"
+      ]
+    },
+    {
       "row": "R-60",
       "signature": "Run|Exception|GrobInternalException: InvokeCallable: value of kind Bool is not callable. The type checker should have rejected the call site.",
       "programs": [
