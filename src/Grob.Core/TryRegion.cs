@@ -27,5 +27,15 @@ namespace Grob.Core;
 /// the finally finds the stack as the normal path leaves it (D-455). Required, with no
 /// default, since a wrong base silently misplaces the finally's locals.
 /// </param>
+/// <param name="TryEndOffset">
+/// Bytecode offset of the region's closing <see cref="OpCode.TryEnd"/>, after the catch
+/// bodies and the finally. A finally that a throw runs ends when that instruction executes
+/// in the finally's own frame (D-457): a try nested inside the finally can be left without
+/// reaching its own <see cref="OpCode.TryEnd"/>, by a throw caught further out, a
+/// <c>break</c>, a <c>continue</c> or a callee's <c>return</c>, so no count of the markers
+/// executed can find the end. Required, with no default, since a wrong end runs the
+/// finally past its body or stops it short.
+/// </param>
 public sealed record TryRegion(
-    int StartOffset, int EndOffset, IReadOnlyList<CatchHandler> Handlers, int FinallyOffset, int BaseSlot);
+    int StartOffset, int EndOffset, IReadOnlyList<CatchHandler> Handlers, int FinallyOffset, int BaseSlot,
+    int TryEndOffset);

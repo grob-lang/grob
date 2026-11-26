@@ -49,11 +49,12 @@ public sealed class VirtualMachineTryCatchTests {
         int handlerOffset = script.Count; // empty catch body
 
         PatchJump16(script, jumpSite);
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 3);
         script.WriteOpCode(OpCode.Return, 3);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["IoError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["IoError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -91,12 +92,13 @@ public sealed class VirtualMachineTryCatchTests {
         int handlerOffset = script.Count;
 
         PatchJump16(script, jumpSite);
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 3);
         script.WriteOpCode(OpCode.Return, 3);
 
         // Catch only NetworkError — the thrown IoError does not match.
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["NetworkError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["NetworkError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(script));
@@ -136,13 +138,14 @@ public sealed class VirtualMachineTryCatchTests {
         int handlerOffset = script.Count;
 
         PatchJump16(script, jumpSite);
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 3);
         script.WriteOpCode(OpCode.Return, 3);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset, [
             new CatchHandler(["NetworkError"], IsCatchAll: false, handlerOffset, BindingSlot: 0),
             new CatchHandler([], IsCatchAll: true, handlerOffset, BindingSlot: 0),
-        ], FinallyOffset: -1, BaseSlot: 0));
+        ], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -196,6 +199,7 @@ public sealed class VirtualMachineTryCatchTests {
 
         PatchJump16(script, skipSecondSite);
         PatchJump16(script, jumpSite);
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 5);
         script.WriteOpCode(OpCode.Return, 5);
 
@@ -204,7 +208,7 @@ public sealed class VirtualMachineTryCatchTests {
                 "NilError", "ArithmeticError", "IndexError", "ParseError", "LookupError", "RuntimeError"],
                 IsCatchAll: false, firstHandlerOffset, BindingSlot: 0),
             new CatchHandler(["IoError"], IsCatchAll: false, secondHandlerOffset, BindingSlot: 0),
-        ], FinallyOffset: -1, BaseSlot: 0));
+        ], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -268,11 +272,12 @@ public sealed class VirtualMachineTryCatchTests {
         int handlerOffset = script.Count; // empty catch body — binds at slot 0
 
         PatchJump16(script, jumpSite);
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 3);
         script.WriteOpCode(OpCode.Return, 3);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["IoError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["IoError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -334,6 +339,7 @@ public sealed class VirtualMachineTryCatchTests {
         script.WriteOpCode(OpCode.DefineGlobal, 4); script.WriteByte((byte)innerGlobal, 4);
 
         PatchJump16(script, innerJumpSite);
+        int innerTryEnd = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 4);
         int outerEnd = script.Count;
 
@@ -346,13 +352,16 @@ public sealed class VirtualMachineTryCatchTests {
         script.WriteOpCode(OpCode.DefineGlobal, 6); script.WriteByte((byte)outerGlobal, 6);
 
         PatchJump16(script, outerJumpSite);
+        int outerTryEnd = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 6);
         script.WriteOpCode(OpCode.Return, 6);
 
         script.SetTryRegion(innerRegionIndex, new TryRegion(innerStart, innerEnd,
-            [new CatchHandler(["IoError"], IsCatchAll: false, innerHandlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["IoError"], IsCatchAll: false, innerHandlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0,
+            TryEndOffset: innerTryEnd));
         script.SetTryRegion(outerRegionIndex, new TryRegion(outerStart, outerEnd,
-            [new CatchHandler(["IoError"], IsCatchAll: false, outerHandlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["IoError"], IsCatchAll: false, outerHandlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0,
+            TryEndOffset: outerTryEnd));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -396,6 +405,7 @@ public sealed class VirtualMachineTryCatchTests {
         script.WriteOpCode(OpCode.Pop, 4);
 
         PatchJump16(script, innerJumpSite);
+        int innerTryEnd = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 4);
         int outerEnd = script.Count;
 
@@ -408,6 +418,7 @@ public sealed class VirtualMachineTryCatchTests {
         script.WriteOpCode(OpCode.DefineGlobal, 6); script.WriteByte((byte)outerGlobal, 6);
 
         PatchJump16(script, outerJumpSite);
+        int outerTryEnd = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 6);
         script.WriteOpCode(OpCode.Return, 6);
 
@@ -415,9 +426,11 @@ public sealed class VirtualMachineTryCatchTests {
         // match, so the search must walk out to the outer region in this same
         // chunk (not pop any frame — there is only the top-level script here).
         script.SetTryRegion(innerRegionIndex, new TryRegion(innerStart, innerEnd,
-            [new CatchHandler(["NetworkError"], IsCatchAll: false, innerHandlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["NetworkError"], IsCatchAll: false, innerHandlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0,
+            TryEndOffset: innerTryEnd));
         script.SetTryRegion(outerRegionIndex, new TryRegion(outerStart, outerEnd,
-            [new CatchHandler(["IoError"], IsCatchAll: false, outerHandlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["IoError"], IsCatchAll: false, outerHandlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0,
+            TryEndOffset: outerTryEnd));
 
         var (vm, _) = NewVm();
         vm.Run(script);
@@ -452,7 +465,8 @@ public sealed class VirtualMachineTryCatchTests {
         script.WriteOpCode(OpCode.Return, 1);
 
         if (regionIndex is not null) {
-            script.SetTryRegion(regionIndex.Value, new TryRegion(startOffset, script.Count, [], FinallyOffset: -1, BaseSlot: 0));
+            script.SetTryRegion(regionIndex.Value, new TryRegion(startOffset, script.Count, [], FinallyOffset: -1, BaseSlot: 0,
+                TryEndOffset: script.Count));
         }
 
         var (vm, _) = NewVm();

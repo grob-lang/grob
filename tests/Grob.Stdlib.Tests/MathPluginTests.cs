@@ -84,11 +84,12 @@ public sealed class MathPluginTests {
         script.PatchByte(jumpSite, (byte)(offset >> 8));
         script.PatchByte(jumpSite + 1, (byte)(offset & 0xFF));
 
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 3);
         script.WriteOpCode(OpCode.Return, 3);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var vm = NewRegisteredVm();
         vm.Run(script);

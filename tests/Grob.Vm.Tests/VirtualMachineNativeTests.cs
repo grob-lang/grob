@@ -617,13 +617,14 @@ public sealed class VirtualMachineNativeTests {
         int handlerOffset = script.Count; // empty catch body — binds at slot 0
 
         PatchJump16(script, jumpSite);
+        int tryEndOffset = script.Count;
         script.WriteOpCode(OpCode.TryEnd, 3);
         script.WriteOpCode(OpCode.True, 4);
         script.WriteOpCode(OpCode.DefineGlobal, 4); script.WriteByte((byte)reachedName, 4);
         script.WriteOpCode(OpCode.Return, 4);
 
         script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
-            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0));
+            [new CatchHandler(["ArithmeticError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
 
         var (vm, _) = NewVm();
         vm.Run(script);

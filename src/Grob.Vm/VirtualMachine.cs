@@ -340,21 +340,22 @@ public sealed class VirtualMachine : IVmCallHost {
     /// <param name="boundedFinally">
     /// <see langword="true"/> when this dispatch is running a single <c>finally</c> body on
     /// the exceptional unwind path (Sprint 7 Increment C, D-275). In that mode the run ends
-    /// when it reaches its own region's closing <see cref="OpCode.TryEnd"/> — tracked by
-    /// <c>finallyDepth</c> counting the TryBegin/TryEnd of any nested try inside the finally,
-    /// so only the unbalanced closing TryEnd stops it — rather than at a <c>Return</c>. A
-    /// throw that escapes the body raises <see cref="FinallyEscapeException"/> via
-    /// <see cref="PropagateThrow"/>.
+    /// when its own region's closing <see cref="OpCode.TryEnd"/>, at
+    /// <paramref name="finallyEndOffset"/>, executes in the finally's own frame, rather than
+    /// at a <c>Return</c> (D-457). A throw that escapes the body raises
+    /// <see cref="FinallyEscapeException"/> via <see cref="PropagateThrow"/>.
     /// </param>
     /// <param name="finallyBoundaryStart">Start offset of the bounded finally body (the
     /// floor below which regions are ineligible at the finally's own frame), or −1.</param>
     /// <param name="finallyBoundaryFloor">Frame count the bounded finally runs at, or −1.</param>
+    /// <param name="finallyEndOffset">Offset of the bounded finally's closing
+    /// <see cref="OpCode.TryEnd"/>, its region's <see cref="TryRegion.TryEndOffset"/>, or −1.</param>
     private void RunDispatch(
             int floorFrameCount, bool isReentrant,
-            bool boundedFinally = false, int finallyBoundaryStart = -1, int finallyBoundaryFloor = -1) {
+            bool boundedFinally = false, int finallyBoundaryStart = -1, int finallyBoundaryFloor = -1,
+            int finallyEndOffset = -1) {
         int line = 0;
         int column = 0;
-        int finallyDepth = 0;
 
         while (true) {
             // D-319: cooperative cancellation check every BudgetMask+1 steps.
@@ -1269,21 +1270,20 @@ public sealed class VirtualMachine : IVmCallHost {
                     // Structural markers only — the handler table (built by the
                     // compiler, read by the Throw arm below via (chunk, ip)) carries
                     // all the matching logic. Neither opcode does anything at runtime
-                    // beyond stepping past its own bytes.
+                    // beyond stepping past its own bytes, save that a bounded finally
+                    // run ends at its own region's closing TryEnd.
                     case OpCode.TryBegin:
-                        // Track nested-try depth so a bounded finally run does not stop at a
-                        // nested try's TryEnd (only at its own region's closing TryEnd).
-                        if (boundedFinally) finallyDepth++;
                         _ip++; // 1-byte operand: handler-table index, unused here.
                         break;
 
                     case OpCode.TryEnd:
-                        if (boundedFinally) {
-                            // finallyDepth 0 means this is the bounded finally body's own
-                            // closing TryEnd — the body is done, hand control back to the walk.
-                            if (finallyDepth == 0) return;
-                            finallyDepth--;
-                        }
+                        // The bounded finally body is done when its region's own TryEnd runs
+                        // in its own frame: hand control back to the walk. A count of the
+                        // markers executed cannot find it, since a try nested in the finally
+                        // can be left past its TryEnd by a throw caught further out, a break,
+                        // a continue or a callee's return (D-457).
+                        if (boundedFinally && _frameCount == finallyBoundaryFloor && _ip - 1 == finallyEndOffset)
+                            return;
                         break;
 
                     case OpCode.Throw: {
@@ -1789,7 +1789,8 @@ public sealed class VirtualMachine : IVmCallHost {
     /// current frame (unchanged <see cref="_stackBase"/>, so the finally reads the enclosing
     /// function's locals directly — matching the compiler's inline copies). The body runs via
     /// a bounded <see cref="RunDispatch"/> that stops at the region's own closing
-    /// <see cref="OpCode.TryEnd"/>. When the finally throws and the throw escapes its own body,
+    /// <see cref="OpCode.TryEnd"/>, at <see cref="TryRegion.TryEndOffset"/> (D-457). When the
+    /// finally throws and the throw escapes its own body,
     /// the in-flight exception is replaced with the new one via the <see langword="ref"/>
     /// parameters (D-275) — the caller does not need to know whether that happened, only that
     /// <paramref name="exceptionValue"/>/<paramref name="exceptionStruct"/> are current on
@@ -1812,7 +1813,8 @@ public sealed class VirtualMachine : IVmCallHost {
         _ip = region.FinallyOffset;
         try {
             RunDispatch(floorFrameCount: floor, isReentrant: false,
-                boundedFinally: true, finallyBoundaryStart: region.FinallyOffset, finallyBoundaryFloor: floor);
+                boundedFinally: true, finallyBoundaryStart: region.FinallyOffset, finallyBoundaryFloor: floor,
+                finallyEndOffset: region.TryEndOffset);
         } catch (FinallyEscapeException escape) {
             exceptionValue = escape.Value;
             exceptionStruct = escape.ExceptionStruct;
