@@ -454,6 +454,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-455 | November 2026 | VM — exceptional unwind; Compiler — bytecode emission; Deferred Work Register | **A `finally` that a throw runs finds the stack as the normal path leaves it.** `TryRegion` gains a required `BaseSlot`, the slots live when the `try` begins, which the compiler sets from `_nextSlot` and which a catch binding already takes; before running a finally on the throw path the VM closes upvalues from that height and trims to it, so a local the `try` or a `catch` declared, or a callee frame's values, no longer sit where the finally's first local belongs. `FinallyOffset` is required too. Rejected: an optional base defaulting to `0`, silently wrong with locals below the `try`. R-79 closed. Count unchanged at 122. |
 | D-456 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **A `??` operand is widened, and chooses its enclosing operator's opcode, by the type the checker gave it.** `BinaryExpr` gains `NilCoalesceType`, which the checker sets from `ResolveNilCoalesce` and `GetBinaryResultType` returns for a `??`, where it had read the `??` as unknown and taken the other operand's type, so `2.25 - (n ?? 3)` left the `int` unwidened and `(nil ?? 10.0) / 4` chose integer division. Rejected: copying the checker's rule into the compiler. The regex hand-off's `(s ?? "") + ":"` bug was already fixed by D-450. R-78 closed. Count unchanged at 122. |
 | D-457 | November 2026 | VM — exceptional unwind; Compiler — bytecode emission; Deferred Work Register | **A `finally` that a throw runs ends at its own region's `TryEnd`.** `TryRegion` gains a required `TryEndOffset`, the offset of its closing `TryEnd`, which the compiler records as it writes it; the VM's bounded finally run ends when that instruction executes in the finally's own frame. It had counted the `TryBegin` and `TryEnd` it executed, and a `try` nested in the finally left past its own `TryEnd` (a throw caught further out, a `break`, a `continue` or a callee's `return`) left the count high, so the run went on past the finally into the code after it. Supersedes D-334 in part. Rejected: correcting the count, which only a throw could hook. R-91's underflow has another cause. R-80 closed. Count unchanged at 122. |
+| D-458 | November 2026 | VM — exceptional unwind, re-entrant call-back bridge; Deferred Work Register | **An error a native's callback does not catch leaves the callback's dispatch at its floor and is routed on from the native's call site.** `InvokeCallable` records its dispatch's floor; when `PropagateThrow` finds no handler in the callback's frame it unwinds that frame and reports the error unhandled, and `InvokeCallable` carries the error and the fault site's diagnostic out through the native in an internal `CallbackEscapeException`, which the `Call` arm routes on from its own frame with its own `finally` bounds, beside a native's `NativeFaultException`. The walk had gone on to the script's handler and the callback's dispatch ran the handler and the rest of the script itself, then popped an empty stack. Unhandled, the fault site's own diagnostic is raised at its line. Rejected: unwinding to the owning dispatch after the full walk, which runs outer finallies mid-native and unbounded. R-91 closed. Count unchanged at 122. |
 
 ---
 
@@ -18821,6 +18822,91 @@ D-275 (`finally` on every exit) and D-274 (a handler matches only in its try bod
 
 ---
 
+### D-458 — An error a native's callback does not catch leaves the callback's dispatch at its floor and is routed on from the native's call site; R-91 closed (November 2026)
+
+Area: VM — exceptional unwind, re-entrant call-back bridge; Deferred Work Register
+Supersedes: none
+Superseded by: none
+
+**A bug fix with no opcode and no code minted**; the count stays at 122. D-453 filed the
+defect as R-91. It is fixed on its own branch, the second of four stacked fixes to the crash
+oracle's findings, after D-457.
+
+**The defect.** A native that takes a callback, such as `select`, `filter`, `sort` or `each`,
+runs it through `InvokeCallable`, which pushes a frame for the callback and runs it in a
+re-entrant `RunDispatch` that ends when that frame returns to its floor. An error the callback
+did not catch went to `PropagateThrow`, which walked every frame down to frame 0. When the
+script's `try` caught it, the walk moved the instruction pointer to the script's handler and
+reported it handled, and the re-entrant dispatch, still running inside the native, ran the
+handler and the rest of the script itself. At the script's `Return` it was below its own floor,
+so it popped a frame and a value that were not there. Measured through `grob run` at
+`bb4e47e`: R-91's reproducer printed `caught` and `after` and stopped with E9001,
+`value stack underflow`; a VM test with a local below the `try` stopped with an index out of
+range in the same `Return`. Had the script gone on, the native's loop would have resumed into
+a stack the handler had already trimmed, and a `finally` in the script's frame would have run
+in a dispatch that knew nothing of the bounds D-275 sets on a `finally` run by a throw.
+
+**Decision 1 — the walk stops at the callback's frame.** `InvokeCallable` records the frame
+count its dispatch was entered at (its floor) in a VM field and restores the enclosing value
+when the dispatch ends. When `PropagateThrow` finds no handler in the frame just above that
+floor, the callback's own, it unwinds that frame as the callback's `Return` would have done
+(closing its upvalues and dropping the callable, its arguments and its locals), records the
+error and reports it unhandled. Finallies in the callback and in functions it called have run
+by then, innermost first, as before. The fault site raises its diagnostic as it would for an
+unhandled error, and `InvokeCallable` catches that and throws an internal
+`CallbackEscapeException` carrying the error and the diagnostic. The floor is a field, not a
+parameter, for the reason `_cancellationToken` is one: every routed fault site reaches
+`PropagateThrow`, and none of them should carry it.
+
+**Decision 2 — the native's call site routes it on.** The exception passes through the native
+to the `Call` arm that ran it, which already catches a native's `NativeFaultException` and
+routes it from its own frame. It catches `CallbackEscapeException` beside it and goes on with
+the same walk from the same place, with the bounds of its own dispatch: a script `catch` runs
+in the script's dispatch, the native's loop goes no further and a callback error that leaves a
+`finally` a throw is running replaces the in-flight error there (D-275). A walk that finds no
+handler there either carries the error on, through the next native out when there is one, and
+`Run` raises the diagnostic when there is not. That diagnostic is the fault site's own, at the
+line that raised it: E5002 for a division by zero in the callback, E5904 for a `throw`, naming
+the error the walk ended with, since a `finally` that throws replaces it, as `Throw` reports
+one with no native between. It is raised outside the dispatch's catch clauses, so an E5903
+from a callback is not routed twice.
+
+**Rejected: routing the error to the script's handler from inside the callback's dispatch and
+unwinding to the dispatch that owns that frame**, the shape `RoutedThrowHandledException` has
+for the call-depth guard. It would run the finallies of the frames below the floor while the
+native was still mid-call, before the native's own cleanup and with no `finally` bounds when
+the dispatch that owns them is itself running a `finally`. **Rejected: reusing
+`FinallyEscapeException`**, which has the same shape: it would then mean two things, and the
+bounded `finally` run that catches it would have to tell them apart. **Rejected:
+`NativeFaultException`**, which carries a leaf name and a message, not the thrown error, so a
+user error's own fields would be lost.
+
+**Tests.** `VirtualMachineCallbackThrowTests` raises a division by zero in a `select`,
+`filter`, `sort` and `each` callback over `[1, 2]`, caught by the script: each prints the first
+element only, then `caught`, then a local below the `try`, and ends with no frame and that local
+alone on the stack. It runs the register's overflow in `select`; an error two re-entrant
+dispatches deep, in an `each` run from a `select` callback; one in a function the callback
+calls; one the callback catches itself, where the loop runs every element; and, for each of the
+four natives, an uncaught one, which is E5002 at the callback's line.
+`VirtualMachineRuntimeThrowRoutingTests` trips the call-depth guard 256 callbacks deep with
+only the script's `try` to catch it. `CallbackThrowTests` runs R-91's reproducer through the
+CLI with its siblings: `each`, `filter` and `sort` callbacks; a thrown `RuntimeError` keeping
+its message; a native run from a callback; a `finally` in the called function and one around
+the call, each run once in order; an error the callback catches; a callback error caught inside
+a `finally` that a throw runs, and one escaping it that replaces the first error; and uncaught,
+E5904 at the `throw`, E5002 at the division, E5904 after a script `finally` and E5904 naming
+the error a script `finally` replaced it with. The oracle's `check` reports no finding for the
+reproducers. R-91 had no entry in the oracle's known list.
+
+**Spec edits in this commit.** None. `grob-open-questions.md`: R-91 closed.
+
+Cites D-453 (R-91), D-457 (the stack this follows), D-344 (which records the native-throw
+seam at the `Call` arm, landed with no entry of its own), D-334 and D-275 (`finally` on the
+throw path and its bounds), D-319 (whose step budget spans the re-entrant bridge, as the
+floor field now does) and D-039 (a caught error resumes the script).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -19050,7 +19136,10 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-457 added, with a source change. **A `finally` that a throw runs ends at its_
+_November 2026 — D-458 added, with a source change. **An error a native's callback does not_
+_catch leaves the callback's dispatch at its floor** and is routed on from the native's call_
+_site, so a script's `catch` runs in the script's dispatch. R-91 closed. Count unchanged at 122._
+_Previous: November 2026 — D-457 added, with a source change. **A `finally` that a throw runs ends at its_
 _own region's `TryEnd`**: `TryRegion` records the offset of its closing `TryEnd`, and the VM_
 _stops the finally there, in its own frame. Supersedes D-334 in part. R-80 closed. Count_
 _unchanged at 122._

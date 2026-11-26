@@ -476,6 +476,66 @@ public sealed class VirtualMachineRuntimeThrowRoutingTests {
         Assert.True(vm.Globals.TryGetValue("caught", out GrobValue caught) && caught.AsBool());
     }
 
+    [Fact]
+    public void Catch_RuntimeError_InvokeCallableStackOverflow_CaughtOnlyByScript_UnwindsEveryCallback() {
+        // The global arr holds [0] and self holds leaf, which runs arr.each with itself as
+        // the callback and has no try at any depth; the script calls self inside a try that
+        // catches RuntimeError and sets the global caught. The guard trips in the deepest native's InvokeCallable; the error leaves every
+        // callback's re-entrant dispatch in turn (D-458) before the script's catch runs.
+        var leafChunk = new Chunk();
+        int arrName = leafChunk.AddConstant(GrobValue.FromString("arr"));
+        int selfName = leafChunk.AddConstant(GrobValue.FromString("self"));
+        int eachProp = leafChunk.AddConstant(GrobValue.FromString("each"));
+        leafChunk.WriteOpCode(OpCode.GetGlobal, 1); leafChunk.WriteByte((byte)arrName, 1);
+        leafChunk.WriteOpCode(OpCode.GetProperty, 1); leafChunk.WriteByte((byte)eachProp, 1);
+        leafChunk.WriteOpCode(OpCode.GetGlobal, 1); leafChunk.WriteByte((byte)selfName, 1);
+        leafChunk.WriteOpCode(OpCode.Call, 1); leafChunk.WriteByte(1, 1);
+        leafChunk.WriteOpCode(OpCode.Pop, 1);
+        leafChunk.WriteOpCode(OpCode.Nil, 1);
+        leafChunk.WriteOpCode(OpCode.Return, 1);
+        var leafFn = new BytecodeFunction("leaf", 0, leafChunk);
+
+        var script = new Chunk();
+        int arrConstName = script.AddConstant(GrobValue.FromString("arr"));
+        int selfConstName = script.AddConstant(GrobValue.FromString("self"));
+        int caughtName = script.AddConstant(GrobValue.FromString("caught"));
+        int zero = script.AddConstant(GrobValue.FromInt(0));
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)zero, 1);
+        script.WriteOpCode(OpCode.NewArray, 1); script.WriteByte(1, 1);
+        script.WriteOpCode(OpCode.DefineGlobal, 1); script.WriteByte((byte)arrConstName, 1);
+        int leafFnIdx = script.AddConstant(GrobValue.FromFunction(leafFn));
+        script.WriteOpCode(OpCode.Constant, 1); script.WriteByte((byte)leafFnIdx, 1);
+        script.WriteOpCode(OpCode.DefineGlobal, 1); script.WriteByte((byte)selfConstName, 1);
+
+        int regionIndex = script.AddTryRegion();
+        script.WriteOpCode(OpCode.TryBegin, 2); script.WriteByte((byte)regionIndex, 2);
+        int startOffset = script.Count;
+        script.WriteOpCode(OpCode.GetGlobal, 2); script.WriteByte((byte)selfConstName, 2);
+        script.WriteOpCode(OpCode.Call, 2); script.WriteByte(0, 2);
+        script.WriteOpCode(OpCode.Pop, 2);
+        int endOffset = script.Count;
+        script.WriteOpCode(OpCode.Jump, 2);
+        int jumpSite = script.Count;
+        script.WriteByte(0xFF, 2); script.WriteByte(0xFF, 2);
+        int handlerOffset = script.Count;
+        script.WriteOpCode(OpCode.True, 3);
+        script.WriteOpCode(OpCode.DefineGlobal, 3); script.WriteByte((byte)caughtName, 3);
+        script.WriteOpCode(OpCode.Pop, 3);
+        PatchJump16(script, jumpSite);
+        int tryEndOffset = script.Count;
+        script.WriteOpCode(OpCode.TryEnd, 3);
+        script.WriteOpCode(OpCode.Return, 4);
+        script.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
+            [new CatchHandler(["RuntimeError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)], FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
+
+        var (vm, _) = NewVm();
+        RunOnLargeStackThread(() => vm.Run(script));
+
+        Assert.Equal(0, vm.FrameCount);
+        Assert.Equal(0, vm.Stack.Count);
+        Assert.True(vm.Globals.TryGetValue("caught", out GrobValue caught) && caught.AsBool());
+    }
+
     // -----------------------------------------------------------------------
     // finally runs exactly once around a routed error, both caught and
     // propagating unhandled — and the unhandled path still surfaces the
