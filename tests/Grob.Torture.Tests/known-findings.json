@@ -90,6 +90,20 @@
         "tests/Grob.Integration.Tests/Sprint5IncrementCTests.cs@f32839db3e17d8b3/replace-value/1",
         "tests/Grob.Integration.Tests/NativeInputFaultTests.cs@48d8d120386594df/replace-value/1"
       ]
+    },
+    {
+      "row": "R-60",
+      "signature": "Run|Exception|GrobInternalException: native filter threw IndexOutOfRangeException, a host exception, at line #. A native reports bad input from a script with NativeFaultException; this is a defect in the native.",
+      "programs": [
+        "tests/Grob.Compiler.Tests/TypeCheckerFunctionTypeIdentityTests.cs@7a4a5c36ea64a8ef/edit-argument/0"
+      ]
+    },
+    {
+      "row": "R-89",
+      "signature": "Run|Exception|GrobInternalException: GrobValue kind mismatch: expected Int, actual Float.",
+      "programs": [
+        "tests/Grob.Integration.Tests/FunctionTypeIdentityTests.cs@70af2710f56d4540/route-value/1"
+      ]
     }
   ]
 }

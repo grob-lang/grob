@@ -484,7 +484,7 @@ public sealed partial class TypeChecker {
             foreach (TypeRef param in fnRef.ParameterTypes)
                 ResolveFieldAnnotationType(param);
             ResolveFieldAnnotationType(fnRef.ReturnType);
-            (GrobType kind, FunctionTypeDescriptor? fnDesc) = ResolveTypeRefFull(typeRef);
+            (GrobType kind, FunctionTypeDescriptor fnDesc) = ResolveFunctionTypeRef(fnRef);
             return (kind, null, fnDesc, null);
         }
 

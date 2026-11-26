@@ -644,8 +644,10 @@ public sealed partial class TypeChecker {
     /// whose function type the checker tracks (D-362), including a struct field declared
     /// with one (D-448), has its arguments checked against that type and resolves its
     /// return type, so GetExprType can pick the right typed opcode when the call is an
-    /// arithmetic operand. Any other callee, such as an array element, is unchecked (R-57)
-    /// and resolves to <see cref="GrobType.Unknown"/>.
+    /// arithmetic operand, as does an element of an array or a value of a map whose
+    /// function type the collection records (D-463). Any other callee, such as a named
+    /// function held in a binding, is unchecked (R-57) and resolves to
+    /// <see cref="GrobType.Unknown"/>.
     /// </summary>
     private GrobType CheckFunctionValueCall(CallExpr node, GrobType calleeType, GrobType[] argTypes) {
         if (calleeType == GrobType.Error) {
@@ -674,6 +676,15 @@ public sealed partial class TypeChecker {
         }
         if (calleeDescriptor.ReturnDescriptor is { } returnDescriptor) {
             _callResultDescriptors[node] = returnDescriptor;
+        }
+        // D-463: a struct or array return carries its identity to the call's result, so a
+        // field read on it resolves and an element read out of it has its type, as a direct
+        // call's result does.
+        if (calleeDescriptor.ReturnIdentity?.NamedTypeName is { } returnStructName) {
+            _callResultStructNames[node] = returnStructName;
+        }
+        if (calleeDescriptor.ReturnIdentity?.ArrayDescriptor is { } returnArrayDescriptor) {
+            _callResultArrayDescriptors[node] = returnArrayDescriptor;
         }
         // '?.' gives nil when the field holds nil, so the call's result may be nil too.
         GrobType returnType = mayBeNil
@@ -768,9 +779,9 @@ public sealed partial class TypeChecker {
     /// then each argument's type (E0004), descending into a function-typed parameter's
     /// shape. A function type has no defaults, so the count must match exactly. An
     /// <see cref="GrobType.Unknown"/> on either side is permissive, and an argument that
-    /// already errored is not reported again. A function type records an array
-    /// parameter's kind but not its element type, and a struct parameter not by name, so
-    /// neither is compared here (R-57).
+    /// already errored is not reported again. An array parameter's element type and a
+    /// struct parameter's name are compared too, since the function type records them
+    /// (D-463).
     /// </summary>
     private void CheckFunctionValueArguments(CallExpr node, FunctionTypeDescriptor descriptor, GrobType[] argTypes) {
         string? calleeName = FunctionValueName(node.Callee);
@@ -791,7 +802,7 @@ public sealed partial class TypeChecker {
             if (paramType == GrobType.Unknown || argType is GrobType.Unknown or GrobType.Error) continue;
 
             Expression argExpr = node.Arguments[i].Value;
-            if (!TypesAreAssignable(argType, paramType, InitialiserDescriptor(argExpr), descriptor.ParameterDescriptorAt(i))) {
+            if (!IsFunctionValueArgumentCompatible(argType, argExpr, descriptor, i)) {
                 EmitError(ErrorCatalog.E0004,
                     $"Argument {i + 1} to {callee} has type '{TypeName(argType)}', which is not assignable to parameter type '{TypeName(paramType)}'.",
                     argExpr.Range);
@@ -802,6 +813,26 @@ public sealed partial class TypeChecker {
             }
         }
         RecordArgumentWidening(node, widen);
+    }
+
+    /// <summary>
+    /// Whether one argument of a call through a function value fits the parameter at
+    /// <paramref name="index"/>: its kind, with a function-typed parameter's shape, then an
+    /// array parameter's element type and a struct parameter's name, which the function
+    /// type records (D-463), as a direct call checks them (<see cref="CheckBoundArgumentType"/>).
+    /// </summary>
+    private bool IsFunctionValueArgumentCompatible(
+            GrobType argType, Expression argExpr, FunctionTypeDescriptor descriptor, int index) {
+        GrobType paramType = descriptor.ParameterTypes[index];
+        if (!TypesAreAssignable(argType, paramType, InitialiserDescriptor(argExpr), descriptor.ParameterDescriptorAt(index))) {
+            return false;
+        }
+        PositionIdentity? identity = descriptor.ParameterIdentityAt(index);
+        if (paramType is GrobType.Array or GrobType.NullableArray &&
+                !ArrayElementAssignable(ArrayDescriptorOf(argExpr), identity?.ArrayDescriptor)) {
+            return false;
+        }
+        return !IsStructNominalMismatch(paramType, identity?.NamedTypeName, argExpr);
     }
 
     /// <summary>
@@ -1177,6 +1208,9 @@ public sealed partial class TypeChecker {
         if (descriptor?.ElementArrayDescriptor is ArrayTypeDescriptor elementArrayDescriptor) {
             _callResultArrayDescriptors[node] = elementArrayDescriptor;
         }
+        if (descriptor?.ElementFunctionDescriptor is FunctionTypeDescriptor elementFunctionDescriptor) {
+            _callResultDescriptors[node] = elementFunctionDescriptor;
+        }
         node.ResolvedReturnType = resultType;
         return resultType;
     }
@@ -1223,7 +1257,8 @@ public sealed partial class TypeChecker {
         if (descriptor is null || argType == GrobType.Error || argType == GrobType.Unknown) {
             return;
         }
-        bool compatible = TypesAreAssignable(argType, descriptor.ElementKind);
+        // A function element takes only a function of the shape the array records (D-463).
+        bool compatible = IsAssignableToFunctionShape(argType, argExpr, descriptor.ElementKind, descriptor.ElementFunctionDescriptor);
         // Nested-array element identity (D-351): the flat GrobType.Array tag does not
         // distinguish int[][] from string[][], so int[][].contains(string[]) must be
         // rejected — mirroring the typed-function array-argument check (CheckArgument).
@@ -1348,6 +1383,9 @@ public sealed partial class TypeChecker {
                     if (descriptor?.ValueArrayDescriptor is ArrayTypeDescriptor valueArrayDescriptor) {
                         _callResultArrayDescriptors[node] = valueArrayDescriptor;
                     }
+                    if (descriptor?.ValueFunctionDescriptor is FunctionTypeDescriptor valueFunctionDescriptor) {
+                        _callResultDescriptors[node] = valueFunctionDescriptor;
+                    }
                     return resultType;
                 }
             case "contains":
@@ -1466,7 +1504,8 @@ public sealed partial class TypeChecker {
         if (argType is GrobType.Error or GrobType.Unknown) {
             return true;
         }
-        bool compatible = TypesAreAssignable(argType, descriptor.ValueKind);
+        // A function value takes only a function of the shape the map records (D-463).
+        bool compatible = IsAssignableToFunctionShape(argType, valueExpr, descriptor.ValueKind, descriptor.ValueFunctionDescriptor);
         if (compatible && descriptor.ValueKind is GrobType.Array or GrobType.NullableArray &&
                 !ArrayElementAssignable(ArrayDescriptorOf(valueExpr), descriptor.ValueArrayDescriptor)) {
             compatible = false;
@@ -1942,19 +1981,11 @@ public sealed partial class TypeChecker {
         string? argNamedTypeName = GetStructTypeName(argExpr);
         if (argNamedTypeName is null) return false;
 
-        if (paramNamedTypeName == argNamedTypeName) return false;
-
         // A supplied value's type that is a hierarchy subtype of the declared type is
         // assignable regardless of the differing name (leaf-to-root, or leaf-to-leaf via a
         // shared ancestor — the root has no leaf descendants other than itself under
         // IsSubtypeOf's reflexive walk, so this only ever admits leaf-to-root or root-to-root).
-        if (ExceptionHierarchy.IsHierarchyMember(paramNamedTypeName)
-                && ExceptionHierarchy.IsHierarchyMember(argNamedTypeName)
-                && ExceptionHierarchy.IsSubtypeOf(argNamedTypeName, paramNamedTypeName)) {
-            return false;
-        }
-
-        return true;
+        return !StructNameAssignable(argNamedTypeName, paramNamedTypeName);
     }
 
     /// <inheritdoc/>
@@ -2148,7 +2179,8 @@ public sealed partial class TypeChecker {
             MapTypeDescriptor? descriptor = MapDescriptorOf(node.Target);
             if (descriptor is not null) {
                 _memberAccessArrayDescriptors[node] = new ArrayTypeDescriptor(
-                    descriptor.ValueKind, descriptor.ValueNamedTypeName, descriptor.ValueArrayDescriptor);
+                    descriptor.ValueKind, descriptor.ValueNamedTypeName, descriptor.ValueArrayDescriptor,
+                    descriptor.ValueFunctionDescriptor);
             }
             return GrobType.Array;
         }
@@ -3105,6 +3137,7 @@ public sealed partial class TypeChecker {
         GrobType elementKind = GrobType.Unknown;
         string? elementNamedTypeName = null;
         ArrayTypeDescriptor? elementArrayDescriptor = null;
+        FunctionTypeDescriptor? elementShape = null;
         bool haveFirst = false;
 
         foreach (Expression element in node.Elements) {
@@ -3115,6 +3148,7 @@ public sealed partial class TypeChecker {
                 elementKind = elemType;
                 elementNamedTypeName = GetStructTypeName(element);
                 elementArrayDescriptor = ArrayDescriptorOf(element);
+                elementShape = ExpressionDescriptor(element);
                 haveFirst = true;
                 continue;
             }
@@ -3126,12 +3160,35 @@ public sealed partial class TypeChecker {
             // element (D-351). Only checked when the flat unify itself did not already fail.
             if (unified != GrobType.Error) {
                 CheckArrayElementIdentity(unified, elementNamedTypeName, elementArrayDescriptor, element);
+                elementShape = CombineElementShape(unified, elementShape, element);
             }
             elementKind = unified;
         }
 
-        _arrayLiteralDescriptors[node] = new ArrayTypeDescriptor(elementKind, elementNamedTypeName, elementArrayDescriptor);
+        _arrayLiteralDescriptors[node] = new ArrayTypeDescriptor(
+            elementKind, elementNamedTypeName, elementArrayDescriptor,
+            elementKind is GrobType.Function or GrobType.NullableFunction ? elementShape : null);
         return GrobType.Array;
+    }
+
+    /// <summary>
+    /// Combines a function element's shape with the shapes of the elements before it
+    /// (D-463), as a ternary's arms combine (D-448 Decision 7), so <c>[g, h]</c> with
+    /// <c>g: fn(int): int</c> and <c>h: fn(float): float</c> is E0001 and an inferred lambda
+    /// beside a typed function takes its types. An element with no tracked shape adds
+    /// nothing. Returns the combined shape, or the running one where the element's conflicts.
+    /// </summary>
+    private FunctionTypeDescriptor? CombineElementShape(GrobType elementKind, FunctionTypeDescriptor? running, Expression element) {
+        if (elementKind is not (GrobType.Function or GrobType.NullableFunction) ||
+                ExpressionDescriptor(element) is not { } shape) {
+            return running;
+        }
+        if (running is null) return shape;
+        if (FunctionTypeDescriptor.Merge(running, shape) is { } combined) return combined;
+        EmitError(ErrorCatalog.E0001,
+            "Array literal elements must share a type; found function types that do not match.",
+            element.Range);
+        return running;
     }
 
     /// <summary>
@@ -3576,6 +3633,7 @@ public sealed partial class TypeChecker {
         (GrobType resultType, FunctionTypeDescriptor? resultDescriptor) = LambdaResult(node.Body, bodyType, returns);
         _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, resultType, [], resultDescriptor) {
             ReturnIsInferred = true,
+            ReturnIdentity = LambdaResultIdentity(node.Body, returns),
         };
 
         _lambdaReturns.Pop();
@@ -3612,6 +3670,29 @@ public sealed partial class TypeChecker {
                 break;
         }
         return CombineFunctionResults(results) ?? (bodyType, null);
+    }
+
+    /// <summary>
+    /// The identity of a value (D-463): the struct it constructs or names, or the element or
+    /// value descriptor of the array or map it is, or <see langword="null"/> for none.
+    /// </summary>
+    private PositionIdentity? ResultIdentity(Expression value) =>
+        PositionIdentity.Of(GetStructTypeName(value), ArrayDescriptorOf(value), MapDescriptorOf(value));
+
+    /// <summary>
+    /// The identity of a lambda's result (D-463), so the result is checked against a declared
+    /// struct, array or map return as a value of it is: its expression body's, or for a
+    /// block body the identity every <c>return</c> value in it and its final value agree on.
+    /// A <c>nil</c> result adds nothing, as it fits any nullable return. Results that do
+    /// not agree, or one with no identity, leave the result with none, which is permissive.
+    /// </summary>
+    private PositionIdentity? LambdaResultIdentity(LambdaBody body, List<LambdaReturn> returned) {
+        if (body is LambdaExpressionBody exprBody) return ResultIdentity(exprBody.Expression);
+        List<PositionIdentity?> identities = [.. returned.Where(r => r.Kind != GrobType.Nil).Select(r => r.Identity)];
+        if (body is LambdaBlockBody { Block.Statements: [.., ExpressionStmt last] }) {
+            identities.Add(ResultIdentity(last.Expression));
+        }
+        return identities is [{ } first, ..] && identities.TrueForAll(first.Equals) ? first : null;
     }
 
     /// <summary>

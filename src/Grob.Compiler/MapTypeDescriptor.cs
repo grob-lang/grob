@@ -9,9 +9,11 @@ namespace Grob.Compiler;
 /// <see cref="Symbol"/>, or a call result — wherever a map-typed value's value identity is
 /// needed. v1 keys are <c>string</c>-only (the type registry's <c>map&lt;K, V&gt;</c> section,
 /// adjacent to D-080's constrained-generics model), so unlike <see cref="ArrayTypeDescriptor"/>'s
-/// single element channel there is no key channel here — only <c>V</c>.
+/// single element channel there is no key channel here — only <c>V</c>. Two descriptors are
+/// equal when every channel is, so a function type's map position can be compared by value
+/// (D-463).
 /// </summary>
-public sealed class MapTypeDescriptor {
+public sealed record MapTypeDescriptor {
     /// <summary>The resolved flat kind of the map's value.</summary>
     public GrobType ValueKind { get; }
 
@@ -29,16 +31,27 @@ public sealed class MapTypeDescriptor {
     /// </summary>
     public ArrayTypeDescriptor? ValueArrayDescriptor { get; }
 
+    /// <summary>
+    /// The value's function type when <see cref="ValueKind"/> is
+    /// <see cref="GrobType.Function"/> or <see cref="GrobType.NullableFunction"/> (a
+    /// <c>map&lt;string, fn(int): int&gt;</c> value), so a value read out of the map carries
+    /// its shape (D-463); <see langword="null"/> otherwise.
+    /// </summary>
+    public FunctionTypeDescriptor? ValueFunctionDescriptor { get; }
+
     /// <summary>Initialises a descriptor for a map's value type.</summary>
     /// <param name="valueKind">The resolved flat kind of the map's value.</param>
     /// <param name="valueNamedTypeName">The value's declared user-type or <c>guid</c> name.</param>
     /// <param name="valueArrayDescriptor">The element descriptor for a <c>map&lt;string, T[]&gt;</c> value.</param>
+    /// <param name="valueFunctionDescriptor">The value's function type, for a map of functions.</param>
     public MapTypeDescriptor(
         GrobType valueKind,
         string? valueNamedTypeName = null,
-        ArrayTypeDescriptor? valueArrayDescriptor = null) {
+        ArrayTypeDescriptor? valueArrayDescriptor = null,
+        FunctionTypeDescriptor? valueFunctionDescriptor = null) {
         ValueKind = valueKind;
         ValueNamedTypeName = valueNamedTypeName;
         ValueArrayDescriptor = valueArrayDescriptor;
+        ValueFunctionDescriptor = valueFunctionDescriptor;
     }
 }

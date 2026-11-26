@@ -178,11 +178,14 @@ public sealed partial class TypeChecker {
 
         if (annotation is null) return (initType, new(MapDescriptor: initMapDesc));
 
-        // Use ResolveTypeRefFull so FunctionTypeRef annotations produce GrobType.Function
-        // (plus the structural descriptor) rather than Unknown. The static ResolveTypeRef
-        // path does not handle FunctionTypeRef and would cause forward-reference bindings
-        // annotated with a function type to stay Unknown through phase 1.5 (D-326).
-        (GrobType annotated, FunctionTypeDescriptor? desc) = ResolveTypeRefFull(annotation);
+        // A function type annotation resolves to GrobType.Function with its structural
+        // descriptor rather than Unknown. The static ResolveTypeRef path does not handle
+        // FunctionTypeRef and would cause forward-reference bindings annotated with a
+        // function type to stay Unknown through phase 1.5 (D-326). Pass 1 has registered
+        // every type name, so the positions resolve their identities too (D-463).
+        (GrobType annotated, FunctionTypeDescriptor? desc) = annotation is FunctionTypeRef fnRef
+            ? ResolveFunctionTypeRef(fnRef)
+            : (ResolveTypeRef(annotation), null);
         if (annotated == GrobType.Unknown) return (initType, new(MapDescriptor: initMapDesc));
         if (initType == GrobType.Error) return (GrobType.Error, default);
 

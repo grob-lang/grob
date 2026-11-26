@@ -92,7 +92,9 @@ public sealed partial class TypeChecker {
         GrobType actual = node.Value is not null ? Visit(node.Value) : GrobType.Nil;
         // A value already in error is not recorded, so its lambda is not rejected again.
         if (actual != GrobType.Error && _lambdaReturns.TryPeek(out List<LambdaReturn>? lambdaReturns)) {
-            lambdaReturns.Add(new LambdaReturn(actual, node.Value is not null ? ExpressionDescriptor(node.Value) : null));
+            lambdaReturns.Add(node.Value is not null
+                ? new LambdaReturn(actual, ExpressionDescriptor(node.Value), ResultIdentity(node.Value))
+                : new LambdaReturn(actual, null));
         }
 
         // An Unknown declared return type (a deferred type) is permissive; cascade
@@ -599,8 +601,9 @@ public sealed partial class TypeChecker {
 
     /// <summary>
     /// Checks an index-write's right-hand side against the receiver's element type
-    /// (D-351) — flat kind, array element type (for a <c>T[][]</c> write), then struct
-    /// nominal identity. Split from <see cref="VisitIndexAssignmentTarget"/> to keep that
+    /// (D-351) — flat kind with a function element's shape (D-463), array element type (for
+    /// a <c>T[][]</c> write), then struct nominal identity. Split from
+    /// <see cref="VisitIndexAssignmentTarget"/> to keep that
     /// method's cognitive complexity under the analyser bar.
     /// </summary>
     private bool IsIndexRhsCompatible(GrobType elementType, IndexExpr indexTarget, Expression valueExpr, GrobType valueType) {
@@ -612,7 +615,12 @@ public sealed partial class TypeChecker {
         // while the equivalent read is correctly rejected. Only one channel ever applies (an
         // array target is never a map target), so the fallback never masks an array descriptor.
         MapTypeDescriptor? receiverMapDescriptor = MapDescriptorOf(indexTarget.Target);
-        bool compatible = TypesAreAssignable(valueType, elementType);
+        // D-463: an element of an array of functions, or a value of a map of functions,
+        // takes only a function of the shape the collection records, as a binding of that
+        // function type does; a collection with no tracked shape compares the flat kind.
+        FunctionTypeDescriptor? expectedShape =
+            receiverElementDescriptor?.ElementFunctionDescriptor ?? receiverMapDescriptor?.ValueFunctionDescriptor;
+        bool compatible = IsAssignableToFunctionShape(valueType, valueExpr, elementType, expectedShape);
         if (compatible && elementType is GrobType.Array or GrobType.NullableArray) {
             ArrayTypeDescriptor? expectedArrayDescriptor =
                 receiverElementDescriptor?.ElementArrayDescriptor ?? receiverMapDescriptor?.ValueArrayDescriptor;
