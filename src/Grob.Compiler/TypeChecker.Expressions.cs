@@ -3574,7 +3574,9 @@ public sealed partial class TypeChecker {
         // Read while the parameters are still in scope, so a returned lambda or function
         // value resolves its own shape.
         (GrobType resultType, FunctionTypeDescriptor? resultDescriptor) = LambdaResult(node.Body, bodyType, returns);
-        _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, resultType, [], resultDescriptor);
+        _lambdaDescriptors[node] = new FunctionTypeDescriptor(lambdaParamTypes, resultType, [], resultDescriptor) {
+            ReturnIsInferred = true,
+        };
 
         _lambdaReturns.Pop();
         _controlFrameFloors.Pop();

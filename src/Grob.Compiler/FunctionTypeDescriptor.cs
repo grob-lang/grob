@@ -58,6 +58,18 @@ public sealed class FunctionTypeDescriptor {
     public FunctionTypeDescriptor? ReturnBoundDescriptor { get; }
 
     /// <summary>
+    /// True when <see cref="ReturnType"/> was read from a lambda's body rather than written
+    /// in a type: the shape of a lambda literal, or of a value that only lambda literals
+    /// gave it. A declared function type is compared invariantly (D-326, D-461), but the
+    /// body of a lambda is a value the lambda produces, so as a value it is checked against
+    /// the return it is given and may be an <c>int</c> where a <c>float</c> is declared, a
+    /// <c>T</c> where <c>T?</c> is, or <c>nil</c> (<c>() =&gt; 1</c> for <c>fn(): float</c>,
+    /// <c>() =&gt; nil</c> for <c>fn(): int?</c>). R-96 owns widening such a result. It is
+    /// provenance, not part of the type, so it takes no part in <see cref="Equals(object?)"/>.
+    /// </summary>
+    public bool ReturnIsInferred { get; init; }
+
+    /// <summary>
     /// Initialises a descriptor with the given parameter and return types and no nested
     /// descriptors. Use this for function types whose parameters and return are all
     /// non-function types.
@@ -161,15 +173,18 @@ public sealed class FunctionTypeDescriptor {
                 return null;
             }
         }
+        // The merged return is inferred only when every shape that gave it was: one
+        // declared return makes the result a declared type again.
+        bool inferred = left.ReturnIsInferred && right.ReturnIsInferred;
         if (left.ReturnType != GrobType.Unknown && right.ReturnType != GrobType.Unknown) {
             return TryMergePosition(
                     left.ReturnType, left.ReturnDescriptor, right.ReturnType, right.ReturnDescriptor,
                     out GrobType returnType, out FunctionTypeDescriptor? returnDescriptor)
-                ? new FunctionTypeDescriptor(parameterTypes, returnType, parameterDescriptors, returnDescriptor)
+                ? new FunctionTypeDescriptor(parameterTypes, returnType, parameterDescriptors, returnDescriptor) { ReturnIsInferred = inferred }
                 : null;
         }
         return TryMergeReturnBound(left, right, out GrobType? bound, out FunctionTypeDescriptor? boundShape)
-            ? new FunctionTypeDescriptor(parameterTypes, parameterDescriptors, bound, boundShape)
+            ? new FunctionTypeDescriptor(parameterTypes, parameterDescriptors, bound, boundShape) { ReturnIsInferred = inferred }
             : null;
     }
 
