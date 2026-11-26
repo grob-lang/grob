@@ -59,7 +59,7 @@ public sealed class GuidPlugin : IGrobPlugin {
 
         registrar.RegisterNative(Signature("guid.newV5", GuidType, Param("namespace", GuidType), Variadic("name", StringType)),
             new NativeFunction("guid.newV5", 1, (args, _) => {
-                Guid ns = ToGuid(args[0].AsStruct());
+                Guid ns = NamespaceOf(args[0]);
                 string name = string.Concat(args.Skip(1).Select(a => a.AsString()));
                 return FromGuid(CreateVersion5(ns, name));
             }));
@@ -121,6 +121,29 @@ public sealed class GuidPlugin : IGrobPlugin {
     private static string CanonicalString(GrobStruct receiver) => receiver.GetField(GuidLayout.ValueFieldName).AsString();
 
     private static Guid ToGuid(GrobStruct receiver) => Guid.Parse(CanonicalString(receiver));
+
+    /// <summary>
+    /// The guid <c>newV5</c>'s namespace argument holds. The type checker proves the argument is
+    /// a <c>guid</c> where it knows its type, but a value read through an anonymous struct's field
+    /// has none (R-57), so a struct of another type, a date among them, can arrive; D-459 makes
+    /// that a catchable <c>RuntimeError</c> (E5903, the residual, as no code names a wrong
+    /// argument) rather than a <see cref="KeyNotFoundException"/> or <see cref="FormatException"/>
+    /// out of the host. A <c>guid</c> struct with no readable canonical text is refused alike.
+    /// </summary>
+    private static Guid NamespaceOf(GrobValue value) {
+        if (value.TryAsStruct(out GrobStruct? candidate)
+                && candidate!.TypeName == GuidLayout.TypeName
+                && candidate.TryGetField(GuidLayout.ValueFieldName, out GrobValue text)
+                && text.TryAsString(out string? canonical)
+                && Guid.TryParse(canonical, out Guid parsed)) {
+            return parsed;
+        }
+        string described = value.TryAsStruct(out GrobStruct? other)
+            ? $"a struct of type '{other!.TypeName}'"
+            : $"a value of kind {value.Kind}";
+        throw new NativeFaultException("RuntimeError", ErrorCatalog.E5903.Code,
+            $"guid.newV5: the namespace must be a guid, not {described}.");
+    }
 
     // -----------------------------------------------------------------------
     // Generation — RFC 9562 (formerly RFC 4122) versions 4, 5 and 7. Versions 1 and 3

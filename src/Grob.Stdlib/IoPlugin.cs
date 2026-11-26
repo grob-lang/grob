@@ -18,7 +18,7 @@ namespace Grob.Stdlib;
 /// Writes its prompt argument to <see cref="IStandardStreams.Out"/> with <c>Write</c> (never
 /// <c>WriteLine</c> — a prompt has no trailing newline of its own), flushes, then reads one
 /// line from <see cref="IStandardStreams.In"/>. A <see langword="null"/> line (stdin closed
-/// or exhausted) becomes a catchable <c>IoError</c> via the native-throw seam (D-342),
+/// or exhausted) becomes a catchable <c>IoError</c> via the native-throw seam (D-344, D-459),
 /// reusing the residual <see cref="ErrorCatalog.E5305"/> — no more specific existing code
 /// covers "stdin closed", and allocating a new one is out of this increment's scope. The
 /// compiler always supplies exactly one argument (a 0-argument script-level call is filled

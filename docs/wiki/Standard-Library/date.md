@@ -94,7 +94,7 @@ Neither throws on direction reversal — negative values are valid.
 |--------|-----------|-------------|
 | `toUtc()` | `→ date` | Convert to UTC |
 | `toLocal()` | `→ date` | Convert to local time |
-| `toZone(zone: string)` | `→ date` | Convert to named zone |
+| `toZone(zone: string)` | `→ date` | Convert to named zone; an unknown zone is a `ParseError` |
 
 Zone names are preferred: `"Europe/London"`, `"America/New_York"`.
 

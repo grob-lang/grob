@@ -2,7 +2,10 @@ namespace Grob.Core;
 
 /// <summary>
 /// Thrown by a <see cref="NativeFunction"/>'s C# <c>Implementation</c> delegate to signal
-/// a catchable Grob domain error (Sprint 8 Increment A — the native-throw seam, D-342).
+/// a catchable Grob domain error (Sprint 8 Increment A — the native-throw seam, which D-344
+/// records as landed without an entry of its own and D-459 states). It is the only exception a
+/// native throws to report a script's bad input; any other exception a native throws is a host
+/// bug, which the VM reports as an internal error (E9001) that no script can catch (D-459).
 /// The VM's <c>Call</c> dispatch catches this and routes it through the same
 /// handler-table walk a VM-detected runtime fault already uses (<c>VirtualMachine
 /// .TryRaiseRuntimeGrobError</c>, D-334) — the same mechanism a user <c>throw</c> and an

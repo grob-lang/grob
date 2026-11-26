@@ -156,6 +156,14 @@ public sealed class VirtualMachine : IVmCallHost {
     private GrobStruct? _escapingError;
 
     /// <summary>
+    /// The unhandled native fault the <see cref="OpCode.Call"/> arm last raised, after its
+    /// handler walk found no handler (D-459). The dispatch loop intercepts E5903 to route a full
+    /// value stack, and a native's own E5903 carries that code too: this tells the two apart, so
+    /// a fault already walked is not walked again, which would run a script's <c>finally</c> twice.
+    /// </summary>
+    private GrobRuntimeException? _walkedFault;
+
+    /// <summary>
     /// Writer for the per-instruction trace hook. Only read inside
     /// <c>#if DEBUG</c>, so it appears unread to Release-mode static analysis;
     /// SonarCloud waives S4487 for this file in
@@ -312,6 +320,7 @@ public sealed class VirtualMachine : IVmCallHost {
         _openUpvalues.Clear();
         _reentrantFloor = -1;
         _escapingError = null;
+        _walkedFault = null;
 
         // Top-level initialisation state machine (§19.1, D-294): tag every
         // top-level binding the chunk defines as Uninitialised, and re-arm the
@@ -1070,19 +1079,22 @@ public sealed class VirtualMachine : IVmCallHost {
                                 var invoker = new VmInvoker(this, line, column, _cancellationToken,
                                     new VmFinallyWindow(boundedFinally, finallyBoundaryFloor, finallyBoundaryStart));
 
-                                // The native-throw seam (D-342): a native signals a domain
-                                // error by throwing NativeFaultException rather than
+                                // The native-throw seam (D-344, D-459): a native signals a
+                                // domain error by throwing NativeFaultException rather than
                                 // returning a value. Routed through the SAME
                                 // TryRaiseRuntimeGrobError handler-table walk every
                                 // VM-internal fault site already uses (D-334) — no bespoke
-                                // native-error path.
+                                // native-error path. Any other exception the native throws
+                                // is a host bug and leaves RunNative as an internal error.
                                 GrobValue nativeResult;
                                 try {
-                                    nativeResult = native.Implementation(callArgs, invoker);
+                                    nativeResult = RunNative(native, callArgs, invoker, line, column);
                                 } catch (NativeFaultException fault) {
                                     if (!TryRaiseRuntimeGrobError(fault.LeafTypeName, fault.Message, line,
-                                            boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
-                                        throw new GrobRuntimeException(fault.Code, line, column, fault.Message);
+                                            boundedFinally, finallyBoundaryFloor, finallyBoundaryStart)) {
+                                        _walkedFault = new GrobRuntimeException(fault.Code, line, column, fault.Message);
+                                        throw _walkedFault;
+                                    }
                                     break;
                                 } catch (CallbackEscapeException escaped) {
                                     // An error the native's callback did not catch (D-458): its
@@ -1372,12 +1384,13 @@ public sealed class VirtualMachine : IVmCallHost {
                 if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line,
                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                     throw new GrobArithmeticException(ErrorCatalog.E5001.Code, line, column, message);
-            } catch (GrobRuntimeException ex) when (ex.Code == ErrorCatalog.E5903.Code) {
+            } catch (GrobRuntimeException ex) when (ex.Code == ErrorCatalog.E5903.Code && !ReferenceEquals(ex, _walkedFault)) {
                 // ValueStack.Push raises E5903 from dozens of call sites across the
                 // switch — intercepted here rather than at each one. The original
                 // exception already carries the exact code/line/message the unhandled
                 // diagnostic needs, so the fallback rethrows it as-is (no reconstruction,
-                // unlike OverflowException which carries no Grob-specific data).
+                // unlike OverflowException which carries no Grob-specific data). Not a
+                // native's own E5903, which the Call arm walked before raising (D-459).
                 if (!TryRaiseRuntimeGrobError(RuntimeErrorLeaf, ex.Message, ex.Line,
                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                     throw;
@@ -1448,7 +1461,7 @@ public sealed class VirtualMachine : IVmCallHost {
         if (fn is NativeFunction nativeFn) {
             var nestedInvoker = new VmInvoker(this, line, column, ct,
                 new VmFinallyWindow(finallyContext.Bounded, finallyContext.BoundaryFloor, finallyContext.BoundaryStart));
-            return nativeFn.Implementation(args, nestedInvoker);
+            return RunNative(nativeFn, args, nestedInvoker, line, column);
         }
 
         // Resolve Closure to its underlying BytecodeFunction for dispatch.
@@ -1529,6 +1542,53 @@ public sealed class VirtualMachine : IVmCallHost {
 
         // The Return arm already pushed the result and restored caller state.
         return _stack.Pop();
+    }
+
+    /// <summary>
+    /// Runs <paramref name="native"/>, the one place a native's implementation is called (the
+    /// <see cref="OpCode.Call"/> arm and <see cref="InvokeCallable"/>'s nested-native path both
+    /// come here), so the policy for a native that throws is stated once (D-459). A native
+    /// signals a script's bad input with <see cref="NativeFaultException"/>, which the caller
+    /// routes as a Grob error. Any other exception is a host bug, not an error a script can
+    /// handle: it leaves here as a <see cref="GrobInternalException"/> naming the native and the
+    /// call's source position, which the host reports as E9001 and no script <c>catch</c>
+    /// reaches. <see cref="IsHostFault"/> lists what is not one.
+    /// </summary>
+    private static GrobValue RunNative(
+            NativeFunction native, GrobValue[] args, VmInvoker invoker, int line, int column) {
+        try {
+            return native.Implementation(args, invoker);
+        } catch (Exception ex) when (IsHostFault(ex)) {
+            throw new GrobInternalException(HostFaultMessage(native, ex, line, column), ex);
+        }
+    }
+
+    /// <summary>
+    /// True for an exception a native throws that is a defect in the native. Not one: the errors
+    /// the VM already routes (<see cref="NativeFaultException"/>, which the call site turns
+    /// into a catchable error; <see cref="GrobRuntimeException"/>, an error already coded, such
+    /// as E5903 from a full stack or an unhandled error out of a callback;
+    /// <see cref="OverflowException"/>, which the dispatch loop reports as E5001 for the
+    /// checked arithmetic a native does); a report that is already internal
+    /// (<see cref="GrobInternalException"/>, so an inner native's report is not wrapped by the
+    /// outer one); the signals that end or redirect the run (<see cref="GrobExitException"/>,
+    /// <see cref="OperationCanceledException"/> of D-319, and this class's three control
+    /// exceptions) that pass through a native a callback is running inside.
+    /// </summary>
+    private static bool IsHostFault(Exception ex) => ex is not (
+        NativeFaultException or GrobRuntimeException or OverflowException
+        or GrobInternalException or GrobExitException or OperationCanceledException
+        or CallbackEscapeException or RoutedThrowHandledException or FinallyEscapeException);
+
+    /// <summary>
+    /// The report for a host exception out of <paramref name="native"/>. It names the exception's
+    /// type and not its message, which can hold a script's value (D-077); the exception itself
+    /// travels as the inner exception, for <c>--verbose</c>. A column of 0 is "not recorded".
+    /// </summary>
+    private static string HostFaultMessage(NativeFunction native, Exception ex, int line, int column) {
+        string position = column > 0 ? $"line {line}, column {column}" : $"line {line}";
+        return $"native {native.Name} threw {ex.GetType().Name}, a host exception, at {position}. " +
+            "A native reports bad input from a script with NativeFaultException; this is a defect in the native.";
     }
 
     /// <summary>

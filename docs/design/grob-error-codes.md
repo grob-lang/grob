@@ -1316,6 +1316,7 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Throws:** `ParseError`
 - **Description:** Reserved for future explicit parse operations (`int.parse`, `float.parse`, `date.parse`) which throw `ParseError` per D-284.
+- **Throw sites:** `date.parse`, `date.toZone` (a zone the host does not know, D-459) and the `regex` module's pattern, flag and timeout checks.
 
 ---
 
@@ -1359,6 +1360,7 @@ read by `grob --explain Exxxx`.
 - **Status:** pre-release
 - **Throws:** `RuntimeError`
 - **Description:** A runtime failure that does not fit any more specific category. The bar for emitting this stays high — specific failures get specific codes.
+- **Throw sites:** `string.replace` with an empty search text and `guid.newV5` with a namespace that is not a `guid` (D-459), and the `regex` module's matching timeout and a replacement function that returns no string; the value stack's overflow is raised with it too.
 
 ---
 

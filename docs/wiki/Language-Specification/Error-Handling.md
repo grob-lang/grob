@@ -86,6 +86,10 @@ IoError on line 7:
 An internal error in Grob itself is reported as `E9001` with a request to report
 the bug, and no host stack trace. It exits `2` if it happened before the script
 ran and `1` if the script was running. `--verbose` adds the exception's full text.
+A standard-library function that fails with an unexpected host exception, one Grob
+does not translate into a Grob error, is an internal error of this kind: it names the
+function and the line, and no `catch` can handle it. An internal error ends the run
+at once, so an enclosing `finally` does not run, as it does not for `exit()`.
 
 See also: [Functions](Functions.md), [Expressions](Expressions.md),
 [Error Messages](../CLI/Error-Messages.md)

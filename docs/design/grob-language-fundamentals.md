@@ -2645,6 +2645,10 @@ flushes output buffers, and terminates the process with the specified code.
 There is no way to suppress or recover from `exit()`. `finally` blocks do
 not run on the `exit()` path.
 
+An internal error (E9001, D-459), such as a host exception out of a native, is
+the other exit that skips them. It ends the run at once, since a defect in Grob
+or in a native leaves the VM's state untrusted and no more script code runs.
+
 ---
 
 ## 28. Statement Forms

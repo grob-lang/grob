@@ -109,22 +109,91 @@ public sealed class InternalErrorReportTests {
         if (phase == target) throw new InvalidOperationException("secret detail");
     }
 
-    [Fact]
-    public void HostException_FromANativeDuringTheRun_IsReportedAsE9001() {
-        // No hook: date.now() reads the clock inside a native, during dispatch.
+    // What the VM reports for a host exception out of date.now() (R-69, D-459): the native's name,
+    // the exception's type and the call's line. The compiler records no column for a call, so none.
+    private static string NativeReport(string path, int line) =>
+        $"error[E9001]: {ErrorCatalog.E9001.Title}{NL}" +
+        $"  --> {path} (while running){NL}" +
+        $"  = GrobInternalException: native date.now threw InvalidOperationException, a host exception, at line {line}. " +
+        $"A native reports bad input from a script with NativeFaultException; this is a defect in the native.{NL}" +
+        BugReportLine + NL;
+
+    private static Func<HostCapabilities> ThrowingClockCapabilities() {
         var fakes = new HostCapabilities(new FixedRandomSource(), new MapEnvironment(), new ThrowingClock(),
             new FixedFileSystem(FixedFileSystem.HarnessDirectory));
+        return () => fakes;
+    }
 
+    [Fact]
+    public void HostException_FromANativeDuringTheRun_IsReportedAsE9001NamingTheNativeAndLine() {
+        // No hook: date.now() reads the clock inside a native, during dispatch.
         (_, string stderr, int exitCode, string path) =
-            RunWithHook(_ => { }, "print(date.now())\n", capabilities: () => fakes);
+            RunWithHook(_ => { }, "print(\"before\")\nprint(date.now())\n", capabilities: ThrowingClockCapabilities());
 
         Assert.Equal(ExitCodes.RuntimeError, exitCode);
-        Assert.Equal(
-            $"error[E9001]: {ErrorCatalog.E9001.Title}{NL}" +
-            $"  --> {path} (while running){NL}" +
-            $"  = InvalidOperationException{NL}" +
-            BugReportLine + NL,
-            stderr);
+        Assert.Equal(NativeReport(path, 2), stderr);
+        Assert.DoesNotContain("clock failed", stderr);
+    }
+
+    [Fact]
+    public void HostException_FromANativeInATry_IsNotCaughtByTheScript() {
+        (string stdout, string stderr, int exitCode, string path) = RunWithHook(_ => { }, """
+            try {
+                print(date.now())
+            } catch e {
+                print("caught")
+            } finally {
+                print("finally")
+            }
+            print("after")
+            """, capabilities: ThrowingClockCapabilities());
+
+        Assert.Equal(ExitCodes.RuntimeError, exitCode);
+        Assert.Equal(string.Empty, stdout);
+        Assert.Equal(NativeReport(path, 2), stderr);
+    }
+
+    [Fact]
+    public void HostException_FromANativeInATryFinally_SkipsTheFinally() {
+        // D-459 beside D-275: an internal error ends the run at once, so the finally does not run.
+        // The test above pins the same with a catch beside the finally; this is the finally alone.
+        (string stdout, string stderr, int exitCode, string path) = RunWithHook(_ => { }, """
+            try {
+                print(date.now())
+            } finally {
+                print("finally")
+            }
+            print("after")
+            """, capabilities: ThrowingClockCapabilities());
+
+        Assert.Equal(ExitCodes.RuntimeError, exitCode);
+        Assert.Equal(string.Empty, stdout);
+        Assert.Equal(NativeReport(path, 2), stderr);
+    }
+
+    [Fact]
+    public void HostException_FromANativeInACallback_IsReportedAsE9001AtTheNativesLine() {
+        (string stdout, string stderr, int exitCode, string path) = RunWithHook(_ => { }, """
+            try {
+                [1, 2].each(x => print(date.now()))
+            } catch e {
+                print("caught")
+            }
+            """, capabilities: ThrowingClockCapabilities());
+
+        Assert.Equal(ExitCodes.RuntimeError, exitCode);
+        Assert.Equal(string.Empty, stdout);
+        Assert.Equal(NativeReport(path, 2), stderr);
+    }
+
+    [Fact]
+    public void HostException_FromANativeWithVerbose_AddsTheHostExceptionAsTheInnerOne() {
+        (_, string stderr, int exitCode, _) = RunWithHook(_ => { }, "print(date.now())\n", verbose: true,
+            capabilities: ThrowingClockCapabilities());
+
+        Assert.Equal(ExitCodes.RuntimeError, exitCode);
+        Assert.Contains("GrobInternalException: native date.now threw InvalidOperationException", stderr);
+        Assert.Contains("InvalidOperationException: clock failed", stderr);
     }
 
     [Fact]
