@@ -176,6 +176,76 @@ public sealed class GuidPluginTests {
         Assert.NotEqual(first, second);
     }
 
+    private static GrobValue StructOf(string typeName, string? field, GrobValue? value) =>
+        GrobValue.FromStruct(new GrobStruct(typeName, field is null
+            ? []
+            : [new KeyValuePair<string, GrobValue>(field, value!.Value)]));
+
+    public static TheoryData<GrobValue, string> NotAGuidNamespace => new() {
+        // A struct of another type with no field the guid layout reads: KeyNotFoundException before D-459.
+        { StructOf("Point", "x", GrobValue.FromInt(1)), "a struct of type 'Point'" },
+        // A date has a string field of the same name as a guid's, so it read as one: FormatException before D-459.
+        { StructOf(DateLayout.TypeName, DateLayout.ValueFieldName, GrobValue.FromString("2026-01-01T00:00:00.0000000+00:00")), "a struct of type 'date'" },
+        // The guid's own type with no text, or text that is not a guid: nothing a script builds, but the native does not trust it.
+        { StructOf(GuidLayout.TypeName, null, null), "a struct of type 'guid'" },
+        { StructOf(GuidLayout.TypeName, GuidLayout.ValueFieldName, GrobValue.FromString("not-a-guid")), "a struct of type 'guid'" },
+        { StructOf(GuidLayout.TypeName, GuidLayout.ValueFieldName, GrobValue.FromInt(5)), "a struct of type 'guid'" },
+        // A value of no struct kind at all: a GrobInternalException before D-459.
+        { GrobValue.FromInt(5), "a value of kind Int" },
+        { GrobValue.Nil, "a value of kind Nil" },
+    };
+
+    [Theory]
+    [MemberData(nameof(NotAGuidNamespace))]
+    public void NewV5_NamespaceThatIsNotAGuid_ThrowsRuntimeError(GrobValue notAGuid, string described) {
+        // R-69, D-459: R-57 lets a struct of another type reach a native that takes a guid.
+        var vm = NewRegisteredVm();
+
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunkAt(3, 7, "guid.newV5", notAGuid, GrobValue.FromString("a"))));
+
+        Assert.Equal(ErrorCatalog.E5903.Code, ex.Code);
+        Assert.Equal(3, ex.Line);
+        Assert.Equal(7, ex.Column);
+        Assert.Equal($"guid.newV5: the namespace must be a guid, not {described}.", ex.Message);
+    }
+
+    [Fact]
+    public void NewV5_NamespaceThatIsNotAGuid_IsCatchableAsRuntimeError() {
+        var vm = NewRegisteredVm();
+        var chunk = new Chunk();
+        int regionIndex = chunk.AddTryRegion();
+        chunk.WriteOpCode(OpCode.TryBegin, 1); chunk.WriteByte((byte)regionIndex, 1);
+        int startOffset = chunk.Count;
+        chunk.WriteOpCode(OpCode.GetGlobal, 1);
+        chunk.WriteByte((byte)chunk.AddConstant(GrobValue.FromString("guid.newV5")), 1);
+        chunk.WriteOpCode(OpCode.Constant, 1);
+        chunk.WriteByte((byte)chunk.AddConstant(StructOf("Point", "x", GrobValue.FromInt(1))), 1);
+        chunk.WriteOpCode(OpCode.Constant, 1);
+        chunk.WriteByte((byte)chunk.AddConstant(GrobValue.FromString("a")), 1);
+        chunk.WriteOpCode(OpCode.Call, 1); chunk.WriteByte(2, 1);
+        chunk.WriteOpCode(OpCode.Pop, 1);
+        int endOffset = chunk.Count;
+        chunk.WriteOpCode(OpCode.Jump, 1);
+        chunk.WriteByte(0, 1); chunk.WriteByte(3, 1); // over the handler's Pop, True and Return
+        // Only the handler yields true: a native that stopped raising would reach the false below.
+        int handlerOffset = chunk.Count;
+        chunk.WriteOpCode(OpCode.Pop, 1);
+        chunk.WriteOpCode(OpCode.True, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+        int tryEndOffset = chunk.Count;
+        chunk.WriteOpCode(OpCode.TryEnd, 1);
+        chunk.WriteOpCode(OpCode.False, 1);
+        chunk.WriteOpCode(OpCode.Return, 1);
+        chunk.SetTryRegion(regionIndex, new TryRegion(startOffset, endOffset,
+            [new CatchHandler(["RuntimeError"], IsCatchAll: false, handlerOffset, BindingSlot: 0)],
+            FinallyOffset: -1, BaseSlot: 0, TryEndOffset: tryEndOffset));
+
+        vm.Run(chunk);
+
+        Assert.True(vm.Stack.Peek().AsBool());
+    }
+
     // -----------------------------------------------------------------------
     // Parsing.
     // -----------------------------------------------------------------------

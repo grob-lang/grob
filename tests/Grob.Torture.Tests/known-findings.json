@@ -39,14 +39,6 @@
       ]
     },
     {
-      "row": "R-69",
-      "signature": "Run|Exception|TimeZoneNotFoundException: The time zone ID '…' was not found on the local computer.",
-      "programs": [
-        "tests/fixtures/native-probes/date-members.clean.grob@65b6ac40335c6a12",
-        "tests/fixtures/native-probes/date-members.clean.grob@65b6ac40335c6a12/remove-annotation/0"
-      ]
-    },
-    {
       "row": "R-71",
       "signature": "Check|Sentinel|no-declaration|AssignmentStmt.Target/MemberAccessExpr.Target|E0206",
       "programs": [
@@ -87,14 +79,8 @@
       "row": "R-60",
       "signature": "Run|Exception|GrobInternalException: InvokeCallable: value of kind Float is not callable. The type checker should have rejected the call site.",
       "programs": [
-        "tests/Grob.Integration.Tests/Sprint5IncrementCTests.cs@f32839db3e17d8b3/replace-value/1"
-      ]
-    },
-    {
-      "row": "R-69",
-      "signature": "Run|Exception|ArgumentException: The value cannot be an empty string. (Parameter '…')",
-      "programs": [
-        "generated/0000000001352903/116"
+        "tests/Grob.Integration.Tests/Sprint5IncrementCTests.cs@f32839db3e17d8b3/replace-value/1",
+        "tests/Grob.Integration.Tests/NativeInputFaultTests.cs@48d8d120386594df/replace-value/1"
       ]
     }
   ]

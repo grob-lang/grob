@@ -26,7 +26,7 @@ no boxing, no vtable.
 | `contains(s: string)` | `→ bool` | |
 | `startsWith(s: string)` | `→ bool` | |
 | `endsWith(s: string)` | `→ bool` | |
-| `replace(from: string, to: string)` | `→ string` | Replaces all occurrences |
+| `replace(from: string, to: string)` | `→ string` | Replaces all occurrences; an empty `from` is a `RuntimeError` |
 | `indexOf(s: string)` | `→ int` | First occurrence; -1 if not found |
 | `lastIndexOf(s: string)` | `→ int` | Last occurrence; -1 if not found |
 | `substring(start: int, length: int)` | `→ string` | Zero-based. Throws `RuntimeError` if out of range |

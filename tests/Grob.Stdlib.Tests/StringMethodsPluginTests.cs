@@ -187,6 +187,38 @@ public sealed class StringMethodsPluginTests {
         Assert.Equal(GrobValue.FromString("z-z-z"), vm.Stack.Peek());
     }
 
+    [Theory]
+    [InlineData("a", "b")]
+    [InlineData("", "b")]
+    [InlineData("abc", "")]
+    [InlineData("a b", " ")]
+    public void Replace_EmptySearchText_ThrowsRuntimeError(string receiver, string replacement) {
+        // R-69, D-459: the spec does not say what replacing "" means, and .NET refuses it with an
+        // ArgumentException. The native refuses it too, as the script's error, whatever the receiver.
+        var vm = NewRegisteredVm();
+
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildCallChunkAt(3, 7, "string.replace",
+                GrobValue.FromString(receiver), GrobValue.FromString(string.Empty), GrobValue.FromString(replacement))));
+
+        Assert.Equal(ErrorCatalog.E5903.Code, ex.Code);
+        Assert.Equal(3, ex.Line);
+        Assert.Equal(7, ex.Column);
+        Assert.Equal("replace: the text to replace must not be empty.", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("a-a", "a", "", "-")]
+    [InlineData("", "a", "b", "")]
+    [InlineData("abc", "z", "y", "abc")]
+    [InlineData("aaa", "aa", "b", "ba")]
+    public void Replace_NonEmptySearchText_IsUnchanged(string receiver, string from, string to, string expected) {
+        var vm = NewRegisteredVm();
+        vm.Run(BuildCallChunk("string.replace",
+            GrobValue.FromString(receiver), GrobValue.FromString(from), GrobValue.FromString(to)));
+        Assert.Equal(GrobValue.FromString(expected), vm.Stack.Peek());
+    }
+
     // -----------------------------------------------------------------------
     // indexOf / lastIndexOf — -1 when absent.
     // -----------------------------------------------------------------------

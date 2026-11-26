@@ -476,6 +476,45 @@ public sealed class DatePluginTests {
         Assert.Equal(12, vm.Stack.Peek().AsInt());
     }
 
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("Europe/Nowhere")]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("UTC+99")]
+    [InlineData("../../etc/passwd")]
+    [InlineData("zone\0name")]
+    [InlineData("éè")]
+    public void ToZone_UnknownZone_ThrowsParseError(string zone) {
+        // R-69, D-459: an unknown zone is the script's bad input, the same ParseError (E5702) a
+        // date string that does not parse raises, not a TimeZoneNotFoundException out of the host.
+        var vm = NewRegisteredVm();
+
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildMethodCallOnCallChunk(
+                "date.parse", "toZone",
+                [GrobValue.FromString("2026-04-05T12:00:00Z"), GrobValue.FromString("")], GrobValue.FromString(zone))));
+
+        Assert.Equal(ErrorCatalog.E5702.Code, ex.Code);
+        Assert.Equal(1, ex.Line);
+        Assert.Equal(0, ex.Column); // the chunk builder writes no columns
+    }
+
+    [Fact]
+    public void ToZone_UnknownZone_NamesTheMethodAndTheZone() {
+        var vm = NewRegisteredVm();
+
+        GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
+            vm.Run(BuildMethodCallOnCallChunk(
+                "date.parse", "toZone",
+                [GrobValue.FromString("2026-04-05T12:00:00Z"), GrobValue.FromString("")], GrobValue.FromString("abc"))));
+
+        Assert.Equal(ErrorCatalog.E5702.Code, ex.Code);
+        Assert.Equal(1, ex.Line);
+        Assert.Equal(0, ex.Column); // the chunk builder writes no columns
+        Assert.Equal("date.toZone: 'abc' is not a known time zone.", ex.Message);
+    }
+
     // -----------------------------------------------------------------------
     // toDateOnly/toTimeOnly (D-354).
     // -----------------------------------------------------------------------

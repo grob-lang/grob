@@ -167,7 +167,7 @@ public sealed class DatePlugin : IGrobPlugin {
             Method("toUtc", [], DateType, (d, _) => FromDateTimeOffset(d.ToUniversalTime())),
             Method("toLocal", [], DateType, (d, _) => FromDateTimeOffset(TimeZoneInfo.ConvertTime(d, _clock.LocalZone))),
             Method("toZone", [new SignatureParameter("zone", StringType)], DateType,
-                (d, args) => FromDateTimeOffset(TimeZoneInfo.ConvertTime(d, TimeZoneInfo.FindSystemTimeZoneById(args[0].AsString())))),
+                (d, args) => FromDateTimeOffset(TimeZoneInfo.ConvertTime(d, FindZone(args[0].AsString())))),
             Method("toDateOnly", [], DateType,
                 (d, _) => FromDateTimeOffset(new DateTimeOffset(d.Year, d.Month, d.Day, 0, 0, 0, d.Offset))),
             Method("toTimeOnly", [], DateType, (d, _) => FromDateTimeOffset(new DateTimeOffset(
@@ -179,6 +179,22 @@ public sealed class DatePlugin : IGrobPlugin {
                 (d, args) => GrobValue.FromInt(DaysBetween(ToDateTimeOffset(args[0].AsStruct()), d))),
         ],
         v => IsoDateTimeString(ToDateTimeOffset(v.AsStruct())));
+
+    /// <summary>
+    /// The zone <paramref name="id"/> names. An id the host does not know, or whose data it cannot
+    /// read, is the script's bad input, a <c>ParseError</c> (E5702) as an unparseable date string
+    /// is (R-69, D-459), not the host exception <see cref="TimeZoneInfo.FindSystemTimeZoneById"/>
+    /// throws. An id the host refuses outright, an empty one or one with a null character, is
+    /// refused the same way. The message names the id as <c>date.parse</c>'s names its input.
+    /// </summary>
+    private static TimeZoneInfo FindZone(string id) {
+        try {
+            return TimeZoneInfo.FindSystemTimeZoneById(id);
+        } catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException or ArgumentException) {
+            throw new NativeFaultException(
+                "ParseError", ErrorCatalog.E5702.Code, $"date.toZone: '{id}' is not a known time zone.");
+        }
+    }
 
     private static NamedTypePropertyBinding IntProperty(string name, Func<DateTimeOffset, long> read) =>
         new(new PropertySignature(name, IntType), r => GrobValue.FromInt(read(ToDateTimeOffset(r))));

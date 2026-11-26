@@ -72,8 +72,7 @@ public sealed class StringMethodsPlugin : IPrimitiveMemberPlugin {
                 (args, _) => GrobValue.FromBool(args[0].AsString().EndsWith(args[1].AsString(), StringComparison.Ordinal))));
         registrar.RegisterPrimitiveMethod(GrobType.String,
             Signature("replace", StringType, Param("from", StringType), Param("to", StringType)),
-            new NativeFunction("string.replace", 3, (args, _) =>
-                GrobValue.FromString(args[0].AsString().Replace(args[1].AsString(), args[2].AsString(), StringComparison.Ordinal))));
+            new NativeFunction("string.replace", 3, (args, _) => Replace(args[0], args[1], args[2])));
 
         registrar.RegisterPrimitiveMethod(GrobType.String, Signature("indexOf", IntType, Param("s", StringType)),
             new NativeFunction("string.indexOf", 2,
@@ -198,6 +197,22 @@ public sealed class StringMethodsPlugin : IPrimitiveMemberPlugin {
         double.TryParse(receiver.AsString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed)
             ? GrobValue.FromFloat(parsed)
             : GrobValue.Nil;
+
+    /// <summary>
+    /// Replaces every occurrence of the search text. The spec says "replaces all occurrences" and
+    /// is silent on an empty search text, which occurs between every pair of characters, and
+    /// .NET refuses it with an <see cref="ArgumentException"/>. D-459 refuses it as the script's
+    /// error, a <c>RuntimeError</c> (E5903, the residual: no more specific code names an empty
+    /// argument), rather than inventing a result for it.
+    /// </summary>
+    private static GrobValue Replace(GrobValue receiver, GrobValue fromArg, GrobValue toArg) {
+        string from = fromArg.AsString();
+        if (from.Length == 0) {
+            throw new NativeFaultException(RuntimeErrorLeaf, ErrorCatalog.E5903.Code,
+                "replace: the text to replace must not be empty.");
+        }
+        return GrobValue.FromString(receiver.AsString().Replace(from, toArg.AsString(), StringComparison.Ordinal));
+    }
 
     private static GrobValue Substring(GrobValue receiver, GrobValue startArg, GrobValue lengthArg) {
         string s = receiver.AsString();

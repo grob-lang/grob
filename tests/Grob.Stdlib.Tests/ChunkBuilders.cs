@@ -19,20 +19,27 @@ internal static class ChunkBuilders {
         return chunk;
     }
 
-    internal static Chunk BuildCallChunk(string calleeName, params GrobValue[] args) {
+    internal static Chunk BuildCallChunk(string calleeName, params GrobValue[] args) =>
+        BuildCallChunkAt(1, 0, calleeName, args);
+
+    /// <summary>
+    /// As <see cref="BuildCallChunk"/>, with every instruction at <paramref name="line"/> and
+    /// <paramref name="column"/>, so a test can assert where a native's error is reported.
+    /// </summary>
+    internal static Chunk BuildCallChunkAt(int line, int column, string calleeName, params GrobValue[] args) {
         var chunk = new Chunk();
         int calleeIdx = chunk.AddConstant(GrobValue.FromString(calleeName));
-        chunk.WriteOpCode(OpCode.GetGlobal, 1);
-        chunk.WriteByte((byte)calleeIdx, 1);
+        chunk.WriteOpCode(OpCode.GetGlobal, line, column);
+        chunk.WriteByte((byte)calleeIdx, line, column);
 
         int[] argIndexes = [.. args.Select(chunk.AddConstant)];
         foreach (int argIdx in argIndexes) {
-            chunk.WriteOpCode(OpCode.Constant, 1);
-            chunk.WriteByte((byte)argIdx, 1);
+            chunk.WriteOpCode(OpCode.Constant, line, column);
+            chunk.WriteByte((byte)argIdx, line, column);
         }
-        chunk.WriteOpCode(OpCode.Call, 1);
-        chunk.WriteByte((byte)args.Length, 1);
-        chunk.WriteOpCode(OpCode.Return, 1);
+        chunk.WriteOpCode(OpCode.Call, line, column);
+        chunk.WriteByte((byte)args.Length, line, column);
+        chunk.WriteOpCode(OpCode.Return, line, column);
         return chunk;
     }
 }

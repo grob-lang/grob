@@ -85,7 +85,7 @@ internal sealed class OracleRun : IDisposable {
             _findings.Add(new Finding(
                 new Signature(_phase, FindingClass.Exception, $"{exception.GetType().Name}: {MessageNormaliser.Normalise(exception.Message)}"),
                 exception.Message,
-                FirstGrobFrame(exception)));
+                FirstGrobFrame(HostCause(exception))));
             Result = Conclude(OutcomeKind.Finding);
         }
     }
@@ -153,6 +153,15 @@ internal sealed class OracleRun : IDisposable {
 
     private OracleResult Conclude(OutcomeKind outcome, int? exitCode = null) =>
         new(_findings.Count > 0 ? OutcomeKind.Finding : outcome, [.. _findings], exitCode);
+
+    /// <summary>
+    /// The exception whose stack names the defect. The VM reports a host exception out of a native
+    /// as a <see cref="GrobInternalException"/> (D-459), which is thrown from the VM's wrapper, so
+    /// its own first frame is the same for every native; the host exception it carries was thrown
+    /// where the defect is. The finding's signature still comes from the reported exception.
+    /// </summary>
+    private static Exception HostCause(Exception exception) =>
+        exception is GrobInternalException { InnerException: { } host } ? host : exception;
 
     private static string? FirstGrobFrame(Exception exception) {
         foreach (StackFrame frame in new StackTrace(exception, fNeedFileInfo: false).GetFrames()) {

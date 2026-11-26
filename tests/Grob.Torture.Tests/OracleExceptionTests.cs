@@ -52,8 +52,14 @@ public sealed class OracleExceptionTests {
         OracleResult result = oracle.Run("print(date.now())\n");
 
         Finding finding = Assert.Single(result.Findings);
-        Assert.Equal(new Signature(PipelinePhase.Run, FindingClass.Exception, "InvalidOperationException: clock unavailable"),
+        // D-459: the VM reports a native's host exception as an internal error naming the native,
+        // so it is still a Run-phase Exception finding, with the native's name in its signature.
+        Assert.Equal(new Signature(PipelinePhase.Run, FindingClass.Exception,
+                "GrobInternalException: native date.now threw InvalidOperationException, a host exception, " +
+                "at line #. A native reports bad input from a script with NativeFaultException; " +
+                "this is a defect in the native."),
             finding.Signature);
+        Assert.Equal(OutcomeKind.Finding, result.Outcome);
         Assert.NotNull(finding.FirstFrame);
         Assert.StartsWith("Grob.Stdlib.", finding.FirstFrame, StringComparison.Ordinal);
     }
