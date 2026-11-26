@@ -230,6 +230,22 @@ public sealed class TypeCheckerFunctionTypeIdentityTests {
             """, "E0004", 4, 14);
 
     [Fact]
+    public void MapParameter_CallWithDifferentValueType_IsE0004() =>
+        AssertSingleError("""
+            fn use(g: fn(map<string, int>): int, m: map<string, string>): int {
+                return g(m)
+            }
+            """, "E0004", 2, 14);
+
+    [Fact]
+    public void MapParameter_CallWithSameValueType_IsAccepted() =>
+        AssertNoErrors("""
+            fn use(g: fn(map<string, int>): int, m: map<string, int>): int {
+                return g(m)
+            }
+            """);
+
+    [Fact]
     public void ArrayParameter_CallWithDifferentElementType_IsE0004() =>
         AssertSingleError("""
             fn use(g: fn(int[]): int): int {
@@ -298,14 +314,21 @@ public sealed class TypeCheckerFunctionTypeIdentityTests {
             h: fn(float): float := fs[1]
             """, "E0001", 3, 24);
 
-    [Fact]
-    public void ArrayOfFunctions_UntrackedElementBeforeTypedOne_TakesTheTypedShape() =>
-        AssertSingleError("""
-            box := #{ op: (n) => n + 1 }
+    /// <summary>
+    /// An element whose shape is not tracked was never checked against a typed element's
+    /// shape, so the array claims none: a call through any element is unchecked, as it is
+    /// for an array of untracked functions alone.
+    /// </summary>
+    [Theory]
+    [InlineData("[box.op, g]")]
+    [InlineData("[g, box.op]")]
+    public void ArrayOfFunctions_UntrackedElementBesideTypedOne_LeavesTheArrayUntracked(string literal) =>
+        AssertNoErrors($$"""
+            box := #{ op: (s) => s + "!" }
             g: fn(int): int := (n) => n + 1
-            fs := [box.op, g]
-            h: fn(float): float := fs[0]
-            """, "E0001", 4, 24);
+            fs := {{literal}}
+            print(fs[0](2.5))
+            """);
 
     [Fact]
     public void ArrayOfFunctions_LiteralOfUntrackedFunction_IsAccepted() =>
@@ -755,6 +778,82 @@ public sealed class TypeCheckerFunctionTypeIdentityTests {
                 }
             }
             """);
+
+    /// <summary>
+    /// A block ending in an <c>if</c> and <c>else</c> that both return has no final value
+    /// of its own, so its result is the kind its returns agree on, not <c>nil</c>.
+    /// </summary>
+    [Fact]
+    public void BlockLambdaEndingInIfElseReturningTheStruct_IsAccepted() =>
+        AssertNoErrors(Structs + """
+            fn use(c: bool): int {
+                g: fn(): A := () => {
+                    if (c) {
+                        return A { x: 1 }
+                    } else {
+                        return A { x: 2 }
+                    }
+                }
+                return g().x
+            }
+            """);
+
+    [Fact]
+    public void BlockLambdaEndingInIfElseReturningAnInt_IsAccepted() =>
+        AssertNoErrors("""
+            fn use(c: bool): int {
+                g: fn(): int := () => {
+                    if (c) {
+                        return 1
+                    } else {
+                        return 2
+                    }
+                }
+                return g()
+            }
+            """);
+
+    [Fact]
+    public void BlockLambdaEndingInIfElseReturningAnotherStruct_IsE0001() =>
+        AssertSingleError(Structs + """
+            fn use(c: bool): void {
+                g: fn(): A := () => {
+                    if (c) {
+                        return B { y: "s" }
+                    } else {
+                        return B { y: "t" }
+                    }
+                }
+            }
+            """, "E0001", 4, 19);
+
+    [Fact]
+    public void BlockLambdaEndingInIfElseOfTwoKinds_KeepsTheBlockValue() =>
+        AssertSingleError("""
+            fn use(c: bool): void {
+                g: fn(): int := () => {
+                    if (c) {
+                        return 1
+                    } else {
+                        return "s"
+                    }
+                }
+            }
+            """, "E0001", 2, 21);
+
+    [Fact]
+    public void BlockLambdaReturningAnArrayOrAnAnnotatedLocal_KeepsTheElementType() =>
+        AssertSingleError("""
+            fn use(c: bool): void {
+                xs: int[] := [2]
+                k: fn(): float[] := () => {
+                    if (c) {
+                        return [1]
+                    }
+                    return xs
+                }
+            }
+            """, "E0001", 3, 25);
 
     [Fact]
     public void BlockLambdaWhoseResultsDisagree_CarriesNoIdentity() =>

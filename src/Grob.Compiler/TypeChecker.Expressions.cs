@@ -779,9 +779,9 @@ public sealed partial class TypeChecker {
     /// then each argument's type (E0004), descending into a function-typed parameter's
     /// shape. A function type has no defaults, so the count must match exactly. An
     /// <see cref="GrobType.Unknown"/> on either side is permissive, and an argument that
-    /// already errored is not reported again. An array parameter's element type and a
-    /// struct parameter's name are compared too, since the function type records them
-    /// (D-463).
+    /// already errored is not reported again. An array parameter's element type, a map
+    /// parameter's value type and a struct parameter's name are compared too, since the
+    /// function type records them (D-463).
     /// </summary>
     private void CheckFunctionValueArguments(CallExpr node, FunctionTypeDescriptor descriptor, GrobType[] argTypes) {
         string? calleeName = FunctionValueName(node.Callee);
@@ -818,8 +818,10 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Whether one argument of a call through a function value fits the parameter at
     /// <paramref name="index"/>: its kind, with a function-typed parameter's shape, then an
-    /// array parameter's element type and a struct parameter's name, which the function
-    /// type records (D-463), as a direct call checks them (<see cref="CheckBoundArgumentType"/>).
+    /// array parameter's element type, a map parameter's value type and a struct parameter's
+    /// name, which the function type records (D-463). A direct call checks the array and
+    /// the struct (<see cref="CheckBoundArgumentType"/>) but not yet the map, which R-101
+    /// records.
     /// </summary>
     private bool IsFunctionValueArgumentCompatible(
             GrobType argType, Expression argExpr, FunctionTypeDescriptor descriptor, int index) {
@@ -830,6 +832,10 @@ public sealed partial class TypeChecker {
         PositionIdentity? identity = descriptor.ParameterIdentityAt(index);
         if (paramType is GrobType.Array or GrobType.NullableArray &&
                 !ArrayElementAssignable(ArrayDescriptorOf(argExpr), identity?.ArrayDescriptor)) {
+            return false;
+        }
+        if (paramType is GrobType.Map or GrobType.NullableMap &&
+                !MapValueAssignable(MapDescriptorOf(argExpr), identity?.MapDescriptor)) {
             return false;
         }
         return !IsStructNominalMismatch(paramType, identity?.NamedTypeName, argExpr);
@@ -3140,6 +3146,7 @@ public sealed partial class TypeChecker {
         string? elementNamedTypeName = null;
         ArrayTypeDescriptor? elementArrayDescriptor = null;
         FunctionTypeDescriptor? elementShape = null;
+        bool shapeUntracked = false;
         bool haveFirst = false;
 
         foreach (Expression element in node.Elements) {
@@ -3151,6 +3158,7 @@ public sealed partial class TypeChecker {
                 elementNamedTypeName = GetStructTypeName(element);
                 elementArrayDescriptor = ArrayDescriptorOf(element);
                 elementShape = ExpressionDescriptor(element);
+                shapeUntracked = elementShape is null;
                 haveFirst = true;
                 continue;
             }
@@ -3162,14 +3170,14 @@ public sealed partial class TypeChecker {
             // element (D-351). Only checked when the flat unify itself did not already fail.
             if (unified != GrobType.Error) {
                 CheckArrayElementIdentity(unified, elementNamedTypeName, elementArrayDescriptor, element);
-                elementShape = CombineElementShape(unified, elementShape, element);
+                (elementShape, shapeUntracked) = CombineElementShape(unified, (elementShape, shapeUntracked), element);
             }
             elementKind = unified;
         }
 
+        bool tracksShape = elementKind is GrobType.Function or GrobType.NullableFunction && !shapeUntracked;
         _arrayLiteralDescriptors[node] = new ArrayTypeDescriptor(
-            elementKind, elementNamedTypeName, elementArrayDescriptor,
-            elementKind is GrobType.Function or GrobType.NullableFunction ? elementShape : null);
+            elementKind, elementNamedTypeName, elementArrayDescriptor, tracksShape ? elementShape : null);
         return GrobType.Array;
     }
 
@@ -3177,16 +3185,17 @@ public sealed partial class TypeChecker {
     /// Combines a function element's shape with the shapes of the elements before it
     /// (D-463), as a ternary's arms combine (D-448 Decision 7), so <c>[g, h]</c> with
     /// <c>g: fn(int): int</c> and <c>h: fn(float): float</c> is E0001 and an inferred lambda
-    /// beside a typed function takes its types. An element with no tracked shape adds
-    /// nothing. Returns the combined shape, or the running one where the element's conflicts.
+    /// beside a typed function takes its types. A function element whose shape is not
+    /// tracked marks the array untracked, so no element's shape is claimed for one that was
+    /// never checked against it. Returns the combined shape, or the running one where the
+    /// element's conflicts, with the untracked mark.
     /// </summary>
-    private FunctionTypeDescriptor? CombineElementShape(GrobType elementKind, FunctionTypeDescriptor? running, Expression element) {
-        if (elementKind is not (GrobType.Function or GrobType.NullableFunction) ||
-                ExpressionDescriptor(element) is not { } shape) {
-            return running;
-        }
-        if (running is null) return shape;
-        if (FunctionTypeDescriptor.Merge(running, shape) is { } combined) return combined;
+    private (FunctionTypeDescriptor? Shape, bool Untracked) CombineElementShape(
+            GrobType unifiedKind, (FunctionTypeDescriptor? Shape, bool Untracked) running, Expression element) {
+        if (unifiedKind is not (GrobType.Function or GrobType.NullableFunction)) return running;
+        if (ExpressionDescriptor(element) is not { } shape) return (running.Shape, true);
+        if (running.Shape is null) return (shape, running.Untracked);
+        if (FunctionTypeDescriptor.Merge(running.Shape, shape) is { } combined) return (combined, running.Untracked);
         EmitError(ErrorCatalog.E0001,
             "Array literal elements must share a type; found function types that do not match.",
             element.Range);
@@ -3653,7 +3662,10 @@ public sealed partial class TypeChecker {
     /// The result type and, when the result is a function, the function shape a lambda
     /// returns: its expression body's, or for a block body the combination of every
     /// <c>return</c> in it (<paramref name="returned"/>) and its final value (D-448
-    /// Decision 7). A block that can end without a value contributes <c>nil</c>.
+    /// Decision 7). A block that can end without a value contributes <c>nil</c>. A block
+    /// whose last statement always leaves without being a <c>return</c>, an <c>if</c> and
+    /// <c>else</c> that both return, has no final value of its own, so its result is the
+    /// kind every <c>return</c> agrees on (<see cref="AgreedReturnKind"/>, D-463).
     /// </summary>
     private (GrobType Type, FunctionTypeDescriptor? Descriptor) LambdaResult(
             LambdaBody body, GrobType bodyType, List<LambdaReturn> returned) {
@@ -3666,12 +3678,24 @@ public sealed partial class TypeChecker {
                 results.Add(new LambdaReturn(bodyType, ExpressionDescriptor(last.Expression)));
                 break;
             case LambdaBlockBody { Block.Statements: [.., AstNode last] } when AlwaysLeaves(last):
+                if (last is not ReturnStmt) bodyType = AgreedReturnKind(returned) ?? bodyType;
                 break;
             default:
                 results.Add(new LambdaReturn(GrobType.Nil, null));
                 break;
         }
         return CombineFunctionResults(results) ?? (bodyType, null);
+    }
+
+    /// <summary>
+    /// The one kind every <c>return</c> of a block lambda gives, or <see langword="null"/>
+    /// when they give more than one, an unknown or none. Where they differ the result stays
+    /// the block's last value, which R-102 records.
+    /// </summary>
+    private static GrobType? AgreedReturnKind(List<LambdaReturn> returned) {
+        if (returned.Count == 0) return null;
+        GrobType kind = returned[0].Kind;
+        return kind != GrobType.Unknown && returned.TrueForAll(r => r.Kind == kind) ? kind : null;
     }
 
     /// <summary>

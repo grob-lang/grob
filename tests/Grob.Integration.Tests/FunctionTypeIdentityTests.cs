@@ -183,6 +183,22 @@ public sealed class FunctionTypeIdentityTests {
             """, "4");
 
     [Fact]
+    public void BlockLambdaEndingInIfElseReturningTheStruct_Runs() =>
+        AssertRuns("""
+            type A { x: int }
+            fn pick(c: bool): fn(): A {
+                return () => {
+                    if (c) {
+                        return A { x: 1 }
+                    } else {
+                        return A { x: 2 }
+                    }
+                }
+            }
+            print(pick(false)().x)
+            """, "2");
+
+    [Fact]
     public void StructFieldHoldingAnArrayOfFunctions_Runs() =>
         AssertRuns("""
             type T { fs: (fn(int): int)[] }
