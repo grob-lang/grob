@@ -287,6 +287,8 @@ public sealed class VirtualMachineNativeHostFaultTests {
             () => vm.Run(BuildFinallyAroundCallScript(Throwing("faulty", fault))));
 
         Assert.Equal(code, ex.Code);
+        Assert.Equal(CallLine, ex.Line);
+        Assert.Equal(CallColumn, ex.Column);
         Assert.Equal("done\n", output.ToString().ReplaceLineEndings("\n"));
     }
 
@@ -300,6 +302,7 @@ public sealed class VirtualMachineNativeHostFaultTests {
 
         Assert.Equal(ErrorCatalog.E5001.Code, ex.Code);
         Assert.Equal(CallLine, ex.Line);
+        Assert.Equal(CallColumn, ex.Column);
     }
 
     [Fact]

@@ -19026,7 +19026,7 @@ and `TaskCanceledException`. A native fault with each of three codes runs an enc
 once. `DatePluginTests` has eight unknown zones, an empty one, one with a null character and a
 path among them, each E5702 at its line, and the message; `StringMethodsPluginTests` has four
 empty-search rows and four unchanged non-empty rows; `GuidPluginTests` has a `Point`, a `date`,
-three malformed `guid` structs, an `int` and `nil`, and one caught through a `try`.
+three malformed `guid` structs, an `int` and `nil`, with one of them caught through a `try`.
 `NativeInputFaultTests` runs each of the three through the CLI caught as its leaf, uncaught at
 its line, in a callback and, for `toZone` and `replace`, under a `finally`. `InternalErrorReportTests`
 runs a native whose clock throws, uncaught, under a `try` with a `catch` and a `finally`, in a
