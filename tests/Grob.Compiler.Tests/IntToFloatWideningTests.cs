@@ -77,6 +77,25 @@ public sealed class IntToFloatWideningTests {
         throw new Xunit.Sdk.XunitException($"No function constant named '{name}' in the script chunk.");
     }
 
+    /// <summary>
+    /// The opcodes of the first lambda compiled inside the declared function
+    /// <paramref name="enclosing"/>. The lambda must capture nothing, so it is loaded with
+    /// <see cref="OpCode.Constant"/> rather than wrapped in a <see cref="OpCode.Closure"/>.
+    /// </summary>
+    private static List<OpCode> LambdaIn(string source, string enclosing) {
+        Chunk script = Compile(source);
+        BytecodeFunction outer = FunctionConstants(script).Single(f => f.Name == enclosing);
+        BytecodeFunction lambda = FunctionConstants(outer.Bytecode).First();
+        return Ops(lambda.Bytecode);
+    }
+
+    private static IEnumerable<BytecodeFunction> FunctionConstants(Chunk chunk) =>
+        Decode(chunk)
+            .Where(i => i.Op is OpCode.Constant or OpCode.ConstantLong)
+            .Select(i => chunk.ReadConstant(i.Operand))
+            .Select(v => v.TryAsFunction(out GrobFunction? function) ? function as BytecodeFunction : null)
+            .OfType<BytecodeFunction>();
+
     private static int Widenings(List<OpCode> ops) => ops.Count(op => op == OpCode.IntToFloat);
 
     // -----------------------------------------------------------------------
@@ -255,10 +274,11 @@ public sealed class IntToFloatWideningTests {
     [Fact]
     public void Return_InsideALambdaInsideAFloatFunction_IsNotWidenedByTheEnclosingReturnType() {
         // The lambda is its own function with no declared return type: the enclosing fn's
-        // `float` must not leak into it. The lambda's body is read where it is called.
-        List<OpCode> ops = Function("fn f(): float {\n    g := () => 1\n    return 2.5\n}", "f");
+        // `float` must not leak into an explicit `return` in its block body.
+        List<OpCode> lambda = LambdaIn(
+            "fn f(): float {\n    g := () => {\n        return 1\n    }\n    return 2.5\n}", "f");
 
-        Assert.Equal(0, Widenings(ops));
+        Assert.Equal([OpCode.Constant, OpCode.Return, OpCode.Nil, OpCode.Return], lambda);
     }
 
     // -----------------------------------------------------------------------
