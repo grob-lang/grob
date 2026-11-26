@@ -9,10 +9,10 @@ namespace Grob.Compiler.Tests;
 
 /// <summary>
 /// An <c>int</c> the checker accepts where a <c>float</c> is expected is widened with
-/// <see cref="OpCode.IntToFloat"/> in every position that takes one (R-58, D-460): a binding, an
-/// assignment, a return, a struct field and its default, a parameter default, an argument to a
-/// function value, an array literal's elements, a map literal's values, an array or map method's
-/// argument and a switch's value pattern. Without the opcode the value reaches the first
+/// <see cref="OpCode.IntToFloat"/> in each position that takes one and whose target type the
+/// compiler can see (R-58, D-460): a binding, an assignment, a return, a struct field and its
+/// default, a parameter default, an argument to a function value, an array literal's elements, a
+/// map literal's values, an array or map method's argument and a switch's value pattern. Without the opcode the value reaches the first
 /// <c>float</c> operation as an <c>int</c> and faults, or, in a comparison, quietly compares
 /// unequal. Each case pins the exact opcodes of the chunk that holds the position.
 /// </summary>

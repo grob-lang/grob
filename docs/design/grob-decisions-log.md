@@ -456,7 +456,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-457 | November 2026 | VM — exceptional unwind; Compiler — bytecode emission; Deferred Work Register | **A `finally` that a throw runs ends at its own region's `TryEnd`.** `TryRegion` gains a required `TryEndOffset`, the offset of its closing `TryEnd`, which the compiler records as it writes it; the VM's bounded finally run ends when that instruction executes in the finally's own frame. It had counted the `TryBegin` and `TryEnd` it executed, and a `try` nested in the finally left past its own `TryEnd` (a throw caught further out, a `break`, a `continue` or a callee's `return`) left the count high, so the run went on past the finally into the code after it. Supersedes D-334 in part. Rejected: correcting the count, which only a throw could hook. R-91's underflow has another cause. R-80 closed. Count unchanged at 122. |
 | D-458 | November 2026 | VM — exceptional unwind, re-entrant call-back bridge; Deferred Work Register | **An error a native's callback does not catch leaves the callback's dispatch at its floor and is routed on from the native's call site.** `InvokeCallable` records its dispatch's floor; when `PropagateThrow` finds no handler in the callback's frame it unwinds that frame and reports the error unhandled, and `InvokeCallable` carries the error and the fault site's diagnostic out through the native in an internal `CallbackEscapeException`, which the `Call` arm routes on from its own frame with its own `finally` bounds, beside a native's `NativeFaultException`. The walk had gone on to the script's handler and the callback's dispatch ran the handler and the rest of the script itself, then popped an empty stack. Unhandled, the fault site's own diagnostic is raised at its line. Rejected: unwinding to the owning dispatch after the full walk, which runs outer finallies mid-native and unbounded. R-91 closed. Count unchanged at 122. |
 | D-459 | November 2026 | VM — native-call boundary; Stdlib — `date`, `string`, `guid`; Deferred Work Register | **A native's host exception is an internal error, E9001, that names the native; `toZone`, `replace` and `guid.newV5` raise a catchable error for their bad input.** `RunNative` runs every native, from the `Call` arm and from `InvokeCallable`, and an exception that is not a `NativeFaultException`, a Grob error, an `OverflowException`, an exit, a cancellation or the VM's own control signal leaves it as a `GrobInternalException` naming the native, the exception's type and the call's line, with the host exception inside and its message left out (D-077); no `catch` handles it and the oracle still counts it a finding. `toZone` with an unknown zone raises `ParseError` E5702, `replace` with an empty search text and `guid.newV5` with a namespace that is not a `guid` raise `RuntimeError` E5903, each through `NativeFaultException`. A native's own E5903 is no longer walked twice, which ran a script's `finally` twice. D-344's seam, landed with no entry, is stated. An internal error skips an enclosing `finally`, as `exit()` does, a second exception to D-275 (Decision 6; D-275 amended in part). `toZone`'s message omits the zone (D-077). Rejected: a catchable error for any host exception, which hides a defect. R-69 closed. Count unchanged at 122. |
-| D-460 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **An `int` the checker accepts for a `float` is widened with `IntToFloat` in every position, not only in operands, ternary and switch arms and arguments.** A binding, a `readonly`, a return, a struct field and its default, a parameter default, an assignment to an identifier, a struct field or an array element, a map literal's value, a switch's value pattern and an array literal's elements beside a `float` emit it through one helper, `VisitWidened`, which asks `GetExprType` for the value as a ternary arm does; a `const` folds the value instead, since it emits no code. The target is the declaration's own annotation or the type the checker already put on the assignment target, so the compiler copies no rule. A call through a function value and a call to an array or map method take their widening from the checker on `CallExpr.ResolvedBinding`. Found beyond R-58's list: the array and map literals, the two collections' methods and the switch pattern, where `2.0 switch { 2 => … }` matched nothing. Not done: a lambda's result (R-96), function types compared with `int` assignable to `float`, against D-326's invariance (R-97), a named function held in a binding (R-82), a `param`'s default (R-15). Rejected: a check at run time. R-58 closed. Count unchanged at 122. |
+| D-460 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **An `int` the checker accepts for a `float` is widened with `IntToFloat` wherever the compiler can see the target type, not only in operands, ternary and switch arms and arguments.** A binding, a `readonly`, a return, a struct field and its default, a parameter default, an assignment to an identifier, a struct field or an array element, a map literal's value, a switch's value pattern and an array literal's elements beside a `float` emit it through one helper, `VisitWidened`, which asks `GetExprType` for the value as a ternary arm does; a `const` folds the value instead, since it emits no code. The target is the declaration's own annotation or the type the checker already put on the assignment target, so the compiler copies no rule. A call through a function value and a call to an array or map method take their widening from the checker on `CallExpr.ResolvedBinding`. Found beyond R-58's list: the array and map literals, the two collections' methods and the switch pattern, where `2.0 switch { 2 => … }` matched nothing. Not done: a lambda's result (R-96), function types compared with `int` assignable to `float`, against D-326's invariance (R-97), a named function held in a binding (R-82), a `param`'s default (R-15). Rejected: a check at run time. R-58 closed. Count unchanged at 122. |
 
 ---
 
@@ -19082,7 +19082,7 @@ amends).
 
 ---
 
-### D-460 — An `int` the checker accepts for a `float` is widened in every position; R-58 closed; R-96 and R-97 filed (November 2026)
+### D-460 — An `int` the checker accepts for a `float` is widened wherever the compiler can see the target type; R-58 closed; R-96 and R-97 filed (November 2026)
 
 Area: Compiler — type checker, bytecode emission; Deferred Work Register
 Supersedes: none
@@ -19092,8 +19092,9 @@ Refines: D-452, D-456
 **A bug fix with no opcode, no code, no token, no AST node and no grammar production**; the
 count stays at 122. D-448 filed the defect as R-58. D-452 widened an argument bound to a
 parameter of a script function or a native, and D-450 and D-456 the operands an operator and a
-`??` take. This entry widens every other position, in one change, the last of four stacked fixes
-to the crash oracle's findings, after D-457, D-458 and D-459.
+`??` take. This entry widens the other positions whose target type the compiler can see, in one
+change, the last of four stacked fixes to the crash oracle's findings, after D-457, D-458 and
+D-459. Decision 4 lists the four positions it cannot see into, each filed.
 
 **The defect.** The checker accepts an `int` wherever a `float` is expected. D-164 names `int` to
 `float` as the one implicit conversion and words it "in mixed arithmetic"; the checker applies it
@@ -19179,6 +19180,8 @@ operand the compiler assumes `int` (D-450, R-63), bound to a function type with 
 parameter, `k: fn(float): float := a => a / 2` then `k(5)`, answered `2` with integer arithmetic, a
 wrong answer. The argument is now a `float`, and the assumed integer division stops with `expected
 Int, actual Float`. It is R-63's defect reached through a typed binding; R-63's row says so.
+A call with a `float` argument already stopped such a lambda the same way, so the programs that change
+are the ones that passed an `int` where the type says `float`, which is the position this entry widens.
 Two mutants of this increment's own integration test source reached it, and are added to R-63's known
 entry. Beyond that, every `.grob` file in the repository, 165, was run before and after on one
 machine and none differs in its output or its exit code; the whole suite passes. **Not measured**:
@@ -19447,7 +19450,7 @@ _(Full detail in `grob-vm-architecture.md`)_
 
 _This document is the authoritative decisions record for Grob._
 _November 2026 — D-460 added, with a source change. **An `int` the checker accepts for a `float` is_
-_widened with `IntToFloat` in every position**: a binding, a return, a struct field, a parameter_
+_widened with `IntToFloat` wherever the compiler can see the target type**: a binding, a return, a struct field, a parameter_
 _default, an assignment, the array and map literals, the two collections' methods, a call through a_
 _function value and a switch's value pattern. R-58 closed; R-96 and R-97 filed. Count unchanged at 122._
 _Previous: November 2026 — D-459 added, with a source change. **A native's host exception is an internal_

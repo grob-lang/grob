@@ -8,10 +8,10 @@ namespace Grob.Integration.Tests;
 
 /// <summary>
 /// An <c>int</c> the checker accepts where a <c>float</c> is expected runs as a <c>float</c> in
-/// every position that takes one (R-58, D-460). Each case runs a program whose value is then
-/// divided by an <c>int</c>: a value left as an <c>int</c> faults the VM, 'expected Float, actual
-/// Int', or divides as an integer and prints a different number, so a fraction in the output is
-/// the proof that the value was widened.
+/// each position that takes one and whose target type the compiler can see (R-58, D-460). Each
+/// case runs a program whose value is then divided by an <c>int</c>: a value left as an <c>int</c>
+/// faults the VM, 'expected Float, actual Int', or divides as an integer and prints a different
+/// number, so a fraction in the output is the proof that the value was widened.
 /// </summary>
 public sealed class IntToFloatWideningTests {
     private static (string Stdout, string Stderr, int ExitCode) RunSource(string source) {
