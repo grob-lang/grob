@@ -211,13 +211,18 @@ public sealed class DatePluginTests {
     }
 
     [Fact]
-    public void Parse_InvalidString_ThrowsCatchableParseError() {
+    public void Parse_InvalidString_ThrowsCatchableParseErrorWithoutTheInput() {
+        // D-077: an error message names the function and the problem, never the script's value.
         var vm = NewRegisteredVm();
 
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() =>
-            vm.Run(BuildCallChunk("date.parse", GrobValue.FromString("not-a-date"), GrobValue.FromString(""))));
+            vm.Run(BuildCallChunk("date.parse", GrobValue.FromString("Secret-not-a-date"), GrobValue.FromString(""))));
 
         Assert.Equal(ErrorCatalog.E5702.Code, ex.Code);
+        Assert.Equal(1, ex.Line);
+        Assert.Equal(0, ex.Column); // the chunk builder writes no columns
+        Assert.Equal("date.parse: the value is not a valid date.", ex.Message);
+        Assert.DoesNotContain("Secret", ex.Message, StringComparison.Ordinal);
     }
 
     // -----------------------------------------------------------------------
@@ -244,13 +249,19 @@ public sealed class DatePluginTests {
     }
 
     [Fact]
-    public void Parse_StringMismatchedWithExplicitPattern_ThrowsCatchableParseError() {
+    public void Parse_StringMismatchedWithExplicitPattern_ThrowsCatchableParseErrorWithoutTheValues() {
+        // D-077: neither the input nor the pattern, both script values, appears in the message.
         var vm = NewRegisteredVm();
 
         GrobRuntimeException ex = Assert.Throws<GrobRuntimeException>(() => vm.Run(BuildCallChunk(
-            "date.parse", GrobValue.FromString("not-a-date"), GrobValue.FromString("dd/MM/yyyy"))));
+            "date.parse", GrobValue.FromString("Secret-not-a-date"), GrobValue.FromString("'Hidden'dd/MM/yyyy"))));
 
         Assert.Equal(ErrorCatalog.E5702.Code, ex.Code);
+        Assert.Equal(1, ex.Line);
+        Assert.Equal(0, ex.Column); // the chunk builder writes no columns
+        Assert.Equal("date.parse: the value does not match the pattern.", ex.Message);
+        Assert.DoesNotContain("Secret", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Hidden", ex.Message, StringComparison.Ordinal);
     }
 
     // -----------------------------------------------------------------------

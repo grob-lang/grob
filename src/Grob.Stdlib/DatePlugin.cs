@@ -100,11 +100,11 @@ public sealed class DatePlugin : IGrobPlugin {
                 if (pattern.Length == 0) {
                     if (!DateParse.TryParseIso(s, _clock.UtcNow, _clock.LocalZone, out parsed)) {
                         throw new NativeFaultException(
-                            "ParseError", ErrorCatalog.E5702.Code, $"date.parse: '{s}' is not a valid date.");
+                            "ParseError", ErrorCatalog.E5702.Code, "date.parse: the value is not a valid date.");
                     }
                 } else if (!DateParse.TryParsePattern(s, pattern, _clock.UtcNow, _clock.LocalZone, out parsed)) {
                     throw new NativeFaultException("ParseError", ErrorCatalog.E5702.Code,
-                        $"date.parse: '{s}' does not match pattern '{pattern}'.");
+                        "date.parse: the value does not match the pattern.");
                 }
                 return FromDateTimeOffset(parsed);
             }));

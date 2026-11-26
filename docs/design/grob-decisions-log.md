@@ -18973,8 +18973,11 @@ and an uncaught one is reported at its line.
   `InvalidTimeZoneException` and `ArgumentException` (an empty id or one with a null character)
   are one case. The message is `date.toZone: the zone is not a known time zone.` It names the
   function and the problem and not the id, since an error message shows names and types and never
-  a script's value (D-077). The first form quoted the id, as `date.parse` quotes its input; that
-  was a leak of the same kind and is not copied.
+  a script's value (D-077). The first form quoted the id, as `date.parse` quoted its input; that
+  was a leak of the same kind and is not copied. `date.parse`'s two E5702 messages, which quoted
+  the input and the pattern, are corrected with it, by Chris's ruling on #277's review:
+  `date.parse: the value is not a valid date.` and `date.parse: the value does not match the
+  pattern.`
 - **`replace` with an empty search text: `RuntimeError`, E5903.** The spec says only "replaces all
   occurrences" and gives no result for an empty text, which occurs between every pair of
   characters; Python and Go answer one way and .NET refuses, and the choice is not the VM's to
