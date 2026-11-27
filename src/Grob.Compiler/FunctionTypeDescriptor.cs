@@ -173,9 +173,7 @@ public sealed class FunctionTypeDescriptor {
                 return null;
             }
         }
-        // The merged return is inferred only when every shape that gave it was: one
-        // declared return makes the result a declared type again.
-        bool inferred = left.ReturnIsInferred && right.ReturnIsInferred;
+        bool inferred = ReturnStaysInferred(left, right);
         if (left.ReturnType != GrobType.Unknown && right.ReturnType != GrobType.Unknown) {
             return TryMergePosition(
                     left.ReturnType, left.ReturnDescriptor, right.ReturnType, right.ReturnDescriptor,
@@ -186,6 +184,54 @@ public sealed class FunctionTypeDescriptor {
         return TryMergeReturnBound(left, right, out GrobType? bound, out FunctionTypeDescriptor? boundShape)
             ? new FunctionTypeDescriptor(parameterTypes, parameterDescriptors, bound, boundShape) { ReturnIsInferred = inferred }
             : null;
+    }
+
+    /// <summary>
+    /// The one rule for the provenance of a return when two shapes meet (D-461): the result
+    /// is inferred only when every shape that gave it was, so one declared return makes it
+    /// a declared type again, and nothing makes a declared return inferred. <see cref="Merge"/>
+    /// applies it to the shapes it combines and <see cref="AfterAssigning"/> to a binding's
+    /// shape and a value assigned to it.
+    /// </summary>
+    private static bool ReturnStaysInferred(FunctionTypeDescriptor left, FunctionTypeDescriptor right) =>
+        left.ReturnIsInferred && right.ReturnIsInferred;
+
+    /// <summary>
+    /// The shape a binding holding this one has once <paramref name="assigned"/> is assigned
+    /// to it (D-461): this shape where no <see cref="ReturnIsInferred"/> in it changes by
+    /// <see cref="ReturnStaysInferred"/>, otherwise a copy where each has. The rule is
+    /// applied at every level of the return, as <see cref="Merge"/> applies it: a function
+    /// that returns a function is compared through the nested shape, so a nested return
+    /// left inferred would let the conversion back in one level down. A copy, never a
+    /// change in place, since a descriptor is shared by every binding and lambda it was
+    /// read from: <c>j := k</c> then <c>k = declared</c> must leave <c>j</c> as it was. A
+    /// level the assigned shape has no nested shape for is left as it is.
+    /// </summary>
+    public FunctionTypeDescriptor AfterAssigning(FunctionTypeDescriptor assigned) {
+        bool inferred = ReturnStaysInferred(this, assigned);
+        FunctionTypeDescriptor? held = KnownReturn(this).Shape;
+        FunctionTypeDescriptor? updated = held is not null && KnownReturn(assigned).Shape is { } given
+            ? held.AfterAssigning(given)
+            : held;
+        return inferred == ReturnIsInferred && ReferenceEquals(updated, held)
+            ? this
+            : new FunctionTypeDescriptor(this, updated) { ReturnIsInferred = inferred };
+    }
+
+    /// <summary>
+    /// A copy of <paramref name="source"/> in every position, bound included, with
+    /// <paramref name="returnShape"/> in place of the nested shape of its known return
+    /// (the bound's where the return is Unknown). The provenance flag is left to the
+    /// caller, as it is on every other construction.
+    /// </summary>
+    private FunctionTypeDescriptor(FunctionTypeDescriptor source, FunctionTypeDescriptor? returnShape) {
+        bool boundForm = source.ReturnType == GrobType.Unknown;
+        ParameterTypes = source.ParameterTypes;
+        ReturnType = source.ReturnType;
+        ParameterDescriptors = source.ParameterDescriptors;
+        ReturnDescriptor = boundForm ? source.ReturnDescriptor : returnShape;
+        ReturnBound = source.ReturnBound;
+        ReturnBoundDescriptor = boundForm ? returnShape : source.ReturnBoundDescriptor;
     }
 
     /// <summary>

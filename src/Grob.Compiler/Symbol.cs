@@ -52,9 +52,10 @@ public sealed class Symbol {
     /// <see cref="GrobType.NullableFunction"/>, carries the structural descriptor
     /// (parameter types and return type). <see langword="null"/> for all other types
     /// and for <c>fn</c> declarations, whose return type is tracked separately in
-    /// the type-checker's return-type stack (D-326).
+    /// the type-checker's return-type stack (D-326). The checker replaces it, never edits
+    /// the descriptor, when an assignment ends the binding's inferred return (D-461).
     /// </summary>
-    public FunctionTypeDescriptor? FunctionDescriptor { get; init; }
+    public FunctionTypeDescriptor? FunctionDescriptor { get; internal set; }
 
     /// <summary>
     /// When <see cref="Type"/> is <see cref="GrobType.Struct"/> or

@@ -391,4 +391,197 @@ public sealed class TypeCheckerFunctionTypeInvarianceTests {
             k := (n) => n
             k = id((n) => n + 1)
             """);
+
+    // -----------------------------------------------------------------------
+    // Provenance of an inferred return follows what a binding holds (D-461)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Binding_OriginalLambdaToFloatReturn_KeepsInferredReturnAndIsAccepted() =>
+        AssertNoErrors("""
+            k := () => 1
+            h: fn(): float := k
+            """);
+
+    [Fact]
+    public void Binding_ReassignedWithAnotherLambda_KeepsInferredReturnAndIsAccepted() =>
+        AssertNoErrors("""
+            k := () => 1
+            k = () => 2
+            h: fn(): float := k
+            """);
+
+    [Fact]
+    public void Binding_ReassignedWithDeclaredReturnFunction_LosesInferredReturn() =>
+        AssertSingleError("""
+            fn id(f: fn(): int): fn(): int { return f }
+            k := () => 1
+            k = id(() => 2)
+            h: fn(): float := k
+            """, "E0001", 4, 19);
+
+    [Fact]
+    public void Binding_DeclaredReturnThenAnotherLambda_StaysDeclared() =>
+        AssertSingleError("""
+            fn id(f: fn(): int): fn(): int { return f }
+            k := () => 1
+            k = id(() => 2)
+            k = () => 3
+            h: fn(): float := k
+            """, "E0001", 5, 19);
+
+    [Fact]
+    public void Binding_ReassignedWithDeclaredReturnFunction_LeavesAnAliasTakenBeforeIt() =>
+        AssertNoErrors("""
+            fn id(f: fn(): int): fn(): int { return f }
+            k := () => 1
+            j := k
+            k = id(() => 2)
+            h: fn(): float := j
+            """);
+
+    [Fact]
+    public void Binding_ReassignedWithTernaryOfLambdaAndDeclaredReturn_LosesInferredReturn() =>
+        AssertSingleError("""
+            fn id(f: fn(): int): fn(): int { return f }
+            c := true
+            k := () => 1
+            k = c ? () => 2 : id(() => 3)
+            h: fn(): float := k
+            """, "E0001", 5, 19);
+
+    [Fact]
+    public void Binding_ReassignedWithDeclaredReturnFunction_LosesInferredReturnForAnArgumentToo() =>
+        AssertSingleError("""
+            fn id(f: fn(): int): fn(): int { return f }
+            fn take(f: fn(): float): void { }
+            k := () => 1
+            k = id(() => 2)
+            take(k)
+            """, "E0004", 5, 6);
+
+    [Fact]
+    public void Binding_RefusedAssignment_KeepsInferredReturnAndAddsNoSecondError() =>
+        AssertSingleError("""
+            fn id(f: fn(): string): fn(): string { return f }
+            k := () => 1
+            k = id(() => "s")
+            h: fn(): float := k
+            """, "E0001", 3, 5);
+
+    [Fact]
+    public void Binding_ReassignedWithLambdaReturningADeclaredFunction_LosesInferredReturnOneLevelDown() =>
+        AssertSingleError("""
+            fn make(): fn(): int { return () => 2 }
+            k := () => () => 1
+            k = () => make()
+            h: fn(): fn(): float := k
+            """, "E0001", 4, 25);
+
+    [Fact]
+    public void Binding_ReassignedWithLambdaOfUntrackedReturn_KeepsNestedInferredReturn() =>
+        AssertNoErrors("""
+            k := (a) => () => 1
+            k = (x) => x
+            h: fn(int): fn(): float := k
+            """);
+
+    [Fact]
+    public void ReadonlyBinding_RefusedReassignment_KeepsInferredReturnAndAddsNoSecondError() =>
+        AssertSingleError("""
+            fn id(f: fn(): int): fn(): int { return f }
+            readonly k := () => 1
+            k = id(() => 2)
+            h: fn(): float := k
+            """, "E0202", 3, 1);
+
+    [Fact]
+    public void Binding_NestedLambdaToNestedFloatReturn_KeepsInferredReturnAndIsAccepted() =>
+        AssertNoErrors("""
+            k := () => () => 1
+            k = () => () => 2
+            h: fn(): fn(): float := k
+            """);
+
+    [Fact]
+    public void Binding_ReassignedWithNestedDeclaredReturn_LosesInferredReturnAtEveryLevel() =>
+        AssertSingleError("""
+            fn id(f: fn(): fn(): int): fn(): fn(): int { return f }
+            k := () => () => 1
+            k = id(() => () => 2)
+            h: fn(): fn(): float := k
+            """, "E0001", 4, 25);
+
+    [Fact]
+    public void Binding_ReassignedWithNestedDeclaredReturn_LeavesANestedAliasTakenBeforeIt() =>
+        AssertNoErrors("""
+            fn id(f: fn(): fn(): int): fn(): fn(): int { return f }
+            k := () => () => 1
+            j := k
+            k = id(() => () => 2)
+            h: fn(): fn(): float := j
+            """);
+
+    [Fact]
+    public void Binding_TernaryOfNestedLambdasReassignedWithNestedDeclaredReturn_LosesInferredReturnAtEveryLevel() =>
+        AssertSingleError("""
+            fn id(f: fn(): fn(): int): fn(): fn(): int { return f }
+            c := true
+            k := c ? () => () => 1 : () => () => 2
+            k = id(() => () => 3)
+            h: fn(): fn(): float := k
+            """, "E0001", 5, 25);
+
+    [Fact]
+    public void Binding_CombinedShapeWithAReturnBound_LosesInferredReturnAtEveryLevel() =>
+        AssertSingleError("""
+            fn id(f: fn(int): fn(): int): fn(int): fn(): int { return f }
+            c := true
+            k := c ? (x) => x : (y) => () => 1
+            k = id((z) => () => 2)
+            h: fn(int): fn(): float := k
+            """, "E0001", 5, 28);
+
+    [Fact]
+    public void Binding_CombinedShapeWithAReturnBound_KeepsInferredReturnWhileOnlyLambdasAreAssigned() =>
+        AssertNoErrors("""
+            c := true
+            k := c ? (x) => x : (y) => () => 1
+            k = (z) => () => 2
+            h: fn(int): fn(): float := k
+            """);
+
+    // D-461 records this limit, which R-96 retires: the checker keeps no flow and walks in
+    // source order, so a reassignment in a function body it reaches after a read is not seen
+    // at that read. 'use' reads k before 'reset' is reached, so k is still the lambda there.
+    [Fact]
+    public void Binding_ReassignedInALaterFunctionBody_IsNotSeenAtAnEarlierRead() =>
+        AssertNoErrors("""
+            fn id(f: fn(): int): fn(): int { return f }
+            k := () => 1
+            fn use(): void {
+                h: fn(): float := k
+            }
+            fn reset(): void {
+                k = id(() => 2)
+            }
+            """);
+
+    [Fact]
+    public void StructField_AssignedALambda_IsADeclaredTypeAndRefusedForAFloatReturn() =>
+        AssertSingleError("""
+            type H {
+                f: fn(): int
+            }
+            s := H { f: () => 1 }
+            s.f = () => 2
+            h: fn(): float := s.f
+            """, "E0001", 6, 19);
+
+    [Fact]
+    public void ArrayElement_HoldingALambda_IsNotShownToMatchAFloatReturn() =>
+        AssertSingleError("""
+            fs := [() => 1]
+            h: fn(): float := fs[0]
+            """, "E0001", 2, 19);
 }

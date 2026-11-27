@@ -50,6 +50,18 @@ public sealed class FunctionTypeInvarianceTests {
             """, "E0001", 2, 28);
 
     [Fact]
+    public void BindingReassignedWithDeclaredReturnFunction_IsRefusedForAFloatReturnAtCompileTime() =>
+        AssertRefused("""
+            fn id(f: fn(): int): fn(): int {
+                return f
+            }
+            k := () => 1
+            k = id(() => 2)
+            h: fn(): float := k
+            print(h() / 2.0)
+            """, "E0001", 6, 19);
+
+    [Fact]
     public void FloatFunctionBoundToIntFunction_IsRefusedAtCompileTime() =>
         AssertRefused("""
             fn use(g: fn(float): float): void {

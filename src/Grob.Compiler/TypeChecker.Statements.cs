@@ -250,9 +250,31 @@ public sealed partial class TypeChecker {
             EmitError(PickAssignabilityError(valueType, symbol.Type),
                 $"Cannot assign value of type '{TypeName(valueType)}' to binding '{target.Name}' of type '{TypeName(symbol.Type)}'.",
                 node.Value.Range);
+            // A refused value is not held, so the binding keeps what it held.
+            return GrobType.Unknown;
         }
 
+        RecordAssignedFunctionProvenance(symbol, node.Value);
         return GrobType.Unknown;
+    }
+
+    /// <summary>
+    /// A binding holding a lambda keeps that lambda's inferred return (D-461) only while it
+    /// holds nothing else: a function with a declared return assigned to it ends the
+    /// exception, so a later read of the binding is compared as the declared type the value
+    /// has, as the same value assigned directly would be. The symbol's descriptor is
+    /// replaced, not edited, as other bindings may share it. A value with no tracked shape
+    /// changes nothing, as the direct assignment of such a value is not compared either, and
+    /// neither does an assignment to a <c>const</c>, a <c>readonly</c> or a <c>for...in</c>
+    /// variable, which is refused and leaves the binding holding what it held. The checker
+    /// walks in source order and keeps no flow, so a read it has already passed is
+    /// unaffected, which D-461 records.
+    /// </summary>
+    private void RecordAssignedFunctionProvenance(Symbol symbol, Expression value) {
+        if (symbol.DeclarationNode is ConstDecl or ReadonlyDecl or ForInStmt) return;
+        if (symbol.FunctionDescriptor is not { } held) return;
+        if (InitialiserDescriptor(value) is not { } assigned) return;
+        symbol.FunctionDescriptor = held.AfterAssigning(assigned);
     }
 
     /// <summary>

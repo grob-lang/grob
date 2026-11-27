@@ -19284,6 +19284,43 @@ defect D-460 filed for a lambda's result, R-96, where it was: `k: fn(): float :=
 accepted and stops at run time, and R-96's widening is what makes it run. It is not a decision to
 leave it: R-96's exit criterion states that program is accepted and widened.
 
+_Amendment to Decision 2, after review of PR #279: a binding keeps the exception only while it
+holds nothing but lambdas._ As first written, `k := () => 1` kept the lambda's descriptor for
+good, so `k = id(() => 2)`, where `id` returns a declared `fn(): int`, was checked against it
+and left it in place: `h: fn(): float := k` then passed the `int` to `float` value rule, though
+the same declared `fn(): int` assigned directly to `h` is refused, and a call through `h` could
+stop at run time. An assignment to a function-typed binding now combines the provenance by the
+rule `Merge` applies, `ReturnStaysInferred` in `FunctionTypeDescriptor`: the binding's return
+stays inferred while every value assigned to it is; a declared return clears it and nothing sets
+it again. The rule is applied at every level of the return, as `Merge` applies it, since a
+function returning a function is compared through its nested shape and a nested return left
+inferred would let the conversion back in one level down: `k := () => () => 1` then
+`k = id(() => () => 2)`, with `id` declared `fn(): fn(): int`, refuses `fn(): fn(): float`. A
+combined shape's return bound is followed the same way. `AfterAssigning` returns the binding's
+descriptor unchanged or a copy with each changed level no longer inferred, and the checker
+replaces the symbol's descriptor with it, so `j := k` taken before the reassignment keeps the
+lambda's. The update is made only when the assignment is accepted: a refused value is not held
+and the binding keeps what it held, so the refusal is the one diagnostic; the same holds for an
+assignment to a `const`, a `readonly` or a `for...in` variable, which E0201, E0202 and E0504 refuse
+and which changes nothing. `k := () => 1` then
+`h: fn(): float := k` is still accepted, as is a binding reassigned only with other lambdas; a
+ternary with one declared arm counts as declared. A struct field and an array element need
+nothing: a field's descriptor is its annotation and never inferred, and an element carries no
+descriptor (R-98), so reading `s.f` or `fs[0]` into a `fn(): float` binding is refused. A value
+with no tracked shape changes nothing, as assigning it directly is not compared either.
+
+_The limit, recorded and not fixed._ The checker keeps no flow and walks in source order, so a
+reassignment in a function body it reaches after a read of the binding is not seen at that read.
+With `k := () => 1`, then `fn use(): void { h: fn(): float := k }`, then
+`fn reset(): void { k = id(() => 2) }`, the read in `use` compares `k` as the lambda it first held
+and is accepted, where the declared function assigned directly to `h` would be refused; calling
+`reset()` before `use()` does not change that. The same holds for a read earlier in a loop body than
+an assignment later in it. What the exception admits is R-96's `int` for `float`, which the
+original lambda already gives, or a value for a nullable return, which runs, so the limit costs a
+verdict the direct assignment would not give, not a new way to stop. Making the binding's type
+flow-sensitive is not done here. R-96 retires the exception and so the limit: once a lambda's
+result is widened wherever it is bound, there is no inferred return for a read to mis-compare.
+
 **Decision 3 — what is not compared, and why it stops here.** A function type's parameter or
 return that is an array, a struct or a map is compared by its flat kind, so `fn(int[]): int` is
 accepted for `fn(float[]): int` and `fn(A): int` for `fn(B): int`, and the element type of
@@ -19328,7 +19365,16 @@ returning `nil` or a value for a nullable return, a lambda returning a lambda (a
 wrong body still refused), and a call with an `int` through `fn(float): float` that still widens.
 `FunctionTypeInvarianceTests` in `Grob.Integration.Tests` runs the reproducer, its reverse and an
 argument through the CLI to the diagnostic with its code, line, column and exit code `2`. The same
-file runs an exact match and `h(3)` through `fn(float): float` to their results.
+file runs an exact match and `h(3)` through `fn(float): float` to their results. For the
+amendment, the same two files run the review's program, refused at E0001 with its line, column and
+exit code `2`, and the compiler tests assert what stays accepted (the original lambda, a
+reassignment with another lambda, an alias taken before the reassignment, each also one level
+down and through a combined shape's return bound) and what is refused (a declared return assigned,
+then another lambda assigned; a ternary with a declared arm; an argument; a struct field; an array
+element; a nested declared return), with a refused assignment adding no second diagnostic and the
+later-function-body limit pinned as accepted.
+The amendment moved no verdict among the 165 tracked `.grob` files, run through `check` before and
+after on one machine.
 
 **Spec edits in this commit.** None to a spec document: D-326 already states the rule.
 `grob-open-questions.md`: R-97 closed; R-98 filed; R-96 extended.
