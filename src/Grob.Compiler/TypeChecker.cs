@@ -962,8 +962,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// <summary>
     /// Structural assignability for function-type descriptors (D-326, invariant
     /// assignability). Arity must match exactly; each parameter and the return type
-    /// must be assignable position by position, descending into nested function
-    /// descriptors. A <see cref="GrobType.Unknown"/> on either side at any position is
+    /// must be the same type position by position (<see cref="PositionAssignable"/>),
+    /// descending into nested function descriptors. A <see cref="GrobType.Unknown"/> on either side at any position is
     /// permissive — this is what lets an inferred lambda (whose parameter and body types
     /// are <see cref="GrobType.Unknown"/> in v1) bind to a concrete <c>fn(int): int</c>
     /// annotation, while two fully-concrete descriptors are still compared invariantly.
@@ -986,7 +986,28 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
 
         (GrobType fromReturn, FunctionTypeDescriptor? fromShape) = KnownReturn(from);
         (GrobType toReturn, FunctionTypeDescriptor? toShape) = KnownReturn(to);
-        return PositionAssignable(fromReturn, toReturn, fromShape, toShape);
+        return from.ReturnIsInferred
+            ? InferredReturnAssignable(fromReturn, toReturn, fromShape, toShape)
+            : PositionAssignable(fromReturn, toReturn, fromShape, toShape);
+    }
+
+    /// <summary>
+    /// A return read from a lambda's body (<see cref="FunctionTypeDescriptor.ReturnIsInferred"/>)
+    /// is a value the lambda produces, not a declared type, so it is checked as a value
+    /// against the return it is given: <c>int</c> for <c>float</c>, <c>T</c> or <c>nil</c>
+    /// for <c>T?</c> pass, as they do for any value. A function-typed result is compared
+    /// through its nested shapes. R-96 owns widening such a result at run time.
+    /// </summary>
+    private static bool InferredReturnAssignable(
+        GrobType from, GrobType to, FunctionTypeDescriptor? fromDesc, FunctionTypeDescriptor? toDesc) {
+        if (from == GrobType.Unknown || to == GrobType.Unknown) return true;
+        bool fromIsFunction = from == GrobType.Function || from == GrobType.NullableFunction;
+        bool toIsFunction = to == GrobType.Function || to == GrobType.NullableFunction;
+        if (fromIsFunction && toIsFunction)
+            return TypesAreAssignable(from, to) &&
+                   fromDesc is not null && toDesc is not null &&
+                   DescriptorsAreAssignable(fromDesc, toDesc);
+        return TypesAreAssignable(from, to);
     }
 
     /// <summary>
@@ -1001,17 +1022,26 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     private static FunctionTypeDescriptor? DescriptorAt(IReadOnlyList<FunctionTypeDescriptor?> list, int index) =>
         index < list.Count ? list[index] : null;
 
+    /// <summary>
+    /// One parameter or return position of two function types, compared invariantly
+    /// (D-326, D-461): the two kinds must be the same, so none of the conversions a plain
+    /// value gets applies here, neither <c>int</c> to <c>float</c> nor <c>T</c> to
+    /// <c>T?</c> nor <c>nil</c> to <c>T?</c>. A call through the target passes arguments
+    /// and reads a result as the target's types, and the value behind it reads and writes
+    /// its own; a widened position would hand the value a <c>float</c> where it reads an
+    /// <c>int</c>. A function-typed position is then compared through its nested shapes.
+    /// An array, struct or map position is compared by its flat kind only, as the
+    /// descriptor carries no element, field or value type for it (R-98).
+    /// <see cref="GrobType.Unknown"/> on either side is permissive, as an inferred lambda's
+    /// positions are, and <see cref="GrobType.Error"/> is universal so a failure already
+    /// reported does not cascade.
+    /// </summary>
     private static bool PositionAssignable(
         GrobType from, GrobType to, FunctionTypeDescriptor? fromDesc, FunctionTypeDescriptor? toDesc) {
-        // Unknown on either side is permissive (inferred lambda parameter/body types).
-        if (from == GrobType.Unknown || to == GrobType.Unknown) return true;
-        bool fromIsFunction = from == GrobType.Function || from == GrobType.NullableFunction;
-        bool toIsFunction = to == GrobType.Function || to == GrobType.NullableFunction;
-        if (fromIsFunction && toIsFunction)
-            return TypesAreAssignable(from, to) &&
-                   fromDesc is not null && toDesc is not null &&
-                   DescriptorsAreAssignable(fromDesc, toDesc);
-        return TypesAreAssignable(from, to);
+        if (from is GrobType.Unknown or GrobType.Error || to is GrobType.Unknown or GrobType.Error) return true;
+        if (from != to) return false;
+        if (from is not (GrobType.Function or GrobType.NullableFunction)) return true;
+        return fromDesc is not null && toDesc is not null && DescriptorsAreAssignable(fromDesc, toDesc);
     }
 
     /// <summary>
