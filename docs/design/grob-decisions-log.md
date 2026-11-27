@@ -458,6 +458,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-459 | November 2026 | VM — native-call boundary; Stdlib — `date`, `string`, `guid`; Deferred Work Register | **A native's host exception is an internal error, E9001, that names the native; `toZone`, `replace` and `guid.newV5` raise a catchable error for their bad input.** `RunNative` runs every native, from the `Call` arm and from `InvokeCallable`, and an exception that is not a `NativeFaultException`, a Grob error, an `OverflowException`, an exit, a cancellation or the VM's own control signal leaves it as a `GrobInternalException` naming the native, the exception's type and the call's line, with the host exception inside and its message left out (D-077); no `catch` handles it and the oracle still counts it a finding. `toZone` with an unknown zone raises `ParseError` E5702, `replace` with an empty search text and `guid.newV5` with a namespace that is not a `guid` raise `RuntimeError` E5903, each through `NativeFaultException`. A native's own E5903 is no longer walked twice, which ran a script's `finally` twice. D-344's seam, landed with no entry, is stated. An internal error skips an enclosing `finally`, as `exit()` does, a second exception to D-275 (Decision 6; D-275 amended in part). `toZone`'s message omits the zone (D-077). Rejected: a catchable error for any host exception, which hides a defect. R-69 closed. Count unchanged at 122. |
 | D-460 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **An `int` the checker accepts for a `float` is widened with `IntToFloat` wherever the compiler can see the target type, not only in operands, ternary and switch arms and arguments.** A binding, a `readonly`, a return, a struct field and its default, a parameter default, an assignment to an identifier, a struct field or an array element, a map literal's value, a switch's value pattern and an array literal's elements beside a `float` emit it through one helper, `VisitWidened`, which asks `GetExprType` for the value as a ternary arm does; a `const` folds the value instead, since it emits no code. The target is the declaration's own annotation or the type the checker already put on the assignment target, so the compiler copies no rule. A call through a function value and a call to an array or map method take their widening from the checker on `CallExpr.ResolvedBinding`. Found beyond R-58's list: the array and map literals, the two collections' methods and the switch pattern, where `2.0 switch { 2 => … }` matched nothing. Not done: a lambda's result (R-96), function types compared with `int` assignable to `float`, against D-326's invariance (R-97), a named function held in a binding (R-82), a `param`'s default (R-15). Rejected: a check at run time. R-58 closed. Count unchanged at 122. |
 | D-461 | November 2026 | Compiler — type checker; Deferred Work Register | **Two function types are compared invariantly at every parameter and return position that holds a scalar or a function type, as D-326 says.** `PositionAssignable` required only that each position be assignable as a value is, so `fn(int): int` was accepted for `fn(float): float` and the call through it stopped with an internal error; it now requires the same type, `int` for `float`, `T` for `T?` and `nil` for `T?` included, and compares a function-typed position through its nested shape, so `fn(fn(int): int): void` is refused for `fn(fn(float): float): void` at any depth. E0001, E0004 or E0005 as the position gives, no new code. `Unknown` stays permissive and a lambda's body stays a value: `FunctionTypeDescriptor.ReturnIsInferred` marks a return read from a lambda body, which keeps the value rules, so `() => nil` is still a `fn(): int?`; R-96's widening is unchanged. One program in 12,021 changed verdict, the reproducer, and none tracked in the repository. Not compared: an array, struct or map in a function type's position and a function held in an array or map, which carry no shape, filed as R-98. Rejected: invariance for a lambda's body, which refuses `() => nil` for `fn(): int?`. R-97 closed. Count unchanged at 122. |
+| D-462 | November 2026 | VM — exception unwinding; Deferred Work Register | **A `finally`'s `throw` that replaces a fault nothing catches is what the run reports, as E5904 naming the replacement at the fault's line and column.** D-275 makes a `throw` from a `finally` replace the error in flight. A fault the VM or a native raised went through the handler walk with only a yes or no back, so when a `finally` replaced it and nothing caught the replacement, the fault site raised its own diagnostic and the replacement was lost; an outer `catch` already received it. `TryRaiseRuntimeGrobError` now raises E5904 itself when the walk ends with another error, and the `Call` arm does the same for a callback's error it routes on (D-458). The position is the fault's, as a replaced `throw` is reported at the first `throw` (D-458 Decision 2). A `finally` that does not throw leaves the fault its own code, and an internal error still skips every `finally` (D-459 Decision 6). No new opcode or code. Rejected: the replacement's own `throw` line, which would move a replaced `throw` too. R-99 filed and closed. Count unchanged at 122. |
 
 ---
 
@@ -19339,6 +19340,106 @@ bound), D-451 and D-453 (the oracle), D-420 (the register) and D-308 (no new cod
 
 ---
 
+### D-462 — A `finally`'s `throw` that replaces a fault nothing catches is reported as E5904 naming the replacement; R-99 filed and closed (November 2026)
+
+Area: VM — exception unwinding; Deferred Work Register
+Supersedes: none
+Superseded by: none
+Refines: D-275, D-458
+
+**A bug fix with no opcode, no code, no token, no AST node and no grammar production**; the
+count stays at 122. The defect was found in D-459's review and had no register row; Chris ruled
+it gets its own row and its own change, so R-99 is filed and closed here. It is the sixth of the
+stacked fixes, after D-457, D-458, D-459, D-460 and D-461.
+
+**The defect.** D-275: "`throw` from inside `finally` remains permitted; it replaces any in-flight
+exception". A fault the VM raises (an array index out of range, a division by zero, a nil
+dereference, an overflow, a full value stack, the call-depth guard) and a native's
+`NativeFaultException` go through the same handler walk a `throw` does, by
+`TryRaiseRuntimeGrobError`, which returned only whether the walk found a handler. When a
+`finally` the walk ran threw, the walk carried the replacement on and an outer `catch` received
+it. When nothing caught the replacement either, the fault site raised its own diagnostic, built
+from the fault, and the replacement was lost. With `arr := [1, 2, 3]`,
+`try { print(arr[5]) } finally { throw RuntimeError { message: "replaced" } }` stopped with
+`error[E5101]: array index 5 is out of range for an array of length 3`, and
+`print(date.now().toZone("abc").toIso())` in the same place with E5702, `toZone`'s fault since
+D-459. Measured through `grob run` at `aa1edee`, the revision this branch starts from. A script
+`throw` replaced the same way was reported as E5904 naming the replacement, so the defect was
+the fault sites' alone. A callback's error that a native's call site routes on (D-458) lost a
+replacement the same way: `CallbackEscapeException` kept the fault's diagnostic whatever the walk
+from the call site ended with.
+
+**Decision 1 — the walk reports a replacement it ends with.** `TryRaiseRuntimeGrobError` takes the
+fault's column beside its line and, when the walk finds no handler and ends with an error other
+than the one it raised, throws E5904 naming that error, through `UncaughtThrowDiagnostic`, the
+helper `Throw` uses. The comparison is by reference: the walk replaces its error only when a
+`finally` throws. Every fault site keeps its code as it was: the walk raises the replacement's
+diagnostic before the site's own is reached, so the fourteen call sites gain a column argument and
+nothing else. The `Call` arm, routing on a callback's error from the native's call site, compares
+the error it routed with the one the walk ended with through `DiagnosticAfterWalk`, and carries
+E5904 out in the `CallbackEscapeException` when they differ; `Run`'s report of an escaped error
+already names the walk's error for an E5904. A replacement inside the callback's own dispatch is
+reported by `TryRaiseRuntimeGrobError` there and carried out the same way.
+
+**Decision 2 — the position is the fault's.** The diagnostic names the replacement and is located
+where the fault was raised, its line and column, not at the replacing `throw`. That is where a
+replaced `throw` is reported, at the first `throw`: D-458 Decision 2 states it, "E5904 for a
+`throw`, naming the error the walk ended with", "at the line that raised it", and
+`CallbackThrowTests.ThrowInCallback_ReplacedByScriptFinallyThrow_ReportsTheReplacementAtTheFirstThrow`
+pins it. The replacement's own line is on its `location` field, which `Throw` stamps, for a
+`catch` to read. A full value stack's E5903 is raised by the stack with its line alone, so its
+replacement carries that column too.
+
+**What does not change.** A `finally` that does not throw leaves the fault to surface with its own
+code, line and column. A replacement that an outer `catch` takes is handled as before. An internal
+error, E9001, still skips every `finally`, a replacing one included (D-459 Decision 6). A native's
+own E5903 is still walked once: a replacement leaves before `_walkedFault` is set, and its E5904 is
+not the code the dispatch loop intercepts. The bounded `finally` run (D-457) and the callback floor
+(D-458) are untouched.
+
+**`InvokeCallable`'s call-depth check.** Its `TryRaiseRuntimeGrobError` call gains the column with
+the rest, but no test reaches it and no script can: a callback's frame is pushed only from a
+native the `Call` arm ran below the limit, and the `Call` arm's own check trips first at the next
+call inside it. `Catch_RuntimeError_InvokeCallableStackOverflow_CatchesAndResumes` reaches the
+`Call` arm's check. Recorded, not removed: a guard on a frame push is not this change's to drop.
+
+**Rejected.** Locating the diagnostic at the replacing `throw`, which a reader may expect, since
+the named error was raised there: a replaced `throw` would have to move with it, against D-458
+Decision 2 and its test, and the two kinds of replaced error would otherwise disagree. Returning
+the walk's error from `TryRaiseRuntimeGrobError` for each fault site to report, which repeats one
+decision at fourteen sites. A flag set by `PropagateThrow` when a `finally` replaces its error, in
+place of the reference comparison, which adds state the comparison does not need.
+
+**Tests.** `VirtualMachineFinallyReplacesFaultTests` in `Grob.Vm.Tests` runs eighteen routes: the
+integer and float division and modulo sites, an index out of range on a read and a write, a nil
+read, write and member access, an overflow, a full value stack, the call-depth guard in plain
+recursion and in recursion through callbacks, a fault in a called function and in a callback, and
+a native's `ParseError` E5702, `IndexError` E5102 and `RuntimeError` E5903. Each runs uncaught
+with a replacing `finally`, asserting E5904, the message, line and column and that every frame is
+unwound; caught further out, asserting the replacement and its `location`; and with a `finally`
+that does not throw, asserting the fault's own code, line and column. Beside them: nested
+finallies, a row each for the inner, the outer and both replacing, beside one where neither does; a callee's and a callback's
+own replacing `finally`; a host fault under a replacing `finally`, which still runs no `finally`;
+and the script-`throw` control. `FinallyReplacesFaultTests` in `Grob.Integration.Tests` runs the
+eight routes a script can reach through the CLI the same three ways, with exit codes: `toZone`'s
+E5702, `replace`'s E5903, an index out of range, a division by zero, an overflow, deep recursion,
+a fault in a called function and in a callback. It adds nested finallies with the outer alone
+replacing, a callback's own `finally` two natives deep and the control. A nil dereference and a
+full value stack cannot be reached from a script, so the VM tests alone cover them. The crash
+oracle's `check` reports no finding for the reproducers, its CI slice passes and no known entry
+names R-99.
+
+**Spec edits in this commit.** `grob-error-codes.md`: E5904's description names the replacement
+case. `grob-open-questions.md`: R-99 filed and closed. No other spec text changes: D-275 and §27
+already say a `finally`'s `throw` replaces the error in flight.
+
+Cites D-275 (a `finally`'s `throw` replaces the error in flight), D-457 (the bounded `finally` run
+ends at its region's `TryEnd`), D-458 (the callback floor, `CallbackEscapeException`, `RouteThrow`,
+`UncaughtThrowDiagnostic` and where a replaced `throw` is reported), D-459 (`RunNative`,
+`_walkedFault` and Decision 6's internal error), D-420 (the register) and D-308 (no new code).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -19568,7 +19669,10 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-461 added, with a source change. **Two function types are compared invariantly at_
+_November 2026 — D-462 added, with a source change. **A `finally`'s `throw` that replaces a fault nothing_
+_catches is what the run reports**: E5904 naming the replacement, at the fault's line and column, as a replaced_
+_`throw` is reported at its first `throw` (D-458). R-99 filed and closed. Count unchanged at 122._
+_Previous: November 2026 — D-461 added, with a source change. **Two function types are compared invariantly at_
 _every parameter and return position that holds a scalar or a function type**, as D-326 says: `fn(int): int` is_
 _refused for `fn(float): float` and the reverse, nested positions included, while a lambda's body stays a value._
 _An array, a struct or a map in a position is not compared (R-98). R-97 closed; R-98 filed. Count unchanged at 122._

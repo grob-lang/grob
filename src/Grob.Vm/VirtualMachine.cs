@@ -535,7 +535,7 @@ public sealed class VirtualMachine : IVmCallHost {
                             long a = _stack.Pop().AsInt();
                             if (b == 0L) {
                                 const string message = "integer division by zero";
-                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line,
+                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line, column,
                                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                                     throw new GrobArithmeticException(ErrorCatalog.E5002.Code, line, column, message);
                                 break;
@@ -549,7 +549,7 @@ public sealed class VirtualMachine : IVmCallHost {
                             long a = _stack.Pop().AsInt();
                             if (b == 0L) {
                                 const string message = "integer modulo by zero";
-                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line,
+                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line, column,
                                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                                     throw new GrobArithmeticException(ErrorCatalog.E5003.Code, line, column, message);
                                 break;
@@ -590,7 +590,7 @@ public sealed class VirtualMachine : IVmCallHost {
                             // in .github/workflows/sonarcloud.yml.
                             if (b == 0.0) {
                                 const string message = "float division by zero";
-                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line,
+                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line, column,
                                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                                     throw new GrobArithmeticException(ErrorCatalog.E5004.Code, line, column, message);
                                 break;
@@ -604,7 +604,7 @@ public sealed class VirtualMachine : IVmCallHost {
                             // See S1244 note above on DivideFloat — intentional exact-zero check (D-273).
                             if (b == 0.0) {
                                 const string message = "float modulo by zero";
-                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line,
+                                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line, column,
                                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                                     throw new GrobArithmeticException(ErrorCatalog.E5005.Code, line, column, message);
                                 break;
@@ -857,7 +857,7 @@ public sealed class VirtualMachine : IVmCallHost {
                                 if (i < 0 || i >= array!.Count) {
                                     string message =
                                         $"array index {i} is out of range for an array of length {array!.Count}";
-                                    if (!TryRaiseRuntimeGrobError(IndexErrorLeaf, message, line,
+                                    if (!TryRaiseRuntimeGrobError(IndexErrorLeaf, message, line, column,
                                             boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                                         throw new GrobRuntimeException(ErrorCatalog.E5101.Code, line, column, message);
                                     break;
@@ -869,7 +869,7 @@ public sealed class VirtualMachine : IVmCallHost {
                                     line);
                             } else if (receiver.IsNil) {
                                 const string message = "nil dereference: cannot index nil value";
-                                if (!TryRaiseRuntimeGrobError(NilErrorLeaf, message, line,
+                                if (!TryRaiseRuntimeGrobError(NilErrorLeaf, message, line, column,
                                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                                     throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column, message);
                                 break;
@@ -893,7 +893,7 @@ public sealed class VirtualMachine : IVmCallHost {
                                 if (i < 0 || i >= setIndexArray!.Count) {
                                     string message =
                                         $"array index {i} is out of range for an array of length {setIndexArray!.Count}";
-                                    if (!TryRaiseRuntimeGrobError(IndexErrorLeaf, message, line,
+                                    if (!TryRaiseRuntimeGrobError(IndexErrorLeaf, message, line, column,
                                             boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                                         throw new GrobRuntimeException(ErrorCatalog.E5101.Code, line, column, message);
                                     break;
@@ -903,7 +903,7 @@ public sealed class VirtualMachine : IVmCallHost {
                                 setIndexMap!.Set(setIndex.AsString(), setIndexValue);
                             } else if (setIndexReceiver.IsNil) {
                                 const string message = "nil dereference: cannot index nil value";
-                                if (!TryRaiseRuntimeGrobError(NilErrorLeaf, message, line,
+                                if (!TryRaiseRuntimeGrobError(NilErrorLeaf, message, line, column,
                                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                                     throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column, message);
                                 break;
@@ -923,7 +923,7 @@ public sealed class VirtualMachine : IVmCallHost {
                             // Nil receiver raises E5201 (nil dereference at runtime).
                             if (receiver.IsNil) {
                                 const string message = "nil dereference: cannot access member on nil value";
-                                if (!TryRaiseRuntimeGrobError(NilErrorLeaf, message, line,
+                                if (!TryRaiseRuntimeGrobError(NilErrorLeaf, message, line, column,
                                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                                     throw new GrobRuntimeException(ErrorCatalog.E5201.Code, line, column, message);
                                 break;
@@ -1054,7 +1054,7 @@ public sealed class VirtualMachine : IVmCallHost {
                             int argCount = _activeChunk.ReadByte(_ip++);
                             if (_frameCount == MaxFrames) {
                                 const string message = "Stack overflow — maximum call depth (256) exceeded";
-                                if (!TryRaiseRuntimeGrobError(RuntimeErrorLeaf, message, line,
+                                if (!TryRaiseRuntimeGrobError(RuntimeErrorLeaf, message, line, column,
                                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                                     throw new GrobRuntimeException(ErrorCatalog.E5901.Code, line, column, message);
                                 break;
@@ -1090,7 +1090,7 @@ public sealed class VirtualMachine : IVmCallHost {
                                 try {
                                     nativeResult = RunNative(native, callArgs, invoker, line, column);
                                 } catch (NativeFaultException fault) {
-                                    if (!TryRaiseRuntimeGrobError(fault.LeafTypeName, fault.Message, line,
+                                    if (!TryRaiseRuntimeGrobError(fault.LeafTypeName, fault.Message, line, column,
                                             boundedFinally, finallyBoundaryFloor, finallyBoundaryStart)) {
                                         _walkedFault = new GrobRuntimeException(fault.Code, line, column, fault.Message);
                                         throw _walkedFault;
@@ -1105,9 +1105,11 @@ public sealed class VirtualMachine : IVmCallHost {
                                     if (!RouteThrow(ref escapedValue, ref escapedStruct, line,
                                             boundedFinally, finallyBoundaryFloor, finallyBoundaryStart)) {
                                         // Not caught in this dispatch either: carry the error,
-                                        // as the walk left it, out of this dispatch too.
+                                        // as the walk left it, out of this dispatch too, with the
+                                        // diagnostic for a replacement if a finally threw one.
                                         _escapingError = null;
-                                        throw new CallbackEscapeException(escapedValue, escapedStruct, escaped.Diagnostic);
+                                        throw new CallbackEscapeException(escapedValue, escapedStruct,
+                                            DiagnosticAfterWalk(escaped.Diagnostic, escaped.ExceptionStruct, escapedStruct));
                                     }
                                     break;
                                 }
@@ -1381,7 +1383,7 @@ public sealed class VirtualMachine : IVmCallHost {
                 // handler-table walk a user throw uses; falls back to the pre-routing
                 // diagnostic unchanged when nothing catches it.
                 const string message = "integer overflow";
-                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line,
+                if (!TryRaiseRuntimeGrobError(ArithmeticErrorLeaf, message, line, column,
                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                     throw new GrobArithmeticException(ErrorCatalog.E5001.Code, line, column, message);
             } catch (GrobRuntimeException ex) when (ex.Code == ErrorCatalog.E5903.Code && !ReferenceEquals(ex, _walkedFault)) {
@@ -1391,7 +1393,7 @@ public sealed class VirtualMachine : IVmCallHost {
                 // diagnostic needs, so the fallback rethrows it as-is (no reconstruction,
                 // unlike OverflowException which carries no Grob-specific data). Not a
                 // native's own E5903, which the Call arm walked before raising (D-459).
-                if (!TryRaiseRuntimeGrobError(RuntimeErrorLeaf, ex.Message, ex.Line,
+                if (!TryRaiseRuntimeGrobError(RuntimeErrorLeaf, ex.Message, ex.Line, ex.Column,
                         boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
                     throw;
             } catch (RoutedThrowHandledException) {
@@ -1479,7 +1481,7 @@ public sealed class VirtualMachine : IVmCallHost {
 
         if (_frameCount == MaxFrames) {
             const string message = "Stack overflow — maximum call depth (256) exceeded";
-            if (!TryRaiseRuntimeGrobError(RuntimeErrorLeaf, message, line,
+            if (!TryRaiseRuntimeGrobError(RuntimeErrorLeaf, message, line, column,
                     finallyContext.Bounded, finallyContext.BoundaryFloor, finallyContext.BoundaryStart))
                 throw new GrobRuntimeException(ErrorCatalog.E5901.Code, line, column, message);
 
@@ -1785,12 +1787,16 @@ public sealed class VirtualMachine : IVmCallHost {
     /// does, and drives it through <see cref="PropagateThrow"/>. Returns <see langword="true"/>
     /// when a matching handler was found (the VM has already jumped to it, so the caller
     /// should resume dispatch normally rather than throw); <see langword="false"/> when
-    /// unhandled, so the caller raises the pre-existing top-level diagnostic unchanged —
-    /// routing does not re-diagnose, so no <c>E5904</c> here, unlike an unhandled user throw.
+    /// unhandled, so the caller raises the fault's own top-level diagnostic. When a
+    /// <c>finally</c> the walk ran threw, its error replaced the fault (D-275) and nothing
+    /// caught that either: this raises <c>E5904</c> naming the replacement, at the fault's
+    /// position, as <see cref="OpCode.Throw"/> reports a replaced throw, so the caller's
+    /// diagnostic, which names the fault, is never reached (D-462).
     /// </summary>
     /// <param name="leafTypeName">The <c>GrobError</c> leaf to construct (e.g. <c>"ArithmeticError"</c>).</param>
     /// <param name="message">The fault message, stored on the constructed struct's <c>message</c> field.</param>
     /// <param name="line">The failing instruction's source line, stamped into <c>location</c>.</param>
+    /// <param name="column">The column the fault's own diagnostic carries, for a replacement's.</param>
     /// <param name="boundedFinally">
     /// <see langword="true"/> when the calling <see cref="RunDispatch"/> invocation is
     /// itself running a <c>finally</c> body on the exceptional-unwind path — the fault
@@ -1807,15 +1813,19 @@ public sealed class VirtualMachine : IVmCallHost {
     /// <param name="finallyBoundaryStart">Passed straight through to <see cref="PropagateThrow"/> when
     /// <paramref name="boundedFinally"/> is <see langword="true"/>; ignored otherwise.</param>
     private bool TryRaiseRuntimeGrobError(
-            string leafTypeName, string message, int line,
+            string leafTypeName, string message, int line, int column,
             bool boundedFinally, int finallyBoundaryFloor, int finallyBoundaryStart) {
         var errStruct = new GrobStruct(leafTypeName,
             [new KeyValuePair<string, GrobValue>("message", GrobValue.FromString(message))]);
         errStruct.SetField("location", GrobValue.FromString($"<unknown>:{line}"));
         GrobValue exceptionValue = GrobValue.FromStruct(errStruct);
         GrobStruct thrown = errStruct;
-        return RouteThrow(ref exceptionValue, ref thrown, line,
-            boundedFinally, finallyBoundaryFloor, finallyBoundaryStart);
+        if (RouteThrow(ref exceptionValue, ref thrown, line,
+                boundedFinally, finallyBoundaryFloor, finallyBoundaryStart))
+            return true;
+        if (!ReferenceEquals(thrown, errStruct))
+            throw UncaughtThrowDiagnostic(thrown, line, column);
+        return false;
     }
 
     /// <summary>
@@ -1841,6 +1851,18 @@ public sealed class VirtualMachine : IVmCallHost {
         return new GrobRuntimeException(ErrorCatalog.E5904.Code, line, column,
             $"{thrown.TypeName}: {messageText}");
     }
+
+    /// <summary>
+    /// The diagnostic for an error a handler walk left unhandled: <paramref name="diagnostic"/>,
+    /// the one raised for <paramref name="raised"/>, unless a <c>finally</c> the walk ran threw
+    /// and <paramref name="walked"/>, the error the walk ended with, replaced it (D-275). Then it
+    /// is E5904 naming the replacement, at the same position (D-462).
+    /// </summary>
+    private static GrobRuntimeException DiagnosticAfterWalk(
+            GrobRuntimeException diagnostic, GrobStruct raised, GrobStruct walked) =>
+        ReferenceEquals(raised, walked)
+            ? diagnostic
+            : UncaughtThrowDiagnostic(walked, diagnostic.Line, diagnostic.Column);
 
     /// <summary>
     /// Drives the outward exceptional unwind for a thrown exception (Sprint 7 Increment C,
@@ -2068,7 +2090,9 @@ public sealed class VirtualMachine : IVmCallHost {
         /// The diagnostic for the error going unhandled. A thrown error is reported as E5904
         /// naming the error the walk ended with, since a <c>finally</c> that throws replaces
         /// it (D-275), exactly as <see cref="OpCode.Throw"/> reports one; a fault the VM or a
-        /// native raised keeps its own code, as it does without a callback between.
+        /// native raised keeps its own code, as it does without a callback between, unless a
+        /// <c>finally</c> replaced it, when every walk that saw the replacement has already
+        /// made <see cref="Diagnostic"/> an E5904 (D-462).
         /// </summary>
         public GrobRuntimeException UnhandledDiagnostic() =>
             Diagnostic.Code == ErrorCatalog.E5904.Code
