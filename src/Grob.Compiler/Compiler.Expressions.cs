@@ -156,10 +156,11 @@ public sealed partial class Compiler {
     /// <inheritdoc/>
     /// <remarks>
     /// Emits each element in source order, then a single <see cref="OpCode.NewArray"/>
-    /// (1-byte element count) which pops the elements and pushes the new array.
+    /// (1-byte element count) which pops the elements and pushes the new array. An
+    /// <c>int</c> element beside a <c>float</c> one is widened (R-58, D-460).
     /// </remarks>
     public override object? VisitArrayLiteral(ArrayLiteralExpr node) {
-        foreach (Expression element in node.Elements) Visit(element);
+        VisitArrayElements(node.Elements);
         _chunk.WriteOpCode(OpCode.NewArray, node.Range.Start.Line);
         _chunk.WriteByte(ToByteOperand(node.Elements.Count, "array literal length"), node.Range.Start.Line);
         return null;
@@ -657,7 +658,8 @@ public sealed partial class Compiler {
     // Emits a boolean pattern test with the subject already loaded as the left operand.
     private void EmitPatternTest(SwitchPattern pattern, GrobType subjectType, int line) {
         if (pattern is ValuePattern vp) {
-            Visit(vp.Value);
+            // An int pattern on a float scrutinee is widened: Equal compares the kinds too.
+            VisitWidened(vp.Value, IsFloatScrutinee(subjectType));
             _chunk.WriteOpCode(OpCode.Equal, line); // type-agnostic, mirrors select
         } else if (pattern is RelationalPattern rp) {
             EmitRelationalPatternTest(rp, subjectType, line);
@@ -763,8 +765,10 @@ public sealed partial class Compiler {
         // whatever the source call omitted. A complete positional call binds each slot to
         // the argument in the same position, so it emits exactly what the source-order
         // loop below would. Only the checker sets ResolvedBinding, and only on a call it
-        // bound: a call through a function-typed parameter, whose identifier carries its
-        // owning FnDecl too, has none.
+        // bound or a call that widens an argument (R-58, D-460): a call through a function
+        // value or to an array or map method has a binding only when an argument is an int
+        // bound to a float, and otherwise none, so a call through a function-typed
+        // parameter, whose identifier carries its owning FnDecl too, keeps its bytes.
         if (node.ResolvedBinding is { } binding) {
             EmitBoundArguments(node, binding, node.ResolvedFunction, line);
             _chunk.WriteOpCode(OpCode.Call, line);
@@ -915,8 +919,10 @@ public sealed partial class Compiler {
                 EmitConstant(constant, line);
             } else {
                 // A default slot with no constant is a script function's: only CheckCall
-                // builds one, and it sets ResolvedFunction alongside.
-                Visit(fn!.Parameters[p].DefaultValue!);
+                // builds one, and it sets ResolvedFunction alongside. The default is written
+                // in the declaration, so an int for a float parameter is widened here.
+                Parameter parameter = fn!.Parameters[p];
+                VisitWidened(parameter.DefaultValue!, IsFloatAnnotation(parameter.Type));
             }
         }
     }
@@ -1065,7 +1071,7 @@ public sealed partial class Compiler {
             Expression value = suppliedByName.TryGetValue(field.Name, out Expression? supplied)
                 ? supplied
                 : field.DefaultValue!;
-            Visit(value);
+            VisitWidened(value, IsFloatAnnotation(field.Type));
         }
 
         // Cache per-chunk to avoid repeated registration of the same type (256-slot limit).
@@ -1111,13 +1117,14 @@ public sealed partial class Compiler {
     /// <inheritdoc/>
     public override object? VisitMapLiteral(MapLiteralExpr node) {
         int line = node.Range.Start.Line;
+        bool floatValues = IsFloatMapValue(node.TypeArguments);
         foreach (MapEntry entry in node.Entries) {
             // EmitConstant, not a raw AddConstant + (byte) cast: the key's pool index is an
             // int, and a chunk whose pool has already passed 255 would otherwise wrap it
             // silently (256 -> 0) and build the map under the wrong key. EmitConstant widens
             // to ConstantLong instead. The VM decodes both, so entry order is unchanged.
             EmitConstant(GrobValue.FromString(entry.Key), line);
-            Visit(entry.Value);
+            VisitWidened(entry.Value, floatValues);
         }
         _chunk.WriteOpCode(OpCode.NewMap, line);
         _chunk.WriteByte(ToByteOperand(node.Entries.Count, "map literal entry count"), line);

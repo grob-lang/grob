@@ -456,6 +456,7 @@ ubiquity not quality. Python owns education but is dynamically typed. Grob targe
 | D-457 | November 2026 | VM — exceptional unwind; Compiler — bytecode emission; Deferred Work Register | **A `finally` that a throw runs ends at its own region's `TryEnd`.** `TryRegion` gains a required `TryEndOffset`, the offset of its closing `TryEnd`, which the compiler records as it writes it; the VM's bounded finally run ends when that instruction executes in the finally's own frame. It had counted the `TryBegin` and `TryEnd` it executed, and a `try` nested in the finally left past its own `TryEnd` (a throw caught further out, a `break`, a `continue` or a callee's `return`) left the count high, so the run went on past the finally into the code after it. Supersedes D-334 in part. Rejected: correcting the count, which only a throw could hook. R-91's underflow has another cause. R-80 closed. Count unchanged at 122. |
 | D-458 | November 2026 | VM — exceptional unwind, re-entrant call-back bridge; Deferred Work Register | **An error a native's callback does not catch leaves the callback's dispatch at its floor and is routed on from the native's call site.** `InvokeCallable` records its dispatch's floor; when `PropagateThrow` finds no handler in the callback's frame it unwinds that frame and reports the error unhandled, and `InvokeCallable` carries the error and the fault site's diagnostic out through the native in an internal `CallbackEscapeException`, which the `Call` arm routes on from its own frame with its own `finally` bounds, beside a native's `NativeFaultException`. The walk had gone on to the script's handler and the callback's dispatch ran the handler and the rest of the script itself, then popped an empty stack. Unhandled, the fault site's own diagnostic is raised at its line. Rejected: unwinding to the owning dispatch after the full walk, which runs outer finallies mid-native and unbounded. R-91 closed. Count unchanged at 122. |
 | D-459 | November 2026 | VM — native-call boundary; Stdlib — `date`, `string`, `guid`; Deferred Work Register | **A native's host exception is an internal error, E9001, that names the native; `toZone`, `replace` and `guid.newV5` raise a catchable error for their bad input.** `RunNative` runs every native, from the `Call` arm and from `InvokeCallable`, and an exception that is not a `NativeFaultException`, a Grob error, an `OverflowException`, an exit, a cancellation or the VM's own control signal leaves it as a `GrobInternalException` naming the native, the exception's type and the call's line, with the host exception inside and its message left out (D-077); no `catch` handles it and the oracle still counts it a finding. `toZone` with an unknown zone raises `ParseError` E5702, `replace` with an empty search text and `guid.newV5` with a namespace that is not a `guid` raise `RuntimeError` E5903, each through `NativeFaultException`. A native's own E5903 is no longer walked twice, which ran a script's `finally` twice. D-344's seam, landed with no entry, is stated. An internal error skips an enclosing `finally`, as `exit()` does, a second exception to D-275 (Decision 6; D-275 amended in part). `toZone`'s message omits the zone (D-077). Rejected: a catchable error for any host exception, which hides a defect. R-69 closed. Count unchanged at 122. |
+| D-460 | November 2026 | Compiler — type checker, bytecode emission; Deferred Work Register | **An `int` the checker accepts for a `float` is widened with `IntToFloat` wherever the compiler can see the target type, not only in operands, ternary and switch arms and arguments.** A binding, a `readonly`, a return, a struct field and its default, a parameter default, an assignment to an identifier, a struct field or an array element, a map literal's value, a switch's value pattern and an array literal's elements beside a `float` emit it through one helper, `VisitWidened`, which asks `GetExprType` for the value as a ternary arm does; a `const` folds the value instead, since it emits no code. The target is the declaration's own annotation or the type the checker already put on the assignment target, so the compiler copies no rule. A call through a function value and a call to an array or map method take their widening from the checker on `CallExpr.ResolvedBinding`. Found beyond R-58's list: the array and map literals, the two collections' methods and the switch pattern, where `2.0 switch { 2 => … }` matched nothing. Not done: a lambda's result (R-96), function types compared with `int` assignable to `float`, against D-326's invariance (R-97), a named function held in a binding (R-82), a `param`'s default (R-15). Rejected: a check at run time. R-58 closed. Count unchanged at 122. |
 
 ---
 
@@ -19081,6 +19082,144 @@ amends).
 
 ---
 
+### D-460 — An `int` the checker accepts for a `float` is widened wherever the compiler can see the target type; R-58 closed; R-96 and R-97 filed (November 2026)
+
+Area: Compiler — type checker, bytecode emission; Deferred Work Register
+Supersedes: none
+Superseded by: none
+Refines: D-452, D-456
+
+**A bug fix with no opcode, no code, no token, no AST node and no grammar production**; the
+count stays at 122. D-448 filed the defect as R-58. D-452 widened an argument bound to a
+parameter of a script function or a native, and D-450 and D-456 the operands an operator and a
+`??` take. This entry widens the other positions whose target type the compiler can see, in one
+change, the last of four stacked fixes to the crash oracle's findings, after D-457, D-458 and
+D-459. Decision 4 lists the four positions it cannot see into, each filed.
+
+**The defect.** The checker accepts an `int` wherever a `float` is expected. D-164 names `int` to
+`float` as the one implicit conversion and words it "in mixed arithmetic"; the checker applies it
+to every position that takes a `float`, as D-448 recorded when it filed R-58, and this entry
+follows the checker. The compiler made the conversion real in five places. Anywhere
+else the value arrived as an `int`, and the first `float` operation on it stopped with an internal
+error, `GrobValue kind mismatch: expected Float, actual Int`, or, where the operation was an
+equality, compared unequal and answered wrongly. Measured through `grob run` at `8c838ff`, the
+revision this branch starts from: `x: float := 1` then `x / 2`; `x = 1` and a local's `y = 3`; a
+`readonly` and a `const` annotated `float`; `fn f(): float { return 1 }`; a `float` struct field
+given `1`, by construction, by default and by `s.f = 3`; `fn g(x: float = 1)` called as `g()`; a call
+through a function value with a `float` parameter, `k(5)`. The register's list is not all. Also
+broken: `xs: float[] := [1, 2.5]` and `[2.5, 1]`, whose `int` element stayed an `int` in a `float` array;
+`map<string, float>{ "a": 1 }`; `fs.append(2)`, `fs.insert(0, 2)` and `m.set("b", 2)` on a `float[]` and a
+`map<string, float>`; `fs.contains(2)`, which compared a `float` with an `int` and answered `false`; and a
+switch's value pattern, `x switch { 2 => "two", _ => "other" }` with `x` `2.0`, which answered `other`
+since `Equal` compares the kinds too. The last three are silent wrong answers, not faults.
+
+**Decision 1 — one helper, and where the target type comes from.** `VisitWidened(value,
+target)` in `Compiler.Widening.cs` emits the value and, when the target is `float` and
+`GetExprType` gives the value `int`, `IntToFloat` after it on the value's own line, as a binary
+operand's widening is. `GetExprType` is the compiler's reading of an expression's type, which a
+ternary's and a switch's arm widening already rely on; a value whose type it does not know,
+`Unknown`, is left as it was. A value that holds an `int` beside a `float` inside it has the type
+`float` by then, so nothing widens twice. The target is never derived by a rule the compiler
+copies from the checker (D-456 rejected that):
+
+- a declaration's own annotation, read as written (`float`, not `float?`): a binding, a
+  `readonly`, a declared function's return type (held on the sub-compiler that compiles its body,
+  so a lambda inside it, which declares none, does not inherit it), a struct field and its default,
+  a script function's parameter default and a map literal's value type;
+- a type the checker already recorded on the node: an assignment's target, on
+  `IdentifierExpr.ResolvedType`, `MemberAccessExpr.ResolvedFieldType` or `IndexExpr.ElementType`,
+  and a switch's scrutinee type;
+- an array literal's own elements: an `int` is widened when another element is a `float`, which is
+  the unification the checker applied to give the literal its element type.
+
+`float?` is not a target: the checker refuses an `int` for it (`T` widens to `T?`, `int` does not
+reach `float?` in one step), so `x: float? := 1` is E0001 as before, with a test for it.
+
+**Decision 2 — a `const` folds, and a default is widened where it is filled.** A `const` emits no
+code and every reference inlines its folded value, so `const c: float := 3` folds the `int` to the
+float once in `WidenConstant` and no opcode appears. A script function's parameter default is
+compiled at each call site from the declaration (D-446), and is widened there, beside an
+argument's widening.
+
+**Decision 3 — a call with no signature hands the checker's widening over on the binding.** A
+function value's type names its parameters' types and no names (D-326), and an array or map method
+has no signature (R-56), so neither binds. `RecordArgumentWidening` gives such a call a
+`CallExpr.ResolvedBinding` that binds each argument to the slot in its own position, with
+`WidenToFloat` set where the checker proved an `int` meets a `float`. A function value's argument
+is proved against its function type. An array method's `append`, `insert` or `contains` argument is
+proved against the receiver's element type, and a map's `set` value against its value type. The compiler emits it with
+`EmitBoundArguments`, the routine every other bound call uses, so the `?.` call path takes it too. A
+call that widens nothing keeps no binding, and its bytes are what they were; the checker allocates
+nothing extra for it.
+
+**Decision 4 — what is not widened, and why it stops here.**
+
+- **A lambda's result (R-96).** `k: fn(): float := () => 1` still stops. A lambda declares no
+  return type, its body type is `Unknown` and every function-type comparison treats `Unknown` as a
+  match (D-326), so the checker never sees the `int` meet the `float` the shape returns, and the
+  shape may be a binding, an argument, a struct field or a return. Widening the call's result needs
+  a check at run time, which typed opcodes rule out. It needs the lambda typed, as R-47 asks for its
+  parameters. Filed as R-96, with the oracle's pin.
+- **Function types compared with `int` assignable to `float` (R-97).** The checker accepts
+  `fn(int): int` where `fn(float): float` is expected, since comparing two function types compares
+  each parameter and the return as it compares a value, and `int` is assignable to `float`. A call
+  through the second then passes a `float` to a function that reads an `int`. **D-326 makes
+  assignability invariant**: `fn(int): int` is assignable only to `fn(int): int`. **This is a position
+  where the checker accepts `int` for `float` that its own decision says it should not.** Tightening it
+  is a change to what the checker accepts, with the inferred-lambda case (`Unknown` positions stay
+  permissive) to preserve, so it is surfaced and filed as R-97 and the checker's rules are not changed
+  here.
+- **A named function held in a binding (R-82).** `h := half` then `h(3)`, with `half(a: float)`, still
+  stops: the checker types a bare function name `Unknown`, so the call has no function type to widen
+  against. No check at run time is added. R-82's criterion now includes the call.
+- **A `param`'s default.** No code is emitted for a `param`, which binds in Sprint 10 (R-39, R-15), so
+  there is no position to widen. R-15's criterion names it.
+
+**Blast radius.** One behaviour moves for a program that ran. A lambda with no type context whose
+operand the compiler assumes `int` (D-450, R-63), bound to a function type with a `float`
+parameter, `k: fn(float): float := a => a / 2` then `k(5)`, answered `2` with integer arithmetic, a
+wrong answer. The argument is now a `float`, and the assumed integer division stops with `expected
+Int, actual Float`. It is R-63's defect reached through a typed binding; R-63's row says so.
+A call with a `float` argument already stopped such a lambda the same way, so the programs that change
+are the ones that passed an `int` where the type says `float`, which is the position this entry widens.
+Two mutants of this increment's own integration test source reached it, and are added to R-63's known
+entry. Beyond that, every `.grob` file in the repository, 165, was run before and after on one
+machine and none differs in its output or its exit code; the whole suite passes. **Not measured**:
+the benchmark gate, which is Chris's; the change adds no work to a position that does not widen, a
+`float` check ahead of `GetExprType` and one comparison per array literal element.
+
+**Rejected.** A check at run time that widens an `int` where a `float` was expected, which the
+typed-opcode rule rules out (no runtime type checks, the checker having proved the types) and which
+would cost every `SetGlobal` and `Return`. Setting a resolved target type on each AST node in the checker, a
+field on `VarDeclStmt`, `ReturnStmt`, `FieldInit` and `Parameter`, which carries the declaration's own
+annotation a second time. Tightening the checker to refuse the `int` instead, which D-448 and the checker's
+rule settle the other way.
+
+**Tests.** `IntToFloatWideningTests` in `Grob.Compiler.Tests` asserts the exact opcodes for each
+position, global and local binding, `readonly`, `const`'s folded constant, assignment to a global, a local,
+a struct field and an array element, return, struct field and default, parameter default and a
+default filled around a named argument, a function value called through a parameter, a binding, a
+struct field and a call's result, array literal, map literal, `append`, `insert` (the value widened and
+the index not), `contains` and `set`, and a switch's value pattern on `float` and `float?`; each beside
+the case that must not widen: a `float` value, an `int` target, a mixed expression widened once and a
+lambda inside a `float` function; and the checker still refuses `float?` given an `int`, `float[]` given
+`[1, 2]` and `int` given a `float`, each asserting line and column. `IntToFloatWideningTests` in
+`Grob.Integration.Tests` runs each to its `float` result through the CLI, with a fraction in the
+output as the proof, and adds a captured variable, a nested array element, a `return` under a `finally`,
+an optional-chained function field and a parameter assignment. The crash oracle's R-58 pins moved to
+R-63 and to R-96, which make the same signature. Its `check` reports no finding for the
+reproducers. R-58 had no known entry to remove.
+
+**Spec edits in this commit.** None to a spec document. `grob-open-questions.md`: R-58 closed; R-96 and
+R-97 filed; R-15, R-63 and R-82 extended.
+
+Cites D-448 (R-58), D-452 (argument widening and `BoundSlot.WidenToFloat`), D-456 (the checker's
+hand-off to the compiler, and the rejection of copying a rule), D-450 (the known-operand rule), D-164
+(`int` to `float` as the one implicit conversion), D-326 (function types and their invariance), D-446
+(the one binder and the bound list), D-451 and D-453 (the oracle), D-420 (the register) and D-447 (R-56).
+
+---
+
 
 ## Post-MVP Decisions
 
@@ -19310,7 +19449,11 @@ _(Full detail in `grob-vm-architecture.md`)_
 ---
 
 _This document is the authoritative decisions record for Grob._
-_November 2026 — D-459 added, with a source change. **A native's host exception is an internal_
+_November 2026 — D-460 added, with a source change. **An `int` the checker accepts for a `float` is_
+_widened with `IntToFloat` wherever the compiler can see the target type**: a binding, a return, a struct field, a parameter_
+_default, an assignment, the array and map literals, the two collections' methods, a call through a_
+_function value and a switch's value pattern. R-58 closed; R-96 and R-97 filed. Count unchanged at 122._
+_Previous: November 2026 — D-459 added, with a source change. **A native's host exception is an internal_
 _error, E9001, that names the native**, and a native's bad input (`toZone`, `replace`,_
 _`guid.newV5`) is a catchable error with an existing code. `toZone`'s message no longer quotes_
 _the zone (D-077). An internal error skips an enclosing `finally`, as `exit()` does: Decision 6_

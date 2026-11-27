@@ -784,6 +784,7 @@ public sealed partial class TypeChecker {
             return;
         }
         string callee = calleeName is null ? "the function value" : $"function value '{calleeName}'";
+        bool[]? widen = null;
         for (int i = 0; i < paramCount; i++) {
             GrobType paramType = descriptor.ParameterTypes[i];
             GrobType argType = argTypes[i];
@@ -795,7 +796,12 @@ public sealed partial class TypeChecker {
                     $"Argument {i + 1} to {callee} has type '{TypeName(argType)}', which is not assignable to parameter type '{TypeName(paramType)}'.",
                     argExpr.Range);
             }
+            if (Widens(argType, paramType)) {
+                widen ??= new bool[paramCount];
+                widen[i] = true;
+            }
         }
+        RecordArgumentWidening(node, widen);
     }
 
     /// <summary>
@@ -1196,6 +1202,7 @@ public sealed partial class TypeChecker {
         }
         ArrayTypeDescriptor? descriptor = ArrayDescriptorOf(memberAccess.Target);
         CheckArrayElementArgument(memberAccess, argTypes[0], node.Arguments[0].Value, descriptor);
+        RecordWideningAt(node, 0, argTypes[0], descriptor?.ElementKind);
         return GrobType.Bool;
     }
 
@@ -1285,12 +1292,14 @@ public sealed partial class TypeChecker {
             case "append":
                 if (MemberArgCountMatches(node, memberAccess, argTypes.Length, 1)) {
                     CheckArrayElementArgument(memberAccess, argTypes[0], node.Arguments[0].Value, descriptor);
+                    RecordWideningAt(node, 0, argTypes[0], descriptor?.ElementKind);
                 }
                 break;
             case "insert":
                 if (MemberArgCountMatches(node, memberAccess, argTypes.Length, 2)) {
                     CheckArrayIntArgument(memberAccess, argTypes[0], node.Arguments[0].Value, "index");
                     CheckArrayElementArgument(memberAccess, argTypes[1], node.Arguments[1].Value, descriptor);
+                    RecordWideningAt(node, 1, argTypes[1], descriptor?.ElementKind);
                 }
                 break;
             case "remove":
@@ -1382,6 +1391,7 @@ public sealed partial class TypeChecker {
                 if (MemberArgCountMatches(node, memberAccess, argTypes.Length, 2)) {
                     CheckMapKeyArgument(memberAccess, argTypes[0], node.Arguments[0].Value);
                     CheckMapValueArgument(memberAccess, argTypes[1], node.Arguments[1].Value, descriptor);
+                    RecordWideningAt(node, 1, argTypes[1], descriptor?.ValueKind);
                 }
                 break;
             case "remove":

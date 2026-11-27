@@ -5,7 +5,7 @@ namespace Grob.Torture;
 /// <summary>
 /// Removes the values from an exception's message and keeps its shape (gate report §4.7):
 /// paths become <c>&lt;path&gt;</c>, quoted text <c>'…'</c> or <c>"…"</c>, and numbers <c>#</c>.
-/// Kind and type names stay, since they discriminate: R-58's <c>expected Float, actual Int</c>
+/// Kind and type names stay, since they discriminate: R-63's <c>expected Float, actual Int</c>
 /// is not R-60's <c>kind Int is not callable</c>.
 /// </summary>
 internal static partial class MessageNormaliser {
