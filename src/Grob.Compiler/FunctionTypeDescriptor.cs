@@ -20,6 +20,12 @@ namespace Grob.Compiler;
 /// <see cref="ReturnDescriptor"/> (D-326 structural identity). A non-function position
 /// has a <see langword="null"/> entry; a function position carries its descriptor.
 /// </para>
+/// <para>
+/// The flat kind cannot distinguish one array, struct or map from another either, so a
+/// struct position's declared name, an array position's element descriptor and a map
+/// position's value descriptor are carried in <see cref="ParameterIdentities"/> and
+/// <see cref="ReturnIdentity"/> (D-463), which the checker compares invariantly.
+/// </para>
 /// </remarks>
 public sealed class FunctionTypeDescriptor {
     /// <summary>The resolved types of the function's parameters, in declaration order.</summary>
@@ -56,6 +62,27 @@ public sealed class FunctionTypeDescriptor {
     /// <see langword="null"/> otherwise.
     /// </summary>
     public FunctionTypeDescriptor? ReturnBoundDescriptor { get; }
+
+    /// <summary>
+    /// The identity of each parameter beyond its kind and nested shape (D-463),
+    /// positionally aligned with <see cref="ParameterTypes"/>: the declared name of a struct
+    /// parameter, the element descriptor of an array parameter or the value descriptor of a
+    /// map parameter, <see langword="null"/> for any other. Empty when no parameter has one.
+    /// </summary>
+    public IReadOnlyList<PositionIdentity?> ParameterIdentities { get; init; } = [];
+
+    /// <summary>
+    /// The identity of the return beyond its kind and nested shape (D-463): the struct
+    /// name, array element descriptor or map value descriptor it is declared with, or that
+    /// a lambda's body gives it; <see langword="null"/> for any other return.
+    /// </summary>
+    public PositionIdentity? ReturnIdentity { get; init; }
+
+    /// <summary>
+    /// The identity of <see cref="ReturnBound"/>, as <see cref="ReturnIdentity"/> is of
+    /// <see cref="ReturnType"/>; <see langword="null"/> when the bound has none.
+    /// </summary>
+    public PositionIdentity? ReturnBoundIdentity { get; }
 
     /// <summary>
     /// True when <see cref="ReturnType"/> was read from a lambda's body rather than written
@@ -105,17 +132,23 @@ public sealed class FunctionTypeDescriptor {
 
     /// <summary>
     /// A combined shape whose return is Unknown, carrying the concrete return its branches
-    /// agree on as <see cref="ReturnBound"/>.
+    /// agree on as <see cref="ReturnBound"/>, or none.
     /// </summary>
     private FunctionTypeDescriptor(
         IReadOnlyList<GrobType> parameterTypes,
         IReadOnlyList<FunctionTypeDescriptor?> parameterDescriptors,
-        GrobType? returnBound,
-        FunctionTypeDescriptor? returnBoundDescriptor)
+        Position? returnBound)
         : this(parameterTypes, GrobType.Unknown, parameterDescriptors, null) {
-        ReturnBound = returnBound;
-        ReturnBoundDescriptor = returnBoundDescriptor;
+        ReturnBound = returnBound?.Type;
+        ReturnBoundDescriptor = returnBound?.Shape;
+        ReturnBoundIdentity = returnBound?.Identity;
     }
+
+    /// <summary>
+    /// One parameter or return of a shape: its kind, its nested function shape and its
+    /// identity (D-463), combined as one when two shapes are.
+    /// </summary>
+    private readonly record struct Position(GrobType Type, FunctionTypeDescriptor? Shape, PositionIdentity? Identity);
 
     /// <inheritdoc/>
     public override bool Equals(object? obj) =>
@@ -123,16 +156,23 @@ public sealed class FunctionTypeDescriptor {
         ReturnType == other.ReturnType &&
         ReturnBound == other.ReturnBound &&
         ParameterTypes.SequenceEqual(other.ParameterTypes) &&
-        NestedEqual(ReturnDescriptor, other.ReturnDescriptor) &&
-        NestedEqual(ReturnBoundDescriptor, other.ReturnBoundDescriptor) &&
-        ParameterDescriptorsEqual(other);
+        Equals(ReturnDescriptor, other.ReturnDescriptor) &&
+        Equals(ReturnBoundDescriptor, other.ReturnBoundDescriptor) &&
+        Equals(ReturnIdentity, other.ReturnIdentity) &&
+        Equals(ReturnBoundIdentity, other.ReturnBoundIdentity) &&
+        PositionallyEqual(ParameterDescriptors, other.ParameterDescriptors) &&
+        PositionallyEqual(ParameterIdentities, other.ParameterIdentities);
 
-    private bool ParameterDescriptorsEqual(FunctionTypeDescriptor other) {
-        // Treat an empty descriptor list as "all null" so the two-arg and four-arg
-        // constructors compare equal when no position is function-typed.
-        int count = Math.Max(ParameterDescriptors.Count, other.ParameterDescriptors.Count);
+    /// <summary>
+    /// Compares two positional lists, treating an entry past a list's end as
+    /// <see langword="null"/>, so the two-argument and four-argument constructors compare
+    /// equal when no position is function-typed, and a shape with no identities equals one
+    /// whose identities are all <see langword="null"/>.
+    /// </summary>
+    private static bool PositionallyEqual<T>(IReadOnlyList<T?> left, IReadOnlyList<T?> right) where T : class {
+        int count = Math.Max(left.Count, right.Count);
         for (int i = 0; i < count; i++) {
-            if (!NestedEqual(DescriptorAt(ParameterDescriptors, i), DescriptorAt(other.ParameterDescriptors, i))) {
+            if (!Equals(EntryAt(left, i), EntryAt(right, i))) {
                 return false;
             }
         }
@@ -144,7 +184,17 @@ public sealed class FunctionTypeDescriptor {
     /// <see langword="null"/> when that parameter is not a function type, including when
     /// <see cref="ParameterDescriptors"/> is empty because no parameter is.
     /// </summary>
-    public FunctionTypeDescriptor? ParameterDescriptorAt(int index) => DescriptorAt(ParameterDescriptors, index);
+    public FunctionTypeDescriptor? ParameterDescriptorAt(int index) => EntryAt(ParameterDescriptors, index);
+
+    /// <summary>
+    /// The identity of parameter <paramref name="index"/> (D-463), or <see langword="null"/>
+    /// when it has none, including when <see cref="ParameterIdentities"/> is empty because
+    /// no parameter has one.
+    /// </summary>
+    public PositionIdentity? ParameterIdentityAt(int index) => EntryAt(ParameterIdentities, index);
+
+    private Position ParameterAt(int index) =>
+        new(ParameterTypes[index], ParameterDescriptorAt(index), ParameterIdentityAt(index));
 
     /// <summary>
     /// Combines two function shapes that one value may take (D-448 Decision 7): the return
@@ -155,9 +205,10 @@ public sealed class FunctionTypeDescriptor {
     /// other shape's type, so no typed opcode may be chosen from it. The concrete returns
     /// the shapes carry are combined into the result's <see cref="ReturnBound"/>, so an
     /// annotation or a further shape that conflicts with one is still refused. Two
-    /// concrete positions must be equal, and two function-typed positions must both carry
-    /// a nested shape that combines in turn. Returns <see langword="null"/> when the
-    /// arities differ or any position, bound included, conflicts.
+    /// concrete positions must be equal, two function-typed positions must both carry
+    /// a nested shape that combines in turn, and two identities must be equal, where a
+    /// position with none takes the other's (D-463). Returns <see langword="null"/> when
+    /// the arities differ or any position, bound included, conflicts.
     /// </summary>
     public static FunctionTypeDescriptor? Merge(FunctionTypeDescriptor left, FunctionTypeDescriptor right) {
         int count = left.ParameterTypes.Count;
@@ -165,87 +216,87 @@ public sealed class FunctionTypeDescriptor {
 
         var parameterTypes = new GrobType[count];
         var parameterDescriptors = new FunctionTypeDescriptor?[count];
+        var parameterIdentities = new PositionIdentity?[count];
         for (int i = 0; i < count; i++) {
-            if (!TryMergePosition(
-                    left.ParameterTypes[i], left.ParameterDescriptorAt(i),
-                    right.ParameterTypes[i], right.ParameterDescriptorAt(i),
-                    out parameterTypes[i], out parameterDescriptors[i])) {
+            if (TryMergePosition(left.ParameterAt(i), right.ParameterAt(i)) is not { } merged) {
                 return null;
             }
+            (parameterTypes[i], parameterDescriptors[i], parameterIdentities[i]) = merged;
         }
         // The merged return is inferred only when every shape that gave it was: one
         // declared return makes the result a declared type again.
         bool inferred = left.ReturnIsInferred && right.ReturnIsInferred;
         if (left.ReturnType != GrobType.Unknown && right.ReturnType != GrobType.Unknown) {
-            return TryMergePosition(
-                    left.ReturnType, left.ReturnDescriptor, right.ReturnType, right.ReturnDescriptor,
-                    out GrobType returnType, out FunctionTypeDescriptor? returnDescriptor)
-                ? new FunctionTypeDescriptor(parameterTypes, returnType, parameterDescriptors, returnDescriptor) { ReturnIsInferred = inferred }
+            return TryMergePosition(DeclaredReturn(left), DeclaredReturn(right)) is { } returned
+                ? new FunctionTypeDescriptor(parameterTypes, returned.Type, parameterDescriptors, returned.Shape) {
+                    ReturnIsInferred = inferred,
+                    ParameterIdentities = parameterIdentities,
+                    ReturnIdentity = returned.Identity,
+                }
                 : null;
         }
-        return TryMergeReturnBound(left, right, out GrobType? bound, out FunctionTypeDescriptor? boundShape)
-            ? new FunctionTypeDescriptor(parameterTypes, parameterDescriptors, bound, boundShape) { ReturnIsInferred = inferred }
+        return TryMergeReturnBound(left, right, out Position? bound)
+            ? new FunctionTypeDescriptor(parameterTypes, parameterDescriptors, bound) {
+                ReturnIsInferred = inferred,
+                ParameterIdentities = parameterIdentities,
+            }
             : null;
     }
 
+    private static Position DeclaredReturn(FunctionTypeDescriptor descriptor) =>
+        new(descriptor.ReturnType, descriptor.ReturnDescriptor, descriptor.ReturnIdentity);
+
     /// <summary>
-    /// The concrete return a shape is known to have: its return type when concrete, its
-    /// bound when the return is Unknown, or <see langword="null"/> for neither.
+    /// The concrete return a shape is known to have: its return when concrete, its bound
+    /// when the return is Unknown, or <see langword="null"/> for neither.
     /// </summary>
-    private static (GrobType? Type, FunctionTypeDescriptor? Shape) KnownReturn(FunctionTypeDescriptor descriptor) =>
-        descriptor.ReturnType == GrobType.Unknown
-            ? (descriptor.ReturnBound, descriptor.ReturnBoundDescriptor)
-            : (descriptor.ReturnType, descriptor.ReturnDescriptor);
+    private static Position? KnownReturn(FunctionTypeDescriptor descriptor) {
+        if (descriptor.ReturnType != GrobType.Unknown) return DeclaredReturn(descriptor);
+        return descriptor.ReturnBound is { } bound
+            ? new Position(bound, descriptor.ReturnBoundDescriptor, descriptor.ReturnBoundIdentity)
+            : null;
+    }
 
     /// <summary>
     /// Combines the concrete returns two shapes are known to have, where at least one
     /// return is Unknown. Either side knowing none takes the other's; two known returns
     /// must combine as two concrete positions do.
     /// </summary>
-    private static bool TryMergeReturnBound(
-            FunctionTypeDescriptor left, FunctionTypeDescriptor right,
-            out GrobType? type, out FunctionTypeDescriptor? shape) {
-        (GrobType? leftType, FunctionTypeDescriptor? leftShape) = KnownReturn(left);
-        (GrobType? rightType, FunctionTypeDescriptor? rightShape) = KnownReturn(right);
-        if (leftType is not { } knownLeft) {
-            (type, shape) = (rightType, rightShape);
+    private static bool TryMergeReturnBound(FunctionTypeDescriptor left, FunctionTypeDescriptor right, out Position? bound) {
+        Position? leftReturn = KnownReturn(left);
+        Position? rightReturn = KnownReturn(right);
+        if (leftReturn is not { } knownLeft) {
+            bound = rightReturn;
             return true;
         }
-        if (rightType is not { } knownRight) {
-            (type, shape) = (leftType, leftShape);
+        if (rightReturn is not { } knownRight) {
+            bound = knownLeft;
             return true;
         }
-        bool combines = TryMergePosition(knownLeft, leftShape, knownRight, rightShape, out GrobType merged, out shape);
-        type = merged;
-        return combines;
+        bound = TryMergePosition(knownLeft, knownRight);
+        return bound is not null;
     }
 
     /// <summary>
     /// Combines one parameter, or two concrete returns. An <see cref="GrobType.Unknown"/>
-    /// side, as an inferred lambda's parameter is, takes the other side's type and nested
-    /// shape; two concrete sides must be equal, nested shapes included.
+    /// side, as an inferred lambda's parameter is, takes the other side's type, nested
+    /// shape and identity; two concrete sides must be equal, nested shapes and identities
+    /// included. <see langword="null"/> when they conflict.
     /// </summary>
-    private static bool TryMergePosition(
-            GrobType leftType, FunctionTypeDescriptor? leftShape,
-            GrobType rightType, FunctionTypeDescriptor? rightShape,
-            out GrobType type, out FunctionTypeDescriptor? shape) {
-        if (leftType == GrobType.Unknown || rightType == GrobType.Unknown) {
-            (type, shape) = leftType == GrobType.Unknown ? (rightType, rightShape) : (leftType, leftShape);
-            return true;
+    private static Position? TryMergePosition(Position left, Position right) {
+        if (left.Type == GrobType.Unknown) return right;
+        if (right.Type == GrobType.Unknown) return left;
+        if (left.Type != right.Type) return null;
+        if (left.Identity is not null && right.Identity is not null && !left.Identity.Equals(right.Identity)) return null;
+        PositionIdentity? identity = left.Identity ?? right.Identity;
+        if (left.Shape is null || right.Shape is null) {
+            return left.Shape is null && right.Shape is null ? new Position(left.Type, null, identity) : null;
         }
-        type = leftType;
-        shape = null;
-        if (leftType != rightType) return false;
-        if (leftShape is null || rightShape is null) return leftShape is null && rightShape is null;
-        shape = Merge(leftShape, rightShape);
-        return shape is not null;
+        return Merge(left.Shape, right.Shape) is { } shape ? new Position(left.Type, shape, identity) : null;
     }
 
-    private static FunctionTypeDescriptor? DescriptorAt(IReadOnlyList<FunctionTypeDescriptor?> list, int index) =>
+    private static T? EntryAt<T>(IReadOnlyList<T?> list, int index) where T : class =>
         index < list.Count ? list[index] : null;
-
-    private static bool NestedEqual(FunctionTypeDescriptor? left, FunctionTypeDescriptor? right) =>
-        left is null ? right is null : left.Equals(right);
 
     /// <inheritdoc/>
     public override int GetHashCode() {
@@ -257,15 +308,25 @@ public sealed class FunctionTypeDescriptor {
         hash.Add(ReturnDescriptor);
         hash.Add(ReturnBound);
         hash.Add(ReturnBoundDescriptor);
-        // Strip trailing nulls so [] and [null, null, ...] hash identically, consistent
-        // with ParameterDescriptorsEqual which treats missing entries as null.
-        int lastIndex = ParameterDescriptors.Count - 1;
-        while (lastIndex >= 0 && ParameterDescriptors[lastIndex] is null) {
+        hash.Add(ReturnIdentity);
+        hash.Add(ReturnBoundIdentity);
+        AddPositional(ref hash, ParameterDescriptors);
+        AddPositional(ref hash, ParameterIdentities);
+        return hash.ToHashCode();
+    }
+
+    /// <summary>
+    /// Adds a positional list to <paramref name="hash"/> without its trailing
+    /// <see langword="null"/> entries, so <c>[]</c> and <c>[null, null]</c> hash
+    /// identically, consistent with <see cref="PositionallyEqual{T}"/>.
+    /// </summary>
+    private static void AddPositional<T>(ref HashCode hash, IReadOnlyList<T?> list) where T : class {
+        int lastIndex = list.Count - 1;
+        while (lastIndex >= 0 && list[lastIndex] is null) {
             lastIndex--;
         }
         for (int i = 0; i <= lastIndex; i++) {
-            hash.Add(ParameterDescriptors[i]);
+            hash.Add(list[i]);
         }
-        return hash.ToHashCode();
     }
 }

@@ -398,6 +398,34 @@ public sealed class IntToFloatWideningTests {
     }
 
     [Fact]
+    public void FunctionValueCall_ThroughAnArrayElement_WidensAnIntArgument() {
+        // D-463: an element of an array of functions carries its function type, so the
+        // call through it is checked and widened as a call through a typed binding is.
+        List<OpCode> ops = Script("fs: (fn(float): float)[] := [a => a * 2.0]\nr := fs[0](3)");
+
+        int call = ops.LastIndexOf(OpCode.Call);
+        Assert.Equal([OpCode.Constant, OpCode.IntToFloat, OpCode.Call], ops.GetRange(call - 2, 3));
+    }
+
+    [Fact]
+    public void FunctionValueCall_ThroughAnArrayElement_ResultChoosesTheFloatOpcode() {
+        // D-463: the call's result is the element's float return, so '/ 2' divides as
+        // floats; with no shape the result was unknown and took the int operand's opcode.
+        List<OpCode> ops = Script("fs: (fn(float): float)[] := [a => a * 2.0]\nr := fs[0](3.0) / 2");
+
+        int call = ops.LastIndexOf(OpCode.Call);
+        Assert.Equal([OpCode.Call, OpCode.Constant, OpCode.IntToFloat, OpCode.DivideFloat], ops.GetRange(call, 4));
+    }
+
+    [Fact]
+    public void FunctionValueCall_ThroughAForInItem_WidensAnIntArgument() {
+        List<OpCode> ops = Script("fs: (fn(float): float)[] := [a => a * 2.0]\nfor f in fs {\n    print(f(3))\n}");
+
+        int call = ops.IndexOf(OpCode.IntToFloat);
+        Assert.Equal([OpCode.Constant, OpCode.IntToFloat, OpCode.Call], ops.GetRange(call - 1, 3));
+    }
+
+    [Fact]
     public void FunctionValueCall_WithAFloatArgument_IsNotWidened() =>
         Assert.Equal(
             [

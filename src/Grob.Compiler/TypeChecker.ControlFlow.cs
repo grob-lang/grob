@@ -145,8 +145,7 @@ public sealed partial class TypeChecker {
     /// inside it resolve to this loop.
     /// </remarks>
     public override GrobType VisitForIn(ForInStmt node) {
-        (GrobType firstType, GrobType secondType, string? itemNamedTypeName, ArrayTypeDescriptor? itemArrayDescriptor) =
-            ResolveIterationVariableTypes(node);
+        (GrobType firstType, GrobType secondType, SymbolTypeIdentity itemIdentity) = ResolveIterationVariableTypes(node);
 
         // The iteration variables live in a scope that spans the loop body. The
         // body block pushes its own nested scope; the variables remain visible to
@@ -155,14 +154,14 @@ public sealed partial class TypeChecker {
         bool twoVars = node.Variables.Count == 2;
         // The 'item' variable — Variables[0] for the single-identifier array form,
         // Variables[1] for the two-identifier (index/key, item) form — carries the
-        // element's named-type or array descriptor (D-351) so member access or further
-        // indexing on it resolves the same way a `:=`-inferred local does. The index/key
-        // variable (int or string) never needs this identity.
+        // element's named-type or array descriptor (D-351), or its function type (D-463), so
+        // member access, further indexing or a call on it resolves the same way a
+        // `:=`-inferred local does. The index/key variable (int or string) never needs this
+        // identity.
         RegisterSymbol(node.Variables[0], firstType, node.Range.Start, node,
-            typeIdentity: twoVars ? default : new(NamedStructTypeName: itemNamedTypeName, ArrayDescriptor: itemArrayDescriptor));
+            typeIdentity: twoVars ? default : itemIdentity);
         if (twoVars) {
-            RegisterSymbol(node.Variables[1], secondType, node.Range.Start, node,
-                typeIdentity: new(NamedStructTypeName: itemNamedTypeName, ArrayDescriptor: itemArrayDescriptor));
+            RegisterSymbol(node.Variables[1], secondType, node.Range.Start, node, typeIdentity: itemIdentity);
         }
 
         _controlFrames.Push(ControlFrame.Loop);
@@ -175,21 +174,20 @@ public sealed partial class TypeChecker {
     /// <summary>
     /// Resolves the types of a <c>for...in</c> loop's one or two iteration
     /// variables from its subject, emitting the iteration diagnostics
-    /// (E0501/E0502/E0503) as it goes. Returns a 4-tuple; <c>Second</c> is unused for
-    /// single-variable forms. <c>ItemNamedTypeName</c>/<c>ItemArrayDescriptor</c> (D-351)
-    /// carry the item variable's own struct name or array descriptor — from the array's
+    /// (E0501/E0502/E0503) as it goes. Returns a 3-tuple; <c>Second</c> is unused for
+    /// single-variable forms. <c>ItemIdentity</c> carries the item variable's own struct
+    /// name or array descriptor (D-351), or its function type (D-463) — from the array's
     /// element descriptor, or (Sprint 9 Increment C0b-1) the map's value descriptor — so a
-    /// struct- or array-element for...in item resolves member access or further indexing the
-    /// same way a <c>:=</c>-inferred local does; both are <see langword="null"/> for a scalar
-    /// element, a numeric range, or a map whose value type could not be determined.
+    /// struct-, array- or function-element for...in item resolves member access, further
+    /// indexing or a call the same way a <c>:=</c>-inferred local does; it is empty for a
+    /// scalar element, a numeric range, or a map whose value type could not be determined.
     /// </summary>
-    private (GrobType First, GrobType Second, string? ItemNamedTypeName, ArrayTypeDescriptor? ItemArrayDescriptor)
-            ResolveIterationVariableTypes(ForInStmt node) {
+    private (GrobType First, GrobType Second, SymbolTypeIdentity ItemIdentity) ResolveIterationVariableTypes(ForInStmt node) {
         if (node.Iterable is NumericRangeExpr) {
             // Dispatches to VisitNumericRange, which validates the bounds, the step
             // and the descending-needs-negative-step rule.
             Visit(node.Iterable);
-            return (GrobType.Int, GrobType.Int, null, null);
+            return (GrobType.Int, GrobType.Int, default);
         }
 
         GrobType subject = Visit(node.Iterable);
@@ -197,10 +195,14 @@ public sealed partial class TypeChecker {
             case GrobType.Array: {
                     ArrayTypeDescriptor? elementDescriptor = ArrayDescriptorOf(node.Iterable);
                     GrobType itemType = elementDescriptor?.ElementKind ?? GrobType.Unknown;
+                    SymbolTypeIdentity itemIdentity = new(
+                        FunctionDescriptor: elementDescriptor?.ElementFunctionDescriptor,
+                        NamedStructTypeName: elementDescriptor?.ElementNamedTypeName,
+                        ArrayDescriptor: elementDescriptor?.ElementArrayDescriptor);
                     // The index form binds i as the zero-based int counter, item second.
                     return node.Variables.Count == 2
-                        ? (GrobType.Int, itemType, elementDescriptor?.ElementNamedTypeName, elementDescriptor?.ElementArrayDescriptor)
-                        : (itemType, GrobType.Unknown, elementDescriptor?.ElementNamedTypeName, elementDescriptor?.ElementArrayDescriptor);
+                        ? (GrobType.Int, itemType, itemIdentity)
+                        : (itemType, GrobType.Unknown, itemIdentity);
                 }
 
             case GrobType.Map:
@@ -209,7 +211,7 @@ public sealed partial class TypeChecker {
                         $"Iterating a 'map' requires two variables, as in 'for {node.Variables[0]}, v in m'. " +
                         $"To iterate the keys alone, write 'for {node.Variables[0]} in m.keys'.",
                         node.Iterable.Range);
-                    return (GrobType.Error, GrobType.Error, null, null);
+                    return (GrobType.Error, GrobType.Error, default);
                 }
                 // Map keys are strings. The value 'v' binds as the map's own value kind
                 // (Sprint 9 Increment C0b-1, closing the F5-1 note's stated defect) — plain
@@ -218,23 +220,25 @@ public sealed partial class TypeChecker {
                 // case to make nullable here (mirrors the type registry's 'values → V[]',
                 // not 'V?[]', asymmetry). An unresolved map's value stays Unknown.
                 MapTypeDescriptor? mapDescriptor = MapDescriptorOf(node.Iterable);
-                return (GrobType.String, mapDescriptor?.ValueKind ?? GrobType.Unknown,
-                    mapDescriptor?.ValueNamedTypeName, mapDescriptor?.ValueArrayDescriptor);
+                return (GrobType.String, mapDescriptor?.ValueKind ?? GrobType.Unknown, new(
+                    FunctionDescriptor: mapDescriptor?.ValueFunctionDescriptor,
+                    NamedStructTypeName: mapDescriptor?.ValueNamedTypeName,
+                    ArrayDescriptor: mapDescriptor?.ValueArrayDescriptor));
 
             case GrobType.Error:
-                return (GrobType.Error, GrobType.Error, null, null); // cascade suppression
+                return (GrobType.Error, GrobType.Error, default); // cascade suppression
 
             case GrobType.Unknown:
                 // A subject of unknown type (e.g. a stdlib call result) is treated
                 // permissively rather than rejected — the value may well be iterable.
-                return (GrobType.Unknown, GrobType.Unknown, null, null);
+                return (GrobType.Unknown, GrobType.Unknown, default);
 
             default:
                 EmitError(ErrorCatalog.E0501,
                     $"'for...in' subject of type '{TypeName(subject)}' is not iterable. " +
                     "Only an array, a map or a numeric range can be iterated.",
                     node.Iterable.Range);
-                return (GrobType.Error, GrobType.Error, null, null);
+                return (GrobType.Error, GrobType.Error, default);
         }
     }
 

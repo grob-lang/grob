@@ -149,17 +149,17 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     // reads it as its result type.
     private GrobType _lastReturnType = GrobType.Unknown;
 
-    // One entry per lambda being checked, innermost on top: the kind and function-type
-    // descriptor of each value its 'return' statements yield (a bare 'return' is nil). A
-    // block lambda's result shape combines them with its final value (LambdaResult,
-    // D-448 Decision 7).
+    // One entry per lambda being checked, innermost on top: the kind, function-type
+    // descriptor and identity of each value its 'return' statements yield (a bare 'return'
+    // is nil). A block lambda's result shape combines them with its final value
+    // (LambdaResult, D-448 Decision 7; LambdaResultIdentity, D-463).
     private readonly Stack<List<LambdaReturn>> _lambdaReturns = new();
 
     /// <summary>
-    /// One value a block lambda can return: its kind and, for a function value whose shape
-    /// is tracked, that shape.
+    /// One value a block lambda can return: its kind, for a function value whose shape is
+    /// tracked that shape, and for a struct, array or map value its identity (D-463).
     /// </summary>
-    private readonly record struct LambdaReturn(GrobType Kind, FunctionTypeDescriptor? Descriptor);
+    private readonly record struct LambdaReturn(GrobType Kind, FunctionTypeDescriptor? Descriptor, PositionIdentity? Identity = null);
 
     // D-381: print/exit have no runtime representation outside the dedicated Print/Exit
     // opcodes Compiler.Statements.cs emits for the exact bare-statement-call shape. These
@@ -608,6 +608,11 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         // Decision 7), so an inferred lambda arm takes a tracked arm's concrete types.
         TernaryExpr t => CombinedDescriptor([t.Then, t.Else]),
         SwitchExprNode sw => CombinedDescriptor([.. sw.Arms.Select(a => a.Result)]),
+        // D-463: an element of an array of functions, or a value of a map of functions,
+        // has the function type its collection's descriptor records, so fs[0] binds to that
+        // type and a call through it is checked against it.
+        IndexExpr index => ArrayDescriptorOf(index.Target)?.ElementFunctionDescriptor
+            ?? MapDescriptorOf(index.Target)?.ValueFunctionDescriptor,
         _ => null,
     };
 
@@ -733,35 +738,39 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     }
 
     /// <summary>
-    /// Extended resolution that also returns the structural <see cref="FunctionTypeDescriptor"/>
-    /// when <paramref name="typeRef"/> is a <see cref="FunctionTypeRef"/> (D-326).
-    /// For all other type references the descriptor is <see langword="null"/> and the
-    /// kind is identical to <see cref="ResolveTypeRef"/>.
+    /// Resolves a function type reference to its kind and structural
+    /// <see cref="FunctionTypeDescriptor"/> (D-326). Each parameter and the return resolve
+    /// as a signature position does (<see cref="ResolveSignatureType"/>), so a nested
+    /// function type carries its inner shape, a struct position its declared name, an array
+    /// position its element descriptor and a map position its value descriptor (D-463):
+    /// the flat kind alone collapses <c>fn(fn(): int): int</c> and <c>fn(fn(): string): int</c>,
+    /// <c>fn(int[]): int</c> and <c>fn(float[]): int</c>, and <c>fn(A): int</c> and
+    /// <c>fn(B): int</c>. An unrecognised name in a position resolves to
+    /// <see cref="GrobType.Unknown"/> with no diagnostic, as <see cref="ResolveSignatureType"/>
+    /// is quiet.
     /// </summary>
-    internal static (GrobType Kind, FunctionTypeDescriptor? Descriptor) ResolveTypeRefFull(TypeRef typeRef) {
-        // Array type-ref has no structural descriptor — arrays are not function types.
-        if (typeRef is ArrayTypeRef)
-            return (ResolveTypeRef(typeRef), null);
-
-        if (typeRef is FunctionTypeRef fnRef) {
-            // Resolve each parameter and the return type recursively so that a nested
-            // function type (fn(fn(): int): int) carries its inner descriptor and is
-            // structurally distinguished from fn(fn(): string): int (D-326). The flat
-            // GrobType kind alone collapses both to a single GrobType.Function parameter.
-            var paramTypes = new List<GrobType>(fnRef.ParameterTypes.Count);
-            var paramDescriptors = new List<FunctionTypeDescriptor?>(fnRef.ParameterTypes.Count);
-            foreach (TypeRef paramRef in fnRef.ParameterTypes) {
-                (GrobType paramKind, FunctionTypeDescriptor? paramDesc) = ResolveTypeRefFull(paramRef);
-                paramTypes.Add(paramKind);
-                paramDescriptors.Add(paramDesc);
-            }
-
-            (GrobType returnKind, FunctionTypeDescriptor? returnDesc) = ResolveTypeRefFull(fnRef.ReturnType);
-            FunctionTypeDescriptor descriptor = new(paramTypes, returnKind, paramDescriptors, returnDesc);
-            GrobType kind = fnRef.IsNullable ? GrobType.NullableFunction : GrobType.Function;
-            return (kind, descriptor);
+    private (GrobType Kind, FunctionTypeDescriptor Descriptor) ResolveFunctionTypeRef(FunctionTypeRef fnRef) {
+        int count = fnRef.ParameterTypes.Count;
+        var paramTypes = new GrobType[count];
+        var paramDescriptors = new FunctionTypeDescriptor?[count];
+        var paramIdentities = new PositionIdentity?[count];
+        for (int i = 0; i < count; i++) {
+            (paramTypes[i], paramDescriptors[i], paramIdentities[i]) = ResolveFunctionTypePosition(fnRef.ParameterTypes[i]);
         }
-        return (ResolveTypeRef(typeRef), null);
+        (GrobType returnKind, FunctionTypeDescriptor? returnDesc, PositionIdentity? returnIdentity) =
+            ResolveFunctionTypePosition(fnRef.ReturnType);
+        FunctionTypeDescriptor descriptor = new(paramTypes, returnKind, paramDescriptors, returnDesc) {
+            ParameterIdentities = paramIdentities,
+            ReturnIdentity = returnIdentity,
+        };
+        return (fnRef.IsNullable ? GrobType.NullableFunction : GrobType.Function, descriptor);
+    }
+
+    /// <summary>One parameter or the return of a function type reference (D-463).</summary>
+    private (GrobType Kind, FunctionTypeDescriptor? Descriptor, PositionIdentity? Identity) ResolveFunctionTypePosition(TypeRef typeRef) {
+        (GrobType kind, string? namedTypeName, FunctionTypeDescriptor? descriptor, ArrayTypeDescriptor? arrayDesc, MapTypeDescriptor? mapDesc) =
+            ResolveSignatureType(typeRef);
+        return (kind, descriptor, PositionIdentity.Of(namedTypeName, arrayDesc, mapDesc));
     }
 
     /// <summary>
@@ -775,10 +784,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// <see cref="GrobType.Unknown"/> with no diagnostic — the name has already been
     /// validated (or not) wherever the annotation's owning declaration was itself
     /// checked, so re-validating here on every reference would duplicate E1001.
-    /// <see cref="ArrayTypeDescriptor"/> (D-351) is resolved separately from
-    /// <see cref="ResolveTypeRefFull"/>'s <c>FunctionTypeRef</c> arm — building an element's
-    /// named-type identity needs the instance-level <see cref="TryGetNamedStructTypeName"/>,
-    /// which the static <see cref="ResolveTypeRefFull"/> cannot call.
+    /// A function type's positions resolve through this method in turn
+    /// (<see cref="ResolveFunctionTypeRef"/>, D-463).
     /// </summary>
     private (GrobType Kind, string? NamedTypeName, FunctionTypeDescriptor? FunctionDescriptor, ArrayTypeDescriptor? ArrayDescriptor, MapTypeDescriptor? MapDescriptor)
             ResolveSignatureType(TypeRef typeRef) {
@@ -787,8 +794,8 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             return (arrayKind, null, null, ResolveArrayElementDescriptor(arrayRef.ElementType), null);
         }
 
-        if (typeRef is FunctionTypeRef) {
-            (GrobType kind, FunctionTypeDescriptor? desc) = ResolveTypeRefFull(typeRef);
+        if (typeRef is FunctionTypeRef fnRef) {
+            (GrobType kind, FunctionTypeDescriptor desc) = ResolveFunctionTypeRef(fnRef);
             return (kind, null, desc, null, null);
         }
 
@@ -846,12 +853,10 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// distinguish two element shapes, the element's named-type identity (a user
     /// <c>type</c> or <c>guid</c>, via <see cref="TryGetNamedStructTypeName"/>) or its own
     /// nested array descriptor (a <c>T[][]</c> element). A function-typed element
-    /// (<c>(fn(): int)[]</c>) resolves its flat <see cref="GrobType.Function"/> kind via the
-    /// static <see cref="ResolveTypeRefFull"/> but carries no nested structural descriptor —
-    /// distinguishing <c>(fn(): int)[]</c> from <c>(fn(): string)[]</c> element-for-element
-    /// is out of scope for D-351 (named as a residual gap, not built ad hoc). Quiet, like
-    /// <see cref="ResolveSignatureType"/>: an unrecognised element name resolves to
-    /// <see cref="GrobType.Unknown"/> with no diagnostic.
+    /// (<c>(fn(): int)[]</c>) carries its function type, so <c>(fn(): int)[]</c> is told
+    /// apart from <c>(fn(): string)[]</c> and an element read out carries its shape (D-463).
+    /// Quiet, like <see cref="ResolveSignatureType"/>: an unrecognised element name resolves
+    /// to <see cref="GrobType.Unknown"/> with no diagnostic.
     /// </summary>
     private ArrayTypeDescriptor ResolveArrayElementDescriptor(TypeRef elementType) {
         if (elementType is ArrayTypeRef nestedArray) {
@@ -859,9 +864,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             return new ArrayTypeDescriptor(nestedKind, null, ResolveArrayElementDescriptor(nestedArray.ElementType));
         }
 
-        if (elementType is FunctionTypeRef) {
-            (GrobType functionKind, _) = ResolveTypeRefFull(elementType);
-            return new ArrayTypeDescriptor(functionKind);
+        if (elementType is FunctionTypeRef fnRef) {
+            (GrobType functionKind, FunctionTypeDescriptor functionDesc) = ResolveFunctionTypeRef(fnRef);
+            return new ArrayTypeDescriptor(functionKind, elementFunctionDescriptor: functionDesc);
         }
 
         GrobType kind = ResolveTypeRef(elementType);
@@ -900,9 +905,9 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
             return new MapTypeDescriptor(arrayKind, null, ResolveArrayElementDescriptor(arrayRef.ElementType));
         }
 
-        if (valueType is FunctionTypeRef) {
-            (GrobType functionKind, _) = ResolveTypeRefFull(valueType);
-            return new MapTypeDescriptor(functionKind);
+        if (valueType is FunctionTypeRef fnRef) {
+            (GrobType functionKind, FunctionTypeDescriptor functionDesc) = ResolveFunctionTypeRef(fnRef);
+            return new MapTypeDescriptor(functionKind, valueFunctionDescriptor: functionDesc);
         }
 
         GrobType kind = ResolveTypeRef(valueType);
@@ -977,50 +982,56 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
         if (from.ParameterTypes.Count != to.ParameterTypes.Count) return false;
 
         for (int i = 0; i < from.ParameterTypes.Count; i++) {
-            if (!PositionAssignable(
-                    from.ParameterTypes[i], to.ParameterTypes[i],
-                    DescriptorAt(from.ParameterDescriptors, i), DescriptorAt(to.ParameterDescriptors, i))) {
+            if (!PositionAssignable(ParameterPosition(from, i), ParameterPosition(to, i))) {
                 return false;
             }
         }
 
-        (GrobType fromReturn, FunctionTypeDescriptor? fromShape) = KnownReturn(from);
-        (GrobType toReturn, FunctionTypeDescriptor? toShape) = KnownReturn(to);
+        ShapePosition fromReturn = KnownReturn(from);
+        ShapePosition toReturn = KnownReturn(to);
         return from.ReturnIsInferred
-            ? InferredReturnAssignable(fromReturn, toReturn, fromShape, toShape)
-            : PositionAssignable(fromReturn, toReturn, fromShape, toShape);
+            ? InferredReturnAssignable(fromReturn, toReturn)
+            : PositionAssignable(fromReturn, toReturn);
     }
+
+    /// <summary>
+    /// One parameter or return of a function type, as the comparison reads it: its kind,
+    /// its nested function shape and its identity (D-463), <see cref="PositionIdentity.None"/>
+    /// where it carries none.
+    /// </summary>
+    private readonly record struct ShapePosition(GrobType Type, FunctionTypeDescriptor? Shape, PositionIdentity Identity);
+
+    private static ShapePosition ParameterPosition(FunctionTypeDescriptor descriptor, int index) =>
+        new(descriptor.ParameterTypes[index], descriptor.ParameterDescriptorAt(index),
+            descriptor.ParameterIdentityAt(index) ?? PositionIdentity.None);
 
     /// <summary>
     /// A return read from a lambda's body (<see cref="FunctionTypeDescriptor.ReturnIsInferred"/>)
     /// is a value the lambda produces, not a declared type, so it is checked as a value
     /// against the return it is given: <c>int</c> for <c>float</c>, <c>T</c> or <c>nil</c>
     /// for <c>T?</c> pass, as they do for any value. A function-typed result is compared
-    /// through its nested shapes. R-96 owns widening such a result at run time.
+    /// through its nested shapes, and a struct, array or map result by the identity a
+    /// value of it is checked by (<see cref="IdentityAssignableAsValue"/>, D-463). R-96
+    /// owns widening such a result at run time.
     /// </summary>
-    private static bool InferredReturnAssignable(
-        GrobType from, GrobType to, FunctionTypeDescriptor? fromDesc, FunctionTypeDescriptor? toDesc) {
-        if (from == GrobType.Unknown || to == GrobType.Unknown) return true;
-        bool fromIsFunction = from == GrobType.Function || from == GrobType.NullableFunction;
-        bool toIsFunction = to == GrobType.Function || to == GrobType.NullableFunction;
+    private static bool InferredReturnAssignable(ShapePosition from, ShapePosition to) {
+        if (from.Type == GrobType.Unknown || to.Type == GrobType.Unknown) return true;
+        if (!TypesAreAssignable(from.Type, to.Type)) return false;
+        bool fromIsFunction = from.Type == GrobType.Function || from.Type == GrobType.NullableFunction;
+        bool toIsFunction = to.Type == GrobType.Function || to.Type == GrobType.NullableFunction;
         if (fromIsFunction && toIsFunction)
-            return TypesAreAssignable(from, to) &&
-                   fromDesc is not null && toDesc is not null &&
-                   DescriptorsAreAssignable(fromDesc, toDesc);
-        return TypesAreAssignable(from, to);
+            return from.Shape is not null && to.Shape is not null && DescriptorsAreAssignable(from.Shape, to.Shape);
+        return IdentityAssignableAsValue(to.Type, from.Identity, to.Identity);
     }
 
     /// <summary>
     /// A descriptor's return as far as it is known: the bound where the return is Unknown
-    /// and carries one, the return type and nested shape otherwise.
+    /// and carries one, the return type, nested shape and identity otherwise.
     /// </summary>
-    private static (GrobType Type, FunctionTypeDescriptor? Shape) KnownReturn(FunctionTypeDescriptor descriptor) =>
+    private static ShapePosition KnownReturn(FunctionTypeDescriptor descriptor) =>
         descriptor.ReturnBound is { } bound
-            ? (bound, descriptor.ReturnBoundDescriptor)
-            : (descriptor.ReturnType, descriptor.ReturnDescriptor);
-
-    private static FunctionTypeDescriptor? DescriptorAt(IReadOnlyList<FunctionTypeDescriptor?> list, int index) =>
-        index < list.Count ? list[index] : null;
+            ? new(bound, descriptor.ReturnBoundDescriptor, descriptor.ReturnBoundIdentity ?? PositionIdentity.None)
+            : new(descriptor.ReturnType, descriptor.ReturnDescriptor, descriptor.ReturnIdentity ?? PositionIdentity.None);
 
     /// <summary>
     /// One parameter or return position of two function types, compared invariantly
@@ -1029,20 +1040,78 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// <c>T?</c> nor <c>nil</c> to <c>T?</c>. A call through the target passes arguments
     /// and reads a result as the target's types, and the value behind it reads and writes
     /// its own; a widened position would hand the value a <c>float</c> where it reads an
-    /// <c>int</c>. A function-typed position is then compared through its nested shapes.
-    /// An array, struct or map position is compared by its flat kind only, as the
-    /// descriptor carries no element, field or value type for it (R-98).
-    /// <see cref="GrobType.Unknown"/> on either side is permissive, as an inferred lambda's
-    /// positions are, and <see cref="GrobType.Error"/> is universal so a failure already
-    /// reported does not cascade.
+    /// <c>int</c>. A function-typed position is then compared through its nested shapes, and
+    /// an array, struct or map position through its identity (<see cref="IdentitiesAreSame"/>,
+    /// D-463). <see cref="GrobType.Unknown"/> on either side is permissive, as an inferred
+    /// lambda's positions are, and <see cref="GrobType.Error"/> is universal so a failure
+    /// already reported does not cascade.
     /// </summary>
-    private static bool PositionAssignable(
-        GrobType from, GrobType to, FunctionTypeDescriptor? fromDesc, FunctionTypeDescriptor? toDesc) {
-        if (from is GrobType.Unknown or GrobType.Error || to is GrobType.Unknown or GrobType.Error) return true;
-        if (from != to) return false;
-        if (from is not (GrobType.Function or GrobType.NullableFunction)) return true;
-        return fromDesc is not null && toDesc is not null && DescriptorsAreAssignable(fromDesc, toDesc);
+    private static bool PositionAssignable(ShapePosition from, ShapePosition to) {
+        if (from.Type is GrobType.Unknown or GrobType.Error || to.Type is GrobType.Unknown or GrobType.Error) return true;
+        if (from.Type != to.Type) return false;
+        if (from.Type is GrobType.Function or GrobType.NullableFunction) {
+            return from.Shape is not null && to.Shape is not null && DescriptorsAreAssignable(from.Shape, to.Shape);
+        }
+        return IdentitiesAreSame(from.Type, from.Identity, to.Identity);
     }
+
+    /// <summary>
+    /// Two identities of a function type's position of kind <paramref name="kind"/>,
+    /// compared invariantly (D-463): a struct position must name the same declared type, the
+    /// <c>GrobError</c> hierarchy's subtyping included in the refusal, and an array or a map
+    /// position must have the same element or value type, which is
+    /// <see cref="ArrayElementAssignable"/> or <see cref="MapValueAssignable"/> holding both
+    /// ways. A side whose identity is not known, as an unresolved name leaves it, is
+    /// permissive, as an Unknown kind is.
+    /// </summary>
+    private static bool IdentitiesAreSame(GrobType kind, PositionIdentity from, PositionIdentity to) => kind switch {
+        GrobType.Struct or GrobType.NullableStruct =>
+            from.NamedTypeName is null || to.NamedTypeName is null ||
+            string.Equals(from.NamedTypeName, to.NamedTypeName, StringComparison.Ordinal),
+        GrobType.Array or GrobType.NullableArray =>
+            ArrayElementAssignable(from.ArrayDescriptor, to.ArrayDescriptor) &&
+            ArrayElementAssignable(to.ArrayDescriptor, from.ArrayDescriptor),
+        GrobType.Map or GrobType.NullableMap =>
+            MapValueAssignable(from.MapDescriptor, to.MapDescriptor) &&
+            MapValueAssignable(to.MapDescriptor, from.MapDescriptor),
+        _ => true,
+    };
+
+    /// <summary>
+    /// The identity of a lambda's result checked against the return it is given, as a value
+    /// of the return's kind <paramref name="kind"/> is checked (D-463): a struct by name, a
+    /// <c>GrobError</c> subtype admitted for an ancestor (<see cref="StructNameAssignable"/>),
+    /// and an array or a map by its element or value type, one way. A side whose identity
+    /// is not known is permissive.
+    /// </summary>
+    private static bool IdentityAssignableAsValue(GrobType kind, PositionIdentity from, PositionIdentity to) => kind switch {
+        GrobType.Struct or GrobType.NullableStruct =>
+            from.NamedTypeName is null || to.NamedTypeName is null ||
+            StructNameAssignable(from.NamedTypeName, to.NamedTypeName),
+        GrobType.Array or GrobType.NullableArray => ArrayElementAssignable(from.ArrayDescriptor, to.ArrayDescriptor),
+        GrobType.Map or GrobType.NullableMap => MapValueAssignable(from.MapDescriptor, to.MapDescriptor),
+        _ => true,
+    };
+
+    /// <summary>
+    /// Whether a value of the struct named <paramref name="valueName"/> may be used where the
+    /// struct named <paramref name="targetName"/> is expected: the same name, or a
+    /// <c>GrobError</c> hierarchy subtype of it (D-284), mirroring <c>catch</c>'s subtype
+    /// matching. Shared by <see cref="IsStructNominalMismatch"/> and a lambda's result.
+    /// </summary>
+    private static bool StructNameAssignable(string valueName, string targetName) =>
+        string.Equals(valueName, targetName, StringComparison.Ordinal) ||
+        (ExceptionHierarchy.IsHierarchyMember(targetName) &&
+         ExceptionHierarchy.IsHierarchyMember(valueName) &&
+         ExceptionHierarchy.IsSubtypeOf(valueName, targetName));
+
+    /// <summary>
+    /// Two function types an array element or a map value carries (D-463): either side
+    /// with no tracked shape is permissive, as a missing array descriptor is, and two shapes
+    /// are compared as two function types are.
+    /// </summary>
+    private static bool ElementShapesAssignable(FunctionTypeDescriptor? from, FunctionTypeDescriptor? to) =>
+        from is null || to is null || DescriptorsAreAssignable(from, to);
 
     /// <summary>
     /// Returns <see langword="true"/> when an array value described by
@@ -1055,17 +1124,22 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// element type could not be determined — an empty literal with no annotation, a
     /// value that flowed through <see cref="GrobType.Unknown"/>) stays permissive,
     /// mirroring how an <see cref="GrobType.Unknown"/> scalar is already treated
-    /// elsewhere. Recurses into the nested descriptor for a <c>T[][]</c> element.
+    /// elsewhere. Recurses into the nested descriptor for a <c>T[][]</c> element, and
+    /// compares a function-typed element's shapes as two function types are (D-463), so a
+    /// <c>(fn(int): int)[]</c> is not a <c>(fn(float): float)[]</c>.
     /// </summary>
     private static bool ArrayElementAssignable(ArrayTypeDescriptor? from, ArrayTypeDescriptor? to) {
         if (from is null || to is null) return true;
         if (from.ElementKind == GrobType.Unknown || to.ElementKind == GrobType.Unknown) return true;
         if (from.ElementKind != to.ElementKind) return false;
         if (to.ElementNamedTypeName is not null && from.ElementNamedTypeName != to.ElementNamedTypeName) return false;
-        if (to.ElementKind is GrobType.Array or GrobType.NullableArray) {
-            return ArrayElementAssignable(from.ElementArrayDescriptor, to.ElementArrayDescriptor);
-        }
-        return true;
+        return to.ElementKind switch {
+            GrobType.Array or GrobType.NullableArray =>
+                ArrayElementAssignable(from.ElementArrayDescriptor, to.ElementArrayDescriptor),
+            GrobType.Function or GrobType.NullableFunction =>
+                ElementShapesAssignable(from.ElementFunctionDescriptor, to.ElementFunctionDescriptor),
+            _ => true,
+        };
     }
 
     /// <summary>
@@ -1076,17 +1150,21 @@ public sealed partial class TypeChecker : AstVisitor<GrobType> {
     /// permissive-on-missing/Unknown shape (an unresolved or bare map stays permissive,
     /// exactly as a bare array does), then compares the value's flat kind, its struct/guid
     /// nominal name and, for a <c>map&lt;string, T[]&gt;</c> value, its nested array element
-    /// descriptor.
+    /// descriptor, or for a <c>map&lt;string, fn(int): int&gt;</c> value its function shape
+    /// (D-463).
     /// </summary>
     private static bool MapValueAssignable(MapTypeDescriptor? from, MapTypeDescriptor? to) {
         if (from is null || to is null) return true;
         if (from.ValueKind == GrobType.Unknown || to.ValueKind == GrobType.Unknown) return true;
         if (from.ValueKind != to.ValueKind) return false;
         if (to.ValueNamedTypeName is not null && from.ValueNamedTypeName != to.ValueNamedTypeName) return false;
-        if (to.ValueKind is GrobType.Array or GrobType.NullableArray) {
-            return ArrayElementAssignable(from.ValueArrayDescriptor, to.ValueArrayDescriptor);
-        }
-        return true;
+        return to.ValueKind switch {
+            GrobType.Array or GrobType.NullableArray =>
+                ArrayElementAssignable(from.ValueArrayDescriptor, to.ValueArrayDescriptor),
+            GrobType.Function or GrobType.NullableFunction =>
+                ElementShapesAssignable(from.ValueFunctionDescriptor, to.ValueFunctionDescriptor),
+            _ => true,
+        };
     }
 
     /// <summary>

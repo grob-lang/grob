@@ -748,15 +748,47 @@ public sealed class TypeCheckerFunctionTypeTests {
     }
 
     /// <summary>
-    /// An array element's function shape is not tracked, so it cannot be shown to match
-    /// the parameter's function type and is rejected, as a declaration's initialiser is;
-    /// accepting it would leave a later call trusting a shape nothing checked.
+    /// An anonymous struct's field records no function shape, so it cannot be shown to
+    /// match the parameter's function type and is rejected, as a declaration's initialiser
+    /// is; accepting it would leave a later call trusting a shape nothing checked. An array
+    /// element carries its literal's shape (D-463), so it is no longer such a value.
     /// </summary>
     [Fact]
-    public void Reassignment_FunctionTypedParameter_FromUntrackedArrayElement_IsE0001() {
+    public void Reassignment_FunctionTypedParameter_FromUntrackedAnonymousStructField_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn apply(f: fn(int): int): int {
+                ops := #{ op: (a: int) => a + 1 }
+                f = ops.op
+                return f(1)
+            }
+            """);
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(9, d.Range.Start.Column);
+    }
+
+    /// <summary>
+    /// An array element carries the shape its literal gives it (D-463), so a function of
+    /// that shape is accepted where it was refused for want of one.
+    /// </summary>
+    [Fact]
+    public void Reassignment_FunctionTypedParameter_FromArrayElementOfTheSameShape_IsAccepted() {
         (_, DiagnosticBag bag) = TypeCheckSource("""
             fn apply(f: fn(int): int): int {
                 ops := [(a: int) => a + 1]
+                f = ops[0]
+                return f(1)
+            }
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    [Fact]
+    public void Reassignment_FunctionTypedParameter_FromArrayElementOfAnotherShape_IsE0001() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
+            fn apply(f: fn(int): int): int {
+                ops := [() => 1]
                 f = ops[0]
                 return f(1)
             }
@@ -770,11 +802,28 @@ public sealed class TypeCheckerFunctionTypeTests {
     [Fact]
     public void Reassignment_UntrackedFunctionBinding_AcceptsAnyFunction() {
         (_, DiagnosticBag bag) = TypeCheckSource("""
+            ops := #{ op: (a: int) => a + 1 }
+            f := ops.op
+            f = () => "s"
+            """);
+        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+    }
+
+    /// <summary>
+    /// A binding read out of an array keeps its element's shape (D-463), so a function of
+    /// another arity is refused as it is for a binding a lambda gave its shape.
+    /// </summary>
+    [Fact]
+    public void Reassignment_BindingFromArrayElement_RefusesAnotherShape() {
+        (_, DiagnosticBag bag) = TypeCheckSource("""
             ops := [(a: int) => a + 1]
             f := ops[0]
             f = () => "s"
             """);
-        Assert.False(bag.HasErrors, FormatDiagnostics(bag));
+        Diagnostic d = Assert.Single(bag.Errors);
+        Assert.Equal("E0001", d.Code);
+        Assert.Equal(3, d.Range.Start.Line);
+        Assert.Equal(5, d.Range.Start.Column);
     }
 
     [Fact]
@@ -799,8 +848,8 @@ public sealed class TypeCheckerFunctionTypeTests {
                 op: fn(): int
             }
             bx := Box { op: () => 1 }
-            ops := [() => 2]
-            bx.op = ops[0]
+            ops := #{ op: () => 2 }
+            bx.op = ops.op
             """);
         Diagnostic d = Assert.Single(bag.Errors);
         Assert.Equal("E0001", d.Code);
